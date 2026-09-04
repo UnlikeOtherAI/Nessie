@@ -261,6 +261,7 @@ export const runExecutionAgentLoop = async (
         approvalProofClaimedForTool: authorization.approvalProofClaimedForTool,
         context,
         deps,
+        judgedGmailDraftAuthorization: authorization.judgedGmailDraftAuthorization,
         payload,
         toolActorContext: authorization.toolActorContext,
         toolCallId,

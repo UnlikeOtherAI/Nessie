@@ -3,6 +3,7 @@ import {
   type AuthorizedActionContext,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
+import type { JudgedGmailDraftAuthorization } from '@nessie/team-admin'
 
 import type { ExecutionDependencies, RunContext } from './types.js'
 
@@ -13,6 +14,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
  */
 export const buildBuiltinRuntimeContext = (input: {
   approvalProofClaimedForTool?: string
+  judgedGmailDraftAuthorization?: JudgedGmailDraftAuthorization
   context: RunContext
   deps: ExecutionDependencies
   payload: Pick<RunExecuteJobPayload, 'interactive' | 'messageId'>
@@ -22,7 +24,10 @@ export const buildBuiltinRuntimeContext = (input: {
   agentId: input.context.agent.id,
   agentKind: input.context.agent.agentKind,
   actorContext: input.toolActorContext,
-  authorization: { approvalProofClaimedForTool: input.approvalProofClaimedForTool },
+  authorization: {
+    approvalProofClaimedForTool: input.approvalProofClaimedForTool,
+    judgedGmailDraftAuthorization: input.judgedGmailDraftAuthorization,
+  },
   demonstrationControl: {
     clearActive: () => {
       input.context.activeDemonstrationId = null

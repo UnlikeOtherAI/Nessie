@@ -4,7 +4,12 @@ import {
   GMAIL_DRAFT_SEND_TOOL_ID,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '@nessie/runtime'
-import { recordSendDecision, resolveStandingConsentForToolCall } from '@nessie/team-admin'
+import {
+  mintJudgedGmailDraftAuthorization,
+  recordSendDecision,
+  resolveStandingConsentForToolCall,
+  type JudgedGmailDraftAuthorization,
+} from '@nessie/team-admin'
 import { type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -158,6 +163,7 @@ export const authorizeToolExecution = async (
   } = { denial: null }
   let structuralApprovalProofUsed = false
   let approvalProofClaimed = false
+  let judgedGmailDraftAuthorization: JudgedGmailDraftAuthorization | undefined
   const approvalProofPresented = Boolean(
     toolActorContext.approval?.approvalId || toolActorContext.approval?.approvalProof,
   )
@@ -278,6 +284,30 @@ export const authorizeToolExecution = async (
       verdict.verdict === 'proceed' ? 'decided' : 'asked',
     ).catch(() => undefined)
     if (verdict.verdict === 'proceed') {
+      // The boundary judge is not itself a dispatch capability. Mint a
+      // content-free, server-only fact for this exact live grant; the Gmail
+      // handler revalidates it immediately before the draft state claim.
+      // Nothing supplied by the model can construct or select this fact.
+      if (toolName === GMAIL_DRAFT_SEND_TOOL_ID) {
+        const requestingUserId = toolActorContext.actionContext.effectiveUserId
+        const draftActionId = canonicalArgs.draftId
+        const contentFingerprint = canonicalArgs.approvalFingerprint
+        if (
+          !requestingUserId
+          || typeof draftActionId !== 'string'
+          || typeof contentFingerprint !== 'string'
+        ) return escalate()
+        judgedGmailDraftAuthorization = mintJudgedGmailDraftAuthorization({
+          agentId: context.agent.id,
+          boundary: consent.boundary,
+          connectionId: consent.connectionId,
+          contentFingerprint,
+          draftActionId,
+          grantId: consent.grantId,
+          organizationId: context.channel.organizationId,
+          requestingUserId,
+        })
+      }
       await postAllowedByRuleCard(prisma, context, toolActorContext, {
         args: canonicalArgs,
         rule: consent.boundary,
@@ -437,6 +467,7 @@ export const authorizeToolExecution = async (
     args: canonicalArgs,
     decision: 'allow',
     ...(approvalProofClaimed ? { approvalProofClaimedForTool: toolName } : {}),
+    ...(judgedGmailDraftAuthorization ? { judgedGmailDraftAuthorization } : {}),
     toolActorContext,
   }
 }

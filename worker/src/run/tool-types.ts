@@ -12,6 +12,7 @@ import type {
   PgRealtimeTransport,
 } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import type { JudgedGmailDraftAuthorization } from '@nessie/team-admin'
 
 export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
 
@@ -56,6 +57,7 @@ export type BuiltinToolRuntimeContext = {
    */
   authorization?: {
     approvalProofClaimedForTool?: string
+    judgedGmailDraftAuthorization?: JudgedGmailDraftAuthorization
   }
   /**
    * Keeps the run-local opt-in capture state in sync when the model starts or

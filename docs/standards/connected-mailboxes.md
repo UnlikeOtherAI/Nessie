@@ -131,7 +131,11 @@ Plan and as-built deltas:
   a prompt, checkpoint, audit/event payload, ToolCall metadata, or client API.
   A changed draft, revoked mailbox access, inactive approver, wrong lineage, or
   already-claimed proof therefore denies the action rather than inviting a
-  model to compose a near-match.
+  model to compose a near-match. A judged Gmail standing boundary is a separate
+  server-minted fact, bound to the exact live grant, connection, agent, owner,
+  draft, fingerprint, and boundary hash; the handler revalidates it immediately before the draft
+  claim, so a concurrent revoke, expiry, identity change, or boundary edit also
+  denies.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,

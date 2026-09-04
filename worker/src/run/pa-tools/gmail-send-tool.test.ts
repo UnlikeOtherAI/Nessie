@@ -7,8 +7,9 @@ import {
   parseUserId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+import { mintJudgedGmailDraftAuthorization, type JudgedGmailDraftAuthorization } from '@nessie/team-admin'
 
-import { runGmailDraftSendTool } from './gmail-send-tool.js'
+import { authorizeGmailDraftDispatch, runGmailDraftSendTool } from './gmail-send-tool.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 const ids = {
@@ -20,7 +21,14 @@ const ids = {
 
 const context = (input: {
   approval?: { approvalId?: string; approvalProof?: string }
-  grant: { expiresAt: Date | null; revokedAt: Date | null } | null
+  authorization?: { judgedGmailDraftAuthorization?: JudgedGmailDraftAuthorization }
+  grant: {
+    boundary?: string | null
+    expiresAt: Date | null
+    id?: string
+    mode?: 'always' | 'judged'
+    revokedAt: Date | null
+  } | null
 }): BuiltinToolRuntimeContext => ({
   agentId: ids.agent,
   agentKind: 'personal_assistant',
@@ -30,6 +38,7 @@ const context = (input: {
     ...(input.approval ? { approval: input.approval } : {}),
     tenant: { organizationId: parseOrganizationId(ids.organization) },
   } as AuthorizedActionContext,
+  ...(input.authorization ? { authorization: input.authorization } : {}),
   channel: { id: ids.draft, organizationId: parseOrganizationId(ids.organization) },
   ledgerIdentity: null,
   prisma: {
@@ -45,11 +54,11 @@ const context = (input: {
     sendAuthorizationGrant: {
       findUnique: async () => input.grant
         ? {
-            boundary: null,
             expiresAt: input.grant.expiresAt,
-            id: 'grant-1',
-            mode: 'always',
+            id: input.grant.id ?? 'grant-1',
+            mode: input.grant.mode ?? 'always',
             revokedAt: input.grant.revokedAt,
+            boundary: input.grant.boundary ?? null,
           }
         : null,
     },
@@ -76,6 +85,77 @@ test('ordinary standing consent is rechecked and denies a revoked grant', async 
     runGmailDraftSendTool(context({
       grant: { expiresAt: null, revokedAt: new Date() },
     }), args),
+    /need approval/i,
+  )
+})
+
+test('a judged proceed reaches dispatch only with its server-minted exact fact', async () => {
+  const authorization = mintJudgedGmailDraftAuthorization({
+    agentId: ids.agent,
+    boundary: 'Send routine replies.',
+    connectionId: '55555555-5555-4555-8555-555555555555',
+    contentFingerprint: args.approvalFingerprint,
+    draftActionId: ids.draft,
+    grantId: 'grant-judged',
+    organizationId: ids.organization,
+    requestingUserId: ids.user,
+  })
+  const result = await authorizeGmailDraftDispatch(context({
+    authorization: { judgedGmailDraftAuthorization: authorization },
+    grant: {
+      boundary: 'Send routine replies.',
+      expiresAt: null,
+      id: 'grant-judged',
+      mode: 'judged',
+      revokedAt: null,
+    },
+  }), {
+    connectionId: '55555555-5555-4555-8555-555555555555', id: ids.draft, ownerUserId: ids.user,
+  }, args.approvalFingerprint, ids.user)
+  assert.deepEqual(result, { consented: false })
+})
+
+test('a judged grant without a proceed fact still asks', async () => {
+  await assert.rejects(
+    authorizeGmailDraftDispatch(context({
+      grant: {
+        boundary: 'Send routine replies.',
+        expiresAt: null,
+        id: 'grant-judged',
+        mode: 'judged',
+        revokedAt: null,
+      },
+    }), {
+      connectionId: '55555555-5555-4555-8555-555555555555', id: ids.draft, ownerUserId: ids.user,
+    }, args.approvalFingerprint, ids.user),
+    /need approval/i,
+  )
+})
+
+test('a judged proceed fact loses a revoke race before dispatch', async () => {
+  const authorization = mintJudgedGmailDraftAuthorization({
+    agentId: ids.agent,
+    boundary: 'Send routine replies.',
+    connectionId: '55555555-5555-4555-8555-555555555555',
+    contentFingerprint: args.approvalFingerprint,
+    draftActionId: ids.draft,
+    grantId: 'grant-judged',
+    organizationId: ids.organization,
+    requestingUserId: ids.user,
+  })
+  await assert.rejects(
+    authorizeGmailDraftDispatch(context({
+      authorization: { judgedGmailDraftAuthorization: authorization },
+      grant: {
+        boundary: 'Send routine replies.',
+        expiresAt: null,
+        id: 'grant-judged',
+        mode: 'judged',
+        revokedAt: new Date(),
+      },
+    }), {
+      connectionId: '55555555-5555-4555-8555-555555555555', id: ids.draft, ownerUserId: ids.user,
+    }, args.approvalFingerprint, ids.user),
     /need approval/i,
   )
 })

@@ -93,6 +93,7 @@ const fakePrisma = (
   state: { contentFingerprint: string },
   claimSucceeds = true,
   liveGrant = false,
+  judgedGrant = false,
 ) => {
   const approvals: Array<Record<string, unknown>> = []
   const prisma = {
@@ -124,12 +125,18 @@ const fakePrisma = (
         connectionId: 'connection-1', contentFingerprint: state.contentFingerprint,
       }),
     },
+    message: { create: async () => ({}) },
     policyRule: { findMany: async () => [] },
     run: { findUnique: async () => ({ continuationOfRunId: ids.parentRun }) },
     sendAuthorizationGrant: {
       findUnique: async () => liveGrant
         ? { boundary: null, expiresAt: null, id: 'grant-1', mode: 'always', revokedAt: null }
-        : null,
+        : judgedGrant
+          ? {
+              boundary: 'Send routine replies.', expiresAt: null, id: 'grant-judged',
+              mode: 'judged', revokedAt: null,
+            }
+          : null,
     },
   } as unknown as PrismaClient
   return { approvals, prisma }
@@ -306,4 +313,59 @@ test('a model cannot supply an approval fingerprint', async () => {
     { ...toolArgs, approvalFingerprint: fingerprint('d') }, 'call-3', authorization(false), hooks([]),
   )
   assert.equal(decision.decision, 'deny')
+})
+
+test('a judged grant that proceeds mints an exact server-only Gmail dispatch fact', async () => {
+  const fake = fakePrisma({ contentFingerprint: fingerprint('j') }, true, false, true)
+  const allowed = await authorizeToolExecution(
+    fake.prisma,
+    actor(),
+    runContext(),
+    GMAIL_DRAFT_SEND_TOOL_ID,
+    toolArgs,
+    'call-judged-proceed',
+    {
+      ...authorization(false),
+      runUtility: async () => '{"verdict":"proceed","reason":"Routine reply."}',
+      structuralGate: undefined,
+    },
+    hooks([]),
+  )
+
+  assert.equal(allowed.decision, 'allow')
+  if (allowed.decision !== 'allow') throw new Error('Expected an allowed decision.')
+  const fact = allowed.judgedGmailDraftAuthorization
+  assert.ok(fact)
+  assert.equal(fact.agentId, ids.agent)
+  assert.equal(fact.connectionId, 'connection-1')
+  assert.equal(fact.contentFingerprint, fingerprint('j'))
+  assert.equal(fact.draftActionId, ids.draft)
+  assert.equal(fact.grantId, 'grant-judged')
+  assert.equal(fact.organizationId, ids.organization)
+  assert.equal(fact.requestingUserId, ids.user)
+  assert.notEqual(
+    fact.boundaryHash,
+    'Send routine replies.',
+  )
+})
+
+test('a judged grant that asks suspends rather than minting a send fact', async () => {
+  const fake = fakePrisma({ contentFingerprint: fingerprint('k') }, true, false, true)
+  const asked = await authorizeToolExecution(
+    fake.prisma,
+    actor(),
+    runContext(),
+    GMAIL_DRAFT_SEND_TOOL_ID,
+    toolArgs,
+    'call-judged-ask',
+    {
+      ...authorization(true),
+      runUtility: async () => '{"verdict":"ask","reason":"This needs confirmation."}',
+      structuralGate: undefined,
+    },
+    hooks([]),
+  )
+
+  assert.equal(asked.decision, 'suspend')
+  assert.equal(fake.approvals.length, 1)
 })
