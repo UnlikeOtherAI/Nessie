@@ -249,6 +249,25 @@ no challenge, no child-process output. The pipe admits local Administrators and
 the accounts recorded at pairing, refuses remote clients outright, and is
 rebuilt with the current account list every time it accepts a connection.
 
+**Folder and policy controls remain local.** The Executors page shows the
+selected folder's basename so a person can recognize the active boundary, but
+the full path never leaves the companion. Nessie uses one canonical workspace
+root per local pairing. **Change folder** opens the native picker and
+confirmation, refuses while any local draft or sandbox remains, and submits a
+new signed descriptor revision for review; it never broadens several folders
+to a common parent. The operation checkboxes are populated from that executor's
+stored local descriptor rather than optimistic defaults. **Forget pairing on
+this computer** stops the locally supervised daemon and removes the machine key
+and folder selection; the server-side executor and audit history remain for an
+owner to retain or revoke.
+
+Every native confirmation states the data boundary accurately: the full local
+path and pairing secret stay on the machine, while requested file content and
+bounded action output are transmitted to Nessie and the configured model
+provider when an allowed operation runs. A native refusal is rendered verbatim
+on the Executors page so its recovery instruction is not replaced by a generic
+web error.
+
 **A tampered install refuses in words rather than disappearing.** Replace
 `node.exe` in `Program Files` as an administrator and the service keeps running,
 starts no daemon, and answers every control command with the reason; the tray

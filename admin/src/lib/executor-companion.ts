@@ -4,7 +4,11 @@ import { isDesktopApp } from './desktop'
 export type ExecutorCompanionStatus = {
   daemonStatus: 'awaiting_confirmation' | 'running' | 'stopped' | 'stopping'
   executorId: string
+  /** Locally read descriptor policy. Never fetched from or sent to Nessie. */
+  operationKeys: string[]
   workspaceConfigured: boolean
+  /** Basename-only local display label. The full path never enters the web app. */
+  workspaceLabel: string
 }
 
 /**
@@ -70,3 +74,13 @@ export const configureExecutorWorkspaceWithCompanion = (
   operationKeys: string[],
 ): Promise<ExecutorCompanionStatus> =>
   invokeCompanion('executor_companion_configure_workspace', { executorId, operationKeys })
+
+export const changeExecutorWorkspaceWithCompanion = (
+  executorId: string,
+  operationKeys: string[],
+): Promise<ExecutorCompanionStatus> =>
+  invokeCompanion('executor_companion_change_workspace', { executorId, operationKeys })
+
+export const forgetExecutorWithCompanion = (
+  executorId: string,
+): Promise<void> => invokeCompanion('executor_companion_forget', { executorId })

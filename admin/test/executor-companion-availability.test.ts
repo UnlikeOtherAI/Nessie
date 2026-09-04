@@ -35,9 +35,16 @@ const { createRoot } = await import('react-dom/client')
 const response = (
   availability: ExecutorCompanionAvailability,
   reason: string,
+  operationKeys: string[] = ['file.read'],
 ): ExecutorCompanionStatusResponse => ({
   availability,
-  executors: [{ daemonStatus: 'stopped', executorId: 'exec-1', workspaceConfigured: true }],
+  executors: [{
+    daemonStatus: 'stopped',
+    executorId: 'exec-1',
+    operationKeys,
+    workspaceConfigured: true,
+    workspaceLabel: 'Nessie work',
+  }],
   platform: 'linux',
   reason,
 })
@@ -57,11 +64,12 @@ const domGlobals = (extra: Record<string, unknown>) => ({
 const renderPanel = async (input: {
   desktop: boolean
   status?: ExecutorCompanionStatusResponse
+  statusError?: string
 }): Promise<string> => {
   const invoked: Record<string, unknown> = {
     __TAURI_INTERNALS__: {
       invoke: async () => {
-        if (!input.status) throw new Error('companion unavailable')
+        if (!input.status) throw input.statusError ?? 'companion unavailable'
         return input.status
       },
     },
@@ -104,6 +112,13 @@ test('an available companion renders the pairing and daemon controls', async () 
   assert.match(html, /Nessie Desktop companion/)
   assert.match(html, /Start daemon/)
   assert.match(html, /Local workspace policy/)
+  assert.match(html, /Folder:.*Nessie work/)
+  assert.match(html, /Change folder/)
+  assert.match(html, /Forget pairing on this computer/)
+  assert.equal((html.match(/checked=""/g) ?? []).length, 1)
+  assert.doesNotMatch(html, /C:\\Users|\/home\//)
+  assert.match(html, /requested file content and bounded result output are sent/)
+  assert.doesNotMatch(html, /receives no .*executor runtime output/)
 })
 
 // The remedy is the companion's to word — it knows what this machine is missing
@@ -135,6 +150,10 @@ test('workspace_only keeps the controls and adds the explanation beside them', a
   assert.match(html, /Start daemon/)
 })
 
-test('a shell too old to answer the new command still renders nothing', async () => {
-  assert.equal(await renderPanel({ desktop: true }), '')
+test('a native command error remains visible verbatim', async () => {
+  const message = 'Signed companion refused this exact local action.'
+  const html = await renderPanel({ desktop: true, statusError: message })
+  assert.match(html, /Nessie Desktop companion/)
+  assert.match(html, new RegExp(message.replace(/[.]/g, '\\.')))
+  assert.doesNotMatch(html, /Nessie Desktop could not complete/)
 })

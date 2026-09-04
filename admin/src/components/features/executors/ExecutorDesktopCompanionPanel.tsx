@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ExecutorCreateResponse } from '@nessie/schemas'
 import {
+  changeExecutorWorkspaceWithCompanion,
   configureExecutorWorkspaceWithCompanion,
   executorCompanionStatus,
+  forgetExecutorWithCompanion,
   pairExecutorWithCompanion,
   startExecutorWithCompanion,
   stopExecutorWithCompanion,
@@ -27,10 +29,14 @@ type ExecutorDesktopCompanionPanelProps = {
 }
 
 const failureMessage = (cause: unknown): string => {
+  if (typeof cause === 'string') return cause
   if (cause instanceof Error) return cause.message
-  if (typeof cause === 'string' && cause.trim()) return cause
+  if (cause && typeof cause === 'object' && 'message' in cause
+    && typeof cause.message === 'string') return cause.message
   return 'Nessie Desktop could not complete that executor action.'
 }
+
+type CompanionAction = 'forget' | 'pair' | 'policy' | 'start' | 'stop' | 'workspace'
 
 /** Availability states that still put pairing and daemon controls on screen. */
 const offersControls = (availability: ExecutorCompanionAvailability): boolean =>
@@ -73,33 +79,47 @@ export const ExecutorDesktopCompanionPanel = ({
   const { desktopPlatform } = useShellEnvironment()
   const [companion, setCompanion] = useState<ExecutorCompanionStatusResponse | null>(null)
   const [status, setStatus] = useState<ExecutorCompanionStatus | null>(null)
-  const [operationKeys, setOperationKeys] = useState<string[]>(workspaceOperations.map(({ key }) => key))
-  const [busy, setBusy] = useState(false)
+  const [operationKeys, setOperationKeys] = useState<string[]>([])
+  const [busy, setBusy] = useState<CompanionAction | null>(null)
   const [error, setError] = useState<string | null>(null)
   const activeExecutorId = created?.executor.id ?? executorId
 
   useEffect(() => {
     if (desktopPlatform === null) return
     let current = true
+    setStatus(null)
+    setOperationKeys([])
+    setError(null)
     void executorCompanionStatus()
       .then((response) => {
         if (!current) return
         setCompanion(response)
-        if (activeExecutorId) {
-          setStatus(response.executors.find((entry) => entry.executorId === activeExecutorId) ?? null)
-        }
+        const nextStatus = activeExecutorId
+          ? response.executors.find((entry) => entry.executorId === activeExecutorId) ?? null
+          : null
+        setStatus(nextStatus)
+        setOperationKeys(nextStatus?.operationKeys ?? [])
       })
-      .catch(() => {
-        // A shell too old to answer the new command is the one case left where
-        // there is nothing truthful to say about this device.
-        if (current) setCompanion(null)
+      .catch((cause: unknown) => {
+        if (current) {
+          setCompanion(null)
+          setError(failureMessage(cause))
+        }
       })
     return () => {
       current = false
     }
   }, [activeExecutorId, desktopPlatform])
 
-  if (desktopPlatform === null || !companion) return null
+  if (desktopPlatform === null) return null
+  if (!companion) {
+    return error ? (
+      <section className="admin-card grid gap-2 border border-[color:var(--danger)] p-4">
+        <h2 className="text-sm font-semibold text-[color:var(--tx)]">Nessie Desktop companion</h2>
+        <p className="text-xs text-[color:var(--danger-text)]">{error}</p>
+      </section>
+    ) : null
+  }
 
   const controls = offersControls(companion.availability)
   if (!controls) return <AvailabilityCard status={companion} />
@@ -107,15 +127,38 @@ export const ExecutorDesktopCompanionPanel = ({
     return companion.availability === 'workspace_only' ? <AvailabilityCard status={companion} /> : null
   }
 
-  const run = async (action: () => Promise<ExecutorCompanionStatus>) => {
-    setBusy(true)
+  const run = async (
+    actionName: CompanionAction,
+    action: () => Promise<ExecutorCompanionStatus>,
+  ) => {
+    setBusy(actionName)
     setError(null)
     try {
-      setStatus(await action())
+      const nextStatus = await action()
+      setStatus(nextStatus)
+      setOperationKeys(nextStatus.operationKeys)
     } catch (cause) {
       setError(failureMessage(cause))
     } finally {
-      setBusy(false)
+      setBusy(null)
+    }
+  }
+
+  const forget = async () => {
+    setBusy('forget')
+    setError(null)
+    try {
+      await forgetExecutorWithCompanion(activeExecutorId)
+      setStatus(null)
+      setOperationKeys([])
+      setCompanion((current) => current ? {
+        ...current,
+        executors: current.executors.filter((entry) => entry.executorId !== activeExecutorId),
+      } : current)
+    } catch (cause) {
+      setError(failureMessage(cause))
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -133,15 +176,17 @@ export const ExecutorDesktopCompanionPanel = ({
           <h2 className="text-sm font-semibold text-[color:var(--tx)]">Nessie Desktop companion</h2>
           <p className="mt-1 text-xs text-[color:var(--tx3)]">
             Local workspace selection and every daemon action require a native confirmation.
-            Nessie receives no local path, pairing secret, or executor runtime output.
+            Nessie never receives the full local path or pairing secret. When an allowed action
+            runs, requested file content and bounded result output are sent to Nessie and the
+            configured model provider.
           </p>
         </div>
 
         {created ? (
           <button
             className="admin-button admin-button-primary w-fit"
-            disabled={busy}
-            onClick={() => void run(() => pairExecutorWithCompanion({
+            disabled={busy !== null}
+            onClick={() => void run('pair', () => pairExecutorWithCompanion({
               apiBaseUrl: getBaseUrl() || 'https://api.nessie.works',
               challenge: created.invitation.challenge,
               enrollmentId: created.invitation.enrollmentId,
@@ -149,44 +194,67 @@ export const ExecutorDesktopCompanionPanel = ({
             }))}
             type="button"
           >
-            {busy ? 'Pairing…' : 'Choose workspace and pair this computer'}
+            {busy === 'pair' ? 'Pairing…' : 'Choose workspace and pair this computer'}
           </button>
         ) : null}
 
         {status ? (
           <div className="grid gap-3 rounded-md bg-[color:var(--overlay-weak)] p-3">
             <p className="text-xs text-[color:var(--tx2)]">
-              Local daemon: <span className="font-semibold text-[color:var(--tx)]">{status.daemonStatus}</span> · local workspace selected
+              Local daemon: <span className="font-semibold text-[color:var(--tx)]">{status.daemonStatus}</span>
+              {' · '}Folder: <span className="font-semibold text-[color:var(--tx)]">{status.workspaceLabel}</span>
             </p>
             {status.daemonStatus === 'awaiting_confirmation' ? (
               <p className="text-xs text-[color:var(--tx3)]">Confirm this executor’s fingerprint in Nessie before starting its local daemon.</p>
             ) : null}
             <div className="flex flex-wrap gap-2">
               {status.daemonStatus === 'running' ? (
-                <button className="admin-button admin-button-secondary" disabled={busy} onClick={() => void run(() => stopExecutorWithCompanion(activeExecutorId))} type="button">Stop daemon</button>
+                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop daemon'}</button>
               ) : status.daemonStatus === 'stopping' ? (
                 <span className="text-xs text-[color:var(--tx3)]">Waiting for the prior daemon to stop…</span>
               ) : (
-                <button className="admin-button admin-button-secondary" disabled={busy} onClick={() => void run(() => startExecutorWithCompanion(activeExecutorId))} type="button">Start daemon</button>
+                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start daemon'}</button>
               )}
+              <button
+                className="admin-button admin-button-secondary"
+                disabled={busy !== null || operationKeys.length === 0}
+                onClick={() => void run('workspace', () => changeExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
+                type="button"
+              >
+                {busy === 'workspace' ? 'Changing folder…' : 'Change folder'}
+              </button>
             </div>
             <fieldset className="grid gap-2">
               <legend className="text-xs font-semibold text-[color:var(--tx2)]">Local workspace policy</legend>
               {workspaceOperations.map(({ key, label }) => (
                 <label className="flex items-center gap-2 text-xs text-[color:var(--tx2)]" key={key}>
-                  <input checked={operationKeys.includes(key)} onChange={() => toggleOperation(key)} type="checkbox" />
+                  <input checked={operationKeys.includes(key)} disabled={busy !== null} onChange={() => toggleOperation(key)} type="checkbox" />
                   {label}
                 </label>
               ))}
               <button
                 className="admin-button admin-button-secondary w-fit"
-                disabled={busy || operationKeys.length === 0}
-                onClick={() => void run(() => configureExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
+                disabled={busy !== null || operationKeys.length === 0}
+                onClick={() => void run('policy', () => configureExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
                 type="button"
               >
-                Save local policy for review
+                {busy === 'policy' ? 'Saving policy…' : 'Save local policy for review'}
               </button>
             </fieldset>
+            <div className="grid gap-1 border-t border-[color:var(--sep)] pt-3">
+              <button
+                className="admin-button admin-button-secondary w-fit"
+                disabled={busy !== null}
+                onClick={() => void forget()}
+                type="button"
+              >
+                {busy === 'forget' ? 'Forgetting…' : 'Forget pairing on this computer'}
+              </button>
+              <p className="text-xs text-[color:var(--tx3)]">
+                Removes the local machine key and folder selection. The executor and its audit
+                history remain in Nessie for its owner to revoke or retain.
+              </p>
+            </div>
           </div>
         ) : created ? (
           <p className="text-xs text-[color:var(--tx3)]">Choose the read-only workspace in the native dialog, then confirm the new executor fingerprint in Nessie before starting its daemon.</p>

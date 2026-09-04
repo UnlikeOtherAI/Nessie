@@ -1,4 +1,6 @@
 import { createHash, generateKeyPairSync, type KeyObject, sign } from 'node:crypto'
+import { lstat, readdir } from 'node:fs/promises'
+import { resolve } from 'node:path'
 
 import {
   canonicalExecutorJson,
@@ -156,6 +158,25 @@ const profilesForOperationKeys = (operationKeys: string[]): string[] =>
     ? ['workspace_sandbox', 'coding_session']
     : ['workspace_sandbox']
 
+const assertWorkspaceMayChange = async (stateDir: string): Promise<void> => {
+  const runtimeDirectory = resolve(stateDir, 'runtime')
+  let metadata
+  try {
+    metadata = await lstat(runtimeDirectory)
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw cause
+  }
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error('Local executor runtime state must be an ordinary directory.')
+  }
+  if ((await readdir(runtimeDirectory)).length > 0) {
+    throw new Error(
+      'Remove every local draft and stop every sandbox before changing the workspace folder.',
+    )
+  }
+}
+
 /**
  * Update the companion's locally enforced policy. Promotion additionally needs
  * an owner-verified native helper. This deliberately does not submit a
@@ -168,7 +189,12 @@ export const configureExecutorLocalPolicy = async (
   requestedOperationKeys: string[],
   nativeHelperPath?: string,
   host: ExecutorHost = detectExecutorHost(),
+  workspaceRoot: string = state.workspaceRoot,
 ): Promise<ExecutorLocalState> => {
+  if (workspaceRoot !== state.workspaceRoot) await assertWorkspaceMayChange(stateDir)
+  const canonicalWorkspaceRoot = workspaceRoot === state.workspaceRoot
+    ? state.workspaceRoot
+    : await configureWorkspaceRoot(workspaceRoot)
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
@@ -189,6 +215,7 @@ export const configureExecutorLocalPolicy = async (
       profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
     },
+    workspaceRoot: canonicalWorkspaceRoot,
     ...(helper ? { nativeHelperPath: helper } : {}),
   }
   await saveExecutorState(stateDir, next)

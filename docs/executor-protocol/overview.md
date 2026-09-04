@@ -191,6 +191,16 @@ path. The Personal Assistant can inspect the same signature-free proposal
 summary for a manager and prepare a review link, but it cannot submit the
 confirmation on the person's behalf.
 
+The local file boundary is deliberately **one canonical workspace root**, not
+an implicit set of folders and never their nearest common parent. The desktop
+status exposes only that root's basename as a recognizable local label; the
+full path stays in owner-only machine state and is never sent to Nessie. A
+person may replace the root through the native folder picker only after all
+local drafts and sandboxes have been removed. The replacement travels to the
+packaged CLI over standard input, increments the descriptor revision, and is
+submitted for the same separate human review as an operation-policy change.
+Changing the root never silently widens access to a parent directory.
+
 `nessie-executor configure-browser` is the only local path that can add the
 exact `browser.open`, `browser.observe`, and `browser.act` bundle. It requires exact,
 owner-private initrd-builder, kernel, signed VM-helper, and runtime-bundle
