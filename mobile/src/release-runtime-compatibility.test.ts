@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 const mobilePackage = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url).pathname, 'utf8'),
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url).toString()), 'utf8'),
 ) as { dependencies: Record<string, string> }
 
 const teamPackage = JSON.parse(
-  readFileSync(new URL('../../package.json', import.meta.url).pathname, 'utf8'),
+  readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url).toString()), 'utf8'),
 ) as { pnpm?: { overrides?: Record<string, string> } }
 
 const reactNativePackage = JSON.parse(
   readFileSync(
-    new URL('../../node_modules/react-native/package.json', import.meta.url).pathname,
+    fileURLToPath(
+      new URL('../../node_modules/react-native/package.json', import.meta.url).toString(),
+    ),
     'utf8',
   ),
 ) as { peerDependencies: Record<string, string> }

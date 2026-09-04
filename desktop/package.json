@@ -8,6 +8,7 @@
     "icons:generate": "tauri icon ../assets/icon-1024.png --output src-tauri/icons",
     "prepare:executor-runtime": "node scripts/prepare-executor-runtime.mjs",
     "tauri:build": "pnpm prepare:executor-runtime && tauri build",
+    "tauri:build:direct": "pnpm prepare:executor-runtime && tauri build --features direct-updater --config src-tauri/tauri.direct-updater.conf.json",
     "tauri:build:embedded": "pnpm exec turbo run build --filter=@nessie/runtime && pnpm prepare:executor-runtime && node scripts/build-embedded-shell.mjs",
     "tauri:build:linux": "tauri build --bundles deb,appimage",
     "tauri:build:executor": "pnpm prepare:executor-runtime && node scripts/require-signing-team.mjs && tauri build",

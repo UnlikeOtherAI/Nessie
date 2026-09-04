@@ -12,14 +12,18 @@
       "developmentClient": false,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_ADMIN_URL": "https://app.nessie.works"
+        "EXPO_PUBLIC_ADMIN_URL": "https://app.nessie.works",
+        "EXPO_PUBLIC_RELEASE_CHANNEL": "direct"
       }
     },
     "preview": {
       "extends": "device"
     },
     "production": {
-      "autoIncrement": false
+      "autoIncrement": false,
+      "env": {
+        "EXPO_PUBLIC_RELEASE_CHANNEL": "store"
+      }
     }
   },
   "submit": {

@@ -69,6 +69,8 @@ jobs:
       MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
       MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
       MACOS_NOTARY_API_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_P8_BASE64 }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}
       MACOS_NOTARY_API_KEY_ID: ${{ vars.MACOS_NOTARY_API_KEY_ID }}
       MACOS_NOTARY_API_ISSUER_ID: ${{ vars.MACOS_NOTARY_API_ISSUER_ID }}
@@ -81,6 +83,8 @@ jobs:
             MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64
             MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
             MACOS_NOTARY_API_KEY_P8_BASE64
+            TAURI_SIGNING_PRIVATE_KEY
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY
             MACOS_NOTARY_API_KEY_ID
             MACOS_NOTARY_API_ISSUER_ID
@@ -177,6 +181,8 @@ jobs:
       MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
       MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
       MACOS_NOTARY_API_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_P8_BASE64 }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       NESSIE_DESKTOP_SIGNING_TEAM_ID: 59S95D279D
     steps:
       - name: Checkout the tagged source
@@ -231,15 +237,21 @@ jobs:
           pnpm exec turbo run build --filter=@nessie/executor...
           pnpm --dir desktop run prepare:executor-runtime
 
-      - name: Build the signed and notarized DMG
-        run: pnpm --dir desktop exec tauri build --target "${{ matrix.target }}" --bundles dmg
+      - name: Build the signed, notarized, and update-ready DMG
+        run: >-
+          pnpm --dir desktop exec tauri build --target "${{ matrix.target }}"
+          --features direct-updater --bundles dmg
+          --config src-tauri/tauri.direct-updater.conf.json
 
       - name: Verify code signature and notarization
         run: |
           set -euo pipefail
           app="desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Nessie.app"
           dmg="$(find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -type f -name '*.dmg' -print -quit)"
+          updater="$(find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -type f -name '*.tar.gz' -print -quit)"
           test -n "$dmg"
+          test -n "$updater"
+          test -s "$updater.sig"
           codesign --verify --deep --strict "$app"
           codesign -dvv "$app" 2>&1 | tee signing.txt
           grep -F 'Authority=Developer ID Application:' signing.txt
@@ -249,14 +261,24 @@ jobs:
           xcrun stapler validate "$dmg"
           spctl --assess --type open --context context:primary-signature -vv "$dmg" 2>&1 | tee gatekeeper.txt
           grep -F 'source=Notarized Developer ID' gatekeeper.txt
+          mkdir archived-update
+          tar -xzf "$updater" -C archived-update
+          archived_app="$(find archived-update -type d -name 'Nessie.app' -print -quit)"
+          test -n "$archived_app"
+          codesign --verify --deep --strict "$archived_app"
+          xcrun stapler validate "$archived_app"
           mkdir release
           cp "$dmg" "release/${{ matrix.asset }}"
+          updater_asset="${{ matrix.asset }}"
+          updater_asset="${updater_asset%.dmg}.app.tar.gz"
+          cp "$updater" "release/$updater_asset"
+          cp "$updater.sig" "release/$updater_asset.sig"
 
       - name: Upload the macOS download
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: release/${{ matrix.asset }}
+          path: release/
           if-no-files-found: error
 
   windows:
@@ -265,6 +287,7 @@ jobs:
     uses: ./.github/workflows/desktop-windows.yml
     with:
       source_ref: ${{ github.ref }}
+      enable_direct_updater: true
       require_signed_release: true
       run_hyperv_conformance: false
     secrets: inherit
@@ -273,6 +296,9 @@ jobs:
     name: Linux
     needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
     runs-on: ubuntu-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout the tagged source
         uses: actions/checkout@v4
@@ -300,7 +326,8 @@ jobs:
           pnpm prisma:generate
           pnpm exec turbo run build --filter=@nessie/executor...
           pnpm --dir desktop run prepare:executor-runtime
-          pnpm --dir desktop exec tauri build --bundles deb,appimage
+          pnpm --dir desktop exec tauri build --features direct-updater --bundles deb,appimage \
+            --config src-tauri/tauri.direct-updater.conf.json
 
       - name: Verify and stage Linux downloads
         run: |
@@ -309,12 +336,14 @@ jobs:
           appimage="$(find desktop/src-tauri/target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
           test -n "$deb"
           test -n "$appimage"
+          test -s "$appimage.sig"
           dpkg-deb --info "$deb"
           "$appimage" --appimage-extract
           test -x squashfs-root/AppRun
           mkdir release
           cp "$deb" release/Nessie-Linux.deb
           cp "$appimage" release/Nessie-Linux.AppImage
+          cp "$appimage.sig" release/Nessie-Linux.AppImage.sig
 
       - name: Upload Linux downloads
         uses: actions/upload-artifact@v4
@@ -431,15 +460,76 @@ jobs:
           set -euo pipefail
           setup="$(find windows-candidates -type f -name '*-setup.exe' -print -quit)"
           msi="$(find windows-candidates -type f -name 'Nessie_*.msi' ! -name 'NessieExecutor_*' -print -quit)"
+          setup_signature="$(find windows-candidates -type f -name '*-setup.exe.sig' -print -quit)"
           test -n "$setup"
           test -n "$msi"
+          test -n "$setup_signature"
           cp "$setup" release-assets/Nessie-Windows-Setup.exe
           cp "$msi" release-assets/Nessie-Windows.msi
+          cp "$setup_signature" release-assets/Nessie-Windows-Setup.exe.sig
           (
             cd release-assets
             sha256sum Nessie-* > SHA256SUMS
           )
           node scripts/release-metadata.mjs "$GITHUB_REF_NAME" > release-assets/metadata.json
+
+      - name: Create the signed desktop updater manifest
+        run: |
+          set -euo pipefail
+          desktop_version="$(jq -r '.desktop.version' release-assets/metadata.json)"
+          android_version="$(jq -r '.android.version' release-assets/metadata.json)"
+          android_code="$(jq -r '.android.versionCode' release-assets/metadata.json)"
+          release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          apple_silicon_signature="$(tr -d '\r\n' < release-assets/Nessie-macOS-Apple-Silicon.app.tar.gz.sig)"
+          intel_signature="$(tr -d '\r\n' < release-assets/Nessie-macOS-Intel.app.tar.gz.sig)"
+          windows_signature="$(tr -d '\r\n' < release-assets/Nessie-Windows-Setup.exe.sig)"
+          linux_signature="$(tr -d '\r\n' < release-assets/Nessie-Linux.AppImage.sig)"
+          jq -n \
+            --arg version "$desktop_version" \
+            --arg notes "Nessie ${GITHUB_REF_NAME}" \
+            --arg pubDate "$(date --utc --iso-8601=seconds)" \
+            --arg releaseBase "$release_base" \
+            --arg appleSiliconSignature "$apple_silicon_signature" \
+            --arg intelSignature "$intel_signature" \
+            --arg windowsSignature "$windows_signature" \
+            --arg linuxSignature "$linux_signature" \
+            --arg androidVersion "$android_version" \
+            --argjson androidVersionCode "$android_code" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pubDate,
+              platforms: {
+                "darwin-aarch64": {
+                  url: ($releaseBase + "/Nessie-macOS-Apple-Silicon.app.tar.gz"),
+                  signature: $appleSiliconSignature
+                },
+                "darwin-x86_64": {
+                  url: ($releaseBase + "/Nessie-macOS-Intel.app.tar.gz"),
+                  signature: $intelSignature
+                },
+                "windows-x86_64": {
+                  url: ($releaseBase + "/Nessie-Windows-Setup.exe"),
+                  signature: $windowsSignature
+                },
+                "linux-x86_64": {
+                  url: ($releaseBase + "/Nessie-Linux.AppImage"),
+                  signature: $linuxSignature
+                }
+              },
+              android: {
+                version: $androidVersion,
+                versionCode: $androidVersionCode,
+                url: ($releaseBase + "/Nessie-Android.apk")
+              }
+            }' > release-assets/latest.json
+          jq -e '
+            .version != ""
+            and (.platforms | keys == ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"])
+            and (.platforms[] | (.url | startswith("https://")) and (.signature | length > 0))
+            and (.android.versionCode > 0)
+            and (.android.url | startswith("https://"))
+          ' release-assets/latest.json
 
       - name: Create the release notes
         run: |
@@ -453,10 +543,11 @@ jobs:
           - **macOS:** Apple Silicon and Intel DMGs are notarized Developer ID builds.
           - **Windows:** NSIS and MSI installers are Authenticode-signed release builds.
           - **Linux:** AppImage and Debian packages are included with SHA-256 checksums.
-          - **Android:** a signed, installable APK is included. Push notifications are not configured yet.
+          - **Android:** a signed, installable APK is included. Direct APK installs can open a newer signed APK in Android's package installer; Play Store builds leave updates to Google Play.
           - **iOS:** coming soon through the App Store.
 
           This GitHub release is **$GITHUB_REF_NAME**. It carries desktop version **$desktop_version** and Android version **$android_version** (version code $android_code); their version tracks predate the public direct-download release series.
+          Direct desktop installers check the signed `latest.json` manifest: macOS (Apple Silicon and Intel), Windows NSIS, and Linux AppImage update in-app. Windows MSI and Linux Debian packages remain package-manager managed.
           EOF
 
       - name: Publish the GitHub Release
@@ -464,10 +555,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS --clobber
+            gh release upload "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS release-assets/latest.json --clobber
             gh release edit "$GITHUB_REF_NAME" --title "Nessie $GITHUB_REF_NAME" --notes-file release-notes.md
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS \
+            gh release create "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS release-assets/latest.json \
               --title "Nessie $GITHUB_REF_NAME" \
               --notes-file release-notes.md
           fi

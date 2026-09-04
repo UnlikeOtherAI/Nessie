@@ -3,7 +3,7 @@
     "name": "Nessie",
     "slug": "nessie",
     "owner": "unlikeotherai",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "nessie",
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.km.nessie",
-      "versionCode": 3,
+      "versionCode": 4,
       "predictiveBackGestureEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
