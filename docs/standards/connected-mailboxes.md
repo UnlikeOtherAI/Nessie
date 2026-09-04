@@ -66,10 +66,12 @@ Plan and as-built deltas:
   mailbox they may administer: the caller's personal mailboxes, plus shared
   mailboxes only for an organisation owner or admin. It deliberately does not
   reuse the broader member-visibility list, because a visible shared mailbox is
-  not necessarily mutable. That management read stamps the acting person's user
-  disclosure basis. Connection status carries only fixed structural remedies;
-  untrusted provider error text is neither persisted nor presented, and a
-  migration sanitises legacy rows. `email_account_connect` posts a doorway into the
+  not necessarily mutable. Every lifecycle action that reads an
+  account — list, check, disconnect, or an agent-access change — stamps the
+  acting person's user disclosure basis before its model-visible result, and
+  emits only fixed structural connection-state remedies. Untrusted provider
+  error text is neither persisted nor presented, and a migration sanitises
+  legacy rows. `email_account_connect` posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
   OAuth-code argument, and refuses a team-scope doorway for a non-manager before
   it posts anything. `email_account_check` invokes the same provider resync or

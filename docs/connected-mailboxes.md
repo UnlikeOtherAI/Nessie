@@ -94,7 +94,9 @@ Listing returns an exact account id and kind so a follow-up operation cannot
 guess between two addresses. A personal mailbox is manageable only by the
 person who connected it; an owner or admin may also manage shared mailboxes.
 The listing is treated as private account metadata, so a reply built from it is
-limited to the requesting person. Connection-state wording is deliberately
+limited to the requesting person; checking, disconnecting, and changing an
+agent grant apply that same privacy basis before reporting their result.
+Connection-state wording is deliberately
 generic — server replies and diagnostics never enter chat. A shared-mailbox
 connection request from a non-manager is refused before a form is posted.
 Google and Microsoft checks queue their normal

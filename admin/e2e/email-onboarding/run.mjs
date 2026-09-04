@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Browser proof for the address-first email connection doorway. It drives the
-// real admin and API on the fixed local development ports and captures both
-// desktop and phone states of the shared MailboxConnectionForm.
+// Browser proof for the server-authored chat doorway into the address-first
+// email form. It drives a durable EmailAccountConnectCard in the real admin
+// and captures both desktop and phone states of the reused modal.
 import { mkdir } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { resolve } from 'node:path'
@@ -39,13 +39,15 @@ const reachable = (url) => new Promise((done) => {
 
 const fail = (message) => { throw new Error(`email onboarding e2e: ${message}`) }
 
-const verifyViewport = async (browser, token, viewport) => {
-  const shell = await openViewportContext(browser, { name: viewport, token })
+const verifyViewport = async (browser, seed, viewport) => {
+  const shell = await openViewportContext(browser, { name: viewport, token: seed.token })
   const target = await shell.newPage()
   try {
     const { page } = target
-    await page.goto(`${ADMIN_URL}/settings/connections`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('heading', { name: 'Connected accounts' }).waitFor()
+    await page.goto(`${ADMIN_URL}/channels/${seed.emailConnectChannel.id}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    await page.getByText('Connect email securely', { exact: true }).waitFor()
     await page.getByRole('button', { exact: true, name: 'Connect email' }).click()
 
     const dialog = page.getByRole('dialog', { name: 'Connect email' })
@@ -66,7 +68,7 @@ const verifyViewport = async (browser, token, viewport) => {
     await mkdir(SCREENSHOT_ROOT, { recursive: true })
     await page.screenshot({
       fullPage: true,
-      path: resolve(SCREENSHOT_ROOT, `${viewport}-address-first.png`),
+      path: resolve(SCREENSHOT_ROOT, `${viewport}-chat-doorway-address-first.png`),
     })
     if (target.errors.length > 0) fail(`${viewport} page errors: ${target.errors.join(' | ')}`)
   } finally {
@@ -90,8 +92,8 @@ const main = async () => {
     admin = await startAdmin()
     const seed = await seedTeam(api)
     browser = await launchBrowser()
-    await verifyViewport(browser, seed.token, 'desktop')
-    await verifyViewport(browser, seed.token, 'phone')
+    await verifyViewport(browser, seed, 'desktop')
+    await verifyViewport(browser, seed, 'phone')
     console.log(`email onboarding e2e: PASS — screenshots in ${SCREENSHOT_ROOT}`)
   } finally {
     if (browser) await browser.close().catch(() => {})

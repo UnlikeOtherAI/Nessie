@@ -4,6 +4,7 @@
 // seeding path to drift from them.
 import { API_URL } from './config.mjs'
 import { readBootstrapToken } from './servers.mjs'
+import { PrismaClient } from '@prisma/client'
 
 const CHANNEL_LABELS = ['Design Review', 'Release Notes']
 
@@ -75,6 +76,37 @@ const ensureProject = async (token) => {
   })
 }
 
+// A message card is server-authored metadata. The public message route quite
+// intentionally cannot manufacture one from a browser request, so the browser
+// proof installs the same minimal durable row a PA tool posts. It remains an
+// actual chat row rendered through ChannelMessageRow, not a component harness.
+const ensureEmailConnectCard = async (channel) => {
+  const prisma = new PrismaClient()
+  try {
+    await prisma.message.upsert({
+      create: {
+        clientMessageId: 'e2e-email-account-connect-card',
+        content: 'Connect an email account securely.',
+        metadata: { card: { kind: 'email_account_connect', scope: 'user' } },
+        role: 'assistant',
+        threadId: channel.defaultThreadId,
+      },
+      update: {
+        content: 'Connect an email account securely.',
+        metadata: { card: { kind: 'email_account_connect', scope: 'user' } },
+      },
+      where: {
+        threadId_clientMessageId: {
+          clientMessageId: 'e2e-email-account-connect-card',
+          threadId: channel.defaultThreadId,
+        },
+      },
+    })
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
 export const seedTeam = async (apiServer) => {
   const session = await signIn(apiServer)
   const channels = await ensureChannels(session.token)
@@ -82,12 +114,14 @@ export const seedTeam = async (apiServer) => {
   if (channels.length < 2) {
     throw new Error('the suite needs two reachable channels; the seed produced fewer')
   }
+  await ensureEmailConnectCard(channels[0])
   return {
     channels: channels.map((channel) => ({
       id: channel.id,
       label: channel.label,
       slug: channel.slug ?? channel.label,
     })),
+    emailConnectChannel: { id: channels[0].id, label: channels[0].label },
     origin: session.origin,
     project: { id: project.id, name: project.name },
     token: session.token,

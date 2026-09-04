@@ -86,6 +86,14 @@ const audit = async (
   }
 }
 
+/** Lifecycle results name private accounts, addresses, and access decisions. */
+const stampLifecycleAccountRead = (
+  context: BuiltinToolRuntimeContext,
+  member: ActingMember,
+): void => {
+  context.consumedSources?.add({ scopeId: member.userId, scopeType: 'user' })
+}
+
 const accountRef = (args: Record<string, unknown>): {
   accountId: string
   accountKind: EmailAccountKind
@@ -112,7 +120,7 @@ export const runEmailAccountListTool = async (
   // This is deliberately a user basis even when the requester is an org
   // manager viewing a shared mailbox: the response is a management view, not
   // a team conversation export, and an owner need not belong to every team.
-  context.consumedSources?.add({ scopeId: member.userId, scopeType: 'user' })
+  stampLifecycleAccountRead(context, member)
   const providerLines = providerConnections
     .filter(({ connection }) => connection.provider !== 'slack')
     .map(({ connection, resourceCount, syncedResourceCount }) => [
@@ -147,6 +155,7 @@ export const runEmailAccountCheckTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const member = await resolveActingMember(context)
+  stampLifecycleAccountRead(context, member)
   const ref = accountRef(parseEmailAccountToolArgs('email_account_check', args))
   if (ref.accountKind === 'provider') {
     const connection = await loadOwnedCommsConnection(context.prisma, {
@@ -191,6 +200,7 @@ export const runEmailAccountDisconnectTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const member = await resolveActingMember(context)
+  stampLifecycleAccountRead(context, member)
   const ref = accountRef(parseEmailAccountToolArgs('email_account_disconnect', args))
   if (ref.accountKind === 'provider') {
     const connection = await loadOwnedCommsConnection(context.prisma, {
@@ -242,6 +252,7 @@ export const runEmailAccountAgentAccessTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const member = await resolveActingMember(context)
+  stampLifecycleAccountRead(context, member)
   const parsed = parseEmailAccountToolArgs('email_account_agent_access', args)
   const connectionId = requireUuid(parsed.accountId, 'accountId')
   const agentId = requireUuid(parsed.agentId, 'agentId')

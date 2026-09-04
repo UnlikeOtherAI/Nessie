@@ -312,12 +312,16 @@ test('a provider check queues the native incremental sync for its owned account'
       return 1
     },
   })
-  const result = await runEmailAccountCheckTool(buildContext(prisma), {
+  const context = buildContext(prisma)
+  const consumedSources = createConsumedSourceSink()
+  context.consumedSources = consumedSources
+  const result = await runEmailAccountCheckTool(context, {
     accountId: ids.google,
     accountKind: 'provider',
   })
   assert.match(result.outputPreview, /Queued a incremental sync/)
   assert.equal(queued, true)
+  assert.deepEqual(consumedSources.list(), [{ scopeId: ids.user, scopeType: 'user' }])
 })
 
 test('provider disconnect removes its local credential and marks the owned account disconnected', async () => {
@@ -377,12 +381,16 @@ test('mailbox disconnect uses the management predicate and deletes only its id',
       findFirst: async () => mailbox,
     },
   })
-  const result = await runEmailAccountDisconnectTool(buildContext(prisma), {
+  const context = buildContext(prisma)
+  const consumedSources = createConsumedSourceSink()
+  context.consumedSources = consumedSources
+  const result = await runEmailAccountDisconnectTool(context, {
     accountId: ids.mailbox,
     accountKind: 'mailbox',
   })
   assert.equal(deletedId, ids.mailbox)
   assert.match(result.outputPreview, /Disconnected support@example\.com/)
+  assert.deepEqual(consumedSources.list(), [{ scopeId: ids.user, scopeType: 'user' }])
 })
 
 test('agent access creates and removes only the requested mailbox grant', async () => {
@@ -403,6 +411,8 @@ test('agent access creates and removes only the requested mailbox grant', async 
     },
   })
   const context = buildContext(prisma)
+  const consumedSources = createConsumedSourceSink()
+  context.consumedSources = consumedSources
   await runEmailAccountAgentAccessTool(context, {
     accountId: ids.mailbox,
     agentId: ids.agent,
@@ -414,4 +424,5 @@ test('agent access creates and removes only the requested mailbox grant', async 
     allowed: false,
   })
   assert.deepEqual(calls, ['grant', 'revoke'])
+  assert.deepEqual(consumedSources.list(), [{ scopeId: ids.user, scopeType: 'user' }])
 })

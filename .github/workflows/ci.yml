@@ -378,10 +378,24 @@ jobs:
       - name: Run navigation transition suite
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
+      # A real chat card row opens the one reused address-first connection
+      # modal. The test covers desktop and phone screenshots and asserts no
+      # password or server field is exposed before discovery.
+      - name: Run email onboarding chat doorway suite
+        run: pnpm --filter @nessie/admin test:e2e:email-onboarding
+
       - name: Upload transition frames
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: navigation-transition-frames
           path: e2e/screenshots/navigation
+          if-no-files-found: warn
+
+      - name: Upload email onboarding frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: email-onboarding-frames
+          path: e2e/screenshots/email-onboarding
           if-no-files-found: warn
