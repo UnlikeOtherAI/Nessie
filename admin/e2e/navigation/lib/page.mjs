@@ -59,6 +59,16 @@ const elementWithText = async (page, selector, text) => {
 }
 
 export const clickChannelRow = async (page, label) => {
+  // The navigation shell mounts before its channel query resolves. Waiting for
+  // any sidebar button in gotoChannels is enough for a page load, but not to
+  // act on one of the freshly seeded rows.
+  await page.waitForFunction(
+    ({ selector, text }) => [...document.querySelectorAll(selector)].some(
+      (row) => row.textContent?.toLowerCase().includes(text.toLowerCase()),
+    ),
+    { selector: 'button.admin-sb-item', text: label },
+    { timeout: 30_000 },
+  )
   const row = await elementWithText(page, 'button.admin-sb-item', label)
   if (!row) throw new Error(`no channel row matching "${label}" in the list`)
   await row.click()
