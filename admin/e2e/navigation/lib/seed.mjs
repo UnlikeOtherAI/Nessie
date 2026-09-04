@@ -109,14 +109,98 @@ const ensureEmailConnectCard = async (channel) => {
   }
 }
 
+// The duplicate path is rendered from a real connection row, never a mocked
+// browser response. It has no credential because this proof stops before any
+// connection attempt; the list/presenter intentionally do not join secrets.
+const ensureDuplicateMailbox = async ({ organizationId, userId }) => {
+  const prisma = new PrismaClient()
+  const address = 'duplicate-navigation@gmail.com'
+  try {
+    const existing = await prisma.mailboxConnection.findFirst({
+      where: { address, organizationId, ownerUserId: userId },
+    })
+    if (existing) {
+      await prisma.mailboxConnection.update({
+        data: { label: 'Duplicate navigation mailbox', status: 'active', statusReason: null },
+        where: { id: existing.id },
+      })
+      return existing.id
+    }
+    const created = await prisma.mailboxConnection.create({
+      data: {
+        address,
+        createdByUserId: userId,
+        imapHost: 'imap.example.test',
+        imapPort: 993,
+        imapSecurity: 'tls',
+        label: 'Duplicate navigation mailbox',
+        organizationId,
+        ownerUserId: userId,
+        smtpHost: 'smtp.example.test',
+        smtpPort: 587,
+        smtpSecurity: 'starttls',
+        username: address,
+      },
+    })
+    return created.id
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+// This deliberately stopped mailbox is distinct from the active duplicate
+// fixture above. The browser proof verifies only the recovery doorway: it must
+// never need to contact the example servers or expose an old credential.
+const ensureRecoveryMailbox = async ({ organizationId, userId }) => {
+  const prisma = new PrismaClient()
+  const address = 'reconnect-navigation@example.test'
+  const data = {
+    address,
+    createdByUserId: userId,
+    imapHost: 'imap.example.test',
+    imapPort: 993,
+    imapSecurity: 'tls',
+    label: 'Reconnect navigation mailbox',
+    organizationId,
+    ownerUserId: userId,
+    smtpHost: 'smtp.example.test',
+    smtpPort: 587,
+    smtpSecurity: 'starttls',
+    status: 'needs_reauthorization',
+    statusReason: 'Your email address or password was not accepted.',
+    username: address,
+  }
+  try {
+    const existing = await prisma.mailboxConnection.findFirst({
+      where: { address, organizationId, ownerUserId: userId },
+    })
+    if (existing) {
+      await prisma.mailboxConnection.update({ data, where: { id: existing.id } })
+      return existing.id
+    }
+    return (await prisma.mailboxConnection.create({ data })).id
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
 export const seedTeam = async (apiServer) => {
   const session = await signIn(apiServer)
+  const me = await call('/api/auth/me', { token: session.token })
   const channels = await ensureChannels(session.token)
   const project = await ensureProject(session.token)
   if (channels.length < 2) {
     throw new Error('the suite needs two reachable channels; the seed produced fewer')
   }
   await ensureEmailConnectCard(channels[0])
+  const mailboxConnectionId = await ensureDuplicateMailbox({
+    organizationId: me.context.organizationId,
+    userId: me.user.id,
+  })
+  const recoveryMailboxConnectionId = await ensureRecoveryMailbox({
+    organizationId: me.context.organizationId,
+    userId: me.user.id,
+  })
   return {
     channels: channels.map((channel) => ({
       id: channel.id,
@@ -125,6 +209,8 @@ export const seedTeam = async (apiServer) => {
       defaultThreadId: channel.defaultThreadId,
     })),
     emailConnectChannel: { id: channels[0].id, label: channels[0].label },
+    mailboxConnectionId,
+    recoveryMailboxConnectionId,
     origin: session.origin,
     project: { id: project.id, name: project.name },
     token: session.token,

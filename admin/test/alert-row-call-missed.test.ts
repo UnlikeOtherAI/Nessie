@@ -22,6 +22,8 @@ const missedCall: UserAlertRecord = {
   id: '33333333-3333-3333-3333-333333333333',
   kind: 'call_missed',
   knowledgePageId: null,
+  mailboxConnectionId: null,
+  mailboxScope: null,
   messageId: '44444444-4444-4444-4444-444444444444',
   metadata: null,
   projectId: null,
@@ -43,6 +45,26 @@ test('a missed call has an explicit link to its channel message', () => {
   assert.deepEqual(getAlertLink(missedCall), {
     state: { highlightMessageId: missedCall.messageId as string },
     to: `/channels/${missedCall.channelId}`,
+  })
+})
+
+test('mailbox-health alerts route to the matching personal or shared mailbox home', () => {
+  const mailboxId = '55555555-5555-4555-8555-555555555555'
+  const personal: UserAlertRecord = {
+    ...missedCall,
+    channelId: null,
+    kind: 'mailbox_connection_health',
+    mailboxConnectionId: mailboxId,
+    mailboxScope: 'user',
+    messageId: null,
+  }
+  const shared: UserAlertRecord = { ...personal, mailboxScope: 'team' }
+
+  assert.deepEqual(getAlertLink(personal), {
+    to: `/settings/connections#connection-${mailboxId}`,
+  })
+  assert.deepEqual(getAlertLink(shared), {
+    to: `/settings/organization?tab=agents#connection-${mailboxId}`,
   })
 })
 

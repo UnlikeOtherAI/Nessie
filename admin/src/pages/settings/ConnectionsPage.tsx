@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   useCommsConnections,
@@ -17,6 +17,9 @@ import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
+import { mailboxConnectionHome } from '../../lib/connection-anchor'
+import { useMailboxConnections } from '../../facades/mailbox-connections/hooks'
+import { useConnectionAnchorScroll } from '../../components/features/mailbox-connections/useConnectionAnchorScroll'
 
 const callbackErrorCopy: Record<string, string> = {
   access_denied: 'Connection was not completed.',
@@ -59,6 +62,8 @@ const SlackConnectButton = ({
  */
 export const ConnectionsPage = () => {
   const connections = useCommsConnections()
+  const mailboxes = useMailboxConnections()
+  const navigate = useNavigate()
   const start = useStartCommsConnection()
   const [searchParams, setSearchParams] = useSearchParams()
   const [callbackNotice, setCallbackNotice] = useState<string | null>(null)
@@ -67,6 +72,7 @@ export const ConnectionsPage = () => {
   const rows = connections.data?.connections ?? []
   const slackConnections = rows.filter((connection) => connection.provider === 'slack')
   const emailConnections = rows.filter((connection) => connection.provider !== 'slack')
+  useConnectionAnchorScroll(connections.isSuccess && mailboxes.isSuccess)
 
   useEffect(() => {
     const message = callbackMessage(connected, callbackError)
@@ -144,7 +150,10 @@ export const ConnectionsPage = () => {
                 folders can be limited after connecting.
               </p>
             </div>
-            <MailboxConnectionForm scope="user" />
+            <MailboxConnectionForm
+              onOpenExisting={(id, scope) => void navigate(mailboxConnectionHome({ id, scope }))}
+              scope="user"
+            />
           </div>
 
           <QueryState

@@ -171,7 +171,16 @@ a tool call on its own.
 If the provider rejects the password, the connection flips to **Needs
 reconnecting** with a fixed, actionable reason on its card, and agents stop reaching it rather
 than failing over and over. A password change, an expired app password, or a
-revoked account all land here. Reconnect it from the same card.
+revoked account all land here. Reconnect it from the same card: the form starts
+with the existing address and secure server settings, never returns the old
+password, verifies incoming and outgoing access before saving the replacement,
+and retains the connection's id and agent grants. The transition has a durable
+alert at its owning surface — **Settings → Connections** for personal mail and
+**Settings → Organization → Agents** for shared mail — exactly once per health
+revision. A successful reconnect resolves the prior alert before a later
+failure can alert again. A shared mailbox whose original connector is inactive
+alerts one active owner or admin, while a personal mailbox remains private to
+its owner.
 
 A mail server that is briefly unreachable is *not* that: the status is left
 alone, because sending somebody to re-enter a password that is fine helps
@@ -201,6 +210,8 @@ raw socket to an address somebody typed:
 - **Nothing typed by a person or a model can become an IMAP command.** Folder
   names, search terms and the credential all travel as length-counted literals,
   so no character inside them can end a command.
-- The password is stored encrypted in its own table, is never returned by any
-  API read, and never appears in the audit trail — which records the address and
-  the scope, and nothing else.
+- The password is stored encrypted in its own table and is never returned by
+  any API read. Mailbox lifecycle audit metadata is structural only (the stable
+  resource id, scope, action, and where relevant the agent/send-policy or
+  retired-address fact): it never includes an address, username, server detail,
+  or credential.

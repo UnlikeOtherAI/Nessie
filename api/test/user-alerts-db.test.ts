@@ -15,6 +15,7 @@ const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
 type Seed = {
   organizationId: string
+  teamId: string
   channelId: string
   threadId: string
   authorId: string
@@ -52,6 +53,7 @@ const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const thread = await prisma.thread.create({ data: { channelId: channel.id } })
   return {
     organizationId: org.id,
+    teamId: team.id,
     channelId: channel.id,
     threadId: thread.id,
     authorId: author.id,
@@ -133,4 +135,73 @@ runDatabaseTest('mention alerts persist in the message-create transaction and dr
   assert.equal(marked.unreadCount, 0)
   const reread = await prisma.userAlert.findUniqueOrThrow({ where: { id: row.id } })
   assert.ok(reread.readAt instanceof Date)
+})
+
+runDatabaseTest('mailbox-health alerts expose only their personal or shared owning surface', async (t) => {
+  const prisma = new PrismaClient()
+  const seed = await seedTeam(prisma)
+  t.after(() => cleanup(prisma, seed).then(() => prisma.$disconnect()))
+
+  const [personal, shared] = await Promise.all([
+    prisma.mailboxConnection.create({
+      data: {
+        address: `personal-${randomUUID()}@example.test`,
+        createdByUserId: seed.mentionedId,
+        imapHost: 'imap.example.test',
+        imapPort: 993,
+        imapSecurity: 'tls',
+        label: 'Personal',
+        organizationId: seed.organizationId,
+        ownerUserId: seed.mentionedId,
+        smtpHost: 'smtp.example.test',
+        smtpPort: 587,
+        smtpSecurity: 'starttls',
+        status: 'needs_reauthorization',
+        username: 'personal',
+      },
+    }),
+    prisma.mailboxConnection.create({
+      data: {
+        address: `shared-${randomUUID()}@example.test`,
+        createdByUserId: seed.authorId,
+        imapHost: 'imap.example.test',
+        imapPort: 993,
+        imapSecurity: 'tls',
+        label: 'Shared',
+        organizationId: seed.organizationId,
+        smtpHost: 'smtp.example.test',
+        smtpPort: 587,
+        smtpSecurity: 'starttls',
+        status: 'needs_reauthorization',
+        teamId: seed.teamId,
+        username: 'shared',
+      },
+    }),
+  ])
+  await prisma.userAlert.createMany({
+    data: [
+      {
+        eventKey: `mailbox-health:${personal.id}:1`,
+        kind: 'mailbox_connection_health',
+        mailboxConnectionId: personal.id,
+        organizationId: seed.organizationId,
+        userId: seed.mentionedId,
+      },
+      {
+        eventKey: `mailbox-health:${shared.id}:1`,
+        kind: 'mailbox_connection_health',
+        mailboxConnectionId: shared.id,
+        organizationId: seed.organizationId,
+        userId: seed.mentionedId,
+      },
+    ],
+  })
+
+  const list = await listUserAlerts(prisma, {
+    organizationId: seed.organizationId,
+    userId: seed.mentionedId,
+  })
+  const scopes = new Map(list.data.map((alert) => [alert.mailboxConnectionId, alert.mailboxScope]))
+  assert.equal(scopes.get(personal.id), 'user')
+  assert.equal(scopes.get(shared.id), 'team')
 })

@@ -5,7 +5,7 @@ import {
   mailboxEndpointsFor,
   type MailboxConnectionRow,
 } from './mailbox-connection-endpoints.js'
-import { mailboxConnectionFailureMessage } from './mailbox-connections.js'
+import { recordMailboxConnectionCredentialRejection } from './mailbox-connection-recovery.js'
 
 /**
  * Which connected mailbox a run may touch, and as whom.
@@ -162,11 +162,5 @@ export const markMailboxNeedsReauthorization = async (
   prisma: PrismaClient,
   connectionId: string,
 ): Promise<void> => {
-  await prisma.mailboxConnection.updateMany({
-    data: {
-      status: 'needs_reauthorization',
-      statusReason: mailboxConnectionFailureMessage('credential_rejected'),
-    },
-    where: { id: connectionId, status: 'active' },
-  })
+  await recordMailboxConnectionCredentialRejection(prisma, connectionId)
 }

@@ -3,6 +3,7 @@ import {
   CreateMailboxConnectionBodySchema,
   DiscoverMailboxConnectionBodySchema,
   MailboxDiscoveryResultSchema,
+  ReconnectMailboxConnectionBodySchema,
   SetMailboxAgentAccessBodySchema,
   type MailboxDiscoveryExistingConnection,
   type MailboxProviderFamily,
@@ -19,6 +20,7 @@ import {
   listMailboxConnectionsForUser,
   loadManageableMailboxConnection,
   presentMailboxConnection,
+  reconnectMailboxConnection,
   setMailboxAgentAccess,
   verifyMailboxConnection,
   type MailboxActingMember,
@@ -26,6 +28,7 @@ import {
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { connectedMailboxAuditMetadata } from '../services/mailbox-audit.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -235,13 +238,61 @@ export const registerMailboxConnectionRoutes = (
       await emitAuditEvent(prisma, {
         action: 'mailbox.connection.created',
         actorContext,
-        // The address and the scope; never the username or the password.
-        metadata: { address: connection.address, scope: connection.scope },
+        // Resource id identifies this event; all mailbox and server details
+        // remain outside the audit stream.
+        metadata: connectedMailboxAuditMetadata(connection.scope),
         outcome: 'success',
         resourceId: connection.id,
         resourceType: 'mailbox_connection',
       })
       return reply.code(201).send(createApiResponse(connection))
+    } catch (error) {
+      return refuse(reply, error)
+    }
+  })
+
+  // ── POST /api/mailbox-connections/:id/reconnect ──────────────────────────
+  // Reconnect is deliberately not a second create route. It retains the
+  // connection id, mailbox scope, and per-agent access rows, accepts a fresh
+  // credential once, proves both mail legs before persisting it, then makes the
+  // stopped capability active through one transaction.
+  app.post('/api/mailbox-connections/:id/reconnect', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { id } = request.params as { id: string }
+    const body = parseInput(ReconnectMailboxConnectionBodySchema, request.body, reply)
+    if (!body) return reply
+    try {
+      const existing = await loadManageableMailboxConnection(prisma, {
+        actor: actingMember(actorContext),
+        connectionId: id,
+        organizationId: actorContext.tenant.organizationId,
+      })
+      const connection = await reconnectMailboxConnection(
+        prisma,
+        {
+          connection: existing,
+          imapHost: body.imapHost,
+          imapPort: body.imapPort,
+          imapSecurity: body.imapSecurity,
+          password: body.password,
+          smtpHost: body.smtpHost,
+          smtpPort: body.smtpPort,
+          smtpSecurity: body.smtpSecurity,
+          username: body.username,
+        },
+        { encryptionSecret: authSecret },
+      )
+      await emitAuditEvent(prisma, {
+        action: 'mailbox.connection.reconnected',
+        actorContext,
+        // Server endpoints and mailbox credentials stay out of the audit log.
+        metadata: connectedMailboxAuditMetadata(connection.scope),
+        outcome: 'success',
+        resourceId: connection.id,
+        resourceType: 'mailbox_connection',
+      })
+      return reply.send(createApiResponse(connection))
     } catch (error) {
       return refuse(reply, error)
     }
@@ -282,7 +333,7 @@ export const registerMailboxConnectionRoutes = (
       await emitAuditEvent(prisma, {
         action: 'mailbox.connection.deleted',
         actorContext,
-        metadata: { address: connection.address },
+        metadata: connectedMailboxAuditMetadata(connection.ownerUserId ? 'user' : 'team'),
         outcome: 'success',
         resourceId: connection.id,
         resourceType: 'mailbox_connection',

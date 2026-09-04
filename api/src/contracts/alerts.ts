@@ -13,6 +13,7 @@ export const UserAlertKindSchema = z.enum([
   // Triggers page and read a delivery row.
   'trigger_health',
   'approval_requested',
+  'mailbox_connection_health',
   'call_missed',
   'team_invitation',
 ])
@@ -42,6 +43,9 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  mailboxConnectionId: z.string().uuid().nullable(),
+  /** PII-free selector for the Settings surface that owns recovery. */
+  mailboxScope: z.enum(['team', 'user']).nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),

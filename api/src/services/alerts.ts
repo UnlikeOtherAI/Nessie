@@ -23,6 +23,7 @@ const alertInclude = {
   channel: { select: { label: true } },
   actorUser: { select: { displayName: true } },
   actorAgent: { select: { name: true } },
+  mailboxConnection: { select: { ownerUserId: true } },
 } satisfies Prisma.UserAlertInclude
 
 type AlertWithRelations = Prisma.UserAlertGetPayload<{ include: typeof alertInclude }>
@@ -47,6 +48,10 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   taskId: alert.taskId ?? null,
   knowledgePageId: alert.knowledgePageId ?? null,
   triggerId: alert.triggerId ?? null,
+  mailboxConnectionId: alert.mailboxConnectionId ?? null,
+  mailboxScope: alert.mailboxConnection
+    ? alert.mailboxConnection.ownerUserId ? 'user' : 'team'
+    : null,
   callId: alert.callId ?? null,
   metadata: alertMetadata(alert),
   actorUserId: alert.actorUserId,

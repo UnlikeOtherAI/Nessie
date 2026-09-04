@@ -38,12 +38,32 @@ export type ConnectMailboxInput = {
   smtpSecurity: MailboxTransportSecurity
 }
 
+export type ReconnectMailboxInput = Omit<ConnectMailboxInput, 'address' | 'label' | 'scope' | 'teamId'> & {
+  connectionId: string
+}
+
 export const useConnectMailbox = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: ConnectMailboxInput) =>
       apiClient.post<MailboxConnectionRecord>('/api/mailbox-connections', input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mailboxConnectionKeys.list })
+    },
+  })
+}
+
+/** Replaces one existing mailbox credential without creating a second row. */
+export const useReconnectMailbox = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ connectionId, ...input }: ReconnectMailboxInput) =>
+      apiClient.post<MailboxConnectionRecord>(
+        `/api/mailbox-connections/${connectionId}/reconnect`,
+        input,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mailboxConnectionKeys.list })
     },

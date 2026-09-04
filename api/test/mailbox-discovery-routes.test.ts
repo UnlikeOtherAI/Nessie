@@ -148,3 +148,29 @@ test('a member receives no cross-user or cross-team duplicate existence hint', a
     await app.close()
   }
 })
+
+test('reconnect refuses client attempts to retarget an existing connection', async () => {
+  const { app } = makeApp({})
+  await app.ready()
+  try {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/mailbox-connections/${CONNECTION_ID}/reconnect`,
+      payload: {
+        address: 'someone-else@example.com',
+        imapHost: 'imap.example.com',
+        imapPort: 993,
+        imapSecurity: 'tls',
+        password: 'replacement-secret',
+        smtpHost: 'smtp.example.com',
+        smtpPort: 587,
+        smtpSecurity: 'starttls',
+        username: 'original@example.com',
+      },
+    })
+    assert.equal(response.statusCode, 400, response.body)
+    assert.equal(response.json().error.code, 'VALIDATION_ERROR')
+  } finally {
+    await app.close()
+  }
+})

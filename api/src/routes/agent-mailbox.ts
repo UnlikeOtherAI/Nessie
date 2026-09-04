@@ -14,6 +14,7 @@ import {
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { agentMailboxAuditMetadata } from '../services/mailbox-audit.js'
 import {
   listMailboxConversations,
   listConversationMessages,
@@ -118,7 +119,7 @@ export const registerAgentMailboxRoutes = (app: FastifyInstance, deps: RouteDeps
       await emitAuditEvent(prisma, {
         action: 'email.mailbox.created',
         actorContext,
-        metadata: { address: mailbox.address, agentId },
+        metadata: agentMailboxAuditMetadata.created(agentId),
         outcome: 'success',
         resourceId: mailbox.id,
         resourceType: 'agent_mailbox',
@@ -167,7 +168,7 @@ export const registerAgentMailboxRoutes = (app: FastifyInstance, deps: RouteDeps
     await emitAuditEvent(prisma, {
       action: 'email.mailbox.updated',
       actorContext,
-      metadata: { address: updated.address, sendPolicy: updated.sendPolicy },
+      metadata: agentMailboxAuditMetadata.updated(updated.sendPolicy),
       outcome: 'success',
       resourceId: updated.id,
       resourceType: 'agent_mailbox',
@@ -198,8 +199,9 @@ export const registerAgentMailboxRoutes = (app: FastifyInstance, deps: RouteDeps
       action: 'email.mailbox.deleted',
       actorContext,
       // The address stays claimed forever: a recycled local part must never
-      // inherit an old correspondent's trust.
-      metadata: { address: existing.address, addressRetired: true },
+      // inherit an old correspondent's trust. The structural fact is enough
+      // for audit; the address itself is never emitted.
+      metadata: agentMailboxAuditMetadata.retired(),
       outcome: 'success',
       resourceId: existing.id,
       resourceType: 'agent_mailbox',
