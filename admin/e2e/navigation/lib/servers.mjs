@@ -98,8 +98,13 @@ export const stopProcess = async (server) => {
 // script: nodemon's `--env-file=../.env` requires a .env that CI does not
 // have. Local mode keeps the embedded worker and the localhost dev-login
 // route, which is one of the suite's two ways in.
-export const startApi = async () => {
+export const startApi = async ({ requireOwned = false } = {}) => {
   if (await alreadyRunning(`${API_URL}/api/health`)) {
+    if (requireOwned) {
+      throw new Error(
+        `API port ${API_PORT} is already in use. This suite needs an API it owns for its isolated database.`,
+      )
+    }
     console.log(`navigation e2e: using the API already listening on ${API_URL}`)
     return adopted('api')
   }
