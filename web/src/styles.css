@@ -160,18 +160,25 @@ a {
   line-height: 1.5;
 }
 
-.download-grid {
+.download-lines {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(184px, 1fr));
+  gap: 12px;
+}
+
+.download-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
 }
 
 .download-button {
   display: flex;
+  flex: 0 1 232px;
   align-items: center;
   gap: 12px;
-  min-height: 70px;
-  padding: 13px 16px;
+  min-height: 62px;
+  padding: 10px 16px;
   border: 1px solid #050505;
   border-radius: 10px;
   background: #050505;

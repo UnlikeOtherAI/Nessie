@@ -1,42 +1,53 @@
 import { faAndroid, faApple, faLinux, faWindows } from '@fortawesome/free-brands-svg-icons'
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { ScreenshotGallery, type Screenshot } from './ScreenshotGallery'
 
 const loginUrl = 'https://app.nessie.works/login'
 const latestReleaseDownload = 'https://github.com/UnlikeOtherAI/Nessie/releases/latest/download'
 
-const downloads = [
+type Download = {
+  asset: string
+  icon: IconDefinition
+  label: string
+  detail: string
+}
+
+const desktopDownloads: Download[] = [
   {
     asset: 'Nessie-macOS-Apple-Silicon.dmg',
     icon: faApple,
-    label: 'Download for Mac',
+    label: 'Mac',
     detail: 'Apple silicon',
   },
   {
     asset: 'Nessie-macOS-Intel.dmg',
     icon: faApple,
-    label: 'Download for Mac',
+    label: 'Mac',
     detail: 'Intel',
   },
   {
     asset: 'Nessie-Windows-Setup.exe',
     icon: faWindows,
-    label: 'Download for Windows',
+    label: 'Windows',
     detail: '64-bit',
   },
   {
     asset: 'Nessie-Linux.AppImage',
     icon: faLinux,
-    label: 'Download for Linux',
+    label: 'Linux',
     detail: 'AppImage',
   },
+]
+
+const mobileDownloads: Download[] = [
   {
     asset: 'Nessie-Android.apk',
     icon: faAndroid,
-    label: 'Download for Android',
+    label: 'Android',
     detail: 'APK',
   },
-] as const
+]
 
 const shots: Screenshot[] = [
   {
@@ -55,6 +66,18 @@ const shots: Screenshot[] = [
     caption: 'Channels, threads and DMs your team already knows.',
   },
 ]
+
+function DownloadButton({ download }: { download: Download }) {
+  return (
+    <a className="download-button" href={`${latestReleaseDownload}/${download.asset}`}>
+      <FontAwesomeIcon aria-hidden className="download-icon" icon={download.icon} />
+      <span>
+        <span className="download-label">{download.label}</span>
+        <span className="download-detail">{download.detail}</span>
+      </span>
+    </a>
+  )
+}
 
 export function App() {
   return (
@@ -79,26 +102,23 @@ export function App() {
           <h2 id="downloads-title">Download Nessie</h2>
           <p>Choose the installer for your device. iPhone and iPad are coming soon.</p>
         </div>
-        <div className="download-grid">
-          {downloads.map((download) => (
-            <a
-              className="download-button"
-              href={`${latestReleaseDownload}/${download.asset}`}
-              key={download.asset}
-            >
-              <FontAwesomeIcon aria-hidden className="download-icon" icon={download.icon} />
+        <div className="download-lines">
+          <div aria-label="Mobile downloads" className="download-line" role="group">
+            {mobileDownloads.map((download) => (
+              <DownloadButton download={download} key={download.asset} />
+            ))}
+            <div aria-disabled="true" className="download-button download-button-disabled">
+              <FontAwesomeIcon aria-hidden className="download-icon" icon={faApple} />
               <span>
-                <span className="download-label">{download.label}</span>
-                <span className="download-detail">{download.detail}</span>
+                <span className="download-label">iPhone &amp; iPad</span>
+                <span className="download-detail">Coming soon</span>
               </span>
-            </a>
-          ))}
-          <div aria-disabled="true" className="download-button download-button-disabled">
-            <FontAwesomeIcon aria-hidden className="download-icon" icon={faApple} />
-            <span>
-              <span className="download-label">iPhone &amp; iPad</span>
-              <span className="download-detail">Coming soon on the App Store</span>
-            </span>
+            </div>
+          </div>
+          <div aria-label="Desktop downloads" className="download-line" role="group">
+            {desktopDownloads.map((download) => (
+              <DownloadButton download={download} key={download.asset} />
+            ))}
           </div>
         </div>
       </section>
