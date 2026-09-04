@@ -272,9 +272,31 @@ export const authorizeToolExecution = async (
     // and fails closed to asking — the inverse of the watch-status gate,
     // because a miss there costs a redundant message and a miss here sends an
     // email nobody approved.
+    const requestingUserId = toolActorContext.actionContext.effectiveUserId
+    const draftActionId = canonicalArgs.draftId
+    const expectedFingerprint = canonicalArgs.approvalFingerprint
+    const gmailProjection = toolName === GMAIL_DRAFT_SEND_TOOL_ID
+      && requestingUserId
+      && typeof draftActionId === 'string'
+      && typeof expectedFingerprint === 'string'
+      ? await auth.loadGmailJudgedProjection?.({
+        connectionId: consent.connectionId,
+        draftActionId,
+        expectedFingerprint,
+        requestingUserId,
+      })
+      : undefined
+    // A Gmail judgement cannot use a tool handle, a local projection, or a
+    // placeholder request. The exact live correspondence is transient input to
+    // this one utility call; an unavailable/mismatched snapshot asks instead.
+    if (toolName === GMAIL_DRAFT_SEND_TOOL_ID && !gmailProjection) return escalate()
     const verdict = await judgeAgainstSendBoundary({
       args: canonicalArgs,
       boundary: consent.boundary,
+      ...(gmailProjection ? {
+        proposal: gmailProjection.proposal,
+        request: gmailProjection.request,
+      } : {}),
       runUtility: auth.runUtility,
       toolName,
     })
@@ -289,9 +311,7 @@ export const authorizeToolExecution = async (
       // handler revalidates it immediately before the draft state claim.
       // Nothing supplied by the model can construct or select this fact.
       if (toolName === GMAIL_DRAFT_SEND_TOOL_ID) {
-        const requestingUserId = toolActorContext.actionContext.effectiveUserId
-        const draftActionId = canonicalArgs.draftId
-        const contentFingerprint = canonicalArgs.approvalFingerprint
+        const contentFingerprint = gmailProjection?.contentFingerprint
         if (
           !requestingUserId
           || typeof draftActionId !== 'string'
