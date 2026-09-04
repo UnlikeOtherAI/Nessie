@@ -9,9 +9,9 @@ export interface UoaAutomaticMembershipAdapter {
   attestVerifiedDomain(input: { uoaSub: string; domain: string }): Promise<UoaVerifiedDomainAttestation | null>
   listTeams(input: { externalOrgId: string }): Promise<readonly UoaAutomaticMembershipTeam[]>
   assertRuleAdministrator(input: { externalOrgId: string; externalTeamIds: readonly string[]; uoaSub: string }): Promise<boolean>
-  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void>
+  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; lifecycleRevision: number; fenceToken: string; active: boolean }): Promise<void>
   listVerifiedDomainSubjects(input: { externalOrgId: string; domain: string; cursor?: string; snapshotId?: string; limit: number }): Promise<UoaDomainSnapshotPage>
-  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<UoaAutomaticMembershipOperation>
+  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; lifecycleRevision: number; fenceToken: string }): Promise<UoaAutomaticMembershipOperation>
   getOperation(input: { operationId: string }): Promise<UoaAutomaticMembershipOperation>
 }
 
@@ -33,7 +33,11 @@ export const createProductionUoaAutomaticMembershipAdapter = (): UoaAutomaticMem
   if (!settings.baseUrl.startsWith('https://')) return null
   const request = async (path: string, init?: RequestInit): Promise<Record<string, unknown>> => {
     const response = await safeFetch(new URL(path, settings.baseUrl), { ...init, headers: { Accept: 'application/json', Authorization: `Bearer ${appKey}`, 'Content-Type': 'application/json', ...init?.headers }, signal: AbortSignal.timeout(10_000) }, { maxRedirects: 0 })
-    if (!response.ok) invalid(`endpoint returned ${response.status}`)
+    if (!response.ok) {
+      const body = record(await response.json().catch(() => null))
+      if (response.status === 409 && typeof body.code === 'string' && body.code.startsWith('AUTOMATIC_MEMBERSHIP_SNAPSHOT_')) invalid(`snapshot_restart:${body.code}`)
+      invalid(`endpoint returned ${response.status}`)
+    }
     return record(await response.json())
   }
   const operation = (body: Record<string, unknown>): UoaAutomaticMembershipOperation => {
@@ -53,9 +57,9 @@ export const createProductionUoaAutomaticMembershipAdapter = (): UoaAutomaticMem
     },
     async listTeams(input) { const body = await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/teams`); return (Array.isArray(body.teams) ? body.teams : []).flatMap((value) => { const row = record(value); const externalTeamId = text(row.team_id); const name = text(row.name); return externalTeamId && name ? [{ externalTeamId, name }] : [] }) },
     async assertRuleAdministrator(input) { return (await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/authorizations`, { method: 'POST', body: JSON.stringify({ subject: input.uoaSub, team_ids: input.externalTeamIds }) })).allowed === true },
-    async setRuleFence(input) { await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/rules/${encodeURIComponent(input.ruleId)}/fence`, { method: 'PUT', body: JSON.stringify({ generation: input.generation, fence_token: input.fenceToken, active: input.active }) }) },
+    async setRuleFence(input) { await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/rules/${encodeURIComponent(input.ruleId)}/fence`, { method: 'PUT', body: JSON.stringify({ generation: input.generation, lifecycle_revision: input.lifecycleRevision, fence_token: input.fenceToken, active: input.active }) }) },
     async listVerifiedDomainSubjects(input) { const query = new URLSearchParams({ domain: input.domain, limit: String(input.limit) }); if (input.cursor) query.set('cursor', input.cursor); if (input.snapshotId) query.set('snapshot_id', input.snapshotId); const body = await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/subjects?${query}`); const snapshotId = text(body.snapshot_id); const cursor = body.cursor === null ? null : text(body.cursor); const subjects = Array.isArray(body.subjects) ? body.subjects.filter((value): value is string => typeof value === 'string' && value.length > 0) : []; if (!snapshotId || (body.cursor !== null && !cursor)) invalid('invalid snapshot page'); return { snapshotId: snapshotId!, cursor, subjects } },
-    async grantMember(input) { return operation(await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/teams/${encodeURIComponent(input.externalTeamId)}/grants`, { method: 'POST', body: JSON.stringify({ subject: input.uoaSub, domain: input.domain, idempotency_key: input.idempotencyKey, rule_id: input.ruleId, rule_generation: input.ruleGeneration, fence_token: input.fenceToken }) })) },
+    async grantMember(input) { return operation(await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/teams/${encodeURIComponent(input.externalTeamId)}/grants`, { method: 'POST', body: JSON.stringify({ subject: input.uoaSub, domain: input.domain, idempotency_key: input.idempotencyKey, rule_id: input.ruleId, rule_generation: input.ruleGeneration, lifecycle_revision: input.lifecycleRevision, fence_token: input.fenceToken }) })) },
     async getOperation(input) { return operation(await request(`/org/automatic-membership/operations/${encodeURIComponent(input.operationId)}`)) },
   }
 }

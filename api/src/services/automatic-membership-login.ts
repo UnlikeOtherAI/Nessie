@@ -37,6 +37,7 @@ export const provisionAutomaticMembershipAtLogin = async (
           idempotencyKey: `automatic-membership:login:${rule.id}:${target.teamId}:${uoaSub}:${rule.generation}`,
           ruleId: rule.id,
           ruleGeneration: rule.generation,
+          lifecycleRevision: rule.generation,
           // This is the lifecycle-installed UOA fence for this exact rule
           // generation. A worker lease is strictly local and never crosses the
           // UOA boundary, so a suspension/revoke fences login and backfill alike.

@@ -5,10 +5,10 @@ import { writeAuditEntryInTransaction } from '@nessie/db'
 
 /** Kept structurally identical to the API contract so tests can inject UOA. */
 export type AutomaticMembershipUoaAdapter = {
-  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void>
+  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; lifecycleRevision: number; fenceToken: string; active: boolean }): Promise<void>
   assertRuleAdministrator(input: { externalOrgId: string; externalTeamIds: readonly string[]; uoaSub: string }): Promise<boolean>
   listVerifiedDomainSubjects(input: { externalOrgId: string; domain: string; cursor?: string; snapshotId?: string; limit: number }): Promise<{ snapshotId: string; subjects: readonly string[]; cursor: string | null }>
-  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
+  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; lifecycleRevision: number; fenceToken: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
   getOperation(input: { operationId: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
 }
 
@@ -119,7 +119,7 @@ export const runAutomaticMembershipBackfillBatch = async (
           })
           continue
         }
-        const operation = await adapter.grantMember({ externalOrgId: fresh.organization.externalOrgId, externalTeamId: target.team.externalTeamId, uoaSub, domain: fresh.rule.claim.domain, idempotencyKey, ruleId: fresh.rule.id, ruleGeneration: fresh.generation, fenceToken: fresh.rule.uoaFenceToken })
+        const operation = await adapter.grantMember({ externalOrgId: fresh.organization.externalOrgId, externalTeamId: target.team.externalTeamId, uoaSub, domain: fresh.rule.claim.domain, idempotencyKey, ruleId: fresh.rule.id, ruleGeneration: fresh.generation, lifecycleRevision: fresh.generation, fenceToken: fresh.rule.uoaFenceToken })
         await prisma.$transaction(async (tx) => {
           const outcome = operation.status === 'accepted' ? 'pending' : operation.status
           const changed = await tx.automaticMembershipGrant.updateMany({ where: { id: grant.id, outcome: 'pending' }, data: { operationId: operation.operationId, outcome } })
@@ -140,6 +140,10 @@ export const runAutomaticMembershipBackfillBatch = async (
       ...(page.cursor || pendingGrants > 0 ? { nextAttemptAt: new Date(Date.now() + 2_000) } : {}),
     } })
   } catch (error) {
+    if (error instanceof Error && error.message.includes('snapshot_restart:AUTOMATIC_MEMBERSHIP_SNAPSHOT_')) {
+      await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { status: 'queued', cursor: null, snapshotId: null, nextAttemptAt: new Date(Date.now() + 2_000), lastError: 'UOA snapshot expired; restarting reconciliation safely.' } })
+      return
+    }
     const current = await prisma.automaticMembershipBackfillRun.findUnique({ where: { id: runId }, select: { failureCount: true } })
     const failures = (current?.failureCount ?? 0) + 1
     await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { status: failures >= 8 ? 'completed_with_failures' : 'queued', failureCount: { increment: 1 }, attemptCount: { increment: 1 }, lastError: error instanceof Error ? error.message.slice(0, 500) : 'Unknown UOA backfill failure', ...(failures >= 8 ? {} : { nextAttemptAt: retryAt(failures) }) } })

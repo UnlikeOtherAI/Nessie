@@ -3,7 +3,7 @@ import { resolveTxt } from 'node:dns/promises'
 import type { PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
 import { decryptAutomaticMembershipChallenge } from '@nessie/runtime'
-import type { UoaAutomaticMembershipAdapter } from '@nessie/team-admin'
+import { assertAutomaticMembershipDomainAllowed, type UoaAutomaticMembershipAdapter } from '@nessie/team-admin'
 import { randomUUID } from 'node:crypto'
 
 type UoaFenceAdapter = Pick<UoaAutomaticMembershipAdapter, 'setRuleFence'>
@@ -11,7 +11,7 @@ type UoaFenceAdapter = Pick<UoaAutomaticMembershipAdapter, 'setRuleFence'>
 const deactivate = async (prisma: PrismaClient, adapter: UoaFenceAdapter, rule: { id: string; generation: number }, externalOrgId: string, reason: string): Promise<void> => {
   const generation = rule.generation + 1
   const token = randomUUID()
-  await adapter.setRuleFence({ externalOrgId, ruleId: rule.id, generation, fenceToken: token, active: false })
+  await adapter.setRuleFence({ externalOrgId, ruleId: rule.id, generation, lifecycleRevision: generation, fenceToken: token, active: false })
   const changed = await prisma.automaticMembershipRule.updateMany({ where: { id: rule.id, generation: rule.generation, state: 'active' }, data: { state: 'suspended', generation, uoaFenceToken: token, suspensionReason: reason } })
   if (changed.count !== 1) throw new Error('Automatic membership rule changed while DNS suspension was applied')
 }
@@ -42,6 +42,14 @@ export const revalidateAutomaticMembershipDns = async (
     include: { organization: { select: { externalOrgId: true } }, rules: { where: { state: 'active' } } }, take: limit,
   })
   for (const claim of claims) {
+    try { assertAutomaticMembershipDomainAllowed(claim.domain) } catch (error) {
+      if (claim.organization.externalOrgId) for (const rule of claim.rules) await deactivate(prisma, adapter, rule, claim.organization.externalOrgId, 'The current domain policy no longer permits this domain.')
+      await prisma.$transaction(async (tx) => {
+        await tx.automaticMembershipDomainClaim.update({ where: { id: claim.id }, data: { state: 'suspended', lastDnsCheckAt: new Date(), lastDnsFailure: 'The current domain classifier no longer permits this domain' } })
+        await writeAuditEntryInTransaction(tx, { organizationId: claim.organizationId, actorType: 'service', actorId: 'automatic-membership-dns', action: 'automatic_membership.dns_checked', resourceType: 'automatic_membership_claim', resourceId: claim.id, outcome: 'error', metadata: { matched: false, reclassified: true, reason: error instanceof Error ? error.message : 'domain_policy' }, requestId: `automatic-membership:dns:${claim.id}` })
+      })
+      continue
+    }
     let matched = false
     try {
       const expected = decryptAutomaticMembershipChallenge(claim.challengeEncrypted, authSecret)

@@ -18,7 +18,7 @@ const verificationLifetimeMs = 14 * 24 * 60 * 60 * 1000
 const setUoaFence = async (input: { externalOrgId: string | null; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void> => {
   const adapter = createProductionUoaAutomaticMembershipAdapter()
   if (!adapter || !input.externalOrgId) throw new AutomaticMembershipError('AUTOMATIC_MEMBERSHIP_NOT_CONFIGURED', 'Automatic membership is not configured on this deployment.', 503)
-  await adapter.setRuleFence({ externalOrgId: input.externalOrgId, ruleId: input.ruleId, generation: input.generation, fenceToken: input.fenceToken, active: input.active })
+  await adapter.setRuleFence({ externalOrgId: input.externalOrgId, ruleId: input.ruleId, generation: input.generation, lifecycleRevision: input.generation, fenceToken: input.fenceToken, active: input.active })
 }
 
 const assertMutableRule = (rule: { state: string; claim: { releasedAt: Date | null } }): void => {
