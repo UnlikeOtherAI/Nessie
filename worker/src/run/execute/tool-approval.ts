@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { STRUCTURALLY_APPROVAL_GATED_TOOL_IDS } from '@nessie/runtime'
 import { type AuthorizedActionContext } from '@nessie/schemas'
+import { consumeToolApprovalProof } from '@nessie/team-admin'
 
 import {
   buildSendBoundaryPrompt,
@@ -17,6 +18,74 @@ export type ToolApprovalAuditEmitter = (
   actorContext: AuthorizedActionContext,
   input: Parameters<typeof emitWorkerAuditEvent>[2],
 ) => Promise<void>
+
+export const auditToolAuthorizationDenial = async (
+  emitAudit: ToolApprovalAuditEmitter,
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+  metadata: Record<string, unknown>,
+  reason: string,
+): Promise<void> => {
+  await emitAudit(actorContext, {
+    action: 'policy.evaluated',
+    metadata: {
+      agentId: context.agent.id,
+      runId: context.run.id,
+      taskId: context.task.id,
+      toolId: toolName,
+      ...metadata,
+    },
+    outcome: 'denied',
+    reason,
+    resourceId: toolName,
+    resourceType: 'tool',
+  })
+}
+
+/** Atomically mark a verified proof spent and record the single winning claim. */
+export const claimVerifiedToolApprovalProof = async (input: {
+  actorContext: AuthorizedActionContext
+  approval: { approvalId?: string; approvalProof?: string } | undefined
+  args: Record<string, unknown>
+  context: RunContext
+  emitAudit: ToolApprovalAuditEmitter
+  prisma: PrismaClient
+  toolName: string
+  verifiedApproval: { id: string } | null
+}): Promise<boolean> => {
+  const { actorContext, approval, args, context, emitAudit, prisma, toolName, verifiedApproval } = input
+  if (
+    !verifiedApproval
+    || !approval?.approvalId
+    || !approval.approvalProof
+    || !await consumeToolApprovalProof(prisma, {
+      approvalId: verifiedApproval.id,
+      argsHash: hashJsonValue(args),
+      continuationRunId: context.run.id,
+      organizationId: context.channel.organizationId,
+      proof: approval.approvalProof,
+      toolName,
+    })
+  ) return false
+
+  await emitAudit(actorContext, {
+    action: 'policy.evaluated',
+    metadata: {
+      agentId: context.agent.id,
+      approvalId: verifiedApproval.id,
+      approvalProofClaimed: true,
+      continuationRunId: context.run.id,
+      runId: context.run.id,
+      taskId: context.task.id,
+      toolId: toolName,
+    },
+    outcome: 'success',
+    resourceId: toolName,
+    resourceType: 'tool',
+  })
+  return true
+}
 
 /** One bounded decision against a mailbox owner's standing boundary. */
 export const judgeAgainstSendBoundary = async (input: {

@@ -2,7 +2,7 @@ import {
   hasStandingSendAuthorization,
   sendDraftForUser,
 } from '@nessie/team-admin'
-import { GmailDraftSendToolInputSchema } from '@nessie/runtime'
+import { AuthorizedGmailDraftSendToolInputSchema } from '@nessie/runtime'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
@@ -31,7 +31,7 @@ export const runGmailDraftSendTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = GmailDraftSendToolInputSchema.parse(input)
+  const args = AuthorizedGmailDraftSendToolInputSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
 
   const draft = await context.prisma.gmailDraftAction.findFirst({
@@ -73,6 +73,7 @@ export const runGmailDraftSendTool = async (
         organizationId: context.channel.organizationId,
         userId,
         draftActionId: args.draftId,
+        expectedFingerprint: args.approvalFingerprint,
         // Only a consented send is held: an explicitly approved one was just
         // confirmed by a person, so making them wait again adds nothing.
         ...(consented && !approved && UNDO_WINDOW_MS > 0
