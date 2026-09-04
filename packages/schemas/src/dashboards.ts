@@ -59,6 +59,26 @@ export const DashboardToneSchema = z.enum([
 ])
 export type DashboardTone = z.infer<typeof DashboardToneSchema>
 
+/**
+ * The only icons a metric card can name. These are product-owned identifiers,
+ * mapped to locally imported Font Awesome Free glyphs by the admin; accepting
+ * an arbitrary class, SVG, or package icon would reopen the render boundary.
+ */
+export const DASHBOARD_METRIC_ICONS = [
+  'chart',
+  'users',
+  'revenue',
+  'cart',
+  'clock',
+  'server',
+  'database',
+  'bolt',
+  'check',
+  'warning',
+] as const
+export const DashboardMetricIconSchema = z.enum(DASHBOARD_METRIC_ICONS)
+export type DashboardMetricIcon = z.infer<typeof DashboardMetricIconSchema>
+
 export const WidgetPresentationSchema = z.object({
   style: z.enum(['standard', 'compact', 'emphasis']).default('standard'),
   density: z.enum(['cozy', 'compact']).default('cozy'),
@@ -155,6 +175,10 @@ export const StatBindingSchema = z.object({
   spark: ColumnKeySchema.optional(),
 }).strict()
 
+export const StatWidgetOptionsSchema = z.object({
+  icon: DashboardMetricIconSchema.optional(),
+}).strict().default({})
+
 export const TimeseriesBindingSchema = z.object({
   x: ColumnKeySchema,
   series: z.array(SeriesBindingSchema).min(1).max(DASHBOARD_MAX_SERIES),
@@ -165,6 +189,27 @@ export const BarBindingSchema = z.object({
   series: z.array(SeriesBindingSchema).min(1).max(DASHBOARD_MAX_SERIES),
   sort: z.enum(['value_desc', 'value_asc', 'category', 'source']).default('value_desc'),
   limit: z.number().int().min(1).max(50).default(8),
+}).strict()
+
+/** A part-to-whole view: aggregate one value per declared category. */
+export const DonutBindingSchema = z.object({
+  category: ColumnKeySchema,
+  value: ColumnKeySchema,
+  sort: z.enum(['value_desc', 'value_asc', 'category', 'source']).default('value_desc'),
+  limit: z.number().int().min(1).max(12).default(8),
+}).strict()
+
+/** Current value expressed against a target supplied by the same source row. */
+export const GaugeBindingSchema = z.object({
+  value: ColumnKeySchema,
+  target: ColumnKeySchema,
+}).strict()
+
+/** A relationship between two quantitative fields, one point per source row. */
+export const ScatterBindingSchema = z.object({
+  x: ColumnKeySchema,
+  y: ColumnKeySchema,
+  label: ColumnKeySchema.optional(),
 }).strict()
 
 export const TableColumnBindingSchema = z.object({
@@ -213,6 +258,7 @@ export const StatWidgetSchema = z.object({
   kind: z.literal('stat'),
   binding: StatBindingSchema,
   format: NumberFormatSchema.optional(),
+  options: StatWidgetOptionsSchema,
 }).strict()
 
 export const TimeseriesWidgetSchema = z.object({
@@ -238,6 +284,27 @@ export const BarWidgetSchema = z.object({
   }).strict().default({ orientation: 'horizontal', stacked: false }),
 }).strict()
 
+export const DonutWidgetSchema = z.object({
+  ...widgetBase,
+  kind: z.literal('donut'),
+  binding: DonutBindingSchema,
+  format: NumberFormatSchema.optional(),
+}).strict()
+
+export const GaugeWidgetSchema = z.object({
+  ...widgetBase,
+  kind: z.literal('gauge'),
+  binding: GaugeBindingSchema,
+  format: NumberFormatSchema.optional(),
+}).strict()
+
+export const ScatterWidgetSchema = z.object({
+  ...widgetBase,
+  kind: z.literal('scatter'),
+  binding: ScatterBindingSchema,
+  format: NumberFormatSchema.optional(),
+}).strict()
+
 export const TableWidgetSchema = z.object({
   ...widgetBase,
   kind: z.literal('table'),
@@ -254,6 +321,9 @@ export const WidgetDefinitionSchema = z.discriminatedUnion('kind', [
   StatWidgetSchema,
   TimeseriesWidgetSchema,
   BarWidgetSchema,
+  DonutWidgetSchema,
+  GaugeWidgetSchema,
+  ScatterWidgetSchema,
   TableWidgetSchema,
   StatusWidgetSchema,
 ])
@@ -264,6 +334,9 @@ export const DASHBOARD_WIDGET_KINDS: readonly DashboardWidgetKind[] = [
   'stat',
   'timeseries',
   'bar',
+  'donut',
+  'gauge',
+  'scatter',
   'table',
   'status',
 ] as const
@@ -311,7 +384,7 @@ export type DashboardWidgetState = z.infer<typeof DashboardWidgetStateSchema>
 export const DashboardWidgetProjectionSchema = z.object({
   widgetId: z.string().uuid(),
   dashboardId: z.string().uuid(),
-  kind: z.enum(['stat', 'timeseries', 'bar', 'table', 'status']),
+  kind: z.enum(['stat', 'timeseries', 'bar', 'donut', 'gauge', 'scatter', 'table', 'status']),
   schemaVersion: z.number().int(),
   definition: WidgetDefinitionSchema.optional(),
   dataset: DashboardDatasetSchema.optional(),
@@ -364,5 +437,8 @@ export const DASHBOARD_WIDGET_SIZES: Record<
   status: { minW: 3, minH: 2, maxW: 12, maxH: 6 },
   timeseries: { minW: 4, minH: 5, maxW: 12, maxH: 20 },
   bar: { minW: 4, minH: 5, maxW: 12, maxH: 20 },
+  donut: { minW: 4, minH: 5, maxW: 8, maxH: 16 },
+  gauge: { minW: 3, minH: 4, maxW: 6, maxH: 12 },
+  scatter: { minW: 4, minH: 5, maxW: 12, maxH: 20 },
   table: { minW: 6, minH: 5, maxW: 12, maxH: 30 },
 }

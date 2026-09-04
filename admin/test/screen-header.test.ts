@@ -105,6 +105,7 @@ test('the subtitle and tabs slots are optional, and render inside the one header
   assert.equal(withSlots.match(/<header[\s>]/g)?.length, 1)
   const subtitleAt = withSlots.indexOf('data-testid="screen-subtitle"')
   assert.ok(subtitleAt > 0 && subtitleAt < withSlots.lastIndexOf('</header>'))
+  assert.match(withSlots, /class="admin-page-subtitle min-w-0"/)
 })
 
 test('the header publishes its title under its own route, and the shell reads it back', () => {

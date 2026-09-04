@@ -15,6 +15,7 @@ import type {
 import type { z } from 'zod'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { ExpandableTable } from '../../shared/ExpandableTable'
+import { DashboardMetricIcon } from './DashboardMetricIcon'
 import { formatCell, formatNumber, formatTemporal, toneTextClass } from './widget-format'
 
 type StatWidget = z.infer<typeof StatWidgetSchema>
@@ -52,7 +53,16 @@ export const StatWidgetView = ({
       : delta <= 0
 
   return (
-    <div className="flex h-full flex-col justify-center">
+    <div className="relative flex h-full flex-col justify-center">
+      {widget.options.icon ? (
+        <span
+          aria-label={`${widget.options.icon} metric`}
+          className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--overlay-weak)] text-[color:var(--tx3)]"
+          data-testid="stat-icon"
+        >
+          <DashboardMetricIcon className="h-3.5 w-3.5" icon={widget.options.icon} />
+        </span>
+      ) : null}
       <div
         className={[
           'truncate text-3xl font-semibold tabular-nums',

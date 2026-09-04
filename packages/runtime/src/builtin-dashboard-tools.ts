@@ -200,8 +200,10 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Add a widget to a dashboard. Choose the kind by the question it answers: '
       + '"stat" for one current number, "timeseries" for change over time, "bar" '
-      + 'for a split across categories, "table" for the actual records, "status" '
-      + 'for ok/warning/failing health. Every bound field must exist in the '
+      + 'for a ranked split across categories, "donut" for part-to-whole composition, '
+      + '"gauge" for a current value against a source target, "scatter" for the '
+      + 'relationship between two numeric fields, "table" for the actual records, '
+      + '"status" for ok/warning/failing health. Every bound field must exist in the '
       + 'source\'s declared columns and be the right type — a chart series must be '
       + 'a number. You cannot supply colours, HTML, links or code: pick a "tone" '
       + '(neutral, accent, info, success, warning, danger) and the renderer draws '
@@ -216,8 +218,11 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
             'A widget definition: { kind, schemaVersion: 1, sourceId, presentation: '
             + '{ title, subtitle?, caption?, tone?, legend? }, binding: {...}, '
             + 'format?: { kind } }. The binding shape depends on kind — stat takes '
-            + '{ value, compareTo?, higherIsBetter? }, timeseries { x, series[] }, '
-            + 'bar { category, series[] }, table { columns[] }, status '
+            + '{ value, compareTo?, higherIsBetter? } and may take options { icon } '
+            + 'where icon is one of chart, users, revenue, cart, clock, server, '
+            + 'database, bolt, check, warning; timeseries { x, series[] }, bar '
+            + '{ category, series[] }, donut { category, value }, gauge { value, '
+            + 'target }, scatter { x, y, label? }, table { columns[] }, status '
             + '{ state, since?, stateMap }.',
         },
       },

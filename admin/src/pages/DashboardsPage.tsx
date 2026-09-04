@@ -53,9 +53,11 @@ export const DashboardsPage = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="dashboards-page">
-      {/* The hero's title and subtitle are the one header's; the search field
+      {/* The hero's title is the one header's; the search field
           moved out of the title row into the body, where a text input belongs
-          — the actions lane measures buttons, not fields. */}
+          — the actions lane measures buttons, not fields. Like the Apps
+          catalogue, this root does not repeat its purpose in a generic
+          subtitle; detail metadata is what the subtitle slot is for. */}
       <ScreenHeader
         actions={[
           {
@@ -74,11 +76,6 @@ export const DashboardsPage = () => {
             priority: 100,
           },
         ]}
-        subtitle={
-          <p className="text-xs text-[color:var(--tx3)]">
-            Live data from the services you connect.
-          </p>
-        }
         title="Dashboards"
       />
 

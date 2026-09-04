@@ -35,6 +35,27 @@ const WidgetCharts = lazy(async () => {
   }
 })
 
+const WidgetAdditionalCharts = lazy(async () => {
+  const module = await import('./WidgetAdditionalCharts')
+  return {
+    default: ({ projection }: { projection: DashboardWidgetProjection }) => {
+      const definition = projection.definition
+      const dataset = projection.dataset
+      if (!definition || !dataset) return null
+      switch (definition.kind) {
+        case 'donut':
+          return <module.DonutWidgetView dataset={dataset} widget={definition} />
+        case 'gauge':
+          return <module.GaugeWidgetView dataset={dataset} widget={definition} />
+        case 'scatter':
+          return <module.ScatterWidgetView dataset={dataset} widget={definition} />
+        default:
+          return null
+      }
+    },
+  }
+})
+
 export type WidgetSurface = 'dashboard' | 'message' | 'knowledge'
 
 type DashboardWidgetCardProps = {
@@ -84,6 +105,14 @@ const WidgetBody = ({ projection }: { projection: DashboardWidgetProjection }) =
       return (
         <Suspense fallback={<WidgetSkeleton />}>
           <WidgetCharts projection={projection} />
+        </Suspense>
+      )
+    case 'donut':
+    case 'gauge':
+    case 'scatter':
+      return (
+        <Suspense fallback={<WidgetSkeleton />}>
+          <WidgetAdditionalCharts projection={projection} />
         </Suspense>
       )
     default:
