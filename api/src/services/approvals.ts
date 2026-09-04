@@ -457,7 +457,7 @@ const mapApproval = (approval: {
   agentId: approval.agentId,
   requesterId: approval.requesterId,
   action: approval.action,
-  reason: approval.reason,
+  reason: presentApprovalReason(approval.reason, approval.toolName ?? null),
   context: presentApprovalContext(approval.context, approval.toolName ?? null),
   status: approval.status,
   resolverId: approval.resolverId,
@@ -471,6 +471,11 @@ const mapApproval = (approval: {
 })
 
 const PRIVATE_EMAIL_TOOL_NAMES = new Set(['email_send', 'gmail_draft_send', 'mailbox_send'])
+
+const presentApprovalReason = (reason: string, toolName: string | null): string =>
+  PRIVATE_EMAIL_TOOL_NAMES.has(toolName ?? '')
+    ? 'Review the email before deciding whether to send it.'
+    : reason
 
 /**
  * Historic rows may already contain a generic input summary. Never present an
