@@ -28,6 +28,7 @@ const ids = {
   task: '77777777-7777-4777-8777-777777777777',
   team: '88888888-8888-4888-8888-888888888888',
   user: '99999999-9999-4999-8999-999999999999',
+  replacementApprover: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab',
 } as const
 
 const args = {
@@ -68,7 +69,10 @@ const authorization = () => ({
   maySuspendForApproval: false,
   parentAgentId: null,
   resolvedBuiltinToolIds: new Set([MAILBOX_SEND_TOOL_ID]),
-  structuralGate: async () => ({ outcome: 'approval' as const }),
+  structuralGate: async () => ({
+    outcome: 'approval' as const,
+    requiredApproverUserId: ids.user,
+  }),
   toolPolicy: { [MAILBOX_SEND_TOOL_ID]: true },
 })
 
@@ -85,6 +89,7 @@ const fakePrisma = (approvedArgs = args, claimSucceeds = true) => {
     id: 'approval-1',
     organizationId: ids.organization,
     proofConsumedAt: null as Date | null,
+    requiredApproverUserId: ids.user,
     runId: ids.parentRun,
     status: 'approved',
     toolName: MAILBOX_SEND_TOOL_ID,
@@ -95,7 +100,11 @@ const fakePrisma = (approvedArgs = args, claimSucceeds = true) => {
       approvalRequest: {
         findFirst: async ({ where }: { where: Record<string, unknown> }) =>
           Object.entries(where).every(([key, value]) => approval[key as keyof typeof approval] === value)
-            ? { id: approval.id, runId: approval.runId }
+            ? {
+              id: approval.id,
+              requiredApproverUserId: approval.requiredApproverUserId,
+              runId: approval.runId,
+            }
             : null,
         updateMany: async ({ where }: { where: Record<string, unknown> }) => {
           if (
@@ -152,6 +161,28 @@ test('a structural approval proof verifies canonical args and is consumed once a
   )
   assert.equal(raced.decision, 'deny')
   assert.deepEqual(auditReasons, ['approval_required'])
+})
+
+test('a mailbox proof pinned to the former approver is denied after an approver transfer', async () => {
+  const state = fakePrisma()
+  const decision = await authorizeToolExecution(
+    state.prisma,
+    actor(),
+    context(),
+    MAILBOX_SEND_TOOL_ID,
+    args,
+    'call-approver-transfer',
+    {
+      ...authorization(),
+      structuralGate: async () => ({
+        outcome: 'approval' as const,
+        requiredApproverUserId: ids.replacementApprover,
+      }),
+    },
+    hooks,
+  )
+  assert.equal(decision.decision, 'deny')
+  assert.equal(state.approval.proofConsumedAt, null)
 })
 
 test('mailbox_send rejects secret-shaped undeclared input before approval persistence', async () => {

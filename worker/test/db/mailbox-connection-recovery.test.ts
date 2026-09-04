@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
 import {
+  MailboxConnectionError,
   persistMailboxReconnection,
   recordMailboxConnectionVerification,
 } from '@nessie/team-admin'
@@ -102,6 +103,36 @@ const contextFor = (seed: Seed): RunContext => ({
   task: { id: randomUUID() },
 }) as RunContext
 
+const createMailboxSendApproval = async (
+  prisma: PrismaClient,
+  seed: Seed,
+  input: { approverUserId: string; status: 'approved' | 'pending' },
+) => prisma.approvalRequest.create({
+  data: {
+    action: 'tool.invoke',
+    agentId: seed.agentId,
+    argsHash: randomUUID(),
+    context: { mailboxConnectionId: seed.connectionId },
+    continuationToken: randomUUID(),
+    expiresAt: new Date(Date.now() + 60_000),
+    organizationId: seed.organizationId,
+    reason: 'Review the email before deciding whether to send it.',
+    requesterId: seed.agentId,
+    requiredApproverUserId: input.approverUserId,
+    resumeState: {
+      args: {
+        connectionId: seed.connectionId,
+        subject: 'Private proposal',
+        text: 'Private body',
+        to: ['recipient@example.test'],
+      },
+    },
+    status: input.status,
+    toolCallId: randomUUID(),
+    toolName: 'mailbox_send',
+  },
+})
+
 runDatabaseTest('shared reconnect transfers the live approval pin without replacing the mailbox or access rows', async (t) => {
   const prisma = new PrismaClient()
   const seed = await seedSharedMailbox(prisma)
@@ -169,3 +200,107 @@ runDatabaseTest('a saved-credential check cannot reactivate a stopped mailbox or
     1,
   )
 })
+
+runDatabaseTest('shared approver transfer rejects every pending or unconsumed approved mailbox send', async (t) => {
+  const prisma = new PrismaClient()
+  const seed = await seedSharedMailbox(prisma)
+  t.after(async () => {
+    await prisma.organization.delete({ where: { id: seed.organizationId } }).catch(() => undefined)
+    await prisma.$disconnect()
+  })
+
+  const pending = await createMailboxSendApproval(prisma, seed, {
+    approverUserId: seed.creatorId,
+    status: 'pending',
+  })
+  const approved = await createMailboxSendApproval(prisma, seed, {
+    approverUserId: seed.creatorId,
+    status: 'approved',
+  })
+
+  await persistMailboxReconnection(prisma, {
+    actorUserId: seed.adminId,
+    connectionId: seed.connectionId,
+    imapHost: 'imap.new.example.test',
+    imapPort: 993,
+    imapSecurity: 'tls',
+    secretCiphertext: 'replacement-secret-ciphertext',
+    smtpHost: 'smtp.new.example.test',
+    smtpPort: 465,
+    smtpSecurity: 'tls',
+    username: 'support@example.test',
+  })
+
+  const stale = await prisma.approvalRequest.findMany({
+    orderBy: { id: 'asc' },
+    where: { id: { in: [pending.id, approved.id] } },
+  })
+  assert.equal(stale.length, 2)
+  for (const approval of stale) {
+    assert.equal(approval.status, 'rejected')
+    assert.ok(approval.proofConsumedAt)
+    assert.equal(approval.requiredApproverUserId, seed.creatorId)
+  }
+
+  const nextDecision = await evaluateMailboxSendGate(
+    prisma,
+    contextFor(seed),
+    { connectionId: seed.connectionId, effectiveUserId: null },
+  )
+  assert.deepEqual(nextDecision, {
+    outcome: 'approval',
+    reason: 'This would go out from a shared team mailbox.',
+    requiredApproverUserId: seed.adminId,
+  })
+})
+
+for (const [label, mutate] of [
+  ['demoted', async (prisma: PrismaClient, seed: Seed) => prisma.organizationMember.update({
+    data: { role: 'member' },
+    where: { organizationId_userId: { organizationId: seed.organizationId, userId: seed.adminId } },
+  })],
+  ['deactivated', async (prisma: PrismaClient, seed: Seed) => prisma.organizationMember.update({
+    data: { deactivatedAt: new Date() },
+    where: { organizationId_userId: { organizationId: seed.organizationId, userId: seed.adminId } },
+  })],
+  ['removed', async (prisma: PrismaClient, seed: Seed) => prisma.organizationMember.delete({
+    where: { organizationId_userId: { organizationId: seed.organizationId, userId: seed.adminId } },
+  })],
+] as const) {
+  runDatabaseTest(`reconnect refuses a ${label} shared-mailbox manager after the slow provider test`, async (t) => {
+    const prisma = new PrismaClient()
+    const seed = await seedSharedMailbox(prisma)
+    t.after(async () => {
+      await prisma.organization.delete({ where: { id: seed.organizationId } }).catch(() => undefined)
+      await prisma.$disconnect()
+    })
+    await mutate(prisma, seed)
+
+    await assert.rejects(
+      persistMailboxReconnection(prisma, {
+        actorUserId: seed.adminId,
+        connectionId: seed.connectionId,
+        imapHost: 'imap.new.example.test',
+        imapPort: 993,
+        imapSecurity: 'tls',
+        secretCiphertext: 'replacement-secret-ciphertext',
+        smtpHost: 'smtp.new.example.test',
+        smtpPort: 465,
+        smtpSecurity: 'tls',
+        username: 'support@example.test',
+      }),
+      (error: unknown) => error instanceof MailboxConnectionError && error.refusal === 'not_permitted',
+    )
+    const connection = await prisma.mailboxConnection.findUniqueOrThrow({
+      include: { credential: true },
+      where: { id: seed.connectionId },
+    })
+    assert.equal(connection.createdByUserId, seed.creatorId)
+    assert.equal(connection.status, 'needs_reauthorization')
+    assert.equal(connection.credential, null)
+    assert.equal(
+      await prisma.userAlert.count({ where: { mailboxConnectionId: seed.connectionId, readAt: null } }),
+      1,
+    )
+  })
+}

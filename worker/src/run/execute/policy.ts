@@ -48,7 +48,7 @@ type ToolPolicyEvaluation =
   | {
       allowed: true
       /** A server-verified proof, retained for a dispatcher to claim exactly once. */
-      approvalProofVerified?: { id: string }
+      approvalProofVerified?: { id: string; requiredApproverUserId: string | null }
       /** This policy verdict itself depended on the verified proof. */
       approvalProofUsed?: boolean
       policyRuleId?: string

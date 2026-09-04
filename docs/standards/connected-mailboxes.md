@@ -94,8 +94,13 @@ Plan and as-built deltas:
   only an explicit reconnect that replaces the credential and endpoints can do
   that. When an owner or admin reconnects a shared mailbox, that live manager
   atomically becomes its future send approver (`createdByUserId`) while the
-  connection id and every agent-access row remain intact; a personal mailbox's
-  owner/creator is never reassigned. The tool
+  connection id and every agent-access row remain intact; that transfer rejects
+  every still-pending or unconsumed approved `mailbox_send` pinned to the prior
+  manager, so the new manager receives a newly proposed decision. The final
+  recovery transaction re-reads the actor's active owner/admin membership and
+  exact mailbox scope after the slow provider test, before it can replace a
+  credential, transfer the pin, reactivate the connection, or resolve alerts.
+  A personal mailbox's owner/creator is never reassigned. The tool
   `email_account_disconnect` is structurally approval-gated before it invokes
   the same disconnect service. `email_account_agent_access` changes only the
   per-`(connection, agent)` row: it never silently rewrites that agent's tool
