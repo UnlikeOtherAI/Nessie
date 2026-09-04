@@ -29,3 +29,13 @@ test('does not create a collapsed middle for three or fewer replies', () => {
   assert.equal(result.hiddenReplyCount, 0)
   assert.deepEqual(result.recentReplies.map((entry) => entry.id), ['reply-1', 'reply-2', 'reply-3'])
 })
+
+test('the collapsed count includes replies older than the loaded preview page', () => {
+  const result = splitThreadInboxMessages(message('root'), [
+    message('reply-48'),
+    message('reply-49'),
+    message('reply-50'),
+  ], 75)
+
+  assert.equal(result.hiddenReplyCount, 72)
+})

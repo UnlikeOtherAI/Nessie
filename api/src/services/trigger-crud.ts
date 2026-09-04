@@ -4,8 +4,8 @@ import {
   buildAgentVisibilityWhere,
   acquireAgentTodoAgentLock,
   createAgentTrigger,
+  createWorkflowTrigger,
   mergeTriggerConfigPreservingIdentity,
-  stripServerOwnedTriggerConfig,
   validateTodoTemplateTriggerConfig,
 } from '@nessie/team-admin'
 import type {
@@ -24,7 +24,6 @@ import {
   resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
   TRIGGER_ADMIN_AUDIENCE,
-  type WorkflowTriggerPrismaLike,
 } from './trigger-shared.js'
 
 // Trigger creation is shared with the worker (the assistant's
@@ -144,55 +143,7 @@ export const listScheduledTriggers = async (
   return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
-export const createWorkflowTrigger = async (
-  prisma: WorkflowTriggerPrismaLike,
-  workflowInstallationId: string,
-  input: {
-    config?: Record<string, unknown>
-    description?: string
-    enabled?: boolean
-    name?: string
-    nextRunAt?: string
-    type: AgentTriggerType
-  },
-): Promise<AgentTriggerRecord | null> => {
-  const clientConfig = stripServerOwnedTriggerConfig(input.config)
-  const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(clientConfig)
-    : clientConfig
-
-  const normalizedNextRunAt = normalizeNextRunAt({
-    config: normalizedConfig,
-    nextRunAt: input.nextRunAt,
-    type: input.type,
-  })
-  if (SCHEDULER_TRIGGER_TYPES.includes(input.type) && !normalizedNextRunAt) {
-    return null
-  }
-
-  const installation = await prisma.workflowInstallation.findUnique({
-    where: { id: workflowInstallationId },
-    select: { id: true },
-  })
-  if (!installation) {
-    return null
-  }
-
-  const trigger = await prisma.agentTrigger.create({
-    data: {
-      workflowInstallationId,
-      type: input.type,
-      enabled: input.enabled ?? true,
-      status: input.enabled === false ? 'paused' : 'active',
-      name: input.name,
-      description: input.description,
-      config: normalizedConfig as Prisma.InputJsonValue,
-      nextRunAt: normalizedNextRunAt ?? undefined,
-    },
-  })
-
-  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
-}
+export { createWorkflowTrigger }
 
 export const getAgentTrigger = async (
   prisma: PrismaClient,

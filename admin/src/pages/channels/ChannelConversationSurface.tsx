@@ -12,9 +12,11 @@ import type {
 import { CallBanner } from '../../components/shared/CallBanner'
 import { DropZoneOverlay } from '../../components/shared/DropZoneOverlay'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
-import { SecretCaptureDialog } from '../../components/features/channels/SecretCaptureDialog'
 import { ChannelHeader } from '../../components/features/channels/ChannelHeader'
-import { ChannelMessageFeed } from '../../components/features/channels/ChannelMessageFeed'
+import {
+  ChannelMessageFeed,
+  type MessageHistoryStatus,
+} from '../../components/features/channels/ChannelMessageFeed'
 import { ChannelSearchPanel } from '../../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../../components/features/channels/ChannelTabBar'
 import { Pill } from '../../components/primitives/Pill'
@@ -70,6 +72,7 @@ interface ChannelConversationSurfaceProps {
   composer: Pick<
     ReturnType<typeof useChannelComposer>,
     | 'attachments'
+    | 'confirmSecretCapture'
     | 'dismissPendingAgent'
     | 'dismissSecretCapture'
     | 'insertEmoji'
@@ -96,6 +99,7 @@ interface ChannelConversationSurfaceProps {
   externalAgentIdentity: ExternalAgentIdentity | null
   feedItems: ReturnType<typeof buildFeedItems>
   feedScroll: ReturnType<typeof useStickToBottom>
+  messageHistory: MessageHistoryStatus
   isConversationSurface: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -169,6 +173,7 @@ export const ChannelConversationSurface = ({
   externalAgentIdentity,
   feedItems,
   feedScroll,
+  messageHistory,
   isConversationSurface,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -320,6 +325,7 @@ export const ChannelConversationSurface = ({
               editingMessageId={editingMessageId}
               externalAgentDisplayName={activeChannel?.label}
               feedItems={feedItems}
+              historyStatus={messageHistory}
               isExternalAgentConversation={isExternalAgentConversation}
               isPersonalAssistantConversation={isPersonalAssistantConversation}
               meAvatar={{
@@ -379,43 +385,42 @@ export const ChannelConversationSurface = ({
 
       {visibleActiveTab === 'messages' ? (
         <ChannelComposer
-        attachments={composer.attachments}
-        inviteErrors={composer.inviteErrors}
-        invitingAgentId={composer.invitingAgentId}
-        isSendPending={composer.isSendPending}
-        sendError={composer.sendError}
-        mentionEntities={mentionEntities}
-        mentionRef={composer.mentionRef}
-        message={composer.message}
-        pendingAgentInvites={composer.pendingAgentInvites}
-        placeholder={composePlaceholder}
-        onChangeMessage={composer.setMessage}
-        onDismissPendingAgent={composer.dismissPendingAgent}
-        onInsertAtSign={() => composer.mentionRef.current?.insertAtSign()}
-        onInsertEmoji={composer.insertEmoji}
-        onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}
-        onInvitePendingAgent={(agentId) => void composer.invitePendingAgent(agentId)}
-        onOpenDeepWaterResearch={deepWaterLauncher.open}
-        onOpenExecutorRun={executorLauncher.open}
-        onOversizePaste={composer.setOversizePaste}
-        onSubmitForm={(event) => {
-          feedScroll.pinToBottom()
-          channelLiveness.markSent()
-          void composer.sendMessageSubmit(event)
-        }}
-        onSubmitText={(text, agentMentions) => {
-          feedScroll.pinToBottom()
-          channelLiveness.markSent()
-          void composer.sendText(text, agentMentions)
-        }}
+          attachments={composer.attachments}
+          inviteErrors={composer.inviteErrors}
+          invitingAgentId={composer.invitingAgentId}
+          isSendPending={composer.isSendPending}
+          sendError={composer.sendError}
+          mentionEntities={mentionEntities}
+          mentionRef={composer.mentionRef}
+          message={composer.message}
+          pendingAgentInvites={composer.pendingAgentInvites}
+          placeholder={composePlaceholder}
+          onChangeMessage={composer.setMessage}
+          onDismissPendingAgent={composer.dismissPendingAgent}
+          onDismissSecretCapture={composer.dismissSecretCapture}
+          onInsertAtSign={() => composer.mentionRef.current?.insertAtSign()}
+          onInsertEmoji={composer.insertEmoji}
+          onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}
+          onInvitePendingAgent={(agentId) => void composer.invitePendingAgent(agentId)}
+          onConfirmSecretCapture={composer.confirmSecretCapture}
+          onOpenDeepWaterResearch={deepWaterLauncher.open}
+          onOpenExecutorRun={executorLauncher.open}
+          onOversizePaste={composer.setOversizePaste}
+          onSubmitForm={(event) => {
+            feedScroll.pinToBottom()
+            channelLiveness.markSent()
+            void composer.sendMessageSubmit(event)
+          }}
+          onSubmitText={(text, agentMentions) => {
+            feedScroll.pinToBottom()
+            channelLiveness.markSent()
+            void composer.sendText(text, agentMentions)
+          }}
+          secretCapture={composer.secretCapture}
         />
       ) : null}
 
       {deleteConfirm}
-      {composer.secretCapture ? (
-        <SecretCaptureDialog capture={composer.secretCapture} onClose={composer.dismissSecretCapture} />
-      ) : null}
-
       <Dialog
         description="Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically."
         dismissDisabled={startDemonstration.isPending || stopDemonstration.isPending}

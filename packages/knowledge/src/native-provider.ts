@@ -132,6 +132,26 @@ const assertProjectBelongsToOrg = async (
   }
 }
 
+// `KnowledgePage.taskId` is intentionally a loose column rather than a
+// database foreign key, so every page creation path must prove that the ticket
+// belongs to the page's organization and destination-space project before it
+// persists the reference.
+const assertTaskBelongsToSpaceProject = async (
+  client: Prisma.TransactionClient,
+  organizationId: string,
+  projectId: string,
+  taskId: string | null | undefined,
+): Promise<void> => {
+  if (!taskId) return
+  const task = await client.task.findFirst({
+    where: { id: taskId, organizationId, projectId },
+    select: { id: true },
+  })
+  if (!task) {
+    throw new KnowledgeConflictError('Ticket not found in this knowledge space project')
+  }
+}
+
 const fetchPage = async (
   client: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
@@ -272,6 +292,18 @@ const assertMoveDoesNotCycle = async (
   return true
 }
 
+// Tree moves are structural writes: two individually valid moves can form a
+// cycle if they inspect different snapshots. Serialize every move in a space
+// until both the ancestry check and conditional update have completed.
+const lockKnowledgeTreeMoves = async (
+  tx: Prisma.TransactionClient,
+  spaceId: string,
+): Promise<void> => {
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtext(${spaceId}), hashtext('knowledge_tree_move'))
+  `)
+}
+
 const archivePage = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -324,6 +356,7 @@ const movePage = async (
   prisma.$transaction(async (tx) => {
     const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
+    await lockKnowledgeTreeMoves(tx, page.spaceId)
     if (
       input.expectedRevision !== undefined
       && page.revision !== input.expectedRevision
@@ -497,8 +530,12 @@ const updatePage = async (
       })
       await indexVersionChunks(tx, options, existing, version)
     }
-    await tx.knowledgePage.update({
-      where: { id: pageId },
+    const updated = await tx.knowledgePage.updateMany({
+      where: {
+        id: pageId,
+        organizationId: input.organizationId,
+        ...(input.expectedRevision !== undefined ? { revision: input.expectedRevision } : {}),
+      },
       data: {
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.summary !== undefined ? { summary: input.summary } : {}),
@@ -513,6 +550,14 @@ const updatePage = async (
         revision: { increment: 1 },
       },
     })
+    // Creating the version above is intentionally inside this transaction:
+    // if another writer wins between our read and this conditional update, the
+    // transaction rolls that version (and its chunks) back with the conflict.
+    if (updated.count === 0 && input.expectedRevision !== undefined) {
+      const current = await getMutablePage(tx, input.organizationId, pageId)
+      if (!current) return null
+      throw new KnowledgePageRevisionConflictError(current.revision)
+    }
     if (input.title !== undefined) {
       // A rename may match a still-unresolved wikilink title elsewhere; it
       // never un-resolves an already-resolved link (those are tracked by id).
@@ -561,6 +606,12 @@ export const createNativeKnowledgeProvider = (
         where: { id: input.spaceId, organizationId: input.organizationId, deletedAt: null },
       })
       if (!space) throw new Error('Knowledge space not found')
+      await assertTaskBelongsToSpaceProject(
+        tx,
+        input.organizationId,
+        space.projectId,
+        input.taskId,
+      )
       if (input.parentPageId) {
         const parent = await tx.knowledgePage.findFirst({
           where: {
@@ -692,29 +743,65 @@ export const createNativeKnowledgeProvider = (
   listSpaces: async (input) => {
     const limit = clampLimit(input.limit)
     const cursor = parseCursor(input.cursor)
+    const backwards = input.direction === 'backward'
     const readableWhere = input.viewer
       ? readableKnowledgeSpaceWhere(input.organizationId, input.viewer)
       : null
-    const spaces = await prisma.knowledgeSpace.findMany({
-      where: {
-        AND: [
-          readableWhere ?? { organizationId: input.organizationId, deletedAt: null },
-          ...(input.projectId ? [{ projectId: input.projectId }] : []),
-          ...(cursor
-            ? [{
-                OR: [
-                  { updatedAt: { lt: cursor.cursorDate } },
-                  { updatedAt: cursor.cursorDate, id: { lt: cursor.cursorId } },
-                ],
-              }]
-            : []),
-        ],
-      },
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    // The viewer's own My Docs has a stable pin outside the shared list. A
+    // different person's personal space may have been explicitly granted to
+    // this viewer, however, so it remains discoverable. Agents have no
+    // personal pin and therefore retain every readable explicit grant.
+    const scopeFilters: Prisma.KnowledgeSpaceWhereInput[] = [
+      ...(input.projectId ? [{ projectId: input.projectId }] : []),
+      ...(!input.includePersonal && typeof input.viewer?.userId === 'string'
+        ? [{
+            OR: [
+              { userId: null },
+              { userId: { not: input.viewer.userId } },
+            ],
+          }]
+        : []),
+    ]
+    const where: Prisma.KnowledgeSpaceWhereInput = {
+      AND: [
+        readableWhere ?? { organizationId: input.organizationId, deletedAt: null },
+        ...scopeFilters,
+        ...(cursor
+          ? [{
+              OR: [
+                { updatedAt: { [backwards ? 'gt' : 'lt']: cursor.cursorDate } },
+                {
+                  updatedAt: cursor.cursorDate,
+                  id: { [backwards ? 'gt' : 'lt']: cursor.cursorId },
+                },
+              ],
+            }]
+          : []),
+      ],
+    }
+    const countWhere: Prisma.KnowledgeSpaceWhereInput = {
+      AND: [
+        readableWhere ?? { organizationId: input.organizationId, deletedAt: null },
+        ...scopeFilters,
+      ],
+    }
+    const [spaces, total] = await Promise.all([
+      prisma.knowledgeSpace.findMany({
+        where,
+      orderBy: backwards
+        ? [{ updatedAt: 'asc' }, { id: 'asc' }]
+        : [{ updatedAt: 'desc' }, { id: 'desc' }],
       include: spaceInclude,
       take: limit + 1,
+      }),
+      prisma.knowledgeSpace.count({ where: countWhere }),
+    ])
+    const page = trimPage(spaces.map(mapSpace), limit, {
+      cursor: cursor ? input.cursor : undefined,
+      direction: input.direction,
+      hasCursor: Boolean(cursor),
     })
-    return trimPage(spaces.map(mapSpace), limit)
+    return { ...page, meta: { ...page.meta, total } }
   },
 
   listVersions: async (organizationId, pageId) => {

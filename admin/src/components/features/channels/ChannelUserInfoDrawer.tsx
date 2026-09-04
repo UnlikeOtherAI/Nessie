@@ -1,9 +1,7 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
@@ -24,6 +22,7 @@ import {
 import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
+import { useStickToBottom } from '../../../hooks/useStickToBottom'
 
 type ChannelUserInfoDrawerProps = {
   agents: AgentRecord[]
@@ -59,7 +58,6 @@ export const ChannelUserInfoDrawer = ({
   const { mutate: openDirectMessage } = useOpenDm()
   const [dmChannel, setDmChannel] = useState<ChannelRecord | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
-  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const user = useMemo(() => {
     if (!target) {
@@ -106,7 +104,8 @@ export const ChannelUserInfoDrawer = ({
     }
   }, [openDirectMessage, target])
 
-  const { data: threadMessages = [] } = useThreadMessages(dmChannel?.defaultThreadId)
+  const messageHistory = useThreadMessages(dmChannel?.defaultThreadId)
+  const threadMessages = messageHistory.data ?? []
   const { pendingMessages } = useThreadStream(dmChannel?.defaultThreadId)
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
   const agentMap = useMemo(
@@ -133,6 +132,9 @@ export const ChannelUserInfoDrawer = ({
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    secretCapture,
   } = useChannelComposer({
     activeChannel: dmChannel,
     currentUserId: meUserId,
@@ -152,14 +154,14 @@ export const ChannelUserInfoDrawer = ({
     updatePending,
   } = useChannelMessageActions(dmChannel?.defaultThreadId)
 
-  useLayoutEffect(() => {
-    const container = scrollRef.current
-    if (!container) {
-      return
-    }
-
-    container.scrollTop = container.scrollHeight
-  }, [dmChannel?.id, feedItems.length, optimisticMessages.length, pendingMessages.length])
+  const drawerScroll = useStickToBottom(dmChannel?.id, true, {
+    failed: messageHistory.isFetchNextPageError,
+    hasMore: Boolean(messageHistory.hasNextPage),
+    isLoading: messageHistory.isFetchingNextPage,
+    itemCount: threadMessages.length,
+    loadMore: () => messageHistory.fetchNextPage({ cancelRefetch: false }),
+    pageCount: messageHistory.pageCount,
+  })
 
   if (!user) {
     return null
@@ -219,42 +221,50 @@ export const ChannelUserInfoDrawer = ({
           <div
             className="min-h-0 flex-1 overflow-y-auto py-2"
             data-testid="user-info-drawer-messages"
-            ref={scrollRef}
+            ref={drawerScroll.containerRef}
           >
-            {openError ? (
-              <div className="px-5 py-4 text-sm text-[color:var(--danger-text)]">
-                {openError}
-              </div>
-            ) : null}
-            {!dmChannel && !openError ? (
-              <div className="px-5 py-4 text-sm text-[color:var(--tx3)]">
-                Opening conversation...
-              </div>
-            ) : null}
-            {dmChannel ? (
-              <ChannelMessageFeed
-                agentById={agentMap}
-                agentMap={agentMap}
-                editingContent={editingContent}
-                editingMessageId={editingMessageId}
-                feedItems={feedItems}
-                isPersonalAssistantConversation={false}
-                meAvatar={meAvatar}
-                meDisplayName={meDisplayName}
-                meUserId={meUserId}
-                optimisticMessages={optimisticMessages}
-                pendingMessages={pendingMessages}
-                renderContent={renderContent}
-                token={token}
-                updatePending={updatePending}
-                onAddReaction={addReaction}
-                onCancelEdit={cancelEdit}
-                onChangeEditingContent={changeEditingContent}
-                onConfirmDelete={confirmDelete}
-                onStartEdit={startEdit}
-                onSubmitEdit={(messageId) => void submitEdit(messageId)}
-              />
-            ) : null}
+            <div ref={drawerScroll.contentRef}>
+              {openError ? (
+                <div className="px-5 py-4 text-sm text-[color:var(--danger-text)]">
+                  {openError}
+                </div>
+              ) : null}
+              {!dmChannel && !openError ? (
+                <div className="px-5 py-4 text-sm text-[color:var(--tx3)]">
+                  Opening conversation...
+                </div>
+              ) : null}
+              {dmChannel ? (
+                <ChannelMessageFeed
+                  agentById={agentMap}
+                  agentMap={agentMap}
+                  editingContent={editingContent}
+                  editingMessageId={editingMessageId}
+                  feedItems={feedItems}
+                  historyStatus={{
+                    hasOlder: Boolean(messageHistory.hasNextPage),
+                    isLoadingOlder: messageHistory.isFetchingNextPage,
+                    olderLoadFailed: messageHistory.isFetchNextPageError,
+                    retryOlder: drawerScroll.loadOlder,
+                  }}
+                  isPersonalAssistantConversation={false}
+                  meAvatar={meAvatar}
+                  meDisplayName={meDisplayName}
+                  meUserId={meUserId}
+                  optimisticMessages={optimisticMessages}
+                  pendingMessages={pendingMessages}
+                  renderContent={renderContent}
+                  token={token}
+                  updatePending={updatePending}
+                  onAddReaction={addReaction}
+                  onCancelEdit={cancelEdit}
+                  onChangeEditingContent={changeEditingContent}
+                  onConfirmDelete={confirmDelete}
+                  onStartEdit={startEdit}
+                  onSubmitEdit={(messageId) => void submitEdit(messageId)}
+                />
+              ) : null}
+            </div>
           </div>
 
           {dmChannel ? (
@@ -271,13 +281,22 @@ export const ChannelUserInfoDrawer = ({
               onInsertEmoji={insertEmoji}
               onInsertHashSign={() => mentionRef.current?.insertHashSign()}
               onOversizePaste={(paste) => setOversizePaste(paste)}
-              onSubmitForm={(event) => void sendMessageSubmit(event)}
-              onSubmitText={(text, agentMentions) => void sendText(text, agentMentions)}
+              onConfirmSecretCapture={confirmSecretCapture}
+              onDismissSecretCapture={dismissSecretCapture}
+              onSubmitForm={(event) => {
+                drawerScroll.pinToBottom()
+                void sendMessageSubmit(event)
+              }}
+              onSubmitText={(text, agentMentions) => {
+                drawerScroll.pinToBottom()
+                void sendText(text, agentMentions)
+              }}
               pendingAgentInvites={pendingAgentInvites}
               invitingAgentId={invitingAgentId}
               inviteErrors={inviteErrors}
               onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
               onDismissPendingAgent={dismissPendingAgent}
+              secretCapture={secretCapture}
             />
           ) : null}
         </div>

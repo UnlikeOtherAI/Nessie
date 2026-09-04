@@ -36,6 +36,8 @@ import type {
   MessageUserIdentity,
 } from '../../components/features/channels/channel-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
+import type { MessageHistoryStatus } from '../../components/features/channels/ChannelMessageFeed'
+import type { OlderContentLoader } from '../../hooks/useStickToBottom'
 import { ChannelInfoDrawers } from './ChannelInfoDrawers'
 import type { useReplyThread } from './useReplyThread'
 
@@ -73,6 +75,8 @@ interface ChannelOverlaysProps {
   showChannelSettings: boolean
   showMembersPopup: boolean
   threadMessages: ThreadMessageRecord[]
+  threadMessageHistory: MessageHistoryStatus
+  threadMessageLoader: OlderContentLoader
   // Runs whose reply lands in the open reply thread, so the panel renders their
   // bubble instead of the channel feed.
   threadPendingMessages: PendingStreamMessage[]
@@ -131,6 +135,8 @@ export const ChannelOverlays = ({
   showChannelSettings,
   showMembersPopup,
   threadMessages,
+  threadMessageHistory,
+  threadMessageLoader,
   threadPendingMessages,
   token,
   onCancelOversizePaste,
@@ -254,6 +260,8 @@ export const ChannelOverlays = ({
       selectedMessageAgent={selectedMessageAgent}
       selectedMessageUser={selectedMessageUser}
       threadMessages={threadMessages}
+      threadMessageHistory={threadMessageHistory}
+      threadMessageLoader={threadMessageLoader}
       token={token}
       onCloseAgent={onCloseSelectedAgent}
       onCloseUser={onCloseSelectedUser}

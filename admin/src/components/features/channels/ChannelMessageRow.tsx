@@ -43,6 +43,7 @@ import { RunApprovalGate } from './RunApprovalGate'
 import { TodoProgressCard } from './TodoProgressCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
 import { MailSurfaceDoorwayChip } from './MailSurfaceDoorway'
+import { WorkflowPreviewCard } from './WorkflowPreviewCard'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import {
   getReplyBroadcastRootId,
@@ -274,6 +275,7 @@ export const ChannelMessageRow = ({
       aria-label={`Message from ${displayName}`}
       className="admin-msg-row relative py-1"
       data-actions-open={activeActionMessageId === message.id}
+      data-message-id={message.id}
       onClick={() => {
         setActiveActionMessageId((current) => (current === message.id ? null : message.id))
       }}
@@ -485,6 +487,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <WorkflowRunCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <WorkflowPreviewCard metadata={message.metadata} />
           ) : null}
           {/* Mount only when the message actually has files. The count comes
               from the message contract; when it is absent (an optimistic or

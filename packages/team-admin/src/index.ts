@@ -77,11 +77,15 @@ export * from './uoa-org-members.js'
 export * from './uoa-role-capabilities.js'
 export * from './uoa-settings.js'
 export * from './workflow-binding-grammar.js'
+export * from './workflow-authoring.js'
+export * from './workflow-audit.js'
 export * from './workflow-graph-pin.js'
 export * from './workflow-secrets.js'
 export * from './sandboxed-jmespath.js'
 export * from './workflow-jmespath.js'
 export * from './workflow-template-validation.js'
+export * from './workflow-template-list.js'
+export * from './workflow-trigger-create.js'
 export * from "./workflow-concurrency.js"
 export {
   AgentMailboxError,

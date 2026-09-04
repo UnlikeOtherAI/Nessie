@@ -9,9 +9,12 @@ import {
   type PersonalAssistantMention,
 } from '../../shared/MentionInput'
 import type { PendingAgentInvite } from '../../../facades/messages/hooks'
+import type { SecretRecord } from '../../../facades/secrets/hooks'
 import { toolbarButtonClass } from './channel-helpers'
 import { ComposerAttachments } from './ComposerAttachments'
 import { ComposerEmojiButton } from './ComposerEmojiButton'
+import { SecretCaptureDialog } from './SecretCaptureDialog'
+import type { SecretCapture } from './useChannelComposer'
 import type { ComposerAttachments as ComposerAttachmentsState } from './useComposerAttachments'
 
 interface ChannelComposerProps {
@@ -34,6 +37,9 @@ interface ChannelComposerProps {
   inviteErrors: Record<string, string>
   onInvitePendingAgent: (agentId: string) => void
   onDismissPendingAgent: (agentId: string) => void
+  secretCapture: SecretCapture | null
+  onConfirmSecretCapture: (secret: SecretRecord) => Promise<void>
+  onDismissSecretCapture: () => void
   onOpenDeepWaterResearch?: () => void
   onOpenExecutorRun?: () => void
 }
@@ -58,6 +64,9 @@ export const ChannelComposer = ({
   inviteErrors,
   onInvitePendingAgent,
   onDismissPendingAgent,
+  secretCapture,
+  onConfirmSecretCapture,
+  onDismissSecretCapture,
   onOpenDeepWaterResearch,
   onOpenExecutorRun,
 }: ChannelComposerProps) => {
@@ -270,6 +279,13 @@ export const ChannelComposer = ({
           </button>
         </div>
       </form>
+      {secretCapture ? (
+        <SecretCaptureDialog
+          capture={secretCapture}
+          onClose={onDismissSecretCapture}
+          onSaved={onConfirmSecretCapture}
+        />
+      ) : null}
     </div>
   )
 }

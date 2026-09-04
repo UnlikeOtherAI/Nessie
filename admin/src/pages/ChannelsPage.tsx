@@ -91,8 +91,13 @@ export const ChannelsPage = () => {
   )
   const {
     data: threadMessages = [],
+    fetchNextPage: fetchOlderThreadMessages,
+    hasNextPage: hasOlderThreadMessages,
     isFetched: threadMessagesFetched,
+    isFetchNextPageError: olderThreadMessagesFailed,
+    isFetchingNextPage: isLoadingOlderThreadMessages,
     isPlaceholderData: threadMessagesArePlaceholder,
+    pageCount: threadMessagePageCount,
   } = useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState, isPending: personalAssistantPending } =
     usePersonalAssistant(isPersonalAssistantActiveChannel)
@@ -243,6 +248,7 @@ export const ChannelsPage = () => {
     invitePendingAgent,
     dismissPendingAgent,
     secretCapture,
+    confirmSecretCapture,
     dismissSecretCapture,
   } = useChannelComposer({
     activeChannel,
@@ -286,6 +292,14 @@ export const ChannelsPage = () => {
   const feedScroll = useStickToBottom(
     `${activeChannel?.id ?? ''}:${visibleActiveTab}`,
     visibleActiveTab === 'messages',
+    {
+      failed: olderThreadMessagesFailed,
+      hasMore: visibleActiveTab === 'messages' && Boolean(hasOlderThreadMessages),
+      isLoading: isLoadingOlderThreadMessages,
+      itemCount: threadMessages.length,
+      loadMore: () => fetchOlderThreadMessages({ cancelRefetch: false }),
+      pageCount: threadMessagePageCount,
+    },
   )
   const releaseFeedPin = feedScroll.releasePin
   // Jumping to an older message is the reader taking over: stop following the
@@ -413,6 +427,7 @@ export const ChannelsPage = () => {
         composePlaceholder={composePlaceholder}
         composer={{
           attachments,
+          confirmSecretCapture,
           dismissPendingAgent,
           dismissSecretCapture,
           insertEmoji,
@@ -441,6 +456,12 @@ export const ChannelsPage = () => {
         externalAgentIdentity={externalAgentIdentity}
         feedItems={feedItems}
         feedScroll={feedScroll}
+        messageHistory={{
+          hasOlder: Boolean(hasOlderThreadMessages),
+          isLoadingOlder: isLoadingOlderThreadMessages,
+          olderLoadFailed: olderThreadMessagesFailed,
+          retryOlder: feedScroll.loadOlder,
+        }}
         isConversationSurface={isConversationSurface}
         isExternalAgentConversation={isExternalAgentActiveChannel}
         triggersTabAvailable={triggersTabAvailable}
@@ -536,6 +557,20 @@ export const ChannelsPage = () => {
         showChannelSettings={showChannelSettings}
         showMembersPopup={showMembersPopup}
         threadMessages={threadMessages}
+        threadMessageHistory={{
+          hasOlder: Boolean(hasOlderThreadMessages),
+          isLoadingOlder: isLoadingOlderThreadMessages,
+          olderLoadFailed: olderThreadMessagesFailed,
+          retryOlder: feedScroll.loadOlder,
+        }}
+        threadMessageLoader={{
+          failed: olderThreadMessagesFailed,
+          hasMore: Boolean(hasOlderThreadMessages),
+          isLoading: isLoadingOlderThreadMessages,
+          itemCount: threadMessages.length,
+          loadMore: () => fetchOlderThreadMessages({ cancelRefetch: false }),
+          pageCount: threadMessagePageCount,
+        }}
         threadPendingMessages={threadPendingMessages}
         token={token}
         onCancelOversizePaste={() => setOversizePaste(null)}

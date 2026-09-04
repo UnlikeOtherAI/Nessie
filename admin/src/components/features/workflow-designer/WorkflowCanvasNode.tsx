@@ -45,6 +45,7 @@ type WorkflowCanvasNodeProps = {
     nodeId: string,
     startHandleKind: 'input' | 'output',
   ) => void
+  readOnly?: boolean
 }
 
 export const WorkflowCanvasNode = ({
@@ -57,6 +58,7 @@ export const WorkflowCanvasNode = ({
   isDragging,
   onNodePointerDown,
   onConnectionStart,
+  readOnly = false,
 }: WorkflowCanvasNodeProps) => {
   const theme = nodeThemes[node.type]
   const hasIncomingConnection = connections.some(
@@ -80,11 +82,12 @@ export const WorkflowCanvasNode = ({
   return (
     <div
       className={[
-        'absolute z-20 cursor-grab select-none rounded-2xl border bg-[var(--surface-inverse)] shadow-[0_18px_40px_var(--scrim)] active:cursor-grabbing',
+        'absolute z-20 select-none rounded-2xl border bg-[var(--surface-inverse)] shadow-[0_18px_40px_var(--scrim)]',
+        readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
         isSelected ? 'ring-2 ring-[var(--accent-hover)] ring-offset-2 ring-offset-[var(--surface-inverse)]' : '',
         isDragging ? 'z-30' : '',
       ].join(' ')}
-      onPointerDown={(event) => onNodePointerDown(event, node.id)}
+      onPointerDown={readOnly ? undefined : (event) => onNodePointerDown(event, node.id)}
       style={{
         backgroundColor: theme.fill,
         borderColor: theme.border,
@@ -95,7 +98,7 @@ export const WorkflowCanvasNode = ({
         width: CANVAS_NODE_WIDTH,
       }}
     >
-      {node.type !== 'trigger' ? (
+      {!readOnly && node.type !== 'trigger' ? (
         <button
           aria-label={`Connect into ${node.label}`}
           className="absolute -left-2 h-4 w-4 rounded-full border-2 transition-all hover:bg-current"
@@ -123,7 +126,7 @@ export const WorkflowCanvasNode = ({
         />
       ) : null}
 
-      <button
+      {!readOnly ? <button
         aria-label={`Connect from ${node.label}`}
         className="absolute -right-2 h-4 w-4 rounded-full border-2 bg-[var(--surface-inverse)] transition-all hover:bg-current"
         data-workflow-handle-kind="output"
@@ -147,7 +150,7 @@ export const WorkflowCanvasNode = ({
             : 'translateY(-50%)',
         }}
         type="button"
-      />
+      /> : null}
 
       <div className="flex h-full flex-col px-4 py-3">
         <div className="flex items-start gap-3">
@@ -209,6 +212,8 @@ export const WorkflowCanvasNode = ({
               {stepRun.status}
               {stepRun.errorMessage ? ' — see inspector' : ''}
             </span>
+          ) : readOnly ? (
+            'Read-only workflow step.'
           ) : (
             'Drag to position. Use the connector circles to build the workflow.'
           )}

@@ -40,7 +40,62 @@ const PATTERNS: SecretPattern[] = [
   { type: 'token_assignment', expression: /\b(?:api[_-]?key|token|password|secret|authorization)\s*(?:=|:|\s+bearer\s+)\s*[^\s"'`]{12,}/gi },
 ]
 
-const prefixFor = (value: string): string => value.slice(0, Math.min(value.length, 12))
+const SECRET_MASK = '•'.repeat(12)
+const PROVIDER_PREFIX = new RegExp(
+  '^(?:sk-(?:proj-|ant-)?|(?:sk|rk)_(?:live|test)_|github_pat_|gh[pousr]_|glpat-'
+    + '|xox[a-z]-|hf_|npm_|AIza|AKIA|ASIA|ABIA|ACCA)',
+)
+
+const providerPrefixForValue = (value: string): string =>
+  value.match(PROVIDER_PREFIX)?.[0] ?? ''
+
+/**
+ * Keep only the provider-identifying part of a credential visible. A generic
+ * first-N mask leaks real key bytes for short prefixes (`sk_live_1234…`) and
+ * can expose a database username; these prefixes stop at structural syntax.
+ */
+const prefixFor = (value: string, type: DetectedSecret['type']): string => {
+  switch (type) {
+    case 'anthropic_api_key': return value.match(/^sk-ant-/)?.[0] ?? 'sk-ant-'
+    case 'aws_access_key': return value.slice(0, 4)
+    case 'database_url': return value.match(/^[a-z+]+:\/\//i)?.[0] ?? ''
+    case 'github_token': {
+      return value.match(/^(?:github_pat_|gh[pousr]_|glpat-)/)?.[0] ?? value.slice(0, 4)
+    }
+    case 'high_entropy_token': return value.slice(0, 4)
+    case 'jwt': return 'eyJ'
+    case 'openai_api_key': return value.match(/^sk-(?:proj-)?/)?.[0] ?? 'sk-'
+    case 'pem_private_key': {
+      return value.match(/^-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----/)?.[0] ?? ''
+    }
+    case 'stripe_api_key': {
+      return value.match(/^(?:sk|rk)_(?:live|test)_/)?.[0] ?? value.slice(0, 3)
+    }
+    case 'token_assignment': {
+      return value.match(
+        /^(?:api[_-]?key|token|password|secret|authorization)\s*(?:=|:|\s+bearer\s+)/i,
+      )?.[0] ?? providerPrefixForValue(value)
+    }
+  }
+}
+
+/** A display-safe value: structural provider prefix plus a fixed bullet mask. */
+export const maskSecretValue = (
+  value: string,
+  type: DetectedSecret['type'],
+): string => `${prefixFor(value, type)}${SECRET_MASK}`
+
+/** Return only the credential bytes represented by a structural match. */
+export const extractDetectedSecretValue = (
+  content: string,
+  detected: DetectedSecret,
+): string => {
+  const matched = content.slice(detected.start, detected.end)
+  if (detected.type !== 'token_assignment') return matched
+  return matched.match(
+    /^(?:api[_-]?key|token|password|secret|authorization)\s*(?:=|:|\s+bearer\s+)\s*(.+)$/i,
+  )?.[1] ?? matched
+}
 
 const entropy = (value: string): number => {
   const frequencies = new Map<string, number>()
@@ -60,7 +115,7 @@ const highEntropyTokens = (content: string): DetectedSecret[] => {
     if (classes >= 3 && entropy(value) >= 4) {
       candidates.push({
         type: 'high_entropy_token',
-        prefix: prefixFor(value),
+        prefix: prefixFor(value, 'high_entropy_token'),
         start: match.index,
         end: match.index + value.length,
       })
@@ -77,7 +132,7 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
     for (let match = pattern.expression.exec(content); match; match = pattern.expression.exec(content)) {
       candidates.push({
         type: pattern.type,
-        prefix: prefixFor(match[0]),
+        prefix: prefixFor(match[0], pattern.type),
         start: match.index,
         end: match.index + match[0].length,
       })
@@ -100,7 +155,7 @@ export const redactDetectedSecrets = (content: string): string => {
   let result = ''
   for (const match of matches) {
     result += content.slice(cursor, match.start)
-    result += '••••••••••••'
+    result += maskSecretValue(content.slice(match.start, match.end), match.type)
     cursor = match.end
   }
   return result + content.slice(cursor)

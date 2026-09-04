@@ -3,8 +3,10 @@ import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
 import { prewarmRowHandlers, usePrewarm } from '../../../navigation/prewarm'
 import { Skeleton } from '../../primitives/Skeleton'
+import { PaginationFooter } from '../../shared/PaginationFooter'
 
 type KnowledgeSpaceListProps = {
+  compactPagination?: boolean
   emptyLabel: string
   /**
    * The spaces query has not settled yet. Without it an empty array read as
@@ -18,6 +20,16 @@ type KnowledgeSpaceListProps = {
   // org-wide the names alone are ambiguous; in project scope they never are,
   // and the label would be the same word on every row.
   projectLabels?: Record<string, string>
+  pagination?: {
+    canNext: boolean
+    canPrevious: boolean
+    label: string
+    onPageChange: (page: number) => void
+    onPageSizeChange: (pageSize: number) => void
+    page: number
+    pageCount: number
+    pageSize: number
+  }
   renderAfter?: (space: KnowledgeSpaceRecord) => ReactNode
   selectedPageId?: string
   selectedSpaceId?: string
@@ -29,9 +41,11 @@ type KnowledgeSpaceListProps = {
 // selection callback; only the surrounding chrome (personal space, product
 // views, headers) differs, so that stays with each caller.
 export const KnowledgeSpaceList = ({
+  compactPagination = false,
   emptyLabel,
   isPending,
   onSelect,
+  pagination,
   projectLabels,
   renderAfter,
   selectedPageId,
@@ -44,13 +58,11 @@ export const KnowledgeSpaceList = ({
     return <Skeleton className="px-4 py-3" variant="list" />
   }
 
-  if (spaces.length === 0) {
-    return <div className="px-4 py-3 text-sm text-[color:var(--tx3)]">{emptyLabel}</div>
-  }
-
   return (
     <>
-      {spaces.map((space) => {
+      {spaces.length === 0 ? (
+        <div className="px-4 py-3 text-sm text-[color:var(--tx3)]">{emptyLabel}</div>
+      ) : spaces.map((space) => {
         const selected = space.id === selectedSpaceId
         return (
           <div key={space.id}>
@@ -102,6 +114,21 @@ export const KnowledgeSpaceList = ({
           </div>
         )
       })}
+      {pagination ? (
+        <PaginationFooter
+          canNext={pagination.canNext}
+          canPrevious={pagination.canPrevious}
+          className="mx-3"
+          compact={compactPagination}
+          hideWhenSinglePage
+          label={pagination.label}
+          onPageChange={pagination.onPageChange}
+          onPageSizeChange={pagination.onPageSizeChange}
+          page={pagination.page}
+          pageCount={pagination.pageCount}
+          pageSize={pagination.pageSize}
+        />
+      ) : null}
     </>
   )
 }

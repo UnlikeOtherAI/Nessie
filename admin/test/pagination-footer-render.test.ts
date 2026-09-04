@@ -90,7 +90,14 @@ test('every pager has the one accessible Items per page picker', () => {
   assert.match(markup, /<option value="25" selected="">25<\/option>/)
 })
 
-test('hiding on a single page is opt-in and uses the page count', () => {
-  assert.equal(render({ hideWhenSinglePage: true, pageCount: 1 }), '')
+test('hiding on a single page is opt-in but preserves a stale page\'s return path', () => {
+  assert.equal(render({
+    canNext: false,
+    canPrevious: false,
+    hideWhenSinglePage: true,
+    page: 0,
+    pageCount: 1,
+  }), '')
+  assert.match(render({ hideWhenSinglePage: true, page: 1, pageCount: 1 }), /Previous/)
   assert.match(render({ pageCount: 1 }), /Items per page/)
 })

@@ -6,6 +6,17 @@
 // dependency). Keep this in sync with the desktop tauri.conf.json dev/prod URLs.
 const adminUrlOverride = process.env.EXPO_PUBLIC_ADMIN_URL
 const jitsiDomainOverride = process.env.EXPO_PUBLIC_JITSI_DOMAIN
+const releaseChannelOverride = process.env.EXPO_PUBLIC_RELEASE_CHANNEL
+
+export type ReleaseChannel = 'direct' | 'store'
+
+// Store packages must never ask a person to side-load an APK. Treat an absent
+// or malformed build-time value as `store`, so a newly added EAS profile fails
+// closed until it explicitly opts in to direct distribution.
+export const RELEASE_CHANNEL: ReleaseChannel = releaseChannelOverride === 'direct' ? 'direct' : 'store'
+
+export const DIRECT_ANDROID_UPDATE_MANIFEST_URL =
+  'https://github.com/UnlikeOtherAI/Nessie/releases/latest/download/latest.json'
 
 export const ADMIN_URL =
   adminUrlOverride && adminUrlOverride.length > 0

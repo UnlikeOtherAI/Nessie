@@ -75,16 +75,17 @@ export const registerKnowledgeBaseRoutes = (
       organizationId: actorContext.tenant.organizationId,
       projectId: query.projectId,
       cursor: query.cursor,
+      direction: query.direction,
+      includePersonal: query.includePersonal === 'true',
       limit: query.limit,
       viewer,
     })
-    // `total` is intentionally omitted: the cursor response deliberately does
-    // not add a second count query to a list view that only needs the next
-    // entitled page. The provider applies the same visibility predicate before
-    // pagination, so every returned row is already readable by this viewer.
+    // The provider counts against the same readable-space predicate it applies
+    // before pagination, so the shared admin pager can name an honest page
+    // count without leaking unreadable spaces.
     return createApiResponse(
       result.data.map((space) => attachSpaceEnvelope(space, decision, viewer, actorContext)),
-      toKnowledgePaginationMeta(result.meta, Boolean(query.cursor), result.data.at(0)),
+      toKnowledgePaginationMeta(result.meta),
     )
   })
 
@@ -349,7 +350,7 @@ export const registerKnowledgeBaseRoutes = (
           passages: hit.passages,
           score: hit.score,
         })),
-        toKnowledgePaginationMeta(result.meta, false, undefined),
+        toKnowledgePaginationMeta(result.meta),
       )
     }
 
@@ -368,7 +369,7 @@ export const registerKnowledgeBaseRoutes = (
         page: attachPageEnvelope(hit.page, decision),
         snippet: hit.snippet,
       })),
-      toKnowledgePaginationMeta(result.meta, Boolean(body.cursor), result.data.at(0)?.page),
+      toKnowledgePaginationMeta(result.meta),
     )
   })
 

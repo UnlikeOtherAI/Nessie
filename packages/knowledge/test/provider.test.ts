@@ -135,6 +135,7 @@ test('native source refs are stable and version-addressable', () => {
 
 test('native provider rejects publishing archived pages', async () => {
   const tx = {
+    $executeRaw: async () => 0,
     knowledgePage: {
       findFirst: async () => ({ id: pageId, spaceId, status: 'archived' }),
     },
@@ -188,6 +189,7 @@ test('native search re-fetch remains scoped to active pages in the caller organi
 test('native move cycle walk is scoped to the caller organization', async () => {
   const findFirstCalls: QueryArgs[] = []
   const tx = {
+    $executeRaw: async () => 0,
     knowledgePage: {
       findFirst: async (args: QueryArgs) => {
         findFirstCalls.push(args)
@@ -238,7 +240,7 @@ test('native update retries append-only version creation after a version-number 
             args.include
               ? pageRow({ latestVersionNumber: createAttempts.at(-1) ?? latestVersionNumber })
               : { id: pageId, spaceId, status: 'draft' },
-          update: async () => pageRow(),
+          updateMany: async () => ({ count: 1 }),
         },
         knowledgePageVersion: {
           findFirst: async () => ({ versionNumber: latestVersionNumber }),
@@ -336,6 +338,7 @@ test('native createPage persists the taskId envelope column and returns it on th
         createdAt: now,
       }),
     },
+    task: { findFirst: async () => ({ id: taskId }) },
     $executeRaw: async () => 0,
     $queryRaw: async () => [],
   }
@@ -421,6 +424,55 @@ test('native createPage defaults taskId to null when not supplied', async () => 
   assert.equal(created.taskId, null)
 })
 
+test('native createPage refuses a ticket outside the destination space project', async () => {
+  const createCalls: Array<Record<string, unknown>> = []
+  const tx = {
+    knowledgeSpace: {
+      findFirst: async () => ({
+        id: spaceId,
+        organizationId,
+        projectId,
+        teamId: null,
+        channelId: null,
+        threadId: null,
+        userId: null,
+        visibility: 'project',
+        sensitivityTier: 'normal',
+        privateToAgentId: null,
+        deletedAt: null,
+      }),
+    },
+    task: { findFirst: async () => null },
+    knowledgePage: {
+      count: async () => 0,
+      create: async (args: QueryArgs) => {
+        createCalls.push(args.data ?? {})
+        return { id: pageId }
+      },
+      findFirst: async (args: QueryArgs) => (args.include ? pageRow() : null),
+    },
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.createPage({
+      organizationId,
+      projectId,
+      spaceId,
+      title: 'Runbook',
+      authorId: 'user-1',
+      authorType: 'user',
+      createdBy: 'user-1',
+      taskId: 'foreign-task',
+    }),
+    (error: unknown) => error instanceof KnowledgeConflictError,
+  )
+  assert.equal(createCalls.length, 0)
+})
+
 const agentA = '00000000-0000-4000-8000-000000000101'
 const agentB = '00000000-0000-4000-8000-000000000102'
 const foreignAgent = '00000000-0000-4000-8000-000000000103'
@@ -446,6 +498,118 @@ const spaceRow = (members: Array<{ userId: string | null; agentId: string | null
   deletedAt: null,
   createdAt: now,
   updatedAt: now,
+})
+
+test('native listSpaces paginates backwards with the readable count and an executable boundary', async () => {
+  const listCalls: QueryArgs[] = []
+  const countCalls: QueryArgs[] = []
+  const prisma = {
+    knowledgeSpace: {
+      count: async (args: QueryArgs) => {
+        countCalls.push(args)
+        return 3
+      },
+      findMany: async (args: QueryArgs) => {
+        listCalls.push(args)
+        return [spaceRow()]
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  const viewer = {
+    bypass: true,
+    projectIds: new Set<string>(),
+    userId: 'user-1',
+    visibleAgentIds: new Set<string>(),
+  }
+  const result = await provider.listSpaces({
+    cursor: '2026-06-01T00:00:00.000Z|space-boundary',
+    direction: 'backward',
+    limit: 10,
+    organizationId,
+    viewer,
+  })
+
+  assert.equal(result.meta.total, 3)
+  assert.equal(result.meta.cursor, `${now.toISOString()}|${spaceId}`)
+  assert.equal(result.meta.hasMore, true)
+  assert.equal(result.meta.previousCursor, null)
+  assert.deepEqual(listCalls[0]?.orderBy, [{ updatedAt: 'asc' }, { id: 'asc' }])
+  const cursorWhere = (listCalls[0]?.where?.['AND'] as Array<Record<string, unknown>>).at(-1)
+  assert.deepEqual(cursorWhere, {
+    OR: [
+      { updatedAt: { gt: new Date('2026-06-01T00:00:00.000Z') } },
+      { updatedAt: new Date('2026-06-01T00:00:00.000Z'), id: { gt: 'space-boundary' } },
+    ],
+  })
+  const countFilters = countCalls[0]?.where?.['AND'] as Array<Record<string, unknown>>
+  assert.deepEqual(countFilters, [
+    { organizationId, deletedAt: null },
+    {
+      OR: [
+        { userId: null },
+        { userId: { not: 'user-1' } },
+      ],
+    },
+  ])
+})
+
+test('native listSpaces includes a caller\'s own personal space only when explicitly asked', async () => {
+  const listCalls: QueryArgs[] = []
+  const prisma = {
+    knowledgeSpace: {
+      count: async () => 1,
+      findMany: async (args: QueryArgs) => {
+        listCalls.push(args)
+        return [spaceRow()]
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await provider.listSpaces({
+    includePersonal: true,
+    organizationId,
+    viewer: {
+      bypass: true,
+      projectIds: new Set<string>(),
+      userId: 'user-1',
+      visibleAgentIds: new Set<string>(),
+    },
+  })
+
+  assert.deepEqual(listCalls[0]?.where?.['AND'], [
+    { organizationId, deletedAt: null },
+  ])
+})
+
+test('native listSpaces keeps personal spaces discoverable to an agent viewer', async () => {
+  const listCalls: QueryArgs[] = []
+  const prisma = {
+    knowledgeSpace: {
+      count: async () => 1,
+      findMany: async (args: QueryArgs) => {
+        listCalls.push(args)
+        return [spaceRow()]
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await provider.listSpaces({
+    organizationId,
+    viewer: {
+      bypass: true,
+      projectIds: new Set<string>(),
+      userId: null,
+      visibleAgentIds: new Set<string>(),
+    },
+  })
+
+  assert.deepEqual(listCalls[0]?.where?.['AND'], [
+    { organizationId, deletedAt: null },
+  ])
 })
 
 test('native createSpace rejects unknown/foreign agent ids in memberAgentIds', async () => {

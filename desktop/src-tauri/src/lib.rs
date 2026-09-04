@@ -5,6 +5,8 @@ use tauri::WebviewWindowBuilder;
 
 mod executor_companion;
 mod shell;
+#[cfg(feature = "direct-updater")]
+mod direct_updater;
 
 use shell::{desktop_init_script, desktop_platform, should_register_deep_link_schemes};
 
@@ -12,6 +14,10 @@ use shell::{desktop_init_script, desktop_platform, should_register_deep_link_sch
 const DEFAULT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/default.json");
 #[cfg(test)]
 const DEVELOPMENT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/development.json");
+#[cfg(test)]
+const DIRECT_UPDATER_CONFIG: &str = include_str!("../tauri.direct-updater.conf.json");
+#[cfg(test)]
+const APP_STORE_CONFIG: &str = include_str!("../tauri.appstore.conf.json");
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
@@ -38,6 +44,13 @@ pub fn run() {
     // frame the admin knows how to draw, so it must not reach a window at all.
     let platform = desktop_platform();
     let mut builder = tauri::Builder::default();
+
+    // Direct installers carry the signed updater. App Store and development
+    // builds deliberately leave it out, rather than merely hiding its UI.
+    #[cfg(feature = "direct-updater")]
+    {
+        builder = direct_updater::configure(builder);
+    }
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
@@ -68,6 +81,14 @@ pub fn run() {
             executor_companion::executor_companion_status,
             executor_companion::executor_companion_stop,
             shell::desktop_set_badge,
+            #[cfg(feature = "direct-updater")]
+            direct_updater::desktop_direct_update_check,
+            #[cfg(feature = "direct-updater")]
+            direct_updater::desktop_direct_update_install,
+            #[cfg(feature = "direct-updater")]
+            direct_updater::desktop_direct_update_skip,
+            #[cfg(feature = "direct-updater")]
+            direct_updater::desktop_direct_update_remind,
         ])
         .setup(move |app| {
             if should_register_deep_link_schemes(
@@ -113,8 +134,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_webview_url, DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES,
-        PRODUCTION_ADMIN_URL,
+        desktop_webview_url, APP_STORE_CONFIG, DEFAULT_DESKTOP_CAPABILITIES,
+        DEVELOPMENT_DESKTOP_CAPABILITIES, DIRECT_UPDATER_CONFIG, PRODUCTION_ADMIN_URL,
     };
     use tauri::utils::config::WebviewUrl;
 
@@ -156,6 +177,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn only_the_direct_configuration_enables_the_signed_updater() {
+        let direct: serde_json::Value = serde_json::from_str(DIRECT_UPDATER_CONFIG).unwrap();
+        assert_eq!(direct["bundle"]["createUpdaterArtifacts"], true);
+        assert_eq!(
+            direct["plugins"]["updater"]["endpoints"][0],
+            "https://github.com/UnlikeOtherAI/Nessie/releases/latest/download/latest.json"
+        );
+        assert!(direct["plugins"]["updater"]["pubkey"]
+            .as_str()
+            .is_some_and(|key| !key.is_empty()));
+
+        let store: serde_json::Value = serde_json::from_str(APP_STORE_CONFIG).unwrap();
+        assert!(store.get("plugins").is_none());
     }
 
     #[test]
