@@ -23,13 +23,19 @@ export {
 export {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
-  markExecutorCommandUnknownOutcome,
   pollExecutorCommand,
+  type ExecutorCommandCreateInput,
+} from './executor-commands.js'
+export {
+  markExecutorCommandUnknownOutcome,
   readExecutorCommandResult,
   recordExecutorCommandReceipt,
   waitForExecutorCommandResult,
-  type ExecutorCommandCreateInput,
-} from './executor-commands.js'
+} from './executor-command-results.js'
+export {
+  pollAuthorizedExecutorCommand,
+  recordAuthorizedExecutorCommandReceipt,
+} from './executor-daemon-control.js'
 export {
   ensureExecutorLogicalTools,
   executorLogicalToolDefinitions,
@@ -44,6 +50,11 @@ export {
   verifyExecutorDescriptorSignature,
   verifyExecutorDaemonSignature,
 } from './executor-daemon.js'
+export {
+  EXECUTOR_HEARTBEAT_FRESHNESS_MS,
+  executorHeartbeatCutoff,
+  expireStaleExecutorHeartbeats,
+} from './executor-liveness.js'
 export { canonicalExecutorPayload } from './executor-canonical-json.js'
 export {
   EXECUTOR_ERROR_CODES,

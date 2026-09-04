@@ -4,7 +4,7 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 
-import { readExecutorCommandResult } from './executor-commands.js'
+import { readExecutorCommandResult } from './executor-command-results.js'
 import { ExecutorError, EXECUTOR_ERROR_CODES } from './executor-errors.js'
 import { getExecutorForManagement } from './executor-records.js'
 

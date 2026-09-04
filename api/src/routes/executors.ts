@@ -2,7 +2,6 @@ import {
   confirmExecutorAccessChange,
   confirmExecutorEnrollment,
   claimExecutorConnection,
-  authorizeExecutorDaemonControlCall,
   bindExecutorCandidate,
   createExecutor,
   ensureExecutorLogicalTools,
@@ -16,8 +15,8 @@ import {
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   recordExecutorDaemonChallenge,
-  pollExecutorCommand,
-  recordExecutorCommandReceipt,
+  pollAuthorizedExecutorCommand,
+  recordAuthorizedExecutorCommandReceipt,
   resolveExecutorAvailabilityCandidates,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
@@ -529,23 +528,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       const body = parseInput(ExecutorDaemonCommandPollBodySchema, request.body, reply)
       if (!body) return reply
       try {
-        await authorizeExecutorDaemonControlCall(prisma, {
-          connectionEpoch: body.connectionEpoch,
-          executorId: body.executorId,
-          observedAt: body.observedAt,
-          payload: {
-            connectionEpoch: body.connectionEpoch,
-            executorId: body.executorId,
-            observedAt: body.observedAt,
-          },
-          signature: body.signature,
-          type: 'poll',
-        })
-        const command = await pollExecutorCommand(
-          prisma,
-          deps.authSecret,
-          body.executorId,
-        )
+        const command = await pollAuthorizedExecutorCommand(prisma, deps.authSecret, body)
         return createApiResponse(ExecutorDaemonCommandPollSchema.parse({ command }))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
@@ -561,25 +544,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       const body = parseInput(ExecutorDaemonCommandReceiptBodySchema, request.body, reply)
       if (!body) return reply
       try {
-        await authorizeExecutorDaemonControlCall(prisma, {
-          connectionEpoch: body.connectionEpoch,
-          executorId: body.executorId,
-          observedAt: body.receipt.occurredAt,
-          payload: {
-            connectionEpoch: body.connectionEpoch,
-            executorId: body.executorId,
-            receipt: body.receipt,
-          },
-          signature: body.signature,
-          type: 'receipt',
-        })
-        await recordExecutorCommandReceipt(
-          prisma,
-          deps.authSecret,
-          body.executorId,
-          body.receipt,
-          body.result,
-        )
+        await recordAuthorizedExecutorCommandReceipt(prisma, deps.authSecret, body)
         return createApiResponse({ recorded: true })
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
