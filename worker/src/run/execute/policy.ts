@@ -15,7 +15,7 @@ import {
   type PolicyRuleRow,
   verifyToolApprovalProof,
 } from '@nessie/team-admin'
-import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
+import { hashJsonValue, summarizeToolInputForTool } from '../tool-util.js'
 import type { ToolDenialReason } from '../tool-policy.js'
 import type { RunContext } from './types.js'
 
@@ -321,7 +321,7 @@ export const toolDeniedResult = (
     reason: ToolDeniedOutputReason
   },
 ): { inputSummary: string; output: string; success: false } => ({
-  inputSummary: summarizeToolInput(args),
+  inputSummary: summarizeToolInputForTool(toolName, args),
   output: JSON.stringify({
     approvalActionType: input.approvalActionType,
     message: input.message,

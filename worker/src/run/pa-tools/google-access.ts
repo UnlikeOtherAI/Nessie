@@ -171,5 +171,12 @@ export const explainGoogleFailure = async (
   if (code === 'DRAFT_NOT_FOUND') {
     throw new Error('I cannot find that draft.')
   }
-  throw error instanceof Error ? error : new Error('Google request failed.')
+  // Provider errors routinely contain a mailbox address, OAuth response, or
+  // remote protocol detail. Tool failures enter model context and ToolCall
+  // history, so an unknown provider response is not safe to repeat verbatim.
+  throw new Error(
+    'Google could not complete that request. Try again later; if it keeps '
+    + 'happening, reconnect your Google account from /settings/connections '
+    + '(support code: GOOGLE_REQUEST_FAILED).',
+  )
 }

@@ -45,4 +45,9 @@ file is the rule**.
   reaches every member who can read a public channel. One shared
   `sendDraftForUser` serves the human button and the agent tool; api services
   are unreachable from the worker, so a second copy forks the state claim and
-  the audit trail on day one. Details: `CLAUDE.md` → the Google bullets.
+  the audit trail on day one. The draft's exact content may enter the authorized
+  run and the server-owned frozen proof arguments, but never approval context,
+  ToolCall history, thinking/realtime status, demonstrations, connector
+  telemetry, or audit metadata; those operational records name only the action
+  and outcome. Unknown provider failures are mapped to a stable support code,
+  never rethrown into those sinks. Details: `CLAUDE.md` → the Google bullets.

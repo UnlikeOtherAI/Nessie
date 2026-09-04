@@ -94,6 +94,15 @@ Plan and as-built deltas:
   agent in that organization are required at the final write. The shortcut only
   accepts a live pinned `tool.invoke` approval that froze the exact connection;
   connected-mailbox and lifecycle approvals remain one-time decisions.
+- **Correspondence never becomes operational telemetry.** Exact recipients,
+  addresses, subjects, bodies, attachment/provider responses, credentials and
+  server details remain only in the authorized run context and, for an approved
+  send, the server-owned frozen resume arguments and action hash. Approval
+  context, ToolCall rows, thinking and realtime status, demonstrations,
+  connector telemetry, and audit metadata carry only a fixed action/outcome
+  summary. The same boundary covers connected-mail, Gmail, contact, and
+  connected-account lifecycle tools; a provider failure becomes a stable remedy
+  rather than raw remote text.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,

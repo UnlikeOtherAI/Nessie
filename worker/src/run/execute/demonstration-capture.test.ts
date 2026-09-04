@@ -59,6 +59,39 @@ test('demonstration control calls do not record themselves', async () => {
   assert.equal(writes, 0)
 })
 
+test('demonstrations retain no mail or account arguments', async () => {
+  const statements: Array<{ values?: unknown[] }> = []
+  const prisma = {
+    $executeRaw: async (statement: { values?: unknown[] }) => {
+      statements.push(statement)
+      return 1
+    },
+  } as unknown as PrismaClient
+
+  await captureDemonstrationToolEnd(prisma, {
+    ...captureInput,
+    argumentsValue: {
+      oauthCode: 'code-for-owner@example.test',
+      subject: 'Private subject',
+      to: ['recipient@example.test'],
+    },
+    toolName: 'email_account_connect',
+  })
+  await captureDemonstrationToolEnd(prisma, {
+    ...captureInput,
+    argumentsValue: {
+      subject: 'Private subject',
+      text: 'Private body',
+      to: ['recipient@example.test'],
+    },
+    toolName: 'mailbox_send',
+  })
+
+  const persisted = JSON.stringify(statements)
+  assert.doesNotMatch(persisted, /owner@example\.test|recipient@example\.test|Private subject|Private body|oauthCode/)
+  assert.equal(statements.filter((statement) => statement.values?.includes('{}')).length, 2)
+})
+
 test('unarmed runs do not query demonstration storage', async () => {
   let writes = 0
   const prisma = {

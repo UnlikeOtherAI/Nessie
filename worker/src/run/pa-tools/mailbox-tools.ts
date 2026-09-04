@@ -140,7 +140,7 @@ export const runMailboxSearchTool = async (
     + `${message.subject}`)
 
   return {
-    connectorUsage: mailboxUsage(mailbox, 'search', results.length),
+    connectorUsage: mailboxUsage('search', results.length),
     inputSummary: summarizeSearch(args),
     outputPreview:
       results.length === 0
@@ -177,7 +177,7 @@ export const runMailboxReadTool = async (
     : ''
 
   return {
-    connectorUsage: mailboxUsage(mailbox, 'read', 1),
+    connectorUsage: mailboxUsage('read', 1),
     inputSummary: `uid=${args.uid}`,
     outputPreview: [
       `From ${message.fromName ? `${message.fromName} ` : ''}<${message.from ?? 'unknown'}>`
@@ -232,24 +232,25 @@ export const runMailboxSendTool = async (
 
   const recipients = [...args.to, ...(args.cc ?? []), ...(args.bcc ?? [])]
   return {
-    connectorUsage: mailboxUsage(mailbox, 'send', recipients.length),
-    inputSummary: `to=${args.to.join(',')} subject=${args.subject}`,
+    connectorUsage: mailboxUsage('send', recipients.length),
+    inputSummary: 'Send from a connected mailbox.',
     outputPreview:
-      `Sent from ${endpoints.address} to ${recipients.join(', ')} — `
-      + `subject "${args.subject}".`,
+      `Sent from the connected mailbox to ${recipients.length} `
+      + `${recipients.length === 1 ? 'recipient' : 'recipients'}.`,
     toolName: 'mailbox_send',
   }
 }
 
 const mailboxUsage = (
-  mailbox: ReachableMailbox,
   operation: string,
   units: number,
 ): ToolExecutionResult['connectorUsage'] => ({
   calls: 1,
   connectorType: 'email',
   operation,
-  target: mailbox.connection.address,
+  // A mailbox address is personal correspondence, not operational telemetry.
+  // The connection id is already held at the authorization boundary when it
+  // is needed; no connector event needs the address or server identity.
   unitType: 'messages',
   units,
 })

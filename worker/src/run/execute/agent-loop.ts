@@ -19,7 +19,7 @@ import type { ExecutorToolset } from '../executor-toolset.js'
 import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
-import { summarizeToolInput } from '../tool-util.js'
+import { summarizeToolInputForTool } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
 import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
 import { composeStructuralGates } from './structural-gates.js'
@@ -276,7 +276,7 @@ export const runExecutionAgentLoop = async (
     if (toolName === 'delegate') {
       if (!delegateGate.tryAcquire()) {
         return {
-          inputSummary: summarizeToolInput(canonicalArgs),
+          inputSummary: summarizeToolInputForTool(toolName, canonicalArgs),
           output: delegateGate.overLimitMessage(),
           success: false,
         }
@@ -375,7 +375,7 @@ export const runExecutionAgentLoop = async (
   const suspensionResult = (
     authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
   ) => ({
-    inputSummary: summarizeToolInput(authorization.args),
+    inputSummary: summarizeToolInputForTool(authorization.approval.toolName, authorization.args),
     output: 'Tool execution is waiting for human approval.',
     pendingApproval: {
       approvalId: authorization.approval.id,
@@ -426,6 +426,10 @@ export const runExecutionAgentLoop = async (
           toolName: authorization.approval.toolName,
         },
         kind: 'suspend' as const,
+        inputSummary: summarizeToolInputForTool(
+          authorization.approval.toolName,
+          authorization.args,
+        ),
       }
     }
     return {
@@ -434,6 +438,9 @@ export const runExecutionAgentLoop = async (
           ? authorization.result
           : executePreparedTool(toolName, args, toolCallId),
       kind: 'execute' as const,
+      inputSummary: authorization.decision === 'deny'
+        ? authorization.result.inputSummary
+        : summarizeToolInputForTool(toolName, authorization.args),
     }
   }
 
@@ -487,10 +494,10 @@ export const runExecutionAgentLoop = async (
           event: 'agent.iteration',
         })
       },
-      onToolCallStart: async (toolName, _args) => {
+      onToolCallStart: async (toolName, inputSummary) => {
         const startedAt = new Date()
         // Tool activity is part of the thought process, not a separate feed.
-        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
+        await input.thinkingRecorder.appendToolLine(toolName, inputSummary)
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
@@ -501,7 +508,7 @@ export const runExecutionAgentLoop = async (
         await deps.realtimeTransport.publishWs(buildScopes(context), {
           data: {
             agentId: parseAgentId(context.agent.id),
-            inputSummary: summarizeToolInput(_args),
+            inputSummary,
             runId: parseRunId(context.run.id),
             toolName,
           },
