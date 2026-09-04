@@ -44,7 +44,12 @@ else is refused exactly like an unsigned one. Sign the bundle with that same
 certificate after building it, and do not replace a pinned build with a
 differently signed copy: its executor controls will intentionally stay
 unavailable. The packaged executor runtime's hash manifest is checked as a
-second gate, as on every platform.
+second gate, as on every platform. The trusted workflow also compiles the
+manifest's exact Node, executor-bundle, and native-helper hashes into the
+desktop executable before signing it. A per-user install is writable by that
+user, so the adjacent manifest is never its own authority: replacing JavaScript
+and rewriting the manifest still fails against the copy held by the signed
+application.
 
 The build above is otherwise an unsigned development build, and without the
 pinned thumbprint the Executors panel reports `unsigned_release` and names the

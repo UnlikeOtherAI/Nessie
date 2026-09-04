@@ -1,9 +1,11 @@
 //! Release provenance: is this build a release from the publisher we pinned?
 //!
 //! Separate from the packaged-runtime hash manifest beside it, and deliberately
-//! so: a manifest is a self-attestation — whoever can rewrite the binary can
+//! so: a manifest is a self-attestation — whoever can rewrite a runtime file can
 //! rewrite the manifest — so the trust root has to be something the operating
-//! system holds and a user cannot forge. macOS reads `codesign` and a pinned
+//! system holds and a user cannot forge. On Windows, `integrity.rs` also pins
+//! the manifest's exact runtime hashes inside this signed application. macOS
+//! reads `codesign` and a pinned
 //! Developer ID team, Windows reads Authenticode and a pinned publisher
 //! thumbprint — the same decision the executor service and tray make, so it is
 //! taken from `nessie-windows-provenance` rather than restated here — and
