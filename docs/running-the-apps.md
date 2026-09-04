@@ -2,6 +2,8 @@
 
 This guide gives copy-paste paths for running Nessie's desktop and mobile apps. The desktop shell works without an Apple Developer account; production executor controls require a signed macOS desktop release. The mobile WebView shell needs Apple Developer signing to run on a physical device.
 
+For public desktop and Android downloads, see [Publishing direct downloads](releasing.md). The release workflow owns signed macOS and Windows installers, Linux packages, the Android APK, and their checksums; iOS remains an App Store delivery.
+
 ## Default physical-device delivery
 
 **“Put the latest build on my phone/tablet” means a self-contained, direct
