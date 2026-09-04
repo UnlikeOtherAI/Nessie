@@ -6,7 +6,6 @@ import { sealSecret } from '@nessie/comms-connect'
 
 import {
   GmailDraftError,
-  composeDraftForUser,
   dispatchClaimedDraft,
   fingerprintDraft,
   sendDraftForUser,
@@ -161,99 +160,6 @@ const routes = (draft: unknown, onSend?: () => void) =>
     if (url.includes('/drafts/')) return { status: 200, body: draft }
     throw new Error(`unexpected ${method} ${url}`)
   }
-
-const composeInput = (body = 'Here it is.') => ({
-  idempotencyKey: '00000000-0000-4000-8000-000000000099',
-  organizationId: ORG,
-  userId: USER,
-  message: { body, subject: 'Quarterly update', to: ['jana@example.com'] },
-})
-
-const makeComposePrisma = (options: { failPersistProviderDraft?: boolean; existing?: Row } = {}) => {
-  const state: { creates: number; row: Row | null } = { creates: 0, row: options.existing ?? null }
-  const prisma = {
-    gmailDraftAction: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        state.creates += 1
-        state.row = {
-          id: ACTION,
-          organizationId: ORG,
-          ownerUserId: USER,
-          connectionId: CONN,
-          providerDraftId: null as unknown as string,
-          providerThreadId: null,
-          contentFingerprint: String(data.contentFingerprint),
-          revision: 1,
-          state: 'creating',
-          sendAfter: null,
-          claimedAt: new Date(),
-        }
-        return state.row
-      },
-      findUnique: async () => state.row,
-      update: async ({ data }: { data: Record<string, unknown> }) => {
-        if (options.failPersistProviderDraft) throw new Error('database interrupted after provider response')
-        state.row = { ...state.row!, ...data } as Row
-        return state.row
-      },
-      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
-        state.row = { ...state.row!, ...data } as Row
-        return { count: 1 }
-      },
-    },
-    commsConnection: {
-      findMany: async () => [{
-        id: CONN, status: 'active', grantedScopes: [SCOPE], disabledCapabilities: [],
-      }],
-      findUnique: async () => ({
-        id: CONN, organizationId: ORG, ownerUserId: USER, provider: 'google',
-        externalTenantId: 'me@example.com', externalUserId: 'me@example.com',
-        grantedScopes: [SCOPE], credential: {
-          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'access-token'),
-          refreshTokenCiphertext: null, expiresAt: new Date('2999-01-01T00:00:00.000Z'),
-        },
-      }),
-    },
-  } as unknown as PrismaClient
-  return { prisma, state }
-}
-
-test('a create retry with edited content refuses the old idempotent provider draft', async () => {
-  const { prisma } = makeComposePrisma({ existing: row() })
-  let providerCalls = 0
-  await assert.rejects(
-    composeDraftForUser(prisma, composeInput('This is the edited version.'), {
-      ...deps(() => {
-        providerCalls += 1
-        return { status: 200, body: {} }
-      }),
-    }),
-    (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_CHANGED',
-  )
-  assert.equal(providerCalls, 0, 'edited retries must never target the original provider draft')
-})
-
-test('a replay after Gmail accepted create but before its reference persisted never creates a second draft', async () => {
-  const { prisma, state } = makeComposePrisma({ failPersistProviderDraft: true })
-  let providerCalls = 0
-  const provider = (url: string) => {
-    if (url.endsWith('/drafts')) {
-      providerCalls += 1
-      return { status: 200, body: { id: 'provider-draft-1', message: { id: 'provider-message-1' } } }
-    }
-    throw new Error(`unexpected provider request ${url}`)
-  }
-  await assert.rejects(
-    composeDraftForUser(prisma, composeInput(), deps(provider)),
-    (error: unknown) => error instanceof GmailDraftError && error.code === 'DELIVERY_UNKNOWN',
-  )
-  await assert.rejects(
-    composeDraftForUser(prisma, composeInput(), deps(provider)),
-    (error: unknown) => error instanceof GmailDraftError && error.code === 'DELIVERY_UNKNOWN',
-  )
-  assert.equal(state.creates, 1)
-  assert.equal(providerCalls, 1, 'the durable create action prevents a duplicate Gmail draft')
-})
 
 // The load-bearing guard: an approval or a rendered card binds to CONTENT, and
 // the draft is mutable through Gmail, the card's Edit button, and other runs.

@@ -49,7 +49,12 @@ export const sweepDueGmailSends = async (
   deps: { encryptionSecret: string; now?: () => Date },
 ): Promise<{ dispatched: number; failed: number; deliveryUnknown: number }> => {
   const now = deps.now?.() ?? new Date()
-  const deliveryUnknown = await resolveStaleGmailDispatches(prisma, { now: () => now })
+  const staleDeliveryUnknown = await resolveStaleGmailDispatches(prisma, { now: () => now })
+  for (const row of staleDeliveryUnknown) {
+    await writeGmailDraftDispatchAudit(prisma, {
+      action: 'gmail.draft.delivery_unknown', id: row.id, organizationId: row.organizationId,
+    })
+  }
   const due = await prisma.gmailDraftAction.findMany({
     where: { state: 'sending', sendAfter: { lte: now } },
     select: { id: true, organizationId: true },
@@ -81,5 +86,5 @@ export const sweepDueGmailSends = async (
       failed += 1
     }
   }
-  return { dispatched, failed, deliveryUnknown }
+  return { dispatched, failed, deliveryUnknown: staleDeliveryUnknown.length }
 }

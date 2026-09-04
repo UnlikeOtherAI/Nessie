@@ -6,6 +6,13 @@ import { GmailApiError } from './errors.js'
  * the WHATWG `fetch` contract the Gmail client actually uses.
  */
 export type FetchResponse = {
+  body?: {
+    getReader: () => {
+      cancel?: () => Promise<void>
+      read: () => Promise<{ done: boolean; value?: Uint8Array }>
+    }
+  } | null
+  headers?: { get: (name: string) => string | null }
   ok: boolean
   status: number
   json: () => Promise<unknown>
@@ -122,6 +129,44 @@ const readErrorReason = (payload: unknown): string | undefined => {
   return undefined
 }
 
+const responseLimitError = (operation: string, maxBytes: number): Error =>
+  new Error(`[comms-google] ${operation} response exceeds ${maxBytes} bytes`)
+
+/** Read at most `maxBytes`; production fetch responses are stopped mid-stream. */
+const readBoundedText = async (
+  response: FetchResponse,
+  operation: string,
+  maxBytes: number,
+): Promise<{ bytes: number; text: string }> => {
+  const contentLength = Number(response.headers?.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw responseLimitError(operation, maxBytes)
+  }
+  const reader = response.body?.getReader()
+  if (!reader) {
+    // Injected test transports expose only text(); real WHATWG fetch responses
+    // always take the streaming lane above.
+    const text = await response.text()
+    const bytes = Buffer.byteLength(text)
+    if (bytes > maxBytes) throw responseLimitError(operation, maxBytes)
+    return { bytes, text }
+  }
+  const chunks: Buffer[] = []
+  let bytes = 0
+  while (true) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    if (!chunk.value) continue
+    bytes += chunk.value.byteLength
+    if (bytes > maxBytes) {
+      await reader.cancel?.()
+      throw responseLimitError(operation, maxBytes)
+    }
+    chunks.push(Buffer.from(chunk.value))
+  }
+  return { bytes, text: Buffer.concat(chunks, bytes).toString('utf8') }
+}
+
 /**
  * Issue one request and parse JSON, converting any non-2xx into a classified
  * {@link GmailApiError}. `notFoundOk` lets a caller (history.list) handle 404
@@ -150,18 +195,14 @@ export const requestJson = async (
       const body = await response.json()
       return { status: response.status, body }
     }
-    const text = await response.text()
-    const responseBytes = Buffer.byteLength(text)
-    if (responseBytes > init.maxResponseBytes) {
-      throw new Error(`[comms-google] ${operation} response exceeds ${init.maxResponseBytes} bytes`)
-    }
+    const bounded = await readBoundedText(response, operation, init.maxResponseBytes)
     let body: unknown
     try {
-      body = JSON.parse(text)
+      body = JSON.parse(bounded.text)
     } catch {
       throw new Error(`[comms-google] ${operation} returned invalid JSON`)
     }
-    return { status: response.status, body, responseBytes }
+    return { status: response.status, body, responseBytes: bounded.bytes }
   }
   if (init.notFoundOk && response.status === 404) {
     return { status: 404, body: undefined }
@@ -169,10 +210,13 @@ export const requestJson = async (
   let reason: string | undefined
   let code: string | undefined
   try {
-    const payload = await response.json()
+    const payload = init.maxResponseBytes === undefined
+      ? await response.json()
+      : JSON.parse((await readBoundedText(response, operation, init.maxResponseBytes)).text)
     reason = readErrorReason(payload)
     code = readErrorCode(payload)
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('response exceeds')) throw error
     reason = undefined
     code = undefined
   }

@@ -20,17 +20,31 @@ export const STALE_CLAIM_WINDOW_MS = 2 * 60 * 1000
 export const resolveStaleGmailDispatches = async (
   prisma: PrismaClient,
   deps: Pick<GmailDraftDeps, 'now'> = {},
-): Promise<number> => {
+): Promise<Array<{ id: string; organizationId: string }>> => {
   const now = deps.now?.() ?? new Date()
   const staleAt = new Date(now.getTime() - STALE_CLAIM_WINDOW_MS)
-  const result = await prisma.gmailDraftAction.updateMany({
+  const candidates = await prisma.gmailDraftAction.findMany({
     where: {
       state: { in: ['creating', 'dispatching'] },
       claimedAt: { lt: staleAt },
     },
-    data: { state: 'delivery_unknown', claimedAt: null, sendAfter: null },
+    orderBy: { claimedAt: 'asc' },
+    select: { id: true, organizationId: true },
+    take: 50,
   })
-  return result.count
+  const resolved: Array<{ id: string; organizationId: string }> = []
+  for (const candidate of candidates) {
+    const result = await prisma.gmailDraftAction.updateMany({
+      where: {
+        id: candidate.id,
+        state: { in: ['creating', 'dispatching'] },
+        claimedAt: { lt: staleAt },
+      },
+      data: { state: 'delivery_unknown', claimedAt: null, sendAfter: null },
+    })
+    if (result.count === 1) resolved.push(candidate)
+  }
+  return resolved
 }
 
 /**
