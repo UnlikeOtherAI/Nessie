@@ -127,6 +127,13 @@ export {
 } from './mailbox-discovery.js'
 
 export {
+  MAILBOX_ISPDB,
+  MAILBOX_ISPDB_VERSION,
+  ispdbForDomain,
+  type MailboxIspdbEntry,
+} from './mailbox-ispdb.js'
+
+export {
   MAILBOX_PROVIDER_REGISTRY,
   MAILBOX_PROVIDER_REGISTRY_VERSION,
   providerForAutodiscover,
