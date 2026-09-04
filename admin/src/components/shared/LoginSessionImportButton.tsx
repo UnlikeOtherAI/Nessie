@@ -6,10 +6,16 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SessionDebugDialog, SessionDebugIcon } from './SessionDebugDialog'
 
 type LoginSessionImportButtonProps = {
+  label?: string
   onOpenChange?: (open: boolean) => void
+  variant?: 'floating' | 'inline'
 }
 
-export const LoginSessionImportButton = ({ onOpenChange }: LoginSessionImportButtonProps) => {
+export const LoginSessionImportButton = ({
+  label = 'Use session from another device',
+  onOpenChange,
+  variant = 'floating',
+}: LoginSessionImportButtonProps) => {
   const navigate = useNavigate()
   const { importAccessToken } = useAuthSession()
   const [open, setOpen] = useState(false)
@@ -68,23 +74,32 @@ export const LoginSessionImportButton = ({ onOpenChange }: LoginSessionImportBut
       <button
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label="Import session JSON"
-        className={[
-          'fixed z-40 flex h-11 w-11 items-center justify-center rounded-xl',
-          'border border-[color:var(--line)] bg-[color:var(--panel)]',
-          'text-[color:var(--muted)] shadow-lg transition',
-          'hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
-        ].join(' ')}
+        aria-label={variant === 'floating' ? 'Import session JSON' : undefined}
+        className={variant === 'floating'
+          ? [
+              'fixed z-40 flex h-11 w-11 items-center justify-center rounded-xl',
+              'border border-[color:var(--line)] bg-[color:var(--panel)]',
+              'text-[color:var(--muted)] shadow-lg transition',
+              'hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
+            ].join(' ')
+          : [
+              'flex w-full items-center justify-center gap-2 rounded-2xl',
+              'border border-[var(--line)] bg-[color:var(--overlay)] px-5 py-3',
+              'text-sm font-medium text-[var(--muted)] transition',
+              'hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
+            ].join(' ')}
         onClick={handleOpen}
-        style={{
+        style={variant === 'floating' ? {
           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
           right: 'calc(env(safe-area-inset-right, 0px) + 1rem)',
-        }}
-        title="Import session JSON"
+        } : undefined}
+        title={variant === 'floating' ? 'Import session JSON' : undefined}
         type="button"
       >
         <SessionDebugIcon />
+        {variant === 'inline' ? <span>{label}</span> : null}
       </button>
 
       <SessionDebugDialog

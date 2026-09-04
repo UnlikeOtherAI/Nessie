@@ -127,6 +127,17 @@ The provider list also has an explicit failure state and retry action, so a
 temporary network or API failure cannot leave the sign-in page claiming it is
 still loading indefinitely.
 
+WSLg is the one development exception: its Linux window is displayed by
+Windows, so a Windows browser resolves `nessie://` through the installed Windows
+protocol handler rather than the Linux desktop registration. The Linux login
+screen therefore owns an in-context **Use Windows session** doorway. In the
+signed-in Windows app, open **Account → Debug** and copy Session debug, then
+paste it into that Linux doorway. Only the access token is imported and checked
+against the same API; cookies, identity claims, storage, and refresh credentials
+are ignored. The imported session is deliberately non-renewable and ends when
+that access token expires. A normal Linux desktop browser still returns through
+the installed `nessie://` handler and does not need this WSLg bridge.
+
 An interrupted browser hand-off is always recoverable: the login screen offers
 **Cancel sign-in**, and a new deliberate sign-in replaces only the exact stale
 attempt it observed. In a web browser, returning with Back cancels the pending
@@ -912,6 +923,13 @@ directly when a system package is not appropriate.
 For development, start `pnpm dev` at the repository root, then run
 `pnpm --filter @nessie/desktop dev` from the Linux environment. Under WSL, this
 requires WSLg; it opens the Nessie window on the Windows desktop.
+
+Because the browser side of a WSLg session is Windows-native, its `nessie://`
+callback belongs to the installed Windows Nessie app. Use the Linux login
+screen's **Use Windows session** doorway with **Account → Debug** from that
+signed-in Windows app. This imports the short-lived access token only; repeat
+the transfer after it expires. Do not copy WebView profile databases or browser
+cookies between operating systems.
 
 The Debian package installs the `nessie://` handler. Development builds and an
 AppImage register their current executable as the user's handler at runtime;
