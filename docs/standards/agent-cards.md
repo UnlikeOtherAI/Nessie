@@ -23,10 +23,11 @@ file is the rule**.
   (`wait: true`) reuses the approval suspend/resume machinery through one shared
   core each — never a second copy of the claim-once discipline — and parks the
   run in `waiting_input`, non-terminal and holding the thread slot. A `secret`
-  block's value goes through the same `storeInstanceSecret` seam and the same
-  authorization as the instance-secret route, inside the press transaction, and
-  is absent from the row, the message, the audit metadata, the realtime payload,
-  the presenter and the model: only that it was provided, and where. Details:
+  block's value reaches its typed credential destination inside the press
+  transaction — `storeInstanceSecret` for a connector or
+  `setSourceCredential` for a dashboard source — and is absent from the row,
+  the message, the audit metadata, the realtime payload, the presenter and the
+  model: only that it was provided, and where. Details:
   `CLAUDE.md` → "Agent chat cards"; spec:
   `docs/plans/2026-09-01-agent-chat-cards.md`.
 
@@ -79,12 +80,15 @@ afterwards. Spec:
   approval" is the wrong words for a form. Suspend and resume are **one shared
   core each** (`run-suspend.ts`, `run-resume-core.ts`), with the approval paths
   migrated onto them — never a second copy of the claim-once discipline.
-- **A secret field's value reaches the credential store and nothing else.** It
-  goes through the same `storeInstanceSecret` seam and the same authorization
-  as `POST /api/mcp/instances/:id/secret`, inside the press transaction, and is
-  absent from the row, the message, the audit metadata (key names only), the
-  realtime payload, the presenter and the model. Only
-  `secretOutcomes[key] = {kind, instanceId, placement}` is kept.
+- **A secret field's value reaches its credential store and nothing else.** A
+  `connector_credential` goes through `storeInstanceSecret` and the exact
+  authorization of `POST /api/mcp/instances/:id/secret`; a
+  `dashboard_source_credential` goes through `setSourceCredential` and the
+  exact authorization of its dashboard-source route. Both run inside the press
+  transaction and are absent from the row, message, audit metadata (key names
+  only), realtime payload, presenter and model. `secretOutcomes[key]` keeps
+  only the destination kind and its safe id/placement — never a value, ref,
+  ciphertext, length or prefix.
 - **The service mark is server-resolved.** The agent names a slug; the
   presenter matches it against the app catalogue under the viewer's own store
   floor and returns the cached `/api/apps/:id/icon` path, else null and

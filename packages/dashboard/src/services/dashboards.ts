@@ -40,8 +40,10 @@ export class DashboardServiceError extends Error {
 
 export type DashboardHome = 'organization' | 'project' | 'team' | 'channel' | 'personal'
 
+export type DashboardPrisma = PrismaClient | Prisma.TransactionClient
+
 export type DashboardContext = {
-  prisma: PrismaClient
+  prisma: DashboardPrisma
   membership: DashboardMembership
   actor: DashboardActor
 }

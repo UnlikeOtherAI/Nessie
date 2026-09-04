@@ -157,6 +157,18 @@ export const presentAgentCard = async (
   const secretLabels: Record<string, string> = {}
   for (const block of spec.blocks) {
     if (block.type !== 'secret') continue
+    if (block.destination.kind === 'dashboard_source_credential') {
+      const source = await prisma.dashboardDataSource.findFirst({
+        select: { name: true },
+        where: {
+          archivedAt: null,
+          id: block.destination.sourceId,
+          organizationId: card.organizationId,
+        },
+      })
+      secretLabels[block.key] = source ? `the ${source.name} dashboard source` : 'the dashboard source'
+      continue
+    }
     const instance = await prisma.mcpServerInstance.findFirst({
       select: { catalogEntry: { select: { displayName: true } } },
       where: {
