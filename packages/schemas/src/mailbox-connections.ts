@@ -66,6 +66,25 @@ export const CreateMailboxConnectionBodySchema = z.object({
 })
 export type CreateMailboxConnectionBody = z.infer<typeof CreateMailboxConnectionBodySchema>
 
+/**
+ * Reconnect keeps the connection's address, scope, owner/team and label
+ * server-owned. A person may replace a credential and secure server settings,
+ * but cannot silently retarget the existing agent-access rows to another
+ * mailbox.
+ */
+export const ReconnectMailboxConnectionBodySchema = z.object({
+  username: z.string().min(1).max(320),
+  /** Submitted once and sealed; no read contract includes this value. */
+  password: z.string().min(1).max(1024),
+  imapHost: hostname,
+  imapPort: port,
+  imapSecurity: MailboxTransportSecuritySchema,
+  smtpHost: hostname,
+  smtpPort: port,
+  smtpSecurity: MailboxTransportSecuritySchema,
+}).strict()
+export type ReconnectMailboxConnectionBody = z.infer<typeof ReconnectMailboxConnectionBodySchema>
+
 export const SetMailboxAgentAccessBodySchema = z.object({
   agentId: z.string().uuid(),
   allowed: z.boolean(),

@@ -144,7 +144,32 @@ export const grantSendAuthorization = async (
     boundary?: string | null
   },
   now: Date = new Date(),
-): Promise<{ id: string; expiresAt: Date | null }> => {
+): Promise<{ id: string; expiresAt: Date | null } | null> => {
+  // Routes perform the same entitlement checks for their caller, but this is
+  // the shared write boundary: no caller may create a grant for a stale Google
+  // connection or an agent from another organization by bypassing route code.
+  const [connection, agent] = await Promise.all([
+    prisma.commsConnection.findFirst({
+      where: {
+        id: input.connectionId,
+        organizationId: input.organizationId,
+        ownerUserId: input.grantedByUserId,
+        provider: 'google',
+        status: 'active',
+      },
+      select: { id: true },
+    }),
+    prisma.agent.findFirst({
+      where: {
+        id: input.agentId,
+        organizationId: input.organizationId,
+        systemManaged: false,
+      },
+      select: { id: true },
+    }),
+  ])
+  if (!connection || !agent) return null
+
   const expiresAt = expiryForSendGrant(input.duration, now)
   const row = await prisma.sendAuthorizationGrant.upsert({
     where: {
@@ -260,7 +285,12 @@ export const listSendAuthorizations = async (
  */
 export type StandingConsentDecision =
   | { outcome: 'proceed'; grantId?: string }
-  | { outcome: 'ask' }
+  /**
+   * The exact Google connection the person is being asked about. Persisting it
+   * on the approval prevents a later "don't ask again" click from guessing a
+   * different account after the person's connections have changed.
+   */
+  | { outcome: 'ask'; connectionId?: string }
   /** A `judged` grant applies: the caller must run the boundary judge. */
   | { outcome: 'judge'; grantId: string; boundary: string; connectionId: string }
 
@@ -311,7 +341,7 @@ export const resolveStandingConsentForToolCall = async (
     requestingUserId: input.requestingUserId,
     interactive: input.interactive,
   })
-  if (!grant) return { outcome: 'ask' }
+  if (!grant) return { outcome: 'ask', connectionId }
   if (grant.mode === 'always') return { outcome: 'proceed', grantId: grant.id }
   if (!grant.boundary || grant.boundary.trim().length === 0) {
     // A judged grant with no boundary has nothing to judge against, so it asks

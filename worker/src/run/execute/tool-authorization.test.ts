@@ -16,6 +16,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 import type { ExecutorToolset } from '../executor-toolset.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { AgenticToolResult } from '../tools.js'
+import { autoReviewRule, approvalRule, denyRule } from './tool-authorization-test-fixtures.js'
 import { reviewableToolSurface } from './auto-review.js'
 
 /**
@@ -31,8 +32,8 @@ const CHANNEL_ID = '22222222-2222-4222-8222-222222222222'
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333'
 const TEAM_ID = '44444444-4444-4444-8444-444444444444'
 const AGENT_ID = '55555555-5555-4555-8555-555555555555'
-const RUN_ID = '66666666-6666-4666-8666-666666666666'
-const TASK_ID = '77777777-7777-4777-8777-777777777777'
+export const RUN_ID = '66666666-6666-4666-8666-666666666666'
+export const TASK_ID = '77777777-7777-4777-8777-777777777777'
 const THREAD_ID = '88888888-8888-4888-8888-888888888888'
 const USER_ID = '99999999-9999-4999-8999-999999999999'
 
@@ -176,7 +177,7 @@ const makeInvocation = (): InvocationRecord => ({
   usage: { totalTokens: 1 },
 })
 
-const toolCallTurn = (toolName: string, args: Record<string, unknown>): InferenceResult => ({
+export const toolCallTurn = (toolName: string, args: Record<string, unknown>): InferenceResult => ({
   finishReason: 'tool-call',
   invocations: [makeInvocation()],
   model: 'gpt-5-mini',
@@ -186,7 +187,7 @@ const toolCallTurn = (toolName: string, args: Record<string, unknown>): Inferenc
   toolCalls: [{ arguments: args, toolCallId: 'call-1', toolName }],
 })
 
-const finalTurn = (outputText = 'Done.'): InferenceResult => ({
+export const finalTurn = (outputText = 'Done.'): InferenceResult => ({
   invocations: [makeInvocation()],
   model: 'gpt-5-mini',
   outputText,
@@ -204,7 +205,7 @@ type LoopHarness = {
   subAgentToolResults: Array<{ output: string; toolName: string }>
 }
 
-const runLoop = async (input: {
+export const runLoop = async (input: {
   allowBuiltinExec?: boolean
   builtinName?: string
   mcpTools?: Record<string, AgenticToolResult>
@@ -290,7 +291,10 @@ const runLoop = async (input: {
 
   const result = await runExecutionAgentLoop(
     deps(fake),
-    { actorContext: actorContext(), messageId: 'msg-1' } as never,
+    {
+      actorContext: actorContext(),
+      messageId: 'msg-1',
+    } as never,
     runContext(),
     {
       allowedToolIds: new Set([builtinName, 'delegate']),
@@ -340,46 +344,17 @@ const runLoop = async (input: {
       windDownInstruction: null,
     },
   )
-  return { dispatchedExecutor, dispatchedMcp, fake, invocationSink, result, subAgentToolResults }
+  return {
+    dispatchedExecutor,
+    dispatchedMcp,
+    fake,
+    invocationSink,
+    result,
+    subAgentToolResults,
+  }
 }
 
-const denyRule = (toolId: string): Record<string, unknown> => ({
-  action: 'invoke',
-  bindings: [{ actorId: '*', actorType: 'user' }],
-  conditions: null,
-  effect: 'deny',
-  id: 'rule-deny',
-  priority: 1,
-  resourceType: 'tool',
-  scope: 'tool',
-  scopeId: toolId,
-})
-
-const approvalRule = (toolId: string): Record<string, unknown> => ({
-  action: 'invoke',
-  bindings: [{ actorId: '*', actorType: 'user' }],
-  conditions: { approvalActionType: 'tool.invoke', requiresApproval: true },
-  effect: 'allow',
-  id: 'rule-approval',
-  priority: 1,
-  resourceType: 'tool',
-  scope: 'tool',
-  scopeId: toolId,
-})
-
-const autoReviewRule = (toolId: string): Record<string, unknown> => ({
-  action: 'invoke',
-  bindings: [{ actorId: '*', actorType: 'user' }],
-  conditions: { reviewMode: 'auto' },
-  effect: 'allow',
-  id: 'rule-auto-review',
-  priority: 1,
-  resourceType: 'tool',
-  scope: 'tool',
-  scopeId: toolId,
-})
-
-const reviewerInvocations = (invocations: InvocationRecord[]) => invocations.filter((invocation) => (
+export const reviewerInvocations = (invocations: InvocationRecord[]) => invocations.filter((invocation) => (
   invocation.metadata?.utilityPurpose === 'reviewer'
 ))
 
@@ -393,7 +368,7 @@ const parseDenied = (haystack: string, toolName: string): Record<string, unknown
 }
 
 // Main paths: the denial is the tool message in the main loop transcript.
-const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<string, unknown> => {
+export const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<string, unknown> => {
   const contents = result.messages
     .map((message) => (typeof message.content === 'string' ? message.content : ''))
   const haystack = contents.find((content) => content.includes('"type":"tool_denied"'))
@@ -401,7 +376,7 @@ const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<s
   return parseDenied(haystack, toolName)
 }
 
-const suspendedApproval = (result: LoopHarness['result'], toolName: string): string => {
+export const suspendedApproval = (result: LoopHarness['result'], toolName: string): string => {
   assert.equal(result.pendingApproval?.toolName, toolName)
   assert.ok(result.pendingApproval?.approvalId)
   return result.pendingApproval.approvalId
@@ -409,7 +384,7 @@ const suspendedApproval = (result: LoopHarness['result'], toolName: string): str
 
 // Delegated paths: the denial is the nested tool's result inside the
 // sub-agent loop, captured via the DelegateRunner's out-param.
-const delegatedDeniedOutput = (harness: LoopHarness, toolName: string): Record<string, unknown> => {
+export const delegatedDeniedOutput = (harness: LoopHarness, toolName: string): Record<string, unknown> => {
   const nested = harness.subAgentToolResults.find((entry) => entry.toolName === toolName)
   assert.ok(nested, `expected a nested tool result for ${toolName}; got: ${JSON.stringify(harness.subAgentToolResults)}`)
   return parseDenied(nested.output, toolName)
@@ -452,7 +427,6 @@ test('a to-do-disabled agent is refused when it names todo_start directly', asyn
   assert.equal(parsed['reason'], 'tool_not_granted')
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
-
 // --- main MCP ---
 
 test('main MCP: a policy deny intercepts before dispatch and is audited', async () => {

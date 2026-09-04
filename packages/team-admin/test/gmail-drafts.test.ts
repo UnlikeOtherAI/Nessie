@@ -24,6 +24,33 @@ import {
   routes,
 } from './gmail-draft-test-support.js'
 
+const liveDraftWithAttachment = (attachmentId: string) => liveDraft({
+  message: {
+    id: 'msg-1',
+    threadId: 'thread-1',
+    payload: {
+      headers: [
+        { name: 'To', value: 'jana@example.com' },
+        { name: 'Subject', value: 'Quarterly update' },
+      ],
+      mimeType: 'multipart/mixed',
+      parts: [
+        { mimeType: 'text/plain', body: { data: Buffer.from('Here it is.').toString('base64url') } },
+        { mimeType: 'application/pdf', filename: 'report.pdf', body: { attachmentId, size: 1_024 } },
+      ],
+    },
+  },
+})
+
+const attachmentFingerprint = (attachmentId: string) => fingerprintDraft({
+  to: ['jana@example.com'],
+  subject: 'Quarterly update',
+  body: 'Here it is.',
+  threadId: 'thread-1',
+  attachmentIds: ['report.pdf:1024'],
+  attachmentIdentities: [{ attachmentId, filename: 'report.pdf', mimeType: 'application/pdf', sizeBytes: 1_024 }],
+})
+
 // The load-bearing guard: an approval or a rendered card binds to CONTENT, and
 // the draft is mutable through Gmail, the card's Edit button, and other runs.
 test('refuses to send when the live draft no longer matches what was approved', async () => {
@@ -53,6 +80,24 @@ test('refuses to send when the live draft no longer matches what was approved', 
       error instanceof GmailDraftError && error.code === 'DRAFT_CHANGED',
   )
   assert.equal(sendCalls, 0, 'no message may leave when the content changed')
+})
+
+test('refuses a same-name, same-size attachment replacement after approval', async () => {
+  const { prisma } = makePrisma(row({
+    contentFingerprint: attachmentFingerprint('approved-attachment'),
+  }))
+  let sendCalls = 0
+
+  await assert.rejects(
+    sendDraftForUser(
+      prisma,
+      { organizationId: ORG, userId: USER, draftActionId: ACTION },
+      deps(routes(liveDraftWithAttachment('replacement-attachment'), () => { sendCalls += 1 })),
+    ),
+    (error: unknown) =>
+      error instanceof GmailDraftError && error.code === 'DRAFT_CHANGED',
+  )
+  assert.equal(sendCalls, 0, 'the replacement may not reach Gmail')
 })
 
 test('a refused send leaves the draft sendable, not stuck in sending', async () => {
@@ -351,7 +396,8 @@ test('an update cannot overwrite a send claim after Gmail content was checked', 
   await updating
   assert.equal(state.row.state, 'draft')
   assert.equal(state.row.contentFingerprint, fingerprintDraft({
-    to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.', threadId: 'thread-1', attachmentIds: [],
+    to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.', threadId: 'thread-1',
+    attachmentIds: [], attachmentIdentities: [],
   }))
 })
 

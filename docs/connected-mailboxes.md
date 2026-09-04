@@ -87,7 +87,8 @@ somebody's task.
 
 ## Asking the Personal Assistant to manage accounts
 
-The Personal Assistant can list the email accounts you are entitled to manage,
+The Personal Assistant can list the email accounts you are entitled to manage —
+your own, plus shared mailboxes only when you are an owner or admin —
 open the same secure **Connect email** form, check one, disconnect one after an
 approval, and grant or revoke an agent's access to an IMAP/SMTP mailbox. For
 example: *“Which email accounts are connected?”*, *“Connect another email
@@ -101,7 +102,15 @@ Google's or Microsoft's own page, and a conventional mailbox password stays in
 the protected connection form.
 
 Listing returns an exact account id and kind so a follow-up operation cannot
-guess between two addresses. Google and Microsoft checks queue their normal
+guess between two addresses. A personal mailbox is manageable only by the
+person who connected it; an owner or admin may also manage shared mailboxes.
+The listing is treated as private account metadata, so a reply built from it is
+limited to the requesting person; checking, disconnecting, and changing an
+agent grant apply that same privacy basis before reporting their result.
+Connection-state wording is deliberately
+generic — server replies and diagnostics never enter chat. A shared-mailbox
+connection request from a non-manager is refused before a form is posted.
+Google and Microsoft checks queue their normal
 initial or incremental sync. An IMAP/SMTP check logs in to both incoming and
 outgoing services with the stored credential. Disconnect is always held for a
 person to approve before the assistant runs it.
@@ -124,17 +133,27 @@ per tool, so without a per-mailbox decision, connecting a second shared mailbox
 would silently hand it to every agent that already had the tools.
 
 An agent with access to more than one mailbox is asked which to use rather than
-picking one. Sending from the wrong address is not something anyone can take
-back.
+picking one. Every send names that exact mailbox connection before approval,
+even when only one is reachable at the time — a connection added while someone
+is deciding must not change which address their approval covers. Sending from
+the wrong address is not something anyone can take back.
 
 ## Sending
 
 **Every message is shown to a person before it goes out.** The request lands on
 the approvals surface and, in chat, as a notice on the run — and it is *pinned*
 to one person: the mailbox's owner for a personal one, or whoever connected a
-shared one. It says which address the mail would leave from, and if the agent
-built the message out of something the recipient has no claim to — a private
-document, another person's mail — the approval names that too.
+shared one. The durable approval states whether it is a personal or shared
+mailbox without storing its address. The pinned person selects **Review email**
+to see the exact sender, recipients, subject and body, then confirms Approve or
+Reject; neither the list row nor the approval notification contains that email
+content, and the review disappears and is removed from the browser cache once the decision is made. If the agent built the message out of
+something the recipient has no claim to — a private document, another person's
+mail — the approval names that too. If the shared mailbox's installer has left
+or was never assigned, the send remains blocked; an owner or admin reconnects
+it under the person who should approve future sends. A personal mailbox whose
+owner is inactive is likewise blocked until that owner is reactivated or the
+mailbox is reconnected under an active owner.
 
 There is no "let it send without asking" for connected mailboxes yet. The Google
 lane offers standing consent because a grant there is one person's to give about
@@ -146,6 +165,11 @@ provider call. A run replay finds that same record through its run and tool-call
 identity and retains its original Message-ID. If SMTP's `DATA` outcome is lost,
 Nessie marks delivery **unknown** and will not send a second copy; a person can
 check the mailbox and decide what to do next.
+
+Approving is a one-time decision for the exact message and mailbox shown. Nessie
+keeps that action sealed while the approval is pending, then dispatches the
+frozen action after the final live access checks; it does not ask an agent to
+write the message again after you approve it.
 
 ## Reading
 
@@ -178,9 +202,18 @@ states are distinct in the audit trail and never include message content.
 ## When it stops working
 
 If the provider rejects the password, the connection flips to **Needs
-reconnecting** with the reason on its card, and agents stop reaching it rather
+reconnecting** with a fixed, actionable reason on its card, and agents stop reaching it rather
 than failing over and over. A password change, an expired app password, or a
-revoked account all land here. Reconnect it from the same card.
+revoked account all land here. Reconnect it from the same card: the form starts
+with the existing address and secure server settings, never returns the old
+password, verifies incoming and outgoing access before saving the replacement,
+and retains the connection's id and agent grants. The transition has a durable
+alert at its owning surface — **Settings → Connections** for personal mail and
+**Settings → Organization → Agents** for shared mail — exactly once per health
+revision. A successful reconnect resolves the prior alert before a later
+failure can alert again. A shared mailbox whose original connector is inactive
+alerts one active owner or admin, while a personal mailbox remains private to
+its owner.
 
 A mail server that is briefly unreachable is *not* that: the status is left
 alone, because sending somebody to re-enter a password that is fine helps
@@ -210,6 +243,8 @@ raw socket to an address somebody typed:
 - **Nothing typed by a person or a model can become an IMAP command.** Folder
   names, search terms and the credential all travel as length-counted literals,
   so no character inside them can end a command.
-- The password is stored encrypted in its own table, is never returned by any
-  API read, and never appears in the audit trail — which records the address and
-  the scope, and nothing else.
+- The password is stored encrypted in its own table and is never returned by
+  any API read. Mailbox lifecycle audit metadata is structural only (the stable
+  resource id, scope, action, and where relevant the agent/send-policy or
+  retired-address fact): it never includes an address, username, server detail,
+  or credential.

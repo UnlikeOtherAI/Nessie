@@ -21,6 +21,7 @@ type Row = {
   providerDraftId: string | null
   providerThreadId: string | null
   contentFingerprint: string
+  clientContentFingerprint: string
   revision: number
   state: string
   sendAfter: Date | null
@@ -42,6 +43,9 @@ const existingRow = (): Row => ({
   providerDraftId: 'provider-draft-1',
   providerThreadId: null,
   contentFingerprint: fingerprintDraft({
+    attachmentIds: [], body: 'Here it is.', subject: 'Quarterly update', to: ['jana@example.com'],
+  }),
+  clientContentFingerprint: fingerprintDraft({
     attachmentIds: [], body: 'Here it is.', subject: 'Quarterly update', to: ['jana@example.com'],
   }),
   revision: 1,
@@ -66,6 +70,7 @@ const makePrisma = (options: {
         }
         state.row = {
           ...existingRow(), providerDraftId: null, state: 'creating',
+          clientContentFingerprint: String(data.clientContentFingerprint),
           contentFingerprint: String(data.contentFingerprint), claimedAt: new Date(),
         }
         return state.row

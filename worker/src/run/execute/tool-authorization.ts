@@ -1,178 +1,49 @@
 import {
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_START_FAILURE_DETAIL,
+  GMAIL_DRAFT_SEND_TOOL_ID,
+  hasStrictToolAuthorizationInput,
+  parseToolAuthorizationArgs,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '@nessie/runtime'
-import {
-  recordSendDecision,
-  resolveStandingConsentForToolCall,
-} from '@nessie/team-admin'
-import {
-  buildSendBoundaryPrompt,
-  readSendBoundaryVerdict,
-  type SendBoundaryVerdict,
-} from './send-boundary-judge.js'
+import { recordSendDecision, resolveStandingConsentForToolCall } from '@nessie/team-admin'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
-import { sanitizeToolArguments, summarizeToolInput } from '../tool-util.js'
+import { sanitizeToolArguments, summarizeToolInputForTool } from '../tool-util.js'
+import { reviewableToolSurface } from './auto-review.js'
 import {
+  auditToolAuthorizationDenial,
+  claimVerifiedToolApprovalProof,
+  createToolApprovalRequest,
+  describeGatedAction,
+  judgeAgainstSendBoundary,
+  postAllowedByRuleCard,
   recordAutoReview,
-  reviewableToolSurface,
   runAutoReview,
-  type AutoReviewResult,
-  type ReviewableToolSurface,
-} from './auto-review.js'
-import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
-import type { AgenticToolResult } from '../tools.js'
+} from './tool-approval.js'
 import {
   buildToolActorContext,
   emitWorkerAuditEvent,
   evaluateToolInvokePolicy,
   toolDeniedResult,
 } from './policy.js'
-import {
-  createToolApprovalRequest,
-  postAllowedByRuleCard,
-} from './tool-approval-requests.js'
 import type { RunContext } from './types.js'
+import { bindGmailDraftApprovalFingerprint } from './gmail-draft-approval.js'
+import type {
+  ToolAuthorizationAuditEmitter,
+  ToolAuthorizationContext,
+  ToolAuthorizationDecision,
+  ToolAuthorizationHooks,
+} from './tool-authorization-contract.js'
 
-export type ToolActorContext = AuthorizedActionContext
-
-export type ToolAuthorizationDecision =
-  | {
-      decision: 'allow'
-      toolActorContext: ToolActorContext
-    }
-  | {
-      decision: 'deny'
-      result: AgenticToolResult
-    }
-  | {
-      decision: 'suspend'
-      approval: {
-        id: string
-        notice: string
-        toolName: string
-      }
-    }
-
-export type ToolAuthorizationContext = {
-  agentKind: RunContext['agent']['agentKind']
-  allowedToolIds: Set<string>
-  /**
-   * Registry membership is the organisational ceiling; this per-run set is
-   * the resolved offer after agent capability gates such as todosEnabled.
-   */
-  resolvedBuiltinToolIds?: Set<string>
-  /**
-   * Names dispatched outside the builtin registry (MCP views, the executor
-   * toolset, and worker-owned meta tools such as `tool_spec`). The
-   * registry/grant gate only judges registered builtin ids — external names
-   * skip it and still pass the policy/approval evaluation.
-   */
-  externalToolNames?: Set<string>
-  /**
-   * The `personalAssistantOnly` ids this run's global-agent blueprint may
-   * exercise (D3), resolved once at run setup. Absent ⇒ the empty set, which is
-   * every ordinary run: the PA passes on its own `agentKind` arm and everybody
-   * else is denied. Passed here as well as to toolset assembly so a stale
-   * schema — a deferred stub, a replayed call, a resumed approval — cannot be
-   * exercised after the conditions stopped holding.
-   */
-  identityToolIds?: ReadonlySet<string>
-  /** The main loop's live view, including deferred MCP names loaded mid-run. */
-  mcpToolNames?: ReadonlySet<string>
-  /** The executor operations actually exposed for this run. */
-  executorToolNames?: ReadonlySet<string>
-  parentAgentId: string | null
-  /** Only a top-level, non-handoff run has a durable identity to suspend. */
-  maySuspendForApproval: boolean
-  /**
-   * The run's utility-model call, used for the send-boundary judgement. Absent
-   * where no utility model resolves, which fails the judgement closed to
-   * asking rather than proceeding unjudged.
-   */
-  runUtility?: (prompt: string) => Promise<string | null>
-  /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
-  consumeApprovalProof?: boolean
-  /** A prepared call has already received its single auto-review verdict. */
-  skipAutoReview?: boolean
-  resumeState?: {
-    actorContext: AuthorizedActionContext
-    interactive: boolean
-    messageId: string
-  }
-  /**
-   * A structurally gated tool family whose escalation decision is its own.
-   *
-   * Standing consent below is the *send-as-you* answer: a person granting an
-   * agent leave to mail from their account. A hosted agent mailbox is not that
-   * — nobody's account is being borrowed — and its reasons to stop are
-   * different (an unattended run opening new correspondence, the hourly cap, or
-   * a privileged source the run read that its recipient cannot reach). A family
-   * that returns a decision here is authoritative for its own tools; everything
-   * else falls through to standing consent unchanged.
-   */
-  structuralGate?: (input: {
-    toolName: string
-    args: Record<string, unknown>
-  }) => Promise<{
-    escalate: boolean
-    /** Shown on the approval card: why the person was asked. */
-    reason?: string
-    requiredApproverUserId?: string | null
-    /**
-     * Address-free server-authored facts for the approval row, which an org
-     * owner can read through the approvals surface.
-     */
-    contextExtra?: Record<string, unknown>
-  } | null>
-  toolPolicy: Record<string, boolean> | null
-}
-
-export type ToolAuthorizationAuditEmitter = (
-  actorContext: AuthorizedActionContext,
-  input: Parameters<typeof emitWorkerAuditEvent>[2],
-) => Promise<void>
-
-export type ToolAuthorizationHooks = {
-  deepWaterHandoffGuard: DeepWaterHandoffGuard
-  /** One bounded utility-model review, supplied by the caller that owns metering. */
-  reviewProposedAction?: (input: {
-    args: Record<string, unknown>
-    surface: ReviewableToolSurface
-    toolName: string
-  }) => Promise<AutoReviewResult>
-  // Audit defaults to `emitWorkerAuditEvent` in `authorizeToolExecution`; the
-  // seam exists so flows whose audit identity is out of scope for this change
-  // (the delegate sub-agent) keep their previous recording behaviour exactly.
-  emitAudit?: ToolAuthorizationAuditEmitter
-}
-
-const auditDenial = async (
-  emitAudit: ToolAuthorizationAuditEmitter,
-  actorContext: AuthorizedActionContext,
-  context: RunContext,
-  toolName: string,
-  metadata: Record<string, unknown>,
-  reason: string,
-): Promise<void> => {
-  await emitAudit(actorContext, {
-    action: 'policy.evaluated',
-    metadata: {
-      agentId: context.agent.id,
-      runId: context.run.id,
-      taskId: context.task.id,
-      toolId: toolName,
-      ...metadata,
-    },
-    outcome: 'denied',
-    reason,
-    resourceId: toolName,
-    resourceType: 'tool',
-  })
-}
+export type {
+  ToolActorContext,
+  ToolAuthorizationAuditEmitter,
+  ToolAuthorizationContext,
+  ToolAuthorizationDecision,
+  ToolAuthorizationHooks,
+} from './tool-authorization-contract.js'
 
 /**
  * The one pre-dispatch authorization gate every tool execution passes
@@ -199,6 +70,46 @@ export const authorizeToolExecution = async (
   const toolActorContext = buildToolActorContext(baseActorContext, context, toolName)
   const emitAudit: ToolAuthorizationAuditEmitter =
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
+  let canonicalArgs: Record<string, unknown>
+  try {
+    canonicalArgs = parseToolAuthorizationArgs(toolName, args)
+  } catch {
+    // These are credential-boundary tools. An unrecognised field can be a
+    // password or authorization code, so it must not reach any durable sink.
+    await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
+      source: 'worker_tool_authorization',
+    }, 'invalid_tool_input')
+    return {
+      decision: 'deny',
+      result: {
+        inputSummary: 'Invalid tool input.',
+        output: hasStrictToolAuthorizationInput(toolName)
+          ? 'The tool arguments were invalid. Use only the documented fields.'
+          : 'The tool arguments were invalid.',
+        success: false,
+      },
+    }
+  }
+
+  if (toolName === GMAIL_DRAFT_SEND_TOOL_ID) {
+    const approvedArgs = await bindGmailDraftApprovalFingerprint(
+      prisma, toolActorContext, context.channel.organizationId, canonicalArgs,
+    )
+    if (!approvedArgs) {
+      await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
+        source: 'worker_tool_authorization',
+      }, 'invalid_tool_target')
+      return {
+        decision: 'deny',
+        result: {
+          inputSummary: 'Unavailable Gmail draft.',
+          output: 'I cannot find that draft.',
+          success: false,
+        },
+      }
+    }
+    canonicalArgs = approvedArgs
+  }
 
   // This gate is repeated here even though provider-created calls are cleaned
   // in the loop. Replays, resumed calls, and direct callers must never persist
@@ -206,7 +117,7 @@ export const authorizeToolExecution = async (
   const safeArguments = sanitizeToolArguments(args)
   if (safeArguments.detected) {
     const reason = 'secret_argument_blocked'
-    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+    await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
       source: 'worker_secret_boundary',
     }, reason)
     return {
@@ -224,7 +135,7 @@ export const authorizeToolExecution = async (
     return {
       decision: 'deny',
       result: {
-        inputSummary: summarizeToolInput(args),
+        inputSummary: summarizeToolInputForTool(toolName, canonicalArgs),
         output: DEEP_WATER_START_FAILURE_DETAIL,
         success: false,
       },
@@ -258,12 +169,12 @@ export const authorizeToolExecution = async (
     || (!isExternalName && !resolvedBuiltinToolIds.has(toolName))
   ) {
     const reason = registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason
-    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+    await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
       source: 'worker_tool_authorization',
     }, reason)
     return {
       decision: 'deny',
-      result: toolDeniedResult(toolName, args, {
+      result: toolDeniedResult(toolName, canonicalArgs, {
         message: `Tool "${toolName}" is not allowed for this agent.`,
         reason,
       }),
@@ -275,8 +186,10 @@ export const authorizeToolExecution = async (
     toolActorContext,
     context,
     toolName,
-    args,
-    { consumeApprovalProof: auth.consumeApprovalProof },
+    canonicalArgs,
+    // Policy tells us whether a proof is valid, but the dispatch chokepoint
+    // claims it only after every structural and auto-review gate has cleared.
+    { consumeApprovalProof: false },
   )
 
   // A tool may declare its approval requirement in CODE rather than relying on
@@ -291,21 +204,48 @@ export const authorizeToolExecution = async (
   let boundaryReason: string | null = null
   let structuralApprover: string | null = null
   let structuralContext: Record<string, unknown> | null = null
+  const structuralState: {
+    denial: { message: string; reason: string } | null
+  } = { denial: null }
+  let structuralApprovalProofUsed = false
   const policyDecision = await (async () => {
-    if (
-      !rawPolicyDecision.allowed
-      || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
-      || toolActorContext.approval?.approvalProof
-    ) {
+    if (!rawPolicyDecision.allowed || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)) {
+      return rawPolicyDecision
+    }
+    if (rawPolicyDecision.approvalProofVerified && !auth.revalidateApprovalBoundary) {
+      if (
+        rawPolicyDecision.allowed
+        && STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+        && rawPolicyDecision.approvalProofVerified
+      ) {
+        structuralApprovalProofUsed = true
+      }
       return rawPolicyDecision
     }
     // A family that owns its own escalation answers first and is final for its
     // tools; standing consent is the send-as-you path and does not apply there.
     const familyDecision = auth.structuralGate
-      ? await auth.structuralGate({ args, toolName })
+      ? await auth.structuralGate({ args: canonicalArgs, toolName })
       : null
     if (familyDecision) {
-      if (!familyDecision.escalate) return rawPolicyDecision
+      if (familyDecision.outcome === 'allow') {
+        if (rawPolicyDecision.approvalProofVerified) structuralApprovalProofUsed = true
+        return rawPolicyDecision
+      }
+      if (familyDecision.outcome === 'deny') {
+        structuralState.denial = familyDecision
+        return {
+          ...rawPolicyDecision,
+          allowed: false as const,
+          approvalActionType: undefined as string | undefined,
+          policyRuleId: undefined as string | undefined,
+          reason: 'explicit_policy_deny' as const,
+        }
+      }
+      if (rawPolicyDecision.approvalProofVerified) {
+        structuralApprovalProofUsed = true
+        return rawPolicyDecision
+      }
       boundaryReason = familyDecision.reason ?? null
       structuralApprover = familyDecision.requiredApproverUserId ?? null
       structuralContext = familyDecision.contextExtra ?? null
@@ -320,7 +260,7 @@ export const authorizeToolExecution = async (
 
     const consent = await resolveStandingConsentForToolCall(prisma, {
       toolName,
-      args,
+      args: canonicalArgs,
       organizationId: context.channel.organizationId,
       agentId: context.agent.id,
       requestingUserId: toolActorContext.actionContext.effectiveUserId ?? null,
@@ -335,10 +275,18 @@ export const authorizeToolExecution = async (
       policyRuleId: undefined as string | undefined,
       reason: 'approval_required' as const,
     })
-    if (consent.outcome === 'ask') return escalate()
+    if (consent.outcome === 'ask') {
+      // A standing-consent rule is per Google connection. Keep the exact
+      // connection the gate resolved with the approval rather than resolving a
+      // person's active accounts again when they choose "don't ask again".
+      structuralContext = consent.connectionId
+        ? { approvedGoogleConnectionId: consent.connectionId }
+        : null
+      return escalate()
+    }
     if (consent.outcome === 'proceed') {
       await postAllowedByRuleCard(prisma, context, toolActorContext, {
-        args,
+        args: canonicalArgs,
         rule: null,
         toolName,
       })
@@ -351,7 +299,7 @@ export const authorizeToolExecution = async (
     // because a miss there costs a redundant message and a miss here sends an
     // email nobody approved.
     const verdict = await judgeAgainstSendBoundary({
-      args,
+      args: canonicalArgs,
       boundary: consent.boundary,
       runUtility: auth.runUtility,
       toolName,
@@ -363,7 +311,7 @@ export const authorizeToolExecution = async (
     ).catch(() => undefined)
     if (verdict.verdict === 'proceed') {
       await postAllowedByRuleCard(prisma, context, toolActorContext, {
-        args,
+        args: canonicalArgs,
         rule: consent.boundary,
         toolName,
       })
@@ -375,17 +323,17 @@ export const authorizeToolExecution = async (
   })()
 
   if (!policyDecision.allowed) {
-    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+    await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
       approvalActionType: policyDecision.approvalActionType,
       policyRuleId: policyDecision.policyRuleId,
       policySource: policyDecision.policySource,
       source: 'worker_tool_policy',
-    }, policyDecision.reason)
+    }, structuralState.denial?.reason ?? policyDecision.reason)
     if (policyDecision.reason === 'approval_required' && auth.maySuspendForApproval && auth.resumeState) {
       const approval = await createToolApprovalRequest(prisma, {
         actorContext: auth.resumeState.actorContext,
         approvalActionType: policyDecision.approvalActionType,
-        args,
+        args: canonicalArgs,
         context,
         policyRuleId: policyDecision.policyRuleId,
         toolCallId,
@@ -397,22 +345,24 @@ export const authorizeToolExecution = async (
         ...(structuralApprover ? { requiredApproverUserId: structuralApprover } : {}),
       })
       return {
+        args: canonicalArgs,
         decision: 'suspend',
         approval: {
           id: approval.id,
-          notice: `⚠️ I need approval before I can run ${toolName}.`,
+          notice: `⚠️ I need approval: ${describeGatedAction(toolName, canonicalArgs).headline}.`,
+          requiredApproverUserId: approval.requiredApproverUserId,
           toolName,
         },
       }
     }
     return {
       decision: 'deny',
-      result: toolDeniedResult(toolName, args, {
+      result: toolDeniedResult(toolName, canonicalArgs, {
         approvalActionType: policyDecision.approvalActionType,
-        message:
-          policyDecision.reason === 'approval_required'
+        message: structuralState.denial?.message
+          ?? (policyDecision.reason === 'approval_required'
             ? `Tool "${toolName}" requires approval before it can run.`
-            : `Tool "${toolName}" was denied by policy.`,
+            : `Tool "${toolName}" was denied by policy.`),
         policyRuleId: policyDecision.policyRuleId,
         policySource: policyDecision.policySource,
         reason: policyDecision.reason,
@@ -426,20 +376,16 @@ export const authorizeToolExecution = async (
       mcpToolNames: auth.mcpToolNames,
     })
     if (surface) {
-      const review = await runAutoReview(hooks.reviewProposedAction, { args, surface, toolName })
-      await recordAutoReview(
-        prisma,
-        (input) => emitAudit(toolActorContext, input),
-        context,
-        toolName,
-        surface,
-        review,
+      const review = await runAutoReview(
+        hooks.reviewProposedAction,
+        { args: canonicalArgs, surface, toolName },
       )
+      await recordAutoReview(prisma, emitAudit, toolActorContext, context, toolName, surface, review)
 
       if (review.verdict === 'deny') {
         return {
           decision: 'deny',
-          result: toolDeniedResult(toolName, args, {
+          result: toolDeniedResult(toolName, canonicalArgs, {
             message: `Automated review denied ${toolName}: ${review.reason}`,
             policyRuleId: policyDecision.policyRuleId,
             policySource: policyDecision.policySource,
@@ -453,7 +399,7 @@ export const authorizeToolExecution = async (
         if (auth.maySuspendForApproval && auth.resumeState) {
           const approval = await createToolApprovalRequest(prisma, {
             actorContext: auth.resumeState.actorContext,
-            args,
+            args: canonicalArgs,
             context,
             interactive: auth.resumeState.interactive,
             messageId: auth.resumeState.messageId,
@@ -462,11 +408,20 @@ export const authorizeToolExecution = async (
             toolCallId,
             toolName,
           })
-          return { decision: 'suspend', approval: { id: approval.id, notice, toolName } }
+          return {
+            args: canonicalArgs,
+            decision: 'suspend',
+            approval: {
+              id: approval.id,
+              notice,
+              requiredApproverUserId: approval.requiredApproverUserId,
+              toolName,
+            },
+          }
         }
         return {
           decision: 'deny',
-          result: toolDeniedResult(toolName, args, {
+          result: toolDeniedResult(toolName, canonicalArgs, {
             message: notice,
             policyRuleId: policyDecision.policyRuleId,
             policySource: policyDecision.policySource,
@@ -477,32 +432,37 @@ export const authorizeToolExecution = async (
     }
   }
 
-  return { decision: 'allow', toolActorContext }
-}
+  // A structurally gated call has no PolicyRule to set approvalProofUsed. The
+  // proof was nevertheless verified against its approval id, canonical args,
+  // org, tool and direct continuation lineage above. Claim it here, after the
+  // final pre-dispatch gate, so a stale or raced proof cannot bypass a
+  // code-declared approval a second time.
+  if (
+    auth.consumeApprovalProof !== false
+    && (policyDecision.approvalProofUsed || structuralApprovalProofUsed)
+  ) {
+    if (!await claimVerifiedToolApprovalProof({
+      actorContext: toolActorContext,
+      approval: toolActorContext.approval,
+      args: canonicalArgs,
+      context,
+      emitAudit,
+      prisma,
+      toolName,
+      verifiedApproval: policyDecision.approvalProofVerified ?? null,
+    })) {
+      await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
+        source: 'worker_tool_policy',
+      }, 'approval_required')
+      return {
+        decision: 'deny',
+        result: toolDeniedResult(toolName, canonicalArgs, {
+          message: `Tool "${toolName}" requires approval before it can run.`,
+          reason: 'approval_required',
+        }),
+      }
+    }
+  }
 
-/**
- * One bounded judgement, on the same utility-model plumbing compaction and the
- * watch-status gate already use. Every failure path returns `ask`.
- */
-const judgeAgainstSendBoundary = async (input: {
-  args: Record<string, unknown>
-  boundary: string
-  runUtility?: (prompt: string) => Promise<string | null>
-  toolName: string
-}): Promise<SendBoundaryVerdict> => {
-  if (!input.runUtility) {
-    return { verdict: 'ask', reason: 'I could not check this against your note.' }
-  }
-  try {
-    const raw = await input.runUtility(
-      buildSendBoundaryPrompt({
-        boundary: input.boundary,
-        proposal: `${input.toolName} with ${summarizeToolInput(input.args)}`,
-        request: 'See the conversation this action came from.',
-      }),
-    )
-    return readSendBoundaryVerdict(raw)
-  } catch {
-    return { verdict: 'ask', reason: 'I could not check this against your note.' }
-  }
+  return { args: canonicalArgs, decision: 'allow', toolActorContext }
 }

@@ -1,11 +1,12 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
-import { summarizeToolInput } from './tool-util.js'
+import { redactToolInputForPersistence, summarizeToolInputForTool } from './tool-util.js'
 
 export type ToolApprovalSuspension = {
   approvalId: string
   notice: string
+  requiredApproverUserId: string | null
   toolName: string
 }
 
@@ -27,7 +28,8 @@ export type ExecutedToolResult = {
 }
 
 export type ToolBatchCallbacks = {
-  onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
+  /** A preflight-produced summary; raw model arguments never enter callbacks. */
+  onToolCallStart: (toolName: string, inputSummary: string) => Promise<void>
   onToolCallEnd: (
     toolName: string,
     args: Record<string, unknown>,
@@ -51,10 +53,12 @@ export type PreparedToolExecution =
   | {
       kind: 'execute'
       execute: () => Promise<ExecutedToolResult>
+      inputSummary: string
     }
   | {
       approval: ToolApprovalSuspension
       kind: 'suspend'
+      inputSummary: string
     }
 
 /**
@@ -127,7 +131,7 @@ export const executeToolBatch = async (input: {
     if (count >= LOOP_DETECTION_THRESHOLD) {
       loopDetected = true
       resultSlots[index] = {
-        inputSummary: summarizeToolInput(toolCall.arguments),
+        inputSummary: summarizeToolInputForTool(toolCall.toolName, toolCall.arguments),
         output: 'Tool call loop detected — this exact call has been repeated too many times. Try a different approach.',
         success: false,
         toolCallId: toolCall.toolCallId,
@@ -137,7 +141,7 @@ export const executeToolBatch = async (input: {
     }
     if (input.circuitBreaker.isTripped(toolCall.toolName)) {
       resultSlots[index] = {
-        inputSummary: summarizeToolInput(toolCall.arguments),
+        inputSummary: summarizeToolInputForTool(toolCall.toolName, toolCall.arguments),
         output: input.circuitBreaker.trippedErrorMessage(toolCall.toolName),
         success: false,
         toolCallId: toolCall.toolCallId,
@@ -149,7 +153,10 @@ export const executeToolBatch = async (input: {
     runnable.push({ index, toolCall })
   }
 
-  const prepared: Array<RunnableToolCall & { execute: () => Promise<ExecutedToolResult> }> = []
+  const prepared: Array<RunnableToolCall & {
+    execute: () => Promise<ExecutedToolResult>
+    inputSummary: string
+  }> = []
   for (const call of runnable) {
     let preparation: PreparedToolExecution
     try {
@@ -162,17 +169,19 @@ export const executeToolBatch = async (input: {
             call.toolCall.arguments,
             call.toolCall.toolCallId,
           ),
+          inputSummary: summarizeToolInputForTool(call.toolCall.toolName, call.toolCall.arguments),
         }
     } catch (error) {
       preparation = {
         kind: 'execute',
         execute: async () => { throw error },
+        inputSummary: summarizeToolInputForTool(call.toolCall.toolName, call.toolCall.arguments),
       }
     }
 
     if (preparation.kind === 'suspend') {
       resultSlots[call.index] = {
-        inputSummary: summarizeToolInput(call.toolCall.arguments),
+        inputSummary: preparation.inputSummary,
         output: 'Tool execution is waiting for human approval.',
         pendingApproval: preparation.approval,
         success: false,
@@ -187,11 +196,11 @@ export const executeToolBatch = async (input: {
         toolMs,
       }
     }
-    prepared.push({ ...call, execute: preparation.execute })
+    prepared.push({ ...call, execute: preparation.execute, inputSummary: preparation.inputSummary })
   }
 
-  const settled = await Promise.allSettled(prepared.map(async ({ execute, toolCall }) => {
-    await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
+  const settled = await Promise.allSettled(prepared.map(async ({ execute, inputSummary, toolCall }) => {
+    await input.callbacks.onToolCallStart(toolCall.toolName, inputSummary)
     const startedAt = new Date()
     try {
       const result = await withTimeout(
@@ -211,7 +220,7 @@ export const executeToolBatch = async (input: {
       }
       await input.callbacks.onToolCallEnd(
         toolCall.toolName,
-        toolCall.arguments,
+        redactToolInputForPersistence(toolCall.toolName, toolCall.arguments) as Record<string, unknown>,
         result.output,
         durationMs,
         result.success,
@@ -232,11 +241,11 @@ export const executeToolBatch = async (input: {
       try {
         await input.callbacks.onToolCallEnd(
           toolCall.toolName,
-          toolCall.arguments,
+          redactToolInputForPersistence(toolCall.toolName, toolCall.arguments) as Record<string, unknown>,
           output,
           durationMs,
           false,
-          summarizeToolInput(toolCall.arguments),
+          inputSummary,
           startedAt,
           undefined,
           error instanceof Error && typeof (error as Error & { toolCallRecordId?: unknown }).toolCallRecordId === 'string'
@@ -248,7 +257,7 @@ export const executeToolBatch = async (input: {
       }
       if (fatal) throw error
       return {
-        inputSummary: summarizeToolInput(toolCall.arguments),
+        inputSummary,
         output,
         success: false,
         toolCallId: toolCall.toolCallId,

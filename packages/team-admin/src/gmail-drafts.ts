@@ -52,6 +52,7 @@ const mapCredentialError = (error: unknown): never => {
 
 const knownDraftReplay = (
   known: {
+    clientContentFingerprint: string
     connectionId: string
     contentFingerprint: string
     id: string
@@ -61,9 +62,9 @@ const knownDraftReplay = (
     revision: number
     state: string
   },
-  fingerprint: string,
+  clientFingerprint: string,
 ): GmailDraftActionRecord => {
-  if (known.contentFingerprint !== fingerprint) throw new GmailDraftError('DRAFT_CHANGED')
+  if (known.clientContentFingerprint !== clientFingerprint) throw new GmailDraftError('DRAFT_CHANGED')
   if (known.state === 'draft' && known.providerDraftId) return toRecord(known)
   throw new GmailDraftError('DELIVERY_UNKNOWN')
 }
@@ -174,7 +175,7 @@ export const composeDraftForUser = async (
       fingerprintMessage(input.message, known.providerThreadId ?? input.providerThreadId),
     )
   }
-  const fingerprint = fingerprintMessage(input.message, input.providerThreadId)
+  const clientFingerprint = fingerprintMessage(input.message, input.providerThreadId)
   const now = deps.now?.() ?? new Date()
   let action
   try {
@@ -185,7 +186,8 @@ export const composeDraftForUser = async (
         connectionId: credential.id,
         clientRequestId: input.idempotencyKey,
         providerThreadId: input.providerThreadId ?? null,
-        contentFingerprint: fingerprint,
+        contentFingerprint: clientFingerprint,
+        clientContentFingerprint: clientFingerprint,
         state: 'creating',
         claimedAt: now,
       },
@@ -225,26 +227,36 @@ export const composeDraftForUser = async (
     throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
   }
   const providerThreadId = ref.threadId ?? input.providerThreadId ?? null
-  let row
   try {
-    row = await prisma.gmailDraftAction.update({
+    const content = await getGmailDraft(
+      fetchImpl,
+      credential.credential.accessToken,
+      ref.id,
+    )
+    const row = await prisma.gmailDraftAction.update({
       where: { id: action.id },
       data: {
         providerDraftId: ref.id,
         providerThreadId,
-        contentFingerprint: fingerprintMessage(input.message, providerThreadId ?? undefined),
+        contentFingerprint: fingerprintOf(content),
+        clientContentFingerprint: fingerprintMessage(input.message, providerThreadId ?? undefined),
         state: 'draft',
         claimedAt: null,
       },
     })
+    return toRecord(row)
   } catch (error) {
     await prisma.gmailDraftAction.updateMany({
       where: { id: action.id, state: 'creating' },
-      data: { state: 'delivery_unknown', claimedAt: null },
+      data: {
+        state: 'delivery_unknown',
+        providerDraftId: ref.id,
+        providerThreadId,
+        claimedAt: null,
+      },
     })
     throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
   }
-  return toRecord(row)
 }
 
 export const updateDraftForUser = async (
@@ -299,11 +311,27 @@ export const updateDraftForUser = async (
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
   }
   const providerThreadId = ref.threadId ?? existing.providerThreadId
-  const fingerprint = fingerprintMessage(input.message, providerThreadId ?? undefined)
+  let content: GmailDraftContent
+  try {
+    content = await getGmailDraft(
+      gmailFetch(deps),
+      credential.credential.accessToken,
+      existing.providerDraftId,
+    )
+  } catch (error) {
+    await prisma.gmailDraftAction.updateMany({
+      where: { id: existing.id, state: 'updating' },
+      data: { state: 'delivery_unknown', claimedAt: null },
+    })
+    throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
+  }
+  const fingerprint = fingerprintOf(content)
+  const clientFingerprint = fingerprintMessage(input.message, providerThreadId ?? undefined)
   const persisted = await prisma.gmailDraftAction.updateMany({
     where: { id: existing.id, state: 'updating' },
     data: {
       contentFingerprint: fingerprint,
+      clientContentFingerprint: clientFingerprint,
       providerThreadId,
       revision: { increment: 1 },
       state: 'draft',

@@ -1,17 +1,21 @@
 import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { ApprovalDecision } from '../components/features/approvals/ApprovalDecision'
+import { EmailApprovalReviewDialog } from '../components/features/approvals/EmailApprovalReviewDialog'
 import { Pill } from '../components/primitives/Pill'
 import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
+import { type ApprovalRequest } from '../facades/approvals/hooks'
 import { approvalKeys } from '../lib/query-keys'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { usePagedList } from '../facades/usePagedList'
 
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
 const TODO_TEMPLATE_PUBLISH_ACTION = 'agent.todo_template.publish'
+const REVIEWABLE_EMAIL_TOOL_NAMES = new Set(['gmail_draft_send', 'mailbox_send'])
 
 type KnowledgePagePublishContext = {
   pageId: string
@@ -61,9 +65,15 @@ const approvalTitle = (approval: ApprovalRequest): string => {
   return approval.action
 }
 
+const isReviewableEmailApproval = (approval: ApprovalRequest): boolean =>
+  approval.action === 'tool.invoke'
+  && typeof approval.context?.['toolName'] === 'string'
+  && REVIEWABLE_EMAIL_TOOL_NAMES.has(approval.context['toolName'])
+
 export const ApprovalsPage = () => {
   const navigate = useNavigate()
   const { me } = useAuthSession()
+  const [reviewingApproval, setReviewingApproval] = useState<ApprovalRequest | null>(null)
 
   // Not raw keys: `approvalKeys.all` is the factory; 'pending'/'history' only
   // distinguish this page's two cache entries from each other and from any
@@ -88,8 +98,6 @@ export const ApprovalsPage = () => {
     queryKey: historyCacheKey,
   })
   const historyItems = history.items.filter((approval) => approval.status !== 'pending')
-
-  const resolve = useResolveApproval()
 
   return (
     <section className="flex h-full min-h-0 flex-col">
@@ -167,22 +175,21 @@ export const ApprovalsPage = () => {
                               Open to-dos
                             </button>
                           ) : null}
-                          <button
-                            className="admin-button admin-button-primary"
-                            disabled={resolve.isPending}
-                            onClick={() => resolve.mutate({ id: approval.id, resolution: 'approved' })}
-                            type="button"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="admin-button admin-button-secondary"
-                            disabled={resolve.isPending}
-                            onClick={() => resolve.mutate({ id: approval.id, resolution: 'rejected' })}
-                            type="button"
-                          >
-                            Reject
-                          </button>
+                          {isReviewableEmailApproval(approval) ? (
+                            <button
+                              className="admin-button admin-button-primary"
+                              data-testid="approval-review-email"
+                              onClick={() => setReviewingApproval(approval)}
+                              type="button"
+                            >
+                              Review email
+                            </button>
+                          ) : (
+                            <ApprovalDecision
+                              approvalId={approval.id}
+                              description="This lets the agent continue with the proposed action."
+                            />
+                          )}
                         </div>
                       </Row>
                     )
@@ -268,6 +275,11 @@ export const ApprovalsPage = () => {
           </QueryState>
         </Section>
       </PageBody>
+      <EmailApprovalReviewDialog
+        approval={reviewingApproval}
+        onClose={() => setReviewingApproval(null)}
+        open={reviewingApproval !== null}
+      />
     </section>
   )
 }

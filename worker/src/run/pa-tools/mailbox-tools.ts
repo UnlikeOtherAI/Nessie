@@ -2,9 +2,10 @@ import {
   dispatchMailboxSendAction,
   MailboxAccessError,
   markMailboxNeedsReauthorization,
+  mailboxConnectionFailureMessage,
+  mailboxConnectionTestFailure,
   openMailboxEndpoints,
   resolveMailboxForToolCall,
-  isCredentialRejection,
   mailboxDialOptions,
   type ReachableMailbox,
 } from '@nessie/team-admin'
@@ -12,6 +13,7 @@ import {
   readMailboxMessage,
   searchMailbox,
 } from '@nessie/agent-mail'
+import { MailboxSendToolInputSchema } from '@nessie/runtime'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
@@ -53,15 +55,6 @@ const SearchSchema = CommonSchema.extend({
 const ReadSchema = CommonSchema.extend({
   folder: z.string().max(200).optional(),
   uid: z.number().int().positive(),
-}).strict()
-
-const SendSchema = CommonSchema.extend({
-  bcc: z.array(z.string()).max(50).optional(),
-  cc: z.array(z.string()).max(50).optional(),
-  inReplyToUid: z.number().int().positive().optional(),
-  subject: z.string().max(500),
-  text: z.string().max(100_000),
-  to: z.array(z.string()).min(1).max(50),
 }).strict()
 
 const encryptionSecret = (): string => {
@@ -123,16 +116,23 @@ const runAgainstMailbox = async <T>(
   try {
     return await work()
   } catch (error) {
-    if (isCredentialRejection(error)) {
-      const detail = error instanceof Error ? error.message : 'The mailbox rejected the password.'
-      await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id, detail)
+    const failure = mailboxConnectionTestFailure(error)
+    const detail = mailboxToolFailureMessage(error)
+    if (failure === 'credential_rejected') {
+      await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id)
       throw new Error(
-        `${detail} The mailbox needs reconnecting from the Integrations page before I can use it.`,
+        `${detail} Reconnect the mailbox from Connected accounts in Settings before I can use it.`,
       )
     }
-    throw error
+    // Protocol error text is controlled by the remote mail server. Only the
+    // structural diagnosis may enter the model's tool result.
+    throw new Error(detail)
   }
 }
+
+/** Fixed model-visible copy for a failure returned by a remote mail server. */
+export const mailboxToolFailureMessage = (error: unknown): string =>
+  mailboxConnectionFailureMessage(mailboxConnectionTestFailure(error))
 
 export const runMailboxSearchTool = async (
   context: BuiltinToolRuntimeContext,
@@ -164,7 +164,7 @@ export const runMailboxSearchTool = async (
     + `${message.subject}`)
 
   return {
-    connectorUsage: mailboxUsage(mailbox, 'search', results.length),
+    connectorUsage: mailboxUsage('search', results.length),
     inputSummary: summarizeSearch(args),
     outputPreview: appendMailPresentationReferences(
       results.length === 0
@@ -212,7 +212,7 @@ export const runMailboxReadTool = async (
     : ''
 
   return {
-    connectorUsage: mailboxUsage(mailbox, 'read', 1),
+    connectorUsage: mailboxUsage('read', 1),
     inputSummary: `uid=${args.uid}`,
     outputPreview: appendMailPresentationReferences([
       `From ${message.fromName ? `${message.fromName} ` : ''}<${message.from ?? 'unknown'}>`
@@ -240,7 +240,7 @@ export const runMailboxSendTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = SendSchema.parse(input)
+  const args = MailboxSendToolInputSchema.parse(input)
   // Sending resolves the mailbox through the same predicate a read does, and
   // stamps the same scope: a send is also a read of who the mailbox is.
   const mailbox = await useMailbox(context, args.connectionId)
@@ -278,24 +278,25 @@ export const runMailboxSendTool = async (
 
   const recipients = [...args.to, ...(args.cc ?? []), ...(args.bcc ?? [])]
   return {
-    connectorUsage: mailboxUsage(mailbox, 'send', recipients.length),
-    inputSummary: `to=${args.to.join(',')} subject=${args.subject}`,
+    connectorUsage: mailboxUsage('send', recipients.length),
+    inputSummary: 'Send from a connected mailbox.',
     outputPreview:
-      `Sent from ${mailbox.connection.address} to ${recipients.join(', ')} — `
-      + `subject "${args.subject}".`,
+      `Sent from the connected mailbox to ${recipients.length} `
+       + `${recipients.length === 1 ? 'recipient' : 'recipients'}.`,
     toolName: 'mailbox_send',
   }
 }
 
 const mailboxUsage = (
-  mailbox: ReachableMailbox,
   operation: string,
   units: number,
 ): ToolExecutionResult['connectorUsage'] => ({
   calls: 1,
   connectorType: 'email',
   operation,
-  target: mailbox.connection.address,
+  // A mailbox address is personal correspondence, not operational telemetry.
+  // The connection id is already held at the authorization boundary when it
+  // is needed; no connector event needs the address or server identity.
   unitType: 'messages',
   units,
 })

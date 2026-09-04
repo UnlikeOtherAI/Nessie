@@ -14,6 +14,10 @@ import { useToasts } from '../../../providers/ToastProvider'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 import { MailboxSendApprovalPreview } from './MailboxSendApprovalPreview'
+import {
+  APPROVAL_GATE_ACTIONS,
+  canCreateStandingConsentFromApproval,
+} from './approval-gate-eligibility'
 
 const ApprovalGateSchema = z.object({
   approvalId: z.string().min(1),
@@ -24,8 +28,8 @@ const ApprovalGateSchema = z.object({
 type Resolution = 'approved' | 'rejected'
 
 const resolutionCopy: Record<Resolution, { action: string; title: string }> = {
-  approved: { action: 'Approve action', title: 'Approve this action?' },
-  rejected: { action: 'Reject action', title: 'Reject this action?' },
+  approved: { action: APPROVAL_GATE_ACTIONS.approve, title: 'Approve this action?' },
+  rejected: { action: APPROVAL_GATE_ACTIONS.reject, title: 'Reject this action?' },
 }
 
 const readApprovalGate = (
@@ -99,6 +103,8 @@ export const RunApprovalGate = ({
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
   const isCalendar = gate.toolName.startsWith('calendar_')
+  const canApprove = !isMailboxSend || Boolean(mailboxDraft.data)
+  const canCreateStandingConsent = canCreateStandingConsentFromApproval(gate.toolName, context)
   const canApprove = !isMailboxSend || Boolean(mailboxDraft.data)
 
   const submit = () => {
@@ -207,7 +213,7 @@ export const RunApprovalGate = ({
       {/* Stopping the asking belongs here, not on a separate settings trip:
           somebody who wants their assistant running their diary should not
           confirm every entry. It never applies to a schedule or an automation. */}
-      {active && !isMailboxSend ? (
+      {active && canCreateStandingConsent ? (
         <div className="mt-3 border-t border-[color:var(--warning-border)] pt-2">
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--tx3)]">
             <span>
@@ -258,7 +264,7 @@ export const RunApprovalGate = ({
               }}
               type="button"
             >
-              Approve, and don’t ask again
+              {APPROVAL_GATE_ACTIONS.standingConsent}
             </button>
           </div>
           <p className="mt-1 text-[11px] leading-4 text-[color:var(--tx3)]">

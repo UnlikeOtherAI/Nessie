@@ -25,18 +25,25 @@ import type { RunContext } from './types.js'
  * address.
  */
 
-export type MailboxSendGateDecision = {
-  externalDisclosureSources: string[]
-  mailboxConnectionId: string
-  requiredApproverUserId: string
-  reason: string
-}
+export type MailboxSendGateDecision =
+  | {
+      externalDisclosureSources: string[]
+      mailboxConnectionId: string
+      outcome: 'approval'
+      requiredApproverUserId: string
+      reason: string
+    }
+  | {
+      outcome: 'deny'
+      message: string
+      reason: 'mailbox_approver_unavailable' | 'mailbox_unavailable'
+    }
 
 const describe = (mailbox: ReachableMailbox, externalSources: string[]): string => {
   const who =
     mailbox.scope === 'user'
-      ? `This would go out as ${mailbox.connection.address}, a personal mailbox.`
-      : `This would go out as ${mailbox.connection.address}, a shared team mailbox.`
+      ? 'This would go out from your personal connected mailbox.'
+      : 'This would go out from a shared team mailbox.'
   if (externalSources.length === 0) return who
   return (
     `${who} It was also built from material the recipient cannot reach: `
@@ -47,22 +54,26 @@ const describe = (mailbox: ReachableMailbox, externalSources: string[]): string 
 export const evaluateMailboxSendGate = async (
   prisma: PrismaClient,
   context: RunContext,
-  input: { connectionId: string | null; effectiveUserId: string | null },
-): Promise<MailboxSendGateDecision | null> => {
+  input: { connectionId: string; effectiveUserId: string | null },
+): Promise<MailboxSendGateDecision> => {
   const reachable = await listReachableMailboxes(prisma, {
     agentId: context.agent.id,
     effectiveUserId: input.effectiveUserId,
     organizationId: context.channel.organizationId,
   })
-  // Resolve exactly as the tool will. If the call cannot name one mailbox the
-  // tool refuses in words, and asking somebody to approve a send that cannot
-  // happen would be worse than useless.
-  const mailbox = input.connectionId
-    ? reachable.find((entry) => entry.connection.id === input.connectionId)
-    : reachable.length === 1
-      ? reachable[0]
-      : undefined
-  if (!mailbox) return null
+  // Sending must name the same exact mailbox in the durable approval and at
+  // dispatch. A sole reachable connection is not a stable identity: another
+  // connection can appear while the person is deciding.
+  const mailbox = reachable.find((entry) => entry.connection.id === input.connectionId)
+  if (!mailbox) {
+    return {
+      message:
+        'The selected connected mailbox is unavailable or you no longer have access. '
+        + 'Choose an active mailbox connection and try again.',
+      outcome: 'deny',
+      reason: 'mailbox_unavailable',
+    }
+  }
 
   // What the run read that the recipient has no claim to. The mailbox's own
   // scope is implied — answering the correspondence you were reading is the
@@ -76,21 +87,38 @@ export const evaluateMailboxSendGate = async (
     ...context.boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
   ]).map((scope) => `${scope.scopeType}:${scope.scopeId}`)
 
-  const requiredApproverUserId = await liveApproverOrNull(prisma, {
+  const accountableUserId = mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId
+  if (!accountableUserId) {
+    return {
+      message:
+        'This shared mailbox has no assigned approver. An owner or admin must reconnect '
+        + 'it under an active approver before it can send.',
+      outcome: 'deny',
+      reason: 'mailbox_approver_unavailable',
+    }
+  }
+  const liveApprover = await liveApproverOrNull(prisma, {
     organizationId: context.channel.organizationId,
-    userId: mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId,
+    userId: accountableUserId,
   })
-  if (!requiredApproverUserId) {
-    throw new Error(
-      'This mailbox has no active accountable owner. Reconnect it before sending.',
-    )
+  if (!liveApprover) {
+    return {
+      message: mailbox.scope === 'team'
+        ? 'The person assigned to approve shared mailbox sends is no longer active. '
+          + 'An owner or admin must reconnect it under an active approver before it can send.'
+        : 'The personal mailbox owner is no longer active. Reactivate its owner or '
+          + 'reconnect the mailbox under an active owner before it can send.',
+      outcome: 'deny',
+      reason: 'mailbox_approver_unavailable',
+    }
   }
 
   return {
+    outcome: 'approval',
     externalDisclosureSources: externalSources,
     mailboxConnectionId: mailbox.connection.id,
     reason: describe(mailbox, externalSources),
-    requiredApproverUserId,
+    requiredApproverUserId: liveApprover,
   }
 }
 
@@ -106,15 +134,14 @@ export const buildMailboxSendApprovalHook = (
 ) =>
   async (input: { toolName: string; args: Record<string, unknown> }) => {
     if (input.toolName !== MAILBOX_SEND_TOOL_ID) return null
-    const connectionId =
-      typeof input.args.connectionId === 'string' ? input.args.connectionId : null
+    const connectionId = input.args.connectionId as string
     const decision = await evaluateMailboxSendGate(prisma, context, {
       connectionId,
       effectiveUserId,
     })
-    if (!decision) return null
+    if (decision.outcome === 'deny') return decision
     return {
-      escalate: true as const,
+      outcome: 'approval' as const,
       reason: decision.reason,
       requiredApproverUserId: decision.requiredApproverUserId,
       contextExtra: {

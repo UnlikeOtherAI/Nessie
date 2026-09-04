@@ -41,6 +41,7 @@ export {
   buildRawMessage,
   canonicalDraftFingerprintInput,
   MimeBuildError,
+  type GmailDraftAttachmentIdentity,
   type OutboundMessage,
   type OutboundAttachment,
 } from './gmail/mime-build.js'

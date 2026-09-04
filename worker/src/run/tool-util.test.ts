@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {
+  EMAIL_ACCOUNT_TOOL_DEFINITIONS,
+  GOOGLE_TOOL_DEFINITIONS,
+  MAILBOX_TOOL_DEFINITIONS,
+} from '@nessie/runtime'
 
 import {
   MAX_PREVIEW_LENGTH,
   MAX_RAW_BODY_CHARS,
   MAX_TOOL_RESULT_CHARS,
   sanitizeProviderToolCalls,
+  isProtectedMailOperationalTool,
+  redactToolInputForPersistence,
+  sanitizeToolOutputForPersistence,
   summarizeToolInput,
+  summarizeToolInputForTool,
   truncate,
   truncateToolResult,
 } from './tool-util.js'
@@ -60,6 +69,53 @@ test('summarizeToolInput redacts secret-bearing fields recursively', () => {
   assert.equal(summary.includes('Bearer should-not-leak'), false)
   assert.ok(summary.includes('public query'))
   assert.ok(summary.includes('[REDACTED]'))
+})
+
+test('protected mail tools never summarize or persist correspondence and account arguments', () => {
+  const payload = {
+    authorizationCode: 'oauth-code-that-must-not-be-durable',
+    body: 'Body text that must stay in the authorized run.',
+    host: 'imap.mail.example.test',
+    subject: 'Private subject',
+    to: ['recipient@example.test'],
+  }
+
+  for (const toolName of [
+    'contacts_search',
+    'mailbox_search',
+    'mailbox_read',
+    'mailbox_send',
+    'gmail_search',
+    'gmail_draft_create',
+    'gmail_draft_send',
+    'email_account_connect',
+  ]) {
+    const summary = summarizeToolInputForTool(toolName, payload)
+    const serialized = JSON.stringify({ persisted: redactToolInputForPersistence(toolName, payload), summary })
+    assert.doesNotMatch(serialized, /recipient@example\.test|Private subject|Body text|oauth-code|imap\.mail/)
+  }
+
+  assert.equal(
+    sanitizeToolOutputForPersistence('mailbox_send', true, 'Sent to recipient@example.test'),
+    'Email send completed.',
+  )
+  assert.equal(
+    sanitizeToolOutputForPersistence('gmail_search', false, 'provider said recipient@example.test'),
+    'Email action did not complete.',
+  )
+})
+
+test('every Gmail, contact, connected-mail, and email-account tool is protected', () => {
+  const protectedDefinitions = [
+    ...MAILBOX_TOOL_DEFINITIONS,
+    ...EMAIL_ACCOUNT_TOOL_DEFINITIONS,
+    ...GOOGLE_TOOL_DEFINITIONS.filter((tool) =>
+      tool.id.startsWith('gmail_') || tool.id === 'contacts_search'),
+  ]
+
+  for (const tool of protectedDefinitions) {
+    assert.equal(isProtectedMailOperationalTool(tool.id), true, tool.id)
+  }
 })
 
 test('tool summaries and results mask structural credentials under ordinary keys', () => {

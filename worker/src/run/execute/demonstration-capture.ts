@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
-import { redactToolInputValue } from '../tool-util.js'
+import { redactToolInputForPersistence } from '../tool-util.js'
 
 const DEMONSTRATION_CONTROL_TOOLS = new Set([
   'demonstration_start',
@@ -15,8 +15,8 @@ const demonstrationMaxSteps = (): number => {
     : DEFAULT_DEMONSTRATION_MAX_STEPS
 }
 
-const toRedactedJson = (argumentsValue: Record<string, unknown>): string => {
-  const serialized = JSON.stringify(redactToolInputValue(argumentsValue))
+const toRedactedJson = (toolName: string, argumentsValue: Record<string, unknown>): string => {
+  const serialized = JSON.stringify(redactToolInputForPersistence(toolName, argumentsValue))
   if (serialized === undefined) throw new Error('Tool arguments could not be serialized.')
   return serialized
 }
@@ -42,7 +42,7 @@ const appendDemonstrationStep = async (
     toolName: string
   },
 ): Promise<void> => {
-  const argumentsJson = toRedactedJson(input.argumentsValue)
+  const argumentsJson = toRedactedJson(input.toolName, input.argumentsValue)
   const maxSteps = demonstrationMaxSteps()
   await prisma.$executeRaw(Prisma.sql`
     WITH expired AS (

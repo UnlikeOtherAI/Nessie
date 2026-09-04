@@ -258,7 +258,7 @@ test('secret-bearing tool arguments are sanitized and refused before preparation
     initialMessages: initial,
     prepareTool: async () => {
       prepared = true
-      return { kind: 'execute', execute: async () => ({
+      return { kind: 'execute', inputSummary: 'unsafe', execute: async () => ({
         inputSummary: 'unsafe',
         output: 'ran',
         success: true,

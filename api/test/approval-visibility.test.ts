@@ -51,6 +51,7 @@ type Row = {
   action: string
   projectId: string | null
   teamId: string | null
+  toolName: string | null
   runId: string | null
   updatedAt: Date
 }
@@ -79,6 +80,7 @@ const makeRow = (overrides: Partial<Row> = {}): Row => ({
   action: 'send_email',
   projectId: null,
   teamId: null,
+  toolName: overrides.toolName ?? null,
   runId: null,
   updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
 })
@@ -185,6 +187,24 @@ test('an owner sees a private-channel approval they are not a member of', async 
   assert.deepEqual(result.data.map((entry) => entry.id), ['private'])
 })
 
+test('a pinned approval is visible only to its exact approver', async () => {
+  const prisma = makePrisma([
+    makeRow({
+      channelId: privateChannelId,
+      channelIsPublic: true,
+      requiredApproverUserId: memberId,
+      visibleTo: [ownerId, requesterId],
+    }),
+  ])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(memberId))).data.map((row) => row.id), ['approval-1'])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(ownerId, ['owner']))).data, [])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(requesterId))).data, [])
+  assert.equal((await getApprovalRequest(prisma, 'approval-1', actorCtx(ownerId, ['owner']))), null)
+  assert.equal((await getApprovalRequest(prisma, 'approval-1', actorCtx(memberId)))?.id, 'approval-1')
+  assert.equal(await getPendingApprovalCount(prisma, actorCtx(ownerId, ['owner'])), 0)
+  assert.equal(await getPendingApprovalCount(prisma, actorCtx(memberId)), 1)
+})
+
 test('fetching an inaccessible approval by id returns null, not its reason', async () => {
   const prisma = makePrisma([
     makeRow({ id: 'private', channelId: privateChannelId, visibleTo: [requesterId] }),
@@ -224,4 +244,36 @@ test('the pending count excludes approvals the actor cannot see', async () => {
   ])
   assert.equal(await getPendingApprovalCount(prisma, actorCtx(memberId)), 1)
   assert.equal(await getPendingApprovalCount(prisma, actorCtx(ownerId, ['owner'])), 2)
+})
+
+test('a mail proposal never reaches approval list or detail presentation', async () => {
+  const recipient = 'recipient@example.com'
+  const body = 'This body belongs only to the mailbox approver.'
+  const prisma = makePrisma([
+    makeRow({
+      reason: 'Send the private renewal to recipient@example.com: this body must not be shown.',
+      context: {
+        headline: 'Send “Private subject” from a connected mailbox',
+        inputSummary: JSON.stringify({ subject: 'Private subject', text: body, to: [recipient] }),
+      },
+      requiredApproverUserId: memberId,
+      toolName: 'mailbox_send',
+    }),
+  ])
+
+  const listed = await listApprovalRequests(prisma, actorCtx(memberId))
+  const detail = await getApprovalRequest(prisma, 'approval-1', actorCtx(memberId))
+  assert.deepEqual(listed.data[0]?.context, {
+    audience: 'The recipients will receive it',
+    headline: 'Send an email from a connected mailbox',
+    toolName: 'mailbox_send',
+  })
+  assert.deepEqual(detail?.context, listed.data[0]?.context)
+  assert.doesNotMatch(
+    JSON.stringify({ detail, listed }),
+    new RegExp(`${recipient}|${body}|Private subject|private renewal`),
+  )
+  assert.equal(detail?.reason, 'Review the email before deciding whether to send it.')
+  // The privacy projection does not fork the exact-approver list/count rule.
+  assert.equal(await getPendingApprovalCount(prisma, actorCtx(memberId)), 1)
 })

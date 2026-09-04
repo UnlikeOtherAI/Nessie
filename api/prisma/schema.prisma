@@ -1002,7 +1002,7 @@ model User {
   refreshTokens                       RefreshToken[]
   authSessions                        AuthSession[]
   uoaSessionCredentials               UoaSessionCredential[]
-  uoaTeamSwitchIntents           UoaTeamSwitchIntent[]
+  uoaTeamSwitchIntents                UoaTeamSwitchIntent[]
   productAccountLinks                 ProductAccountLink[]
   productTeamEnablements              ProductTeamEnablement[]
   productIntegrationRuns              ProductIntegrationRun[]
@@ -1093,28 +1093,28 @@ model AuthSession {
 /// exact compare-and-swap without persisting plaintext. `lastLocalTokenId`
 /// couples every upstream rotation to one deterministic local successor.
 model UoaSessionCredential {
-  familyId               String                    @id @map("family_id") @db.Uuid
-  userId                 String                    @map("user_id") @db.Uuid
-  providerId             String                    @map("provider_id")
-  subject                String                    @map("subject")
+  familyId               String               @id @map("family_id") @db.Uuid
+  userId                 String               @map("user_id") @db.Uuid
+  providerId             String               @map("provider_id")
+  subject                String               @map("subject")
   // UOA's OWN organization/team identifiers, not local Organization/Team ids —
   // they are opaque provider strings, so no foreign key belongs here.
-  organizationId         String                    @map("organization_id")
-  teamId                 String                    @map("team_id")
-  tokenVersion           Int                       @map("token_version")
-  configUrl              String                    @map("config_url")
-  refreshTokenHash       String                    @unique @map("refresh_token_hash")
-  refreshTokenCiphertext String                    @map("refresh_token_ciphertext")
-  refreshTokenIv         String                    @map("refresh_token_iv")
-  refreshTokenAuthTag    String                    @map("refresh_token_auth_tag")
-  refreshTokenExpiresAt  DateTime                  @map("refresh_token_expires_at") @db.Timestamptz(6)
-  lastLocalTokenId       String                    @unique @map("last_local_token_id") @db.Uuid
-  generation             Int                       @default(0)
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastLocalToken         RefreshToken              @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
-  teamSwitchIntent  UoaTeamSwitchIntent?
+  organizationId         String               @map("organization_id")
+  teamId                 String               @map("team_id")
+  tokenVersion           Int                  @map("token_version")
+  configUrl              String               @map("config_url")
+  refreshTokenHash       String               @unique @map("refresh_token_hash")
+  refreshTokenCiphertext String               @map("refresh_token_ciphertext")
+  refreshTokenIv         String               @map("refresh_token_iv")
+  refreshTokenAuthTag    String               @map("refresh_token_auth_tag")
+  refreshTokenExpiresAt  DateTime             @map("refresh_token_expires_at") @db.Timestamptz(6)
+  lastLocalTokenId       String               @unique @map("last_local_token_id") @db.Uuid
+  generation             Int                  @default(0)
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+  user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastLocalToken         RefreshToken         @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
+  teamSwitchIntent       UoaTeamSwitchIntent?
 
   @@index([userId])
   @@map("uoa_session_credentials")
@@ -1422,7 +1422,7 @@ model OrganizationMember {
   modelSubscriptions      ModelSubscription[]      @relation("ModelSubscriptionOwner")
   /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
-  scopedSettings          ScopedSetting[]            @relation("ScopedSettingOwner")
+  scopedSettings          ScopedSetting[]          @relation("ScopedSettingOwner")
   agentBrowserLogins      AgentBrowserLogin[]      @relation("AgentBrowserLoginMember")
   /// Personal SMTP/IMAP mailboxes. Tenancy only, exactly as `ownedAgents`.
   mailboxConnections      MailboxConnection[]      @relation("MailboxConnectionOwner")
@@ -1523,11 +1523,11 @@ model ProjectMember {
 }
 
 model Team {
-  id                     String                  @id @default(uuid()) @db.Uuid
-  name                   String
-  projectId              String                  @map("project_id") @db.Uuid
-  systemManaged          Boolean                 @default(false) @map("system_managed")
-  callProvider           String                  @default("google_meet") @map("call_provider")
+  id                      String                   @id @default(uuid()) @db.Uuid
+  name                    String
+  projectId               String                   @map("project_id") @db.Uuid
+  systemManaged           Boolean                  @default(false) @map("system_managed")
+  callProvider            String                   @default("google_meet") @map("call_provider")
   // Slack-style team binding. When this Nessie team represents a UOA
   // team, `externalTeamId` is that team's UOA team id
   // (`active.teamId`) — unique, so one Nessie team per UOA team — and
@@ -1535,18 +1535,18 @@ model Team {
   // teams that were not provisioned from a UOA team (e.g. the bootstrap
   // default team, local-mode teams). See
   // docs/plans/2026-07-10-slack-workspace-login-nessie.md.
-  externalTeamId    String?                 @unique @map("external_team_id")
-  externalOrgId          String?                 @map("external_org_id")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt @map("updated_at")
-  project                Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  members                TeamMember[]
-  channels               Channel[]
-  plans                  Plan[]
-  approvalRequests       ApprovalRequest[]
-  productEnablements     ProductTeamEnablement[]
-  productIntegrationRuns ProductIntegrationRun[]
-  mailboxConnections     MailboxConnection[]
+  externalTeamId          String?                  @unique @map("external_team_id")
+  externalOrgId           String?                  @map("external_org_id")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
+  project                 Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members                 TeamMember[]
+  channels                Channel[]
+  plans                   Plan[]
+  approvalRequests        ApprovalRequest[]
+  productEnablements      ProductTeamEnablement[]
+  productIntegrationRuns  ProductIntegrationRun[]
+  mailboxConnections      MailboxConnection[]
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionTeam")
   scopedSettings          ScopedSetting[]          @relation("ScopedSettingTeam")
 
@@ -1711,6 +1711,10 @@ enum UserAlertKind {
   // alone. Durable rather than push-only for the same reason as
   // trigger_health: a push at 06:00 is missable and the request expires.
   approval_requested
+  // A connected IMAP/SMTP mailbox rejected its credential. The alert is tied
+  // to the live connection so it disappears as soon as an explicit reconnect
+  // restores it.
+  mailbox_connection_health
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1720,48 +1724,51 @@ enum UserAlertKind {
 // same alerts substrate. A muted channel still gets the row — mute suppresses
 // the push, never the durable alert.
 model UserAlert {
-  id                String           @id @default(uuid()) @db.Uuid
-  organizationId    String           @map("organization_id") @db.Uuid
-  userId            String           @map("user_id") @db.Uuid
-  kind              UserAlertKind
-  messageId         String?          @map("message_id") @db.Uuid
-  threadId          String?          @map("thread_id") @db.Uuid
-  channelId         String?          @map("channel_id") @db.Uuid
-  projectId         String?          @map("project_id") @db.Uuid
-  taskId            String?          @map("task_id") @db.Uuid
-  knowledgePageId   String?          @map("knowledge_page_id") @db.Uuid
-  triggerId         String?          @map("trigger_id") @db.Uuid
-  callId            String?          @map("call_id") @db.Uuid
-  approvalRequestId String?          @map("approval_request_id") @db.Uuid
+  id                  String             @id @default(uuid()) @db.Uuid
+  organizationId      String             @map("organization_id") @db.Uuid
+  userId              String             @map("user_id") @db.Uuid
+  kind                UserAlertKind
+  messageId           String?            @map("message_id") @db.Uuid
+  threadId            String?            @map("thread_id") @db.Uuid
+  channelId           String?            @map("channel_id") @db.Uuid
+  projectId           String?            @map("project_id") @db.Uuid
+  taskId              String?            @map("task_id") @db.Uuid
+  knowledgePageId     String?            @map("knowledge_page_id") @db.Uuid
+  triggerId           String?            @map("trigger_id") @db.Uuid
+  callId              String?            @map("call_id") @db.Uuid
+  approvalRequestId   String?            @map("approval_request_id") @db.Uuid
+  mailboxConnectionId String?            @map("mailbox_connection_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
-  eventKey          String?          @map("event_key")
+  eventKey            String?            @map("event_key")
   // Ephemeral UOA invitation display/acceptance payload. Reconciled from each
   // verified directory read and deleted as soon as the invite disappears.
-  metadata          Json?            @db.JsonB
-  actorUserId       String?          @map("actor_user_id") @db.Uuid
-  actorAgentId      String?          @map("actor_agent_id") @db.Uuid
-  readAt            DateTime?        @map("read_at")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message           Message?         @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  thread            Thread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  channel           Channel?         @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  project           Project?         @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
-  task              Task?            @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
-  knowledgePage     KnowledgePage?   @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
-  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  trigger           AgentTrigger?    @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
-  call              Call?            @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
-  actorUser         User?            @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  actorAgent        Agent?           @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
+  metadata            Json?              @db.JsonB
+  actorUserId         String?            @map("actor_user_id") @db.Uuid
+  actorAgentId        String?            @map("actor_agent_id") @db.Uuid
+  readAt              DateTime?          @map("read_at")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message             Message?           @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  thread              Thread?            @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  channel             Channel?           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project             Project?           @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
+  task                Task?              @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
+  knowledgePage       KnowledgePage?     @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  approvalRequest     ApprovalRequest?   @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  mailboxConnection   MailboxConnection? @relation("MailboxConnectionHealthAlert", fields: [mailboxConnectionId], references: [id], onDelete: Cascade)
+  trigger             AgentTrigger?      @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
+  call                Call?              @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
+  actorUser           User?              @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAgent          Agent?             @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
   @@unique([userId, eventKey])
   @@index([userId, readAt, createdAt])
   @@index([organizationId, userId, createdAt])
   @@index([userId, kind, projectId, readAt, createdAt])
   @@index([callId])
+  @@index([mailboxConnectionId])
   @@map("user_alerts")
 }
 
@@ -5555,8 +5562,12 @@ model GmailDraftAction {
   clientRequestId    String?               @map("client_request_id") @db.Uuid
   /// Gmail thread this draft replies into, when it is a reply.
   providerThreadId   String?               @map("provider_thread_id")
-  /// SHA-256 over the canonical recipients/subject/body/attachments.
+  /// SHA-256 over the provider-re-read canonical recipients/subject/body/attachments.
+  /// This includes Gmail attachment identities and is the immutable send/approval proof.
   contentFingerprint String                @map("content_fingerprint")
+  /// SHA-256 over the caller's create/edit request. This makes a replayed
+  /// client request id reject changed input without weakening the provider proof.
+  clientContentFingerprint String          @map("client_content_fingerprint")
   /// Bumped on every edit, so a stale card can tell it is looking at old text.
   revision           Int                   @default(1)
   state              GmailDraftActionState @default(draft)
@@ -6958,6 +6969,11 @@ model MailboxConnection {
   /// Why the status is what it is, in words a person can act on. A provider
   /// rejection names the remedy; it is never a silent retry-forever.
   statusReason    String?                  @map("status_reason")
+  /// Identifies the health transition that made the mailbox unavailable. A
+  /// per-recipient alert key includes this value, preventing repeated provider
+  /// rejections from producing repeated alerts while preserving a later,
+  /// distinct failure after an explicit reconnect.
+  healthRevision  Int                      @default(0) @map("health_revision")
   lastVerifiedAt  DateTime?                @map("last_verified_at")
   createdByUserId String?                  @map("created_by_user_id") @db.Uuid
   createdAt       DateTime                 @default(now()) @map("created_at")
@@ -6972,6 +6988,7 @@ model MailboxConnection {
   credential      MailboxConnectionCredential?
   agentAccess     MailboxConnectionAgentAccess[]
   sendActions     MailboxSendAction[]
+  healthAlerts    UserAlert[]                    @relation("MailboxConnectionHealthAlert")
 
   @@index([organizationId, status])
   @@index([organizationId, ownerUserId])

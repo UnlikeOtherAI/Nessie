@@ -13,6 +13,11 @@ import {
 import { buildScopes } from './scopes.js'
 import { captureDemonstrationToolEnd } from './demonstration-capture.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import {
+  isProtectedMailOperationalTool,
+  sanitizeToolOutputForPersistence,
+  summarizeToolInputForTool,
+} from '../tool-util.js'
 
 // Builtin tools that reach an external/third-party service. Each call is copied
 // to Nessie's operational connector telemetry for local diagnostics and
@@ -42,10 +47,14 @@ export const recordToolEnd = async (
   },
 ): Promise<void> => {
   const endedAt = new Date()
-  const inputSummary = redactDetectedSecrets(input.inputSummary)
+  const inputSummary = redactDetectedSecrets(
+    summarizeToolInputForTool(input.toolName, input.argumentsValue),
+  )
   // Redact before enforcing the durable preview bound. Cutting first can
   // split a token below the scanner's minimum length and persist real bytes.
-  const outputPreview = redactDetectedSecrets(input.outputPreview).slice(0, 1200)
+  const outputPreview = redactDetectedSecrets(
+    sanitizeToolOutputForPersistence(input.toolName, input.success, input.outputPreview),
+  ).slice(0, 1200)
 
   if (input.toolCallRecordId) {
     const updated = await deps.prisma.toolCall.updateMany({
@@ -98,15 +107,26 @@ export const recordToolEnd = async (
   const connectorType =
     input.connectorUsage?.connectorType ?? CONNECTOR_TYPE_BY_TOOL[input.toolName]
   if (connectorType) {
+    const protectedEmailTelemetry =
+      isProtectedMailOperationalTool(input.toolName)
+      || input.connectorUsage?.connectorType === 'email'
+    const connectorUsage = input.connectorUsage ? { ...input.connectorUsage } : undefined
+    if (protectedEmailTelemetry) {
+      delete connectorUsage?.connectorId
+      delete connectorUsage?.metadata
+      delete connectorUsage?.target
+    }
     await recordConnectorUsage(deps.prisma, {
       attribution: attributionFromActorContext(actorContext, {
         agentId: context.agent.id,
         runId: context.run.id,
       }),
       event: {
-        ...(input.connectorUsage ?? {}),
+        ...(connectorUsage ?? {}),
         connectorType,
-        operation: input.connectorUsage?.operation ?? input.toolName,
+        operation: protectedEmailTelemetry
+          ? 'email_action'
+          : (connectorUsage?.operation ?? input.toolName),
         success: input.success,
         latencyMs: input.durationMs,
       },

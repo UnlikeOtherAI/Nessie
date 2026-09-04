@@ -1,4 +1,10 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import {
+  CalendarEventCancelToolInputSchema,
+  CalendarEventCreateToolInputSchema,
+  CalendarEventUpdateToolInputSchema,
+  GmailDraftSendToolInputSchema,
+} from './builtin-approval-inputs.js'
 
 /**
  * Gmail and Calendar tools.
@@ -173,6 +179,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['draftId'],
     },
+    inputSchema: GmailDraftSendToolInputSchema,
   },
   {
     id: CALENDAR_LIST_TOOL_ID,
@@ -256,6 +263,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['title', 'start', 'end'],
     },
+    inputSchema: CalendarEventCreateToolInputSchema,
   },
   {
     id: CALENDAR_EVENT_UPDATE_TOOL_ID,
@@ -282,6 +290,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['eventId'],
     },
+    inputSchema: CalendarEventUpdateToolInputSchema,
   },
   {
     id: CALENDAR_EVENT_CANCEL_TOOL_ID,
@@ -302,6 +311,7 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['eventId'],
     },
+    inputSchema: CalendarEventCancelToolInputSchema,
   },
   {
     id: CALENDAR_EVENT_RESPOND_TOOL_ID,

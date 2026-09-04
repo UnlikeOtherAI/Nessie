@@ -19,14 +19,12 @@ import type { ExecutorToolset } from '../executor-toolset.js'
 import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
-import { summarizeToolInput } from '../tool-util.js'
+import { summarizeToolInputForTool } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
-import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
-import { composeStructuralGates } from './structural-gates.js'
-import { buildEmailSendApprovalHook } from './email-send-gate.js'
-import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
+import { resumeApprovedEmailContinuation } from './approved-tool-resume.js'
+import { createMainToolAuthorizer } from './main-tool-authorizer.js'
+import { createPreparedToolExecutor, suspendedToolResult } from './prepared-tool-execution.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
-import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
 import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
@@ -174,7 +172,6 @@ export const runExecutionAgentLoop = async (
     runContext: context,
     toolCallId,
   })
-
   const executeGuardedBuiltin = (
     toolName: string,
     args: Record<string, unknown>,
@@ -187,88 +184,36 @@ export const runExecutionAgentLoop = async (
       buildBuiltinCtx(toolActorContext, toolCallId),
       input.stubbedBuiltinToolIds,
     )
-
   const contextPlan = buildContextPlan({
-    model: context.agent.model,
-    toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
+    model: context.agent.model, toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
   })
-
-  const authorizeMainTool = (
-    toolName: string,
-    args: Record<string, unknown>,
-    toolCallId: string,
-    options: {
-      consumeApprovalProof?: boolean
-      maySuspendForApproval?: boolean
-      skipAutoReview?: boolean
-    } = {},
-  ) =>
-    authorizeToolExecution(
-      deps.prisma,
-      payload.actorContext,
-      context,
-      toolName,
-      args,
-      toolCallId,
-      {
-        agentKind: context.agent.agentKind,
-        allowedToolIds: input.allowedToolIds,
-        consumeApprovalProof: options.consumeApprovalProof,
-        identityToolIds: input.identityToolIds,
-        executorToolNames: input.executorToolset.handledNames,
-        mcpToolNames: mcpExposedNames,
-        skipAutoReview: options.skipAutoReview,
-        resolvedBuiltinToolIds: input.resolvedToolIds,
-        externalToolNames,
-        // One hook per family, tried in order: each returns null for tools it
-        // does not own, so adding a family costs one comparison rather than a
-        // second gate the next family could forget to consult.
-        structuralGate: composeStructuralGates([
-          buildEmailSendApprovalHook(deps.prisma, context, payload.interactive === true),
-          buildBrowserActApprovalHook(deps.prisma, context),
-          buildMailboxSendApprovalHook(
-            deps.prisma,
-            context,
-            payload.actorContext.actionContext.effectiveUserId ?? null,
-          ),
-        ]),
-        maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
-        // The send-boundary judge. Inference the run paid for, so its
-        // invocations count in the run's totals like compaction's do.
-        runUtility: async (prompt: string) => {
-          const result = await input.inference.runUtility(
-            [{ content: prompt, role: 'user' }],
-            [],
-          )
-          input.invocationSink.push(...result.invocations)
-          return result.outputText
-        },
-        parentAgentId: context.agent.parentAgentId,
-        resumeState: {
-          actorContext: payload.actorContext,
-          interactive: payload.interactive === true,
-          messageId: payload.messageId,
-        },
-        toolPolicy: input.toolPolicy,
-      },
-      {
-        deepWaterHandoffGuard: input.deepWaterHandoffGuard,
-        reviewProposedAction: async (reviewInput) => {
-          const reviewed = await reviewProposedToolAction(input.inference.runUtility, reviewInput)
-          input.invocationSink.push(...reviewed.invocations)
-          return reviewed
-        },
-      },
-    )
+  const authorizeMainTool = createMainToolAuthorizer({
+    actorContext: payload.actorContext,
+    allowedToolIds: input.allowedToolIds,
+    context,
+    deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+    executorToolNames: input.executorToolset.handledNames,
+    externalToolNames,
+    identityToolIds: input.identityToolIds,
+    inference: input.inference,
+    interactive: payload.interactive === true,
+    invocationSink: input.invocationSink,
+    isHandoffTurn: input.isHandoffTurn,
+    mcpToolNames: mcpExposedNames,
+    messageId: payload.messageId,
+    prisma: deps.prisma,
+    resolvedToolIds: input.resolvedToolIds,
+    toolPolicy: input.toolPolicy,
+  })
 
   const executeAuthorizedTool = async (
     toolName: string,
-    args: Record<string, unknown>,
     toolCallId: string,
     authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
   ) => {
+    const canonicalArgs = authorization.args
     if (toolName === BUILTIN_TOOL_SPEC_NAME) {
-      return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+      return executeBuiltinToolSpec(canonicalArgs, allowedBuiltinDefinitions)
     }
     if (toolName === 'react') {
       input.onReacted?.()
@@ -276,7 +221,7 @@ export const runExecutionAgentLoop = async (
     if (toolName === 'delegate') {
       if (!delegateGate.tryAcquire()) {
         return {
-          inputSummary: summarizeToolInput(args),
+          inputSummary: summarizeToolInputForTool(toolName, canonicalArgs),
           output: delegateGate.overLimitMessage(),
           success: false,
         }
@@ -284,7 +229,7 @@ export const runExecutionAgentLoop = async (
       // Created here rather than inside runDelegate so the authorization
       // gate can recognize the sub-agent view's exposed MCP names.
       const subAgentMcpView = input.mcpToolset.createView()
-      const result = await runDelegate(args, {
+      const result = await runDelegate(canonicalArgs, {
         mcpView: subAgentMcpView,
         mcpToolset: input.mcpToolset,
         runInference: input.inference.runUtility,
@@ -335,20 +280,20 @@ export const runExecutionAgentLoop = async (
       }
     }
     if (mcpExposedNames.has(toolName)) {
-      return mcpView.dispatch(toolName, args, toolCallId)
+      return mcpView.dispatch(toolName, canonicalArgs, toolCallId)
     }
     if (input.executorToolset.handledNames.has(toolName)) {
-      const result = await input.executorToolset.dispatch(toolName, args, toolCallId)
+      const result = await input.executorToolset.dispatch(toolName, canonicalArgs, toolCallId)
       if (toolName === 'executor.browser.act' || toolName === 'executor.command.run') {
         const metadata = toolName === 'executor.browser.act'
           ? {
-              action: typeof args.action === 'string' ? args.action : 'unknown',
-              ...(typeof args.nodeId === 'number' ? { nodeId: args.nodeId } : {}),
+              action: typeof canonicalArgs.action === 'string' ? canonicalArgs.action : 'unknown',
+              ...(typeof canonicalArgs.nodeId === 'number' ? { nodeId: canonicalArgs.nodeId } : {}),
               runId: context.run.id,
               toolCallId,
             }
           : {
-              program: typeof args.program === 'string' ? args.program : 'unknown',
+              program: typeof canonicalArgs.program === 'string' ? canonicalArgs.program : 'unknown',
               runId: context.run.id,
               toolCallId,
             }
@@ -366,35 +311,20 @@ export const runExecutionAgentLoop = async (
     }
     return executeBuiltinTool(
       toolName,
-      args,
+      canonicalArgs,
       buildBuiltinCtx(authorization.toolActorContext, toolCallId),
       input.stubbedBuiltinToolIds,
     )
-  }
-
-  const suspensionResult = (
-    args: Record<string, unknown>,
-    authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
-  ) => ({
-    inputSummary: summarizeToolInput(args),
-    output: 'Tool execution is waiting for human approval.',
-    pendingApproval: {
-      approvalId: authorization.approval.id,
-      notice: authorization.approval.notice,
-      toolName: authorization.approval.toolName,
-    },
-    success: false,
-  })
-
+}
   const executeMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
     const authorization = await authorizeMainTool(toolName, args, toolCallId)
     if (authorization.decision === 'deny') {
       return authorization.result
     }
     if (authorization.decision === 'suspend') {
-      return suspensionResult(args, authorization)
+      return suspendedToolResult(authorization)
     }
-    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+    return executeAuthorizedTool(toolName, toolCallId, authorization)
   }
 
   const executePreparedTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
@@ -410,31 +340,32 @@ export const runExecutionAgentLoop = async (
     if (authorization.decision === 'suspend') {
       throw new Error('Prepared tool authorization unexpectedly requested approval.')
     }
-    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+    return executeAuthorizedTool(toolName, toolCallId, authorization)
   }
 
-  const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
-    const authorization = await authorizeMainTool(toolName, args, toolCallId, {
-      consumeApprovalProof: false,
+  const prepareMainTool = createPreparedToolExecutor({
+    authorize: authorizeMainTool,
+    execute: executePreparedTool,
+  })
+  // Mail-send approvals seal a content-bearing action. Resolve it privately
+  // rather than asking inference to reproduce its arguments. Other approval
+  // types retain their existing continuation behavior.
+  const approvedEmailContinuation = payload.actorContext.approval?.approvalId
+    ? await resumeApprovedEmailContinuation({
+      actorContext: payload.actorContext,
+      authorize: (call) => authorizeMainTool(call.toolName, call.args, call.toolCallId, {
+        maySuspendForApproval: false,
+        revalidateApprovalBoundary: true,
+        skipAutoReview: true,
+      }),
+      context,
+      dispatch: (call, authorization) =>
+        executeAuthorizedTool(call.toolName, call.toolCallId, authorization),
+      invocationSink: input.invocationSink,
+      prisma: deps.prisma,
     })
-    if (authorization.decision === 'suspend') {
-      return {
-        approval: {
-          approvalId: authorization.approval.id,
-          notice: authorization.approval.notice,
-          toolName: authorization.approval.toolName,
-        },
-        kind: 'suspend' as const,
-      }
-    }
-    return {
-      execute: async () =>
-        authorization.decision === 'deny'
-          ? authorization.result
-          : executePreparedTool(toolName, args, toolCallId),
-      kind: 'execute' as const,
-    }
-  }
+    : null
+  if (approvedEmailContinuation) return approvedEmailContinuation
 
   const loopResult = await runAgenticLoop({
     budget: input.budget,
@@ -486,10 +417,10 @@ export const runExecutionAgentLoop = async (
           event: 'agent.iteration',
         })
       },
-      onToolCallStart: async (toolName, _args) => {
+      onToolCallStart: async (toolName, inputSummary) => {
         const startedAt = new Date()
         // Tool activity is part of the thought process, not a separate feed.
-        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
+        await input.thinkingRecorder.appendToolLine(toolName, inputSummary)
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
@@ -500,7 +431,7 @@ export const runExecutionAgentLoop = async (
         await deps.realtimeTransport.publishWs(buildScopes(context), {
           data: {
             agentId: parseAgentId(context.agent.id),
-            inputSummary: summarizeToolInput(_args),
+            inputSummary,
             runId: parseRunId(context.run.id),
             toolName,
           },

@@ -9,6 +9,7 @@ import {
 
 type MailboxAddressStartProps = {
   address: string
+  addressReadOnly?: boolean
   discovery: MailboxDiscoveryResult | null
   emailInput: RefObject<HTMLInputElement | null>
   error: string | null
@@ -56,6 +57,7 @@ const ProviderRow = ({
 
 export const MailboxAddressStart = ({
   address,
+  addressReadOnly = false,
   discovery,
   emailInput,
   error,
@@ -81,6 +83,7 @@ export const MailboxAddressStart = ({
         inputMode="email"
         onChange={(event) => onAddressChange(event.target.value)}
         placeholder="name@company.com"
+        readOnly={addressReadOnly}
         ref={emailInput}
         type="email"
         value={address}

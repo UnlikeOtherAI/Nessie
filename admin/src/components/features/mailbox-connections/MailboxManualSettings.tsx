@@ -10,6 +10,7 @@ import { MailboxConnectionIdentityFields } from './MailboxConnectionIdentityFiel
 
 type MailboxManualSettingsProps = {
   address: string
+  addressReadOnly?: boolean
   error: string | null
   imapHost: string
   imapPort: number
@@ -31,6 +32,7 @@ type MailboxManualSettingsProps = {
   password: string
   pending: boolean
   scope: MailboxConnectionScope
+  showIdentityFields?: boolean
   smtpHost: string
   smtpPort: number
   smtpSecurity: MailboxTransportSecurity
@@ -96,6 +98,7 @@ const ServerSettings = ({
 
 export const MailboxManualSettings = ({
   address,
+  addressReadOnly = false,
   error,
   imapHost,
   imapPort,
@@ -117,6 +120,7 @@ export const MailboxManualSettings = ({
   password,
   pending,
   scope,
+  showIdentityFields = true,
   smtpHost,
   smtpPort,
   smtpSecurity,
@@ -139,19 +143,22 @@ export const MailboxManualSettings = ({
         className="admin-input"
         onChange={(event) => onAddressChange(event.target.value)}
         placeholder="name@company.com"
+        readOnly={addressReadOnly}
         required
         type="email"
         value={address}
       />
     </label>
-    <MailboxConnectionIdentityFields
-      label={label}
-      onLabelChange={onLabelChange}
-      onTeamChange={onTeamChange}
-      scope={scope}
-      teamId={teamId}
-      teams={teams}
-    />
+    {showIdentityFields ? (
+      <MailboxConnectionIdentityFields
+        label={label}
+        onLabelChange={onLabelChange}
+        onTeamChange={onTeamChange}
+        scope={scope}
+        teamId={teamId}
+        teams={teams}
+      />
+    ) : null}
     <ServerSettings
       direction="Incoming"
       host={imapHost}

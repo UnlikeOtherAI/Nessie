@@ -55,3 +55,116 @@ test('tool completion redacts before bounding its durable preview', async () => 
   assert.doesNotMatch(preview, /abcdefghijklmnopqrstuv/)
   assert.match(preview, /sk-proj-•+$/)
 })
+
+const ids = {
+  agent: '10000000-0000-4000-8000-000000000001',
+  channel: '10000000-0000-4000-8000-000000000002',
+  organization: '10000000-0000-4000-8000-000000000003',
+  run: '10000000-0000-4000-8000-000000000004',
+  task: '10000000-0000-4000-8000-000000000005',
+  thread: '10000000-0000-4000-8000-000000000006',
+  user: '10000000-0000-4000-8000-000000000007',
+} as const
+
+const context = (): RunContext => ({
+  agent: { id: ids.agent },
+  boundAgentIds: [],
+  channel: {
+    id: ids.channel,
+    organizationId: ids.organization,
+    projectId: null,
+    systemChannelType: null,
+    teamId: null,
+  },
+  run: { id: ids.run, threadId: ids.thread },
+  task: { id: ids.task },
+}) as unknown as RunContext
+
+const actorContext = (): AuthorizedActionContext => ({
+  actionContext: { requestId: 'email-privacy-test' },
+  actor: { actorId: ids.user, actorType: 'user', roles: [] },
+  tenant: { organizationId: ids.organization },
+}) as unknown as AuthorizedActionContext
+
+test('mail and account tools store content-free tool and connector telemetry', async () => {
+  const toolCalls: Array<Record<string, unknown>> = []
+  const connectorEvents: Array<Record<string, unknown>> = []
+  const prisma = {
+    connectorUsageEvent: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        connectorEvents.push(data)
+        return {}
+      },
+    },
+    toolCall: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        toolCalls.push(data)
+        return {}
+      },
+    },
+  }
+  const deps = {
+    prisma,
+    realtimeTransport: { publishWs: async () => undefined },
+  } as unknown as ExecutionDependencies
+  const correspondence = {
+    body: 'Please include this private body.',
+    connectionId: '20000000-0000-4000-8000-000000000001',
+    subject: 'Private renewal terms',
+    to: ['recipient@example.test'],
+  }
+
+  await recordToolEnd(deps, context(), actorContext(), {
+    argumentsValue: correspondence,
+    connectorUsage: {
+      calls: 1,
+      connectorType: 'email',
+      metadata: { host: 'imap.private.example.test' },
+      operation: 'send',
+      target: 'sender@example.test',
+    },
+    durationMs: 10,
+    inputSummary: JSON.stringify(correspondence),
+    outputPreview: 'Sent from sender@example.test to recipient@example.test: Private renewal terms.',
+    startedAt: new Date(),
+    success: true,
+    toolName: 'mailbox_send',
+  })
+
+  await recordToolEnd(deps, context(), actorContext(), {
+    argumentsValue: { query: 'from:sender@example.test subject:private' },
+    durationMs: 11,
+    inputSummary: 'query=from:sender@example.test subject:private',
+    outputPreview: 'sender@example.test wrote about private terms',
+    startedAt: new Date(),
+    success: true,
+    toolName: 'gmail_search',
+  })
+
+  await recordToolEnd(deps, context(), actorContext(), {
+    argumentsValue: { oauthCode: 'code-for-owner@example.test' },
+    durationMs: 12,
+    inputSummary: 'oauthCode=code-for-owner@example.test',
+    outputPreview: 'Provider rejected owner@example.test at oauth.example.test',
+    startedAt: new Date(),
+    success: false,
+    toolName: 'email_account_connect',
+  })
+
+  const persisted = JSON.stringify({ connectorEvents, toolCalls })
+  assert.doesNotMatch(persisted, new RegExp([
+    'recipient@example\\.test', 'sender@example\\.test', 'owner@example\\.test',
+    'Private renewal', 'private body', 'imap\\.private', 'oauth\\.example',
+  ].join('|')))
+  assert.deepEqual(
+    toolCalls.map((entry) => [entry.inputSummary, entry.outputPreview]),
+    [
+      ['Send from a connected mailbox.', 'Email send completed.'],
+      ['Search Gmail.', 'Email action completed.'],
+      ['Manage a connected email account.', 'Email action did not complete.'],
+    ],
+  )
+  assert.equal(connectorEvents[0]?.target, null)
+  assert.equal(connectorEvents[0]?.metadata, undefined)
+  assert.equal(connectorEvents[0]?.operation, 'email_action')
+})

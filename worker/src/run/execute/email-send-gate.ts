@@ -152,11 +152,11 @@ export const buildEmailSendApprovalHook = (
       args: input.args,
       interactive,
     })
-    // Owned but not gated: `{escalate:false}` still claims the decision, which
+    // Owned but not gated: `{outcome:'allow'}` still claims the decision, which
     // is what keeps this tool off the standing-consent path.
-    if (!decision.required) return { escalate: false }
+    if (!decision.required) return { outcome: 'allow' as const }
     return {
-      escalate: true,
+      outcome: 'approval' as const,
       reason: gateReason(decision),
       // Address-free by rule: this row is readable through the approvals
       // surface by an org owner, while the draft itself — recipients included

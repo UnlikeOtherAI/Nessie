@@ -1,5 +1,11 @@
+import { createHash } from 'node:crypto'
+
 import { requestJson, GMAIL_API_BASE, type FetchLike } from '../http.js'
-import { buildRawMessage, type OutboundMessage } from './mime-build.js'
+import {
+  buildRawMessage,
+  type GmailDraftAttachmentIdentity,
+  type OutboundMessage,
+} from './mime-build.js'
 import {
   GMAIL_MAX_READ_RESPONSE_BYTES,
   GmailReadBudget,
@@ -106,9 +112,10 @@ export type GmailDraftContent = {
   bcc: string[]
   subject: string
   body: string
+  /** Provider identity stays server-side; callers must project it before UI. */
+  attachments: GmailDraftAttachmentIdentity[]
   inReplyTo?: string
   references: string[]
-  attachments: { filename: string; mimeType: string; sizeBytes: number }[]
 }
 
 export const GMAIL_MAX_DRAFT_HEADERS = 100
@@ -154,9 +161,12 @@ const splitMessageIds = (value: string, max: number): string[] => {
 type GmailPart = {
   mimeType?: unknown
   filename?: unknown
-  body?: { data?: unknown; size?: unknown }
+  body?: { attachmentId?: unknown; data?: unknown; size?: unknown }
   parts?: GmailPart[]
 }
+
+const inlineDataHash = (data: string): string =>
+  createHash('sha256').update(Buffer.from(data, 'base64url')).digest('hex')
 
 const collectBodyAndAttachments = (
   part: GmailPart | undefined,
@@ -177,7 +187,19 @@ const collectBodyAndAttachments = (
       || Buffer.byteLength(filename) > GMAIL_MAX_DRAFT_FILENAME_BYTES
       || Buffer.byteLength(mimeType) > GMAIL_MAX_DRAFT_MIME_TYPE_BYTES
     ) throw new GmailReadLimitError('structure')
+    const attachmentId =
+      typeof part.body?.attachmentId === 'string' && part.body.attachmentId.length > 0
+        ? part.body.attachmentId
+        : undefined
+    const inlineHash = !attachmentId && typeof part.body?.data === 'string'
+      ? inlineDataHash(part.body.data)
+      : undefined
+    if (!attachmentId && !inlineHash) {
+      throw new Error('[comms-google] Gmail returned an attachment without stable content identity')
+    }
     into.attachments.push({
+      ...(attachmentId ? { attachmentId } : {}),
+      ...(inlineHash ? { inlineDataHash: inlineHash } : {}),
       filename,
       mimeType,
       sizeBytes: typeof part.body?.size === 'number' ? part.body.size : 0,

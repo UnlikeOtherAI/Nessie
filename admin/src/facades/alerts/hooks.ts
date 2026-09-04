@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
+
+import { mailboxConnectionHome } from '../../lib/connection-anchor'
 import type { SseFrame } from '../../lib/sse'
 import { alertKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -13,6 +15,7 @@ export type UserAlertRecord = {
     | 'task_assigned'
     | 'knowledge_published'
     | 'trigger_health'
+    | 'mailbox_connection_health'
     | 'call_missed'
     | 'team_invitation'
     | 'approval_requested'
@@ -25,6 +28,8 @@ export type UserAlertRecord = {
   taskId: string | null
   knowledgePageId: string | null
   triggerId: string | null
+  mailboxConnectionId: string | null
+  mailboxScope: 'team' | 'user' | null
   metadata: {
     inviteId: string
     organizationId: string
@@ -175,10 +180,26 @@ export const useAlertEvents = (): void => {
 export const getAlertLink = (
   alert: UserAlertRecord,
 ): { to: string; state?: { highlightMessageId: string } } | null => {
+  // A pinned approver may deliberately not belong to the source channel. Their
+  // approval is still visible on its entitlement-scoped home, while sending
+  // them to the chat doorway would turn a valid alert into an access error.
+  if (alert.kind === 'approval_requested') {
+    return { to: '/approvals' }
+  }
   if (alert.kind === 'trigger_health' && alert.triggerId) {
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
     return { to: `/agents/triggers#${alert.triggerId}` }
+  }
+  if (
+    alert.kind === 'mailbox_connection_health'
+    && alert.mailboxConnectionId
+    && alert.mailboxScope
+  ) {
+    // Both mailbox homes consume the same structural fragment. Scope is a
+    // relation fact from the API, so a shared card never lands on the personal
+    // page that correctly cannot render it.
+    return { to: mailboxConnectionHome({ id: alert.mailboxConnectionId, scope: alert.mailboxScope }) }
   }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }

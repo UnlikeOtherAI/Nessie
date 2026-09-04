@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { MailboxSendToolInputSchema } from './builtin-approval-inputs.js'
 
 export const MAILBOX_SEARCH_TOOL_ID = 'mailbox_search'
 export const MAILBOX_READ_TOOL_ID = 'mailbox_read'
@@ -103,8 +104,9 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     description:
       'Send an email from a connected mailbox. It goes out as that mailbox’s own '
-      + 'address — you cannot send as anybody else. A person is asked to approve '
-      + 'it before it leaves; you will be told when that happens.',
+      + 'address — you cannot send as anybody else. Always provide the exact '
+      + 'connectionId for that mailbox. A person is asked to approve it before '
+      + 'it leaves; you will be told when that happens.',
     category: 'email-calendar',
     id: MAILBOX_SEND_TOOL_ID,
     label: 'Send From Mailbox',
@@ -112,7 +114,10 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       properties: {
         bcc: { items: { type: 'string' }, type: 'array' },
         cc: { items: { type: 'string' }, type: 'array' },
-        connectionId: { type: 'string' },
+        connectionId: {
+          description: 'The exact connected mailbox to send from.',
+          type: 'string',
+        },
         inReplyToUid: {
           description:
             'The UID of the message being replied to, so the recipient’s mail '
@@ -123,9 +128,10 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         text: { description: 'The message body, as plain text.', type: 'string' },
         to: { items: { type: 'string' }, type: 'array' },
       },
-      required: ['to', 'subject', 'text'],
+      required: ['connectionId', 'to', 'subject', 'text'],
       type: 'object',
     },
+    inputSchema: MailboxSendToolInputSchema,
     requiresExplicitGrant: true,
     // Declared in code, never in `PolicyRule` data: the policy evaluator's
     // default verdict is `allow`, so a data-only gate is simply absent in any

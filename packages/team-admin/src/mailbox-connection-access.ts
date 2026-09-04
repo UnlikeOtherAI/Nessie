@@ -5,6 +5,7 @@ import {
   mailboxEndpointsFor,
   type MailboxConnectionRow,
 } from './mailbox-connection-endpoints.js'
+import { recordMailboxConnectionCredentialRejection } from './mailbox-connection-recovery.js'
 
 /**
  * Which connected mailbox a run may touch, and as whom.
@@ -114,7 +115,7 @@ export const resolveMailboxForToolCall = async (
     throw new MailboxAccessError(
       'NO_MAILBOX',
       'I have not been given access to any connected mailbox. An owner or admin '
-      + 'grants that from the mailbox connector on the Integrations page.',
+      + 'grants that from Connected accounts in Settings.',
     )
   }
   if (input.connectionId) {
@@ -160,10 +161,6 @@ export const openMailboxEndpoints = async (
 export const markMailboxNeedsReauthorization = async (
   prisma: PrismaClient,
   connectionId: string,
-  detail: string,
 ): Promise<void> => {
-  await prisma.mailboxConnection.updateMany({
-    data: { status: 'needs_reauthorization', statusReason: detail },
-    where: { id: connectionId, status: 'active' },
-  })
+  await recordMailboxConnectionCredentialRejection(prisma, connectionId)
 }

@@ -49,6 +49,9 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // No actor: nobody did this, a schedule stopped being able to run.
     return 'A scheduled task stopped running'
   }
+  if (alert.kind === 'mailbox_connection_health') {
+    return 'An email mailbox needs reconnecting'
+  }
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
     // waiting for approval is exactly the thing that must not travel there.

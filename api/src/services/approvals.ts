@@ -5,6 +5,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import { runApprovalEffect } from './approval-effects.js'
 import { terminalizeExpiredToolApproval, terminalizeRejectedToolApproval } from './approval-resume.js'
 import { emitAuditEvent } from './audit.js'
+import { mapApproval } from './approval-presenter.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
@@ -172,6 +173,25 @@ export const resolveApprovalRequest = async (
   resolution: 'approved' | 'rejected',
   note?: string,
 ) => {
+  // Resolution returns a distinct refusal for a known pin. The GET/list paths
+  // remain indistinguishable for other viewers, but collapsing this into a
+  // generic 400 makes an approver-facing client unable to tell a stale action
+  // from a decision reserved for somebody else.
+  const identity = await prisma.approvalRequest.findFirst({
+    where: {
+      id: approvalId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+    select: { requiredApproverUserId: true },
+  })
+  if (!identity) return null
+  if (
+    identity.requiredApproverUserId
+    && identity.requiredApproverUserId !== actorContext.actor.actorId
+  ) {
+    return { error: 'APPROVER_REQUIRED' as const }
+  }
+
   const approval = await prisma.approvalRequest.findFirst({
     where: {
       id: approvalId,
@@ -197,16 +217,6 @@ export const resolveApprovalRequest = async (
   // resolve it. Check the LIVE organization membership rather than the JWT `roles`
   // claim — tokens are long-lived (default 24h), so a user demoted after their
   // token was issued must not retain approval power on a stale claim.
-  // An exact required approver outranks every other visibility rule. Approval
-  // visibility otherwise reaches any member who can read a public channel, so
-  // without this a colleague could authorise an email sent in your name.
-  if (
-    approval.requiredApproverUserId
-    && approval.requiredApproverUserId !== actorContext.actor.actorId
-  ) {
-    return { error: 'APPROVER_REQUIRED' as const, approval: mapApproval(approval) }
-  }
-
   if (approval.requiredApproverRole) {
     const membership = await prisma.organizationMember.findUnique({
       where: {
@@ -345,7 +355,13 @@ export const resolveApprovalRequest = async (
     metadata: { resolution, agentId: approval.agentId, action: approval.action },
   })
 
-  return { approval: mapApproval(updated) }
+  // Keep the pin available to the route that chooses the realtime audience,
+  // but deliberately do not add it to the client presenter. A pin is an
+  // internal delivery decision, not an approval-list field.
+  return {
+    approval: mapApproval(updated),
+    requiredApproverUserId: updated.requiredApproverUserId,
+  }
 }
 
 export const getPendingApprovalCount = async (
@@ -390,52 +406,3 @@ export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
 
   return expired.length
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-const mapApproval = (approval: {
-  id: string
-  organizationId: string
-  projectId: string | null
-  teamId: string | null
-  channelId: string | null
-  taskId: string | null
-  runId: string | null
-  agentId: string
-  requesterId: string
-  action: string
-  reason: string
-  context: unknown
-  status: string
-  resolverId: string | null
-  resolvedAt: Date | null
-  resolution: string | null
-  resolutionNote: string | null
-  requiredApproverRole: string | null
-  continuationToken: string
-  expiresAt: Date
-  createdAt: Date
-  updatedAt: Date
-}) => ({
-  id: approval.id,
-  organizationId: approval.organizationId,
-  projectId: approval.projectId,
-  teamId: approval.teamId,
-  channelId: approval.channelId,
-  taskId: approval.taskId,
-  runId: approval.runId,
-  agentId: approval.agentId,
-  requesterId: approval.requesterId,
-  action: approval.action,
-  reason: approval.reason,
-  context: approval.context as Record<string, unknown> | null,
-  status: approval.status,
-  resolverId: approval.resolverId,
-  resolvedAt: approval.resolvedAt?.toISOString() ?? null,
-  resolution: approval.resolution,
-  resolutionNote: approval.resolutionNote,
-  requiredApproverRole: approval.requiredApproverRole,
-  expiresAt: approval.expiresAt.toISOString(),
-  createdAt: approval.createdAt.toISOString(),
-  updatedAt: approval.updatedAt.toISOString(),
-})

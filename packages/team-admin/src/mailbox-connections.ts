@@ -67,6 +67,11 @@ export type MailboxConnectionTestFailure = Extract<
   'credential_rejected' | 'invalid_certificate' | 'server_unavailable' | 'test_failed'
 >
 
+export type MailboxConnectionHealthTransition = {
+  connectionId: string
+  healthRevision: number
+}
+
 const NETWORK_ERROR_CODES = new Set([
   'EAI_AGAIN',
   'ECONNREFUSED',
@@ -100,7 +105,16 @@ export const mailboxConnectionTestFailure = (
   return 'test_failed'
 }
 
-const testFailureMessage = (failure: MailboxConnectionTestFailure): string => {
+/**
+ * The only diagnostics we persist or show for a mailbox connection.
+ *
+ * Protocol error text is untrusted provider input: it can include credentials,
+ * host details, or instructions written by a remote server. Keep the failure
+ * classification, never the provider's wording.
+ */
+export const mailboxConnectionFailureMessage = (
+  failure: MailboxConnectionTestFailure,
+): string => {
   switch (failure) {
     case 'credential_rejected':
       return 'The email address or password was not accepted.'
@@ -112,6 +126,18 @@ const testFailureMessage = (failure: MailboxConnectionTestFailure): string => {
       return 'The mailbox connection test could not be completed.'
   }
 }
+
+/**
+ * Old rows may predate the structural-diagnostics boundary. A presenter is a
+ * security boundary too, so it derives the remedy from status instead of ever
+ * returning the stored text verbatim.
+ */
+const mailboxConnectionStatusMessage = (
+  status: MailboxConnectionRecord['status'],
+): string | null =>
+  status === 'needs_reauthorization'
+    ? mailboxConnectionFailureMessage('credential_rejected')
+    : null
 
 /**
  * The presenter. It cannot emit the credential — the password lives in a
@@ -136,7 +162,7 @@ export const presentMailboxConnection = (
   smtpPort: connection.smtpPort,
   smtpSecurity: connection.smtpSecurity,
   status: connection.status,
-  statusReason: connection.statusReason,
+  statusReason: mailboxConnectionStatusMessage(connection.status),
   teamId: connection.teamId,
   username: connection.username,
 })
@@ -160,7 +186,7 @@ const assertTeamInOrganization = async (
     where: { id: teamId, project: { organizationId } },
   })
   if (!team) {
-    throw new MailboxConnectionError('team_not_found', 'That team is not in this team.')
+    throw new MailboxConnectionError('team_not_found', 'That team is not in this organisation.')
   }
 }
 
@@ -227,7 +253,7 @@ export const createMailboxConnection = async (
     const failure = mailboxConnectionTestFailure(error)
     throw new MailboxConnectionError(
       failure,
-      testFailureMessage(failure),
+      mailboxConnectionFailureMessage(failure),
     )
   }
 
@@ -306,6 +332,32 @@ export const listMailboxConnectionsForUser = async (
 }
 
 /**
+ * Connections the caller can mutate through the account-management surface.
+ *
+ * This deliberately differs from `listMailboxConnectionsForUser`: membership
+ * grants visibility of a shared mailbox, but not authority to alter it. The
+ * Personal Assistant uses this list because every returned id is actionable by
+ * its lifecycle tools.
+ */
+export const listManageableMailboxConnectionsForUser = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; actor: ActingMember },
+): Promise<MailboxConnectionRecord[]> => {
+  const sharedWhere: Prisma.MailboxConnectionWhereInput = MANAGER_ROLES.has(input.actor.role)
+    ? { teamId: { not: null } }
+    : { id: { in: [] } }
+  const rows = await prisma.mailboxConnection.findMany({
+    include: { agentAccess: { select: { agentId: true } } },
+    orderBy: { createdAt: 'asc' },
+    where: {
+      organizationId: input.organizationId,
+      OR: [{ ownerUserId: input.actor.userId }, sharedWhere],
+    },
+  })
+  return rows.map(presentMailboxConnection)
+}
+
+/**
  * The connection this caller may administer, or a refusal.
  *
  * One predicate behind every mutation — rename, retest, disconnect, and every
@@ -352,9 +404,15 @@ export const verifyMailboxConnection = async (
   const endpoints = await mailboxEndpointsFor(prisma, connection, options.encryptionSecret)
   try {
     const result = await testMailboxConnection(endpoints, mailboxDialOptions())
-    await prisma.mailboxConnection.update({
-      data: { lastVerifiedAt: new Date(), status: 'active', statusReason: null },
-      where: { id: connection.id },
+    const { resolveMailboxConnectionHealthAlerts } = await import(
+      './mailbox-connection-recovery.js'
+    )
+    await prisma.$transaction(async (tx) => {
+      await tx.mailboxConnection.update({
+        data: { lastVerifiedAt: new Date(), status: 'active', statusReason: null },
+        where: { id: connection.id },
+      })
+      await resolveMailboxConnectionHealthAlerts(tx, connection.id)
     })
     return {
       detail: `${result.folder} is reachable (${result.messagesVisible} messages) and sending works.`,
@@ -362,12 +420,12 @@ export const verifyMailboxConnection = async (
     }
   } catch (error) {
     const failure = mailboxConnectionTestFailure(error)
-    const detail = testFailureMessage(failure)
+    const detail = mailboxConnectionFailureMessage(failure)
     if (failure === 'credential_rejected') {
-      await prisma.mailboxConnection.update({
-        data: { status: 'needs_reauthorization', statusReason: detail },
-        where: { id: connection.id },
-      })
+      const { recordMailboxConnectionCredentialRejection } = await import(
+        './mailbox-connection-recovery.js'
+      )
+      await recordMailboxConnectionCredentialRejection(prisma, connection.id)
     }
     return { detail, failureCode: failure.toUpperCase() as Uppercase<MailboxConnectionTestFailure>, ok: false }
   }
@@ -414,7 +472,7 @@ export const setMailboxAgentAccess = async (
     },
   })
   if (!agent) {
-    throw new MailboxConnectionError('agent_not_found', 'That agent is not in this team.')
+    throw new MailboxConnectionError('agent_not_found', 'That agent is not in this organisation.')
   }
   await prisma.mailboxConnectionAgentAccess.upsert({
     create: {

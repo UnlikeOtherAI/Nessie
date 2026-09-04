@@ -55,6 +55,7 @@ export const handleRunLoopOutcome = async (
       approval: {
         id: input.loopResult.pendingApproval.approvalId,
         notice: input.loopResult.pendingApproval.notice,
+        requiredApproverUserId: input.loopResult.pendingApproval.requiredApproverUserId,
         toolName: input.loopResult.pendingApproval.toolName,
       },
       goal: input.prompt,

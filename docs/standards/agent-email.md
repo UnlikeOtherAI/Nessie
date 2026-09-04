@@ -22,7 +22,9 @@ file is the rule**.
   because `evaluateToolInvokePolicy` defaults to allow and seeds no send rule —
   a policy-only gate would be absent wherever nobody configured one. That gate
   additionally forces an approval, naming the sources, whenever a run consumed
-  anything beyond its own mailbox and thread; `email:{mailboxId}` is the scope
+  anything beyond its own mailbox and thread; `mailbox_send` is parsed against
+  its strict runtime schema before policy, audit, or approval persistence, so
+  undeclared fields cannot leak into a resumable action; `email:{mailboxId}` is the scope
   that makes "answered from this correspondence" distinguishable, and it must
   stay implied by the mailbox's own thread or every reply deadlocks (four tests
   pin this). A send is `queued` → conditional `sending` → `sent`, with an

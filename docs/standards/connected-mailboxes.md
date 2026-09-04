@@ -19,7 +19,19 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   guessed**, since sending from the wrong address cannot be taken back; and
   **every send is approved and pinned** to the personal owner or the shared
   mailbox's installer, live-checked, with any source the recipient cannot reach
-  named on the request. Standing send grants are deliberately absent: a grant is
+  named on the request. A pin is also the approval's read and delivery audience:
+  its card/reason, alert, and pending/resolved realtime events reach only that
+  exact active person, whose existing Approvals home remains reachable even
+  outside the source channel. The list remains address/body-free; when that
+  person chooses **Review email**, a short-lived server projection materializes
+  the frozen sender, recipients, subject and body for an explicit confirm. It
+  is evicted from the browser cache on close or resolution and never copied into approval context, audit,
+  tool metadata, or websocket data. A missing or
+  inactive accountable person (the personal owner or shared installer) denies
+  the send rather than creating an unpinned or unanswerable approval: an owner
+  or admin reconnects a shared mailbox under an active approver, while a
+  personal mailbox needs its owner reactivated or reconnected. Standing send
+  grants are deliberately absent: a grant is
   the mailbox owner's to give about their own account, and a shared mailbox has
   no such owner. The reads feed the disclosure sink with the connection's scope
   in the same call that puts mail in the window — user scope for a personal
@@ -53,7 +65,11 @@ Plan and as-built deltas:
   scope as a parameter — the `CloudBrowserPanel` shape. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting tests both
   legs before it stores, and only a provider rejection (`auth`-kind) flips a
-  connection to `needs_reauthorization`. The personal Email doorway is
+  connection to `needs_reauthorization`. That conditional health transition
+  increments its revision and creates one content-free `UserAlert` pointing to
+  its owning personal or shared mailbox surface; reconnect resolves the prior
+  revision and is an explicit credential
+  replacement that retains the connection and its agent-access rows. The personal Email doorway is
   address-first: a server-approved Google or Microsoft OAuth route starts its
   native connector, while a reviewed IMAP/SMTP route keeps its server details
   hidden until the person chooses Advanced settings. A team shared mailbox stays
@@ -86,16 +102,51 @@ Plan and as-built deltas:
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP
-  mailbox they may administer. `email_account_connect` posts a doorway into the
+  mailbox they may administer — personal mailboxes for their owner, plus shared
+  mailboxes only for an organisation owner or admin. It deliberately does not
+  reuse the broader member-visibility list, because a visible shared mailbox is
+  not necessarily mutable. Every lifecycle action that reads an account — list,
+  check, disconnect, or an agent-access change — stamps the acting person's user
+  disclosure basis before its model-visible result and emits only structural
+  connection-state remedies, never provider/server diagnostics. `email_account_connect`
+  posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
-  OAuth-code argument. `email_account_check` invokes the same provider resync or
+  OAuth-code argument, and refuses a team-scope doorway for a non-manager before
+  it posts anything. `email_account_check` invokes the same provider resync or
   live two-leg mailbox test as the account card, and
   `email_account_disconnect` is structurally approval-gated before it invokes
   the same disconnect service. `email_account_agent_access` changes only the
   per-`(connection, agent)` row: it never silently rewrites that agent's tool
   policy. These lifecycle tools are Personal-Assistant-only and stay separate
   from the independently grantable `mailbox_search` / `mailbox_read` /
-  `mailbox_send` content tools.
+  `mailbox_send` content tools. Their schemas reject undeclared fields before a
+  policy or approval record can observe them, so a secret-shaped extra argument
+  never becomes durable approval state.
+- **Standing Google consent is a separately bounded exception.** Direct settings
+  grants and the approval-card shortcut both use the same shared write boundary:
+  an active Google connection owned by the granter and an eligible non-system
+  agent in that organization are required at the final write. The shortcut only
+  accepts a live pinned `tool.invoke` approval that froze the exact connection;
+  connected-mailbox and lifecycle approvals remain one-time decisions.
+- **Correspondence never becomes operational telemetry.** Exact recipients,
+  addresses, subjects, bodies, attachment/provider responses, credentials and
+  server details remain only in the authorized run context and, for an approved
+  send, the server-owned frozen resume arguments and action hash. Approval
+  context, ToolCall rows, thinking and realtime status, demonstrations,
+  connector telemetry, and audit metadata carry only a fixed action/outcome
+  summary. The same boundary covers connected-mail, Gmail, contact, and
+  connected-account lifecycle tools; a provider failure becomes a stable remedy
+  rather than raw remote text.
+- **Approval continuations execute a frozen action, never a model recreation.**
+  `ApprovalRequest.resumeState` retains the strict, server-owned canonical
+  arguments. The continuation queue carries only the approval id and its
+  one-time proof; at dispatch the worker resolves that opaque handle, verifies
+  its argument hash and direct parent-run lineage, then sends the frozen action
+  through the ordinary live authorization gates. Frozen arguments never enter
+  a prompt, checkpoint, audit/event payload, ToolCall metadata, or client API.
+  A changed draft, revoked mailbox access, inactive approver, wrong lineage, or
+  already-claimed proof therefore denies the action rather than inviting a
+  model to compose a near-match.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,

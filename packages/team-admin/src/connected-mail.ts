@@ -259,7 +259,7 @@ export const listConnectedMailThreads = async (
     return validatedPage({ ...page, items: mapThreads(page.items) })
   } catch (error) {
     if (error instanceof MailboxCredentialMissingError || (error instanceof ImapError && error.kind === 'auth')) {
-      await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
+      await markMailboxNeedsReauthorization(prisma, connection.id)
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
     throw new ConnectedMailError('PROVIDER_FAILED')
@@ -307,7 +307,7 @@ export const readConnectedMailConversation = async (
   } catch (error) {
     if (error instanceof ConnectedMailError) throw error
     if (error instanceof MailboxCredentialMissingError || mailboxConnectionTestFailure(error) === 'credential_rejected') {
-      await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
+      await markMailboxNeedsReauthorization(prisma, connection.id)
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
     throw new ConnectedMailError('PROVIDER_FAILED')

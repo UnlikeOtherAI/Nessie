@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { EmailSendToolInputSchema } from './builtin-approval-inputs.js'
 
 export const EMAIL_SEND_TOOL_ID = 'email_send'
 export const EMAIL_LIST_TOOL_ID = 'email_list'
@@ -47,6 +48,7 @@ export const EMAIL_SEND_TOOL_DEFINITION: BuiltinToolDefinition = {
     required: ['text'],
     type: 'object',
   },
+  inputSchema: EmailSendToolInputSchema,
   // Explicit grant: an address is an outward-facing identity, and sending is
   // the one thing here a person cannot take back.
   requiresExplicitGrant: true,

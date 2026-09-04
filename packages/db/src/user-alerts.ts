@@ -62,6 +62,13 @@ export const visibleUserAlertWhere = (input: {
       approvalRequest: { is: { status: 'pending' } },
     },
     {
+      // A rejected generic mailbox credential. The relation—not a stale alert
+      // payload—decides whether it remains actionable, so a successful explicit
+      // reconnect immediately resolves the bell item.
+      kind: 'mailbox_connection_health',
+      mailboxConnection: { is: { status: 'needs_reauthorization' } },
+    },
+    {
       // The foreign key cascade removes this row on deletion, while this
       // relation check keeps a concurrent source deletion from leaking a stale
       // bell item through a read/count/write query.

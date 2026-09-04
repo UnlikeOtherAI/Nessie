@@ -29,9 +29,15 @@ file is the rule**.
   the gate is code rather than data.** Hashing a Gmail draft's *id* authorises
   nothing useful: the draft stays mutable through the chat card, through Gmail,
   and through another run, so an approved send could deliver text nobody
-  approved. `GmailDraftAction.contentFingerprint` is re-read and compared on
-  every send path, and the same row carries the conditional
-  `draft → sending → sent` claim that makes a double send impossible. The
+  approved. The authorization chokepoint reads the server-owned
+  `GmailDraftAction.contentFingerprint` into the canonical proof arguments
+  (never from model input), and `sendDraftForUser` re-reads and compares it on
+  every send path. Its attachment input includes Gmail's immutable
+  `attachmentId`, MIME type, filename and size; when Gmail returns inline bytes
+  instead, it includes a server-only hash of those bytes. Provider identifiers
+  and hashes never enter cards, API payloads or audit records. The same row
+  carries the conditional `draft → sending → sent` claim that makes a double
+  send impossible. The
   approval requirement itself is declared on the tool definition and enforced at
   the tool chokepoint, because `evaluateToolInvokePolicy` defaults to `allow`
   and a seeded-`PolicyRule` gate is therefore absent in any organisation whose
@@ -47,3 +53,12 @@ file is the rule**.
   state-accurate: a held draft, an Undo, a final delivery, and an ambiguous
   provider outcome are separate records; an audit outage never changes the
   mail state. Details: `CLAUDE.md` → the Google bullets.
+  the audit trail on day one. Audit transitions are content-free and
+  state-accurate: a held draft, an Undo, a final delivery, and an ambiguous
+  provider outcome are separate records; an audit outage never changes the
+  mail state. The draft's exact content may enter the authorized
+  run and the server-owned frozen proof arguments, but never approval context,
+  ToolCall history, thinking/realtime status, demonstrations, connector
+  telemetry, or audit metadata; those operational records name only the action
+  and outcome. Unknown provider failures are mapped to a stable support code,
+  never rethrown into those sinks. Details: `CLAUDE.md` → the Google bullets.

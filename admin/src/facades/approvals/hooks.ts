@@ -1,4 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import type { EmailDraftPreview } from '@nessie/schemas'
 
 import { approvalKeys } from '../../lib/query-keys'
@@ -20,7 +26,33 @@ export type ApprovalRequest = {
   status: string
 }
 
+export type EmailApprovalReview = {
+  approvalId: string
+  attachments: { filename: string; mimeType: string; sizeBytes: number }[]
+  bcc: string[]
+  cc: string[]
+  expiresAt: string
+  kind: 'gmail' | 'mailbox'
+  mailboxLabel: string
+  senderAddress: string
+  subject: string
+  text: string
+  to: string[]
+}
+
 export type PendingApprovalCount = { count: number }
+
+export const emailApprovalReviewKey = (approvalId: string | undefined) =>
+  [...approvalKeys.detail(approvalId), 'email-review'] as const
+
+/** Exact correspondence must leave the browser cache with its review dialog. */
+export const removeEmailApprovalReview = (
+  queryClient: QueryClient,
+  approvalId: string | undefined,
+): void => {
+  if (!approvalId) return
+  queryClient.removeQueries({ exact: true, queryKey: emailApprovalReviewKey(approvalId) })
+}
 
 export const useApprovalRequests = (enabled = true) => {
   const apiClient = useApiClient()
@@ -52,6 +84,21 @@ export const useMailboxSendApprovalDraft = (approvalId: string | undefined) => {
     // A different approval can contain somebody else's complete private email.
     // Never paint the previous approval while this exact identity resolves.
     placeholderData: undefined,
+  })
+}
+
+/** The exact email is a short-lived, pin-only projection — never list data. */
+export const useEmailApprovalReview = (approvalId: string | undefined, enabled: boolean) => {
+  const apiClient = useApiClient()
+  return useQuery<EmailApprovalReview>({
+    enabled: enabled && Boolean(approvalId),
+    gcTime: 0,
+    queryKey: emailApprovalReviewKey(approvalId),
+    queryFn: () => apiClient.get(`/api/approvals/${approvalId}/email-review`),
+    // Unlike ordinary detail navigation, the prior result contains the exact
+    // email. Never briefly render one approval's private message for another.
+    placeholderData: () => undefined,
+    retry: false,
   })
 }
 

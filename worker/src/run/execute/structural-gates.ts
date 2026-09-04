@@ -1,13 +1,22 @@
-type StructuralGateInput = { toolName: string; args: Record<string, unknown> }
+export type StructuralGateInput = { toolName: string; args: Record<string, unknown> }
 
-type StructuralGateResult = {
-  escalate: boolean
-  reason?: string
-  contextExtra?: Record<string, unknown>
-  requiredApproverUserId?: string | null
-} | null
+export type StructuralGateResult =
+  | { outcome: 'allow' }
+  | {
+      outcome: 'approval'
+      reason?: string
+      contextExtra?: Record<string, unknown>
+      requiredApproverUserId?: string | null
+    }
+  | {
+      /** A structural prerequisite is absent, so asking cannot repair it. */
+      outcome: 'deny'
+      message: string
+      reason: string
+    }
+  | null
 
-type StructuralGate = (input: StructuralGateInput) => Promise<StructuralGateResult>
+export type StructuralGate = (input: StructuralGateInput) => Promise<StructuralGateResult>
 
 /**
  * Try each family's gate in order and take the first that claims the tool.

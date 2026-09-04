@@ -1,9 +1,10 @@
 import { Prisma } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
+import { parseEmailAccountToolArgs } from '@nessie/runtime'
 import {
   deleteMailboxConnection,
   disconnectOwnedCommsConnection,
-  listMailboxConnectionsForUser,
+  listManageableMailboxConnectionsForUser,
   listOwnedCommsConnections,
   loadOwnedCommsConnection,
   loadManageableMailboxConnection,
@@ -85,6 +86,14 @@ const audit = async (
   }
 }
 
+/** Lifecycle results name private accounts, addresses, and access decisions. */
+const stampLifecycleAccountRead = (
+  context: BuiltinToolRuntimeContext,
+  member: ActingMember,
+): void => {
+  context.consumedSources?.add({ scopeId: member.userId, scopeType: 'user' })
+}
+
 const accountRef = (args: Record<string, unknown>): {
   accountId: string
   accountKind: EmailAccountKind
@@ -102,11 +111,16 @@ export const runEmailAccountListTool = async (
       organizationId: member.organizationId,
       userId: member.userId,
     }),
-    listMailboxConnectionsForUser(context.prisma, {
+    listManageableMailboxConnectionsForUser(context.prisma, {
       actor: { role: member.role, userId: member.userId },
       organizationId: member.organizationId,
     }),
   ])
+  // Lifecycle account metadata is private to the person who asked for it.
+  // This is deliberately a user basis even when the requester is an org
+  // manager viewing a shared mailbox: the response is a management view, not
+  // a team conversation export, and an owner need not belong to every team.
+  stampLifecycleAccountRead(context, member)
   const providerLines = providerConnections
     .filter(({ connection }) => connection.provider !== 'slack')
     .map(({ connection, resourceCount, syncedResourceCount }) => [
@@ -121,7 +135,9 @@ export const runEmailAccountListTool = async (
     `- ${mailbox.label} | ${mailbox.address}`,
     `  scope=${mailbox.scope} | status=${mailbox.status} | accountKind=mailbox | accountId=${mailbox.id}`,
     `  agents with access=${mailbox.agentIds.join(', ') || 'none'}`,
-    mailbox.statusReason ? `  status detail=${mailbox.statusReason}` : null,
+    mailbox.status === 'needs_reauthorization'
+      ? '  status detail=Reconnect this mailbox to restore access.'
+      : null,
   ].filter((line): line is string => line !== null).join('\n'))
   const output = [
     formatSection('Provider accounts', providerLines),
@@ -139,7 +155,8 @@ export const runEmailAccountCheckTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const member = await resolveActingMember(context)
-  const ref = accountRef(args)
+  stampLifecycleAccountRead(context, member)
+  const ref = accountRef(parseEmailAccountToolArgs('email_account_check', args))
   if (ref.accountKind === 'provider') {
     const connection = await loadOwnedCommsConnection(context.prisma, {
       connectionId: ref.accountId,
@@ -183,7 +200,8 @@ export const runEmailAccountDisconnectTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const member = await resolveActingMember(context)
-  const ref = accountRef(args)
+  stampLifecycleAccountRead(context, member)
+  const ref = accountRef(parseEmailAccountToolArgs('email_account_disconnect', args))
   if (ref.accountKind === 'provider') {
     const connection = await loadOwnedCommsConnection(context.prisma, {
       connectionId: ref.accountId,
@@ -218,7 +236,10 @@ export const runEmailAccountDisconnectTool = async (
   await deleteMailboxConnection(context.prisma, connection.id)
   await audit(context, member, {
     action: 'mailbox.connection.deleted',
-    metadata: { address: connection.address },
+    // The audit row is broadly readable operational history. The mailbox
+    // address remains in the private lifecycle response, while the record
+    // retains only the structural scope needed to understand the deletion.
+    metadata: { scope: connection.ownerUserId ? 'user' : 'team' },
     resourceId: connection.id,
     resourceType: 'mailbox_connection',
   })
@@ -234,11 +255,11 @@ export const runEmailAccountAgentAccessTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const member = await resolveActingMember(context)
-  const connectionId = requireUuid(args.accountId, 'accountId')
-  const agentId = requireUuid(args.agentId, 'agentId')
-  if (typeof args.allowed !== 'boolean') {
-    throw new Error('allowed must be true or false.')
-  }
+  stampLifecycleAccountRead(context, member)
+  const parsed = parseEmailAccountToolArgs('email_account_agent_access', args)
+  const connectionId = requireUuid(parsed.accountId, 'accountId')
+  const agentId = requireUuid(parsed.agentId, 'agentId')
+  const allowed = parsed.allowed === true
   const connection = await loadManageableMailboxConnection(context.prisma, {
     actor: { role: member.role, userId: member.userId },
     connectionId,
@@ -246,22 +267,22 @@ export const runEmailAccountAgentAccessTool = async (
   })
   await setMailboxAgentAccess(context.prisma, {
     agentId,
-    allowed: args.allowed,
+    allowed,
     connectionId,
     grantedByUserId: member.userId,
     organizationId: member.organizationId,
   })
   await audit(context, member, {
-    action: args.allowed ? 'mailbox.access.granted' : 'mailbox.access.revoked',
+    action: allowed ? 'mailbox.access.granted' : 'mailbox.access.revoked',
     metadata: { agentId },
     resourceId: connectionId,
     resourceType: 'mailbox_connection',
   })
   return {
-    inputSummary: `accountId=${connectionId} agentId=${agentId} allowed=${args.allowed}`,
+    inputSummary: `accountId=${connectionId} agentId=${agentId} allowed=${allowed}`,
     outputPreview:
-      `${args.allowed ? 'Granted' : 'Revoked'} agent ${agentId} `
-      + `${args.allowed ? 'access to' : 'access from'} ${connection.address}. `
+      `${allowed ? 'Granted' : 'Revoked'} agent ${agentId} `
+      + `${allowed ? 'access to' : 'access from'} ${connection.address}. `
       + 'Mailbox tool grants remain a separate setting.',
     toolName: 'email_account_agent_access',
   }

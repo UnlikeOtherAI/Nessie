@@ -1,23 +1,5 @@
-// The surface registry: one declarative table that classifies every route in
-// `admin/src/router.tsx`. It is the single source of truth for what kind of
-// screen a route is, which section owns it, how deep it sits in that
-// section's stack, which screens are the *same* screen (so a sibling swap
-// never animates), and which screen a route's Back returns to.
-//
-// It is **total**. There is no catch-all row and no fallback classification:
-// a path either matches a row here or it is one of the handful of screens
-// that live outside the navigation stack (`OUTSIDE_STACK_PATHS`). That
-// totality is enforced twice — `admin/test/navigation-surfaces-total.test.ts`
-// and `scripts/lint-navigation-surfaces.mjs` both read `router.tsx` and
-// assert every path it declares resolves here. Adding a route without adding
-// its row fails the lint, which is the point: the old `admin:detail`
-// catch-all silently flattened the whole Agents and Settings families onto
-// one screen, so none of their pushes animated and none of their Backs knew
-// where to return.
-//
-// The page-type vocabulary a row is written in lives beside this table, in
-// `page-types.ts`. Rulebook: `docs/navigation/overview.md`. Plan: step 3 of
-// `docs/done/2026-09-01-navigation-motion-system.md` (§4.1).
+// The total route-surface registry: navigation, Back, and motion derive from
+// these rows; lint proves every router path has one (see navigation overview).
 
 import type { Surface, SurfaceIntent } from './page-types'
 import { createAdminSurfaces } from './admin-surfaces'

@@ -40,7 +40,7 @@ test('the registry declares the intents the app links with', () => {
     [...consumedNames].sort(),
     ['acceptCall', 'connect', 'create', 'incomingCall', 'messageId', 'pageId', 'scopeProjectId', 'spaceId', 'uoa_billing'],
   )
-  assert.deepEqual([...hashNames].sort(), ['confirmationToken', 'trigger'])
+  assert.deepEqual([...hashNames].sort(), ['confirmationToken', 'connection', 'trigger'])
   // A name is either consumed or state on a row, never both.
   for (const surface of SURFACES) {
     const state = new Set(surface.intent?.state ?? [])

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { parseAgentId, parseChannelId, parseTaskId } from '@nessie/schemas'
+import { parseAgentId, parseChannelId, parseOrganizationId, parseTaskId, parseUserId } from '@nessie/schemas'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import {
   getApprovalRequest,
@@ -9,6 +9,28 @@ import {
   resolveApprovalRequest,
 } from '../services/approvals.js'
 import type { RouteDeps } from './types.js'
+
+/**
+ * A pinned approval has one delivery audience for both its pending and
+ * terminal transitions. Keeping this as a pure seam prevents a later route
+ * edit from accidentally restoring an organization/channel broadcast.
+ */
+export const approvalResolutionScopes = (input: {
+  channelId: string | null
+  organizationId: string
+  requiredApproverUserId: string | null
+}) => input.requiredApproverUserId
+  ? [{
+    kind: 'user' as const,
+    organizationId: parseOrganizationId(input.organizationId),
+    userId: parseUserId(input.requiredApproverUserId),
+  }]
+  : [
+    { kind: 'organization' as const, organizationId: parseOrganizationId(input.organizationId) },
+    ...(input.channelId
+      ? [{ kind: 'channel' as const, channelId: parseChannelId(input.channelId) }]
+      : []),
+  ]
 
 export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, realtimeHub, requireActorContext } = deps
@@ -82,6 +104,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
         ALREADY_RESOLVED: { code: 409, message: 'Approval already resolved' },
         SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
         EXPIRED: { code: 410, message: 'Approval request has expired' },
+        APPROVER_REQUIRED: { code: 403, message: 'This approval is assigned to another person' },
         ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
         RUN_NOT_WAITING: { code: 409, message: 'Approval is not ready to resolve' },
       }
@@ -90,14 +113,16 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
       return reply
     }
 
-    // Publish WS event for approval resolution
+    // A pin is an audience boundary for the entire approval lifecycle. The
+    // requester/channel/org must not learn that a mailbox action was accepted,
+    // rejected, or who resolved it; the designated approver gets the same
+    // user-only delivery that they received for approval.needed.
     await realtimeHub.publishWs(
-      [
-        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
-        ...(result.approval.channelId
-          ? [{ kind: 'channel' as const, channelId: parseChannelId(result.approval.channelId) }]
-          : []),
-      ],
+      approvalResolutionScopes({
+        channelId: result.approval.channelId,
+        organizationId: actorContext.tenant.organizationId,
+        requiredApproverUserId: result.requiredApproverUserId,
+      }),
       {
         data: {
           approvalId,

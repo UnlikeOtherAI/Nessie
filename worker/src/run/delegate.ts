@@ -167,10 +167,15 @@ export const runDelegate = async (
           }
       }
       if (mcpExposedNames.has(toolName)) {
-        return mcpView.dispatch(toolName, toolArgs, toolCallId)
+        return mcpView.dispatch(toolName, authorization.args, toolCallId)
       }
       if (ctx.builtinDescriptors.some((descriptor) => descriptor.toolName === toolName)) {
-        return ctx.executeBuiltinTool(toolName, toolArgs, toolCallId, authorization.toolActorContext)
+        return ctx.executeBuiltinTool(
+          toolName,
+          authorization.args,
+          toolCallId,
+          authorization.toolActorContext,
+        )
       }
       return {
         inputSummary: summarizeToolInput(toolArgs),

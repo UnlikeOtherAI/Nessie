@@ -6,32 +6,19 @@ import { PrismaClient } from '@prisma/client'
 
 import { resolveUoaTeamContext } from '../src/services/team-context.js'
 
-// The first-ever logins into a fresh instance. A UOA login now materializes
-// its per-UOA-org Organization directly (1:1 by `Organization.externalOrgId`)
-// — the legacy shared-org bootstrap seed runs only for logins with no
-// team claim. This suite's subject IS the first-ever login, so it asserts
-// the database holds no organization and no user at all, and it leaves behind
-// the records it creates. It therefore needs a database of its own, and stays
-// opt-in rather than flaking against the shared one — an unset
-// NESSIE_TEST_PRISTINE_DATABASE skips it, which is why it does not run in CI's
-// shared-database test job.
+// Concurrent first-time logins for one UOA org. A UOA login materializes its
+// per-UOA-org Organization directly (1:1 by `Organization.externalOrgId`) —
+// the legacy shared-org bootstrap seed runs only for logins with no team
+// claim. Every assertion and cleanup below is scoped to this suite's unique
+// UOA org, team, and people, so it remains safe in the shared test database.
 //
-// Run it against a dedicated, freshly migrated database:
-//   DATABASE_URL=<pristine db> NESSIE_TEST_PRISTINE_DATABASE=1 \
-//     node --test --import tsx test/team-bootstrap-postgres-race.test.ts
-const runPristineDatabaseTest =
-  process.env.DATABASE_URL && process.env.NESSIE_TEST_PRISTINE_DATABASE === '1'
-    ? test
-    : test.skip
+const dbTest = process.env.DATABASE_URL ? test : test.skip
 
-runPristineDatabaseTest(
-  'concurrent first-ever UOA callbacks atomically materialize one per-UOA-org organization',
+dbTest(
+  'concurrent UOA callbacks atomically materialize one organization for their UOA org',
   async (t) => {
     const prisma = new PrismaClient()
     t.after(() => prisma.$disconnect())
-
-    assert.equal(await prisma.organization.count(), 0)
-    assert.equal(await prisma.user.count(), 0)
 
     const suffix = randomUUID()
     const externalOrgId = `uoa-org-bootstrap-${suffix}`
@@ -47,6 +34,17 @@ runPristineDatabaseTest(
       `bootstrap-b-${suffix}@example.com`,
     ]
 
+    t.after(async () => {
+      await prisma.organization.deleteMany({ where: { externalOrgId } })
+      await prisma.user.deleteMany({ where: { email: { in: emails } } })
+    })
+
+    assert.equal(await prisma.organization.count({ where: { externalOrgId } }), 0)
+    assert.equal(await prisma.team.count({
+      where: { externalOrgId, externalTeamId },
+    }), 0)
+    assert.equal(await prisma.user.count({ where: { email: { in: emails } } }), 0)
+
     const [left, right] = await Promise.all(emails.map((email) =>
       resolveUoaTeamContext(prisma, {
         displayName: email.split('@')[0]!,
@@ -58,9 +56,9 @@ runPristineDatabaseTest(
     assert.equal(left.organizationId, right.organizationId)
     assert.equal(left.projectId, right.projectId)
     assert.equal(left.teamId, right.teamId)
-    // Exactly ONE organization exists — the per-UOA-org one; the legacy
-    // shared-org bootstrap seed never ran for these team-claim logins.
-    assert.equal(await prisma.organization.count(), 1)
+    // Exactly one organization exists for this UOA org; the legacy shared-org
+    // bootstrap seed never ran for these team-claim logins.
+    assert.equal(await prisma.organization.count({ where: { externalOrgId } }), 1)
     const organization = await prisma.organization.findUnique({
       where: { externalOrgId },
       select: { id: true },

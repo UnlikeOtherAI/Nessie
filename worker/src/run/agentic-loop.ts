@@ -339,6 +339,7 @@ export const runAgenticLoop = async (input: {
         if (blockedToolCallIds.has(toolCallId)) {
           return {
             kind: 'execute' as const,
+            inputSummary: summarizeToolInput(args),
             execute: async () => ({
               inputSummary: summarizeToolInput(args),
               output: 'Tool call blocked because its arguments contained a possible credential. Ask the user to save it through the secure form and retry with a secret reference.',
@@ -350,6 +351,7 @@ export const runAgenticLoop = async (input: {
           ? prepareTool(toolName, args, toolCallId)
           : {
             kind: 'execute' as const,
+            inputSummary: summarizeToolInput(args),
             execute: () => executeTool(toolName, args, toolCallId),
           }
       },

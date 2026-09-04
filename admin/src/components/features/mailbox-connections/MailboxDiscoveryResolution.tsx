@@ -33,6 +33,7 @@ type MailboxDiscoveryResolutionProps = {
   pending: boolean
   result: MailboxDiscoveryResult | null
   scope: MailboxConnectionScope
+  showIdentityFields?: boolean
   screen: MailboxOnboardingStep
   teamId: string
   teams: TeamRecord[]
@@ -55,6 +56,7 @@ export const MailboxDiscoveryResolution = ({
   pending,
   result,
   scope,
+  showIdentityFields = true,
   screen,
   teamId,
   teams,
@@ -153,14 +155,16 @@ export const MailboxDiscoveryResolution = ({
           </p>
         ) : null}
       </div>
-      <MailboxConnectionIdentityFields
-        label={label}
-        onLabelChange={onLabelChange}
-        onTeamChange={onTeamChange}
-        scope={scope}
-        teamId={teamId}
-        teams={teams}
-      />
+      {showIdentityFields ? (
+        <MailboxConnectionIdentityFields
+          label={label}
+          onLabelChange={onLabelChange}
+          onTeamChange={onTeamChange}
+          scope={scope}
+          teamId={teamId}
+          teams={teams}
+        />
+      ) : null}
       <label className="grid gap-1 text-sm">
         <span className="text-[color:var(--tx2)]">Password</span>
         <input

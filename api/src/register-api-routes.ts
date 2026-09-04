@@ -12,6 +12,7 @@ import { registerBrowserCloudRoutes } from './routes/browser-cloud.js'
 import { registerScopedSettingsRoutes } from './routes/scoped-settings.js'
 import { registerAgentCardRoutes } from './routes/agent-cards.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
+import { registerApprovalEmailReviewRoutes } from './routes/approval-email-review.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBillingRoutes } from './routes/billing.js'
@@ -117,6 +118,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerCommsConnectionRoutes(app, deps)
   registerModelSubscriptionRoutes(app, deps)
   registerGmailDraftRoutes(app, deps)
+  registerApprovalEmailReviewRoutes(app, deps)
   registerCommsWebhookRoutes(app, deps)
   registerAgentEmailInboundRoutes(app, deps)
   registerAgentEmailDraftRoutes(app, deps)

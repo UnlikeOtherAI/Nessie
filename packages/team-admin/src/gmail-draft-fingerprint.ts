@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import {
   canonicalDraftFingerprintInput,
+  type GmailDraftAttachmentIdentity,
   type GmailDraftContent,
   type OutboundMessage,
 } from '@nessie/comms-google'
@@ -16,6 +17,7 @@ export const fingerprintDraft = (input: {
   references?: readonly string[]
   threadId?: string
   attachmentIds?: readonly string[]
+  attachmentIdentities?: readonly GmailDraftAttachmentIdentity[]
 }): string =>
   createHash('sha256')
     .update(canonicalDraftFingerprintInput(input))
@@ -32,6 +34,7 @@ export const fingerprintOf = (draft: GmailDraftContent): string =>
     references: draft.references,
     threadId: draft.threadId,
     attachmentIds: draft.attachments.map((attachment) => `${attachment.filename}:${attachment.sizeBytes}`),
+    attachmentIdentities: draft.attachments,
   })
 
 export const fingerprintMessage = (message: OutboundMessage, threadId?: string): string =>
