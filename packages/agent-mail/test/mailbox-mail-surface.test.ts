@@ -3,7 +3,11 @@ import test from 'node:test'
 
 import { mailboxThreadToken } from '../src/mailbox-client.js'
 import { parseMailboxThreadToken } from '../src/mailbox-thread-token.js'
-import { mailboxHeaderWindow, validateMailboxThreadMembers } from '../src/mailbox-mail-surface.js'
+import {
+  mailboxHeaderWindow,
+  nativeThreadHeaderUids,
+  validateMailboxThreadMembers,
+} from '../src/mailbox-mail-surface.js'
 import { parseThreadReferenceSets } from '../src/imap.js'
 
 test('structural IMAP thread token is stable across refetches and processes', () => {
@@ -82,4 +86,11 @@ test('THREAD=REFERENCES parser emits only flattened top-level groups', () => {
 test('fallback paging advances to a bounded older UID header window', () => {
   const uids = Array.from({ length: 101 }, (_, index) => 101 - index)
   assert.deepEqual(mailboxHeaderWindow(uids, 100), [1])
+})
+
+test('native THREAD paging reserves one newest header for every group', () => {
+  const groups = Array.from({ length: 100 }, (_, index) => [index * 2 + 1, index * 2 + 2])
+  const uids = nativeThreadHeaderUids(groups)
+  assert.equal(uids.length, 100)
+  assert.deepEqual(uids, groups.map((group) => group[1]))
 })

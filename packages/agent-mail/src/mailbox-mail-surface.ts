@@ -34,6 +34,15 @@ const HEADER_WINDOW_LIMIT = 100
 export const mailboxHeaderWindow = (uids: number[], windowOffset: number): number[] =>
   uids.slice(windowOffset, windowOffset + HEADER_WINDOW_LIMIT)
 
+/** Keep every native THREAD group visible before fetching optional older members. */
+export const nativeThreadHeaderUids = (groups: number[][]): number[] => {
+  const newest = groups.map((group) => Math.max(...group)).filter(Number.isSafeInteger)
+  const selected = new Set(newest)
+  const remaining = groups.flat().filter((uid) => !selected.has(uid))
+    .sort((left, right) => right - left)
+  return [...newest, ...remaining].slice(0, HEADER_WINDOW_LIMIT)
+}
+
 export type MailboxThreadHeader = MailboxSummary & {
   inReplyTo: string | null
   references: string[]
@@ -198,9 +207,11 @@ export const listMailboxMailThreads = async (
     ? orderedNativeGroups.slice(cursor.offset, cursor.offset + input.pageSize)
     : fallbackGroups.slice(cursor.offset, cursor.offset + input.pageSize)
       .map((group) => group.members.map((member) => member.uid))
-  const pageUids = [...new Set(pageUnits.flat())]
-    .sort((left, right) => right - left)
-    .slice(0, HEADER_WINDOW_LIMIT)
+  const pageUids = orderedNativeGroups
+    ? nativeThreadHeaderUids(pageUnits)
+    : [...new Set(pageUnits.flat())]
+      .sort((left, right) => right - left)
+      .slice(0, HEADER_WINDOW_LIMIT)
   const headers = orderedNativeGroups
     ? await fetchThreadHeaders(session, pageUids)
     : initialHeaders.filter((header) => pageUids.includes(header.uid))
