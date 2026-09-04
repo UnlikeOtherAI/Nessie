@@ -73,7 +73,7 @@ export const RunApprovalGate = ({
   const mailSendTool = gate?.toolName === 'mailbox_send' || gate?.toolName === 'gmail_draft_send'
     ? gate.toolName : undefined
   const isMailSend = Boolean(mailSendTool)
-  const isMailboxSend = mailSendTool === 'mailbox_send'
+  const isGmailSend = mailSendTool === 'gmail_draft_send'
   const mailDraft = useMailSendApprovalDraft(
     mailSendTool, isMailSend ? gate?.approvalId : undefined, Boolean(active),
   )
@@ -101,7 +101,6 @@ export const RunApprovalGate = ({
   const details = isMailSend ? null : readString(context, 'inputSummary')
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
-  const isCalendar = gate.toolName.startsWith('calendar_')
   const canApprove = !isMailSend || Boolean(mailDraft.data)
 
   const submit = () => {
@@ -210,12 +209,10 @@ export const RunApprovalGate = ({
       {/* Stopping the asking belongs here, not on a separate settings trip:
           somebody who wants their assistant running their diary should not
           confirm every entry. It never applies to a schedule or an automation. */}
-      {active && !isMailboxSend ? (
+      {active && isGmailSend && mailDraft.data ? (
         <div className="mt-3 border-t border-[color:var(--warning-border)] pt-2">
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--tx3)]">
-            <span>
-              {isCalendar ? 'Stop asking about my calendar' : 'Stop asking me'}
-            </span>
+            <span>Stop asking before sending email</span>
             <select
               aria-label="How long to stop asking"
               className="rounded border border-[color:var(--sep)] bg-[color:var(--panel)] px-1.5 py-0.5 text-[11px] text-[color:var(--tx)]"
@@ -265,9 +262,7 @@ export const RunApprovalGate = ({
             </button>
           </div>
           <p className="mt-1 text-[11px] leading-4 text-[color:var(--tx3)]">
-            {isCalendar
-              ? 'Adds a rule to Connected accounts: this agent may manage your calendar without confirming.'
-              : 'Adds a rule to Connected accounts: this agent may act on this account without confirming.'}{' '}
+            Adds a rule to Connected accounts: this agent may send from this Gmail account without confirming.
             It never applies to a schedule or an automation.
           </p>
         </div>

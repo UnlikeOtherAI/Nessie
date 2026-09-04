@@ -3,7 +3,9 @@ import {
   GMAIL_MAX_METADATA_RESPONSE_BYTES,
   GMAIL_MAX_READ_RESPONSE_BYTES,
   GmailReadBudget,
+  GmailReadLimitError,
 } from './read-budget.js'
+import { GMAIL_MAX_ATTACHMENTS, GMAIL_MAX_PART_DEPTH, GMAIL_MAX_PARTS } from './part-limits.js'
 
 /**
  * Gmail read operations for the agent tools.
@@ -42,7 +44,25 @@ export type GmailMessageDetail = {
 
 type RawHeader = { name?: unknown; value?: unknown }
 
+export const GMAIL_MAX_READ_HEADERS = 100
+export const GMAIL_MAX_READ_HEADER_BYTES = 1_000
+export const GMAIL_MAX_READ_ADDRESSES = 50
+export const GMAIL_MAX_READ_FILENAME_BYTES = 500
+export const GMAIL_MAX_READ_MIME_TYPE_BYTES = 200
+export const GMAIL_MAX_READ_THREAD_MESSAGES = 100
+export const GMAIL_MAX_READ_SNIPPET_CHARS = 4_000
+
+const assertHeaders = (headers: RawHeader[]): void => {
+  if (headers.length > GMAIL_MAX_READ_HEADERS || headers.some((header) => {
+    const name = typeof header?.name === 'string' ? header.name : ''
+    const value = typeof header?.value === 'string' ? header.value : ''
+    return Buffer.byteLength(name) > GMAIL_MAX_READ_HEADER_BYTES
+      || Buffer.byteLength(value) > GMAIL_MAX_READ_HEADER_BYTES
+  })) throw new GmailReadLimitError('structure')
+}
+
 const headerValue = (headers: RawHeader[], name: string): string => {
+  assertHeaders(headers)
   const match = headers.find(
     (header) =>
       typeof header?.name === 'string'
@@ -51,8 +71,12 @@ const headerValue = (headers: RawHeader[], name: string): string => {
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const splitAddressList = (value: string): string[] =>
-  value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+const splitAddressList = (value: string): string[] => {
+  const entries = value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+  if (entries.length > GMAIL_MAX_READ_ADDRESSES || entries.some((entry) =>
+    Buffer.byteLength(entry) > GMAIL_MAX_READ_HEADER_BYTES)) throw new GmailReadLimitError('structure')
+  return entries
+}
 
 type RawPart = {
   mimeType?: unknown
@@ -66,12 +90,22 @@ const walk = (
   part: RawPart | undefined,
   into: { body: string; attachments: GmailMessageDetail['attachments'] },
   budget: GmailReadBudget,
+  depth = 0,
+  seen = { parts: 0 },
 ): void => {
   if (!part) return
+  if (depth > GMAIL_MAX_PART_DEPTH || ++seen.parts > GMAIL_MAX_PARTS) {
+    throw new GmailReadLimitError('structure')
+  }
   const filename = typeof part.filename === 'string' ? part.filename : ''
   const attachmentId =
     typeof part.body?.attachmentId === 'string' ? part.body.attachmentId : ''
   if (filename.length > 0 && attachmentId.length > 0) {
+    if (into.attachments.length >= GMAIL_MAX_ATTACHMENTS
+      || Buffer.byteLength(filename) > GMAIL_MAX_READ_FILENAME_BYTES
+      || (typeof part.mimeType === 'string' && Buffer.byteLength(part.mimeType) > GMAIL_MAX_READ_MIME_TYPE_BYTES)) {
+      throw new GmailReadLimitError('structure')
+    }
     into.attachments.push({
       attachmentId,
       filename,
@@ -88,7 +122,25 @@ const walk = (
     into.body = budget.decode(part.body.data)
     return
   }
-  for (const child of part.parts ?? []) walk(child, into, budget)
+  for (const child of part.parts ?? []) walk(child, into, budget, depth + 1, seen)
+}
+
+const hasAttachment = (
+  part: RawPart | undefined,
+  depth = 0,
+  seen = { parts: 0 },
+): boolean => {
+  if (!part) return false
+  if (depth > GMAIL_MAX_PART_DEPTH || ++seen.parts > GMAIL_MAX_PARTS) {
+    throw new GmailReadLimitError('structure')
+  }
+  if (typeof part.filename === 'string' && part.filename.length > 0) {
+    if (Buffer.byteLength(part.filename) > GMAIL_MAX_READ_FILENAME_BYTES) {
+      throw new GmailReadLimitError('structure')
+    }
+    return true
+  }
+  return (part.parts ?? []).some((child) => hasAttachment(child, depth + 1, seen))
 }
 
 const parseInternalDate = (value: unknown): string => {
@@ -176,12 +228,12 @@ export const searchGmailThreads = async (
       from: headerValue(headers, 'From'),
       to: splitAddressList(headerValue(headers, 'To')),
       subject: headerValue(headers, 'Subject'),
-      snippet: typeof message.snippet === 'string' ? message.snippet : '',
+      snippet: typeof message.snippet === 'string'
+        ? message.snippet.slice(0, GMAIL_MAX_READ_SNIPPET_CHARS)
+        : '',
       receivedAt: parseInternalDate(message.internalDate),
       unread: labelIds.includes('UNREAD'),
-      hasAttachments: (message.payload?.parts ?? []).some(
-        (part) => typeof part?.filename === 'string' && part.filename.length > 0,
-      ),
+      hasAttachments: hasAttachment(message.payload),
     }
   })
   return summaries.filter((summary): summary is GmailThreadSummary => summary !== null)
@@ -243,6 +295,7 @@ export const getGmailThread = async (
   budget.addHttp(response.responseBytes ?? 0)
   const { body } = response
   const messages = (body as { messages?: unknown[] }).messages ?? []
+  if (messages.length > GMAIL_MAX_READ_THREAD_MESSAGES) throw new GmailReadLimitError('structure')
   return messages.flatMap((raw) => {
     const message = raw as {
       id?: unknown

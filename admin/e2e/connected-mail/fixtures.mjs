@@ -4,6 +4,7 @@
 
 const now = '2026-09-04T09:30:00.000Z'
 const gmailDraftId = '99999999-9999-4999-8999-999999999999'
+const gmailApprovalId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const ids = {
   channel: '11111111-1111-4111-8111-111111111111',
   organization: '22222222-2222-4222-8222-222222222222',
@@ -24,6 +25,8 @@ export const createMailFixtures = () => {
   let gmailSendAfter = null
   let loseNextGmailSendResponse = false
   let gmailCapabilities = { canCompose: true, canRead: true, canSend: true }
+  let gmailApprovalVisible = false
+  let releaseGmailApprovalPreview
 
   const accounts = () => [
     {
@@ -101,11 +104,24 @@ export const createMailFixtures = () => {
     if (pathname === '/api/integrations/products') return []
     if (pathname === '/api/alerts/summary') return { assignedWork: { projects: {}, total: 0 }, knowledge: { projects: {}, total: 0 }, unreadCount: 0 }
     if (pathname === '/api/threads/activity') return { hasMore: false, items: [], unreadTotal: 0 }
+    if (pathname === '/api/workflow-runs') return []
     if (pathname === '/api/direct-messages/unread') return { items: [] }
     if (pathname === '/api/personal-assistant') return null
     if (pathname === '/api/alerts') return []
     if (pathname === '/api/events/stream') return null
     return undefined
+  }
+
+  const gmailApproval = {
+    action: 'tool.invoke', agentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', channelId: ids.channel,
+    createdAt: now, expiresAt: '2036-09-04T10:30:00.000Z', id: gmailApprovalId,
+    reason: 'Review this exact Gmail message before it is sent.', requesterId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    resolution: null, resolutionNote: null, resolverId: null, status: 'pending', toolName: 'gmail_draft_send',
+  }
+  const gmailApprovalPreview = {
+    approvalId: gmailApprovalId, bcc: ['audit@example.com'], cc: ['team@example.com'],
+    expiresAt: gmailApproval.expiresAt, externalDisclosureSources: [], mailboxAddress: 'alex@example.com',
+    status: 'pending', subject: 'Exact Gmail approval subject', text: 'Exact private Gmail body.', to: ['recipient@example.com'],
   }
 
   const respond = async (route, request) => {
@@ -123,6 +139,18 @@ export const createMailFixtures = () => {
     if (pathname === '/api/presence') return json([])
     if (pathname === '/api/presence/heartbeat' || pathname === '/api/push-surfaces/heartbeat') return json({})
     if (pathname === '/api/auth/me/preferences' && method === 'PATCH') return json(me)
+    if (pathname === '/api/approvals/pending/count') return json({ count: gmailApprovalVisible ? 1 : 0 })
+    if (pathname === '/api/approvals') return route.fulfill({
+      body: JSON.stringify({
+        data: gmailApprovalVisible ? [gmailApproval] : [],
+        meta: { hasMore: false, nextCursor: null, prevCursor: null, total: gmailApprovalVisible ? 1 : 0 },
+      }),
+      contentType: 'application/json', status: 200,
+    })
+    if (pathname === `/api/gmail/drafts/approvals/${gmailApprovalId}/draft`) {
+      await new Promise((resolve) => { releaseGmailApprovalPreview = resolve })
+      return json(gmailApprovalPreview)
+    }
     if (pathname.startsWith('/api/users/') && pathname.endsWith('/avatar')) return route.fulfill({ status: 204 })
     if (pathname === '/api/demonstrations') return json([])
     if (pathname.startsWith('/api/demonstrations/active/')) return json([])
@@ -208,6 +236,8 @@ export const createMailFixtures = () => {
     showAccountDoorway: () => { doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }; doorwayVisible = true },
     denyDoorway: () => { doorwayAllowed = false },
     loseNextGmailSendResponse: () => { loseNextGmailSendResponse = true },
+    showPendingGmailApproval: () => { gmailApprovalVisible = true },
+    releasePendingGmailApprovalPreview: () => { releaseGmailApprovalPreview?.() },
     setGmailDraftActionStatus: (next) => {
       gmailDraftState = next.state
       if (Object.hasOwn(next, 'sendAfter')) gmailSendAfter = next.sendAfter

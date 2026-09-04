@@ -1,9 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
-  createGmailDraft,
+  createPreparedGmailDraft,
   getGmailDraft,
-  updateGmailDraft,
   type GmailDraftContent,
+  type PreparedGmailDraft,
+  updatePreparedGmailDraft,
 } from '@nessie/comms-google'
 import { safeFetch } from '@nessie/runtime'
 import { getGoogleCapability, type GoogleCapabilityId } from '@nessie/schemas'
@@ -14,6 +15,7 @@ import {
 } from './comms-credential-coordinator.js'
 import { dispatchClaimedDraft } from './gmail-draft-dispatch.js'
 import { fingerprintMessage, fingerprintOf } from './gmail-draft-fingerprint.js'
+import { preflightGmailDraft } from './gmail-draft-preflight.js'
 import {
   toRecord,
   type ComposeDraftInput,
@@ -31,6 +33,7 @@ export type GmailDraftErrorCode =
   | 'AMBIGUOUS_ACCOUNT'
   | 'DRAFT_NOT_FOUND'
   | 'DRAFT_CHANGED'
+  | 'INVALID_MESSAGE'
   | 'DRAFT_NOT_SENDABLE'
   | 'DELIVERY_UNKNOWN'
   | 'PROVIDER_FAILED'
@@ -121,6 +124,7 @@ export const composeDraftForUser = async (
   deps: GmailDraftDeps,
 ): Promise<GmailDraftActionRecord> => {
   if (!input.idempotencyKey) throw new GmailDraftError('PROVIDER_FAILED', 'missing idempotency key')
+  const prepared = preflightGmailDraft(input.message, input.providerThreadId)
   const credential = await loadCredential(
     prisma,
     { ...input, capabilityId: 'gmail.compose' },
@@ -171,13 +175,12 @@ export const composeDraftForUser = async (
     )
   }
   const fetchImpl = gmailFetch(deps)
-  let ref: Awaited<ReturnType<typeof createGmailDraft>>
+  let ref: Awaited<ReturnType<typeof createPreparedGmailDraft>>
   try {
-    ref = await createGmailDraft(
+    ref = await createPreparedGmailDraft(
       fetchImpl,
       credential.credential.accessToken,
-      input.message,
-      input.providerThreadId,
+      prepared,
     )
   } catch (error) {
     await prisma.gmailDraftAction.updateMany({
@@ -189,8 +192,8 @@ export const composeDraftForUser = async (
   const providerThreadId = ref.threadId ?? input.providerThreadId ?? null
   let row
   try {
-    row = await prisma.gmailDraftAction.update({
-      where: { id: action.id },
+    const settled = await prisma.gmailDraftAction.updateMany({
+      where: { id: action.id, state: 'creating', claimedAt: now },
       data: {
         providerDraftId: ref.id,
         providerThreadId,
@@ -199,6 +202,8 @@ export const composeDraftForUser = async (
         claimedAt: null,
       },
     })
+    if (settled.count !== 1) throw new GmailDraftError('DELIVERY_UNKNOWN')
+    row = await prisma.gmailDraftAction.findUniqueOrThrow({ where: { id: action.id } })
   } catch (error) {
     await prisma.gmailDraftAction.updateMany({
       where: { id: action.id, state: 'creating' },
@@ -208,7 +213,6 @@ export const composeDraftForUser = async (
   }
   return toRecord(row)
 }
-
 export const updateDraftForUser = async (
   prisma: PrismaClient,
   input: ComposeDraftInput & { draftActionId: string },
@@ -231,6 +235,8 @@ export const updateDraftForUser = async (
   if (input.connectionId && input.connectionId !== existing.connectionId) {
     throw new GmailDraftError('DRAFT_NOT_FOUND')
   }
+  // Refuse deterministic caller content before even the live Gmail read.
+  preflightGmailDraft(input.message, existing.providerThreadId ?? undefined)
   const credential = await loadCredential(
     prisma,
     { ...input, connectionId: existing.connectionId, capabilityId: 'gmail.compose' },
@@ -245,14 +251,24 @@ export const updateDraftForUser = async (
     data: { state: 'updating', claimedAt },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
-  let ref: Awaited<ReturnType<typeof updateGmailDraft>>
+  let ref: Awaited<ReturnType<typeof updatePreparedGmailDraft>>
   let live: Awaited<ReturnType<typeof getGmailDraft>>
+  let update: { message: ComposeDraftInput['message']; prepared: PreparedGmailDraft }
   try {
     live = await getGmailDraft(
       gmailFetch(deps), credential.credential.accessToken, existing.providerDraftId,
     )
     if (!live.editable) {
       throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'edit this draft in Gmail')
+    }
+    const message = {
+      ...input.message,
+      ...(live.inReplyTo ? { inReplyTo: live.inReplyTo } : {}),
+      ...(live.references.length > 0 ? { references: live.references } : {}),
+    }
+    update = {
+      message,
+      prepared: preflightGmailDraft(message, existing.providerThreadId ?? undefined),
     }
   } catch (error) {
     // This was only a read/shape validation. No provider mutation has begun,
@@ -272,16 +288,11 @@ export const updateDraftForUser = async (
       data: { state: 'update_unknown' },
     })
     if (mutationClaimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
-    ref = await updateGmailDraft(
+    ref = await updatePreparedGmailDraft(
       gmailFetch(deps),
       credential.credential.accessToken,
       existing.providerDraftId,
-      {
-        ...input.message,
-        ...(live.inReplyTo ? { inReplyTo: live.inReplyTo } : {}),
-        ...(live.references.length > 0 ? { references: live.references } : {}),
-      },
-      existing.providerThreadId ?? undefined,
+      update.prepared,
     )
   } catch {
     // The provider call either began or we cannot prove it did not. Keep the
@@ -290,11 +301,7 @@ export const updateDraftForUser = async (
     throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'draft update is unconfirmed; inspect it in Gmail')
   }
   const providerThreadId = ref.threadId ?? existing.providerThreadId
-  const fingerprint = fingerprintMessage({
-    ...input.message,
-    ...(live.inReplyTo ? { inReplyTo: live.inReplyTo } : {}),
-    ...(live.references.length > 0 ? { references: live.references } : {}),
-  }, providerThreadId ?? undefined)
+  const fingerprint = fingerprintMessage(update.message, providerThreadId ?? undefined)
   const persisted = await prisma.gmailDraftAction.updateMany({
     where: { id: existing.id, state: 'update_unknown', claimedAt },
     data: {
@@ -309,7 +316,6 @@ export const updateDraftForUser = async (
   const row = await prisma.gmailDraftAction.findUniqueOrThrow({ where: { id: existing.id } })
   return toRecord(row)
 }
-
 export const readDraftForUser = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string; draftActionId: string },

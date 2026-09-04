@@ -412,6 +412,7 @@ const mapApproval = (approval: {
   resolution: string | null
   resolutionNote: string | null
   requiredApproverRole: string | null
+  toolName: string | null
   continuationToken: string
   expiresAt: Date
   createdAt: Date
@@ -435,6 +436,7 @@ const mapApproval = (approval: {
   resolution: approval.resolution,
   resolutionNote: approval.resolutionNote,
   requiredApproverRole: approval.requiredApproverRole,
+  toolName: approval.toolName,
   expiresAt: approval.expiresAt.toISOString(),
   createdAt: approval.createdAt.toISOString(),
   updatedAt: approval.updatedAt.toISOString(),

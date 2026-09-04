@@ -112,3 +112,24 @@ test('the mailbox-send execution identity is stable per run and tool call', () =
   assert.notEqual(first, mailboxSendExecutionId(runId, 'provider-call:durable-2'))
   assert.match(first, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
 })
+
+test('an agent reports a live SMTP action as checking, never as sent', async () => {
+  const prisma = {
+    mailboxConnection: { findMany: async () => [connection] },
+    mailboxSendAction: { upsert: async ({ create }: { create: Record<string, unknown> }) => ({
+      ...create, state: 'dispatching',
+    }) },
+  } as unknown as PrismaClient
+  const previousSecret = process.env.NESSIE_AUTH_SECRET
+  process.env.NESSIE_AUTH_SECRET = 'test-secret'
+  try {
+    const result = await runMailboxSendTool(buildContext(prisma), {
+      subject: 'Status', text: 'Hello', to: ['recipient@example.test'],
+    })
+    assert.match(result.outputPreview, /still being delivered/)
+    assert.doesNotMatch(result.outputPreview, /^Sent from/)
+  } finally {
+    if (previousSecret === undefined) delete process.env.NESSIE_AUTH_SECRET
+    else process.env.NESSIE_AUTH_SECRET = previousSecret
+  }
+})

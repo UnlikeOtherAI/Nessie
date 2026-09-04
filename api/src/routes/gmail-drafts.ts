@@ -74,6 +74,18 @@ const FromApprovalSchema = z.object({
   { message: 'Deciding for you needs a note saying what you are happy with.' },
 )
 
+const FrozenGmailApprovalSchema = z.object({
+  args: z.object({
+    connectionId: z.string().uuid(),
+    draftId: z.string().uuid(),
+    expectedFingerprint: z.string().min(1),
+    reviewed: z.object({
+      bcc: z.array(z.string()), body: z.string(), cc: z.array(z.string()),
+      subject: z.string(), to: z.array(z.string()),
+    }).strict(),
+  }).strict(),
+}).passthrough()
+
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
   if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE' || code === 'DELIVERY_UNKNOWN') return 409
@@ -368,47 +380,45 @@ export const registerGmailDraftRoutes = (
 
     const approval = await prisma.approvalRequest.findFirst({
       where: {
+        expiresAt: { gt: new Date() },
         id: body.approvalId,
         organizationId: actorContext.tenant.organizationId,
         // Only the person the gate is pinned to may turn it off.
         requiredApproverUserId: actorContext.actor.actorId,
+        status: 'pending',
+        toolName: 'gmail_draft_send',
       },
-      select: { agentId: true },
+      select: { agentId: true, resumeState: true },
     })
     if (!approval) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply
     }
 
-    // One active Google account is unambiguous; two are not, and a grant is per
-    // mailbox, so guessing would spend consent on the wrong one.
-    const connections = await prisma.commsConnection.findMany({
+    const frozen = FrozenGmailApprovalSchema.safeParse(approval.resumeState)
+    if (!frozen.success) {
+      sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This approval is not bound to a Gmail draft')
+      return reply
+    }
+    // The approved account is server-frozen with the exact preview. Never
+    // infer consent from another active connection in the same account.
+    const action = await prisma.gmailDraftAction.findFirst({
       where: {
+        connectionId: frozen.data.args.connectionId,
+        id: frozen.data.args.draftId,
         organizationId: actorContext.tenant.organizationId,
         ownerUserId: actorContext.actor.actorId,
-        provider: 'google',
-        status: 'active',
       },
-      select: { id: true },
-      take: 2,
+      select: { connectionId: true },
     })
-    const connectionId = connections.length === 1 ? connections[0]?.id : undefined
-    if (!connectionId) {
-      sendApiError(
-        reply,
-        409,
-        'AMBIGUOUS_ACCOUNT',
-        connections.length === 0
-          ? 'No connected Google account'
-          : 'You have more than one Google account connected — choose one in '
-            + 'Connected accounts.',
-      )
+    if (!action) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply
     }
 
     const grant = await grantSendAuthorization(prisma, {
       organizationId: actorContext.tenant.organizationId,
-      connectionId,
+      connectionId: action.connectionId,
       agentId: approval.agentId,
       grantedByUserId: actorContext.actor.actorId,
       duration: body.duration,

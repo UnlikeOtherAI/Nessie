@@ -185,6 +185,10 @@ export const useMailboxSendActionStatus = (
         mailMutationUrl(address, `/send-actions/${encodeURIComponent(actionId)}`),
       )
     },
+    // A dispatch is a live durable action. Poll only while it remains live;
+    // the server's stale-claim sweep terminalizes it as delivery_unknown, so
+    // this cannot leave a recovered composer frozen on a success claim.
+    refetchInterval: (query) => query.state.data?.state === 'dispatching' ? 2_000 : false,
     staleTime: 0,
   })
 }

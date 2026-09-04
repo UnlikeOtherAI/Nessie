@@ -34,6 +34,8 @@ export type MailComposeDraft = {
   requestId?: string
   /** Content-free SMTP action identity for an unconfirmed-delivery recovery. */
   mailboxSendActionId?: string
+  /** A browser transport failure after dispatch began; only acknowledgement clears it. */
+  mailboxSendNeedsCheck?: boolean
   /** Gmail's held-send identity survives reloads until Undo or dispatch. */
   gmailHeldSend?: { draftId: string; sendAfter: string }
   subject: string
@@ -42,7 +44,6 @@ export type MailComposeDraft = {
 
 const emptyDraft: MailComposeDraft = { bcc: '', body: '', cc: '', subject: '', to: '' }
 const recipients = (value: string): string[] => value.split(',').map((part) => part.trim()).filter(Boolean)
-
 type RecipientField = 'to' | 'cc' | 'bcc'
 type RecipientErrors = Partial<Record<RecipientField, string>>
 
@@ -69,7 +70,6 @@ export const validateMailComposeRecipients = (draft: MailComposeDraft): Recipien
 
 const isValidDate = (value: string): boolean => Number.isFinite(Date.parse(value))
 const isFutureDate = (value: string): boolean => isValidDate(value) && Date.parse(value) > Date.now()
-
 /** Only editable outbound fields are serializable. Reply history deliberately
  * stays in the live conversation beside this Flow, never in localStorage. */
 export const reviveMailComposeDraft = (stored: unknown): MailComposeDraft | null => {
@@ -89,6 +89,7 @@ export const reviveMailComposeDraft = (stored: unknown): MailComposeDraft | null
       ...(isUuid(record.gmailDraftId) ? { gmailDraftId: record.gmailDraftId } : {}),
       ...(gmailHeldSend ? { gmailHeldSend } : {}),
       ...(isUuid(record.mailboxSendActionId) ? { mailboxSendActionId: record.mailboxSendActionId } : {}),
+      ...(record.mailboxSendNeedsCheck === true ? { mailboxSendNeedsCheck: true } : {}),
       ...(isUuid(record.requestId) ? { requestId: record.requestId } : {}),
       subject: String(record.subject), to: String(record.to),
     }
@@ -124,7 +125,8 @@ export const ConnectedMailCompose = ({
     initial,
     // A reply's prefilled To/subject is a baseline, not an edited draft. The
     // draft primitive must therefore still hydrate a saved held-send action.
-    isEmpty: (value) => !value.gmailDraftId && !value.gmailHeldSend && !value.mailboxSendActionId && !value.requestId
+    isEmpty: (value) => !value.gmailDraftId && !value.gmailHeldSend && !value.mailboxSendActionId
+      && !value.mailboxSendNeedsCheck && !value.requestId
       && value.to === initial.to && value.cc === initial.cc && value.bcc === initial.bcc
       && value.subject === initial.subject && value.body === initial.body,
     revive: reviveMailComposeDraft,
@@ -235,11 +237,9 @@ export const ConnectedMailCompose = ({
     editedProviderDraftRef.current = true
     draft.setDraft((current) => {
       const updated = typeof next === 'function' ? next(current) : next
-      // SMTP cannot bind changed content to a prior request. Gmail retains the
-      // original create id until the user explicitly chooses a new draft.
-      return address.source === 'mailbox'
-        ? { ...updated, mailboxSendActionId: undefined, requestId: undefined }
-        : updated
+      // A mailbox request key can already name a provider call whose browser
+      // response was lost. Editing must not mint a fresh send identity.
+      return updated
     })
   }
 
@@ -341,7 +341,11 @@ export const ConnectedMailCompose = ({
       }
       setSent({ ...result, id: result.id || result.actionId || providerAction?.id || '' })
     } catch (cause) {
-      if (cause instanceof ApiClientError && cause.code === 'DRAFT_CHANGED' && !providerDraftRef.current) {
+      if (address.source === 'mailbox' && !(cause instanceof ApiClientError)) {
+        draft.setDraft({ ...current, mailboxSendNeedsCheck: true, requestId })
+        await draft.flush()
+        setError('We could not confirm whether this email was sent. It will not be resent automatically. Check the provider’s Sent mail before composing a new message.')
+      } else if (cause instanceof ApiClientError && cause.code === 'DRAFT_CHANGED' && !providerDraftRef.current) {
         setRecreateGmailDraft(true)
         setError('An earlier version may already be a Gmail draft. Retry the original text to recover it, or explicitly create a new draft before sending these edits.')
       } else if (cause instanceof ApiClientError && cause.code === 'DELIVERY_UNKNOWN') {
@@ -423,11 +427,12 @@ export const ConnectedMailCompose = ({
 
   const sentConfirmation = deriveMailSendOutcome({
     gmailAction: gmailActionStatus.data, heldSend: heldGmailSend, mailboxAction: mailboxAction.data,
-    mailboxActionId: draft.draft.mailboxSendActionId, sent, source: address.source,
+    mailboxActionId: draft.draft.mailboxSendActionId, mailboxNeedsCheck: draft.draft.mailboxSendNeedsCheck,
+    sent, source: address.source,
   })
-  const mailboxSendLocked = address.source === 'mailbox' && Boolean(draft.draft.mailboxSendActionId && (
+  const mailboxSendLocked = address.source === 'mailbox' && Boolean(draft.draft.mailboxSendNeedsCheck || (draft.draft.mailboxSendActionId && (
     mailboxAction.isPending || mailboxAction.isError || mailboxAction.data?.state !== 'ready'
-  ))
+  )))
   // A persisted action is ambiguous until the owner-only status endpoint says
   // it is editable again. A network failure/404 must not reopen Send.
   const gmailActionLocked = Boolean(gmailActionId && (
@@ -483,7 +488,6 @@ export const ConnectedMailCompose = ({
     </form>
   )
 }
-
 const MailField = ({ error, label, onChange, value }: {
   error?: string
   label: string

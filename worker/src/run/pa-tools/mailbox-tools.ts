@@ -260,7 +260,7 @@ export const runMailboxSendTool = async (
     throw new Error('A connected-mail send needs its accountable owner and durable tool-call identity.')
   }
   const executionId = mailboxSendExecutionId(context.run.id, context.toolCallId)
-  await runAgainstMailbox(context, mailbox, () => dispatchMailboxSendAction(context.prisma, {
+  const result = await runAgainstMailbox(context, mailbox, () => dispatchMailboxSendAction(context.prisma, {
     clientRequestId: executionId,
     connection: mailbox.connection,
     mail: {
@@ -280,9 +280,11 @@ export const runMailboxSendTool = async (
   return {
     connectorUsage: mailboxUsage(mailbox, 'send', recipients.length),
     inputSummary: `to=${args.to.join(',')} subject=${args.subject}`,
-    outputPreview:
-      `Sent from ${mailbox.connection.address} to ${recipients.join(', ')} — `
-      + `subject "${args.subject}".`,
+    outputPreview: result.status === 'sent'
+      ? `Sent from ${mailbox.connection.address} to ${recipients.join(', ')} — `
+        + `subject "${args.subject}".`
+      : `Email from ${mailbox.connection.address} is still being delivered. `
+        + 'Its delivery is being checked and it will not be sent again.',
     toolName: 'mailbox_send',
   }
 }

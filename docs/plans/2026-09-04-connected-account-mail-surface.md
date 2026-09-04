@@ -1,6 +1,6 @@
 # Connected-account mail surface
 
-Status: implemented; final verification in progress (2026-09-04)
+Status: implemented and verified (2026-09-04)
 
 Implementation note (2026-09-04): the live provider, entitlement, REST,
 `/mail`, and agent-presentation slices are implemented for Gmail and
@@ -204,9 +204,10 @@ content fingerprint.
 ## Agent-driven presentation in chat
 
 Presentation is an agent capability, not a second mail implementation.
-`mail_present` is a non-safe UI-posting tool whose closed modes are `account`, `thread`, and
-`compose`. It accepts an explicit `source` and `accountId`, plus the provider
-thread or draft reference required by the mode. For `source=mailbox`, it runs
+`mail_present` is a non-safe UI-posting tool whose closed modes are `account`,
+`thread`, and `compose`. It accepts an explicit `source` and `accountId`, plus
+the provider thread or draft reference required by the mode. For
+`source=mailbox`, it runs
 the identical authorization chain as `mailbox_search` and `mailbox_read`:
 effective-user resolution, the per-`(connection, agent)` access row, live
 personal ownership or shared-team membership, and ambiguity refusal. For
@@ -424,6 +425,22 @@ and route contracts. Database-backed suites must run against an explicitly
 exported, isolated `DATABASE_URL`; a run whose database tests skipped is
 reported as such rather than counted as database coverage.
 
+### Final verification record (2026-09-04)
+
+An isolated PostgreSQL `DATABASE_URL` was exported for the database-backed
+runs (isolated test port and database; credentials are intentionally omitted).
+The focused eight-package Turbo matrix passed **34/34**, as did `pnpm lint`,
+`pnpm typecheck`, and the lint-gated `pnpm build`. The headless connected-mail
+Playwright suite passed across desktop, tablet, and 200%-zoom phone views,
+including chat popup and compose doorways and the standalone approvals surface:
+the exact Gmail To/Cc/Bcc/subject/body preview held **Approve** disabled until
+it loaded, then enabled it and captured `approvals-mail-send-preview.png`.
+
+The adversarial review also verified the exact one-use,
+continuation-bound approval proof; no blind approval path; fail-closed SMTP and
+Gmail outcomes; bounded provider reads; local MIME preflight; and safe retention
+of the Gmail source draft after direct send.
+
 - Package tests run through Turbo, with `DATABASE_URL` exported when present.
 - Root lint, typecheck, and lint-gated build pass.
 - API tests prove personal-owner, shared-team-member, manager, cross-org, stale
@@ -448,7 +465,8 @@ reported as such rather than counted as database coverage.
   against deterministic provider fixtures. It verifies focus enters and returns
   from the popup with an announcement, listbox/grid semantics and
   `aria-selected`, a non-colour unread indicator, keyboard use of remote-content
-  reveal, reduced motion, and layout at 200% zoom.
+  reveal, reduced motion, layout at 200% zoom, and the owning `/approvals`
+  mail-send preview before approval.
 
 ## Deliberate non-goals for this slice
 

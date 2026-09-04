@@ -143,8 +143,9 @@ export const dispatchMailboxSendAction = async (
     return { status: 'dispatching', actionId: action.id, messageId: action.messageId }
   }
   if (action.state === 'sent') return { status: 'sent', actionId: action.id, messageId: action.messageId }
+  const claimedAt = new Date()
   const claimed = await prisma.mailboxSendAction.updateMany({
-    where: { id: action.id, state: 'ready' }, data: { state: 'dispatching', claimedAt: new Date() },
+    where: { id: action.id, state: 'ready' }, data: { state: 'dispatching', claimedAt },
   })
   if (claimed.count !== 1) throw new ConnectedMailError('DELIVERY_UNKNOWN', action.id)
   let endpoints
@@ -192,9 +193,14 @@ export const dispatchMailboxSendAction = async (
     throw new ConnectedMailError('DELIVERY_UNKNOWN', action.id, settled.count === 1)
   }
   try {
-    await prisma.mailboxSendAction.update({
-      where: { id: action.id }, data: { state: 'sent', sentAt: new Date(), claimedAt: null },
+    const settled = await prisma.mailboxSendAction.updateMany({
+      // A stale sweep may have made an in-flight provider call terminally
+      // unknown. Its terminal decision must never be overwritten by a late
+      // transport completion.
+      where: { id: action.id, state: 'dispatching', claimedAt },
+      data: { state: 'sent', sentAt: new Date(), claimedAt: null },
     })
+    if (settled.count !== 1) throw new Error('mailbox send claim was terminalized')
   } catch {
     const settled = await prisma.mailboxSendAction.updateMany({
       where: { id: action.id, state: 'dispatching' }, data: { state: 'delivery_unknown', claimedAt: null },

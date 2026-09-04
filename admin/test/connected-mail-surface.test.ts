@@ -39,11 +39,13 @@ test('a local compose draft retains only its durable action identifiers across a
     to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
     gmailDraftId: '00000000-0000-4000-8000-000000000001',
     mailboxSendActionId: '00000000-0000-4000-8000-000000000003',
+    mailboxSendNeedsCheck: true,
     requestId: '00000000-0000-4000-8000-000000000002',
   }), {
     to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
     gmailDraftId: '00000000-0000-4000-8000-000000000001',
     mailboxSendActionId: '00000000-0000-4000-8000-000000000003',
+    mailboxSendNeedsCheck: true,
     requestId: '00000000-0000-4000-8000-000000000002',
   })
   assert.deepEqual(reviveMailComposeDraft({
@@ -119,6 +121,8 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(compose, /providerDraftRef\.current/)
   assert.match(compose, /Persist the action key before crossing the network boundary/)
   assert.match(compose, /mailboxSendActionId/)
+  assert.match(compose, /mailboxSendNeedsCheck/)
+  assert.match(compose, /Editing must not mint a fresh send identity/)
   assert.match(compose, /mailbox-delivery-unknown/)
   assert.match(compose, /Check the provider’s Sent mail/)
   assert.match(compose, /deriveMailSendOutcome/)
@@ -130,6 +134,8 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(mailHooks, /await queryClient\.cancelQueries/)
   assert.match(mailHooks, /gmailKeys\.draftStatus\(input\.draftId\)/)
   assert.match(mailHooks, /sendAfter: data\.sendAfter, state: 'sending'/)
+  assert.match(mailHooks, /refetchInterval/)
+  assert.match(mailHooks, /state === 'dispatching'/)
   assert.doesNotMatch(compose, /mailboxAction\.refetch\(\)/)
   assert.match(compose, /gmailDraftId: providerAction\.id/)
   assert.doesNotMatch(compose, /createIdempotencyKeyRef|mailboxSendIdempotencyKeyRef/)

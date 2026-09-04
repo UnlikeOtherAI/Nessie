@@ -7,11 +7,7 @@ import {
   recordSendDecision,
   resolveStandingConsentForToolCall,
 } from '@nessie/team-admin'
-import {
-  buildSendBoundaryPrompt,
-  readSendBoundaryVerdict,
-  type SendBoundaryVerdict,
-} from './send-boundary-judge.js'
+import { judgeSendBoundary } from './send-boundary-judge.js'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -27,6 +23,7 @@ import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import type { AgenticToolResult } from '../tools.js'
 import {
   buildToolActorContext,
+  consumeVerifiedToolApproval,
   emitWorkerAuditEvent,
   evaluateToolInvokePolicy,
   toolDeniedResult,
@@ -35,7 +32,10 @@ import {
   createToolApprovalRequest,
   postAllowedByRuleCard,
 } from './tool-approval-requests.js'
-import { approvalInputFor, resolveFrozenGmailSendApproval } from './gmail-send-approval.js'
+import {
+  approvalInputFor,
+  resolveFrozenGmailSendApproval,
+} from './gmail-send-approval.js'
 import type { RunContext } from './types.js'
 
 export type ToolActorContext = AuthorizedActionContext
@@ -44,6 +44,8 @@ export type ToolAuthorizationDecision =
   | {
       decision: 'allow'
       executionArgs?: Record<string, unknown>
+      gmailDraftSendApproved?: true
+      gmailDraftSendStandingAuthorized?: true
       toolActorContext: ToolActorContext
     }
   | {
@@ -96,9 +98,7 @@ export type ToolAuthorizationContext = {
    * asking rather than proceeding unjudged.
    */
   runUtility?: (prompt: string) => Promise<string | null>
-  /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
   consumeApprovalProof?: boolean
-  /** A prepared call has already received its single auto-review verdict. */
   skipAutoReview?: boolean
   resumeState?: {
     actorContext: AuthorizedActionContext
@@ -264,26 +264,20 @@ export const authorizeToolExecution = async (
     context,
     toolName,
     args,
-    { consumeApprovalProof: auth.consumeApprovalProof },
   )
+  const verifiedApprovalId = rawPolicyDecision.allowed
+    ? rawPolicyDecision.verifiedApprovalId
+    : undefined
 
-  // A tool may declare its approval requirement in CODE rather than relying on
-  // a `PolicyRule` row. The evaluator's default verdict is `allow`, so a purely
-  // data-driven gate is simply absent in any organization whose seed never ran
-  // — which is every organization created before the rule existed. Sending mail
-  // as a person is not something that may be ungated by accident.
-  //
-  // The one legitimate bypass is standing consent the mailbox owner gave for
-  // this exact agent, resolved here so the decision lives at the chokepoint
-  // every tool execution passes through rather than in each handler.
   let boundaryReason: string | null = null
+  let gmailDraftSendStandingAuthorized = false
   let structuralApprover: string | null = null
   let structuralContext: Record<string, unknown> | null = null
   const policyDecision = await (async () => {
     if (
       !rawPolicyDecision.allowed
       || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
-      || toolActorContext.approval?.approvalProof
+      || verifiedApprovalId !== undefined
     ) {
       return rawPolicyDecision
     }
@@ -325,11 +319,8 @@ export const authorizeToolExecution = async (
     })
     if (consent.outcome === 'ask') return escalate()
     if (consent.outcome === 'proceed') {
-      await postAllowedByRuleCard(prisma, context, toolActorContext, {
-        args,
-        rule: null,
-        toolName,
-      })
+      gmailDraftSendStandingAuthorized = toolName === 'gmail_draft_send'
+      await postAllowedByRuleCard(prisma, context, toolActorContext, { toolName })
       return rawPolicyDecision
     }
 
@@ -338,7 +329,7 @@ export const authorizeToolExecution = async (
     // and fails closed to asking — the inverse of the watch-status gate,
     // because a miss there costs a redundant message and a miss here sends an
     // email nobody approved.
-    const verdict = await judgeAgainstSendBoundary({
+    const verdict = await judgeSendBoundary({
       args,
       boundary: consent.boundary,
       runUtility: auth.runUtility,
@@ -350,11 +341,8 @@ export const authorizeToolExecution = async (
       verdict.verdict === 'proceed' ? 'decided' : 'asked',
     ).catch(() => undefined)
     if (verdict.verdict === 'proceed') {
-      await postAllowedByRuleCard(prisma, context, toolActorContext, {
-        args,
-        rule: consent.boundary,
-        toolName,
-      })
+      gmailDraftSendStandingAuthorized = toolName === 'gmail_draft_send'
+      await postAllowedByRuleCard(prisma, context, toolActorContext, { toolName })
       return rawPolicyDecision
     }
     // Shown on the approval card: the person should see why they were asked.
@@ -469,32 +457,39 @@ export const authorizeToolExecution = async (
     }
   }
 
-  return { decision: 'allow', executionArgs, toolActorContext }
-}
-
-/**
- * One bounded judgement, on the same utility-model plumbing compaction and the
- * watch-status gate already use. Every failure path returns `ask`.
- */
-const judgeAgainstSendBoundary = async (input: {
-  args: Record<string, unknown>
-  boundary: string
-  runUtility?: (prompt: string) => Promise<string | null>
-  toolName: string
-}): Promise<SendBoundaryVerdict> => {
-  if (!input.runUtility) {
-    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  if (verifiedApprovalId && auth.consumeApprovalProof !== false) {
+    if (!await consumeVerifiedToolApproval(
+      prisma,
+      toolActorContext,
+      context,
+      toolName,
+      args,
+      verifiedApprovalId,
+    )) {
+      await auditDenial(emitAudit, toolActorContext, context, toolName, {
+        source: 'worker_approval_proof',
+      }, 'approval_required')
+      return {
+        decision: 'deny',
+        result: toolDeniedResult(toolName, args, {
+          message: `Tool "${toolName}" requires approval before it can run.`,
+          reason: 'approval_required',
+        }),
+      }
+    }
+    return {
+      decision: 'allow',
+      executionArgs,
+      ...(resumedGmail ? { gmailDraftSendApproved: true as const } : {}),
+      ...(gmailDraftSendStandingAuthorized ? { gmailDraftSendStandingAuthorized: true as const } : {}),
+      toolActorContext,
+    }
   }
-  try {
-    const raw = await input.runUtility(
-      buildSendBoundaryPrompt({
-        boundary: input.boundary,
-        proposal: `${input.toolName} with ${summarizeToolInput(input.args)}`,
-        request: 'See the conversation this action came from.',
-      }),
-    )
-    return readSendBoundaryVerdict(raw)
-  } catch {
-    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+
+  return {
+    decision: 'allow',
+    executionArgs,
+    ...(gmailDraftSendStandingAuthorized ? { gmailDraftSendStandingAuthorized: true as const } : {}),
+    toolActorContext,
   }
 }

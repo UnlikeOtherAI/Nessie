@@ -8,7 +8,7 @@ import {
 } from '@nessie/schemas'
 import { hashJsonValue } from '../tool-util.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
-import { evaluateToolInvokePolicy } from './policy.js'
+import { consumeVerifiedToolApproval, evaluateToolInvokePolicy } from './policy.js'
 import type { RunContext } from './types.js'
 
 const ORG_ID = '11111111-1111-4111-8111-111111111111'
@@ -125,7 +125,7 @@ const fakePrisma = (input: {
   }
 }
 
-test('a verified proof authorizes exactly the approved canonical arguments once', async () => {
+test('a verified proof is claimed exactly once at final dispatch', async () => {
   const fake = fakePrisma({})
   const first = await evaluateToolInvokePolicy(
     fake.prisma as never,
@@ -135,6 +135,19 @@ test('a verified proof authorizes exactly the approved canonical arguments once'
     args,
   )
   assert.equal(first.allowed, true)
+  if (!first.allowed) throw new Error('expected verified approval')
+  assert.equal(first.verifiedApprovalId, 'approval-1')
+  assert.equal(
+    await consumeVerifiedToolApproval(
+      fake.prisma as never,
+      actor({}),
+      context(),
+      'payment_send',
+      args,
+      first.verifiedApprovalId ?? '',
+    ),
+    true,
+  )
   assert.ok(fake.approval.proofConsumedAt instanceof Date)
 
   const replay = await evaluateToolInvokePolicy(

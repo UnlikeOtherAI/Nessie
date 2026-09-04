@@ -5,7 +5,12 @@ import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
+import { MailboxSendApprovalPreview } from '../components/features/channels/MailboxSendApprovalPreview'
+import {
+  useMailSendApprovalDraft,
+  useResolveApproval,
+  type ApprovalRequest,
+} from '../facades/approvals/hooks'
 import { approvalKeys } from '../lib/query-keys'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { usePagedList } from '../facades/usePagedList'
@@ -61,6 +66,44 @@ const approvalTitle = (approval: ApprovalRequest): string => {
   return approval.action
 }
 
+const mailSendTool = (approval: ApprovalRequest): 'gmail_draft_send' | 'mailbox_send' | undefined =>
+  approval.toolName === 'gmail_draft_send' || approval.toolName === 'mailbox_send'
+    ? approval.toolName
+    : undefined
+
+/** The owning approvals page uses the exact same private preview as the chat gate. */
+const ApprovalActions = ({ approval }: { approval: ApprovalRequest }) => {
+  const resolve = useResolveApproval()
+  const toolName = mailSendTool(approval)
+  const draft = useMailSendApprovalDraft(toolName, approval.id, Boolean(toolName))
+  const canApprove = !toolName || Boolean(draft.data)
+  return (
+    <>
+      {toolName && draft.data ? <MailboxSendApprovalPreview draft={draft.data} /> : null}
+      {toolName && draft.isLoading ? <p className="mt-2 text-xs text-[color:var(--tx3)]">Loading the full email to send…</p> : null}
+      {toolName && draft.isError ? <p className="mt-2 text-xs text-[color:var(--danger-text)]">The complete email can no longer be read. It cannot be approved.</p> : null}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          className="admin-button admin-button-primary"
+          disabled={resolve.isPending || !canApprove}
+          onClick={() => resolve.mutate({ id: approval.id, resolution: 'approved' })}
+          type="button"
+        >
+          Approve
+        </button>
+        <button
+          className="admin-button admin-button-secondary"
+          disabled={resolve.isPending}
+          onClick={() => resolve.mutate({ id: approval.id, resolution: 'rejected' })}
+          type="button"
+        >
+          Reject
+        </button>
+      </div>
+    </>
+  )
+}
+
 export const ApprovalsPage = () => {
   const navigate = useNavigate()
   const { me } = useAuthSession()
@@ -88,8 +131,6 @@ export const ApprovalsPage = () => {
     queryKey: historyCacheKey,
   })
   const historyItems = history.items.filter((approval) => approval.status !== 'pending')
-
-  const resolve = useResolveApproval()
 
   return (
     <section className="flex h-full min-h-0 flex-col">
@@ -167,23 +208,8 @@ export const ApprovalsPage = () => {
                               Open to-dos
                             </button>
                           ) : null}
-                          <button
-                            className="admin-button admin-button-primary"
-                            disabled={resolve.isPending}
-                            onClick={() => resolve.mutate({ id: approval.id, resolution: 'approved' })}
-                            type="button"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="admin-button admin-button-secondary"
-                            disabled={resolve.isPending}
-                            onClick={() => resolve.mutate({ id: approval.id, resolution: 'rejected' })}
-                            type="button"
-                          >
-                            Reject
-                          </button>
                         </div>
+                        <ApprovalActions approval={approval} />
                       </Row>
                     )
                   })}

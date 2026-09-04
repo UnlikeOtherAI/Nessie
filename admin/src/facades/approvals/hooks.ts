@@ -18,6 +18,7 @@ export type ApprovalRequest = {
   resolutionNote: string | null
   resolverId: string | null
   status: string
+  toolName: string | null
 }
 
 export type PendingApprovalCount = { count: number }

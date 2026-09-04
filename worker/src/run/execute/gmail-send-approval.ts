@@ -1,9 +1,15 @@
-import { GmailDraftError, fingerprintDraft, readDraftForUser } from '@nessie/team-admin'
+import {
+  GmailDraftError,
+  fingerprintDraft,
+  readDraftForUser,
+  verifyToolApprovalProof,
+} from '@nessie/team-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 
 import { subtractImpliedScopes } from './disclosure-basis.js'
+import { hashJsonValue } from '../tool-util.js'
 import type { RunContext } from './types.js'
 
 /**
@@ -125,7 +131,10 @@ export const resolveFrozenGmailSendApproval = async (
   context: RunContext,
   actorContext: AuthorizedActionContext,
   args: Record<string, unknown>,
-): Promise<{ authorizationArgs: FrozenGmailSendArgs; executionArgs: Record<string, unknown> } | null> => {
+): Promise<{
+  authorizationArgs: FrozenGmailSendArgs
+  executionArgs: Record<string, unknown>
+} | null> => {
   const approval = actorContext.approval
   if (!approval?.approvalId || !approval.approvalProof) return null
   const requested = RequestedGmailSendSchema.safeParse(args)
@@ -137,7 +146,7 @@ export const resolveFrozenGmailSendApproval = async (
       continuationToken: approval.approvalProof,
       id: approval.approvalId,
       organizationId: context.channel.organizationId,
-      runId: context.run.id,
+      proofConsumedAt: null,
       status: 'approved',
       toolName: 'gmail_draft_send',
     },
@@ -152,6 +161,16 @@ export const resolveFrozenGmailSendApproval = async (
   ) {
     throw new GmailApprovalResumeError()
   }
+  const argsHash = hashJsonValue(value)
+  const verified = await verifyToolApprovalProof(prisma, {
+    approvalId: approval.approvalId,
+    argsHash,
+    continuationRunId: context.run.id,
+    organizationId: context.channel.organizationId,
+    proof: approval.approvalProof,
+    toolName: 'gmail_draft_send',
+  })
+  if (!verified) throw new GmailApprovalResumeError()
   return {
     authorizationArgs: value,
     executionArgs: {

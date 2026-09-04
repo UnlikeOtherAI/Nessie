@@ -5,14 +5,18 @@ import type { GmailSendOutcome } from './GmailSendOutcomePanel'
 type SendResult = { actionId?: string; id: string; status?: string } | null
 const future = (value: string): boolean => Number.isFinite(Date.parse(value)) && Date.parse(value) > Date.now()
 
-export const deriveMailSendOutcome = ({ gmailAction, heldSend, mailboxAction, mailboxActionId, sent, source }: {
+export const deriveMailSendOutcome = ({
+  gmailAction, heldSend, mailboxAction, mailboxActionId, mailboxNeedsCheck, sent, source,
+}: {
   gmailAction: GmailDraftActionStatus | undefined
   heldSend: { draftId: string; sendAfter: string } | undefined
   mailboxAction: MailboxSendActionStatus | undefined
   mailboxActionId: string | undefined
+  mailboxNeedsCheck: boolean | undefined
   sent: SendResult
   source: 'gmail' | 'mailbox'
 }): GmailSendOutcome | null => {
+  if (source === 'mailbox' && mailboxNeedsCheck) return { id: mailboxActionId ?? '', kind: 'delivery_unknown' }
   const mailboxSent = source === 'mailbox' && sent?.status === 'sent' ? sent
     : mailboxAction?.state === 'sent' ? { id: mailboxAction.id, status: 'sent' } : null
   if (source === 'mailbox' && (sent?.status === 'dispatching' || mailboxAction?.state === 'dispatching')) {

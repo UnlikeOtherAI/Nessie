@@ -11,6 +11,7 @@ const source = (relativePath: string): string =>
 test('both private mail-send approvals use one frozen-draft preview contract', () => {
   const hooks = source('../src/facades/approvals/hooks.ts')
   const gate = source('../src/components/features/channels/RunApprovalGate.tsx')
+  const approvals = source('../src/pages/ApprovalsPage.tsx')
 
   assert.deepEqual(
     approvalKeys.mailSendDraft('mailbox_send', 'approval-1'),
@@ -24,8 +25,11 @@ test('both private mail-send approvals use one frozen-draft preview contract', (
   assert.match(hooks, /\/api\/mailbox-connections\/approvals\/\$\{approvalId\}\/draft/)
   assert.match(gate, /gate\?\.toolName === 'mailbox_send' \|\| gate\?\.toolName === 'gmail_draft_send'/)
   assert.match(gate, /active && isMailSend && mailDraft\.data/)
-  assert.match(gate, /active && !isMailboxSend/)
+  assert.match(gate, /active && isGmailSend && mailDraft\.data/)
   assert.match(gate, /<MailboxSendApprovalPreview draft=\{mailDraft\.data\}/)
+  assert.match(approvals, /useMailSendApprovalDraft/)
+  assert.match(approvals, /<MailboxSendApprovalPreview draft=\{draft\.data\}/)
+  assert.match(approvals, /disabled=\{resolve\.isPending \|\| !canApprove\}/)
   assert.match(hooks, /active: boolean/)
   assert.match(hooks, /removeQueries\(\{ queryKey: approvalKeys\.mailSendDraft\('gmail_draft_send', input\.id\) \}\)/)
   assert.doesNotMatch(gate, /inputSummary.*gmail_draft_send/)

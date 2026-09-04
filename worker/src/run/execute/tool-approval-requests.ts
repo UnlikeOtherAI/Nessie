@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
+import { createAgentMessage } from './agent-message.js'
 import type { RunContext } from './types.js'
 
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
@@ -56,34 +57,32 @@ const describeGatedAction = (
   return { headline: `Run ${toolName}`, audience: 'This acts on your account' }
 }
 
-/** Posts the receipt for a standing rule without letting a failed receipt stop the allowed action. */
+const allowedRuleReceipt = (toolName: string): { headline: string; audience: string } => {
+  if (toolName === 'gmail_draft_send') return { headline: 'Sent an email as you', audience: 'Mail sent' }
+  if (toolName === 'mailbox_send') return { headline: 'Sent an email from a connected mailbox', audience: 'Mail sent' }
+  return { headline: `Ran ${toolName}`, audience: 'Completed under your standing rule' }
+}
+
+/** Post a basis-stamped, content-free standing-rule receipt. */
 export const postAllowedByRuleCard = async (
   prisma: PrismaClient,
   context: RunContext,
   actorContext: AuthorizedActionContext,
-  input: { args: Record<string, unknown>; rule: string | null; toolName: string },
+  input: { toolName: string },
 ): Promise<void> => {
   const actingUserId = actorContext.actionContext.effectiveUserId
   if (!actingUserId) return
-  const described = describeGatedAction(input.toolName, input.args)
+  const described = allowedRuleReceipt(input.toolName)
   try {
     context.consumedSources?.add({ scopeType: 'user', scopeId: actingUserId })
-    await prisma.message.create({
-      data: {
-        content: described.headline,
-        role: 'assistant',
-        agentId: context.agent.id,
-        threadId: context.run.threadId,
-        metadata: {
-          card: {
-            kind: 'allowed_by_rule',
-            audience: described.audience,
-            details: summarizeToolInput(input.args),
-            headline: described.headline,
-            rule: input.rule,
-          },
-        } as Prisma.InputJsonValue,
+    await createAgentMessage(prisma, context, {
+      agentId: context.agent.id,
+      content: described.headline,
+      metadata: {
+        card: { kind: 'allowed_by_rule', audience: described.audience, headline: described.headline },
       },
+      role: 'assistant',
+      threadId: context.run.threadId,
     })
   } catch (error) {
     console.error('[worker.allowed-by-rule] could not post receipt', error)

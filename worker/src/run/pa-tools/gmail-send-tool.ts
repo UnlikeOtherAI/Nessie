@@ -1,7 +1,4 @@
-import {
-  hasStandingSendAuthorization,
-  sendDraftForUser,
-} from '@nessie/team-admin'
+import { sendDraftForUser } from '@nessie/team-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -54,17 +51,12 @@ export const runGmailDraftSendTool = async (
   }
   recordGoogleRead(context, draft.ownerUserId)
 
-  // A run that reached here without an approval proof is relying on standing
-  // consent. Re-check it at the moment of sending rather than trusting the
-  // gate's earlier decision: a grant can be revoked or expire mid-run.
-  const consented = await hasStandingSendAuthorization(context.prisma, {
-    organizationId: context.channel.organizationId,
-    connectionId: draft.connectionId,
-    agentId: context.agentId,
-    requestingUserId: userId,
-    interactive: context.actorContext.actionContext.purpose !== 'trigger',
-  })
-  const approved = Boolean(context.actorContext.approval?.approvalProof)
+  // The chokepoint supplies this after it resolved the exact standing grant or
+  // judged boundary. A handler must not reinterpret that decision differently.
+  const consented = context.gmailDraftSendStandingAuthorized === true
+  // The authorizer installs this execution-only capability after its one-time
+  // proof CAS succeeds. A resumed payload's raw token is not authority here.
+  const approved = context.gmailDraftSendApproved === true
   if (approved && (!args.connectionId || !args.expectedFingerprint)) {
     throw new Error('This approval is not bound to the reviewed Gmail draft.')
   }

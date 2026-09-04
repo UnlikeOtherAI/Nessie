@@ -113,6 +113,26 @@ test('an unconfirmed Gmail update locks later update and send attempts', async (
   ), GmailDraftError)
 })
 
+test('invalid local MIME leaves a Gmail draft editable without any provider request', async () => {
+  const { prisma, state } = makePrisma(row())
+  const before = { ...state.row }
+  let providerCalls = 0
+  await assert.rejects(updateDraftForUser(prisma, {
+    organizationId: ORG, userId: USER, draftActionId: ACTION,
+    message: { bcc: ['attacker@example.test\r\nCc: victim@example.test'], body: 'Updated.', subject: 'Edited', to: ['jana@example.com'] },
+  }, {
+    ...deps(routes(liveDraft())),
+    fetchImpl: (async () => {
+      providerCalls += 1
+      throw new Error('provider must not be called')
+    }) as never,
+  }), (error: unknown) => error instanceof GmailDraftError && error.code === 'INVALID_MESSAGE')
+  assert.equal(providerCalls, 0)
+  assert.equal(state.row.state, 'draft')
+  assert.equal(state.row.revision, before.revision)
+  assert.equal(state.row.contentFingerprint, before.contentFingerprint)
+})
+
 test('attachments and rich alternatives are refused before Gmail update or send', async () => {
   for (const payload of [
     {

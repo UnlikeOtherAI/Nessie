@@ -286,6 +286,31 @@ const desktopMail = async ({ browser, fixture }) => {
   }
 }
 
+const approvalsMailSendPreview = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    fixture.showPendingGmailApproval()
+    await page.goto(`${adminUrl}/approvals`)
+    await page.getByRole('heading', { name: 'Approvals' }).waitFor()
+    const approve = page.getByRole('button', { name: 'Approve' })
+    await approve.waitFor()
+    assert(await approve.isDisabled(), 'mail approval was enabled before its exact private preview loaded')
+    fixture.releasePendingGmailApprovalPreview()
+    const preview = page.getByTestId('mailbox-send-approval-preview')
+    await preview.waitFor()
+    assert(await approve.isEnabled(), 'mail approval stayed disabled after its exact private preview loaded')
+    for (const value of [
+      'alex@example.com', 'recipient@example.com', 'team@example.com', 'audit@example.com',
+      'Exact Gmail approval subject', 'Exact private Gmail body.',
+    ]) await preview.getByText(value, { exact: true }).waitFor()
+    await shot(page, 'approvals-mail-send-preview')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
 const responsiveMail = async ({ browser, fixture }) => {
   const tablet = await newPage(browser, fixture, { height: 1024, name: 'tablet', width: 768 })
   try {
@@ -455,6 +480,7 @@ const main = async () => {
   const fixture = createMailFixtures()
   try {
     await desktopMail({ browser, fixture })
+    await approvalsMailSendPreview({ browser, fixture })
     await responsiveMail({ browser, fixture })
     await chatDoorway({ browser, fixture })
     await phoneDoorway({ browser, fixture })

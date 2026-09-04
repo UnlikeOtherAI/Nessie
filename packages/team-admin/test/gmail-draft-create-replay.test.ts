@@ -147,3 +147,21 @@ test('a concurrent idempotency insert resolves through the durable winner', asyn
   assert.equal(result.id, winner.id)
   assert.equal(result.providerDraftId, winner.providerDraftId)
 })
+
+test('invalid local MIME never creates an ambiguous Gmail draft action', async () => {
+  const { prisma, state } = makePrisma()
+  let providerCalls = 0
+  await assert.rejects(
+    composeDraftForUser(prisma, {
+      ...composeInput(),
+      message: { body: 'Here it is.', subject: 'Quarterly\r\nBcc: attacker@example.test', to: ['jana@example.com'] },
+    }, deps(() => {
+      providerCalls += 1
+      return { status: 200, body: {} }
+    })),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'INVALID_MESSAGE',
+  )
+  assert.equal(providerCalls, 0)
+  assert.equal(state.creates, 0)
+  assert.equal(state.row, null)
+})

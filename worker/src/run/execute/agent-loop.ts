@@ -4,12 +4,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import {
-  parseAgentId,
-  parseOrganizationId,
-  parseRunId,
-  type RunExecuteJobPayload,
-} from '@nessie/schemas'
+import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
 import { buildContextPlan } from '../context-window.js'
 import { runContextCompaction } from '../context-compaction.js'
@@ -20,16 +15,16 @@ import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
-import { executeBuiltinTool } from '../tools.js'
 import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
 import { composeStructuralGates } from './structural-gates.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
+import { buildApprovalSuspensionResult, createBuiltinToolExecutor } from './builtin-runtime-context.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
-import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
+import { emitWorkerAuditEvent } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
@@ -118,75 +113,12 @@ export const runExecutionAgentLoop = async (
 
   const delegateGate = createDelegateGate()
 
-  const buildBuiltinCtx = (
-    toolActorContext: ReturnType<typeof buildToolActorContext>,
-    toolCallId: string,
-  ) => ({
-    agentId: context.agent.id,
-    agentKind: context.agent.agentKind,
-    actorContext: toolActorContext,
-    demonstrationControl: {
-      clearActive: () => {
-        context.activeDemonstrationId = null
-      },
-      setActive: (demonstrationId: string) => {
-        context.activeDemonstrationId = demonstrationId
-      },
-    },
-    channel: {
-      id: context.channel.id,
-      organizationId: parseOrganizationId(context.channel.organizationId),
-      systemChannelType: context.channel.systemChannelType,
-      teamId: context.channel.teamId ?? null,
-    },
-    agentIdentity: {
-      ownerUserId: context.agent.ownerUserId ?? null,
-      visibility: (context.agent.visibility === 'private' ? 'private' : 'team') as
-        'private' | 'team',
-    },
-    cloudBrowser: deps.cloudBrowser,
-    consumedSources: context.consumedSources,
-    documentStream: deps.documentStream,
-    executorCommandEncryptionSecret: deps.executorCommandEncryptionSecret,
-    ledgerIdentity: deps.ledgerIdentity ?? null,
-    mcpSecrets: deps.mcpSecrets,
-    memoryCaptureConfig: {
-      modelClient: deps.modelClient,
-      pool: deps.searchConfig.pool,
-    },
-    modelClient: deps.modelClient,
-    prisma: deps.prisma,
-    realtimeTransport: deps.realtimeTransport,
-    run: {
-      id: context.run.id,
-      interactive: payload.interactive === true,
-      messageId: payload.messageId,
-      principalUserId: context.run.principalUserId,
-      originatingUserId:
-        toolActorContext.actionContext.effectiveUserId
-        ?? (
-          toolActorContext.actor.actorType === 'user'
-            ? toolActorContext.actor.actorId
-            : null
-        ),
-      threadId: context.run.threadId,
-    },
-    runContext: context,
-    toolCallId,
+  const builtinToolExecutor = createBuiltinToolExecutor({
+    context,
+    deps,
+    payload,
+    stubbedBuiltinToolIds: input.stubbedBuiltinToolIds,
   })
-
-  const executeGuardedBuiltin = (
-    toolName: string,
-    args: Record<string, unknown>,
-    toolActorContext: ReturnType<typeof buildToolActorContext>,
-    toolCallId: string,
-  ) =>
-    executeBuiltinTool(
-      toolName,
-      args,
-      buildBuiltinCtx(toolActorContext, toolCallId),
-      input.stubbedBuiltinToolIds,
-    )
 
   const contextPlan = buildContextPlan({
     model: context.agent.model,
@@ -321,10 +253,23 @@ export const runExecutionAgentLoop = async (
               emitAudit: async () => undefined,
             },
           ),
-        executeBuiltinTool: (n, a, id, toolActorContext) =>
+        executeBuiltinTool: (
+          n,
+          a,
+          id,
+          toolActorContext,
+          gmailDraftSendApproved,
+          gmailDraftSendStandingAuthorized,
+        ) =>
           n === BUILTIN_TOOL_SPEC_NAME
             ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
-            : executeGuardedBuiltin(n, a, toolActorContext, id),
+            : builtinToolExecutor.execute(
+              n,
+              a,
+              toolActorContext,
+              id,
+              { gmailDraftSendApproved, gmailDraftSendStandingAuthorized },
+            ),
         builtinDescriptors: subAgentBuiltinDescriptors,
       })
       input.invocationSink.push(...result.invocations)
@@ -364,35 +309,15 @@ export const runExecutionAgentLoop = async (
       }
       return result
     }
-    return executeBuiltinTool(
-      toolName,
-      args,
-      buildBuiltinCtx(authorization.toolActorContext, toolCallId),
-      input.stubbedBuiltinToolIds,
-    )
+    return builtinToolExecutor.executeAuthorized(toolName, args, toolCallId, authorization)
   }
-
-  const suspensionResult = (
-    args: Record<string, unknown>,
-    authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
-  ) => ({
-    inputSummary: summarizeToolInput(args),
-    output: 'Tool execution is waiting for human approval.',
-    pendingApproval: {
-      approvalId: authorization.approval.id,
-      notice: authorization.approval.notice,
-      toolName: authorization.approval.toolName,
-    },
-    success: false,
-  })
-
   const executeMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
     const authorization = await authorizeMainTool(toolName, args, toolCallId)
     if (authorization.decision === 'deny') {
       return authorization.result
     }
     if (authorization.decision === 'suspend') {
-      return suspensionResult(args, authorization)
+      return buildApprovalSuspensionResult(args, authorization)
     }
     return executeAuthorizedTool(toolName, authorization.executionArgs ?? args, toolCallId, authorization)
   }

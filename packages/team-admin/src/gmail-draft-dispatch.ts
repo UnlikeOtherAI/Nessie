@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { deleteGmailDraft, getGmailDraft, sendGmailMessage } from '@nessie/comms-google'
+import { getGmailDraft, sendGmailMessage } from '@nessie/comms-google'
 
 import {
   GmailDraftError,
@@ -164,15 +164,17 @@ export const dispatchClaimedDraft = async (
     })
     throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
   }
-  const updated = await prisma.gmailDraftAction.update({
-    where: { id: row.id },
+  const settled = await prisma.gmailDraftAction.updateMany({
+    where: { id: row.id, state: 'dispatching', claimedAt: now },
     data: {
       state: 'sent', sentAt: now, sentMessageId: sent.messageId,
       sendAfter: null, claimedAt: null,
     },
   })
-  // Gmail direct-send leaves the source draft behind. Deletion is best effort:
-  // the sent row is authoritative and a cleanup failure must not retry mail.
-  await deleteGmailDraft(fetchImpl, credential.credential.accessToken, row.providerDraftId).catch(() => undefined)
+  if (settled.count !== 1) throw new GmailDraftError('DELIVERY_UNKNOWN')
+  const updated = await prisma.gmailDraftAction.findUniqueOrThrow({ where: { id: row.id } })
+  // Gmail has no conditional draft DELETE. Keeping this provider draft is the
+  // only safe choice: an owner can edit it between any read and DELETE, and a
+  // best-effort cleanup must not erase their newer words after older bytes sent.
   return { status: 'sent', sentMessageId: sent.messageId, action: toRecord(updated) }
 }

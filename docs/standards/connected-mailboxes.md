@@ -78,9 +78,14 @@ Plan and as-built deltas:
   is terminal rather than eligible for an automatic retry. Mail audit entries
   record only structural action ids and the distinct held, undone, sent, or
   delivery-unknown state—never recipients, subject, or body.
-- **Compose recovery fails closed.** Recipient syntax is checked against the
-  shared compose schema before a browser mutation, while the server remains
-  authoritative. A durable Gmail action is reconciled through an owner-only,
+- **A direct Gmail send retains its provider draft.** Gmail exposes no atomic
+  compare-and-delete for drafts, so deleting a captured version after sending
+  it could erase a newer owner edit. The durable Nessie action is sent exactly
+  once; the provider draft remains for the owner to manage in Gmail.
+- **Compose recovery fails closed.** Recipient syntax and deterministic MIME
+  construction are checked before a browser mutation, while the server remains
+  authoritative: invalid local content makes no provider request and leaves an
+  editable Gmail draft untouched. A durable Gmail action is reconciled through an owner-only,
   content-free status route: only a future held send offers Undo; `dispatching`,
   expired `sending`, `updating`, `update_unknown`, and unknown delivery never
   expose a resend. A live SMTP replay reports `dispatching` without another

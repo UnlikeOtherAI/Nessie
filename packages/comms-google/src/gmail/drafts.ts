@@ -23,6 +23,21 @@ export type GmailDraftRef = {
   threadId?: string
 }
 
+/** A validated Gmail request body, built before a durable mutation claim. */
+export type PreparedGmailDraft = {
+  raw: string
+  threadId?: string
+}
+
+/**
+ * MIME construction is pure and must happen before a caller marks a provider
+ * write as ambiguous. A local invalid address or header never reaches Gmail.
+ */
+export const prepareGmailDraft = (
+  message: OutboundMessage,
+  threadId?: string,
+): PreparedGmailDraft => ({ raw: buildRawMessage(message), ...(threadId ? { threadId } : {}) })
+
 const bearer = (accessToken: string): Record<string, string> => ({
   authorization: `Bearer ${accessToken}`,
   'content-type': 'application/json',
@@ -54,6 +69,14 @@ export const createGmailDraft = async (
   message: OutboundMessage,
   threadId?: string,
 ): Promise<GmailDraftRef> => {
+  return createPreparedGmailDraft(fetchImpl, accessToken, prepareGmailDraft(message, threadId))
+}
+
+export const createPreparedGmailDraft = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  draft: PreparedGmailDraft,
+): Promise<GmailDraftRef> => {
   const { body } = await requestJson(
     fetchImpl,
     'drafts.create',
@@ -63,8 +86,8 @@ export const createGmailDraft = async (
       headers: bearer(accessToken),
       body: JSON.stringify({
         message: {
-          raw: buildRawMessage(message),
-          ...(threadId ? { threadId } : {}),
+          raw: draft.raw,
+          ...(draft.threadId ? { threadId: draft.threadId } : {}),
         },
       }),
     },
@@ -79,6 +102,17 @@ export const updateGmailDraft = async (
   message: OutboundMessage,
   threadId?: string,
 ): Promise<GmailDraftRef> => {
+  return updatePreparedGmailDraft(
+    fetchImpl, accessToken, draftId, prepareGmailDraft(message, threadId),
+  )
+}
+
+export const updatePreparedGmailDraft = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  draftId: string,
+  draft: PreparedGmailDraft,
+): Promise<GmailDraftRef> => {
   const { body } = await requestJson(
     fetchImpl,
     'drafts.update',
@@ -88,8 +122,8 @@ export const updateGmailDraft = async (
       headers: bearer(accessToken),
       body: JSON.stringify({
         message: {
-          raw: buildRawMessage(message),
-          ...(threadId ? { threadId } : {}),
+          raw: draft.raw,
+          ...(draft.threadId ? { threadId: draft.threadId } : {}),
         },
       }),
     },
