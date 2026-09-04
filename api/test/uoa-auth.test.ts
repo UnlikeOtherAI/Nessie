@@ -327,6 +327,18 @@ test('buildConfigJwt uses the selected hosted-login theme palette', async () => 
   })
 })
 
+test('buildConfigJwt defaults hosted login to Space White', async () => {
+  await withUoaEnv(async () => {
+    const payload = decodeJwtPayload(buildConfigJwt(loadUoaSettings()))
+    const uiTheme = payload.ui_theme as { colors: Record<string, string> }
+
+    assert.equal(uiTheme.colors.primary, '#000000')
+    assert.equal(uiTheme.colors.bg, '#f8f8f8')
+    assert.equal(uiTheme.colors.surface, '#ffffff')
+    assert.equal(uiTheme.colors.text, '#0a0a0a')
+  })
+})
+
 test('buildConfigJwt requests UOA team features', async () => {
   await withUoaEnv(async () => {
     const payload = decodeJwtPayload(buildConfigJwt(loadUoaSettings()))

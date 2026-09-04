@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import '@fontsource-variable/geist'
 import { AppProvider } from './providers/AppProvider'
 import { installBuildFreshnessCheck } from './lib/build-freshness'
 import { disableWebviewZoom } from './lib/disable-zoom'

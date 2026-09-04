@@ -11,14 +11,19 @@ const workspace = read('KnowledgeWorkspace.tsx')
 
 test('the page editor is a borderless writing canvas with descriptive placeholders', () => {
   assert.match(editor, /placeholder="Give this page a title…"/)
-  assert.match(editor, /text-\[3\.8025rem\]/)
-  assert.match(editor, /sm:text-\[5\.07rem\]/)
+  assert.match(editor, /admin-document-title/)
+  assert.match(editor, /text-\[3\.25rem\]/)
+  assert.match(editor, /sm:text-\[4\.25rem\]/)
   assert.match(editor, /placeholder="Start writing…"/)
   assert.match(editor, /placeholder="Add labels, separated by commas"/)
   assert.doesNotMatch(editor, /label="Title"|label="Summary"|label="Body"/)
 
   const richText = read('RichTextEditor.tsx')
   assert.doesNotMatch(richText, /kb-editor[^\n]*rounded[^\n]*border/)
+  assert.match(richText, /icon=\{faBold\}/)
+  assert.match(richText, /icon=\{faListUl\}/)
+  assert.match(richText, /icon=\{faLink\}/)
+  assert.doesNotMatch(richText, /label="🔗"|label="❝"/)
 })
 
 test('new pages can choose an existing document as their parent', () => {

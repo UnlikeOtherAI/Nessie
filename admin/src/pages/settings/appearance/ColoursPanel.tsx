@@ -2,6 +2,7 @@ import { useTheme, type Theme } from '../../../providers/ThemeProvider'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 const THEME_SWATCHES: Record<Theme, readonly [string, string, string]> = {
+  'space-white': ['#ffffff', '#000000', '#f3f5f8'],
   contrast: ['#000000', '#facc15', '#ffffff'],
   daylight: ['#eef2f7', '#2563eb', '#111827'],
   forest: ['#0a160f', '#047857', '#e5eee8'],
@@ -12,7 +13,7 @@ const THEME_SWATCHES: Record<Theme, readonly [string, string, string]> = {
   rose: ['#150b11', '#e11d48', '#f2e4ea'],
   sandstone: ['#f1e9dc', '#b45309', '#2b2018'],
   sunset: ['#160d0a', '#c2410c', '#f2e7df'],
-  system: ['#eef2f7', '#7c3aed', '#111827'],
+  system: ['#ffffff', '#000000', '#111827'],
 }
 
 const ThemeSwatch = ({ themeId }: { themeId: Theme }) => (
