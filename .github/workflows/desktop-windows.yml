@@ -189,7 +189,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
-            $version = $env:GITHUB_REF_NAME -replace '^desktop-v', ''
+            $version = $env:GITHUB_REF_NAME -replace '^(desktop-)?v', ''
             "NESSIE_EXECUTOR_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
