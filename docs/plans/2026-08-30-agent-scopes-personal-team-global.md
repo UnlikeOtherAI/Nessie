@@ -503,24 +503,21 @@ agents. Addressing stays **model-judged** (the no-string-matching rule):
 "@Ondra's PA, book the room" or Czech slang aimed at it is the model's call,
 with two structural assists:
 
-- **The mention entity for a presence is structured and id-keyed, never
-  name-matched.** Today the server re-derives agent mentions from content by
-  name regex (`mentionedAgentIdsFromContent`); with two PAs in a room and
-  duplicate human display names, names are inherently ambiguous, and both
-  external reviewers independently landed on the same rule: typeahead stores
-  `{type:'agent', agentId, principalUserId}` in the message's mention
-  metadata, the server validates that exact presence is bound to that exact
-  channel, and plain-text "@PA" resolves to nobody. Ordinary agents keep the
-  existing name path; presences are structured-only from day one.
+- **Every composer mention entity is structured and id-keyed, never
+  name-matched.** Typeahead stores `{type:'agent', agentId,
+  principalUserId?}` in message metadata. The server validates the exact
+  identity; PA presences additionally validate that exact owner binding.
+  Duplicate display names therefore cannot address or invite a sibling agent.
+  Plain-text messages submitted without structured metadata retain the legacy
+  ordinary-agent name path; plain-text "@PA" resolves to nobody.
 - The engagement decision for an *unaddressed* message stays model-judged
   like any bound agent's, and may pick at most one presence — the
   one-run-per-slot discipline keyed per presence:
   `(agentId, principalUserId, threadId)`.
 
-**The canonical stored name is the public one.** Mentions are recorded and
-re-derived from message *content* (`mentionedAgentIdsFromContent`,
-`message-create.ts`), and content is one string for every reader — it cannot
-vary per viewer. So the stored/canonical token for a presence is
+**The canonical stored name is the public one.** Mention identities are stored
+separately from message content, and content is one string for every reader —
+it cannot vary per viewer. So the stored/canonical token for a presence is
 "\<Owner\> – PA" for everyone, **including the owner**; the owner's composer
 *offers* "Personal Assistant" in typeahead but inserts the canonical form,
 and the owner's client renders it back as "Personal Assistant" (a pure

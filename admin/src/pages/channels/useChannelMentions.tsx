@@ -73,6 +73,7 @@ const findNextTrigger = (
 // duplicate the privacy rule and make the client an accidental authority.
 export const buildAgentMentionEntities = (agents: AgentRecord[]): MentionEntity[] =>
   agents.map((agent) => ({
+    agentVisibility: agent.visibility,
     id: agent.id,
     name: agent.name,
     type: 'agent' as const,

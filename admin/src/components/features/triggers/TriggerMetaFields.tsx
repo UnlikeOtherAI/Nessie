@@ -13,6 +13,7 @@ import {
 } from './trigger-config'
 import { getWorkflowInstallationLabel } from './trigger-presentation'
 import { TriggerTypePicker } from './TriggerTypePicker'
+import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
 
 /**
  * Identity portion of the trigger editor, ordered by decision weight:
@@ -183,7 +184,7 @@ export const TriggerMetaFields = ({
             {agents.length === 0 ? <option value="">No agents available</option> : null}
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.name}
+                {agentSelectionLabel(agent.name, agent.visibility)}
               </option>
             ))}
           </select>

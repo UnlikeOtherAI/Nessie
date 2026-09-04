@@ -20,6 +20,7 @@ import {
 import { ChannelSearchPanel } from '../../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../../components/features/channels/ChannelTabBar'
 import { Pill } from '../../components/primitives/Pill'
+import { agentSelectionLabel } from '../../components/features/agents/AgentVisibilityPill'
 import { Dialog } from '../../components/shared/Dialog'
 import { ChannelTabPanels } from '../../components/features/channels/ChannelTabPanels'
 import { ExternalAgentIntro } from '../../components/features/channels/ExternalAgentIntro'
@@ -462,7 +463,11 @@ export const ChannelConversationSurface = ({
                   onChange={(event) => setSelectedRoutineAgentId(event.target.value)}
                   value={selectedRoutineAgentId}
                 >
-                  {boundAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  {boundAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agentSelectionLabel(agent.name, agent.visibility)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <button

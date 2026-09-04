@@ -39,6 +39,7 @@ import {
   toIsoFromLocal,
 } from './statuses/status-components'
 import { StatusEmojiPicker } from './statuses/StatusEmojiPicker'
+import { agentSelectionLabel } from '../../components/features/agents/AgentVisibilityPill'
 
 export const StatusesPage = () => {
   const { statusId } = useParams()
@@ -506,7 +507,7 @@ export const StatusesPage = () => {
                       <option value="">Default status agent</option>
                       {agents.map((agent) => (
                         <option key={agent.id} value={agent.id}>
-                          {agent.name}
+                          {agentSelectionLabel(agent.name, agent.visibility)}
                         </option>
                       ))}
                     </Select>

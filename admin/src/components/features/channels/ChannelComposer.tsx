@@ -4,9 +4,9 @@ import { faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   MentionInput,
+  type AgentMention,
   type MentionEntity,
   type MentionInputHandle,
-  type PersonalAssistantMention,
 } from '../../shared/MentionInput'
 import type { PendingAgentInvite } from '../../../facades/messages/hooks'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
@@ -27,7 +27,7 @@ interface ChannelComposerProps {
   attachments: ComposerAttachmentsState
   onChangeMessage: (value: string) => void
   onOversizePaste: (paste: string) => void
-  onSubmitText: (text: string, agentMentions: PersonalAssistantMention[]) => void
+  onSubmitText: (text: string, agentMentions: AgentMention[]) => void
   onSubmitForm: (event?: FormEvent<HTMLFormElement>) => void
   onInsertHashSign: () => void
   onInsertAtSign: () => void

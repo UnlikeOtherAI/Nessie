@@ -4,7 +4,7 @@ import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { channelKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import type { PersonalAssistantMention } from '../../components/shared/MentionInput'
+import type { AgentMention } from '../../components/shared/MentionInput'
 
 /** An agent @mentioned in a message that is not a member of the channel. */
 export interface PendingAgentInvite {
@@ -32,7 +32,7 @@ export const useSendMessage = (threadId?: string) => {
     mutationFn: (input: {
       content: string
       attachmentIds?: string[]
-      agentMentions?: PersonalAssistantMention[]
+      agentMentions?: AgentMention[]
       // Idempotency key for this unsent draft: a retried send resolves to the
       // message the first attempt created instead of posting a second one.
       clientMessageId?: string
@@ -51,8 +51,14 @@ export const useSendMessageToThread = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { attachmentIds?: string[]; content: string; threadId: string }) =>
+    mutationFn: (input: {
+      agentMentions?: AgentMention[]
+      attachmentIds?: string[]
+      content: string
+      threadId: string
+    }) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${input.threadId}/messages`, {
+        agentMentions: input.agentMentions,
         attachmentIds: input.attachmentIds,
         content: input.content,
       }),

@@ -62,6 +62,14 @@ summary and points here; **this file is the rule**.
   `GET /api/agents` omits `systemManaged` agents — which is why the Personal
   Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
+- **One agent-visibility marker wherever identity drives an action.** Every
+  agent picker and actionable agent row uses
+  `components/features/agents/AgentVisibilityPill.tsx`: `Team` for a shared
+  agent and a lock-bearing `Private` for a personal one. Native `<select>`
+  controls use that component's text formatter because option elements cannot
+  render the pill. Display names are not unique; a surface that lets a person
+  choose, grant, invite, assign, or open an agent must not leave two same-named
+  identities visually indistinguishable.
 - **One composer, and at rest it is one line.** Every message composer is
   `components/features/channels/ChannelComposer.tsx` (six call sites): at rest a
   single line — placeholder centred beside Send, no toolbar glyphs — opening

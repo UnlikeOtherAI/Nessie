@@ -399,7 +399,9 @@ that column):
   `CreateSpaceDialog` modal). The selected space expands in place into its
   page/sub-page tree; the current page is highlighted and its ancestor branch
   remains visible, so the sidebar and the page breadcrumbs name the same
-  location.
+  location. The dialog's agent membership checklist uses the shared
+  `Team` / lock-bearing `Private` identity marker, as does Space settings, so
+  same-named agents remain distinguishable at the access decision.
 - The main area uses `KnowledgePane` with the shared `ResponsivePageHeader`: a
   50px leading title/back region and a declarative, right-aligned action list.
   It measures the actual action widths with `ResizeObserver`, keeps the primary

@@ -9,6 +9,7 @@ import {
   ThreadIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
+import { AgentMentionSchema } from './messaging.js'
 
 export const RunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
@@ -36,9 +37,9 @@ export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
 export const OrchestrateDecideJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   /**
-   * Resolved agent list as computed by createThreadMessage — includes bound
-   * agents AND any @mentioned agents not yet bound to the channel.
-   * Stored in payload so the worker does not re-derive (would miss @mentions).
+   * Bound agents as computed by createThreadMessage. Unbound mentions remain
+   * pending invitations and enter a later replay only after they are bound.
+   * Stored in payload so the worker never has to reconstruct channel identity.
    */
   channelAgents: z.array(
     z.object({
@@ -51,13 +52,9 @@ export const OrchestrateDecideJobPayloadSchema = z.object({
       systemPrompt: z.string().nullable(),
     }),
   ),
-  // Explicit PA-presence targets from the message metadata. The worker uses
-  // these ids for its structural mention fast path instead of parsing text.
-  agentMentions: z.array(z.object({
-    type: z.literal('agent'),
-    agentId: z.string().uuid(),
-    principalUserId: z.string().uuid(),
-  })).optional(),
+  // Explicit agent targets from the message metadata. Ordinary agents are
+  // keyed by agent id; a PA presence also carries its owner id.
+  agentMentions: AgentMentionSchema.array().optional(),
   channelId: ChannelIdSchema,
   content: z.string().min(1),
   messageId: z.string().uuid(),

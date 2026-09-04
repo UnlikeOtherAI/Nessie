@@ -133,6 +133,58 @@ test('createThreadMessage returns no pending invites when no unbound agent is me
   assert.deepEqual(result.pendingAgentInvites, [])
 })
 
+test('a structured mention selects one bound agent when an unbound agent has the same name', async () => {
+  const { prisma, calls } = makePrisma()
+  const selectedId = '00000000-0000-4000-8000-000000000010'
+  const fake = prisma as unknown as {
+    agent: { findMany: () => Promise<unknown> }
+    thread: { findUnique: () => Promise<unknown> }
+  }
+  fake.thread.findUnique = async () => ({
+    channel: {
+      id: 'channel-1',
+      agentBindings: [{
+        agent: {
+          agentKind: 'shared',
+          id: selectedId,
+          name: 'Web summary',
+          role: 'assistant',
+          systemPrompt: null,
+        },
+        principalUserId: null,
+      }],
+      members: [{ user: { id: 'user-1', displayName: 'User One' } }],
+      organizationId: 'org-1',
+      systemChannelType: null,
+    },
+  })
+  fake.agent.findMany = async () => {
+    throw new Error('an exact bound mention must not scan same-named agents')
+  }
+  const mention = { agentId: selectedId, type: 'agent' as const }
+
+  const result = await createThreadMessage(prisma, {
+    agentMentions: [mention],
+    content: '@Web summary are you there?',
+    threadId: 'thread-1',
+    userId: 'user-1',
+  })
+
+  assert.equal(result.kind, 'created')
+  if (result.kind !== 'created') return
+  assert.deepEqual(result.pendingAgentInvites, [])
+  assert.deepEqual(result.channelAgents.map((candidate) => candidate.id), [selectedId])
+  const update = calls.messageUpdates[0] as {
+    data: { metadata: { mentions: unknown } }
+  }
+  assert.deepEqual(update.data.metadata.mentions, {
+    agentIds: [selectedId],
+    agentMentions: [mention],
+    broadcast: null,
+    userIds: [],
+  })
+})
+
 test('createThreadMessage does not expose a non-owner private agent as a pending invite', async () => {
   const { prisma } = makePrisma()
 

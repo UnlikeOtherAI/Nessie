@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { AgentVisibility } from '@nessie/schemas'
 import { Notice } from '../primitives/Notice'
 import { SectionLabel } from '../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../primitives/TabBar'
@@ -111,7 +112,12 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const assigneeOptions = useMemo<AssigneeOption[]>(
     () => [
       ...assignees.map((user) => ({ id: user.id, name: user.displayName, kind: 'user' as const })),
-      ...agents.map((agent) => ({ id: agent.id, name: agent.name, kind: 'agent' as const })),
+      ...agents.map((agent) => ({
+        agentVisibility: agent.visibility as AgentVisibility,
+        id: agent.id,
+        name: agent.name,
+        kind: 'agent' as const,
+      })),
     ],
     [assignees, agents],
   )
