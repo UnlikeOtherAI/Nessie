@@ -40,6 +40,7 @@ import { RunStopContinue } from './RunStopContinue'
 import { RunApprovalGate } from './RunApprovalGate'
 import { TodoProgressCard } from './TodoProgressCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
+import { MailSurfaceDoorwayChip } from './MailSurfaceDoorway'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import {
   getReplyBroadcastRootId,
@@ -445,6 +446,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <GmailDraftCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <MailSurfaceDoorwayChip messageId={message.id} metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <GoogleScopeRequestCard metadata={message.metadata} />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type {
   CommsConnectionSummary,
   CommsConnectionStatus,
@@ -66,6 +67,7 @@ export const ConnectionCard = ({
   const resync = useResyncCommsConnection()
   const disconnect = useDisconnectCommsConnection()
   const deleteData = useDeleteCommsData()
+  const navigate = useNavigate()
 
   const isDisconnected = connection.status === 'disconnected'
   const providerLabel = PROVIDER_LABEL[connection.provider]
@@ -111,6 +113,15 @@ export const ConnectionCard = ({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {connection.provider === 'google' && connection.status === 'active' ? (
+            <button
+              className="admin-button admin-button-secondary"
+              onClick={() => navigate(`/mail/gmail/${encodeURIComponent(connection.id)}`)}
+              type="button"
+            >
+              Open mail
+            </button>
+          ) : null}
           <button
             className="admin-button admin-button-secondary"
             disabled={isDisconnected || resync.isPending}

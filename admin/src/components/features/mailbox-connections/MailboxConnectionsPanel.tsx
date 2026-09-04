@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { MailboxConnectionRecord, MailboxConnectionScope } from '../../../lib/api-client'
 import { connectionAnchorId } from '../../../lib/connection-anchor'
@@ -69,6 +70,7 @@ const STATUS_LABEL = {
 } as const
 
 const ConnectionRow = ({ connection }: { connection: MailboxConnectionRecord }) => {
+  const navigate = useNavigate()
   const test = useTestMailboxConnection()
   const disconnect = useDisconnectMailbox()
   const [confirming, setConfirming] = useState(false)
@@ -95,6 +97,15 @@ const ConnectionRow = ({ connection }: { connection: MailboxConnectionRecord }) 
       </div>
 
       <div className="mt-2 flex gap-2">
+        {connection.status === 'active' ? (
+          <button
+            className="admin-button admin-button-secondary admin-button-compact"
+            onClick={() => navigate(`/mail/mailbox/${encodeURIComponent(connection.id)}`)}
+            type="button"
+          >
+            Open mail
+          </button>
+        ) : null}
         <button
           className="admin-button admin-button-secondary admin-button-compact"
           disabled={test.isPending}
