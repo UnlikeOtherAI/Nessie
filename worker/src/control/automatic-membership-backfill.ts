@@ -6,20 +6,42 @@ import { writeAuditEntryInTransaction } from '@nessie/db'
 /** Kept structurally identical to the API contract so tests can inject UOA. */
 export type AutomaticMembershipUoaAdapter = {
   assertRuleAdministrator(input: { externalOrgId: string; externalTeamIds: readonly string[]; uoaSub: string }): Promise<boolean>
-  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void>
   listVerifiedDomainSubjects(input: { externalOrgId: string; domain: string; cursor?: string; snapshotId?: string; limit: number }): Promise<{ snapshotId: string; subjects: readonly string[]; cursor: string | null }>
-  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
+  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
   getOperation(input: { operationId: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
 }
 
 export const AUTOMATIC_MEMBERSHIP_BACKFILL_TOPIC = 'automatic-membership.backfill'
 const batchSize = 25
+const requestsPerMinute = 60
 
 const retryAt = (attempts: number): Date => {
   const capped = Math.min(attempts, 8)
   const jitter = Math.floor(Math.random() * 1_000)
   return new Date(Date.now() + (2 ** capped) * 1_000 + jitter)
 }
+
+/** A serializable, persisted org/domain allowance; never an in-memory throttle. */
+const consumeDomainAllowance = async (prisma: PrismaClient, organizationId: string, domain: string): Promise<{ allowed: boolean; nextAttemptAt: Date }> => {
+  const now = new Date()
+  const nextAttemptAt = new Date(now.getTime() + 60_000)
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.automaticMembershipRateLimit.findUnique({ where: { organizationId_domain: { organizationId, domain } } })
+    if (!row || row.windowStartedAt.getTime() <= now.getTime() - 60_000) {
+      await tx.automaticMembershipRateLimit.upsert({
+        where: { organizationId_domain: { organizationId, domain } },
+        create: { organizationId, domain, windowStartedAt: now, used: 1 },
+        update: { windowStartedAt: now, used: 1 },
+      })
+      return { allowed: true, nextAttemptAt }
+    }
+    if (row.used >= requestsPerMinute) return { allowed: false, nextAttemptAt: new Date(row.windowStartedAt.getTime() + 60_000) }
+    await tx.automaticMembershipRateLimit.update({ where: { organizationId_domain: { organizationId, domain } }, data: { used: { increment: 1 } } })
+    return { allowed: true, nextAttemptAt }
+  }, { isolationLevel: 'Serializable' })
+}
+
+const isGrantSuccess = (outcome: string): boolean => outcome === 'completed' || outcome === 'already_member'
 
 /**
  * One bounded snapshot page. The runner never knows an email address and it
@@ -58,7 +80,11 @@ export const runAutomaticMembershipBackfillBatch = async (
       await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { status: 'paused', lastError: 'The requesting administrator no longer has permission.' } })
       return
     }
-    await adapter.setRuleFence({ externalOrgId: candidate.organization.externalOrgId, ruleId: candidate.ruleId, generation: candidate.generation, fenceToken: leaseToken, active: true })
+    const allowance = await consumeDomainAllowance(prisma, candidate.organizationId, candidate.rule.claim.domain)
+    if (!allowance.allowed) {
+      await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { status: 'queued', nextAttemptAt: allowance.nextAttemptAt, lastError: 'Domain backfill rate limit reached.' } })
+      return
+    }
     const page = await adapter.listVerifiedDomainSubjects({
       externalOrgId: candidate.organization.externalOrgId, domain: candidate.rule.claim.domain,
       ...(candidate.cursor ? { cursor: candidate.cursor } : {}), ...(candidate.snapshotId ? { snapshotId: candidate.snapshotId } : {}), limit: batchSize,
@@ -68,9 +94,10 @@ export const runAutomaticMembershipBackfillBatch = async (
       // stale generations/targets before every individual external operation.
       const fresh = await prisma.automaticMembershipBackfillRun.findFirst({
         where: { id: runId, generation: candidate.generation, leaseToken, leaseGeneration: candidate.generation, leaseExpiresAt: { gt: new Date() }, status: 'running', rule: { state: 'active', claim: { state: 'verified', verificationExpiresAt: { gt: new Date() } } } },
-        include: { rule: { include: { targets: { include: { team: true } } } }, organization: { select: { externalOrgId: true } } },
+        include: { rule: { include: { claim: true, targets: { include: { team: true } } } }, organization: { select: { externalOrgId: true } } },
       })
       if (!fresh || process.env.NESSIE_AUTOMATIC_MEMBERSHIP_KILL_SWITCH === 'true') break
+      const seenSubject = await prisma.automaticMembershipGrant.findFirst({ where: { ruleId: fresh.rule.id, generation: fresh.generation, uoaSub }, select: { id: true } })
       for (const target of fresh.rule.targets) {
         if (!target.team.externalTeamId || !fresh.organization.externalOrgId) continue
         const idempotencyKey = `automatic-membership:${fresh.rule.id}:${target.teamId}:${uoaSub}:${fresh.generation}`
@@ -82,17 +109,26 @@ export const runAutomaticMembershipBackfillBatch = async (
         if (grant.operationId) {
           const operation = await adapter.getOperation({ operationId: grant.operationId })
           if (operation.status === 'accepted') continue
-          await prisma.automaticMembershipGrant.update({ where: { id: grant.id }, data: { outcome: operation.status } })
+          await prisma.$transaction(async (tx) => {
+            const changed = await tx.automaticMembershipGrant.updateMany({ where: { id: grant.id, outcome: 'pending' }, data: { outcome: operation.status } })
+            if (changed.count !== 1) return
+            if (isGrantSuccess(operation.status)) await tx.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { grantedCount: { increment: 1 } } })
+            else await tx.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { failureCount: { increment: 1 } } })
+            await writeAuditEntryInTransaction(tx, { organizationId: fresh.organizationId, teamId: target.teamId, actorType: 'service', actorId: 'automatic-membership-backfill', action: isGrantSuccess(operation.status) ? 'automatic_membership.granted' : 'automatic_membership.grant_failed', resourceType: 'automatic_membership_rule', resourceId: fresh.rule.id, outcome: isGrantSuccess(operation.status) ? 'success' : 'error', metadata: { generation: fresh.generation }, requestId: `automatic-membership:${runId}` })
+          })
           continue
         }
-        const operation = await adapter.grantMember({ externalOrgId: fresh.organization.externalOrgId, externalTeamId: target.team.externalTeamId, uoaSub, idempotencyKey, ruleId: fresh.rule.id, ruleGeneration: fresh.generation, fenceToken: leaseToken })
+        const operation = await adapter.grantMember({ externalOrgId: fresh.organization.externalOrgId, externalTeamId: target.team.externalTeamId, uoaSub, domain: fresh.rule.claim.domain, idempotencyKey, ruleId: fresh.rule.id, ruleGeneration: fresh.generation, fenceToken: fresh.rule.uoaFenceToken })
         await prisma.$transaction(async (tx) => {
-          await tx.automaticMembershipGrant.update({ where: { id: grant.id }, data: { operationId: operation.operationId, outcome: operation.status === 'accepted' ? 'pending' : operation.status } })
-          if (operation.status === 'completed' || operation.status === 'already_member') {
-            await writeAuditEntryInTransaction(tx, { organizationId: fresh.organizationId, teamId: target.teamId, actorType: 'service', actorId: 'automatic-membership-backfill', action: 'automatic_membership.granted', resourceType: 'automatic_membership_rule', resourceId: fresh.rule.id, outcome: 'success', metadata: { generation: fresh.generation }, requestId: `automatic-membership:${runId}` })
-          }
+          const outcome = operation.status === 'accepted' ? 'pending' : operation.status
+          const changed = await tx.automaticMembershipGrant.updateMany({ where: { id: grant.id, outcome: 'pending' }, data: { operationId: operation.operationId, outcome } })
+          if (changed.count !== 1 || outcome === 'pending') return
+          if (isGrantSuccess(outcome)) await tx.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { grantedCount: { increment: 1 } } })
+          else await tx.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { failureCount: { increment: 1 } } })
+          await writeAuditEntryInTransaction(tx, { organizationId: fresh.organizationId, teamId: target.teamId, actorType: 'service', actorId: 'automatic-membership-backfill', action: isGrantSuccess(outcome) ? 'automatic_membership.granted' : 'automatic_membership.grant_failed', resourceType: 'automatic_membership_rule', resourceId: fresh.rule.id, outcome: isGrantSuccess(outcome) ? 'success' : 'error', metadata: { generation: fresh.generation }, requestId: `automatic-membership:${runId}` })
         })
       }
+      if (!seenSubject) await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { attemptedCount: { increment: 1 } } })
     }
     const pendingGrants = await prisma.automaticMembershipGrant.count({ where: { ruleId: candidate.ruleId, generation: candidate.generation, outcome: 'pending' } })
     await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: {
@@ -100,7 +136,7 @@ export const runAutomaticMembershipBackfillBatch = async (
       // grants retain a queued run too, so operation status is reconciled after
       // an accepted asynchronous grant instead of being guessed complete.
       status: page.cursor || pendingGrants > 0 ? 'queued' : 'completed', cursor: page.cursor, snapshotId: page.snapshotId,
-      attemptedCount: { increment: page.subjects.length }, ...(page.cursor || pendingGrants > 0 ? { nextAttemptAt: new Date(Date.now() + 2_000) } : {}),
+      ...(page.cursor || pendingGrants > 0 ? { nextAttemptAt: new Date(Date.now() + 2_000) } : {}),
     } })
   } catch (error) {
     const current = await prisma.automaticMembershipBackfillRun.findUnique({ where: { id: runId }, select: { failureCount: true } })

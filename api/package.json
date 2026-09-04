@@ -54,6 +54,7 @@
     "cron-parser": "^5.5.0",
     "disposable-email-domains": "^1.0.62",
     "fastify": "^5.8.4",
+    "free-email-domains": "1.11.4",
     "markdown-it": "^14.2.0",
     "pg": "^8.16.3",
     "tldts": "^7.0.19",

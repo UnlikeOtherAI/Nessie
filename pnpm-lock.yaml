@@ -265,6 +265,9 @@ importers:
       fastify:
         specifier: ^5.8.4
         version: 5.8.4
+      free-email-domains:
+        specifier: 1.11.4
+        version: 1.11.4
       markdown-it:
         specifier: ^14.2.0
         version: 14.2.0
@@ -4993,6 +4996,10 @@ packages:
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
+
+  free-email-domains@1.11.4:
+    resolution: {integrity: sha512-7lf7ARDaORJ+3aexu29je0Yy/J5UWJWKTwfuljJKbzXRBYtI1tT42ofTca54JPDsAeTVoAZKvMyBeRMYFAGokA==}
+    engines: {node: '>= 18'}
 
   fresh@0.5.2:
     resolution: {integrity: sha512-zJ2mQYM18rEFOudeV4GShTGIQ7RbzA7ozbU9I/XBpm7kqgMywgmylMwXHxZJmkVoYkna9d2pVXVXPdYTP9ej8Q==}
@@ -12237,6 +12244,8 @@ snapshots:
   fontfaceobserver@2.3.0: {}
 
   forwarded@0.2.0: {}
+
+  free-email-domains@1.11.4: {}
 
   fresh@0.5.2: {}
 

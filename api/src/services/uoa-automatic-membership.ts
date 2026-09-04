@@ -35,7 +35,7 @@ export interface UoaAutomaticMembershipAdapter {
   /** Stable snapshot pagination, returning subjects only — never copied email. */
   listVerifiedDomainSubjects(input: { externalOrgId: string; domain: string; cursor?: string; snapshotId?: string; limit: number }): Promise<UoaDomainSnapshotPage>
   /** Service-scoped, member-only idempotent grant. No role parameter exists. */
-  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<UoaAutomaticMembershipOperation>
+  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<UoaAutomaticMembershipOperation>
   getOperation(input: { operationId: string }): Promise<UoaAutomaticMembershipOperation>
 }
 

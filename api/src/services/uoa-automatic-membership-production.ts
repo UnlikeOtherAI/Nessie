@@ -30,11 +30,15 @@ export const createProductionUoaAutomaticMembershipAdapter = (): UoaAutomaticMem
   const operation = (body: Record<string, unknown>): UoaAutomaticMembershipOperation => {
     const operationId = string(body.operation_id); const status = string(body.status)
     if (!operationId || !status || !['accepted', 'completed', 'already_member', 'failed'].includes(status)) fail('invalid operation response')
-    return { operationId, status: status as UoaAutomaticMembershipOperation['status'] }
+    return { operationId: operationId!, status: status! as UoaAutomaticMembershipOperation['status'] }
   }
   return {
     async attestVerifiedDomain(input): Promise<UoaVerifiedDomainAttestation | null> {
-      const body = await request('/org/automatic-membership/attestations', { method: 'POST', body: JSON.stringify(input) })
+      const url = new URL('/org/automatic-membership/attestations', settings.baseUrl)
+      const response = await safeFetch(url, { method: 'POST', headers: { Accept: 'application/json', Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(10_000) }, { maxRedirects: 0 })
+      if (response.status === 204) return null
+      if (!response.ok) fail(`endpoint returned ${response.status}`)
+      const body = asRecord(await response.json())
       const domain = string(body.domain); const uoaSub = string(body.subject); const assertedAt = string(body.asserted_at); const expiresAt = string(body.expires_at)
       if (!domain || !uoaSub || !assertedAt || !expiresAt || uoaSub !== input.uoaSub || domain !== input.domain) return null
       const asserted = new Date(assertedAt); const expires = new Date(expiresAt)
@@ -62,10 +66,10 @@ export const createProductionUoaAutomaticMembershipAdapter = (): UoaAutomaticMem
       const snapshotId = string(body.snapshot_id); const cursor = body.cursor === null ? null : string(body.cursor)
       const subjects = Array.isArray(body.subjects) ? body.subjects.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
       if (!snapshotId || (body.cursor !== null && !cursor)) fail('invalid snapshot page')
-      return { snapshotId, cursor, subjects }
+      return { snapshotId: snapshotId!, cursor, subjects }
     },
     async grantMember(input) {
-      return operation(await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/teams/${encodeURIComponent(input.externalTeamId)}/grants`, { method: 'POST', body: JSON.stringify({ subject: input.uoaSub, idempotency_key: input.idempotencyKey, rule_id: input.ruleId, rule_generation: input.ruleGeneration, fence_token: input.fenceToken }) }))
+      return operation(await request(`/org/automatic-membership/organisations/${encodeURIComponent(input.externalOrgId)}/teams/${encodeURIComponent(input.externalTeamId)}/grants`, { method: 'POST', body: JSON.stringify({ subject: input.uoaSub, domain: input.domain, idempotency_key: input.idempotencyKey, rule_id: input.ruleId, rule_generation: input.ruleGeneration, fence_token: input.fenceToken }) }))
     },
     async getOperation(input) { return operation(await request(`/org/automatic-membership/operations/${encodeURIComponent(input.operationId)}`)) },
   }

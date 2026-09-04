@@ -3,21 +3,14 @@ import { createRequire } from 'node:module'
 import { parse } from 'tldts'
 
 /** Pinned policy data, reviewed with every dependency/security update. */
-export const DOMAIN_CLASSIFIER_VERSION = 'tldts-7.0.19+disposable-email-domains-1.0.62'
+export const DOMAIN_CLASSIFIER_VERSION = 'tldts-7.0.19+free-email-domains-1.11.4+disposable-email-domains-1.0.62'
 
-// The PSL comes from tldts' bundled, versioned Mozilla PSL snapshot. The
-// disposable source is a separately versioned MIT dataset. Keep a small,
-// explicit set only for major consumer providers that are not disposable;
-// neither source is a heuristic or an MX-based classifier.
-const CONSUMER_DOMAINS = new Set([
-  'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
-  'msn.com', 'yahoo.com', 'ymail.com', 'rocketmail.com', 'icloud.com',
-  'me.com', 'mac.com', 'proton.me', 'protonmail.com', 'pm.me', 'tutanota.com',
-  'mail.com', 'aol.com', 'gmx.com', 'gmx.net', 'zoho.com', 'fastmail.com',
-  'hey.com', 'duck.com',
-])
+// The PSL comes from tldts' bundled, versioned Mozilla PSL snapshot. Consumer
+// and disposable data are pinned, auditable maintained datasets; no MX or
+// spelling heuristic decides an access-control domain.
 const require = createRequire(import.meta.url)
 const disposableDomains = new Set<string>(require('disposable-email-domains') as string[])
+const consumerDomains = new Set<string>(require('free-email-domains') as string[])
 
 export class DomainPolicyError extends Error {
   constructor(readonly code: string, message: string) {
@@ -50,7 +43,7 @@ export const assertAutomaticMembershipDomainAllowed = (input: string): string =>
   if (!parsed.publicSuffix || !parsed.domain) {
     throw new DomainPolicyError('PUBLIC_SUFFIX', 'A public suffix cannot be used for automatic access.')
   }
-  if (CONSUMER_DOMAINS.has(domain) || disposableDomains.has(domain)) {
+  if (consumerDomains.has(domain) || disposableDomains.has(domain)) {
     throw new DomainPolicyError('CONSUMER_DOMAIN', 'Consumer and disposable email domains cannot be used.')
   }
   return domain
