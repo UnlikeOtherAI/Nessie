@@ -76,6 +76,15 @@ test('a thread token cannot add unrelated mailbox UIDs after its headers are val
   assert.equal(validateMailboxThreadMembers(wrongRootToken, []), null)
 })
 
+test('thread-token validation refuses a missing seed group', () => {
+  const token = parseMailboxThreadToken(mailboxThreadToken({
+    accountId: 'account-1', folder: 'INBOX', memberUids: [8], messageCount: 1,
+    rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
+  }))
+  assert.ok(token)
+  assert.equal(validateMailboxThreadMembers(token, []), null)
+})
+
 test('THREAD=REFERENCES parser emits only flattened top-level groups', () => {
   assert.deepEqual(parseThreadReferenceSets('* THREAD (1 2 (3 4))(5 (6))'), [
     [1, 2, 3, 4],

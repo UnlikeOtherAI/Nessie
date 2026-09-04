@@ -129,7 +129,8 @@ export const validateMailboxThreadMembers = (
 ): MailboxThreadHeader[] | null => {
   const seededGroup = threadHeaders(headers, token.accountId, token.folder, token.uidValidity)
     .find((group) => group.members.some((member) => member.uid === token.seedUid))
-  const canonical = seededGroup && parseMailboxThreadToken(seededGroup.id)
+  if (!seededGroup) return null
+  const canonical = parseMailboxThreadToken(seededGroup.id)
   return canonical?.rootDigest === token.rootDigest ? seededGroup.members : null
 }
 
