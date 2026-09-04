@@ -243,7 +243,7 @@ export const listConnectedMailThreads = async (
     const page = await listMailboxMailThreads(
       await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret),
       input,
-      mailboxDialOptions(),
+      mailboxDialOptions(deps.encryptionSecret),
     )
     return validatedPage({ ...page, items: mapThreads(page.items) })
   } catch (error) {
@@ -287,7 +287,8 @@ export const readConnectedMailConversation = async (
   const connection = await mailboxForActor(prisma, actor, input.accountId)
   try {
     const conversation = await readMailboxMailConversation(
-      await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret), input, mailboxDialOptions())
+      await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret), input,
+      mailboxDialOptions(deps.encryptionSecret))
     if (!conversation) throw new ConnectedMailError('NOT_FOUND')
     return ConnectedMailConversationSchema.parse(
       mapConversation(conversation, conversation.earlierMessagesMayExist),
