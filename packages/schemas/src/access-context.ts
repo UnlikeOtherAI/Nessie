@@ -58,6 +58,9 @@ export const ActionContextSchema = z.object({
   correlationId: NonEmptyStringSchema.optional(),
   purpose: z.string().optional(),
   uoaIdentity: UoaSessionIdentitySchema.optional(),
+  // A signed UOA server-to-server control request carries a stable subject but
+  // deliberately has no invented active-team session assertion.
+  uoaControlSubject: NonEmptyStringSchema.optional(),
 })
 export type ActionContext = z.infer<typeof ActionContextSchema>
 

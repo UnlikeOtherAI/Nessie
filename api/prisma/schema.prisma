@@ -1316,6 +1316,7 @@ model Organization {
   automaticMembershipRules  AutomaticMembershipRule[]
   automaticMembershipRuns   AutomaticMembershipBackfillRun[]
   automaticMembershipGrants AutomaticMembershipGrant[]
+  uoaAutomaticMembershipControlRequests UoaAutomaticMembershipControlRequest[]
 
   @@map("organizations")
 }
@@ -1724,6 +1725,25 @@ model AutomaticMembershipGrantLease {
 
   @@index([runId, expiresAt])
   @@map("automatic_membership_grant_leases")
+}
+
+/// Signed server-to-server UOA control requests are retained only for their
+/// short replay window. The request body is never stored: a digest is enough
+/// to make the replay decision auditable without becoming an identity cache.
+model UoaAutomaticMembershipControlRequest {
+  id              String       @id @default(uuid()) @db.Uuid
+  requestId       String       @unique @map("request_id") @db.Uuid
+  requestDigest   String       @map("request_digest")
+  organizationId  String       @map("organization_id") @db.Uuid
+  uoaActorSub     String       @map("uoa_actor_sub")
+  action          String
+  receivedAt      DateTime     @default(now()) @map("received_at")
+  expiresAt       DateTime     @map("expires_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([organizationId, receivedAt])
+  @@map("uoa_automatic_membership_control_requests")
 }
 
 model TeamMember {
