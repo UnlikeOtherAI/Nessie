@@ -184,6 +184,9 @@ export const authorizeToolExecution = async (
   let boundaryReason: string | null = null
   let structuralApprover: string | null = null
   let structuralContext: Record<string, unknown> | null = null
+  const structuralState: {
+    denial: { message: string; reason: string } | null
+  } = { denial: null }
   let structuralApprovalProofUsed = false
   const policyDecision = await (async () => {
     if (
@@ -206,7 +209,17 @@ export const authorizeToolExecution = async (
       ? await auth.structuralGate({ args: canonicalArgs, toolName })
       : null
     if (familyDecision) {
-      if (!familyDecision.escalate) return rawPolicyDecision
+      if (familyDecision.outcome === 'allow') return rawPolicyDecision
+      if (familyDecision.outcome === 'deny') {
+        structuralState.denial = familyDecision
+        return {
+          ...rawPolicyDecision,
+          allowed: false as const,
+          approvalActionType: undefined as string | undefined,
+          policyRuleId: undefined as string | undefined,
+          reason: 'explicit_policy_deny' as const,
+        }
+      }
       boundaryReason = familyDecision.reason ?? null
       structuralApprover = familyDecision.requiredApproverUserId ?? null
       structuralContext = familyDecision.contextExtra ?? null
@@ -289,7 +302,7 @@ export const authorizeToolExecution = async (
       policyRuleId: policyDecision.policyRuleId,
       policySource: policyDecision.policySource,
       source: 'worker_tool_policy',
-    }, policyDecision.reason)
+    }, structuralState.denial?.reason ?? policyDecision.reason)
     if (policyDecision.reason === 'approval_required' && auth.maySuspendForApproval && auth.resumeState) {
       const approval = await createToolApprovalRequest(prisma, {
         actorContext: auth.resumeState.actorContext,
@@ -320,10 +333,10 @@ export const authorizeToolExecution = async (
       decision: 'deny',
       result: toolDeniedResult(toolName, canonicalArgs, {
         approvalActionType: policyDecision.approvalActionType,
-        message:
-          policyDecision.reason === 'approval_required'
+        message: structuralState.denial?.message
+          ?? (policyDecision.reason === 'approval_required'
             ? `Tool "${toolName}" requires approval before it can run.`
-            : `Tool "${toolName}" was denied by policy.`,
+            : `Tool "${toolName}" was denied by policy.`),
         policyRuleId: policyDecision.policyRuleId,
         policySource: policyDecision.policySource,
         reason: policyDecision.reason,

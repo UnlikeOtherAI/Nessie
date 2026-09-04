@@ -29,7 +29,12 @@ const ids = {
   user: '99999999-9999-4999-8999-999999999999',
 } as const
 
-const args = { subject: 'Status', text: 'All clear.', to: ['ops@example.test'] }
+const args = {
+  connectionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  subject: 'Status',
+  text: 'All clear.',
+  to: ['ops@example.test'],
+}
 
 const context = (): RunContext => ({
   agent: {
@@ -62,7 +67,7 @@ const authorization = () => ({
   maySuspendForApproval: false,
   parentAgentId: null,
   resolvedBuiltinToolIds: new Set([MAILBOX_SEND_TOOL_ID]),
-  structuralGate: async () => ({ escalate: true }),
+  structuralGate: async () => ({ outcome: 'approval' as const }),
   toolPolicy: { [MAILBOX_SEND_TOOL_ID]: true },
 })
 
@@ -158,4 +163,35 @@ test('mailbox_send rejects secret-shaped undeclared input before approval persis
   assert.equal(decision.decision, 'deny')
   assert.equal(state.approval.proofConsumedAt, null)
   assert.doesNotMatch(JSON.stringify(decision), new RegExp(secret))
+})
+
+test('a structural mailbox denial reaches the model without creating an approval', async () => {
+  const state = fakePrisma()
+  const auditReasons: string[] = []
+  const decision = await authorizeToolExecution(
+    state.prisma,
+    actor('no-proof'),
+    context(),
+    MAILBOX_SEND_TOOL_ID,
+    args,
+    'call-6',
+    {
+      ...authorization(),
+      maySuspendForApproval: true,
+      resumeState: { actorContext: actor('no-proof'), interactive: true, messageId: 'message-1' },
+      structuralGate: async () => ({
+        message: 'Reconnect this mailbox under an active approver before it can send.',
+        outcome: 'deny' as const,
+        reason: 'mailbox_approver_unavailable',
+      }),
+    },
+    {
+      ...hooks,
+      emitAudit: async (_actor, input) => { auditReasons.push(input.reason ?? '') },
+    },
+  )
+  assert.equal(decision.decision, 'deny')
+  if (decision.decision !== 'deny') return
+  assert.match(decision.result.output, /Reconnect this mailbox under an active approver/)
+  assert.deepEqual(auditReasons, ['mailbox_approver_unavailable'])
 })

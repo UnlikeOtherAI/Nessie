@@ -47,6 +47,12 @@ const shared: FakeConnection = {
   teamId: TEAM,
 }
 
+const unassignedShared: FakeConnection = {
+  ...shared,
+  createdByUserId: null,
+  id: '00000000-0000-4000-8000-000000000110',
+}
+
 /**
  * The rows this fake returns are shaped exactly as `listReachableMailboxes`
  * selects them, and the predicate that produces them is covered against the
@@ -83,31 +89,64 @@ test('a personal mailbox pins the approval to its owner', async () => {
   const decision = await evaluateMailboxSendGate(
     makePrisma([personal]),
     makeContext(),
-    { connectionId: null, effectiveUserId: OWNER },
+    { connectionId: PERSONAL, effectiveUserId: OWNER },
   )
-  assert.equal(decision?.requiredApproverUserId, OWNER)
-  assert.match(decision?.reason ?? '', /personal mailbox/)
-  assert.doesNotMatch(decision?.reason ?? '', /@/)
+  assert.equal(decision.outcome, 'approval')
+  if (decision.outcome !== 'approval') return
+  assert.equal(decision.requiredApproverUserId, OWNER)
+  assert.match(decision.reason, /personal mailbox/)
+  assert.doesNotMatch(decision.reason, /@/)
 })
 
 test('a shared mailbox pins the approval to whoever connected it', async () => {
   const decision = await evaluateMailboxSendGate(
     makePrisma([shared]),
     makeContext(),
-    { connectionId: null, effectiveUserId: null },
+    { connectionId: SHARED, effectiveUserId: null },
   )
-  assert.equal(decision?.requiredApproverUserId, INSTALLER)
-  assert.match(decision?.reason ?? '', /shared team mailbox/)
+  assert.equal(decision.outcome, 'approval')
+  if (decision.outcome !== 'approval') return
+  assert.equal(decision.requiredApproverUserId, INSTALLER)
+  assert.match(decision.reason, /shared team mailbox/)
 })
 
-test('an inactive shared-mailbox installer keeps the send blocked for reassignment', async () => {
+test('an inactive shared-mailbox installer denies without an unpinned approval', async () => {
   const decision = await evaluateMailboxSendGate(
     makePrisma([shared], { liveApprover: false }),
     makeContext(),
-    { connectionId: null, effectiveUserId: null },
+    { connectionId: SHARED, effectiveUserId: null },
   )
-  assert.equal(decision?.requiredApproverUserId, INSTALLER)
-  assert.match(decision?.reason ?? '', /Reassign the shared mailbox/i)
+  assert.deepEqual(decision, {
+    message: 'The person assigned to approve shared mailbox sends is no longer active. '
+      + 'An owner or admin must reconnect it under an active approver before it can send.',
+    outcome: 'deny',
+    reason: 'mailbox_approver_unavailable',
+  })
+})
+
+test('an inactive personal-mailbox owner denies without using the effective user', async () => {
+  const decision = await evaluateMailboxSendGate(
+    makePrisma([personal], { liveApprover: false }),
+    makeContext(),
+    { connectionId: PERSONAL, effectiveUserId: 'another-live-user' },
+  )
+  assert.equal(decision.outcome, 'deny')
+  if (decision.outcome !== 'deny') return
+  assert.match(decision.message, /personal mailbox owner is no longer active/i)
+})
+
+test('an unassigned shared mailbox denies and requires reconnecting it under an approver', async () => {
+  const decision = await evaluateMailboxSendGate(
+    makePrisma([unassignedShared]),
+    makeContext(),
+    { connectionId: unassignedShared.id, effectiveUserId: null },
+  )
+  assert.deepEqual(decision, {
+    message: 'This shared mailbox has no assigned approver. An owner or admin must reconnect '
+      + 'it under an active approver before it can send.',
+    outcome: 'deny',
+    reason: 'mailbox_approver_unavailable',
+  })
 })
 
 test('reading its own mailbox is not reported as a disclosure', async () => {
@@ -117,9 +156,11 @@ test('reading its own mailbox is not reported as a disclosure', async () => {
   const decision = await evaluateMailboxSendGate(
     makePrisma([shared]),
     context,
-    { connectionId: null, effectiveUserId: null },
+    { connectionId: SHARED, effectiveUserId: null },
   )
-  assert.doesNotMatch(decision?.reason ?? '', /cannot reach/)
+  assert.equal(decision.outcome, 'approval')
+  if (decision.outcome !== 'approval') return
+  assert.doesNotMatch(decision.reason, /cannot reach/)
 })
 
 test('material the recipient cannot reach is named on the approval', async () => {
@@ -128,25 +169,21 @@ test('material the recipient cannot reach is named on the approval', async () =>
   const decision = await evaluateMailboxSendGate(
     makePrisma([shared]),
     context,
-    { connectionId: null, effectiveUserId: null },
+    { connectionId: SHARED, effectiveUserId: null },
   )
-  assert.match(decision?.reason ?? '', /cannot reach: user:someone-else/)
+  assert.equal(decision.outcome, 'approval')
+  if (decision.outcome !== 'approval') return
+  assert.match(decision.reason, /cannot reach: user:someone-else/)
 })
 
-test('an unresolvable mailbox is left to the tool to refuse, not to a person to approve', async () => {
-  const ambiguous = await evaluateMailboxSendGate(
+test('a missing selected mailbox denies rather than asking someone to approve another one', async () => {
+  const unavailable = await evaluateMailboxSendGate(
     makePrisma([personal, shared]),
     makeContext(),
-    { connectionId: null, effectiveUserId: OWNER },
+    { connectionId: '00000000-0000-4000-8000-000000000111', effectiveUserId: OWNER },
   )
-  assert.equal(ambiguous, null, 'two reachable mailboxes: the tool names the ambiguity')
-
-  const none = await evaluateMailboxSendGate(
-    makePrisma([]),
-    makeContext(),
-    { connectionId: null, effectiveUserId: OWNER },
-  )
-  assert.equal(none, null)
+  assert.equal(unavailable.outcome, 'deny')
+  assert.equal(unavailable.reason, 'mailbox_unavailable')
 })
 
 test('the hook claims mailbox_send and nothing else', async () => {
@@ -154,11 +191,14 @@ test('the hook claims mailbox_send and nothing else', async () => {
   assert.equal(await hook({ args: {}, toolName: 'email_send' }), null)
   assert.equal(await hook({ args: {}, toolName: 'gmail_draft_send' }), null)
 
-  const claimed = await hook({ args: { to: ['a@b.test'] }, toolName: 'mailbox_send' })
-  assert.equal(claimed?.escalate, true, 'every send from a connected mailbox is asked')
+  const claimed = await hook({
+    args: { connectionId: SHARED, to: ['a@b.test'] },
+    toolName: 'mailbox_send',
+  })
+  assert.equal(claimed?.outcome, 'approval', 'every send from a connected mailbox is asked')
   assert.equal(
     (claimed?.contextExtra as { mailboxConnectionId?: unknown })?.mailboxConnectionId,
-    null,
+    SHARED,
   )
   assert.equal(
     Object.values(claimed?.contextExtra ?? {}).some(
