@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import type { PrismaClient } from '@prisma/client'
 
 export {
@@ -74,6 +76,88 @@ export type LiveSendGrant = {
   id: string
   mode: 'always' | 'judged'
   boundary: string | null
+}
+
+/**
+ * A content-free capability minted only by the worker's judged-grant boundary.
+ * It is deliberately not a tool argument, approval payload, or queue value:
+ * the handler receives it through its runtime context and rechecks every live
+ * identity condition immediately before claiming the Gmail draft.
+ */
+export type JudgedGmailDraftAuthorization = {
+  agentId: string
+  boundaryHash: string
+  connectionId: string
+  contentFingerprint: string
+  draftActionId: string
+  grantId: string
+  organizationId: string
+  requestingUserId: string
+}
+
+const boundaryHash = (boundary: string): string =>
+  createHash('sha256').update(boundary).digest('hex')
+
+export const mintJudgedGmailDraftAuthorization = (input: {
+  agentId: string
+  boundary: string
+  connectionId: string
+  contentFingerprint: string
+  draftActionId: string
+  grantId: string
+  organizationId: string
+  requestingUserId: string
+}): JudgedGmailDraftAuthorization => ({
+  agentId: input.agentId,
+  boundaryHash: boundaryHash(input.boundary),
+  connectionId: input.connectionId,
+  contentFingerprint: input.contentFingerprint,
+  draftActionId: input.draftActionId,
+  grantId: input.grantId,
+  organizationId: input.organizationId,
+  requestingUserId: input.requestingUserId,
+})
+
+/**
+ * Revalidate a judged decision at the dispatch boundary.
+ *
+ * A judgement is an answer about one exact live grant, mailbox, agent and
+ * acting owner. A revocation, expiry, owner change, mailbox replacement, or
+ * edited boundary invalidates the fact. The handler additionally binds the
+ * connection to its server-owned draft before this query can be used.
+ */
+export const hasLiveJudgedGmailDraftAuthorization = async (
+  prisma: PrismaClient,
+  input: JudgedGmailDraftAuthorization,
+  now: Date = new Date(),
+): Promise<boolean> => {
+  const connection = await prisma.commsConnection.findFirst({
+    where: {
+      id: input.connectionId,
+      organizationId: input.organizationId,
+      ownerUserId: input.requestingUserId,
+      status: 'active',
+    },
+    select: { id: true },
+  })
+  if (!connection) return false
+
+  const grant = await prisma.sendAuthorizationGrant.findUnique({
+    where: {
+      connectionId_agentId: {
+        connectionId: input.connectionId,
+        agentId: input.agentId,
+      },
+    },
+    select: { boundary: true, expiresAt: true, id: true, mode: true, revokedAt: true },
+  })
+  return grant !== null
+    && grant.id === input.grantId
+    && grant.mode === 'judged'
+    && grant.revokedAt === null
+    && (grant.expiresAt === null || grant.expiresAt > now)
+    && typeof grant.boundary === 'string'
+    && boundaryHash(grant.boundary) === input.boundaryHash
 }
 
 /**

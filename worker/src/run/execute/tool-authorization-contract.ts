@@ -1,4 +1,5 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { JudgedGmailDraftAuthorization } from '@nessie/team-admin'
 
 import type { AutoReviewResult, ReviewableToolSurface } from './auto-review.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -19,6 +20,8 @@ export type ToolAuthorizationDecision =
        * content-free capability fact, never the opaque proof itself.
        */
       approvalProofClaimedForTool?: string
+      /** Server-minted judged-grant fact; never reconstructed from tool input. */
+      judgedGmailDraftAuthorization?: JudgedGmailDraftAuthorization
       toolActorContext: ToolActorContext
     }
   | { decision: 'deny'; result: AgenticToolResult }

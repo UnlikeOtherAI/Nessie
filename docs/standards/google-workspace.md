@@ -56,7 +56,13 @@ file is the rule**.
   and outcome. Unknown provider failures are mapped to a stable support code,
   never rethrown into those sinks. The handler receives a content-free fact
   only after that chokepoint verified the exact proof and won its atomic claim;
-  a raw continuation token is never treated as approval. A stale, mismatched,
+  a raw continuation token is never treated as approval. A judged standing
+  boundary that proceeds mints a separate server-only fact for its exact grant,
+  connection, agent, owner, draft and fingerprint plus a boundary hash. The Gmail
+  handler immediately re-reads that exact live grant and connection before
+  claiming the draft, so
+  revocation, expiry, owner/connection changes, or an edited boundary fail
+  closed. A stale, mismatched,
   or replayed Gmail continuation therefore denies rather than switching to a
   standing grant, while ordinary standing consent is re-read immediately before
   send. Details: `CLAUDE.md` → the Google bullets.
