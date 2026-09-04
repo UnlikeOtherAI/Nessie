@@ -55,10 +55,25 @@ export const DesktopWindowFrame = ({
     }
   }, [adapter, framed, readWindowState])
 
+  useEffect(() => {
+    if (resolvedPlatform !== 'linux') return undefined
+    const root = document.documentElement
+    const previousPlatform = root.dataset.desktopPlatform
+    root.dataset.desktopPlatform = 'linux'
+    return () => {
+      if (previousPlatform) root.dataset.desktopPlatform = previousPlatform
+      else delete root.dataset.desktopPlatform
+    }
+  }, [resolvedPlatform])
+
   if (!framed) return <>{children}</>
 
   return (
-    <div className="desktop-window-frame" data-flush={flush ? 'true' : 'false'}>
+    <div
+      className="desktop-window-frame"
+      data-flush={flush ? 'true' : 'false'}
+      data-platform={resolvedPlatform}
+    >
       <div
         aria-hidden="true"
         className="desktop-window-frame-drag"

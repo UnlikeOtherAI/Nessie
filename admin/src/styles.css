@@ -948,6 +948,27 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   min-height: 100dvh;
 }
 
+/* The Linux window is transparent at the native layer, so the shared frame
+   owns its visible silhouette. Keep normal windows softly rounded while
+   maximised/full-screen windows remain flush with their monitor edges. */
+html[data-desktop-platform='linux'],
+html[data-desktop-platform='linux'] body,
+html[data-desktop-platform='linux'] #root {
+  background: transparent;
+}
+
+.desktop-window-frame[data-platform='linux'] {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--rail);
+}
+
+.desktop-window-frame[data-platform='linux'][data-flush='true'] {
+  border-radius: 0;
+}
+
 .desktop-window-frame-drag {
   position: absolute;
   z-index: var(--layer-stack);

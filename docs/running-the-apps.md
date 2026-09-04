@@ -82,6 +82,10 @@ the window into halves or thirds, fill the current display's
  position and size actions rather than imitating a
 browser panel. Windows and Linux remove the native title-bar buttons so this
 strip is the only window chrome; macOS keeps its system traffic lights instead.
+Normal Linux windows use a transparent native surface clipped to softly rounded
+corners; maximised and full-screen windows stay flush with the display edges.
+The signed-out theme chooser is the same token-styled popover on every desktop
+platform rather than a GTK/WebKit-native select menu.
 
 The desktop script first bundles the local `nessie-executor` CLI and the exact
 Node runtime into private app resources. It records their hashes and the Node
@@ -884,7 +888,9 @@ controls, window-layout chooser, drag regions, and eight resize edges live above
 the router, so they remain available on login, bootstrap, error, and
 authenticated screens instead of appearing only after sign-in. The Linux and
 Windows branches render the same frame markup and the same hosted application;
-only the operating system's WebView and window manager differ.
+only the operating system's WebView and window manager differ. Linux clips the
+transparent native window to rounded corners while it is not maximised or full
+screen, and returns to a flush rectangle in either of those edge-bound states.
 
 Install the Tauri Linux build requirements, then build both distributables:
 

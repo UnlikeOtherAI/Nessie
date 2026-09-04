@@ -27,12 +27,16 @@ const renderFrame = (platform: 'linux' | 'macos' | 'windows' | null): string =>
     ),
   )
 
-test('Linux and Windows render the exact same shared window frame', () => {
+test('Linux and Windows render the same shared controls with platform-owned silhouettes', () => {
   const windows = renderFrame('windows')
   const linux = renderFrame('linux')
-  assert.equal(linux, windows)
+  assert.match(windows, /data-platform="windows"/)
+  assert.match(linux, /data-platform="linux"/)
+  assert.match(windows, /aria-label="Window controls"/)
   assert.match(linux, /aria-label="Window controls"/)
+  assert.match(windows, /data-tauri-drag-region/)
   assert.match(linux, /data-tauri-drag-region/)
+  assert.equal((windows.match(/class="desktop-window-frame-resize /g) ?? []).length, 8)
   assert.equal((linux.match(/class="desktop-window-frame-resize /g) ?? []).length, 8)
 })
 

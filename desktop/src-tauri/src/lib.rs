@@ -1,7 +1,7 @@
 #[cfg(any(target_os = "linux", test))]
 use std::ffi::OsStr;
 use std::io::{Error, ErrorKind};
-use tauri::utils::config::WebviewUrl;
+use tauri::utils::config::{WebviewUrl, WindowConfig};
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
@@ -39,6 +39,23 @@ fn should_register_linux_deep_links(
     debug_build: bool,
 ) -> bool {
     target_os == "linux" && (debug_build || appimage.is_some())
+}
+
+fn configure_desktop_window_frame(window_config: &mut WindowConfig, target_os: &str) {
+    // macOS provides its own traffic lights. Windows and Linux get the
+    // matching controls in the app chrome, so remove their native title-bar
+    // buttons instead of showing two competing control sets.
+    if matches!(target_os, "linux" | "windows") {
+        window_config.decorations = false;
+    }
+    // Linux window managers do not round an undecorated GTK window for us.
+    // Make only that native surface transparent; the shared frame paints and
+    // clips the normal-window silhouette, while maximised and full-screen
+    // states deliberately render flush.
+    if target_os == "linux" {
+        window_config.transparent = true;
+        window_config.background_color = None;
+    }
 }
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
@@ -111,12 +128,7 @@ pub fn run() {
 
             let mut window_config = main_window.clone();
             window_config.url = desktop_webview_url(window_config.url, !cfg!(debug_assertions));
-            // macOS provides its own traffic lights. Windows and Linux get the
-            // matching controls in the app chrome, so remove their native
-            // title-bar buttons instead of showing two competing control sets.
-            if cfg!(any(target_os = "linux", target_os = "windows")) {
-                window_config.decorations = false;
-            }
+            configure_desktop_window_frame(&mut window_config, DESKTOP_PLATFORM);
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(format!(
@@ -141,11 +153,34 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_webview_url, should_register_linux_deep_links, DEFAULT_DESKTOP_CAPABILITIES,
-        DESKTOP_INIT_SCRIPT, DEVELOPMENT_DESKTOP_CAPABILITIES, PRODUCTION_ADMIN_URL,
+        configure_desktop_window_frame, desktop_webview_url, should_register_linux_deep_links,
+        DEFAULT_DESKTOP_CAPABILITIES, DESKTOP_INIT_SCRIPT, DEVELOPMENT_DESKTOP_CAPABILITIES,
+        PRODUCTION_ADMIN_URL,
     };
     use std::ffi::OsStr;
-    use tauri::utils::config::WebviewUrl;
+    use tauri::utils::config::{Color, WebviewUrl, WindowConfig};
+
+    #[test]
+    fn linux_custom_frame_owns_its_transparent_rounded_surface() {
+        let background = Color(46, 17, 50, 255);
+        let mut linux = WindowConfig {
+            background_color: Some(background),
+            ..WindowConfig::default()
+        };
+        configure_desktop_window_frame(&mut linux, "linux");
+        assert!(!linux.decorations);
+        assert!(linux.transparent);
+        assert_eq!(linux.background_color, None);
+
+        let mut windows = WindowConfig {
+            background_color: Some(background),
+            ..WindowConfig::default()
+        };
+        configure_desktop_window_frame(&mut windows, "windows");
+        assert!(!windows.decorations);
+        assert!(!windows.transparent);
+        assert_eq!(windows.background_color, Some(background));
+    }
 
     #[test]
     fn release_window_uses_the_hosted_same_site_admin() {
