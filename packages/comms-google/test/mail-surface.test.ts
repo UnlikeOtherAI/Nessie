@@ -71,3 +71,16 @@ test('Gmail conversation clamps provider data to the connected-mail contract', a
   assert.equal(message?.subject.length, 1_000)
   assert.equal(message?.to.length, 100)
 })
+
+test('Gmail preserves quoted display-name recipients and inline filename attachments', async () => {
+  const conversation = await readGmailMailThread(async () => response({ messages: [{
+    id: 'message-1', internalDate: '2000', payload: {
+      filename: 'logo.png', mimeType: 'image/png', body: { data: b64('inline') },
+      headers: [{ name: 'To', value: '"Nessie, Team" <team@example.test>, person@example.test' }],
+    }, threadId: 'thread-1',
+  }] }), 'token', 'thread-1')
+  assert.deepEqual(conversation.messages[0]?.to, [
+    '"Nessie, Team" <team@example.test>', 'person@example.test',
+  ])
+  assert.equal(conversation.messages[0]?.attachments[0]?.filename, 'logo.png')
+})

@@ -174,7 +174,11 @@ export const listConnectedMailAccounts = async (
       label: connection.label,
       scope: connection.ownerUserId ? 'personal' as const : 'shared' as const,
       source: 'mailbox' as const,
-      status: connection.status,
+      status: connection.status === 'active'
+        ? 'active' as const
+        : connection.status === 'needs_reauthorization'
+          ? 'needs_reauthorization' as const
+          : 'disabled' as const,
     })),
   ]
 }

@@ -76,8 +76,24 @@ const header = (headers: Header[] | undefined, name: string): string => {
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const recipients = (value: string): string[] =>
-  value.split(',').map((entry) => bounded(entry.trim(), MAX_ADDRESS_CHARS)).filter(Boolean).slice(0, 100)
+/** Commas in an RFC quoted display name are not recipient delimiters. */
+const recipients = (value: string): string[] => {
+  const entries: string[] = []
+  let current = ''
+  let escaped = false
+  let quoted = false
+  for (const character of value) {
+    if (character === '"' && !escaped) quoted = !quoted
+    if (character === ',' && !quoted) {
+      entries.push(current)
+      current = ''
+    } else current += character
+    escaped = character === '\\' && !escaped
+    if (character !== '\\') escaped = false
+  }
+  entries.push(current)
+  return entries.map((entry) => bounded(entry.trim(), MAX_ADDRESS_CHARS)).filter(Boolean).slice(0, 100)
+}
 
 const date = (value: unknown): string | null => {
   const milliseconds = typeof value === 'string' ? Number(value) : NaN
@@ -95,7 +111,8 @@ const collect = (part: Part | undefined, into: {
 }): void => {
   if (!part) return
   const filename = typeof part.filename === 'string' ? part.filename : ''
-  if (filename && typeof part.body?.attachmentId === 'string' && into.attachments.length < MAX_ATTACHMENTS) {
+  if (filename && (typeof part.body?.attachmentId === 'string' || typeof part.body?.data === 'string')
+    && into.attachments.length < MAX_ATTACHMENTS) {
     into.attachments.push({
       contentType: bounded(
         typeof part.mimeType === 'string' && part.mimeType ? part.mimeType : 'application/octet-stream',

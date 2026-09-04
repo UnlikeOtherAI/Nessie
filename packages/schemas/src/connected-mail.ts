@@ -137,7 +137,10 @@ export type ConnectedMailAccountsQuery = z.infer<typeof ConnectedMailAccountsQue
 export const ConnectedMailThreadsQuerySchema = z.object({
   cursor: z.string().min(1).max(2000).optional(),
   query: z.string().trim().min(1).max(500).optional(),
-  unreadOnly: z.coerce.boolean().optional(),
+  unreadOnly: z.union([
+    z.boolean(),
+    z.enum(['true', 'false']).transform((value) => value === 'true'),
+  ]).optional(),
   pageSize: z.coerce.number().int().min(10).max(100).default(25),
 }).strict()
 export type ConnectedMailThreadsQuery = z.infer<typeof ConnectedMailThreadsQuerySchema>

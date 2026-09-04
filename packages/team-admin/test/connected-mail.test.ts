@@ -35,6 +35,23 @@ test('account listing asks only for the person’s own Google and live team mail
   assert.match(JSON.stringify(seen[1]), new RegExp(`"members":\{"some":\{"userId":"${USER_ID}"`))
 })
 
+test('account listing classifies non-active mailbox credentials without exposing an unknown state', async () => {
+  const prisma = {
+    commsConnection: { findMany: async () => [] },
+    mailboxConnection: { findMany: async () => [{
+      address: 'support@example.test', id: CONNECTION_ID, label: 'Support', ownerUserId: null,
+      status: 'disabled',
+    }] },
+  } as unknown as PrismaClient
+  const accounts = await listConnectedMailAccounts(prisma, {
+    organizationId: ORGANIZATION_ID, userId: USER_ID,
+  })
+  assert.deepEqual(accounts, [{
+    address: 'support@example.test', canCompose: false, canRead: false, canSend: false,
+    id: CONNECTION_ID, label: 'Support', scope: 'shared', source: 'mailbox', status: 'disabled',
+  }])
+})
+
 test('a Gmail 401 transitions the selected live connection to reauthorization', async () => {
   const updates: unknown[] = []
   const prisma = {

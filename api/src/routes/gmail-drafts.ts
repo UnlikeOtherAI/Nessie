@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import {
   GmailDraftError,
   discardDraftForUser,
@@ -14,6 +14,7 @@ import {
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { isOriginAllowed } from '../lib/server-origin-policy.js'
 import { emitAuditEvent } from '../services/audit.js'
 import type { RouteDeps } from './types.js'
 
@@ -80,6 +81,25 @@ const statusForDraftError = (code: GmailDraftError['code']): number => {
   return 400
 }
 
+const requireDraftUndoRequest = (
+  request: FastifyRequest,
+  reply: Parameters<typeof sendApiError>[0],
+  deps: RouteDeps,
+): boolean => {
+  const origin = deps.parseHeaderValue(request.headers.origin)
+  if (!origin || !isOriginAllowed({
+    allowedOrigins: deps.allowedCorsOrigins, mode: deps.config.mode, origin,
+  })) {
+    sendApiError(reply, 403, 'ORIGIN_FORBIDDEN', 'A permitted browser origin is required')
+    return false
+  }
+  if (!deps.isJsonContentType(request)) {
+    sendApiError(reply, 415, 'UNSUPPORTED_MEDIA_TYPE', 'Expected application/json')
+    return false
+  }
+  return true
+}
+
 export const registerGmailDraftRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -110,6 +130,7 @@ export const registerGmailDraftRoutes = (
         },
         draftDeps,
       )
+      reply.header('Cache-Control', 'private, no-store')
       return createApiResponse({
         id: draft.action.id,
         state: draft.action.state,
@@ -196,7 +217,7 @@ export const registerGmailDraftRoutes = (
   // ── POST /api/gmail/drafts/:id/undo ───────────────────────────────────────
   app.post('/api/gmail/drafts/:id/undo', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
+    if (!actorContext || !requireDraftUndoRequest(request, reply, deps)) return reply
     const { id } = request.params as { id: string }
     try {
       const action = await undoHeldSend(prisma, {
