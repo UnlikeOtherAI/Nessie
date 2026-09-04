@@ -78,6 +78,11 @@ Plan and as-built deltas:
   is terminal rather than eligible for an automatic retry. Mail audit entries
   record only structural action ids and the distinct held, undone, sent, or
   delivery-unknown state—never recipients, subject, or body.
+- **SMTP/IMAP searches are recent and explicit about their boundary.** A search
+  walks at most twenty structural UID windows (the newest 2,000 UIDs), never a
+  mailbox-wide `SEARCH`; when it has not filled the requested result limit by
+  then, the tool says that older matches may exist. Connection verification
+  reads the selected mailbox's scalar `EXISTS` status instead of a UID list.
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP

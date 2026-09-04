@@ -118,6 +118,7 @@ export {
   type MailboxMailConversation,
   type MailboxMailThreadPage,
   type MailboxSearchQuery,
+  type MailboxSearchResult,
   type MailboxSummary,
 } from './mailbox-client.js'
 

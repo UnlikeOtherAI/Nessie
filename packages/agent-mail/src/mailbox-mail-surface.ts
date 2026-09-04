@@ -339,7 +339,8 @@ export const discoverRelatedThreadUids = async (
     // References normally retains the structural root for every reply; the
     // In-Reply-To branch covers the first reply when it has no References field.
     const criteria = withinUidWindow([
-      'OR HEADER REFERENCES ', { literal: rootMessageId }, ' HEADER IN-REPLY-TO ', { literal: rootMessageId },
+      'OR HEADER MESSAGE-ID ', { literal: rootMessageId }, ' OR HEADER REFERENCES ', { literal: rootMessageId },
+      ' HEADER IN-REPLY-TO ', { literal: rootMessageId },
     ], window)
     for (const uid of await session.searchUids(criteria)) uids.add(uid)
     upper = window.lower - 1

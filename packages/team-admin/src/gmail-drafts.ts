@@ -57,6 +57,7 @@ const knownDraftReplay = (
     id: string
     ownerUserId: string
     providerDraftId: string | null
+    providerThreadId: string | null
     revision: number
     state: string
   },
@@ -163,14 +164,17 @@ export const composeDraftForUser = async (
     { ...input, capabilityId: 'gmail.compose' },
     deps,
   )
-  const fingerprint = fingerprintMessage(input.message)
   const known = await prisma.gmailDraftAction.findUnique({
     where: { connectionId_clientRequestId: { connectionId: credential.id, clientRequestId: input.idempotencyKey } },
   })
-  // An idempotency key names one exact provider draft. Returning a previous
-  // action for changed content would let the UI show new words while Send
-  // still targets the old Gmail draft.
-  if (known) return knownDraftReplay(known, fingerprint)
+  // An idempotency key names one exact provider draft, never new visible words.
+  if (known) {
+    return knownDraftReplay(
+      known,
+      fingerprintMessage(input.message, known.providerThreadId ?? input.providerThreadId),
+    )
+  }
+  const fingerprint = fingerprintMessage(input.message, input.providerThreadId)
   const now = deps.now?.() ?? new Date()
   let action
   try {
@@ -199,10 +203,13 @@ export const composeDraftForUser = async (
       },
     })
     if (!raced) throw new GmailDraftError('DELIVERY_UNKNOWN')
-    return knownDraftReplay(raced, fingerprint)
+    return knownDraftReplay(
+      raced,
+      fingerprintMessage(input.message, raced.providerThreadId ?? input.providerThreadId),
+    )
   }
   const fetchImpl = gmailFetch(deps)
-  let ref
+  let ref: Awaited<ReturnType<typeof createGmailDraft>>
   try {
     ref = await createGmailDraft(
       fetchImpl,
@@ -217,13 +224,15 @@ export const composeDraftForUser = async (
     })
     throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
   }
+  const providerThreadId = ref.threadId ?? input.providerThreadId ?? null
   let row
   try {
     row = await prisma.gmailDraftAction.update({
       where: { id: action.id },
       data: {
         providerDraftId: ref.id,
-        providerThreadId: ref.threadId ?? input.providerThreadId ?? null,
+        providerThreadId,
+        contentFingerprint: fingerprintMessage(input.message, providerThreadId ?? undefined),
         state: 'draft',
         claimedAt: null,
       },
@@ -273,8 +282,9 @@ export const updateDraftForUser = async (
     data: { state: 'updating', claimedAt: deps.now?.() ?? new Date() },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
+  let ref: Awaited<ReturnType<typeof updateGmailDraft>>
   try {
-    await updateGmailDraft(
+    ref = await updateGmailDraft(
       gmailFetch(deps),
       credential.credential.accessToken,
       existing.providerDraftId,
@@ -288,11 +298,13 @@ export const updateDraftForUser = async (
     })
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
   }
-  const fingerprint = fingerprintMessage(input.message)
+  const providerThreadId = ref.threadId ?? existing.providerThreadId
+  const fingerprint = fingerprintMessage(input.message, providerThreadId ?? undefined)
   const persisted = await prisma.gmailDraftAction.updateMany({
     where: { id: existing.id, state: 'updating' },
     data: {
       contentFingerprint: fingerprint,
+      providerThreadId,
       revision: { increment: 1 },
       state: 'draft',
       claimedAt: null,
@@ -374,16 +386,15 @@ export const sendDraftForUser = async (
   const expected = input.expectedFingerprint ?? existing.contentFingerprint
   if (expected !== existing.contentFingerprint) throw new GmailDraftError('DRAFT_CHANGED')
 
-  // Claim before the provider read, not after it. An update must claim the
-  // same row before it can mutate Gmail, so the content we validate is the
-  // content the ensuing dispatch owns.
+  // Claim before reading Gmail so validation owns the dispatched content.
   const claimed = await prisma.gmailDraftAction.updateMany({
     where: { id: existing.id, state: 'draft' },
     data: {
       state: 'sending',
+      // Inline dispatch and the sweeper share the sending -> dispatching CAS.
       sendAfter: input.holdMs && input.holdMs > 0
         ? new Date(now.getTime() + input.holdMs)
-        : null,
+        : now,
     },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
@@ -474,7 +485,6 @@ export const undoHeldSend = async (
   })
   return toRecord(row)
 }
-
 /** Attach the chat message that carries this draft's card. */
 export const attachDraftMessage = async (
   prisma: PrismaClient,

@@ -178,22 +178,36 @@ export class ImapSession {
     }
   }
 
-  async selectFolder(folder: string): Promise<{ uidNext: number | null; uidValidity: number | null }> {
+  async selectFolder(folder: string): Promise<{
+    messagesVisible: number
+    uidNext: number | null
+    uidValidity: number | null
+  }> {
+    let result: { text: string; untagged: ImapResponse[] }
     try {
-      const result = await this.run(['SELECT ', { literal: folder }])
-      const uidValidityLine = result.untagged.find((response) => /\bUIDVALIDITY\s+\d+/i.test(response.text))
-      const uidValidity = Number(/\bUIDVALIDITY\s+(\d+)/i.exec(uidValidityLine?.text ?? '')?.[1])
-      const uidNextLine = result.untagged.find((response) => /\bUIDNEXT\s+\d+/i.test(response.text))
-      const uidNext = Number(/\bUIDNEXT\s+(\d+)/i.exec(uidNextLine?.text ?? '')?.[1])
-      return {
-        uidNext: Number.isSafeInteger(uidNext) && uidNext > 0 ? uidNext : null,
-        uidValidity: Number.isSafeInteger(uidValidity) && uidValidity > 0 ? uidValidity : null,
-      }
+      result = await this.run(['SELECT ', { literal: folder }])
     } catch (error) {
       if (error instanceof ImapError && error.kind === 'protocol') {
         throw new ImapError(`There is no folder called “${folder}” in this mailbox.`, 'not_found')
       }
       throw error
+    }
+    // RFC 3501 requires SELECT to return EXISTS. Unlike SEARCH, this is one
+    // scalar mailbox-status value, so a mailbox with millions of messages
+    // cannot turn a connection check into a multi-megabyte UID response.
+    const existsLine = result.untagged.find((response) => /^\*\s+\d+\s+EXISTS\b/i.test(response.text))
+    const messagesVisible = Number(/^\*\s+(\d+)\s+EXISTS\b/i.exec(existsLine?.text ?? '')?.[1])
+    if (!Number.isSafeInteger(messagesVisible) || messagesVisible < 0) {
+      throw new ImapError('The mail server did not provide a safe mailbox message count.', 'protocol')
+    }
+    const uidValidityLine = result.untagged.find((response) => /\bUIDVALIDITY\s+\d+/i.test(response.text))
+    const uidValidity = Number(/\bUIDVALIDITY\s+(\d+)/i.exec(uidValidityLine?.text ?? '')?.[1])
+    const uidNextLine = result.untagged.find((response) => /\bUIDNEXT\s+\d+/i.test(response.text))
+    const uidNext = Number(/\bUIDNEXT\s+(\d+)/i.exec(uidNextLine?.text ?? '')?.[1])
+    return {
+      messagesVisible,
+      uidNext: Number.isSafeInteger(uidNext) && uidNext > 0 ? uidNext : null,
+      uidValidity: Number.isSafeInteger(uidValidity) && uidValidity > 0 ? uidValidity : null,
     }
   }
 

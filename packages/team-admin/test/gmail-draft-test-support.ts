@@ -42,7 +42,7 @@ export type DraftRow = {
 }
 
 const baseFingerprint = fingerprintDraft({
-  to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.', attachmentIds: [],
+  to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.', threadId: 'thread-1', attachmentIds: [],
 })
 
 export const row = (overrides: Partial<DraftRow> = {}): DraftRow => ({
@@ -51,7 +51,7 @@ export const row = (overrides: Partial<DraftRow> = {}): DraftRow => ({
   ownerUserId: USER,
   connectionId: CONN,
   providerDraftId: 'draft-1',
-  providerThreadId: null,
+  providerThreadId: 'thread-1',
   contentFingerprint: baseFingerprint,
   revision: 1,
   state: 'draft',

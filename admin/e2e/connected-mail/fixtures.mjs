@@ -3,6 +3,7 @@
 // React Query facade and email components all run unchanged in Chromium.
 
 const now = '2026-09-04T09:30:00.000Z'
+const gmailDraftId = '99999999-9999-4999-8999-999999999999'
 const ids = {
   channel: '11111111-1111-4111-8111-111111111111',
   organization: '22222222-2222-4222-8222-222222222222',
@@ -19,6 +20,7 @@ export const createMailFixtures = () => {
   const unhandled = []
   let doorwayAllowed = true
   let doorwayVisible = false
+  let gmailDraftState = 'draft'
   let gmailCapabilities = { canCompose: true, canRead: true, canSend: true }
 
   const accounts = () => [
@@ -137,23 +139,30 @@ export const createMailFixtures = () => {
       attachments: [], bcc: [], body: 'Prepared response', cc: [], contentFingerprint: 'fingerprint-doorway',
       id: 'draft-doorway', revision: 1, state: 'draft', subject: 'Prepared reply', to: ['casey@acme.example'],
     })
-    if (pathname === '/api/gmail/drafts/draft-created' && method === 'GET') return json({
+    if (pathname === `/api/gmail/drafts/${gmailDraftId}` && method === 'GET') return json({
       attachments: [], bcc: [], body: 'Thanks — I will take this from here.', cc: [],
-      contentFingerprint: 'fingerprint-1', id: 'draft-created', revision: 1, state: 'draft',
+      contentFingerprint: 'fingerprint-1', id: gmailDraftId, revision: 1, state: gmailDraftState,
       subject: 'Re: Launch checklist', to: ['casey@acme.example'],
     })
-    if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') return json({ state: 'draft' })
+    if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') {
+      gmailDraftState = 'draft'
+      return json({ state: 'draft' })
+    }
     if (pathname.endsWith('/drafts') && pathname.startsWith('/api/mail/accounts/') && method === 'POST') return json({
-      contentFingerprint: 'fingerprint-1', id: 'draft-created', status: 'draft',
+      contentFingerprint: 'fingerprint-1', id: gmailDraftId, status: 'draft',
     })
     if (pathname.includes('/drafts/') && pathname.startsWith('/api/mail/accounts/') && method === 'PATCH') return json({
       contentFingerprint: 'fingerprint-2', id: pathname.split('/').at(-1), status: 'draft',
     })
-    if (pathname.endsWith('/send') && pathname.startsWith('/api/mail/accounts/') && method === 'POST') return json({
-      id: pathname.includes('/gmail/') ? 'draft-created' : 'mailbox-sent',
-      sendAfter: pathname.includes('/gmail/') ? '2026-09-04T09:30:30.000Z' : undefined,
-      status: pathname.includes('/gmail/') ? 'held' : 'sent',
-    })
+    if (pathname.endsWith('/send') && pathname.startsWith('/api/mail/accounts/') && method === 'POST') {
+      const gmail = pathname.includes('/gmail/')
+      if (gmail) gmailDraftState = 'sending'
+      return json({
+        id: gmail ? gmailDraftId : 'mailbox-sent',
+        sendAfter: gmail ? new Date(Date.now() + 15_000).toISOString() : undefined,
+        status: gmail ? 'sending' : 'sent',
+      })
+    }
     if (pathname === `/api/threads/${ids.thread}/messages`) return json(doorwayVisible
       ? [{ ...doorwayMessage, metadata: { mailSurfaceDoorway: doorway } }]
       : [])

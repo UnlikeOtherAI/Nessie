@@ -238,11 +238,30 @@ test('two concurrent dispatches on one row produce exactly ONE Gmail send', asyn
   assert.equal(state.row.state, 'sent')
 })
 
-test('dispatch sends the captured draft bytes when Gmail mutates after validation', async () => {
-  const { prisma } = makePrisma(claimedRow())
-  const verified = liveDraft()
+test('dispatch sends captured reply bytes and thread when Gmail mutates after validation', async () => {
+  const { prisma } = makePrisma(claimedRow({
+    contentFingerprint: fingerprintDraft({
+      to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.',
+      inReplyTo: '<parent@example.com>', references: ['<root@example.com>', '<parent@example.com>'],
+      threadId: 'thread-1', attachmentIds: [],
+    }),
+  }))
+  const verified = liveDraft({
+    message: {
+      id: 'msg-1', threadId: 'thread-1', payload: {
+        headers: [
+          { name: 'To', value: 'jana@example.com' },
+          { name: 'Subject', value: 'Quarterly update' },
+          { name: 'In-Reply-To', value: '<parent@example.com>' },
+          { name: 'References', value: '<root@example.com> <parent@example.com>' },
+        ],
+        mimeType: 'text/plain', body: { data: Buffer.from('Here it is.', 'utf8').toString('base64url') },
+      },
+    },
+  })
   let providerDraft = verified
   let sentRaw = ''
+  let sentThreadId = ''
   await dispatchClaimedDraft(prisma, ACTION, {
     encryptionSecret: ENCRYPTION_SECRET,
     fetchImpl: (async (url: string, init?: { body?: string; method?: string }) => {
@@ -264,7 +283,9 @@ test('dispatch sends the captured draft bytes when Gmail mutates after validatio
             },
           },
         })
-        sentRaw = String(JSON.parse(init.body ?? '{}').raw ?? '')
+        const request = JSON.parse(init.body ?? '{}') as { raw?: unknown; threadId?: unknown }
+        sentRaw = String(request.raw ?? '')
+        sentThreadId = String(request.threadId ?? '')
         return { ok: true, status: 200, json: async () => ({ id: 'sent-1' }), text: async () => '{"id":"sent-1"}' }
       }
       if (init?.method === 'DELETE') {
@@ -277,8 +298,11 @@ test('dispatch sends the captured draft bytes when Gmail mutates after validatio
   const sent = Buffer.from(sentRaw, 'base64url').toString('utf8')
   assert.match(sent, /To: jana@example\.com/)
   assert.match(sent, /Subject: Quarterly update/)
+  assert.match(sent, /In-Reply-To: <parent@example\.com>/)
+  assert.match(sent, /References: <root@example\.com> <parent@example\.com>/)
   assert.match(sent, /SGVyZSBpdCBpcy4=/)
   assert.doesNotMatch(sent, /attacker@evil\.test|Changed/)
+  assert.equal(sentThreadId, 'thread-1')
 })
 
 test('the loser no-ops and leaves the row in the winner\'s state', async () => {
@@ -327,7 +351,7 @@ test('an update cannot overwrite a send claim after Gmail content was checked', 
   await updating
   assert.equal(state.row.state, 'draft')
   assert.equal(state.row.contentFingerprint, fingerprintDraft({
-    to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.', attachmentIds: [],
+    to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.', threadId: 'thread-1', attachmentIds: [],
   }))
 })
 

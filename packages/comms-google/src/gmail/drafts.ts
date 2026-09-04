@@ -106,6 +106,8 @@ export type GmailDraftContent = {
   bcc: string[]
   subject: string
   body: string
+  inReplyTo?: string
+  references: string[]
   attachments: { filename: string; mimeType: string; sizeBytes: number }[]
 }
 
@@ -116,6 +118,8 @@ export const GMAIL_MAX_DRAFT_PARTS = 200
 export const GMAIL_MAX_DRAFT_ATTACHMENTS = 100
 export const GMAIL_MAX_DRAFT_FILENAME_BYTES = 500
 export const GMAIL_MAX_DRAFT_MIME_TYPE_BYTES = 200
+export const GMAIL_MAX_DRAFT_REFERENCES = 20
+export const GMAIL_MAX_DRAFT_MESSAGE_ID_BYTES = 500
 
 const headerValue = (
   headers: { name?: unknown; value?: unknown }[],
@@ -136,6 +140,15 @@ const splitAddressList = (value: string): string[] => {
     .filter((entry) => entry.length > 0)
   if (addresses.length > 50) throw new GmailReadLimitError('structure')
   return addresses
+}
+
+const splitMessageIds = (value: string, max: number): string[] => {
+  const messageIds = value.trim().split(/\s+/).filter((entry) => entry.length > 0)
+  if (
+    messageIds.length > max
+    || messageIds.some((entry) => Buffer.byteLength(entry) > GMAIL_MAX_DRAFT_MESSAGE_ID_BYTES)
+  ) throw new GmailReadLimitError('structure')
+  return messageIds
 }
 
 type GmailPart = {
@@ -221,6 +234,8 @@ export const getGmailDraft = async (
   })) throw new GmailReadLimitError('structure')
   const collected = { body: '', attachments: [] as GmailDraftContent['attachments'] }
   collectBodyAndAttachments(payload, collected, budget)
+  const inReplyTo = splitMessageIds(headerValue(headers, 'In-Reply-To'), 1)
+  const references = splitMessageIds(headerValue(headers, 'References'), GMAIL_MAX_DRAFT_REFERENCES)
 
   return {
     id: draft.id,
@@ -233,6 +248,8 @@ export const getGmailDraft = async (
     bcc: splitAddressList(headerValue(headers, 'Bcc')),
     subject: headerValue(headers, 'Subject'),
     body: collected.body,
+    ...(inReplyTo[0] ? { inReplyTo: inReplyTo[0] } : {}),
+    references,
     attachments: collected.attachments,
   }
 }

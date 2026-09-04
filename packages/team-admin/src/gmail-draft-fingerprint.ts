@@ -12,6 +12,9 @@ export const fingerprintDraft = (input: {
   bcc?: readonly string[]
   subject: string
   body: string
+  inReplyTo?: string
+  references?: readonly string[]
+  threadId?: string
   attachmentIds?: readonly string[]
 }): string =>
   createHash('sha256')
@@ -25,16 +28,22 @@ export const fingerprintOf = (draft: GmailDraftContent): string =>
     bcc: draft.bcc,
     subject: draft.subject,
     body: draft.body,
+    inReplyTo: draft.inReplyTo,
+    references: draft.references,
+    threadId: draft.threadId,
     attachmentIds: draft.attachments.map((attachment) => `${attachment.filename}:${attachment.sizeBytes}`),
   })
 
-export const fingerprintMessage = (message: OutboundMessage): string =>
+export const fingerprintMessage = (message: OutboundMessage, threadId?: string): string =>
   fingerprintDraft({
     to: message.to,
     cc: message.cc,
     bcc: message.bcc,
     subject: message.subject,
     body: message.body,
+    inReplyTo: message.inReplyTo,
+    references: message.references,
+    threadId,
     attachmentIds: (message.attachments ?? []).map((attachment) =>
       `${attachment.filename}:${attachment.content.byteLength}`),
   })

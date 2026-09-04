@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { reviveMailComposeDraft } from '../src/components/features/connected-mail/ConnectedMailCompose.js'
+import {
+  reviveMailComposeDraft,
+  validateMailComposeRecipients,
+} from '../src/components/features/connected-mail/ConnectedMailCompose.js'
 import { mailPath } from '../src/facades/mail/hooks.js'
 import { matchSurface } from '../src/navigation/surfaces.js'
 import { readMailSurfaceDoorway } from '../src/components/features/channels/MailSurfaceDoorway.js'
@@ -46,6 +49,31 @@ test('a local compose draft retains only its durable action identifiers across a
   assert.deepEqual(reviveMailComposeDraft({
     to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello', requestId: 'not-an-id',
   }), { to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello' })
+})
+
+test('a held Gmail action survives only while its Undo deadline is live', () => {
+  const sendAfter = new Date(Date.now() + 15_000).toISOString()
+  assert.deepEqual(reviveMailComposeDraft({
+    to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
+    gmailHeldSend: { draftId: '00000000-0000-4000-8000-000000000004', sendAfter },
+  })?.gmailHeldSend, { draftId: '00000000-0000-4000-8000-000000000004', sendAfter })
+  assert.equal(reviveMailComposeDraft({
+    to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
+    gmailHeldSend: { draftId: 'not-an-id', sendAfter },
+  })?.gmailHeldSend, undefined)
+  assert.equal(reviveMailComposeDraft({
+    to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
+    gmailHeldSend: { draftId: '00000000-0000-4000-8000-000000000004', sendAfter: '2020-01-01T00:00:00.000Z' },
+  })?.gmailHeldSend, undefined)
+})
+
+test('recipient fields reuse the shared envelope schema before a send mutation', () => {
+  assert.deepEqual(validateMailComposeRecipients({
+    to: 'Casey <casey@acme.example>', cc: '', bcc: 'copy@example.com', subject: 'Hi', body: 'Hello',
+  }), { to: 'Recipients must be bare email addresses.' })
+  assert.deepEqual(validateMailComposeRecipients({
+    to: 'casey@acme.example', cc: 'bad address', bcc: '', subject: 'Hi', body: 'Hello',
+  }), { cc: 'Recipients must be bare email addresses.' })
 })
 
 test('mail doorway metadata accepts only identifiers and never content', () => {
@@ -99,7 +127,12 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.doesNotMatch(compose, /createIdempotencyKeyRef|mailboxSendIdempotencyKeyRef/)
   assert.match(compose, /Create a new Gmail draft/)
   assert.match(compose, /undoGmailSend/)
-  assert.match(compose, /setActiveGmailDraftId\(sent\.id\)/)
+  assert.match(compose, /gmailHeldSend/)
+  assert.match(compose, /validateMailComposeRecipients/)
+  assert.match(compose, /ConnectedMailComposeInputSchema\.safeParse/)
+  assert.match(compose, /<MailField error=\{recipientErrors\.to\}/)
+  assert.match(compose, /const draftId = sent\?\.id \?\? heldGmailSend\?\.draftId/)
+  assert.match(compose, /setActiveGmailDraftId\(draftId\)/)
   assert.match(compose, /if \(activeGmailDraftId\)/)
   assert.match(compose, /await providerDraft\.refetch\(\)/)
   assert.match(compose, /!account\.canSend/)

@@ -148,6 +148,26 @@ test('related-thread discovery caps a huge mailbox without an unbounded search r
   assert.ok(requests.every((criteria) => !criteria.includes('ALL')))
 })
 
+test('related-thread discovery includes an older root when the signed seed is its reply', async () => {
+  const requests: ImapPart[][] = []
+  const session = {
+    searchUids: async (criteria: ImapPart[]) => {
+      requests.push(criteria)
+      // A root does not reference itself; this is the reply seed plus the
+      // older root that only HEADER MESSAGE-ID can discover.
+      return criteria.includes('OR HEADER MESSAGE-ID ') ? [900, 899] : [900]
+    },
+  } as unknown as ImapSession
+  const discovered = await discoverRelatedThreadUids(session, 'root@example.test', 10_001)
+
+  assert.deepEqual(discovered, { capped: true, uids: [900, 899] })
+  assert.deepEqual(requests[0], [
+    'UID 9901:10000', ' ', 'OR HEADER MESSAGE-ID ', { literal: 'root@example.test' },
+    ' OR HEADER REFERENCES ', { literal: 'root@example.test' },
+    ' HEADER IN-REPLY-TO ', { literal: 'root@example.test' },
+  ])
+})
+
 test('native THREAD paging reserves one newest header for every group', () => {
   const groups = Array.from({ length: 100 }, (_, index) => [index * 2 + 1, index * 2 + 2])
   const uids = nativeThreadHeaderUids(groups)

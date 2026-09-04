@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { connect, createServer, type Server, type Socket } from 'node:net'
 import { after, describe, test } from 'node:test'
 
-import { ImapSession } from '../src/imap.js'
+import { ImapSession, type ImapPart } from '../src/imap.js'
+import { MAX_MAILBOX_SEARCH_WINDOWS, searchMailboxUids } from '../src/mailbox-client.js'
 import { MailWire, MailWireError } from '../src/wire.js'
 import { closeSmtpSession, runSmtpHandshake, sendOverSmtp } from '../src/smtp.js'
 import { dialPlain, dialTls } from '../src/dial.js'
@@ -193,6 +194,7 @@ describe('IMAP client', () => {
       socket.write('* OK mail.example.com IMAP4rev1 ready\r\n')
       let buffer = Buffer.alloc(0)
       let literalRemaining = 0
+      let completingSelect = false
       let tag = ''
 
       const pump = (): void => {
@@ -216,8 +218,14 @@ describe('IMAP client', () => {
 
           const literal = /\{(\d+)\}$/.exec(line)
           if (literal) {
+            completingSelect = /\sSELECT\s+\{\d+\}$/i.test(line)
             literalRemaining = Number(literal[1])
             socket.write('+ ready\r\n')
+            continue
+          }
+          if (completingSelect) {
+            completingSelect = false
+            socket.write(`* 25000000 EXISTS\r\n${tag} OK SELECT completed\r\n`)
             continue
           }
           if (/UID SEARCH/i.test(line)) {
@@ -324,6 +332,38 @@ describe('IMAP client', () => {
     // the reader been line-based rather than length-prefixed.
     assert.ok(body?.toString('utf8').includes('Body with )'))
     assert.ok(body?.toString('utf8').includes('and more'))
+  })
+
+  test('uses SELECT EXISTS metadata for a huge mailbox without requesting its UID list', async () => {
+    const { port, seen } = await imapServer()
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
+    )
+    const selected = await session.selectFolder('INBOX')
+    session.close()
+
+    assert.equal(selected.messagesVisible, 25_000_000)
+    assert.ok(seen.some((line) => /SELECT/.test(line)))
+    assert.ok(!seen.some((line) => /UID SEARCH\s+ALL/i.test(line)), 'no mailbox-wide UID list was requested')
+    assert.ok(!seen.some((line) => /UID SEARCH/i.test(line)), 'connection metadata does not search at all')
+  })
+
+  test('bounds an empty PA search to recent UID windows instead of SEARCH ALL', async () => {
+    const requests: ImapPart[][] = []
+    const session = {
+      searchUids: async (criteria: ImapPart[]) => {
+        requests.push(criteria)
+        assert.ok(!criteria.includes('ALL'), 'the structural UID range replaces ALL')
+        return []
+      },
+    } as unknown as ImapSession
+
+    const result = await searchMailboxUids(session, ['ALL'], 1_000_001, 50)
+
+    assert.deepEqual(result, { truncated: true, uids: [] })
+    assert.equal(requests.length, MAX_MAILBOX_SEARCH_WINDOWS)
+    assert.equal(requests[0]?.[0], 'UID 999901:1000000')
+    assert.equal(requests.at(-1)?.[0], 'UID 998001:998100')
   })
 
   test('uses BODYSTRUCTURE and a bounded selected section without reading an attachment', async () => {

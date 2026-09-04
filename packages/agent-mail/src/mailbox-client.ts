@@ -1,5 +1,6 @@
-import { ImapSession, type ImapPart } from './imap.js'
+import { ImapError, ImapSession, type ImapPart } from './imap.js'
 import { imapAttachmentParts, imapTextParts } from './imap-bodystructure.js'
+import { uidWindowEndingAt, withinUidWindow } from './imap-uid-window.js'
 import { buildOutboundMime, parseInboundEmail, type OutboundEmail } from './mime.js'
 import { htmlToText } from './sanitize-html.js'
 import { closeSmtpSession, openSmtpSession, sendOverSmtp } from './smtp.js'
@@ -92,6 +93,9 @@ export const MAX_CONVERSATION_BODY_CHARS = 100_000
 const MAX_CONNECTED_IMAP_LITERAL_BYTES = 1_000_000
 const MAX_IMAP_TEXT_SECTION_BYTES = 256 * 1024
 export const MAX_CONVERSATION_RESPONSE_BYTES = 2_000_000
+/** A mailbox search may inspect only its newest 2,000 UIDs. */
+export const MAX_MAILBOX_SEARCH_WINDOWS = 20
+export const MAX_MAILBOX_SEARCH_RESULTS = 100
 
 export const bounded = (value: string, max: number): string => value.slice(0, max)
 export const boundedOptional = (value: string | null, max: number): string | null =>
@@ -140,6 +144,12 @@ export type MailboxClientOptions = DialOptions & {
   threadTokenSecret?: string
 }
 
+export type MailboxSearchResult = {
+  items: MailboxSummary[]
+  /** Older mailbox UIDs may contain more matches than this bounded scan found. */
+  truncated: boolean
+}
+
 export const withImap = async <T>(
   endpoints: MailboxEndpoints,
   options: MailboxClientOptions,
@@ -163,18 +173,46 @@ export const withImap = async <T>(
   }
 }
 
+export const searchMailboxUids = async (
+  session: ImapSession,
+  criteria: ImapPart[],
+  uidNext: number,
+  limit: number,
+): Promise<{ uids: number[]; truncated: boolean }> => {
+  const resultLimit = Math.min(Math.max(limit, 0), MAX_MAILBOX_SEARCH_RESULTS)
+  const uids: number[] = []
+  let upper = uidNext - 1
+  let windows = 0
+  while (upper > 0 && windows < MAX_MAILBOX_SEARCH_WINDOWS && uids.length < resultLimit) {
+    const window = uidWindowEndingAt(upper)
+    if (!window) break
+    uids.push(...(await session.searchUids(withinUidWindow(criteria, window))).slice(0, resultLimit - uids.length))
+    upper = window.lower - 1
+    windows += 1
+  }
+  return { truncated: uids.length < resultLimit && upper > 0, uids }
+}
+
 export const searchMailbox = async (
   endpoints: MailboxEndpoints,
   query: MailboxSearchQuery,
   options: MailboxClientOptions,
-): Promise<MailboxSummary[]> => withImap(endpoints, options, async (session) => {
-  await session.selectFolder(query.folder?.trim() || DEFAULT_FOLDER)
-  const uids = (await session.searchUids(buildCriteria(query))).slice(0, query.limit)
+): Promise<MailboxSearchResult> => withImap(endpoints, options, async (session) => {
+  const selected = await session.selectFolder(query.folder?.trim() || DEFAULT_FOLDER)
+  if (selected.uidNext === null) {
+    throw new ImapError('The mail server did not provide a safe mailbox UID window.', 'protocol')
+  }
+  const { truncated, uids } = await searchMailboxUids(
+    session, buildCriteria(query), selected.uidNext, query.limit,
+  )
   const fetched = await session.fetchMessages(uids)
   const summaries = await Promise.all(fetched.map(async (message) =>
     summarize(message.uid, await parseInboundEmail(message.raw))))
   const rank = new Map(uids.map((uid, index) => [uid, index]))
-  return summaries.sort((left, right) => (rank.get(left.uid) ?? 0) - (rank.get(right.uid) ?? 0))
+  return {
+    items: summaries.sort((left, right) => (rank.get(left.uid) ?? 0) - (rank.get(right.uid) ?? 0)),
+    truncated,
+  }
 })
 
 export const readMailboxMessage = async (
@@ -262,8 +300,7 @@ export const testMailboxConnection = async (
   options: MailboxClientOptions,
 ): Promise<{ folder: string; messagesVisible: number }> => {
   const messagesVisible = await withImap(endpoints, options, async (session) => {
-    await session.selectFolder(DEFAULT_FOLDER)
-    return (await session.searchUids(['ALL'])).length
+    return (await session.selectFolder(DEFAULT_FOLDER)).messagesVisible
   })
   const smtp = await openSmtpSession(
     endpoints.smtp,

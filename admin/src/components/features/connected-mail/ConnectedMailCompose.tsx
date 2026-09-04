@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiClientError } from '@nessie/client-core'
-import type { ConnectedMailAccountRecord, ConnectedMailMessage } from '@nessie/schemas'
+import {
+  ConnectedMailComposeInputSchema,
+  type ConnectedMailAccountRecord,
+  type ConnectedMailMessage,
+} from '@nessie/schemas'
 
 import { draftKey, useDraft } from '../../../navigation/useDraft'
+import { FormField } from '../../shared/FormField'
+import { Input } from '../../shared/FormControls'
 import {
   type ConnectedMailDraftResult,
   type MailAddress,
@@ -25,6 +31,8 @@ export type MailComposeDraft = {
   requestId?: string
   /** Content-free SMTP action identity for an unconfirmed-delivery recovery. */
   mailboxSendActionId?: string
+  /** Gmail's held-send identity survives reloads until Undo or dispatch. */
+  gmailHeldSend?: { draftId: string; sendAfter: string }
   subject: string
   to: string
 }
@@ -32,19 +40,50 @@ export type MailComposeDraft = {
 const emptyDraft: MailComposeDraft = { bcc: '', body: '', cc: '', subject: '', to: '' }
 const recipients = (value: string): string[] => value.split(',').map((part) => part.trim()).filter(Boolean)
 
+type RecipientField = 'to' | 'cc' | 'bcc'
+type RecipientErrors = Partial<Record<RecipientField, string>>
+
+const recipientFields: RecipientField[] = ['to', 'cc', 'bcc']
+const isUuid = (value: unknown): value is string =>
+  typeof value === 'string'
+  && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+
+/** Client parsing deliberately reuses the API's envelope-address schema. */
+export const validateMailComposeRecipients = (draft: MailComposeDraft): RecipientErrors => {
+  const parsed = ConnectedMailComposeInputSchema.safeParse({
+    bcc: recipients(draft.bcc), body: 'validation placeholder', cc: recipients(draft.cc),
+    subject: '', to: recipients(draft.to),
+  })
+  if (parsed.success) return {}
+  return parsed.error.issues.reduce<RecipientErrors>((errors, issue) => {
+    const field = issue.path[0]
+    if (typeof field === 'string' && recipientFields.includes(field as RecipientField) && !errors[field as RecipientField]) {
+      errors[field as RecipientField] = issue.message
+    }
+    return errors
+  }, {})
+}
+
+const isFutureDate = (value: string): boolean => Number.isFinite(Date.parse(value)) && Date.parse(value) > Date.now()
+
 /** Only editable outbound fields are serializable. Reply history deliberately
  * stays in the live conversation beside this Flow, never in localStorage. */
 export const reviveMailComposeDraft = (stored: unknown): MailComposeDraft | null => {
   if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return null
   const record = stored as Record<string, unknown>
   const hasFields = ['bcc', 'body', 'cc', 'subject', 'to'].every((key) => typeof record[key] === 'string')
-  const isUuid = (value: unknown): value is string =>
-    typeof value === 'string'
-    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  const held = record.gmailHeldSend
+  const gmailHeldSend = held && typeof held === 'object' && !Array.isArray(held)
+    && isUuid((held as { draftId?: unknown }).draftId)
+    && typeof (held as { sendAfter?: unknown }).sendAfter === 'string'
+    && isFutureDate((held as { sendAfter: string }).sendAfter)
+    ? { draftId: (held as { draftId: string }).draftId, sendAfter: (held as { sendAfter: string }).sendAfter }
+    : undefined
   return hasFields
     ? {
       bcc: String(record.bcc), body: String(record.body), cc: String(record.cc),
       ...(isUuid(record.gmailDraftId) ? { gmailDraftId: record.gmailDraftId } : {}),
+      ...(gmailHeldSend ? { gmailHeldSend } : {}),
       ...(isUuid(record.mailboxSendActionId) ? { mailboxSendActionId: record.mailboxSendActionId } : {}),
       ...(isUuid(record.requestId) ? { requestId: record.requestId } : {}),
       subject: String(record.subject), to: String(record.to),
@@ -74,7 +113,11 @@ export const ConnectedMailCompose = ({
   const providerDraft = useGmailDraft(address.source === 'gmail' && activeGmailDraftId ? activeGmailDraftId : null)
   const draft = useDraft(activeGmailDraftId ? null : draftKey('mail-compose', `${principalScope}:${address.source}:${address.accountId}:${identity}`), {
     initial,
-    isEmpty: (value) => !value.to && !value.cc && !value.bcc && !value.subject && !value.body,
+    // A reply's prefilled To/subject is a baseline, not an edited draft. The
+    // draft primitive must therefore still hydrate a saved held-send action.
+    isEmpty: (value) => !value.gmailDraftId && !value.gmailHeldSend && !value.mailboxSendActionId && !value.requestId
+      && value.to === initial.to && value.cc === initial.cc && value.bcc === initial.bcc
+      && value.subject === initial.subject && value.body === initial.body,
     revive: reviveMailComposeDraft,
   })
   const createDraft = useConnectedMailDraft(address)
@@ -86,11 +129,14 @@ export const ConnectedMailCompose = ({
   )
   const [sent, setSent] = useState<ConnectedMailDraftResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [recipientErrors, setRecipientErrors] = useState<RecipientErrors>({})
   const hydratedDraftRef = useRef<string | null>(null)
   const editedProviderDraftRef = useRef(false)
   const providerDraftRef = useRef<{ contentFingerprint: string; id: string } | null>(null)
   const existingProviderDraft = address.source === 'gmail' && Boolean(activeGmailDraftId)
   const [recreateGmailDraft, setRecreateGmailDraft] = useState(false)
+  const heldGmailSend = address.source === 'gmail' ? draft.draft.gmailHeldSend : undefined
+  const heldGmailDraft = useGmailDraft(heldGmailSend?.draftId ?? null)
 
   useEffect(() => {
     setActiveGmailDraftId(gmailDraftId)
@@ -100,7 +146,36 @@ export const ConnectedMailCompose = ({
     setRecreateGmailDraft(false)
     setSent(null)
     setError(null)
+    setRecipientErrors({})
   }, [address.accountId, address.source, gmailDraftId, replyTo?.id])
+
+  // A held action is never a resend instruction. It is only an Undo doorway,
+  // and is forgotten at the server's deadline or when Gmail reports a terminal
+  // state. The stored record contains no message content beyond the draft flow.
+  useEffect(() => {
+    if (!heldGmailSend) return
+    const clearHeldSend = () => {
+      draft.clear()
+      setSent(null)
+    }
+    const delay = Date.parse(heldGmailSend.sendAfter) - Date.now()
+    if (delay <= 0) {
+      clearHeldSend()
+      return
+    }
+    const timer = window.setTimeout(clearHeldSend, delay)
+    return () => window.clearTimeout(timer)
+  }, [draft.clear, heldGmailSend])
+
+  useEffect(() => {
+    if (!heldGmailSend || !heldGmailDraft.data || heldGmailDraft.data.state === 'sending') return
+    if (heldGmailDraft.data.state === 'draft') {
+      draft.setDraft((current) => ({ ...current, gmailHeldSend: undefined }))
+    } else {
+      draft.clear()
+    }
+    setSent(null)
+  }, [draft.clear, draft.setDraft, heldGmailDraft.data, heldGmailSend])
 
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
@@ -136,6 +211,17 @@ export const ConnectedMailCompose = ({
     })
   }
 
+  const updateRecipient = (field: RecipientField, value: string) => {
+    updateComposeDraft((current) => ({ ...current, [field]: value }))
+    // A rejected submit owns the alert. Editing only removes that field's
+    // previous error once it has become valid, so typing does not chatter.
+    setRecipientErrors((current) => {
+      if (!current[field]) return current
+      const next = validateMailComposeRecipients({ ...draft.draft, [field]: value })
+      return { ...current, [field]: next[field] }
+    })
+  }
+
   const submit = async () => {
     setError(null)
     if (!account.canSend) {
@@ -150,7 +236,18 @@ export const ConnectedMailCompose = ({
       inReplyTo: replyTo?.messageId ?? undefined, providerThreadId: replyTo?.threadId,
       subject: draft.draft.subject, to: recipients(draft.draft.to),
     }
-    if (!input.to.length || !input.body) { setError('Add at least one recipient and a message body.'); return }
+    const parsedInput = ConnectedMailComposeInputSchema.safeParse(input)
+    const fieldErrors = validateMailComposeRecipients(current)
+    setRecipientErrors(fieldErrors)
+    if (Object.keys(fieldErrors).length > 0) {
+      setError('Correct the recipient addresses before sending.')
+      return
+    }
+    if (!parsedInput.success) {
+      setError('Add at least one recipient and a message body.')
+      return
+    }
+    const validInput = parsedInput.data
     const existingActionId = providerDraftRef.current?.id ?? current.gmailDraftId ?? activeGmailDraftId
     let requestId = current.requestId
     if (address.source === 'mailbox' || !existingActionId) {
@@ -165,11 +262,11 @@ export const ConnectedMailCompose = ({
       // IMAP/SMTP intentionally keeps this local and uses the explicit send route.
       const providerAction = address.source === 'gmail'
         ? providerDraftRef.current
-          ? await updateDraft.mutateAsync({ draftId: providerDraftRef.current.id, input })
+          ? await updateDraft.mutateAsync({ draftId: providerDraftRef.current.id, input: validInput })
           : existingActionId
-            ? await updateDraft.mutateAsync({ draftId: existingActionId, input })
+            ? await updateDraft.mutateAsync({ draftId: existingActionId, input: validInput })
             : await createDraft.mutateAsync({
-            ...input,
+            ...validInput,
             idempotencyKey: requestId!,
           })
         : null
@@ -193,11 +290,21 @@ export const ConnectedMailCompose = ({
           expectedFingerprint: providerAction!.contentFingerprint,
         })
         : await send.mutateAsync({
-          ...input,
+          ...validInput,
           idempotencyKey: requestId!,
         })
+      const heldSend = address.source === 'gmail' && result.status === 'sending' && result.sendAfter
+        ? { draftId: providerAction!.id, sendAfter: result.sendAfter }
+        : undefined
+      if (heldSend) {
+        // Persist the action identity before rendering the confirmation. A
+        // reload can only offer Undo; it cannot recreate or resend this draft.
+        draft.setDraft({ ...current, gmailDraftId: providerAction!.id, gmailHeldSend: heldSend, requestId })
+        await draft.flush()
+      } else {
+        draft.clear()
+      }
       setSent({ ...result, id: result.id || result.actionId || providerAction?.id || '' })
-      draft.clear()
     } catch (cause) {
       if (cause instanceof ApiClientError && cause.code === 'DRAFT_CHANGED' && !providerDraftRef.current) {
         setRecreateGmailDraft(true)
@@ -231,8 +338,18 @@ export const ConnectedMailCompose = ({
   }
 
   const undoGmailSend = async () => {
-    if (!sent?.id) return
-    await undo.mutateAsync(sent.id)
+    const draftId = sent?.id ?? heldGmailSend?.draftId
+    if (!draftId) return
+    try {
+      await undo.mutateAsync(draftId)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not undo this send.')
+      return
+    }
+    if (heldGmailSend) {
+      draft.setDraft((current) => ({ ...current, gmailHeldSend: undefined }))
+      await draft.flush()
+    }
     editedProviderDraftRef.current = false
     if (activeGmailDraftId) {
       // This query is already bound to the original provider draft. Refetch
@@ -258,14 +375,17 @@ export const ConnectedMailCompose = ({
     // new key and the hydration effect loads the restored provider content.
     hydratedDraftRef.current = null
     providerDraftRef.current = null
-    setActiveGmailDraftId(sent.id)
+    setActiveGmailDraftId(draftId)
     setSent(null)
   }
 
   const recoveredMailboxSent = address.source === 'mailbox' && mailboxAction.data?.state === 'sent'
     ? { id: mailboxAction.data.id, status: 'sent' }
     : null
-  const sentConfirmation = sent ?? recoveredMailboxSent
+  const persistedHeldSend = heldGmailSend
+    ? { id: heldGmailSend.draftId, sendAfter: heldGmailSend.sendAfter, status: 'sending' }
+    : null
+  const sentConfirmation = sent ?? persistedHeldSend ?? recoveredMailboxSent
   const mailboxSendLocked = address.source === 'mailbox'
     && (mailboxAction.data?.state === 'dispatching' || mailboxAction.data?.state === 'delivery_unknown')
 
@@ -298,9 +418,9 @@ export const ConnectedMailCompose = ({
       <label className="grid gap-1 text-sm text-[color:var(--tx2)]">From
         <input aria-label="From" className="admin-input" disabled value={account.address} />
       </label>
-      <MailField label="To" onChange={(to) => updateComposeDraft((value) => ({ ...value, to }))} value={draft.draft.to} />
-      <MailField label="Cc" onChange={(cc) => updateComposeDraft((value) => ({ ...value, cc }))} value={draft.draft.cc} />
-      <MailField label="Bcc" onChange={(bcc) => updateComposeDraft((value) => ({ ...value, bcc }))} value={draft.draft.bcc} />
+      <MailField error={recipientErrors.to} label="To" onChange={(to) => updateRecipient('to', to)} value={draft.draft.to} />
+      <MailField error={recipientErrors.cc} label="Cc" onChange={(cc) => updateRecipient('cc', cc)} value={draft.draft.cc} />
+      <MailField error={recipientErrors.bcc} label="Bcc" onChange={(bcc) => updateRecipient('bcc', bcc)} value={draft.draft.bcc} />
       <MailField label="Subject" onChange={(subject) => updateComposeDraft((value) => ({ ...value, subject }))} value={draft.draft.subject} />
       <label className="grid gap-1 text-sm text-[color:var(--tx2)]">Message
         <textarea aria-label="Message" className="admin-input min-h-44 resize-y" onChange={(event) => updateComposeDraft((value) => ({ ...value, body: event.target.value }))} value={draft.draft.body} />
@@ -315,8 +435,13 @@ export const ConnectedMailCompose = ({
   )
 }
 
-const MailField = ({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) => (
-  <label className="grid gap-1 text-sm text-[color:var(--tx2)]">{label}
-    <input aria-label={label} className="admin-input" onChange={(event) => onChange(event.target.value)} value={value} />
-  </label>
+const MailField = ({ error, label, onChange, value }: {
+  error?: string
+  label: string
+  onChange: (value: string) => void
+  value: string
+}) => (
+  <FormField error={error} label={label} required={label === 'To'}>
+    <Input aria-label={label} onChange={(event) => onChange(event.target.value)} value={value} />
+  </FormField>
 )

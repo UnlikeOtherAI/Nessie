@@ -49,8 +49,9 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Search a connected mailbox and return matching messages with sender, '
       + 'subject, date and UID. Every field narrows the search and they combine, '
-      + 'so prefer a precise search over listing everything. Omit all of them to '
-      + 'get the most recent mail.',
+      + 'so prefer a precise search over listing everything. Searches inspect at '
+      + 'most the newest 2,000 messages; a notice says when older matches may exist. '
+      + 'Omit all fields to get the most recent mail.',
     category: 'email-calendar',
     id: MAILBOX_SEARCH_TOOL_ID,
     label: 'Search Mailbox',

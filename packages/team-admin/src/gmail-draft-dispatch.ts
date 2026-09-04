@@ -131,6 +131,8 @@ export const dispatchClaimedDraft = async (
       bcc: captured.bcc,
       subject: captured.subject,
       body: captured.body,
+      ...(captured.inReplyTo ? { inReplyTo: captured.inReplyTo } : {}),
+      ...(captured.references.length > 0 ? { references: captured.references } : {}),
     }, captured.threadId ?? row.providerThreadId ?? undefined)
   } catch (error) {
     await prisma.gmailDraftAction.updateMany({

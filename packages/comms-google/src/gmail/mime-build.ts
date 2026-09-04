@@ -194,6 +194,9 @@ export const canonicalDraftFingerprintInput = (message: {
   bcc?: readonly string[]
   subject: string
   body: string
+  inReplyTo?: string
+  references?: readonly string[]
+  threadId?: string
   attachmentIds?: readonly string[]
 }): string => {
   const addresses = (values: readonly string[] | undefined): string[] =>
@@ -204,6 +207,9 @@ export const canonicalDraftFingerprintInput = (message: {
     bcc: addresses(message.bcc),
     subject: message.subject.trim(),
     body: message.body,
+    inReplyTo: message.inReplyTo?.trim() ?? '',
+    references: (message.references ?? []).map((value) => value.trim()),
+    threadId: message.threadId ?? '',
     attachmentIds: [...(message.attachmentIds ?? [])].sort(),
   })
 }
