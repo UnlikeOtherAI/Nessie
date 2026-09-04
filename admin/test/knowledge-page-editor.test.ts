@@ -11,6 +11,8 @@ const workspace = read('KnowledgeWorkspace.tsx')
 
 test('the page editor is a borderless writing canvas with descriptive placeholders', () => {
   assert.match(editor, /placeholder="Give this page a title…"/)
+  assert.match(editor, /text-\[2\.925rem\]/)
+  assert.match(editor, /sm:text-\[3\.9rem\]/)
   assert.match(editor, /placeholder="Start writing…"/)
   assert.match(editor, /placeholder="Add labels, separated by commas"/)
   assert.doesNotMatch(editor, /label="Title"|label="Summary"|label="Body"/)
