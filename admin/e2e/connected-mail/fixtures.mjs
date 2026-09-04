@@ -134,9 +134,15 @@ export const createMailFixtures = () => {
     if (pathname.endsWith('/threads/thread-1') && pathname.startsWith('/api/mail/accounts/')) return json(conversation)
     if (pathname.endsWith('/threads/thread-2') && pathname.startsWith('/api/mail/accounts/')) return json({ ...conversation, id: 'thread-2' })
     if (pathname === '/api/gmail/drafts/draft-doorway') return json({
-      bcc: [], body: 'Prepared response', cc: [], id: 'draft-doorway', subject: 'Prepared reply', to: ['casey@acme.example'],
+      attachments: [], bcc: [], body: 'Prepared response', cc: [], contentFingerprint: 'fingerprint-doorway',
+      id: 'draft-doorway', revision: 1, state: 'draft', subject: 'Prepared reply', to: ['casey@acme.example'],
     })
-    if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') return json({ state: 'cancelled' })
+    if (pathname === '/api/gmail/drafts/draft-created' && method === 'GET') return json({
+      attachments: [], bcc: [], body: 'Thanks — I will take this from here.', cc: [],
+      contentFingerprint: 'fingerprint-1', id: 'draft-created', revision: 1, state: 'draft',
+      subject: 'Re: Launch checklist', to: ['casey@acme.example'],
+    })
+    if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') return json({ state: 'draft' })
     if (pathname.endsWith('/drafts') && pathname.startsWith('/api/mail/accounts/') && method === 'POST') return json({
       contentFingerprint: 'fingerprint-1', id: 'draft-created', status: 'draft',
     })
