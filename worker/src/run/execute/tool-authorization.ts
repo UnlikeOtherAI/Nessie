@@ -194,12 +194,18 @@ export const authorizeToolExecution = async (
   auth: ToolAuthorizationContext,
   hooks: ToolAuthorizationHooks,
 ): Promise<ToolAuthorizationDecision> => {
+  const toolActorContext = buildToolActorContext(baseActorContext, context, toolName)
+  const emitAudit: ToolAuthorizationAuditEmitter =
+    hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
   let canonicalArgs: Record<string, unknown>
   try {
     canonicalArgs = parseEmailAccountToolArgs(toolName, args)
   } catch {
     // These are credential-boundary tools. An unrecognised field can be a
     // password or authorization code, so it must not reach any durable sink.
+    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+      source: 'worker_tool_authorization',
+    }, 'invalid_tool_input')
     return {
       decision: 'deny',
       result: {
@@ -211,9 +217,6 @@ export const authorizeToolExecution = async (
       },
     }
   }
-  const toolActorContext = buildToolActorContext(baseActorContext, context, toolName)
-  const emitAudit: ToolAuthorizationAuditEmitter =
-    hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
 
   if (await hooks.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
     return {

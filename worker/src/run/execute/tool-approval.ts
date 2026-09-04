@@ -201,14 +201,21 @@ export const createToolApprovalRequest = async (
     toolName: string
   },
 ): Promise<{ id: string }> => {
+  const argsHash = hashJsonValue(input.args)
   const existing = await prisma.approvalRequest.findFirst({
-    where: { runId: input.context.run.id, toolCallId: input.toolCallId }, select: { id: true },
+    where: { runId: input.context.run.id, toolCallId: input.toolCallId },
+    select: { argsHash: true, id: true, toolName: true },
   })
-  if (existing) return existing
+  if (existing) {
+    if (existing.argsHash !== argsHash || existing.toolName !== input.toolName) {
+      throw new Error('A tool-call id was reused with a different action or arguments.')
+    }
+    return { id: existing.id }
+  }
   const data = {
     action: 'tool.invoke',
     agentId: input.context.agent.id,
-    argsHash: hashJsonValue(input.args),
+    argsHash,
     channelId: input.context.channel.id,
     context: {
       approvalActionType: input.approvalActionType ?? null,
@@ -245,9 +252,13 @@ export const createToolApprovalRequest = async (
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
     const raced = await prisma.approvalRequest.findFirst({
-      where: { runId: input.context.run.id, toolCallId: input.toolCallId }, select: { id: true },
+      where: { runId: input.context.run.id, toolCallId: input.toolCallId },
+      select: { argsHash: true, id: true, toolName: true },
     })
     if (!raced) throw error
-    return raced
+    if (raced.argsHash !== argsHash || raced.toolName !== input.toolName) {
+      throw new Error('A tool-call id was reused with a different action or arguments.')
+    }
+    return { id: raced.id }
   }
 }

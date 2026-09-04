@@ -2,9 +2,9 @@ import {
   MailboxAccessError,
   markMailboxNeedsReauthorization,
   mailboxConnectionFailureMessage,
+  mailboxConnectionTestFailure,
   openMailboxEndpoints,
   resolveMailboxForToolCall,
-  isCredentialRejection,
   mailboxDialOptions,
   type ReachableMailbox,
 } from '@nessie/team-admin'
@@ -101,16 +101,23 @@ const runAgainstMailbox = async <T>(
   try {
     return await work()
   } catch (error) {
-    if (isCredentialRejection(error)) {
-      const detail = mailboxConnectionFailureMessage('credential_rejected')
+    const failure = mailboxConnectionTestFailure(error)
+    const detail = mailboxToolFailureMessage(error)
+    if (failure === 'credential_rejected') {
       await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id)
       throw new Error(
         `${detail} The mailbox needs reconnecting from the Integrations page before I can use it.`,
       )
     }
-    throw error
+    // Protocol error text is controlled by the remote mail server. Only the
+    // structural diagnosis may enter the model's tool result.
+    throw new Error(detail)
   }
 }
+
+/** Fixed model-visible copy for a failure returned by a remote mail server. */
+export const mailboxToolFailureMessage = (error: unknown): string =>
+  mailboxConnectionFailureMessage(mailboxConnectionTestFailure(error))
 
 export const runMailboxSearchTool = async (
   context: BuiltinToolRuntimeContext,

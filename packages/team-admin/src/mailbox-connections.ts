@@ -181,7 +181,7 @@ const assertTeamInOrganization = async (
     where: { id: teamId, project: { organizationId } },
   })
   if (!team) {
-    throw new MailboxConnectionError('team_not_found', 'That team is not in this team.')
+    throw new MailboxConnectionError('team_not_found', 'That team is not in this organisation.')
   }
 }
 
@@ -461,7 +461,7 @@ export const setMailboxAgentAccess = async (
     },
   })
   if (!agent) {
-    throw new MailboxConnectionError('agent_not_found', 'That agent is not in this team.')
+    throw new MailboxConnectionError('agent_not_found', 'That agent is not in this organisation.')
   }
   await prisma.mailboxConnectionAgentAccess.upsert({
     create: {

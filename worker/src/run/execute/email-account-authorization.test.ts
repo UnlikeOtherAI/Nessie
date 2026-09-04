@@ -78,7 +78,19 @@ const fakePrisma = () => {
         approvals.push(approval)
         return { id: approval.id }
       },
-      findFirst: async () => null,
+      findFirst: async ({ where }: { where: { runId: string; toolCallId: string } }) => {
+        const approval = approvals.find(
+          (candidate) => candidate['runId'] === where.runId
+            && candidate['toolCallId'] === where.toolCallId,
+        )
+        return approval
+          ? {
+              argsHash: approval['argsHash'],
+              id: approval['id'],
+              toolName: approval['toolName'],
+            }
+          : null
+      },
     },
     policyRule: { findMany: async () => [] },
   } as unknown as PrismaClient
@@ -127,7 +139,7 @@ test('email lifecycle arguments are strict before any durable authorization work
 
   assert.equal(decision.decision, 'deny')
   assert.equal(state.approvals.length, 0)
-  assert.equal(auditCalls.length, 0)
+  assert.equal(auditCalls.length, 1)
   assert.doesNotMatch(JSON.stringify(decision), new RegExp(secret))
 })
 
@@ -173,4 +185,23 @@ test('connect defaults scope while rejecting unrecognised credential fields', ()
   assert.throws(
     () => parseEmailAccountToolArgs('email_account_connect', { oauthCode: 'secret' }),
   )
+})
+
+test('an approval cannot be reused for different arguments under one tool-call id', async () => {
+  const state = fakePrisma()
+  const auditCalls: number[] = []
+  const authorize = (accountId: string) => authorizeToolExecution(
+    state.prisma,
+    actorContext(),
+    runContext(),
+    EMAIL_ACCOUNT_DISCONNECT_TOOL_ID,
+    { accountId, accountKind: 'mailbox' },
+    'reused-call',
+    authorizationContext(),
+    hooks(auditCalls),
+  )
+
+  assert.equal((await authorize(IDS.account)).decision, 'suspend')
+  await assert.rejects(() => authorize(IDS.agent), /different action or arguments/)
+  assert.equal(state.approvals.length, 1)
 })
