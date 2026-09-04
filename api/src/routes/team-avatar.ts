@@ -30,10 +30,9 @@ import type { RouteDeps } from './types.js'
  * `/org/*` family, where UOA re-resolves their live membership and their
  * `teams.manage` capability, and where an organisation founded on another
  * UOA-integrated domain is reachable at all. `/domain/*` is the fallback for a
- * caller with no assertable UOA session, and for the picker's reads of a
- * team other than the one the session is standing in — UOA pins an
- * assertion to exactly the asserted team, so a foreign team id can never
- * ride one.
+ * caller with no assertable UOA session. A session for the same organisation
+ * may read another team shown in the picker: UOA re-resolves whether that
+ * person may access the exact target team named by the route.
  *
  * `/domain/*` is full system trust for the domain: those mutations apply **no**
  * role check of their own, and UOA requires the calling product to gate first.
@@ -70,7 +69,7 @@ const requireTeam = async (
 
 /**
  * Relay credentials for one team: the caller's subject assertion when
- * their UOA session is for exactly this team, and nothing extra otherwise.
+ * their UOA session belongs to this organisation, and nothing extra otherwise.
  *
  * `withUoaRosterSubjectAssertion` throws when the session does not match, which
  * here is not a refusal — it means only the `/domain/*` route is available, and
@@ -186,10 +185,9 @@ export const registerTeamAvatarRoutes = (
     if (!team) {
       return sendAvatarNotFound(reply, NO_TEAM_MESSAGE)
     }
-    // The picker reads teams the session is not standing in, so an
-    // assertion is only ever available for the active one. `relayCredentials`
-    // supplies it there and falls back to `/domain/*` for the rest, which the
-    // switcher already backstops with UOA's public team image.
+    // The picker can read another team in the same UOA organisation.
+    // `relayCredentials` asserts the person there; UOA authorizes the exact
+    // target team rather than trusting the session's active-team accident.
     return relayTeamAvatar(
       request,
       reply,

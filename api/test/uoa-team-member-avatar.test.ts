@@ -132,26 +132,24 @@ const forbidUpstream = (message: string) => ({
   resolveHost: async () => ['93.184.216.34'],
 })
 
-const teamDetail = {
-  id: externalTeamId,
-  name: 'Design',
-  members: [
-    { userId: 'usr_ada', teamRole: 'owner' },
-    { userId: 'usr_grace', teamRole: 'member' },
-  ],
-}
-
-const orgMembers = {
+const teamMembers = {
   data: [
-    { userId: 'usr_ada', email: 'ada@acme.test', name: 'Ada Lovelace', role: 'owner' },
-    { userId: 'usr_grace', email: 'grace@acme.test', name: 'Grace Hopper', role: 'member' },
+    {
+      userId: 'usr_ada',
+      teamRole: 'owner',
+      identity: { displayName: 'Ada Lovelace', email: 'ada@acme.test' },
+    },
+    {
+      userId: 'usr_grace',
+      teamRole: 'member',
+      identity: { displayName: 'Grace Hopper', email: 'grace@acme.test' },
+    },
   ],
 }
 
 const isAvatarCall = (call: StubCall): boolean => call.url.includes('/domain/users/')
 
-const rosterResponse = (call: StubCall): Response =>
-  json(call.url.includes('/teams/') ? teamDetail : orgMembers)
+const rosterResponse = (): Response => json(teamMembers)
 
 const makeApp = (
   actorContext: AuthorizedActionContext,
@@ -182,7 +180,7 @@ test('a roster member’s avatar is relayed to any member of the team', async ()
           ? new Response(PNG_BYTES, {
             headers: { 'content-type': 'image/png', 'x-uoa-avatar-source': 'uploaded' },
           })
-          : rosterResponse(call))),
+          : rosterResponse())),
     )
 
     try {
@@ -217,7 +215,7 @@ test('a subject outside the roster is a 404 and never reaches the avatar endpoin
       relayDeps(calls, (call) => {
         // Side one: the relay must not be dialled at all for a foreign subject.
         if (isAvatarCall(call)) assert.fail(`a non-member subject reached ${call.url}`)
-        return rosterResponse(call)
+        return rosterResponse()
       }),
     )
 
@@ -230,9 +228,16 @@ test('a subject outside the roster is a 404 and never reaches the avatar endpoin
       assert.equal(response.statusCode, 404)
       assert.equal(response.json().error.code, 'AVATAR_NOT_FOUND')
       assert.equal(response.headers['cache-control'], 'private, max-age=300')
-      // Side two: only the two roster reads were made.
+      // Side two: only the one exact-team roster page was read.
       assert.deepEqual(calls.filter(isAvatarCall), [])
-      assert.equal(calls.length, 2)
+      assert.equal(calls.length, 1)
+      const rosterUrl = new URL(calls[0]?.url ?? '')
+      assert.equal(
+        rosterUrl.pathname,
+        `/org/organisations/${externalOrgId}/teams/${externalTeamId}/members`,
+      )
+      assert.equal(rosterUrl.searchParams.get('status'), 'ACTIVE')
+      assert.equal(rosterUrl.searchParams.get('limit'), '100')
     } finally {
       await app.close()
     }
@@ -247,7 +252,7 @@ test('the roster read behind the check is asked once per team, not once per row'
       relayDeps(calls, (call) =>
         (isAvatarCall(call)
           ? new Response(PNG_BYTES, { headers: { 'content-type': 'image/png' } })
-          : rosterResponse(call))),
+          : rosterResponse())),
     )
 
     try {
@@ -258,8 +263,8 @@ test('the roster read behind the check is asked once per team, not once per row'
 
       for (const response of responses) assert.equal(response.statusCode, 200)
       assert.equal(calls.filter(isAvatarCall).length, 2)
-      // Two roster calls total (team + organisation), shared by both rows.
-      assert.equal(calls.filter((call) => !isAvatarCall(call)).length, 2)
+      // One exact-team roster page, shared by both avatar rows.
+      assert.equal(calls.filter((call) => !isAvatarCall(call)).length, 1)
     } finally {
       await app.close()
     }
@@ -319,7 +324,7 @@ test('an avatar upstream failure is a 502, not a missing picture', async () => {
     const app = makeApp(
       actorContextFor(['member']),
       relayDeps(calls, (call) =>
-        (isAvatarCall(call) ? new Response('boom', { status: 503 }) : rosterResponse(call))),
+        (isAvatarCall(call) ? new Response('boom', { status: 503 }) : rosterResponse())),
     )
 
     try {
@@ -372,7 +377,7 @@ test('a subject UOA has no picture for falls back to initials via a cacheable 40
     const app = makeApp(
       actorContextFor(['member']),
       relayDeps(calls, (call) =>
-        (isAvatarCall(call) ? new Response(null, { status: 404 }) : rosterResponse(call))),
+        (isAvatarCall(call) ? new Response(null, { status: 404 }) : rosterResponse())),
     )
 
     try {
