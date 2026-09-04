@@ -383,12 +383,18 @@ export const KnowledgeProvider = ({
       return
     }
 
-    const parentPageId = editor?.mode === 'create' ? editor.parentPageId : null
     const created = await createPageMutation.mutateAsync(input)
+    const parentPageId = input.parentPageId ?? null
     if (parentPageId) {
-      const depth = pagePath.indexOf(parentPageId)
-      const nextPath = depth >= 0 ? [...pagePath.slice(0, depth + 1), created.id] : [created.id]
-      setPagePath(nextPath)
+      const parentPath: string[] = []
+      const visited = new Set<string>()
+      let current = pagesById.get(parentPageId)
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id)
+        parentPath.unshift(current.id)
+        current = current.parentPageId ? pagesById.get(current.parentPageId) : undefined
+      }
+      setPagePath([...parentPath, created.id])
     } else {
       setPagePath([created.id])
     }
