@@ -263,12 +263,12 @@ export const runExecutionAgentLoop = async (
 
   const executeAuthorizedTool = async (
     toolName: string,
-    args: Record<string, unknown>,
     toolCallId: string,
     authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
   ) => {
+    const canonicalArgs = authorization.args
     if (toolName === BUILTIN_TOOL_SPEC_NAME) {
-      return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+      return executeBuiltinToolSpec(canonicalArgs, allowedBuiltinDefinitions)
     }
     if (toolName === 'react') {
       input.onReacted?.()
@@ -276,7 +276,7 @@ export const runExecutionAgentLoop = async (
     if (toolName === 'delegate') {
       if (!delegateGate.tryAcquire()) {
         return {
-          inputSummary: summarizeToolInput(args),
+          inputSummary: summarizeToolInput(canonicalArgs),
           output: delegateGate.overLimitMessage(),
           success: false,
         }
@@ -284,7 +284,7 @@ export const runExecutionAgentLoop = async (
       // Created here rather than inside runDelegate so the authorization
       // gate can recognize the sub-agent view's exposed MCP names.
       const subAgentMcpView = input.mcpToolset.createView()
-      const result = await runDelegate(args, {
+      const result = await runDelegate(canonicalArgs, {
         mcpView: subAgentMcpView,
         mcpToolset: input.mcpToolset,
         runInference: input.inference.runUtility,
@@ -335,20 +335,20 @@ export const runExecutionAgentLoop = async (
       }
     }
     if (mcpExposedNames.has(toolName)) {
-      return mcpView.dispatch(toolName, args, toolCallId)
+      return mcpView.dispatch(toolName, canonicalArgs, toolCallId)
     }
     if (input.executorToolset.handledNames.has(toolName)) {
-      const result = await input.executorToolset.dispatch(toolName, args, toolCallId)
+      const result = await input.executorToolset.dispatch(toolName, canonicalArgs, toolCallId)
       if (toolName === 'executor.browser.act' || toolName === 'executor.command.run') {
         const metadata = toolName === 'executor.browser.act'
           ? {
-              action: typeof args.action === 'string' ? args.action : 'unknown',
-              ...(typeof args.nodeId === 'number' ? { nodeId: args.nodeId } : {}),
+              action: typeof canonicalArgs.action === 'string' ? canonicalArgs.action : 'unknown',
+              ...(typeof canonicalArgs.nodeId === 'number' ? { nodeId: canonicalArgs.nodeId } : {}),
               runId: context.run.id,
               toolCallId,
             }
           : {
-              program: typeof args.program === 'string' ? args.program : 'unknown',
+              program: typeof canonicalArgs.program === 'string' ? canonicalArgs.program : 'unknown',
               runId: context.run.id,
               toolCallId,
             }
@@ -366,17 +366,16 @@ export const runExecutionAgentLoop = async (
     }
     return executeBuiltinTool(
       toolName,
-      args,
+      canonicalArgs,
       buildBuiltinCtx(authorization.toolActorContext, toolCallId),
       input.stubbedBuiltinToolIds,
     )
   }
 
   const suspensionResult = (
-    args: Record<string, unknown>,
     authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
   ) => ({
-    inputSummary: summarizeToolInput(args),
+    inputSummary: summarizeToolInput(authorization.args),
     output: 'Tool execution is waiting for human approval.',
     pendingApproval: {
       approvalId: authorization.approval.id,
@@ -392,9 +391,9 @@ export const runExecutionAgentLoop = async (
       return authorization.result
     }
     if (authorization.decision === 'suspend') {
-      return suspensionResult(args, authorization)
+      return suspensionResult(authorization)
     }
-    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+    return executeAuthorizedTool(toolName, toolCallId, authorization)
   }
 
   const executePreparedTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
@@ -410,7 +409,7 @@ export const runExecutionAgentLoop = async (
     if (authorization.decision === 'suspend') {
       throw new Error('Prepared tool authorization unexpectedly requested approval.')
     }
-    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+    return executeAuthorizedTool(toolName, toolCallId, authorization)
   }
 
   const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {

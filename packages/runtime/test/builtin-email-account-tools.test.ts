@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   BUILTIN_TOOL_DEFINITIONS,
   EMAIL_ACCOUNT_TOOL_DEFINITIONS,
+  parseEmailAccountToolArgs,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '../src/index.js'
 
@@ -49,4 +50,16 @@ test('the connection tool cannot accept a secret through model arguments', () =>
     assert.equal(connect?.parameters.properties[forbidden], undefined)
   }
   assert.match(connect?.description ?? '', /never ask them to paste an email password/)
+})
+
+test('lifecycle schemas are strict and canonicalize the address-first default', () => {
+  assert.ok(EMAIL_ACCOUNT_TOOL_DEFINITIONS.every((tool) => tool.inputSchema != null))
+  assert.deepEqual(parseEmailAccountToolArgs('email_account_list', {}), {})
+  assert.deepEqual(parseEmailAccountToolArgs('email_account_connect', {}), { scope: 'user' })
+  assert.throws(() => parseEmailAccountToolArgs('email_account_list', { password: 'nope' }))
+  assert.throws(() => parseEmailAccountToolArgs('email_account_connect', { oauthCode: 'nope' }))
+  assert.throws(() => parseEmailAccountToolArgs('email_account_check', {
+    accountId: 'not-an-id',
+    accountKind: 'mailbox',
+  }))
 })

@@ -77,6 +77,7 @@ const emptyMcpToolset = (): McpToolset =>
   }) as unknown as McpToolset
 
 const allowAll: () => Promise<ToolAuthorizationDecision> = async () => ({
+  args: {},
   decision: 'allow',
   toolActorContext: {
     actor: { actorType: 'user', actorId: 'user-1' },
