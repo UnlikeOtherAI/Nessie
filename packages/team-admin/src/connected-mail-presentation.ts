@@ -1,7 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 import type { ConnectedMailSource } from '@nessie/schemas'
 
-import { MailboxAccessError, resolveMailboxForToolCall } from './mailbox-connection-access.js'
+import {
+  MailboxAccessError,
+  listReachableMailboxes,
+  type ReachableMailbox,
+} from './mailbox-connection-access.js'
 
 /**
  * Authorization for an agent-created doorway into the connected-mail surface.
@@ -40,17 +44,57 @@ const activeMemberFor = async (
   return member
 }
 
-const assertSharedMailboxViewer = async (
+const isSharedMailboxViewer = async (
   prisma: PrismaClient,
   input: { teamId: string; userId: string },
-): Promise<void> => {
+): Promise<boolean> => {
   const membership = await prisma.teamMember.findUnique({
     select: { id: true },
     where: { teamId_userId: { teamId: input.teamId, userId: input.userId } },
   })
-  if (!membership) {
+  return Boolean(membership)
+}
+
+const resolvePresentationMailbox = async (
+  prisma: PrismaClient,
+  input: {
+    accountId?: string
+    agentId: string
+    effectiveUserId: string
+    organizationId: string
+  },
+): Promise<ReachableMailbox> => {
+  const candidates = await listReachableMailboxes(prisma, input)
+  const visible: ReachableMailbox[] = []
+  for (const candidate of candidates) {
+    if (candidate.scope === 'user') {
+      visible.push(candidate)
+      continue
+    }
+    const teamId = candidate.connection.teamId
+    if (teamId && await isSharedMailboxViewer(prisma, { teamId, userId: input.effectiveUserId })) {
+      visible.push(candidate)
+    }
+  }
+  if (visible.length === 0) {
     throw new ConnectedMailPresentationError('That mail account is not available to you.')
   }
+  if (input.accountId) {
+    const named = visible.find((candidate) => candidate.connection.id === input.accountId)
+    if (!named) throw new ConnectedMailPresentationError('That mail account is not available to you.')
+    return named
+  }
+  if (visible.length > 1) {
+    const options = visible.map((candidate) =>
+      `${candidate.connection.label} (${candidate.connection.id})`).join('; ')
+    throw new MailboxAccessError(
+      'AMBIGUOUS_MAILBOX',
+      `I can reach more than one mailbox, so tell me which to use by passing connectionId: ${options}.`,
+    )
+  }
+  const only = visible[0]
+  if (!only) throw new ConnectedMailPresentationError('That mail account is not available to you.')
+  return only
 }
 
 const resolveMailboxPresentationAccess = async (
@@ -68,26 +112,16 @@ const resolveMailboxPresentationAccess = async (
       'I can only open a connected mailbox for the person who is asking right now.',
     )
   }
-  const mailbox = await resolveMailboxForToolCall(prisma, {
-    agentId: input.agentId,
-    connectionId: input.accountId,
-    effectiveUserId: input.effectiveUserId,
-    organizationId: input.organizationId,
-  })
   await activeMemberFor(prisma, {
     organizationId: input.organizationId,
     userId: input.effectiveUserId,
   })
-  if (mailbox.scope === 'team') {
-    const teamId = mailbox.connection.teamId
-    if (!teamId) {
-      throw new ConnectedMailPresentationError('That mail account is not available to you.')
-    }
-    await assertSharedMailboxViewer(prisma, {
-      teamId,
-      userId: input.effectiveUserId,
-    })
-  }
+  const mailbox = await resolvePresentationMailbox(prisma, {
+    agentId: input.agentId,
+    accountId: input.accountId,
+    effectiveUserId: input.effectiveUserId,
+    organizationId: input.organizationId,
+  })
   return {
     accountId: mailbox.connection.id,
     basis: mailbox.basis,

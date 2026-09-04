@@ -32,8 +32,12 @@ test('Gmail mail paging preserves the provider cursor and estimate', async () =>
   assert.equal(page.nextCursor, 'google-next-token')
   assert.equal(page.estimate, 4242)
   assert.equal(page.items[0]?.unread, true)
+  assert.equal(page.items[0]?.messageCount, 1)
+  assert.equal(page.items[0]?.subject, 'Hello')
   assert.ok(calls[0]?.includes('pageToken=old-token'))
   assert.ok(calls[0]?.includes('is%3Aunread'))
+  assert.ok(calls[1]?.includes('format=metadata'))
+  assert.equal(calls.some((url) => url.includes('format=full')), false)
 })
 
 test('Gmail conversation sanitizes provider HTML before returning it', async () => {
@@ -70,4 +74,17 @@ test('Gmail conversation clamps provider data to the connected-mail contract', a
   assert.equal(message?.from?.length, 1_000)
   assert.equal(message?.subject.length, 1_000)
   assert.equal(message?.to.length, 100)
+})
+
+test('Gmail preserves quoted display-name recipients and inline filename attachments', async () => {
+  const conversation = await readGmailMailThread(async () => response({ messages: [{
+    id: 'message-1', internalDate: '2000', payload: {
+      filename: 'logo.png', mimeType: 'image/png', body: { data: b64('inline') },
+      headers: [{ name: 'To', value: '"Nessie, Team" <team@example.test>, person@example.test' }],
+    }, threadId: 'thread-1',
+  }] }), 'token', 'thread-1')
+  assert.deepEqual(conversation.messages[0]?.to, [
+    '"Nessie, Team" <team@example.test>', 'person@example.test',
+  ])
+  assert.equal(conversation.messages[0]?.attachments[0]?.filename, 'logo.png')
 })

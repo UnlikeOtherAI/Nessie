@@ -51,10 +51,11 @@ export const MailboxWorkspace = ({
       'grid min-h-0 min-w-0 flex-1 gap-4 px-[var(--page-gutter)] pb-6',
       layout === 'single'
         ? 'grid-rows-[minmax(11rem,2fr)_minmax(0,3fr)]'
-        // The reader owns the majority of a split viewport. A fixed 16rem
-        // list made email bodies unusably narrow beside the app rail at tablet
-        // widths; this remains one shared layout decision for both mail homes.
-        : 'grid-cols-[minmax(13rem,30%)_minmax(0,1fr)]',
+        // The reader owns the majority of a split viewport. The navigation rail
+        // leaves roughly 400px at the narrowest split layout, so an 8rem list
+        // floor preserves a useful 240px+ reader there while still giving the
+        // list 30% on wider screens. Both mail homes share this decision.
+        : 'grid-cols-[minmax(8rem,30%)_minmax(0,1fr)]',
     ].join(' ')}
     data-layout={layout}
     data-testid="mailbox-workspace"

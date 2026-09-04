@@ -32,6 +32,8 @@ test('connected mail compose input refuses line-break recipient and header injec
 
 test('connected mail list paging is bounded and query text is optional', () => {
   assert.deepEqual(ConnectedMailThreadsQuerySchema.parse({}), { pageSize: 25 })
+  assert.equal(ConnectedMailThreadsQuerySchema.parse({ unreadOnly: 'false' }).unreadOnly, false)
+  assert.equal(ConnectedMailThreadsQuerySchema.safeParse({ unreadOnly: '1' }).success, false)
   assert.equal(ConnectedMailThreadsQuerySchema.safeParse({ pageSize: 101 }).success, false)
   assert.equal(ConnectedMailThreadsQuerySchema.safeParse({ query: '   ' }).success, false)
 })

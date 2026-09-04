@@ -1,4 +1,4 @@
-import { sanitizeEmailHtml, htmlToText, buildSnippet, normalizeMessageId } from '@nessie/agent-mail'
+import { sanitizeEmailHtml, buildSnippet, normalizeMessageId } from '@nessie/agent-mail'
 
 import { GMAIL_API_BASE, encodeForm, requestJson, type FetchLike } from '../http.js'
 
@@ -76,8 +76,24 @@ const header = (headers: Header[] | undefined, name: string): string => {
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const recipients = (value: string): string[] =>
-  value.split(',').map((entry) => bounded(entry.trim(), MAX_ADDRESS_CHARS)).filter(Boolean).slice(0, 100)
+/** Commas in an RFC quoted display name are not recipient delimiters. */
+const recipients = (value: string): string[] => {
+  const entries: string[] = []
+  let current = ''
+  let escaped = false
+  let quoted = false
+  for (const character of value) {
+    if (character === '"' && !escaped) quoted = !quoted
+    if (character === ',' && !quoted) {
+      entries.push(current)
+      current = ''
+    } else current += character
+    escaped = character === '\\' && !escaped
+    if (character !== '\\') escaped = false
+  }
+  entries.push(current)
+  return entries.map((entry) => bounded(entry.trim(), MAX_ADDRESS_CHARS)).filter(Boolean).slice(0, 100)
+}
 
 const date = (value: unknown): string | null => {
   const milliseconds = typeof value === 'string' ? Number(value) : NaN
@@ -95,7 +111,8 @@ const collect = (part: Part | undefined, into: {
 }): void => {
   if (!part) return
   const filename = typeof part.filename === 'string' ? part.filename : ''
-  if (filename && typeof part.body?.attachmentId === 'string' && into.attachments.length < MAX_ATTACHMENTS) {
+  if (filename && (typeof part.body?.attachmentId === 'string' || typeof part.body?.data === 'string')
+    && into.attachments.length < MAX_ATTACHMENTS) {
     into.attachments.push({
       contentType: bounded(
         typeof part.mimeType === 'string' && part.mimeType ? part.mimeType : 'application/octet-stream',
@@ -149,6 +166,39 @@ const queryFor = (query: string | undefined, unreadOnly: boolean | undefined): s
   return terms.length > 0 ? terms.join(' ') : undefined
 }
 
+const metadataThreadUrl = (threadId: string): string => {
+  const headers = ['From', 'Subject'].map((name) => `metadataHeaders=${name}`).join('&')
+  return `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}?format=metadata&${headers}`
+}
+
+const hasAttachmentMetadata = (part: Part | undefined): boolean => Boolean(
+  part && (typeof part.filename === 'string' && part.filename.length > 0
+    || (part.parts ?? []).some((child) => hasAttachmentMetadata(child))),
+)
+
+const metadataSummary = (
+  threadId: string,
+  listedSnippet: unknown,
+  rawMessages: unknown[],
+): GmailMailThreadPage['items'][number] | null => {
+  const messages = rawMessages.map((raw) => raw as Message)
+  const newest = [...messages].sort((left, right) =>
+    (date(left.internalDate) ?? '').localeCompare(date(right.internalDate) ?? '')).at(-1)
+  if (!newest) return null
+  return {
+    from: optionalHeader(header(newest.payload?.headers, 'From')),
+    hasAttachments: messages.some((message) => hasAttachmentMetadata(message.payload)),
+    id: threadId,
+    messageCount: messages.length,
+    receivedAt: date(newest.internalDate),
+    snippet: buildSnippet(typeof newest.snippet === 'string'
+      ? newest.snippet
+      : typeof listedSnippet === 'string' ? listedSnippet : ''),
+    subject: bounded(header(newest.payload?.headers, 'Subject') || '(no subject)', MAX_HEADER_CHARS),
+    unread: messages.some((message) => Array.isArray(message.labelIds) && message.labelIds.includes('UNREAD')),
+  }
+}
+
 /** Gmail-native thread paging. Cursors and estimates remain provider semantics. */
 export const listGmailMailThreads = async (
   fetchImpl: FetchLike,
@@ -166,27 +216,25 @@ export const listGmailMailThreads = async (
     { headers: { authorization: `Bearer ${accessToken}` } },
   )
   const listed = body as {
-    threads?: Array<{ id?: unknown }>
+    threads?: Array<{ id?: unknown; snippet?: unknown }>
     nextPageToken?: unknown
     resultSizeEstimate?: unknown
   }
   const items: GmailMailThreadPage['items'] = []
   for (const ref of listed.threads ?? []) {
     if (typeof ref?.id !== 'string') continue
-    const conversation = await readGmailMailThread(fetchImpl, accessToken, ref.id)
-    const newest = conversation.messages.at(-1)
-    if (!newest) continue
-    const rawMessages = conversation.messages
-    items.push({
-      from: newest.from,
-      hasAttachments: rawMessages.some((message) => message.attachments.length > 0),
-      id: ref.id,
-      messageCount: conversation.messageCount,
-      receivedAt: newest.receivedAt,
-      snippet: buildSnippet(newest.bodyFormat === 'html' ? htmlToText(newest.body) : newest.body),
-      subject: newest.subject,
-      unread: rawMessages.some((message) => message.unread),
-    })
+    const { body: metadata } = await requestJson(
+      fetchImpl,
+      'threads.get.metadata',
+      metadataThreadUrl(ref.id),
+      { headers: { authorization: `Bearer ${accessToken}` } },
+    )
+    const summary = metadataSummary(
+      ref.id,
+      ref.snippet,
+      (metadata as { messages?: unknown[] }).messages ?? [],
+    )
+    if (summary) items.push(summary)
   }
   return {
     ...(typeof listed.nextPageToken === 'string' ? { nextCursor: listed.nextPageToken } : {}),
