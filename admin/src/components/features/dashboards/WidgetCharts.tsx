@@ -38,6 +38,7 @@ import {
   formatNumber,
   toneVars,
 } from './widget-format'
+import { aggregateCategories, sortCategories } from './dashboard-chart-data'
 
 type TimeseriesWidget = z.infer<typeof TimeseriesWidgetSchema>
 type BarWidget = z.infer<typeof BarWidgetSchema>
@@ -50,7 +51,7 @@ const gridStroke = 'var(--sep)'
  * pipeline; this one renders them as React text nodes with our own formatting,
  * so an external string can never become markup inside a tooltip.
  */
-const WidgetTooltip = ({
+export const WidgetTooltip = ({
   active,
   payload,
   label,
@@ -167,35 +168,12 @@ export const BarWidgetView = ({
   const { binding, options, presentation, format } = widget
   const primary = binding.series[0]
 
-  // Aggregate by category first. A bar chart answers "how does it split across
-  // categories", so plotting one bar per ROW would repeat a category as many
-  // times as it appears in the data — which is what a naive pass-through does.
-  const grouped = new Map<string, Record<string, number | string>>()
-  for (const row of dataset.rows) {
-    const category = String(row[binding.category] ?? '—')
-    const bucket = grouped.get(category) ?? { [binding.category]: category }
-    for (const series of binding.series) {
-      const value = row[series.key]
-      if (typeof value === 'number') {
-        bucket[series.key] = Number(bucket[series.key] ?? 0) + value
-      }
-    }
-    grouped.set(category, bucket)
-  }
-
-  const sorted = [...grouped.values()]
-  if (binding.sort !== 'source' && primary) {
-    sorted.sort((left, right) => {
-      if (binding.sort === 'category') {
-        return String(left[binding.category] ?? '').localeCompare(
-          String(right[binding.category] ?? ''),
-        )
-      }
-      const a = Number(left[primary.key] ?? 0)
-      const b = Number(right[primary.key] ?? 0)
-      return binding.sort === 'value_asc' ? a - b : b - a
-    })
-  }
+  // Plotting one bar per input ROW would repeat a category as many times as it
+  // appears in the source. Aggregation is shared with the donut renderer.
+  const grouped = aggregateCategories(dataset, binding.category, binding.series.map((series) => series.key))
+  const sorted = primary
+    ? sortCategories(grouped, binding.category, primary.key, binding.sort)
+    : grouped
   const rows = sorted.slice(0, binding.limit)
   const horizontal = options.orientation === 'horizontal'
 
