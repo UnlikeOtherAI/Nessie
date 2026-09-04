@@ -31,6 +31,11 @@ UI fork.
 - Ubuntu is available through WSLg for development and window smoke tests. A
   real Ubuntu desktop remains required before calling the packaged install path
   supported for customers.
+- WSLg cannot own a Windows browser's `nessie://` callback. The Linux login
+  screen therefore exposes the existing, validated session-import surface as
+  **Use Windows session**; it accepts only a same-server short-lived access
+  token copied from **Account → Debug** in the signed-in Windows app. Native
+  Linux browsers continue to use the normal callback registration.
 
 ## Delivery phases
 

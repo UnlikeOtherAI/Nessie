@@ -19,21 +19,28 @@ test('authenticated export and native login import reuse one session debug surfa
   assert.match(dialog, /aria-modal="true"/)
   assert.match(dialog, /role="dialog"/)
   assert.match(dialog, /role="alert"/)
+  assert.match(dialog, /\{\/\* Not the shared `Dialog`:/)
+  assert.doesNotMatch(dialog, />\s*\/\/ Not the shared `Dialog`:/)
 })
 
-test('the import doorway is native-login-only, safe-area pinned, and clears pasted JSON', () => {
+test('the import doorway is reachable from mobile and Linux login without forking the dialog', () => {
   const loginPage = readSource('../src/pages/LoginPage.tsx')
   const importButton = readSource('../src/components/shared/LoginSessionImportButton.tsx')
 
   assert.match(
     loginPage,
-    /showSessionImport = sessionState === 'unauthenticated' && isReactNativeWebView\(\)/,
+    /showMobileSessionImport = sessionState === 'unauthenticated' && isReactNativeWebView\(\)/,
   )
+  assert.match(loginPage, /desktopPlatform\(\) === 'linux'/)
+  assert.match(loginPage, /label="Use Windows session"/)
+  assert.match(loginPage, /variant="inline"/)
   assert.match(loginPage, /LoginSessionImportButton onOpenChange=\{setSessionImportOpen\}/)
   assert.match(loginPage, /paddingRight: 'calc\(3\.5rem \+ env\(safe-area-inset-right, 0px\)\)'/)
   assert.match(importButton, /bottom: 'calc\(env\(safe-area-inset-bottom, 0px\) \+ 1rem\)'/)
   assert.match(importButton, /right: 'calc\(env\(safe-area-inset-right, 0px\) \+ 1rem\)'/)
+  assert.match(importButton, /variant === 'floating'/)
   assert.match(importButton, /'fixed z-40 flex h-11 w-11/)
+  assert.match(importButton, /'flex w-full items-center justify-center gap-2 rounded-2xl'/)
   assert.match(importButton, /setRawDump\(''\)/)
   assert.doesNotMatch(importButton, /!open \? \(/)
 })
