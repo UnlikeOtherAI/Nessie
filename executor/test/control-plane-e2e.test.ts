@@ -23,7 +23,7 @@ const EXECUTOR_ID = '00000000-0000-4000-8000-000000000601'
 const ENROLLMENT_ID = '00000000-0000-4000-8000-000000000602'
 const BINDING_ID = '00000000-0000-4000-8000-000000000603'
 const RUN_ID = '00000000-0000-4000-8000-000000000604'
-const CHALLENGE = 'control-plane-e2e-challenge'
+const CHALLENGE = 'control-plane-e2e-challenge-0000000000000000'
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 
 const sha256 = (value: string): string =>
@@ -126,7 +126,7 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
       if (path === '/api/executor-daemon/challenge') {
         assert.equal(body.executorId, EXECUTOR_ID)
         daemonChallengeCounter += 1
-        daemonChallenge = `daemon-challenge-${daemonChallengeCounter}`
+        daemonChallenge = `${'d'.repeat(80)}.${String(daemonChallengeCounter).padStart(64, '0')}`
         send(response, { challenge: daemonChallenge, expiresAt: '2099-09-04T00:00:00.000Z' })
         return
       }

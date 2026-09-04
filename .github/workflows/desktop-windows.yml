@@ -302,7 +302,11 @@ jobs:
       # denied, and proves writes remain in the daemon's COW state. Running it
       # here also exercises the Windows DACL helper the desktop just packaged.
       - name: Executor control-plane and folder-boundary end to end
-        run: node --test --import tsx executor/test/control-plane-e2e.test.ts
+        shell: pwsh
+        run: |
+          $env:NESSIE_EXECUTOR_PACKAGED_CLI = '1'
+          & 'desktop/src-tauri/resources/executor-runtime/node.exe' `
+            --test --import tsx executor/test/control-plane-e2e.test.ts
 
       # Tauri signs what it bundles; the executor package is not a Tauri artifact.
       # The build script signs the three binaries it produces *before* staging
