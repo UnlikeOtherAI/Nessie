@@ -62,7 +62,12 @@ export const ConnectedMailCompose = ({
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
   useEffect(() => {
-    if (!providerDraft.data || draft.restored || hydratedDraftRef.current === providerDraft.data.id) return
+    if (
+      !providerDraft.data
+      || providerDraft.data.id !== gmailDraftId
+      || draft.restored
+      || hydratedDraftRef.current === providerDraft.data.id
+    ) return
     hydratedDraftRef.current = providerDraft.data.id
     draft.setDraft({
       bcc: providerDraft.data.bcc.join(', '), body: providerDraft.data.body,
@@ -102,7 +107,9 @@ export const ConnectedMailCompose = ({
 
   if (sent) return (
     <section className="px-[var(--page-gutter)] py-6" data-testid="connected-mail-sent">
-      <p aria-live="polite" className="text-sm text-[color:var(--tx)]">Your email is queued to send.</p>
+      <p aria-live="polite" className="text-sm text-[color:var(--tx)]">
+        {address.source === 'gmail' ? 'Your email is queued to send.' : 'Your email was sent.'}
+      </p>
       {address.source === 'gmail' && sent.id ? <button className="mt-3 admin-button admin-button-secondary" disabled={undo.isPending} onClick={() => void undo.mutateAsync(sent.id).then(onSent)} type="button">Undo send</button> : null}
       <button className="ml-2 mt-3 admin-button admin-button-primary" onClick={onSent} type="button">Back to mail</button>
     </section>
