@@ -409,10 +409,11 @@ reported as such rather than counted as database coverage.
 - Microsoft mail before that connector exposes a mail capability;
 - a new email-specific chat-card renderer or an agent bypass of send approval.
 
-The first IMAP implementation also has explicit bounded-reader limits. It does
-not yet request `BODYSTRUCTURE` or portable partial body sections, so list rows
-do not claim snippets or attachment presence from header-only results. A full
-message literal is refused above 1 MiB, a returned conversation is refused
-above 2 MiB, and attachment download remains out of scope. Those refusals are
-preferable to unbounded buffering but are not a substitute for a future
-BODYSTRUCTURE/partial-fetch implementation.
+The IMAP reader requests `BODYSTRUCTURE` with its header fetches, so list rows
+can accurately mark attachments without downloading them. Conversation reads
+use portable `BODY.PEEK[section]<0.n>` text-section fetches (256 KiB per
+section), decode and sanitize the selected plain-text or HTML part, and retain
+the 100,000-character decoded-body and 2 MiB aggregate-response limits.
+Attachment download remains out of scope. Servers that omit or malform
+`BODYSTRUCTURE` cannot provide a body through this bounded reader; the message
+is omitted rather than falling back to a whole-message fetch.

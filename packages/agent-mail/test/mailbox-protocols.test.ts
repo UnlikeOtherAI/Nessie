@@ -224,7 +224,32 @@ describe('IMAP client', () => {
             socket.write(`* SEARCH 11 12 13\r\n${tag} OK SEARCH completed\r\n`)
             continue
           }
+          if (/UID THREAD/i.test(line)) {
+            socket.write(`* THREAD (13 12)\r\n${tag} OK THREAD completed\r\n`)
+            continue
+          }
           if (/UID FETCH/i.test(line)) {
+            const structure = '(("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "QUOTED-PRINTABLE" 12 1 NIL NIL NIL)("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 9000000 NIL ("ATTACHMENT" ("FILENAME" "invoice.pdf")) NIL NIL) "MIXED")'
+            if (/BODY\.PEEK\[1\]</i.test(line)) {
+              const body = 'Hello=20world'
+              socket.write(
+                `* 1 FETCH (UID 13 BODY[1]<0> {${Buffer.byteLength(body)}}\r\n${body})\r\n`
+                + `${tag} OK FETCH completed\r\n`,
+              )
+              continue
+            }
+            if (/BODYSTRUCTURE/i.test(line) && !/HEADER\.FIELDS/i.test(line)) {
+              socket.write(`* 1 FETCH (UID 13 BODYSTRUCTURE ${structure})\r\n${tag} OK FETCH completed\r\n`)
+              continue
+            }
+            if (/BODYSTRUCTURE/i.test(line)) {
+              const headers = 'Subject: Ping\r\nFrom: a@b.test\r\n\r\n'
+              socket.write(
+                `* 1 FETCH (UID 13 BODY[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] {${Buffer.byteLength(headers)}}\r\n${headers} BODYSTRUCTURE ${structure})\r\n`
+                + `${tag} OK FETCH completed\r\n`,
+              )
+              continue
+            }
             const raw = 'Subject: Ping\r\nFrom: a@b.test\r\n\r\nBody with )\r\nand more\r\n'
             socket.write(
               `* 1 FETCH (UID 13 BODY[] {${Buffer.byteLength(raw)}}\r\n${raw})\r\n`
@@ -293,6 +318,38 @@ describe('IMAP client', () => {
     // the reader been line-based rather than length-prefixed.
     assert.ok(messages[0]?.raw.toString('utf8').includes('Body with )'))
     assert.ok(messages[0]?.raw.toString('utf8').includes('and more'))
+  })
+
+  test('uses BODYSTRUCTURE and a bounded selected section without reading an attachment', async () => {
+    const { port, seen } = await imapServer()
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
+    )
+    const [header] = await session.fetchMessages([13], 'headers')
+    const text = await session.fetchBodySection(13, '1', 262_144)
+    session.close()
+
+    assert.equal(header?.bodyStructure[0]?.contentType, 'text/plain')
+    assert.deepEqual(header?.bodyStructure[1], {
+      bytes: 9_000_000, charset: null, contentType: 'application/pdf', encoding: 'BASE64',
+      filename: 'invoice.pdf', section: '2', textKind: null,
+    })
+    assert.equal(text?.toString(), 'Hello=20world')
+    assert.ok(seen.some((line) => /BODYSTRUCTURE/.test(line)))
+    assert.ok(seen.some((line) => /BODY\.PEEK\[1\]<0\.262144>/.test(line)))
+    assert.ok(!seen.some((line) => /BODY\.PEEK\[2\]/.test(line)), 'the PDF was never requested')
+  })
+
+  test('uses US-ASCII for ASCII THREAD criteria and UTF-8 only for Unicode criteria', async () => {
+    const { port, seen } = await imapServer()
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
+    )
+    assert.deepEqual(await session.threadReferencesUids(['ALL']), [[13, 12]])
+    assert.deepEqual(await session.threadReferencesUids(['ALL'], 'UTF-8'), [[13, 12]])
+    session.close()
+    assert.ok(seen.some((line) => /UID THREAD REFERENCES US-ASCII ALL/.test(line)))
+    assert.ok(seen.some((line) => /UID THREAD REFERENCES UTF-8 ALL/.test(line)))
   })
 })
 

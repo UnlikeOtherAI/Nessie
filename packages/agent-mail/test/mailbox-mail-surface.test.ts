@@ -9,6 +9,7 @@ import {
   validateMailboxThreadMembers,
 } from '../src/mailbox-mail-surface.js'
 import { parseThreadReferenceSets } from '../src/imap.js'
+import { imapAttachmentParts, parseImapBodyStructure } from '../src/imap-bodystructure.js'
 
 const ACCOUNT_ID = 'account-1'
 const FOLDER = 'INBOX'
@@ -95,4 +96,21 @@ test('native THREAD paging reserves one newest header for every group', () => {
   const uids = nativeThreadHeaderUids(groups)
   assert.equal(uids.length, 100)
   assert.deepEqual(uids, groups.map((group) => group[1]))
+})
+
+test('list attachment markers use BODYSTRUCTURE metadata, not attachment payloads', () => {
+  const parts = parseImapBodyStructure(
+    '* 1 FETCH (UID 1 BODYSTRUCTURE (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 4 1 NIL NIL NIL)("APPLICATION" "ZIP" ("NAME" "archive.zip") NIL NIL "BASE64" 50000000 NIL ("ATTACHMENT" ("FILENAME" "archive.zip")) NIL NIL) "MIXED"))',
+  )
+  assert.equal(parts.length, 2)
+  assert.deepEqual(imapAttachmentParts(parts), [{
+    bytes: 50_000_000, charset: null, contentType: 'application/zip', encoding: 'BASE64',
+    filename: 'archive.zip', section: '2', textKind: null,
+  }])
+})
+
+test('a top-level text message uses the RFC 3501 TEXT section', () => {
+  assert.deepEqual(parseImapBodyStructure(
+    '* 1 FETCH (UID 1 BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 4 1 NIL NIL NIL))',
+  ).map((part) => part.section), ['TEXT'])
 })
