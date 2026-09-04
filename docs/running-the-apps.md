@@ -115,6 +115,13 @@ desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 callback bridge finishes the PKCE exchange from the deep link, including while
 an authenticated team screen remains open.
 
+Windows and Linux use the same callback bridge. Their single-instance plugin
+forwards a callback from a second process into the already-running app before
+bringing its window to the foreground, including restoring a minimized window.
+The provider list also has an explicit failure state and retry action, so a
+temporary network or API failure cannot leave the sign-in page claiming it is
+still loading indefinitely.
+
 An interrupted browser hand-off is always recoverable: the login screen offers
 **Cancel sign-in**, and a new deliberate sign-in replaces only the exact stale
 attempt it observed. In a web browser, returning with Back cancels the pending
@@ -861,6 +868,13 @@ native notifications, and single-instance focus behavior on Linux. The initial
 Linux release targets Ubuntu x86_64 and produces a Debian package and AppImage;
 the local executor companion remains unavailable on Linux.
 
+Windows and Linux render one shared undecorated window frame. The traffic-light
+controls, window-layout chooser, drag regions, and eight resize edges live above
+the router, so they remain available on login, bootstrap, error, and
+authenticated screens instead of appearing only after sign-in. The Linux and
+Windows branches render the same frame markup and the same hosted application;
+only the operating system's WebView and window manager differ.
+
 Install the Tauri Linux build requirements, then build both distributables:
 
 ```sh
@@ -882,9 +896,11 @@ For development, start `pnpm dev` at the repository root, then run
 `pnpm --filter @nessie/desktop dev` from the Linux environment. Under WSL, this
 requires WSLg; it opens the Nessie window on the Windows desktop.
 
-On first launch, Nessie registers itself as the current user's `nessie://`
-handler. This lets the browser return an SSO callback to the already-running
-single instance without a system-wide association or administrator access.
+The Debian package installs the `nessie://` handler. Development builds and an
+AppImage register their current executable as the user's handler at runtime;
+launch an AppImage once after moving it so the browser returns SSO to its new
+location. A callback launch is forwarded to the existing Nessie process rather
+than being lost when the second process exits.
 
 ## Status And Caveats
 

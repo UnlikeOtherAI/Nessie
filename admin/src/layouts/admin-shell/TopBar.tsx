@@ -1,6 +1,5 @@
 import { isDesktopApp } from '../../lib/desktop'
 import { AlertsBell } from './AlertsBell'
-import { DesktopWindowControls } from './DesktopWindowControls'
 import { TopBarSearch } from './TopBarSearch'
 import { RecentChannelsControl } from './topbar-navigation'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
@@ -50,8 +49,6 @@ export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBar
     <header
       className={['admin-topbar', desktop ? 'admin-topbar--desktop' : ''].filter(Boolean).join(' ')}
     >
-      {desktop ? <DesktopWindowControls /> : null}
-
       <div className="hidden items-center gap-1 md:flex">
         <button
           aria-label="Back"

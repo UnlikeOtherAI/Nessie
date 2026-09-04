@@ -24,17 +24,21 @@ const ControlMark = ({ kind }: { kind: 'close' | 'maximize' | 'minimize' }) => {
   return <span aria-hidden="true">+</span>
 }
 
+type DesktopWindowControlsProps = {
+  visible?: boolean
+}
+
 // Windows and Linux use an overlay title bar, so they need a visible doorway
 // to the native window actions. macOS retains its OS-provided traffic lights.
-export const DesktopWindowControls = () => {
+export const DesktopWindowControls = ({
+  visible = usesCustomDesktopWindowControls(),
+}: DesktopWindowControlsProps = {}) => {
   const [maximized, setMaximized] = useState(false)
   const [windowFocused, setWindowFocused] = useState(true)
   const [layoutsOpen, setLayoutsOpen] = useState(false)
   const layoutOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const layoutCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const layoutTriggerRef = useRef<HTMLButtonElement>(null)
-  const visible = usesCustomDesktopWindowControls()
-
   const clearLayoutTimers = () => {
     if (layoutOpenTimer.current) clearTimeout(layoutOpenTimer.current)
     if (layoutCloseTimer.current) clearTimeout(layoutCloseTimer.current)

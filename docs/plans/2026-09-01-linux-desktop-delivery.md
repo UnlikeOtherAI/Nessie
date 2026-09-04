@@ -1,6 +1,6 @@
 # Linux desktop delivery
 
-**Status:** active  
+**Status:** active — shell parity implemented; physical Ubuntu acceptance remains
 **Owner:** Desktop  
 **Target:** Ubuntu 26.04 x86_64 first; other distributions follow the same Tauri shell contract.
 
@@ -21,9 +21,13 @@ UI fork.
 
 - The shared Tauri shell already owns the web workspace, desktop deep links,
   notifications, and the local executor companion IPC.
-- Its Rust dependencies currently enable the single-instance plugin only on
-  macOS and Windows, and the executor companion intentionally refuses Linux
-  release builds.
+- Linux and Windows now share one route-independent custom frame, including the
+  pre-authentication screens, and the single-instance integration forwards SSO
+  callback arguments into the running deep-link listener on both platforms.
+- A provider-discovery failure renders a retry action rather than an indefinite
+  loading message. Development builds and AppImages register their handler at
+  runtime; the Debian package owns its installed association.
+- The executor companion intentionally refuses Linux release builds.
 - Ubuntu is available through WSLg for development and window smoke tests. A
   real Ubuntu desktop remains required before calling the packaged install path
   supported for customers.

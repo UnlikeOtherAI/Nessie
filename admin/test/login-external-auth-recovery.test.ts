@@ -139,6 +139,7 @@ test('a browser Back return clears its pending SSO attempt and does not re-launc
     assert.match(container.textContent ?? '', /Sign in with SSO/)
   } finally {
     await act(async () => root.unmount())
+    queryClient.clear()
     container.remove()
     clearPendingExternalAuth()
     globalThis.fetch = previousFetch
@@ -227,6 +228,7 @@ test('a native SSO launch releases the login button after posting to the shell',
     assert.equal(button.hasAttribute('disabled'), false)
   } finally {
     await act(async () => root.unmount())
+    queryClient.clear()
     container.remove()
     clearPendingExternalAuth()
     delete nativeWindow.ReactNativeWebView
@@ -311,6 +313,7 @@ test('expired and malformed native callbacks show a terminal notice and settle t
     ])
   } finally {
     await act(async () => root.unmount())
+    queryClient.clear()
     container.remove()
     dom.window.removeEventListener(NATIVE_EXTERNAL_AUTH_EVENT, onTerminal)
     clearPendingExternalAuth()
@@ -376,6 +379,93 @@ test('a back/forward restore retries a suspended session check instead of leavin
     assert.equal(container.querySelector('output')?.textContent, 'unauthenticated')
   } finally {
     await act(async () => root.unmount())
+    queryClient.clear()
+    container.remove()
+    globalThis.fetch = previousFetch
+    restoreDom()
+  }
+})
+
+test('a failed provider discovery explains the failure and lets the person retry', async () => {
+  const restoreDom = installDom()
+  const previousFetch = globalThis.fetch
+  let providerRequests = 0
+  let providersAvailable = false
+
+  const React = await import('react')
+  const { act, createElement: h } = React
+  const { createRoot } = await import('react-dom/client')
+  const { MemoryRouter } = await import('react-router-dom')
+  const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
+  const { AuthSessionProvider } = await import('../src/providers/AuthSessionProvider.js')
+  const { ApiClientProvider } = await import('../src/providers/ApiClientProvider.js')
+  const { ThemeProvider } = await import('../src/providers/ThemeProvider.js')
+  const { LoginPage } = await import('../src/pages/LoginPage.js')
+
+  ;(globalThis as typeof globalThis & { React: typeof React }).React = React
+  globalThis.fetch = async (input) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, dom.window.location.origin)
+    if (url.pathname === '/api/auth/me' || url.pathname === '/api/auth/refresh') {
+      return new Response(null, { status: 401 })
+    }
+    if (url.pathname === '/api/auth/providers') {
+      providerRequests += 1
+      if (!providersAvailable) throw new Error('Network request failed')
+      return jsonResponse([{
+        autoRedirect: false,
+        enabled: true,
+        label: 'Sign in with SSO',
+        providerId: 'uoa',
+        type: 'uoa',
+      }])
+    }
+    return new Response('unexpected request', { status: 500 })
+  }
+
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await act(async () => {
+      root.render(
+        h(
+          QueryClientProvider,
+          { client: queryClient },
+          h(
+            AuthSessionProvider,
+            null,
+            h(
+              ApiClientProvider,
+              null,
+              h(ThemeProvider, null, h(MemoryRouter, null, h(LoginPage))),
+            ),
+          ),
+        ),
+      )
+    })
+    await settle(act)
+
+    assert.match(container.textContent ?? '', /Couldn't load sign-in options/)
+    assert.doesNotMatch(container.textContent ?? '', /Loading providers/)
+    const failedRequestCount = providerRequests
+    const retry = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent === 'Retry loading sign-in options',
+    )
+    assert.ok(retry)
+
+    providersAvailable = true
+    await act(async () => {
+      retry.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    })
+    await settle(act)
+
+    assert.equal(providerRequests, failedRequestCount + 1)
+    assert.match(container.textContent ?? '', /Sign in with SSO/)
+  } finally {
+    await act(async () => root.unmount())
+    queryClient.clear()
     container.remove()
     globalThis.fetch = previousFetch
     restoreDom()
