@@ -221,7 +221,7 @@ test('the approval pins the agent’s live steward and records why it asked', as
   assert.match(decision?.reason ?? '', /approve every message/i)
 })
 
-test('the approval context carries no addresses — only the conversation and scopes', async () => {
+test('the approval context carries no correspondence — only disclosure scopes', async () => {
   // The approval row is readable through the approvals surface by an org
   // owner. Recipients belong to the owner-gated draft route, which resolves
   // them at read time; putting them here would widen them to every owner.
@@ -232,7 +232,7 @@ test('the approval context carries no addresses — only the conversation and sc
   const decision = await hook({ args: { text: 'x' }, toolName: 'email_send' })
 
   const extra = (decision?.contextExtra ?? {}) as Record<string, unknown>
-  assert.deepEqual(Object.keys(extra).sort(), ['emailConversationId', 'externalDisclosureSources'])
+  assert.deepEqual(Object.keys(extra).sort(), ['externalDisclosureSources'])
   assert.deepEqual(extra.externalDisclosureSources, ['user:space-private'])
   assert.equal(
     JSON.stringify(extra).includes('@'),
@@ -241,8 +241,9 @@ test('the approval context carries no addresses — only the conversation and sc
   )
 })
 
-test('a deactivated steward falls back to the owner role rather than being unanswerable', async () => {
+test('an inactive steward fails closed instead of creating an unpinned approval', async () => {
   const hook = buildEmailSendApprovalHook(makePrisma({ liveOwner: false }), makeContext(), true)
   const decision = await hook({ args: { text: 'x' }, toolName: 'email_send' })
-  assert.equal(decision?.requiredApproverUserId, null)
+  assert.equal(decision?.outcome, 'deny')
+  assert.equal(decision?.reason, 'agent_mailbox_approver_unavailable')
 })

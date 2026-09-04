@@ -1,12 +1,12 @@
 import { normalizeAddress } from '@nessie/agent-mail'
 import { AGENT_EMAIL_SEND_TOPIC } from '@nessie/schemas'
+import { SealedEmailSendToolInputSchema } from '@nessie/runtime'
 
 import { enqueueQueueJob } from '../../queue.js'
 import { emailMailboxScope } from '../execute/disclosure-basis.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   loadAgentMailboxForRun,
-  resolveOutboundRecipients,
   type RunMailbox,
 } from './agent-email-context.js'
 
@@ -166,12 +166,11 @@ export const runEmailSendTool = async (
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const mailbox = await requireMailbox(context)
-
-  const resolved = await resolveOutboundRecipients(context, mailbox, args)
-  const text = typeof args.text === 'string' ? args.text : ''
-  if (text.trim().length === 0) {
-    throw new Error('An email needs a body.')
+  const sealed = SealedEmailSendToolInputSchema.safeParse(args)
+  if (!sealed.success || sealed.data.approvalProposal.mailboxId !== mailbox.id) {
+    throw new Error('This email must be prepared through the approval gate before sending.')
   }
+  const proposal = sealed.data.approvalProposal
 
   // The row is written `queued` with its own Message-ID before dispatch, so a
   // retry of a call that provably never reached SES reuses one identity rather
@@ -182,9 +181,9 @@ export const runEmailSendTool = async (
   const queued = await queueOutboundEmail(
     { config, prisma: context.prisma, transport: mailbox.transport },
     {
-      bcc: resolved.bcc,
-      cc: resolved.cc,
-      conversationId: resolved.conversationId,
+      bcc: proposal.bcc,
+      cc: proposal.cc,
+      conversationId: proposal.conversationId,
       mailboxId: mailbox.id,
       organizationId: context.channel.organizationId,
       runId: context.run.id,
@@ -192,9 +191,9 @@ export const runEmailSendTool = async (
       // and the write is keyed on it so the replay adopts the queued row rather
       // than minting a second message.
       sendKey: `${context.run.id}:${context.toolCallId ?? 'no-tool-call'}`,
-      subject: resolved.subject,
-      text,
-      to: resolved.to,
+      subject: proposal.subject,
+      text: sealed.data.text,
+      to: proposal.to,
     },
   )
 
@@ -207,13 +206,10 @@ export const runEmailSendTool = async (
     topic: AGENT_EMAIL_SEND_TOPIC,
   })
 
-  const recipients = [...resolved.to, ...resolved.cc, ...resolved.bcc]
   return {
     connectorUsage: undefined,
-    inputSummary: `to=${resolved.to.join(',')} subject=${resolved.subject}`,
-    outputPreview:
-      `Queued from ${mailbox.address} to ${recipients.join(', ')} — `
-      + `subject "${resolved.subject}". Delivery state will show in the mailbox.`,
+    inputSummary: 'Send from the agent mailbox.',
+    outputPreview: 'The email was queued for delivery. Its delivery state will show in the mailbox.',
     toolName: 'email_send',
   }
 }

@@ -1,6 +1,7 @@
 import {
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_START_FAILURE_DETAIL,
+  EMAIL_SEND_TOOL_ID,
   GMAIL_DRAFT_SEND_TOOL_ID,
   hasStrictToolAuthorizationInput,
   parseToolAuthorizationArgs,
@@ -30,6 +31,10 @@ import {
 } from './policy.js'
 import type { RunContext } from './types.js'
 import { bindGmailDraftApprovalFingerprint } from './gmail-draft-approval.js'
+import {
+  bindAgentEmailApprovalProposal,
+  sealedAgentEmailProposalIsLive,
+} from './agent-email-approval.js'
 import type {
   ToolAuthorizationAuditEmitter,
   ToolAuthorizationContext,
@@ -109,6 +114,46 @@ export const authorizeToolExecution = async (
       }
     }
     canonicalArgs = approvedArgs
+  }
+
+  if (toolName === EMAIL_SEND_TOOL_ID) {
+    if (auth.revalidateApprovalBoundary) {
+      // A continuation must use the target that was reviewed, but the mailbox
+      // itself still has to belong to this live agent in this live tenant.
+      // Never reconstruct a reply from a possibly changed conversation here.
+      if (!await sealedAgentEmailProposalIsLive(prisma, context, canonicalArgs)) {
+        await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
+          source: 'worker_tool_authorization',
+        }, 'invalid_tool_target')
+        return {
+          decision: 'deny',
+          result: {
+            inputSummary: 'Unavailable agent mailbox.',
+            output: 'The approved mailbox is no longer available. Please prepare the email again.',
+            success: false,
+          },
+        }
+      }
+    } else {
+      // The model may never choose the hidden proposal shape. It is resolved
+      // once from its narrow public input and replaces any untrusted value
+      // before policy, approval, audit, or queue handling observes it.
+      const sealedArgs = await bindAgentEmailApprovalProposal(prisma, context, canonicalArgs)
+      if (!sealedArgs) {
+        await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
+          source: 'worker_tool_authorization',
+        }, 'invalid_tool_target')
+        return {
+          decision: 'deny',
+          result: {
+            inputSummary: 'Unable to prepare email.',
+            output: 'I could not prepare that email. Check the recipient or conversation and try again.',
+            success: false,
+          },
+        }
+      }
+      canonicalArgs = sealedArgs
+    }
   }
 
   if (await hooks.deepWaterHandoffGuard.suppressBuiltin(toolName)) {

@@ -155,26 +155,34 @@ export const buildEmailSendApprovalHook = (
     // Owned but not gated: `{outcome:'allow'}` still claims the decision, which
     // is what keeps this tool off the standing-consent path.
     if (!decision.required) return { outcome: 'allow' as const }
+    const approverUserId = await liveApproverOrNull(prisma, {
+      organizationId: context.channel.organizationId,
+      userId: context.agent.ownerUserId,
+    })
+    if (!approverUserId) {
+      return {
+        message:
+          'This agent mailbox has no active steward to approve sends. Reactivate or assign '
+          + 'its steward before preparing another email.',
+        outcome: 'deny' as const,
+        reason: 'agent_mailbox_approver_unavailable',
+      }
+    }
     return {
       outcome: 'approval' as const,
       reason: gateReason(decision),
       // Address-free by rule: this row is readable through the approvals
-      // surface by an org owner, while the draft itself — recipients included
-      // — is resolved at read time by the owner-gated draft route. Only the
-      // scopes that forced the ask are recorded here, and a scope id names an
-      // audience, not a person's mail.
+      // surface by an org owner, while the sealed proposal is materialized only
+      // for its pinned approver. Only the scopes that forced the ask are
+      // recorded here, and a scope id names an audience, not a person's mail.
       contextExtra: {
-        emailConversationId: context.emailConversationId ?? null,
         externalDisclosureSources: decision.externalSources.map(
           (scope) => `${scope.scopeType}:${scope.scopeId}`,
         ),
       },
       // The mailbox belongs to the agent, and the agent belongs to its steward:
-      // a send acting as their agent is theirs to authorize. Falls back to the
-      // owner role when the agent is unowned or its steward is deactivated.
-      requiredApproverUserId: await liveApproverOrNull(prisma, {
-        organizationId: context.channel.organizationId,
-        userId: context.agent.ownerUserId,
-      }),
+      // a send acting as their agent is theirs to authorize. An unowned or
+      // inactive steward is not recoverable by creating an unpinned approval.
+      requiredApproverUserId: approverUserId,
     }
   }

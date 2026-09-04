@@ -180,6 +180,55 @@ runDatabaseTest('approving a tool gate claims its checkpoint and queues one appr
   assert.doesNotMatch(JSON.stringify(job[0]?.payload), /Ahoj|target/)
 })
 
+runDatabaseTest('approving a hosted email tool.invoke queues an opaque waiting-run continuation', async (t) => {
+  const prisma = new PrismaClient()
+  const seed = await seedTeam(prisma)
+  t.after(async () => {
+    await cleanup(prisma, seed)
+    await prisma.$disconnect()
+  })
+  const suspended = await seedSuspendedApproval(prisma, seed)
+  const sealedArgs = {
+    body: 'Private board update for Nina.',
+    approvalProposal: {
+      bcc: ['audit@example.test'],
+      cc: ['team@example.test'],
+      conversationId: null,
+      mailboxId: randomUUID(),
+      subject: 'Confidential launch plan',
+      to: ['nina@example.test'],
+    },
+  }
+  await prisma.approvalRequest.update({
+    where: { id: suspended.approval.id },
+    data: {
+      argsHash: 'sealed-hosted-email-args',
+      context: { inputSummary: 'Send from the agent mailbox.', toolName: 'email_send' },
+      reason: 'Send an email from the agent mailbox',
+      resumeState: {
+        actorContext: actorFor(seed),
+        args: sealedArgs,
+        interactive: true,
+        messageId: suspended.run.triggerMessageId,
+      },
+      toolName: 'email_send',
+    },
+  })
+
+  const result = await resolveApprovalRequest(prisma, suspended.approval.id, actorFor(seed), 'approved')
+  assert.ok(result && !('error' in result))
+  const continuation = await prisma.run.findFirst({
+    where: { continuationOfRunId: suspended.run.id },
+  })
+  assert.ok(continuation)
+  const job = await prisma.$queryRaw<{ payload: unknown }[]>`
+    SELECT payload FROM queue_jobs WHERE idempotency_key = ${`run:approval:${continuation?.id}`}
+  `
+  assert.equal(job.length, 1)
+  const queued = JSON.stringify(job[0]?.payload)
+  assert.doesNotMatch(queued, /Private board update|nina@example|team@example|audit@example|Confidential launch/)
+})
+
 runDatabaseTest('concurrent approvers can create only one continuation', async (t) => {
   const prisma = new PrismaClient()
   const seed = await seedTeam(prisma)

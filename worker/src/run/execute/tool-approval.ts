@@ -200,6 +200,12 @@ export const describeGatedAction = (
       headline: 'Send an email from a connected mailbox',
     }
   }
+  if (toolName === 'email_send') {
+    return {
+      audience: 'The recipients will receive it',
+      headline: 'Send an email from the agent mailbox',
+    }
+  }
   if (toolName === 'email_account_disconnect') {
     const accountKind = args.accountKind === 'mailbox' ? 'IMAP/SMTP mailbox' : 'provider account'
     const accountId = typeof args.accountId === 'string' ? args.accountId : ''
@@ -252,7 +258,7 @@ const MAILBOX_APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000
  * public approval context must not retain even an argument summary for it.
  */
 const hasPrivateEmailProposal = (toolName: string): boolean =>
-  toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
+  toolName === 'email_send' || toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
 
 const approvalExpiryFor = (toolName: string): number =>
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)

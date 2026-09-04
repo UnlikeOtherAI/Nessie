@@ -112,9 +112,10 @@ Plan and as-built deltas:
   summary. Before compaction or a checkpoint utility call sees a transcript, a
   tool-aware server projection replaces correspondence tool results with fixed
   content-free family summaries; the rolling and persisted notes therefore do
-  not become another mail-content store. The same boundary covers connected
-  mail, Gmail, contact, and connected-account lifecycle tools; a provider
-  failure becomes a stable remedy rather than raw remote text.
+  not become another mail-content store. The same boundary covers hosted agent
+  mail, connected-mail, Gmail, contact, and
+  connected-account lifecycle tools; a provider failure becomes a stable remedy
+  rather than raw remote text.
 - **Approval continuations execute a frozen action, never a model recreation.**
   `ApprovalRequest.resumeState` retains the strict, server-owned canonical
   arguments. The continuation queue carries only the approval id and its

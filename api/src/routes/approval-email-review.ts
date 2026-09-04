@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   AuthorizedGmailDraftSendToolInputSchema,
   MailboxSendToolInputSchema,
+  SealedEmailSendToolInputSchema,
 } from '@nessie/runtime'
 import { fingerprintDraft, GmailDraftError, readDraftForUser } from '@nessie/team-admin'
 import { z } from 'zod'
@@ -16,11 +17,16 @@ import type { RouteDeps } from './types.js'
  * active approver while the decision is still pending.
  */
 
-const REVIEWABLE_EMAIL_TOOL_NAMES = ['gmail_draft_send', 'mailbox_send'] as const
+const REVIEWABLE_EMAIL_TOOL_NAMES = ['email_send', 'gmail_draft_send', 'mailbox_send']
 
 const ResumeStateSchema = z.object({
   args: z.record(z.string(), z.unknown()),
 }).passthrough()
+
+/** Never disclose provider attachment identities in the approver's browser. */
+export const projectEmailReviewAttachments = (
+  attachments: Array<{ filename: string; mimeType: string; sizeBytes: number }>,
+) => attachments.map(({ filename, mimeType, sizeBytes }) => ({ filename, mimeType, sizeBytes }))
 
 const unavailable = (reply: Parameters<typeof sendApiError>[0]) =>
   sendApiError(reply, 409, 'EMAIL_REVIEW_UNAVAILABLE', 'This email can no longer be reviewed.')
@@ -40,9 +46,23 @@ export const registerApprovalEmailReviewRoutes = (
   const { authSecret, prisma, requireActorContext } = deps
 
   app.get('/api/approvals/:approvalId/email-review', async (request, reply) => {
+    // This response contains exact correspondence. Set the policy before
+    // authentication or lookup so every success and every error is uncacheable.
+    reply.header('Cache-Control', 'private, no-store')
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { approvalId } = request.params as { approvalId: string }
+
+    const activeApprover = await prisma.organizationMember.count({
+      where: {
+        deactivatedAt: null,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      },
+    })
+    if (activeApprover !== 1) {
+      return sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found.')
+    }
 
     // This is intentionally stricter than approvalVisibilityWhere: an org
     // owner may administer a source channel, but may not inspect a message
@@ -50,6 +70,7 @@ export const registerApprovalEmailReviewRoutes = (
     // rather than a second durable email archive.
     const approval = await prisma.approvalRequest.findFirst({
       select: {
+        agentId: true,
         expiresAt: true,
         id: true,
         resumeState: true,
@@ -72,6 +93,36 @@ export const registerApprovalEmailReviewRoutes = (
 
     const resumeState = ResumeStateSchema.safeParse(approval.resumeState)
     if (!resumeState.success) return unavailable(reply)
+
+    if (approval.toolName === 'email_send') {
+      const args = SealedEmailSendToolInputSchema.safeParse(resumeState.data.args)
+      if (!args.success) return unavailable(reply)
+      const mailbox = await prisma.agentMailbox.findFirst({
+        select: { address: true, displayName: true },
+        where: {
+          agentId: approval.agentId,
+          id: args.data.approvalProposal.mailboxId,
+          organizationId: actorContext.tenant.organizationId,
+          retiredAt: null,
+          status: 'active',
+        },
+      })
+      if (!mailbox) return unavailable(reply)
+
+      return createApiResponse({
+        approvalId: approval.id,
+        attachments: [],
+        bcc: args.data.approvalProposal.bcc,
+        cc: args.data.approvalProposal.cc,
+        expiresAt: approval.expiresAt.toISOString(),
+        kind: 'agent',
+        mailboxLabel: mailbox.displayName || mailbox.address,
+        senderAddress: mailbox.address,
+        subject: args.data.approvalProposal.subject,
+        text: args.data.text,
+        to: args.data.approvalProposal.to,
+      })
+    }
 
     if (approval.toolName === 'mailbox_send') {
       const args = MailboxSendToolInputSchema.safeParse(resumeState.data.args)
@@ -136,7 +187,7 @@ export const registerApprovalEmailReviewRoutes = (
 
       return createApiResponse({
         approvalId: approval.id,
-        attachments: draft.attachments,
+        attachments: projectEmailReviewAttachments(draft.attachments),
         bcc: draft.bcc,
         cc: draft.cc,
         expiresAt: approval.expiresAt.toISOString(),

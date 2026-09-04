@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   EMAIL_ACCOUNT_TOOL_DEFINITIONS,
+  EMAIL_TOOL_DEFINITIONS,
   GOOGLE_TOOL_DEFINITIONS,
   MAILBOX_TOOL_DEFINITIONS,
 } from '@nessie/runtime'
@@ -51,6 +52,9 @@ test('protected mail tools never summarize or persist correspondence and account
 
   for (const toolName of [
     'contacts_search',
+    'email_list',
+    'email_read',
+    'email_send',
     'mailbox_search',
     'mailbox_read',
     'mailbox_send',
@@ -74,8 +78,9 @@ test('protected mail tools never summarize or persist correspondence and account
   )
 })
 
-test('every Gmail, contact, connected-mail, and email-account tool is protected', () => {
+test('every Gmail, hosted-mail, connected-mail, and email-account tool is protected', () => {
   const protectedDefinitions = [
+    ...EMAIL_TOOL_DEFINITIONS,
     ...MAILBOX_TOOL_DEFINITIONS,
     ...EMAIL_ACCOUNT_TOOL_DEFINITIONS,
     ...GOOGLE_TOOL_DEFINITIONS.filter((tool) =>

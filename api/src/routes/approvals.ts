@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 
-import { parseAgentId, parseChannelId, parseTaskId, parseUserId } from '@nessie/schemas'
+import {
+  parseAgentId,
+  parseChannelId,
+  parseOrganizationId,
+  parseTaskId,
+  parseUserId,
+} from '@nessie/schemas'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import {
   getApprovalRequest,
@@ -22,7 +28,7 @@ export const approvalResolutionScopes = (input: {
 }) => input.requiredApproverUserId
   ? [{
     kind: 'user' as const,
-    organizationId: input.organizationId,
+    organizationId: parseOrganizationId(input.organizationId),
     userId: parseUserId(input.requiredApproverUserId),
   }]
   : [
