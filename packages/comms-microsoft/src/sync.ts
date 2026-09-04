@@ -210,7 +210,10 @@ export const runMicrosoftIncrementalSync = async (
     return runMicrosoftInitialSync(client, deps, connection, checkpoint)
   }
   const cursor = parseCursor(checkpoint.cursor)
-  if (!cursor || cursor.kind !== 'incremental') {
+  // An empty incremental job bootstraps through the same folder delta walk as
+  // history. That walk can span many pages/folders, so keep advancing its
+  // valid `initial` cursor until every folder has received a delta link.
+  if (!cursor || (cursor.kind !== 'initial' && cursor.kind !== 'incremental')) {
     throw new MicrosoftDeltaCursorExpiredError()
   }
   if (cursor.folders.length === 0) return { events: [], checkpoint, hasMore: false }

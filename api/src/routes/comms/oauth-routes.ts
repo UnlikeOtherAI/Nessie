@@ -73,6 +73,21 @@ export const callbackErrorCode = (error: unknown): string => {
   return 'connect_failed'
 }
 
+// OAuth callback query parameters are provider-controlled and untrusted. Only
+// these documented structural consent-policy values receive a tailored UI
+// state; every other error is the ordinary cancelled/denied flow. In
+// particular, `error_description` is intentionally never inspected or shown.
+const PROVIDER_ACCESS_BLOCKED_QUERY_ERRORS = new Set([
+  'admin_consent_required',
+  'authorization_required',
+  'consent_required',
+])
+
+export const callbackQueryErrorCode = (error: string): string =>
+  PROVIDER_ACCESS_BLOCKED_QUERY_ERRORS.has(error)
+    ? 'provider_access_blocked'
+    : 'access_denied'
+
 export const registerCommsOAuthRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -288,7 +303,10 @@ export const registerCommsOAuthRoutes = (
         return redirectToConnections(reply, { error: 'unknown_provider' })
       }
       if (query.error) {
-        return redirectToConnections(reply, { error: 'access_denied', provider })
+        return redirectToConnections(reply, {
+          error: callbackQueryErrorCode(query.error),
+          provider,
+        })
       }
       if (!query.code || !query.state) {
         return redirectToConnections(reply, { error: 'invalid_callback', provider })
