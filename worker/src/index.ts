@@ -133,7 +133,8 @@ import {
   sweepAutomaticMembershipBackfills,
   type AutomaticMembershipUoaAdapter,
 } from './control/automatic-membership-backfill.js'
-import { revalidateAutomaticMembershipDns } from './control/automatic-membership-dns.js'
+import { revalidateAutomaticMembershipDns, suspendAutomaticMembershipForKillSwitch } from './control/automatic-membership-dns.js'
+import { createProductionUoaAutomaticMembershipAdapter } from '@nessie/team-admin'
 
 const config = loadConfig()
 if (!process.env.DATABASE_URL) {
@@ -157,6 +158,15 @@ export const startWorker = async (
   // handlers here would hijack the api's SIGINT/SIGTERM and exit the whole
   // process before Fastify drains and api onClose hooks run.
   const standalone = options.standalone ?? isMainModule()
+  // Standalone workers cannot depend on API's embedded injection. Build the
+  // exact shared production adapter here and fail loudly instead of silently
+  // leaving enabled rules permanently queued.
+  const automaticMembershipAdapter = options.automaticMembershipAdapter ?? createProductionUoaAutomaticMembershipAdapter()
+  if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED === 'true' && !automaticMembershipAdapter) {
+    const message = 'Automatic membership is enabled but UOA_AUTOMATIC_MEMBERSHIP_APP_KEY or HTTPS UOA settings are unavailable.'
+    console.error(`[worker.automatic-membership] ${message}`)
+    if (standalone) throw new Error(message)
+  }
   const pool = createPgPool(databaseUrl, {
     max: config.database.poolMax,
     min: config.database.poolMin,
@@ -991,9 +1001,14 @@ export const startWorker = async (
     if (automaticMembershipSweepInFlight || abortController.signal.aborted) return
     automaticMembershipSweepInFlight = true
     try {
-      await revalidateAutomaticMembershipDns(prisma, config.auth.secret ?? '')
-      if (options.automaticMembershipAdapter) {
-        await sweepAutomaticMembershipBackfills(prisma, options.automaticMembershipAdapter)
+      if (automaticMembershipAdapter) {
+        if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_KILL_SWITCH === 'true') await suspendAutomaticMembershipForKillSwitch(prisma, automaticMembershipAdapter)
+        await revalidateAutomaticMembershipDns(prisma, config.auth.secret ?? '', automaticMembershipAdapter)
+        await sweepAutomaticMembershipBackfills(prisma, automaticMembershipAdapter)
+      } else {
+        await revalidateAutomaticMembershipDns(prisma, config.auth.secret ?? '', {
+          setRuleFence: async () => { throw new Error('UOA automatic membership adapter is unavailable') },
+        })
       }
     } catch (error) {
       console.error('[worker.automatic-membership] reconciliation failed', error)

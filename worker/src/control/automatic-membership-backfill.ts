@@ -5,6 +5,7 @@ import { writeAuditEntryInTransaction } from '@nessie/db'
 
 /** Kept structurally identical to the API contract so tests can inject UOA. */
 export type AutomaticMembershipUoaAdapter = {
+  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void>
   assertRuleAdministrator(input: { externalOrgId: string; externalTeamIds: readonly string[]; uoaSub: string }): Promise<boolean>
   listVerifiedDomainSubjects(input: { externalOrgId: string; domain: string; cursor?: string; snapshotId?: string; limit: number }): Promise<{ snapshotId: string; subjects: readonly string[]; cursor: string | null }>
   grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; domain: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
