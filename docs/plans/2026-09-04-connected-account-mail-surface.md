@@ -80,8 +80,10 @@ The fixed-height mail workspace owns its scrollers. The list has:
 - sender, subject, provider snippet when available, latest timestamp, unread
   emphasis, attachment marker, and message count;
 - one selected-row treatment and an explicit empty/error/loading state;
-- provider-backed paging under one shared contract, with the standard
-  10/25/50/100 size choices and result range.
+- provider-backed cursor paging under one shared contract, with the standard
+  10/25/50/100 size choices, previous/next controls, and an estimate only when
+  the provider supplies one. Gmail never pretends its estimate is an exact
+  result count.
 
 Gmail's provider thread id is the thread identity. SMTP/IMAP threading is
 structural: `Message-ID`, `In-Reply-To`, and `References` form a conversation;
@@ -89,13 +91,35 @@ messages without those links remain separate rather than being merged by a
 subject heuristic. The provider remains the mail store: the server may return
 an opaque thread token, but it does not persist messages or a second mailbox.
 
+#### Threading and paging contract
+
+Gmail uses its native thread identity and opaque `nextPageToken`. IMAP uses
+`THREAD=REFERENCES` when the server advertises that capability. Otherwise one
+page load fetches a bounded newest-first header window, builds reference-linked
+threads inside that window, and orders them by the newest member visible in the
+window. An older page may reveal earlier members of the same conversation; the
+UI says **Earlier messages** rather than claiming that every provider has
+returned an exhaustive thread.
+
+An IMAP thread token is stable across processes and refetches: a normalized
+structural root `Message-ID` is hashed into the opaque token. An unthreaded
+message with no usable `Message-ID` falls back to a hash of account, folder,
+`UIDVALIDITY`, and UID, so folder reset semantics are explicit rather than
+silently pointing at different mail. `All` uses provider-native search; `Unread`
+adds Gmail `is:unread` or IMAP `SEARCH UNSEEN`. A page load uses one provider
+dial at a time per account, bounded header and body fetches, and no polling
+refetch; refresh is a person's explicit action.
+
 ### Reading pane
 
 The conversation is oldest-first. Each message shows sender, To/Cc disclosure,
 time, body, and attachment metadata. Provider HTML is sanitized before it
-crosses the API boundary; remote content remains blocked until the reader asks
-to load it. A plain-text message uses the same body component. The current
-slice does not download attachments from connected accounts.
+crosses the API boundary by the existing `@nessie/agent-mail` MIME sanitizer,
+which parks accepted remote URLs on `data-blocked-src`. The pane reuses
+`EmailMessageBody`'s reveal contract verbatim, so remote content remains blocked
+until the reader asks to load it. A plain-text message uses the same body
+component. The current slice does not download attachments from connected
+accounts.
 
 ### Compose and reply
 
@@ -104,6 +128,13 @@ existing Gmail draft. It contains From, To, Cc/Bcc, Subject, and Body; recipient
 syntax and required fields are validated in place. `useDraft` owns unsent local
 state under `draft:mail-compose:<source>:<accountId>:<identity>` so Back never
 loses work and one account's draft cannot appear in another.
+
+From is display-only and is pinned again on the server to the connected address
+or to an already-verified alias selected from a closed list. The client cannot
+supply an arbitrary sender. The value persisted through `useDraft` contains
+only human-editable outgoing text. Reply context and any quoted history render
+from the live no-store conversation beside the form and never enter
+`localStorage`; automatic provider-body quoting is out of scope for this slice.
 
 - Gmail creates/updates the provider draft through the existing
   `GmailDraftAction` service, then uses the existing fingerprint check and undo
@@ -120,16 +151,23 @@ loses work and one account's draft cannot appear in another.
 Presentation is an agent capability, not a second mail implementation.
 `mail_present` is a safe UI tool whose closed modes are `account`, `thread`, and
 `compose`. It accepts an explicit `source` and `accountId`, plus the provider
-thread or draft reference required by the mode. It performs the same account
-entitlement lookup as `/api/mail`, records the personal-user or shared-team
-scope in the run's `ConsumedSourceSink`, and only then publishes its result. It
+thread or draft reference required by the mode. For `source=mailbox`, it runs
+the identical authorization chain as `mailbox_search` and `mailbox_read`:
+effective-user resolution, the per-`(connection, agent)` access row, live
+personal ownership or shared-team membership, and ambiguity refusal. For
+`source=gmail`, the effective user must own the Google connection. The shared
+`/api/mail` account lookup is resource resolution underneath those decisions,
+never a substitute for them. The tool records the personal-user or shared-team
+scope in the run's `ConsumedSourceSink` and only then publishes its result. It
 never accepts recipients or a body and it cannot send mail.
 
 The tool writes an ordinary agent-authored message with a small
 `mailSurfaceDoorway` metadata pointer: source, account id, mode, and an optional
 thread/draft id. Search text, snippets, recipients, subject, and body never enter
-that metadata. The realtime creation of that message may offer the popup once
-in the active channel or reply panel. Historical messages render only the
+that metadata. The client evaluates an offer when an authorized doorway message
+first becomes visible, whether it arrived live or appeared after the restricted
+run's refetch. A per-doorway id in `sessionStorage` records that it was offered
+or dismissed without storing mail data. Historical messages render only the
 reopenable chip; changing threads, reloading, closing, or minimizing never
 causes an old request to seize focus. The popup uses `useOverlay` and the
 navigation Back contract, becomes a full-screen Flow on a phone, and reuses the
@@ -190,6 +228,12 @@ The API routes remain thin:
   draft;
 - `POST /api/mail/accounts/:source/:accountId/send` for an explicit human send.
 
+The draft routes are Gmail-only. `source=mailbox` refuses them with
+`CAPABILITY_UNSUPPORTED`; SMTP/IMAP human drafts remain local, and implementers
+must not invent an IMAP draft mirror. The shared page contract is
+`{ items, nextCursor?, previousCursor?, estimate? }`: cursors are opaque and an
+estimate is never rendered as an exact total.
+
 Entitlement, credential loading, provider dispatch, and status transitions live
 in a shared `@nessie/team-admin` mail service. Gmail reads reuse
 `@nessie/comms-google`; SMTP/IMAP reads reuse `@nessie/agent-mail`. Credential
@@ -244,6 +288,12 @@ colour is expressed through existing tokens in `styles.css`.
 
 - Every account lookup is scoped by live actor entitlement and organisation;
   unknown, foreign, and no-longer-entitled ids are indistinguishable.
+- Every cookie-authenticated `/api/mail` mutation requires an allowed `Origin`,
+  `Content-Type: application/json`, and a non-empty validated body. Foreign,
+  missing-origin browser, simple-form, empty-body, and wrong-content-type
+  requests are refused before provider work. Gmail REST send still re-reads the
+  live provider draft, compares the reviewed fingerprint, and claims the send;
+  the human route does not bypass that service.
 - No connected-account message, snippet, recipient, search, or draft body is
   persisted by the new read surface or written to logs/audit metadata.
 - Read responses set `Cache-Control: no-store` and are not placed in a durable
@@ -254,6 +304,8 @@ colour is expressed through existing tokens in `styles.css`.
   blocked by default.
 - Human sends audit account id/source and outcome only — never recipients,
   subject, body, username, or credential material.
+- From is server-derived from the entitled connection or a verified alias;
+  client-supplied sender text is rejected rather than trusted.
 - Agent read paths continue stamping the disclosure sink before provider I/O.
 - `mail_present` records account scope even when it presents a reference already
   known to the model, and every popup open repeats viewer authorization.
@@ -284,20 +336,27 @@ colour is expressed through existing tokens in `styles.css`.
 - Root lint, typecheck, and lint-gated build pass.
 - API tests prove personal-owner, shared-team-member, manager, cross-org, stale
   membership, missing capability, credential rejection, no-store, and audit
-  redaction cases.
+  redaction cases; every mutation also refuses a foreign/missing browser origin,
+  non-JSON or empty bodies, and a client-supplied From.
 - Provider tests cover Gmail page tokens and thread reads; IMAP threading covers
   references, replies, unlinked same-subject mail, unread flags, ordering, and
-  counted-literal inputs.
+  counted-literal inputs, window boundaries, `UIDVALIDITY`, stable thread tokens,
+  and `THREAD=REFERENCES` capability fallback.
 - Admin tests cover route totality, deep links, Back behavior, selected thread,
-  account/filter/search URL state, compose draft isolation, Gmail draft open,
+  account/filter URL state, session-only search, compose draft isolation and
+  exclusion of provider quotes, Gmail draft open,
   reply context, validation, send/undo, auto-open once, no reopen after dismiss,
+  restricted-message refetch offering, missing agent-access-row refusal,
   unauthorized doorway refusal, universal preview/compose cards, and no
   duplicate mailbox component.
 - Playwright loads `http://localhost:5455` headlessly at phone, tablet, and
   desktop sizes, captures account list, thread list, conversation, and compose,
   and exercises settings doorway → open → reply → draft restore → send/undo plus
   agent preview card → mail popup → dismiss/reopen and compose-card → approval
-  against deterministic provider fixtures.
+  against deterministic provider fixtures. It verifies focus enters and returns
+  from the popup with an announcement, listbox/grid semantics and
+  `aria-selected`, a non-colour unread indicator, keyboard use of remote-content
+  reveal, reduced motion, and layout at 200% zoom.
 
 ## Deliberate non-goals for this slice
 
