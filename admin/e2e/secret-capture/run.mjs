@@ -237,7 +237,9 @@ const runBrowserCase = async () => {
   const editor = page.getByRole('textbox').last()
   await editor.fill(`OPENAI_API_KEY=${openAiSecret}`)
   await editor.press('Shift+Enter')
-  await editor.pressSequentially(`SENDGRID_API_KEY=${sendGridSecret}`)
+  // This is a contenteditable composer. Let each synthetic input settle before
+  // the next one so Enter submits the same complete value a person typed.
+  await editor.pressSequentially(`SENDGRID_API_KEY=${sendGridSecret}`, { delay: 10 })
   await editor.press('Enter')
 
   await page.getByRole('heading', { name: 'Credential 1 of 2' }).waitFor()
