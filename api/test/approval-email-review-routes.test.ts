@@ -90,6 +90,7 @@ test('only the exact approver can materialize a pending mailbox email proposal',
   assert.equal(data['subject'], 'Private customer update')
   assert.equal(data['text'], 'The exact private body.')
   assert.equal(data['mailboxLabel'], 'Customer support')
+  assert.deepEqual(data['attachments'], [])
   assert.equal('connectionId' in data, false)
   await own.app.close()
 

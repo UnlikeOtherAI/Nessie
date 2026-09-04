@@ -103,6 +103,7 @@ export const registerApprovalEmailReviewRoutes = (
 
       return createApiResponse({
         approvalId: approval.id,
+        attachments: [],
         bcc: args.data.bcc ?? [],
         cc: args.data.cc ?? [],
         expiresAt: approval.expiresAt.toISOString(),
