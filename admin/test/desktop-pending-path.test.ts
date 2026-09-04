@@ -63,6 +63,22 @@ test('the green traffic light owns the shared window-layout popover', () => {
   assert.match(styles, /height: 14\.4px/)
 })
 
+test('the embedded desktop build pins the production API before packaging', () => {
+  const manifest = JSON.parse(source('../../desktop/package.json')) as { scripts: Record<string, string> }
+  const embeddedBuild = source('../../desktop/scripts/build-embedded-shell.mjs')
+  assert.equal(
+    manifest.scripts['tauri:build:embedded'],
+    'pnpm exec turbo run build --filter=@nessie/runtime && pnpm prepare:executor-runtime && node scripts/build-embedded-shell.mjs',
+  )
+  assert.match(embeddedBuild, /const productionApiUrl = 'https:\/\/api\.nessie\.works'/)
+  assert.match(embeddedBuild, /VITE_API_BASE_URL: productionApiUrl/)
+  assert.match(embeddedBuild, /adminBundle\.includes\(productionApiUrl\)/)
+  assert.match(embeddedBuild, /frontendDist: '\.\.\/\.\.\/admin\/dist'/)
+  assert.match(embeddedBuild, /const pnpmCliCandidates = \[/)
+  assert.match(embeddedBuild, /process\.env\.APPDATA/)
+  assert.match(embeddedBuild, /const runPnpm = \(arguments_, options\) => process\.platform === 'win32'/)
+})
+
 test('the init script retains the path before dispatching, and both consumers exist', () => {
   const init = source('../../desktop/src-tauri/src/desktop_notifications_init.js')
   const retain = init.indexOf('window.__nessieDesktopPendingPath = path')

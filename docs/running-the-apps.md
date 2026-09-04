@@ -63,9 +63,13 @@ pnpm --filter @nessie/desktop dev
 The Nessie desktop window opens and loads the local admin app.
 
 The production config intentionally loads the hosted admin for same-site
-session renewal. The explicit `frontendDist` override above is the supported
-exception: it embeds that freshly built local admin in a release package, so
-the executable being tested contains the local UI changes.
+session renewal. `tauri:build:embedded` is the supported exception for testing
+local admin changes in a Windows or Linux package: it builds the admin with
+`VITE_API_BASE_URL=https://api.nessie.works` and embeds that exact output. Do
+not reproduce its two internal build steps manually: the command verifies the
+API URL is in the final entry bundle before Tauri packages it, so a web bundle
+with an empty API base cannot be packaged and loop forever on the local HTML
+shell.
 
 On Windows and Linux, the top-left of that window carries 14.4px mac-style red,
 yellow, and green controls for close, minimise, and maximise/restore. Their
@@ -814,14 +818,12 @@ leave a terminal window behind.
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm --filter @nessie/api prisma:generate
-pnpm --filter @nessie/schemas build
-pnpm --filter @nessie/runtime build
-pnpm --dir desktop run tauri:build -- --bundles nsis
+pnpm --dir desktop run tauri:build:embedded -- --bundles nsis
 ```
 
-The preparation script bundles the exact local Node runtime, its licence, and
-an integrity manifest before Tauri packages the application. If the installed
+The command builds the executor's shared runtime dependencies, then bundles the
+exact local Node runtime, its licence, and an integrity manifest before Tauri
+packages the application. If the installed
 Node distribution omits its licence file, the script retrieves the official
 licence for that exact Node version; a missing or malformed licence still fails
 the build.
