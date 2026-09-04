@@ -30,6 +30,22 @@ export type OutboundAttachment = {
   content: Buffer
 }
 
+/**
+ * Server-only identity of an attachment Gmail returned in a stored draft.
+ *
+ * Gmail usually supplies an immutable `attachmentId`; a small inline part can
+ * instead carry its bytes directly, in which case the caller supplies a hash
+ * of those bytes. Neither identifier is a card or API payload — it exists only
+ * to bind an approval to the exact provider content that will be sent.
+ */
+export type GmailDraftAttachmentIdentity = {
+  attachmentId?: string
+  inlineDataHash?: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+}
+
 export class MimeBuildError extends Error {
   constructor(reason: string) {
     super(`[comms-google] cannot build message: ${reason}`)
@@ -188,16 +204,25 @@ export const canonicalDraftFingerprintInput = (message: {
   bcc?: readonly string[]
   subject: string
   body: string
-  attachmentIds?: readonly string[]
+  attachmentIdentities?: readonly GmailDraftAttachmentIdentity[]
 }): string => {
   const addresses = (values: readonly string[] | undefined): string[] =>
     [...new Set((values ?? []).map((value) => value.trim().toLowerCase()))].sort()
+  const attachments = (message.attachmentIdentities ?? [])
+    .map((attachment) => JSON.stringify({
+      attachmentId: attachment.attachmentId ?? null,
+      inlineDataHash: attachment.inlineDataHash ?? null,
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+    }))
+    .sort()
   return JSON.stringify({
     to: addresses(message.to),
     cc: addresses(message.cc),
     bcc: addresses(message.bcc),
     subject: message.subject.trim(),
     body: message.body,
-    attachmentIds: [...(message.attachmentIds ?? [])].sort(),
+    attachments,
   })
 }

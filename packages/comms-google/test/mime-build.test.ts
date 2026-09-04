@@ -162,7 +162,7 @@ test('the fingerprint changes when the body or subject changes', () => {
   )
 })
 
-test('the fingerprint covers bcc and attachments', () => {
+test('the fingerprint covers bcc and provider attachment identity', () => {
   const base = { to: ['a@example.com'], subject: 'Hi', body: 'b' }
   assert.notEqual(
     canonicalDraftFingerprintInput(base),
@@ -170,6 +170,34 @@ test('the fingerprint covers bcc and attachments', () => {
   )
   assert.notEqual(
     canonicalDraftFingerprintInput(base),
-    canonicalDraftFingerprintInput({ ...base, attachmentIds: ['att-1'] }),
+    canonicalDraftFingerprintInput({
+      ...base,
+      attachmentIdentities: [{
+        attachmentId: 'att-1',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1_024,
+      }],
+    }),
+  )
+  assert.notEqual(
+    canonicalDraftFingerprintInput({
+      ...base,
+      attachmentIdentities: [{
+        attachmentId: 'att-1',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1_024,
+      }],
+    }),
+    canonicalDraftFingerprintInput({
+      ...base,
+      attachmentIdentities: [{
+        attachmentId: 'att-2',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1_024,
+      }],
+    }),
   )
 })

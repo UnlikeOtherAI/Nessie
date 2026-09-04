@@ -8,6 +8,7 @@ import {
   getGmailDraft,
   sendGmailDraft,
   updateGmailDraft,
+  type GmailDraftAttachmentIdentity,
   type GmailDraftContent,
   type OutboundMessage,
 } from '@nessie/comms-google'
@@ -68,7 +69,7 @@ export const fingerprintDraft = (input: {
   bcc?: readonly string[]
   subject: string
   body: string
-  attachmentIds?: readonly string[]
+  attachmentIdentities?: readonly GmailDraftAttachmentIdentity[]
 }): string =>
   createHash('sha256')
     .update(canonicalDraftFingerprintInput(input))
@@ -81,7 +82,7 @@ const fingerprintOf = (draft: GmailDraftContent): string =>
     bcc: draft.bcc,
     subject: draft.subject,
     body: draft.body,
-    attachmentIds: draft.attachments.map((a) => `${a.filename}:${a.sizeBytes}`),
+    attachmentIdentities: draft.attachments,
   })
 
 /** Injected so tests need no network; production uses the pinned fetch. */
@@ -192,16 +193,17 @@ export const composeDraftForUser = async (
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
   }
 
-  const fingerprint = fingerprintDraft({
-    to: input.message.to,
-    cc: input.message.cc,
-    bcc: input.message.bcc,
-    subject: input.message.subject,
-    body: input.message.body,
-    attachmentIds: (input.message.attachments ?? []).map(
-      (a) => `${a.filename}:${a.content.byteLength}`,
-    ),
-  })
+  let content: GmailDraftContent
+  try {
+    content = await getGmailDraft(
+      fetchImpl,
+      credential.credential.accessToken,
+      ref.id,
+    )
+  } catch (error) {
+    throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
+  }
+  const fingerprint = fingerprintOf(content)
 
   const row = await prisma.gmailDraftAction.upsert({
     where: {
@@ -248,6 +250,7 @@ export const updateDraftForUser = async (
     { ...input, connectionId: existing.connectionId, capabilityId: 'gmail.compose' },
     deps,
   )
+  let content: GmailDraftContent
   try {
     await updateGmailDraft(
       gmailFetch(deps),
@@ -256,16 +259,15 @@ export const updateDraftForUser = async (
       input.message,
       existing.providerThreadId ?? undefined,
     )
+    content = await getGmailDraft(
+      gmailFetch(deps),
+      credential.credential.accessToken,
+      existing.providerDraftId,
+    )
   } catch (error) {
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
   }
-  const fingerprint = fingerprintDraft({
-    to: input.message.to,
-    cc: input.message.cc,
-    bcc: input.message.bcc,
-    subject: input.message.subject,
-    body: input.message.body,
-  })
+  const fingerprint = fingerprintOf(content)
   const row = await prisma.gmailDraftAction.update({
     where: { id: existing.id },
     data: {

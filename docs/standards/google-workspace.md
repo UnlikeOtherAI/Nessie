@@ -32,8 +32,12 @@ file is the rule**.
   approved. The authorization chokepoint reads the server-owned
   `GmailDraftAction.contentFingerprint` into the canonical proof arguments
   (never from model input), and `sendDraftForUser` re-reads and compares it on
-  every send path; the same row carries the conditional
-  `draft → sending → sent` claim that makes a double send impossible. The
+  every send path. Its attachment input includes Gmail's immutable
+  `attachmentId`, MIME type, filename and size; when Gmail returns inline bytes
+  instead, it includes a server-only hash of those bytes. Provider identifiers
+  and hashes never enter cards, API payloads or audit records. The same row
+  carries the conditional `draft → sending → sent` claim that makes a double
+  send impossible. The
   approval requirement itself is declared on the tool definition and enforced at
   the tool chokepoint, because `evaluateToolInvokePolicy` defaults to `allow`
   and a seeded-`PolicyRule` gate is therefore absent in any organisation whose

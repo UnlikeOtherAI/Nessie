@@ -161,7 +161,13 @@ export const registerGmailDraftRoutes = (
         bcc: draft.bcc,
         subject: draft.subject,
         body: draft.body,
-        attachments: draft.attachments,
+        // Gmail attachment ids and inline content hashes bind an approval on
+        // the server. They are provider internals, never card/API data.
+        attachments: draft.attachments.map(({ filename, mimeType, sizeBytes }) => ({
+          filename,
+          mimeType,
+          sizeBytes,
+        })),
       })
     } catch (error) {
       return fail(reply, error)
