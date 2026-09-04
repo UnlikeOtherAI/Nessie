@@ -85,6 +85,10 @@ pub fn run() {
             direct_updater::desktop_direct_update_check,
             #[cfg(feature = "direct-updater")]
             direct_updater::desktop_direct_update_install,
+            #[cfg(feature = "direct-updater")]
+            direct_updater::desktop_direct_update_skip,
+            #[cfg(feature = "direct-updater")]
+            direct_updater::desktop_direct_update_remind,
         ])
         .setup(move |app| {
             if should_register_deep_link_schemes(

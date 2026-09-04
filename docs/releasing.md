@@ -33,6 +33,8 @@ Windows **NSIS** installer, and Linux **AppImage** compile Tauri's updater with
 an immutable GitHub Release endpoint and a compiled public signing key. At
 startup, Nessie offers **Update now**, **Skip this version**, or **Remind me
 tomorrow**. A skipped or deferred version never suppresses a newer version.
+Those choices are stored in the native app-data directory, not the hosted
+admin's browser storage, so clearing website data does not reset them.
 The updater verifies Tauri's detached signature before it installs anything;
 the hosted admin cannot select an update URL.
 

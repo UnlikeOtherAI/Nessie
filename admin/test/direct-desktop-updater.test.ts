@@ -2,23 +2,50 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  DIRECT_DESKTOP_UPDATE_REMIND_AFTER_MS,
-  shouldOfferDirectDesktopUpdate,
+  checkForDirectDesktopUpdate,
+  remindAboutDirectDesktopUpdateLater,
+  skipDirectDesktopUpdate,
 } from '../src/lib/direct-desktop-updater.js'
 
-const update = { body: null, currentVersion: '0.1.0', version: '0.1.1' }
-
-test('a skipped version remains skipped, but a later version is offered', () => {
-  assert.equal(shouldOfferDirectDesktopUpdate(update, { skippedVersion: '0.1.1' }, 100), false)
-  assert.equal(
-    shouldOfferDirectDesktopUpdate({ ...update, version: '0.1.2' }, { skippedVersion: '0.1.1' }, 100),
-    true,
-  )
+test('web and store builds never invoke the direct desktop updater', async () => {
+  await checkForDirectDesktopUpdate()
 })
 
-test('a reminder suppresses only the same release until tomorrow', () => {
-  const preference = { remindAfter: 100 + DIRECT_DESKTOP_UPDATE_REMIND_AFTER_MS, remindVersion: '0.1.1' }
-  assert.equal(shouldOfferDirectDesktopUpdate(update, preference, 100), false)
-  assert.equal(shouldOfferDirectDesktopUpdate(update, preference, preference.remindAfter), true)
-  assert.equal(shouldOfferDirectDesktopUpdate({ ...update, version: '0.1.2' }, preference, 100), true)
+test('a direct desktop build delegates preferences to native app data', async () => {
+  const calls: Array<{ args: unknown; command: string }> = []
+  const originalWindow = globalThis.window
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      __nessieDirectUpdater: true,
+      __TAURI_INTERNALS__: {
+        invoke: async (command: string, args: unknown) => {
+          calls.push({ args, command })
+          if (command === 'desktop_direct_update_check') {
+            return { body: null, currentVersion: '0.1.0', version: '0.1.1' }
+          }
+          return undefined
+        },
+      },
+    },
+  })
+  try {
+    assert.deepEqual(await checkForDirectDesktopUpdate(), {
+      body: null,
+      currentVersion: '0.1.0',
+      version: '0.1.1',
+    })
+    await skipDirectDesktopUpdate('0.1.1')
+    await remindAboutDirectDesktopUpdateLater('0.1.1')
+    assert.deepEqual(calls, [
+      { args: {}, command: 'desktop_direct_update_check' },
+      { args: { version: '0.1.1' }, command: 'desktop_direct_update_skip' },
+      { args: { version: '0.1.1' }, command: 'desktop_direct_update_remind' },
+    ])
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    })
+  }
 })
