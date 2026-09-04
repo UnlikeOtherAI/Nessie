@@ -216,14 +216,29 @@ dbTest('a PA presence is a viewer-relative participant projection, never an agen
         { displayName: 'Peer – PA', mentionName: 'Peer – PA', principalUserId: peerUserId },
       ],
     )
-    assert.equal(
-      peerChannel.personalAssistantPresences?.find((presence) => presence.principalUserId === peerUserId)?.displayName,
-      'Personal Assistant',
+    assert.deepEqual(
+      peerChannel.personalAssistantPresences?.map(({ displayName, mentionName, principalUserId }) => ({
+        displayName,
+        mentionName,
+        principalUserId,
+      })),
+      [
+        { displayName: 'Personal Assistant', mentionName: 'Peer – PA', principalUserId: peerUserId },
+        { displayName: 'Owner – PA', mentionName: 'Owner – PA', principalUserId: ownerUserId },
+      ],
     )
-    assert.equal(
-      peerChannel.personalAssistantPresences?.find((presence) => presence.principalUserId === ownerUserId)?.displayName,
-      'Owner – PA',
+
+    // Relation rows have no database ordering contract. Repeated list reads
+    // must keep the viewer's PA first and peers in stable identity order.
+    const peerPresenceOrders = await Promise.all(
+      Array.from({ length: 4 }, async () => {
+        const repeatedChannel = (await listChannelsForUser(prisma, peerUserId, organizationId)).find(
+          (entry) => entry.id === channel.id,
+        )
+        return repeatedChannel?.personalAssistantPresences?.map((presence) => presence.principalUserId)
+      }),
     )
+    assert.deepEqual(peerPresenceOrders, Array.from({ length: 4 }, () => [peerUserId, ownerUserId]))
 
     // Every /api/agents/:id detail route maps this gate to AGENT_NOT_FOUND
     // (404), keeping the singleton's AgentRecord out of a channel peer's UI.

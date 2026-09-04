@@ -161,6 +161,11 @@ export const listChannelsForUser = async (
           mentionName,
           principalUserId: parseUserId(principalUserId),
         }]
+      }).sort((left, right) => {
+        const leftIsViewer = left.principalUserId === userId
+        const rightIsViewer = right.principalUserId === userId
+        if (leftIsViewer !== rightIsViewer) return leftIsViewer ? -1 : 1
+        return left.principalUserId.localeCompare(right.principalUserId)
       })
 
     return {
