@@ -13,8 +13,12 @@ import {
  */
 export const COMMS_SYNC_INITIAL_TOPIC = 'comms.sync.initial'
 export const COMMS_SYNC_INCREMENTAL_TOPIC = 'comms.sync.incremental'
+export const COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC = 'comms.sync.incremental-sweep'
 export const COMMS_SUBSCRIPTIONS_RENEW_TOPIC = 'comms.subscriptions.renew'
 export const COMMS_WEBHOOK_PROCESS_TOPIC = 'comms.webhook.process'
+
+export const CommsProviderSchema = z.enum(['slack', 'google', 'microsoft'])
+export type CommsProvider = z.infer<typeof CommsProviderSchema>
 
 /**
  * `comms.sync.initial` — import historical messages for a connection. When
@@ -41,6 +45,22 @@ export const CommsSyncIncrementalJobPayloadSchema = z.object({
 })
 export type CommsSyncIncrementalJobPayload = z.infer<
   typeof CommsSyncIncrementalJobPayloadSchema
+>
+
+/**
+ * `comms.sync.incremental-sweep` — bounded reconciliation for connections
+ * whose provider has no push notification subscription. The bucket is part of
+ * the idempotency key, not a provider cursor or a user-facing timestamp.
+ */
+export const CommsIncrementalSweepJobPayloadSchema = z.object({
+  provider: CommsProviderSchema,
+  bucket: z.number().int().nonnegative(),
+  /** Resume after this connection id when one bounded page is full. */
+  afterId: z.string().uuid().optional(),
+  limit: z.number().int().positive().max(500).optional(),
+})
+export type CommsIncrementalSweepJobPayload = z.infer<
+  typeof CommsIncrementalSweepJobPayloadSchema
 >
 
 /**
@@ -79,9 +99,6 @@ export type CommsWebhookProcessJobPayload = z.infer<
 // ── HTTP contract (Individual Communications Connector) ──────────────────────
 // Shared request/response shapes for the authenticated `/api/comms/*` surface.
 // Credential material is NEVER part of any response schema.
-
-export const CommsProviderSchema = z.enum(['slack', 'google', 'microsoft'])
-export type CommsProvider = z.infer<typeof CommsProviderSchema>
 
 export const CommsConnectionStatusSchema = z.enum([
   'active',
@@ -194,6 +211,12 @@ export type CommsConnectionListResponse = z.infer<
 export const CommsConnectionStartRequestSchema = z.object({
   /** Google capability ids to request. Validated against the catalog. */
   capabilities: GoogleCapabilityListSchema.optional(),
+  /**
+   * The address the person entered before provider discovery. It is advisory
+   * only and becomes an OAuth `login_hint` for a first connection; the callback
+   * still proves the account returned by the provider before persistence.
+   */
+  loginHint: z.string().trim().email().max(320).optional(),
   /**
    * Widen an existing connection rather than creating one. The authorize
    * request asks for the union of its current scopes and the new ones, and the

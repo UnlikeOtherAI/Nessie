@@ -47,6 +47,17 @@ export const resolveConnector = (
   return factory()
 }
 
+/** Registered providers that explicitly opt into periodic incremental polling. */
+export const listIncrementalPollingConnectors = (): Array<{
+  provider: CommsProviderId
+  intervalMs: number
+}> => [...registry.entries()].flatMap(([provider, factory]) => {
+  const intervalMs = factory().incrementalPollingIntervalMs
+  return typeof intervalMs === 'number' && Number.isFinite(intervalMs) && intervalMs > 0
+    ? [{ provider, intervalMs }]
+    : []
+})
+
 /** Test/bootstrap helper: forget all registrations. */
 export const clearConnectors = (): void => {
   registry.clear()

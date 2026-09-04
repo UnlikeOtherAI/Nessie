@@ -14,14 +14,32 @@ tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
 libc = "0.2"
+# The Windows release-provenance decision, shared with the executor service and
+# tray so all three binaries answer "is this a pinned release?" the same way.
+nessie-windows-provenance = { path = "../../executor/windows-provenance" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-tauri = { version = "2.11.2", features = [] }
+# image-png decodes the bundled overlay-badge dot that Windows shows over the
+# taskbar button; every other desktop platform reports unread counts through
+# the window badge API instead.
+tauri = { version = "2.11.2", features = ["image-png"] }
 tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-opener = "2.5.4"
+# Only the Win32 surface the executor companion still reaches for directly: the
+# process handle that answers whether a prior daemon is still tearing down.
+# Authenticode verification lives in nessie-windows-provenance, which owns the
+# WinTrust features that go with it.
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+] }
 
+# The deep-link feature hands a second launch's argv URL to the running
+# instance's onOpenUrl listeners, which is how the `nessie://` sign-in callback
+# reaches an already open app on Windows and Linux. Keep it off mobile targets.
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-tauri-plugin-single-instance = { version = "2.4.2", features = ["deep-link"] }
+tauri-plugin-single-instance = { version = "2.4.4", features = ["deep-link"] }

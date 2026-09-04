@@ -70,6 +70,9 @@
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
+  /* The height of the app's live area. Full-height roots resolve this token
+     rather than restating the viewport unit. */
+  --app-live-height: 100dvh;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -267,7 +270,7 @@
 html,
 body,
 #root {
-  height: 100dvh;
+  height: var(--app-live-height);
 }
 
 body {
@@ -349,7 +352,7 @@ a {
 .admin-frame {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: var(--app-live-height);
   background: var(--rail);
   color: var(--tx);
 }
@@ -863,7 +866,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 }
 
 .admin-frame.has-mobile-tabbar {
-  height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
+  height: calc(var(--app-live-height) - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
 }
 
 /* Browser counterpart to the installed phone shell's team bar. It only
@@ -1038,6 +1041,14 @@ html[data-desktop-platform='linux'] #root {
   align-self: stretch;
   flex: 1 1 0;
   min-width: 8px;
+}
+
+/* The native traffic lights sit above the webview in overlay-titlebar mode.
+   Reserve their full leading lane so Back, Forward, and Recent Channels begin
+   beyond the OS-owned hit targets instead of painting underneath them. */
+.admin-topbar-drag-zone--traffic {
+  flex: 0 0 68px;
+  min-width: 68px;
 }
 
 .desktop-window-controls {
@@ -2076,6 +2087,7 @@ html[data-desktop-platform='linux'] #root {
 .tabbar {
   position: relative;
   display: flex;
+  width: fit-content;
   max-width: 100%;
   align-items: center;
   gap: 2px;
@@ -2138,6 +2150,15 @@ html[data-desktop-platform='linux'] #root {
 
 .tabbar-item:hover {
   color: var(--tx2);
+}
+
+.tabbar-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.tabbar-item:disabled:hover {
+  color: var(--tx3);
 }
 
 .tabbar-item[aria-selected='true'],

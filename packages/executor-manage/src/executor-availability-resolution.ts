@@ -16,6 +16,7 @@ import {
   type ExecutorAvailabilityDecision,
 } from './availability.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
 import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 
@@ -142,6 +143,7 @@ export const resolveExecutorAvailabilityCandidates = async (
     resolveContext(prisma, actorUserId, organizationId, input),
     ensureExecutorLogicalTools(prisma, organizationId),
   ])
+  await expireStaleExecutorHeartbeats(prisma, { organizationId }, now)
   const executors = await prisma.executor.findMany({
     where: {
       organizationId,

@@ -1,4 +1,4 @@
-import { isDesktopApp } from '../../lib/desktop'
+import { useShellEnvironment } from '../../providers/ShellEnvironmentProvider'
 import { AlertsBell } from './AlertsBell'
 import { TopBarSearch } from './TopBarSearch'
 import { RecentChannelsControl } from './topbar-navigation'
@@ -36,7 +36,8 @@ type TopBarProps = {
 // the desktop (Tauri) app it doubles as the window title bar, with dedicated
 // drag regions around the interactive search field and buttons.
 export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
-  const desktop = isDesktopApp()
+  const { desktopPlatform } = useShellEnvironment()
+  const desktop = desktopPlatform !== null
   // History controls read the one ledger the phone Back uses; they walk it
   // across sections, which Back never does, and close an open owner first.
   const history = usePhoneNavigation()?.history
@@ -49,6 +50,14 @@ export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBar
     <header
       className={['admin-topbar', desktop ? 'admin-topbar--desktop' : ''].filter(Boolean).join(' ')}
     >
+      {desktopPlatform === 'macos' ? (
+        <div
+          aria-hidden="true"
+          className="admin-topbar-drag-zone admin-topbar-drag-zone--traffic"
+          data-tauri-drag-region
+        />
+      ) : null}
+
       <div className="hidden items-center gap-1 md:flex">
         <button
           aria-label="Back"

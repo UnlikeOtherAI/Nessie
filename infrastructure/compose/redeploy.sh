@@ -223,18 +223,34 @@ $COMPOSE up -d --no-recreate
 
 # Final gate: prove the whole path (Caddy -> new containers) actually serves.
 # Without this a deploy could go green while the site is down — the exact
-# failure this script used to have.
+# failure this script used to have. Caddy's upstream discovery can briefly lag
+# the completed blue-green swap, so let that convergence settle before calling
+# a deploy failed. A persistent edge failure still fails the script loudly.
+verify_public_endpoint() {
+  local url="$1"
+  local attempts=5
+
+  for attempt in $(seq 1 "$attempts"); do
+    if curl -fsS --connect-timeout 5 --max-time 15 -o /dev/null "$url"; then
+      echo "    OK $url (attempt $attempt/$attempts)"
+      return 0
+    fi
+    if [ "$attempt" -lt "$attempts" ]; then
+      echo "    not ready $url (attempt $attempt/$attempts); retrying in 3s" >&2
+      sleep 3
+    fi
+  done
+
+  echo "    FAILED $url after $attempts attempts" >&2
+  return 1
+}
+
 echo "==> Verifying public endpoints through the edge proxy"
 for url in \
   https://api.nessie.works/api/health \
   https://app.nessie.works/ \
   https://nessie.works/; do
-  if curl -fsS --max-time 15 -o /dev/null "$url"; then
-    echo "    OK $url"
-  else
-    echo "    FAILED $url" >&2
-    exit 1
-  fi
+  verify_public_endpoint "$url"
 done
 
 # Post-swap reclaim: the previous release's images are now unreferenced. Each

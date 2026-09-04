@@ -28,6 +28,7 @@ type CardProps = {
   children: ReactNode
   /** Spacing and layout only. Border, radius and fill belong to the variant. */
   className?: string
+  id?: string
   tone?: CardTone
   /**
    * `section` (16px) is a block of a page; `row` (12px) is one record in a
@@ -64,6 +65,7 @@ export const Card = ({
   as: Element = 'div',
   children,
   className,
+  id,
   tone = 'default',
   variant = 'section',
 }: CardProps) => {
@@ -86,6 +88,7 @@ export const Card = ({
         ]
           .filter(Boolean)
           .join(' ')}
+        id={id}
       >
         {children}
       </Element>

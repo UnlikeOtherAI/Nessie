@@ -1,5 +1,13 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { normalizeAddress, testMailboxConnection, type MailSecurity } from '@nessie/agent-mail'
+import {
+  ImapError,
+  MailDialError,
+  MailWireError,
+  normalizeAddress,
+  SmtpError,
+  testMailboxConnection,
+  type MailSecurity,
+} from '@nessie/agent-mail'
 // The record and scope shapes are the wire contract, so they live in
 // `@nessie/schemas` and are imported here rather than restated — the API
 // response and this presenter are one type by construction.
@@ -34,6 +42,9 @@ export type MailboxConnectionRefusal =
   | 'connection_not_found'
   | 'invalid_address'
   | 'address_taken'
+  | 'credential_rejected'
+  | 'invalid_certificate'
+  | 'server_unavailable'
   | 'test_failed'
   | 'agent_not_found'
 
@@ -49,6 +60,57 @@ export class MailboxConnectionError extends Error {
 
 type ConnectionWithAccess = MailboxConnectionRow & {
   agentAccess?: { agentId: string }[]
+}
+
+export type MailboxConnectionTestFailure = Extract<
+  MailboxConnectionRefusal,
+  'credential_rejected' | 'invalid_certificate' | 'server_unavailable' | 'test_failed'
+>
+
+const NETWORK_ERROR_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+])
+
+/**
+ * Protocol layers carry structural failure classes. Keep them through the
+ * connection boundary rather than deriving a diagnosis from an error message.
+ */
+export const mailboxConnectionTestFailure = (
+  error: unknown,
+): MailboxConnectionTestFailure => {
+  if (
+    (error instanceof ImapError || error instanceof SmtpError)
+    && error.kind === 'auth'
+  ) return 'credential_rejected'
+  if (error instanceof MailDialError && error.kind === 'certificate') {
+    return 'invalid_certificate'
+  }
+  if (
+    error instanceof MailDialError
+    || error instanceof MailWireError
+    || (typeof error === 'object' && error !== null
+      && NETWORK_ERROR_CODES.has((error as NodeJS.ErrnoException).code ?? ''))
+    || (error instanceof SmtpError && error.kind === 'transient')
+  ) return 'server_unavailable'
+  return 'test_failed'
+}
+
+const testFailureMessage = (failure: MailboxConnectionTestFailure): string => {
+  switch (failure) {
+    case 'credential_rejected':
+      return 'The email address or password was not accepted.'
+    case 'invalid_certificate':
+      return 'We cannot connect securely to this mail server.'
+    case 'server_unavailable':
+      return 'The mail server is temporarily unavailable.'
+    default:
+      return 'The mailbox connection test could not be completed.'
+  }
 }
 
 /**
@@ -162,9 +224,10 @@ export const createMailboxConnection = async (
   try {
     await testMailboxConnection(endpoints, mailboxDialOptions())
   } catch (error) {
+    const failure = mailboxConnectionTestFailure(error)
     throw new MailboxConnectionError(
-      'test_failed',
-      error instanceof Error ? error.message : 'The mailbox could not be reached.',
+      failure,
+      testFailureMessage(failure),
     )
   }
 
@@ -281,7 +344,11 @@ export const verifyMailboxConnection = async (
   prisma: PrismaClient,
   connection: MailboxConnectionRow,
   options: { encryptionSecret: string },
-): Promise<{ ok: boolean; detail: string }> => {
+): Promise<{
+  ok: boolean
+  detail: string
+  failureCode?: Uppercase<MailboxConnectionTestFailure>
+}> => {
   const endpoints = await mailboxEndpointsFor(prisma, connection, options.encryptionSecret)
   try {
     const result = await testMailboxConnection(endpoints, mailboxDialOptions())
@@ -294,14 +361,15 @@ export const verifyMailboxConnection = async (
       ok: true,
     }
   } catch (error) {
-    const detail = error instanceof Error ? error.message : 'The mailbox could not be reached.'
-    if (isCredentialRejection(error)) {
+    const failure = mailboxConnectionTestFailure(error)
+    const detail = testFailureMessage(failure)
+    if (failure === 'credential_rejected') {
       await prisma.mailboxConnection.update({
         data: { status: 'needs_reauthorization', statusReason: detail },
         where: { id: connection.id },
       })
     }
-    return { detail, ok: false }
+    return { detail, failureCode: failure.toUpperCase() as Uppercase<MailboxConnectionTestFailure>, ok: false }
   }
 }
 

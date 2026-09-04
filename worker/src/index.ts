@@ -17,12 +17,14 @@ import {
 import {
   COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
   COMMS_SYNC_INCREMENTAL_TOPIC,
+  COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
   COMMS_SYNC_INITIAL_TOPIC,
   COMMS_WEBHOOK_PROCESS_TOPIC,
   AttachmentThumbnailJobPayloadSchema,
   AttentionDispatchJobPayloadSchema,
   ATTACHMENT_THUMBNAIL_TOPIC,
   CommsSubscriptionsRenewJobPayloadSchema,
+  CommsIncrementalSweepJobPayloadSchema,
   CommsSyncIncrementalJobPayloadSchema,
   CommsSyncInitialJobPayloadSchema,
   CommsWebhookProcessJobPayloadSchema,
@@ -97,6 +99,7 @@ import { executeOrchestrateDecideJob } from './run/orchestrate.js'
 import { sweepPendingThreadMessages } from './run/thread-serialization.js'
 import {
   executeCommsIncrementalSyncJob,
+  executeCommsIncrementalSweepJob,
   executeCommsInitialSyncJob,
   renewCommsSubscriptions,
 } from './control/comms-sync.js'
@@ -117,7 +120,11 @@ import {
   AgentEmailSendJobPayloadSchema,
 } from '@nessie/schemas'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
-import { enqueueCommsSubscriptionsRenew } from './queue.js'
+import { listIncrementalPollingConnectors } from '@nessie/comms-connect'
+import {
+  enqueueCommsIncrementalSweep,
+  enqueueCommsSubscriptionsRenew,
+} from './queue.js'
 import { executeExecutorCommandJob } from './control/executor-commands.js'
 import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
 import { handleCallRingTimeout, sweepExpiredActiveCalls } from './control/call-lifecycle.js'
@@ -603,6 +610,15 @@ export const startWorker = async (
   )
 
   queueProvider.subscribe(
+    COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
+    async (job) => {
+      const payload = CommsIncrementalSweepJobPayloadSchema.parse(job.payload)
+      await executeCommsIncrementalSweepJob(commsSyncDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
     COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
     async (job) => {
       const payload = CommsSubscriptionsRenewJobPayloadSchema.parse(job.payload)
@@ -904,6 +920,26 @@ export const startWorker = async (
     }
   }, COMMS_RENEW_INTERVAL_MS)
 
+  // Explicit connector opt-in keeps webhook-backed providers out of this
+  // reconciliation path; distinct per-provider buckets honour their cadence.
+  const COMMS_INCREMENTAL_SWEEP_INTERVAL_MS = 60 * 1000
+  const commsIncrementalSweepInterval = setInterval(async () => {
+    if (abortController.signal.aborted) return
+    try {
+      const now = Date.now()
+      for (const polling of listIncrementalPollingConnectors()) {
+        const bucket = Math.floor(now / polling.intervalMs)
+        await enqueueCommsIncrementalSweep(
+          prisma,
+          { provider: polling.provider, bucket },
+          `comms-incremental-sweep:${polling.provider}:${bucket}:start`,
+        )
+      }
+    } catch (error) {
+      console.error('[worker.comms-incremental-sweep] enqueue failed', error)
+    }
+  }, COMMS_INCREMENTAL_SWEEP_INTERVAL_MS)
+
   // Apps catalogue registry sync. `maybeSyncRegistry` self-gates on the last
   // completed run (6h window, `NESSIE_REGISTRY_SYNC_INTERVAL_MS`), so a restart
   // or a frequent poll never triggers a fresh multi-minute walk — the poll only
@@ -970,6 +1006,7 @@ export const startWorker = async (
     clearInterval(executionLeaseSweepInterval)
     clearInterval(pendingBatchSweepInterval)
     clearInterval(commsRenewInterval)
+    clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
     clearTimeout(registrySyncKickoff)
     modelClient.close()

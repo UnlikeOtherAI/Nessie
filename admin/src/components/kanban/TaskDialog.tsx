@@ -3,6 +3,7 @@ import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Notice } from '../primitives/Notice'
 import { SectionLabel } from '../primitives/SectionLabel'
+import { TabBar, type TabBarItem } from '../primitives/TabBar'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../shared/AssigneePicker'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { Dialog } from '../shared/Dialog'
@@ -53,6 +54,12 @@ type TaskDialogProps = {
   projectId?: string
   iterationId?: string
 }
+
+const priorityItems: ReadonlyArray<TabBarItem<TaskPriority>> = PRIORITY_ORDER.map((value) => ({
+  icon: <FontAwesomeIcon className={`text-[11px] ${PRIORITY_SIGNAL[value]}`} icon={faSignal} />,
+  label: PRIORITY_LABEL[value],
+  value,
+}))
 
 export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: TaskDialogProps) => {
   const isEdit = Boolean(task)
@@ -245,34 +252,19 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           </FormField>
         </div>
 
-        <div className="grid content-start gap-4">
-          <div className="grid gap-1.5">
-            <SectionLabel as="span" size="sm">Priority</SectionLabel>
-            <div className="flex gap-1.5">
-              {PRIORITY_ORDER.map((value) => {
-                const active = priority === value
-                return (
-                  <button
-                    key={value}
-                    className={[
-                      'flex flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-[11px] font-semibold transition-colors',
-                      active
-                        ? 'bg-[color:var(--overlay)] text-[color:var(--tx)] ring-1 ring-inset ring-[color:var(--sep)]'
-                        : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
-                    ].join(' ')}
-                    onClick={() => patchDraft({ priority: value })}
-                    type="button"
-                  >
-                    <FontAwesomeIcon
-                      className={`text-[11px] ${PRIORITY_SIGNAL[value]} ${active ? '' : 'opacity-50'}`}
-                      icon={faSignal}
-                    />
-                    {PRIORITY_LABEL[value]}
-                  </button>
-                )
-              })}
+          <div className="grid content-start gap-4">
+            <div className="grid gap-1.5">
+              <SectionLabel as="span" size="sm">Priority</SectionLabel>
+              <TabBar
+                ariaLabel="Priority"
+                fullWidth
+                items={priorityItems}
+                onChange={(value) => patchDraft({ priority: value })}
+                role="radiogroup"
+                size="sm"
+                value={priority}
+              />
             </div>
-          </div>
 
           <div className="grid gap-1.5">
             <FieldLabel htmlFor="task-assignee">Assignee</FieldLabel>

@@ -55,6 +55,22 @@ func runtimeRequested(commandLine string) bool {
 	return strings.Contains(" "+commandLine+" ", " nessie.runtime=1 ")
 }
 
+// Which share strategy the host configured. Absent means virtiofs, so the
+// macOS boot contract is byte-identical to the one that shipped: only a host
+// that cannot offer virtio-fs — Firecracker, and Hyper-V after it — says so.
+func blockSharesRequested(commandLine string) bool {
+	return strings.Contains(" "+commandLine+" ", " nessie.shares=block ")
+}
+
+// Whether this boot's per-session kernel arguments live in the initrd rather
+// than on the line the firmware supplied. Set only by a host that cannot write
+// a per-session command line at all — Hyper-V generation 2, whose firmware
+// boots the EFI stub with empty UEFI load options, so the only line the kernel
+// has is the one compiled into it.
+func initrdBootArgsRequested(commandLine string) bool {
+	return strings.Contains(" "+commandLine+" ", " nessie.args=initrd ")
+}
+
 func validateEnvelope(envelope controlEnvelope) error {
 	if envelope.Version != guestControlVersion || envelope.RequestID == "" || len(envelope.Payload) > guestControlPayloadMaxBytes {
 		return errInvalidFrame

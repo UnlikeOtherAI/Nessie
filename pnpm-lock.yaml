@@ -329,6 +329,12 @@ importers:
         specifier: ^20.19.24
         version: 20.19.39
 
+  executor/tray-windows:
+    devDependencies:
+      '@tauri-apps/cli':
+        specifier: ^2.11.2
+        version: 2.11.2
+
   gateway:
     dependencies:
       '@nessie/push':
@@ -519,6 +525,16 @@ importers:
         specifier: ^20.19.24
         version: 20.19.39
 
+  packages/comms-microsoft:
+    dependencies:
+      '@nessie/comms-connect':
+        specifier: workspace:*
+        version: link:../comms-connect
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   packages/comms-providers:
     dependencies:
       '@nessie/comms-connect':
@@ -527,6 +543,9 @@ importers:
       '@nessie/comms-google':
         specifier: workspace:*
         version: link:../comms-google
+      '@nessie/comms-microsoft':
+        specifier: workspace:*
+        version: link:../comms-microsoft
       '@nessie/comms-slack':
         specifier: workspace:*
         version: link:../comms-slack
@@ -833,6 +852,15 @@ importers:
 
   web:
     dependencies:
+      '@fortawesome/fontawesome-svg-core':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/free-brands-svg-icons':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/react-fontawesome':
+        specifier: ^3.3.0
+        version: 3.3.0(@fortawesome/fontawesome-svg-core@7.3.1)(react@19.2.4)
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
@@ -2192,6 +2220,10 @@ packages:
 
   '@fortawesome/fontawesome-svg-core@7.3.1':
     resolution: {integrity: sha512-BoxVN3PKnMbgStHhjoaky/oWdxHomDqmBVA24IA3KEmssFGeI7u9YT/BJceOjIum/t6TpPa/vcMKaVYQeIQ/3Q==}
+    engines: {node: '>=6'}
+
+  '@fortawesome/free-brands-svg-icons@7.3.1':
+    resolution: {integrity: sha512-8eiNzycuFhy3mZsi5EVO8JpO3H8l7/kSCl4Gk4iUew9hJuzYFqAAD6kqgeEup3+YZ9hL+5cjjorGzrRLkYuURg==}
     engines: {node: '>=6'}
 
   '@fortawesome/free-regular-svg-icons@7.3.1':
@@ -9208,6 +9240,10 @@ snapshots:
   '@fortawesome/fontawesome-common-types@7.3.1': {}
 
   '@fortawesome/fontawesome-svg-core@7.3.1':
+    dependencies:
+      '@fortawesome/fontawesome-common-types': 7.3.1
+
+  '@fortawesome/free-brands-svg-icons@7.3.1':
     dependencies:
       '@fortawesome/fontawesome-common-types': 7.3.1
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -188,7 +188,7 @@ test('navigating rows prewarm before the click', () => {
     'admin/src/pages/DashboardsPage.tsx',
   ]
   const tracked = new Set(
-    execSync("git ls-files 'admin/src/*'", { cwd: repoRoot, encoding: 'utf8' })
+    execFileSync('git', ['ls-files', 'admin/src/*'], { cwd: repoRoot, encoding: 'utf8' })
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean),

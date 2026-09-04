@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
-import { runGuestVmHandshake } from '../src/guest-vm-handshake.js'
 import {
   materializeGuestRuntimeBundle,
   removeGuestRuntimeBundleSnapshot,
@@ -35,51 +34,6 @@ test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown'
       /does not match/,
     )
     await releaseGuestWorkspaceLease(stateDir, lease)
-    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
-  } finally {
-    await rm(root, { force: true, recursive: true })
-    await rm(stateDir, { force: true, recursive: true })
-  }
-})
-
-test('the VM handshake receives only a current COW lease and passes its token through stdin', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-vm-source-'))
-  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-vm-state-'))
-  const runId = '00000000-0000-4000-8000-000000000111'
-  const builderPath = join(stateDir, 'builder')
-  const helperPath = join(stateDir, 'helper')
-  const kernelPath = join(stateDir, 'kernel')
-  try {
-    await writeFile(join(root, 'base.txt'), 'host source')
-    await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
-    ])
-    await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
-    const lease = await createGuestWorkspaceLease(stateDir, root, {
-      bindingFence: '1',
-      commandId: '00000000-0000-4000-8000-000000000112',
-      runId,
-    })
-    const calls: Array<{ argv: string[]; input: string; path: string }> = []
-    await runGuestVmHandshake({
-      guestInitrdBuilderPath: builderPath,
-      kernelPath,
-      lease,
-      stateDir,
-      vmHelperPath: helperPath,
-    }, {
-      runProcess: async (call) => { calls.push(call) },
-    })
-    assert.equal(calls.length, 2)
-    assert.equal(calls[0].path, await realpath(builderPath))
-    assert.deepEqual(calls[0].argv.slice(-1), ['--bootstrap-token-stdin'])
-    assert.equal(calls[0].argv.includes(calls[0].input), false)
-    assert.equal(calls[1].path, await realpath(helperPath))
-    assert.equal(calls[1].input, calls[0].input)
-    assert.equal(calls[1].argv.includes(lease.workspace), true)
-    await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)
     assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
   } finally {
     await rm(root, { force: true, recursive: true })
@@ -190,6 +144,9 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
       stateDir,
       vmHelperPath: helperPath,
     }, {
+      // The macOS backend, named explicitly: this suite exercises the shared
+      // session pipeline, not the host's own sandbox detection.
+      host: { platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 }, sandboxBackend: 'virtualization_framework', supervisor: 'service' },
       runProcess: async (call) => { calls.push(call) },
       launchProcess: async (call) => {
         calls.push(call)

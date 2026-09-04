@@ -18,6 +18,7 @@
   "dependencies": {
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
+    "@nessie/comms-microsoft": "workspace:*",
     "@nessie/comms-slack": "workspace:*"
   },
   "devDependencies": {

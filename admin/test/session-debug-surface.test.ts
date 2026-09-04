@@ -19,6 +19,8 @@ test('authenticated export and native login import reuse one session debug surfa
   assert.match(dialog, /aria-modal="true"/)
   assert.match(dialog, /role="dialog"/)
   assert.match(dialog, /role="alert"/)
+  assert.match(dialog, /style=\{actionMinWidth \? \{ minWidth: actionMinWidth \} : undefined\}/)
+  assert.match(exportButton, /actionMinWidth="8\.5rem"/)
   assert.match(dialog, /\{\/\* Not the shared `Dialog`:/)
   assert.doesNotMatch(dialog, />\s*\/\/ Not the shared `Dialog`:/)
 })

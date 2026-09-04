@@ -2,6 +2,8 @@ import type { PrismaClient } from '@prisma/client'
 import {
   COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
   COMMS_SYNC_INCREMENTAL_TOPIC,
+  COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
+  type CommsIncrementalSweepJobPayload,
   type CommsSubscriptionsRenewJobPayload,
   type CommsSyncIncrementalJobPayload,
 } from '@nessie/schemas'
@@ -46,3 +48,14 @@ export const enqueueCommsIncrementalSync = async (
     topic: COMMS_SYNC_INCREMENTAL_TOPIC,
   })
 }
+
+/** Queue one bounded reconciliation sweep for non-push comms connectors. */
+export const enqueueCommsIncrementalSweep = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: CommsIncrementalSweepJobPayload,
+  idempotencyKey?: string,
+): Promise<boolean> => enqueueQueueJob(prisma, {
+  idempotencyKey,
+  payload,
+  topic: COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
+})

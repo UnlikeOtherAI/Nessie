@@ -1,7 +1,24 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "app": {
-    "enableGTKAppId": true
+    "enableGTKAppId": true,
+    "windows": [
+      {
+        "create": false,
+        "label": "main",
+        "title": "Nessie",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "theme": null,
+        "backgroundColor": "#2e1132",
+        "decorations": false,
+        "transparent": true
+      }
+    ]
   },
   "bundle": {
     "resources": [],

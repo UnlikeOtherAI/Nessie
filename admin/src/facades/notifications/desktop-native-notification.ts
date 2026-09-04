@@ -40,7 +40,9 @@ export const showDesktopNativeNotification = (input: DesktopNativeNotificationIn
   return true
 }
 
-/** Requests macOS notification permission from the user’s Settings interaction. */
+/** Requests the desktop OS's notification permission from the user’s Settings
+ *  interaction. The bridge is the same on macOS, Windows and Linux; the prompt
+ *  and where the person later manages it are the platform's own. */
 export const requestDesktopNotificationPermission = (): boolean => {
   if (!isDesktopApp()) return false
   const request = (window as DesktopNotificationWindow).__nessieDesktopRequestNotificationPermission
@@ -49,7 +51,9 @@ export const requestDesktopNotificationPermission = (): boolean => {
   return true
 }
 
-/** Mirrors the authenticated attention total onto the macOS Dock icon. */
+/** Mirrors the authenticated attention total onto the OS's app badge (the Dock
+ *  on macOS; best-effort elsewhere — the bridge answers false when the shell has
+ *  no badge, and nothing in the admin depends on it). */
 export const setDesktopBadgeCount = (count: number): boolean => {
   if (!isDesktopApp()) return false
   const setBadge = (window as DesktopNotificationWindow).__nessieDesktopSetBadgeCount

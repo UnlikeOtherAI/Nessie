@@ -4,16 +4,20 @@ import { dispatchEmailArrivals } from './comms-arrival-triggers.js'
 import {
   ConnectorNotRegisteredError,
   needsReauthorization,
+  listIncrementalPollingConnectors,
   resolveConnector,
   SyncCursorExpiredError,
   type CommsProviderId,
   type SyncCheckpoint,
 } from '@nessie/comms-connect'
+import { COMMS_SYNC_INCREMENTAL_TOPIC, COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC } from '@nessie/schemas'
 import type {
+  CommsIncrementalSweepJobPayload,
   CommsSubscriptionsRenewJobPayload,
   CommsSyncIncrementalJobPayload,
   CommsSyncInitialJobPayload,
 } from '@nessie/schemas'
+import { enqueueQueueJob } from '@nessie/db'
 import {
   persistNormalizedEvents,
   recordSubscriptions,
@@ -38,6 +42,7 @@ export type CommsSyncDeps = {
 const MAX_PAGES_PER_RUN = 100
 
 const DEFAULT_RENEW_WINDOW_MS = 60 * 60 * 1000
+const DEFAULT_INCREMENTAL_SWEEP_LIMIT = 100
 
 /**
  * Overlap subtracted from `lastSuccessfulSyncAt` when seeding the bounded
@@ -206,6 +211,7 @@ const runSyncPhase = async (
 
   try {
     let checkpoint = checkpointFromJob(job)
+    let completed = false
     for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
       const result =
         phase === 'history'
@@ -245,8 +251,15 @@ const runSyncPhase = async (
       })
 
       if (!result.hasMore) {
+        completed = true
         break
       }
+    }
+
+    if (!completed) {
+      throw new Error(
+        `[comms-sync] page limit reached for ${connection.provider}; retry from checkpoint`,
+      )
     }
 
     await prisma.commsSyncJob.update({
@@ -323,6 +336,58 @@ export const executeCommsIncrementalSyncJob = (
   deps: CommsSyncDeps,
   payload: CommsSyncIncrementalJobPayload,
 ): Promise<void> => runSyncPhase(deps, payload, 'incremental')
+
+/**
+ * Reconcile active, initially-synced connections that may not have a webhook
+ * lane. Graph mail uses this path; every connector must opt in explicitly, so
+ * webhook-backed providers stay out without scheduler branches.
+ */
+export const executeCommsIncrementalSweepJob = async (
+  deps: Pick<CommsSyncDeps, 'prisma'>,
+  payload: CommsIncrementalSweepJobPayload,
+): Promise<void> => {
+  const polling = listIncrementalPollingConnectors().find(
+    (connector) => connector.provider === payload.provider,
+  )
+  if (!polling) return
+  const limit = payload.limit ?? DEFAULT_INCREMENTAL_SWEEP_LIMIT
+  const candidates = await deps.prisma.commsConnection.findMany({
+    where: {
+      provider: payload.provider,
+      status: 'active',
+      initialSyncCompletedAt: { not: null },
+      ...(payload.afterId ? { id: { gt: payload.afterId } } : {}),
+    },
+    orderBy: { id: 'asc' },
+    // Read one extra row so a full page only queues a continuation when a
+    // later connection really exists; no first-page account can starve.
+    take: limit + 1,
+    select: { id: true },
+  })
+  const connections = candidates.slice(0, limit)
+  for (const connection of connections) {
+    await enqueueQueueJob(deps.prisma, {
+      topic: COMMS_SYNC_INCREMENTAL_TOPIC,
+      payload: { connectionId: connection.id },
+      idempotencyKey:
+        `comms-poll-incremental:${payload.provider}:${connection.id}:${payload.bucket}`,
+    })
+  }
+  const last = connections.at(-1)
+  if (candidates.length > limit && last) {
+    await enqueueQueueJob(deps.prisma, {
+      topic: COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
+      payload: {
+        provider: payload.provider,
+        bucket: payload.bucket,
+        afterId: last.id,
+        limit,
+      },
+      idempotencyKey:
+        `comms-incremental-sweep:${payload.provider}:${payload.bucket}:${last.id}`,
+    })
+  }
+}
 
 /**
  * Renewal sweep: find every active subscription expiring within the window and

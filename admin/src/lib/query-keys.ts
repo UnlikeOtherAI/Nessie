@@ -357,9 +357,28 @@ export const opsTelemetryKeys = {
   tokenSummaryBy: (groupBy: string) => ['token-summary', groupBy] as const,
 }
 
+const organizationMembersKey = ['organization', 'members'] as const
+const teamMembersKey = ['teams', 'members'] as const
+
+/** A paged query inherits its resource key and adds its resolved page identity. */
+export const paginationKeys = {
+  page: (
+    resourceKey: readonly unknown[],
+    paramsKey: string,
+    cursor: string | undefined,
+    direction: string | undefined,
+    limit: number,
+  ) => [...resourceKey, paramsKey, cursor ?? null, direction ?? null, limit] as const,
+}
+
 export const organizationKeys = {
   current: ['organization', 'current'] as const,
-  members: ['organization', 'members'] as const,
+  invitationTargets: [...organizationMembersKey, 'invitation-targets'] as const,
+  memberRoster: (resource: 'members' | 'invitations') =>
+    [...organizationMembersKey, resource] as const,
+  members: organizationMembersKey,
+  memberWorkspaces: (uoaSub?: string) =>
+    [...organizationMembersKey, uoaSub ?? 'none', 'workspaces'] as const,
 }
 
 export const personalAssistantKeys = {
@@ -444,7 +463,9 @@ export const teamKeys = {
   // fetches it, so it never refetches or resets on its own.
   avatarRevision: ['teams', 'avatar', 'revision'] as const,
   invitations: ['teams', 'invitations'] as const,
-  members: ['teams', 'members'] as const,
+  memberCandidates: (search: string) => [...teamMembersKey, 'candidates', search] as const,
+  memberRoster: (resource: 'members' | 'invitations') => [...teamMembersKey, resource] as const,
+  members: teamMembersKey,
 }
 
 export const threadKeys = {

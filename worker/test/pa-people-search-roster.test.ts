@@ -120,23 +120,15 @@ const makeContext = (prisma: PrismaClient): BuiltinToolRuntimeContext =>
     prisma,
   }) as unknown as BuiltinToolRuntimeContext
 
-const teamDetail = {
-  id: EXTERNAL_TEAM_ID,
-  members: [
-    { userId: 'usr_ada', teamRole: 'owner' },
-    { userId: 'usr_grace', teamRole: 'member' },
-  ],
-}
-
-const orgMembers = {
+// `people_search` reads the same paged, active-member endpoint as the Members
+// page. It must not revive the retired team-detail + org-roster join.
+const activeTeamRoster = {
   data: [
-    { userId: 'usr_ada', email: 'ada@acme.test', name: 'Ada Lovelace', role: 'owner', status: 'ACTIVE' },
     {
-      userId: 'usr_grace',
-      email: 'grace@acme.test',
-      name: 'Grace Hopper',
-      role: 'member',
-      status: 'DEACTIVATED',
+      subject: 'usr_ada',
+      identity: { displayName: 'Ada Lovelace', email: 'ada@acme.test' },
+      teamRole: 'owner',
+      status: 'ACTIVE',
     },
   ],
 }
@@ -155,8 +147,16 @@ const rosterDeps = (urls: string[], respond: (url: string) => Response) => ({
   resolveHost: async () => ['93.184.216.34'],
 })
 
-const respondRoster = (url: string): Response =>
-  url.includes('/members') ? json(orgMembers) : json(teamDetail)
+const respondRoster = (url: string): Response => {
+  const rosterUrl = new URL(url)
+  assert.equal(
+    rosterUrl.pathname,
+    `/org/organisations/${EXTERNAL_ORG_ID}/teams/${EXTERNAL_TEAM_ID}/members`,
+  )
+  assert.equal(rosterUrl.searchParams.get('status'), 'ACTIVE')
+  assert.equal(rosterUrl.searchParams.get('limit'), '100')
+  return json(activeTeamRoster)
+}
 
 test('a UOA-linked team answers from the UOA roster, not local rows', async () => {
   await withUoaEnv(async () => {
@@ -176,16 +176,13 @@ test('a UOA-linked team answers from the UOA roster, not local rows', async () =
       rosterDeps(urls, respondRoster),
     )
 
-    assert.equal(urls.length, 2)
-    assert.ok(urls.some((url) => url.includes(`/org/organisations/${EXTERNAL_ORG_ID}/teams/`)))
+    assert.equal(urls.length, 1)
     assert.match(result.outputPreview, /UnlikeOtherAI team roster/)
     assert.match(result.outputPreview, /Ada Lovelace \(you\) <ada@acme\.test>/)
     assert.match(result.outputPreview, /uoaSub=usr_ada/)
     assert.match(result.outputPreview, /userId=20000000-0000-4000-8000-000000000004/)
     assert.match(result.outputPreview, /role=owner/)
     assert.match(result.outputPreview, /status=ACTIVE/)
-    // Grace does not match "ada" — the query filters the roster.
-    assert.doesNotMatch(result.outputPreview, /Grace Hopper/)
     assert.equal(calls.localSearches, 0)
     assert.deepEqual(calls.subjectJoins, [['usr_ada']])
   })
@@ -202,14 +199,14 @@ test('the roster is cached briefly per (org, team) across repeated calls', async
     const urls: string[] = []
     const deps = rosterDeps(urls, respondRoster)
 
-    const first = await runPeopleSearchTool(makeContext(prisma), 'grace', 10, deps)
-    const second = await runPeopleSearchTool(makeContext(prisma), 'hopper', 10, deps)
+    const first = await runPeopleSearchTool(makeContext(prisma), 'ada', 10, deps)
+    const second = await runPeopleSearchTool(makeContext(prisma), 'lovelace', 10, deps)
 
-    // Two searches, one upstream read pair (team detail + org members).
-    assert.equal(urls.length, 2)
-    assert.match(first.outputPreview, /Grace Hopper/)
-    assert.match(second.outputPreview, /Grace Hopper/)
-    assert.match(second.outputPreview, /status=DEACTIVATED/)
+    // Two searches, one upstream roster read.
+    assert.equal(urls.length, 1)
+    assert.match(first.outputPreview, /Ada Lovelace/)
+    assert.match(second.outputPreview, /Ada Lovelace/)
+    assert.match(second.outputPreview, /status=ACTIVE/)
   })
 })
 

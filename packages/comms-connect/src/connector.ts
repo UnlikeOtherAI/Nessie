@@ -75,6 +75,13 @@ export type ConnectResult = {
 export interface CommunicationsConnector {
   readonly provider: CommsProviderId
 
+  /**
+   * Opt into the worker's generic delta reconciliation sweep. Providers with
+   * webhooks leave this unset; a positive interval asks for a bounded poll at
+   * most once per interval, without adding provider branches to the worker.
+   */
+  readonly incrementalPollingIntervalMs?: number
+
   /** Exchange an OAuth callback for durable credentials + provider identity. */
   connect(input: OAuthCallbackInput): Promise<ConnectResult>
 

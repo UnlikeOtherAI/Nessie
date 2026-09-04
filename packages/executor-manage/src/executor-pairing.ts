@@ -121,22 +121,36 @@ export const submitExecutorEnrollment = async (
     if (enrollment.expiresAt <= now) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ENROLLMENT_EXPIRED, 'Enrollment has expired.')
     }
-    if (enrollment.consumedAt || enrollment.pendingPublicKey) {
+    const expectedVerifier = verifierFor(parsed.challenge)
+    const actualVerifier = Buffer.from(enrollment.challengeVerifier, 'utf8')
+    const challengeMatches = expectedVerifier.length === actualVerifier.length
+      && timingSafeEqual(expectedVerifier, actualVerifier)
+    if (!challengeMatches) {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.ENROLLMENT_PROOF_INVALID,
+        'Executor enrollment proof is invalid.',
+      )
+    }
+    if (enrollment.consumedAt) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ENROLLMENT_USED, 'Enrollment was already used.')
     }
     if (enrollment.executor.status !== 'pending_pairing') {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ENROLLMENT_USED, 'Executor is no longer pairable.')
     }
-    const expectedVerifier = verifierFor(parsed.challenge)
-    const actualVerifier = Buffer.from(enrollment.challengeVerifier, 'utf8')
-    if (
-      expectedVerifier.length !== actualVerifier.length
-      || !timingSafeEqual(expectedVerifier, actualVerifier)
-    ) {
-      throw new ExecutorError(
-        EXECUTOR_ERROR_CODES.ENROLLMENT_PROOF_INVALID,
-        'Executor enrollment proof is invalid.',
-      )
+    if (enrollment.pendingPublicKey) {
+      if (
+        enrollment.pendingPublicKey === parsed.machinePublicKey
+        && enrollment.pendingFingerprint === publicKeyFingerprint
+        && enrollment.descriptorDigest === descriptorDigest
+      ) {
+        return {
+          executorId: enrollment.executorId,
+          fingerprint: publicKeyFingerprint,
+          descriptorDigest,
+          expiresAt: enrollment.expiresAt.toISOString(),
+        }
+      }
+      throw new ExecutorError(EXECUTOR_ERROR_CODES.ENROLLMENT_USED, 'Enrollment was already used.')
     }
 
     await tx.executorEnrollment.update({

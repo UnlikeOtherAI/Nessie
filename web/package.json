@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.3.1",
+    "@fortawesome/free-brands-svg-icons": "^7.3.1",
+    "@fortawesome/react-fontawesome": "^3.3.0",
     "@nessie/config": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "react": "^19.2.0",

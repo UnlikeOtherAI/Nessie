@@ -7,6 +7,7 @@ import {
   resolvePageSize,
   type PaginationMeta,
 } from '@nessie/schemas'
+import { paginationKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 
 /**
@@ -123,7 +124,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
   const query = useQuery({
     enabled,
     queryFn: () => api.getPage<TData>(`${path}${buildSearch({ ...params, direction }, cursor, limit)}`),
-    queryKey: [...queryKey, paramsKey, cursor ?? null, direction ?? null, limit],
+    queryKey: paginationKeys.page(queryKey, paramsKey, cursor, direction, limit),
   })
 
   const meta = query.data?.meta

@@ -1,72 +1,26 @@
-#[cfg(any(target_os = "linux", test))]
-use std::ffi::OsStr;
 use std::io::{Error, ErrorKind};
-use tauri::utils::config::{WebviewUrl, WindowConfig};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use tauri::utils::config::WebviewUrl;
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
-#[cfg(target_os = "linux")]
-use tauri_plugin_deep_link::DeepLinkExt;
 
 mod executor_companion;
+mod shell;
 
-const DESKTOP_INIT_SCRIPT: &str = concat!(
-    include_str!("desktop_notifications_init.js"),
-    // Both files end in an IIFE. A semicolon prevents the second one from
-    // being parsed as a call on the first one's undefined return value.
-    "\n;\n",
-    include_str!("desktop_build_freshness_init.js")
-);
+use shell::{desktop_init_script, desktop_platform, should_register_deep_link_schemes};
+
 #[cfg(test)]
 const DEFAULT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/default.json");
 #[cfg(test)]
 const DEVELOPMENT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/development.json");
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
-const DESKTOP_PLATFORM: &str = if cfg!(target_os = "linux") {
-    "linux"
-} else if cfg!(target_os = "macos") {
-    "macos"
-} else if cfg!(target_os = "windows") {
-    "windows"
-} else {
-    "unknown"
-};
-
-#[cfg(any(target_os = "linux", test))]
-fn should_register_linux_deep_links(
-    target_os: &str,
-    appimage: Option<&OsStr>,
-    debug_build: bool,
-) -> bool {
-    target_os == "linux" && (debug_build || appimage.is_some())
-}
-
-fn configure_desktop_window_frame(window_config: &mut WindowConfig, target_os: &str) {
-    // macOS provides its own traffic lights. Windows and Linux get the
-    // matching controls in the app chrome, so remove their native title-bar
-    // buttons instead of showing two competing control sets.
-    if matches!(target_os, "linux" | "windows") {
-        window_config.decorations = false;
-    }
-    // Linux window managers do not round an undecorated GTK window for us.
-    // Make only that native surface transparent; the shared frame paints and
-    // clips the normal-window silhouette, while maximised and full-screen
-    // states deliberately render flush.
-    if target_os == "linux" {
-        window_config.transparent = true;
-        window_config.background_color = None;
-    }
-}
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
 // api.nessie.works are third-party in macOS WebKit, which blocks the HttpOnly
 // refresh cookie that keeps a short-lived access JWT renewable. A normal
 // release therefore loads the hosted admin as its top-level, same-site document.
+// The explicit embedded-build command is the one supported exception: its App
+// URL contains a locally built admin bundle pinned to the production API.
 fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
-    // A normal release points at the hosted same-site admin so its HttpOnly
-    // session cookie remains renewable in the desktop WebView. The explicit
-    // frontendDist override used for a local package becomes an App URL,
-    // though, and must stay embedded or a freshly built UI can never run.
     if !release || matches!(configured, WebviewUrl::App(_)) {
         return configured;
     }
@@ -80,10 +34,16 @@ fn desktop_webview_url(configured: WebviewUrl, release: bool) -> WebviewUrl {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Resolved before the first window exists: an unsupported target has no
+    // frame the admin knows how to draw, so it must not reach a window at all.
+    let platform = desktop_platform();
     let mut builder = tauri::Builder::default();
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
+        // The single-instance plugin must be registered first, and its
+        // deep-link feature is what carries a second launch's `nessie://`
+        // callback into the running instance's onOpenUrl listeners.
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -100,19 +60,22 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(executor_companion::ExecutorCompanionState::default())
         .invoke_handler(tauri::generate_handler![
+            executor_companion::executor_companion_change_workspace,
             executor_companion::executor_companion_configure_workspace,
+            executor_companion::executor_companion_forget,
             executor_companion::executor_companion_pair,
             executor_companion::executor_companion_start,
             executor_companion::executor_companion_status,
             executor_companion::executor_companion_stop,
+            shell::desktop_set_badge,
         ])
-        .setup(|app| {
-            #[cfg(target_os = "linux")]
-            if should_register_linux_deep_links(
+        .setup(move |app| {
+            if should_register_deep_link_schemes(
                 std::env::consts::OS,
                 std::env::var_os("APPIMAGE").as_deref(),
                 cfg!(debug_assertions),
             ) {
+                use tauri_plugin_deep_link::DeepLinkExt;
                 app.deep_link()
                     .register_all()
                     .map_err(|error| Error::new(ErrorKind::Other, error))?;
@@ -128,12 +91,9 @@ pub fn run() {
 
             let mut window_config = main_window.clone();
             window_config.url = desktop_webview_url(window_config.url, !cfg!(debug_assertions));
-            configure_desktop_window_frame(&mut window_config, DESKTOP_PLATFORM);
 
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
-                .initialization_script(format!(
-                    "{DESKTOP_INIT_SCRIPT}\n;window.__nessieDesktopPlatform = {DESKTOP_PLATFORM:?};"
-                ))
+                .initialization_script(desktop_init_script(platform))
                 .build()?;
 
             Ok(())
@@ -153,38 +113,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        configure_desktop_window_frame, desktop_webview_url, should_register_linux_deep_links,
-        DEFAULT_DESKTOP_CAPABILITIES, DESKTOP_INIT_SCRIPT, DEVELOPMENT_DESKTOP_CAPABILITIES,
+        desktop_webview_url, DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES,
         PRODUCTION_ADMIN_URL,
     };
-    use std::ffi::OsStr;
-    use tauri::utils::config::{Color, WebviewUrl, WindowConfig};
-
-    #[test]
-    fn linux_custom_frame_owns_its_transparent_rounded_surface() {
-        let background = Color(46, 17, 50, 255);
-        let mut linux = WindowConfig {
-            background_color: Some(background),
-            ..WindowConfig::default()
-        };
-        configure_desktop_window_frame(&mut linux, "linux");
-        assert!(!linux.decorations);
-        assert!(linux.transparent);
-        assert_eq!(linux.background_color, None);
-
-        let mut windows = WindowConfig {
-            background_color: Some(background),
-            ..WindowConfig::default()
-        };
-        configure_desktop_window_frame(&mut windows, "windows");
-        assert!(!windows.decorations);
-        assert!(!windows.transparent);
-        assert_eq!(windows.background_color, Some(background));
-    }
+    use tauri::utils::config::WebviewUrl;
 
     #[test]
     fn release_window_uses_the_hosted_same_site_admin() {
-        let configured = WebviewUrl::External(PRODUCTION_ADMIN_URL.parse().unwrap());
+        let configured = WebviewUrl::External("https://ignored.example/".parse().unwrap());
         let url = desktop_webview_url(configured, true);
         assert_eq!(url.to_string(), PRODUCTION_ADMIN_URL);
     }
@@ -193,11 +129,6 @@ mod tests {
     fn release_window_keeps_an_explicitly_embedded_admin() {
         let configured = WebviewUrl::App("index.html".into());
         assert_eq!(desktop_webview_url(configured.clone(), true), configured);
-    }
-
-    #[test]
-    fn desktop_init_scripts_are_statement_separated() {
-        assert!(DESKTOP_INIT_SCRIPT.contains("\n;\n"));
     }
 
     #[test]
@@ -231,23 +162,7 @@ mod tests {
     fn second_launches_forward_deep_links_to_the_running_app() {
         let cargo_manifest = include_str!("../Cargo.toml");
         assert!(cargo_manifest.contains(
-            "tauri-plugin-single-instance = { version = \"2.4.2\", features = [\"deep-link\"] }"
-        ));
-    }
-
-    #[test]
-    fn linux_registers_runtime_handlers_only_when_the_package_does_not_own_one() {
-        assert!(should_register_linux_deep_links("linux", None, true));
-        assert!(should_register_linux_deep_links(
-            "linux",
-            Some(OsStr::new("/tmp/Nessie.AppImage")),
-            false,
-        ));
-        assert!(!should_register_linux_deep_links("linux", None, false));
-        assert!(!should_register_linux_deep_links(
-            "windows",
-            Some(OsStr::new("Nessie.exe")),
-            true,
+            "tauri-plugin-single-instance = { version = \"2.4.4\", features = [\"deep-link\"] }"
         ));
     }
 
@@ -261,6 +176,7 @@ mod tests {
     fn this_build_uses_the_same_origin_selection_as_app_startup() {
         let configured = WebviewUrl::App("index.html".into());
         let selected = desktop_webview_url(configured.clone(), !cfg!(debug_assertions));
+
         assert_eq!(selected, configured);
     }
 }

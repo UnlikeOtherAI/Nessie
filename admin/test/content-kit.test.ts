@@ -123,6 +123,8 @@ test('a DataTable renders real column headers and a caption', () => {
   assert.match(markup, /<caption class="sr-only">Agents<\/caption>/)
   assert.match(markup, /scope="col"/)
   assert.match(markup, /admin-table/)
+  assert.match(markup, /overflow-hidden rounded-xl border/)
+  assert.match(markup, /border-b border-\[color:var\(--sep\)\]/)
   assert.match(markup, /Alpha/)
   assert.doesNotMatch(markup, /aria-label="Expand Agents"/)
   // Numbers line up under each other or they cannot be compared.
@@ -143,6 +145,24 @@ test('a sorted DataTable column announces its direction', () => {
   )
 
   assert.match(markup, /aria-sort="descending"/)
+})
+
+test('a detail row has the standard trailing chevron action', () => {
+  const markup = render(
+    createElement(DataTable<{ id: string }>, {
+      columns: [{ header: 'Id', key: 'id', render: (row) => row.id }],
+      expandable: false,
+      label: 'Rows',
+      onRowClick: () => undefined,
+      rowActionLabel: (row) => `Open ${row.id}`,
+      rowKey: (row) => row.id,
+      rows: [{ id: 'one' }],
+    }),
+  )
+
+  assert.match(markup, /aria-label="Open one"/)
+  assert.match(markup, /m9 18 6-6-6-6/)
+  assert.match(markup, /tabindex="0"/)
 })
 
 test('a loading DataTable draws its shape, an empty one says so', () => {
@@ -227,7 +247,7 @@ test('form-level messages carry the right urgency and render nothing when empty'
   assert.equal(render(createElement(FormSuccess, {})), '')
 })
 
-test('a ChoiceGroup is one keyboard stop with one announced value', () => {
+test('an inline ChoiceGroup delegates to the animated TabBar radio group', () => {
   const markup = render(
     createElement(ChoiceGroup<'a' | 'b'>, {
       label: 'Depth',
@@ -242,8 +262,27 @@ test('a ChoiceGroup is one keyboard stop with one announced value', () => {
 
   assert.match(markup, /<fieldset/)
   assert.match(markup, /<legend/)
+  assert.match(markup, /role="radiogroup"/)
+  assert.equal(markup.match(/role="radio"/g)?.length, 2)
+  assert.equal(markup.match(/aria-checked="true"/g)?.length, 1)
+  assert.equal(markup.match(/tabindex="0"/g)?.length, 1)
+})
+
+test('a card ChoiceGroup stays a native radio field', () => {
+  const markup = render(
+    createElement(ChoiceGroup<'a' | 'b'>, {
+      label: 'Visibility',
+      onChange: () => undefined,
+      options: [
+        { description: 'Only members can see it.', label: 'Private', value: 'a' },
+        { description: 'Everyone can see it.', label: 'Shared', value: 'b' },
+      ],
+      value: 'b',
+      variant: 'card',
+    }),
+  )
+
   assert.equal(markup.match(/type="radio"/g)?.length, 2)
-  // Both radios share one name, which is what makes them one group.
   const names = [...markup.matchAll(/name="([^"]+)"/g)].map((match) => match[1])
   assert.equal(new Set(names).size, 1)
   assert.equal(markup.match(/checked=""/g)?.length, 1)

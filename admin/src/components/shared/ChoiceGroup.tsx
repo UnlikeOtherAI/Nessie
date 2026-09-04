@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { SectionLabel } from '../primitives/SectionLabel'
+import { TabBar } from '../primitives/TabBar'
 
 /**
  * Pick exactly one option, inside a form.
@@ -12,9 +13,10 @@ import { SectionLabel } from '../primitives/SectionLabel'
  * rest were unreachable by keyboard as a group and announced as a row of
  * unrelated buttons.
  *
- * This is **not** `TabBar`. That strip switches a view or narrows a list, and
- * lives in the page's chrome; this is a form field whose value is submitted.
- * The distinction is what a change *does*, not how it looks.
+ * A compact inline choice delegates its visual and keyboard behaviour to
+ * `TabBar` in `radiogroup` mode, so every segmented row in the app has one
+ * sliding selection pill. Card choices remain real radios: their explanations
+ * are the content of the choice, not a compact segment label.
  */
 
 export type ChoiceOption<T extends string> = {
@@ -44,14 +46,6 @@ type ChoiceGroupProps<T extends string> = {
   variant?: ChoiceVariant
 }
 
-const inlineClass = (selected: boolean): string =>
-  [
-    'h-9 rounded-md border px-3 text-xs font-semibold transition-colors',
-    selected
-      ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--thinking)]'
-      : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
-  ].join(' ')
-
 const cardClass = (selected: boolean): string =>
   [
     'block cursor-pointer rounded-md border p-3 text-left transition-colors',
@@ -77,49 +71,52 @@ export const ChoiceGroup = <T extends string>({
         {labelHidden ? label : <SectionLabel as="span" size="sm">{label}</SectionLabel>}
       </legend>
 
-      <div className={variant === 'inline' ? 'flex flex-wrap gap-2' : 'grid gap-2'}>
-        {options.map((option) => {
-          const selected = option.value === value
+      {variant === 'inline' ? (
+        <TabBar
+          ariaLabel={label}
+          items={options.map((option) => ({
+            disabled: option.disabled,
+            label: option.label,
+            value: option.value,
+          }))}
+          onChange={onChange}
+          role="radiogroup"
+          value={value}
+        />
+      ) : (
+        <div className="grid gap-2">
+          {options.map((option) => {
+            const selected = option.value === value
 
-          return (
-            <label
-              className={variant === 'inline' ? undefined : cardClass(selected)}
-              key={option.value}
-            >
-              {/*
-                * A real radio, visually hidden. It is what makes the group one
-                * arrow-key stop with one announced value, which every
-                * button-row version of this lost.
-                */}
-              <input
-                checked={selected}
-                className="sr-only"
-                disabled={option.disabled}
-                name={name}
-                onChange={() => onChange(option.value)}
-                type="radio"
-                value={option.value}
-              />
-              {variant === 'inline' ? (
-                <span className={inlineClass(selected)}>
-                  <span className="flex h-full items-center">{option.label}</span>
+            return (
+              <label className={cardClass(selected)} key={option.value}>
+                {/*
+                  * A real radio, visually hidden. It is what makes the group one
+                  * arrow-key stop with one announced value, which every
+                  * button-row version of this lost.
+                  */}
+                <input
+                  checked={selected}
+                  className="sr-only"
+                  disabled={option.disabled}
+                  name={name}
+                  onChange={() => onChange(option.value)}
+                  type="radio"
+                  value={option.value}
+                />
+                <span className="block text-sm font-semibold text-[color:var(--tx)]">
+                  {option.label}
                 </span>
-              ) : (
-                <>
-                  <span className="block text-sm font-semibold text-[color:var(--tx)]">
-                    {option.label}
+                {option.description ? (
+                  <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">
+                    {option.description}
                   </span>
-                  {option.description ? (
-                    <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">
-                      {option.description}
-                    </span>
-                  ) : null}
-                </>
-              )}
-            </label>
-          )
-        })}
-      </div>
+                ) : null}
+              </label>
+            )
+          })}
+        </div>
+      )}
     </fieldset>
   )
 }

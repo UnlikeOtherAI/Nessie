@@ -230,6 +230,12 @@ export const parseUoaRosterPermissions = (payload: unknown): MemberRosterPermiss
     ...(typeof permissions?.searchMemberCandidates === 'boolean'
       ? { searchMemberCandidates: permissions.searchMemberCandidates }
       : {}),
+    ...(Array.isArray(permissions?.teamRoleOptions)
+      ? {
+          teamRoleOptions: permissions.teamRoleOptions.flatMap((role) =>
+            typeof role === 'string' && role.trim() ? [role.trim()] : []),
+        }
+      : {}),
   }
 }
 

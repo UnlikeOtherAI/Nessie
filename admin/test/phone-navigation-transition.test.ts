@@ -11,7 +11,7 @@ import {
 } from '../src/layouts/admin-shell/phone-navigation'
 
 const readSource = (relativePath: string): string =>
-  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8').replaceAll('\r\n', '\n')
 
 test('pushes channel and channel-project details forward from the Channels root', () => {
   assert.equal(

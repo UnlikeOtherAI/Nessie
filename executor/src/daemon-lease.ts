@@ -1,27 +1,31 @@
 import { open, lstat, readFile, unlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-const DAEMON_LEASE_FILE = 'daemon.pid'
-const MODE_MASK_GROUP_OR_OTHER = 0o077
+import { assertOwnerOnlyStatePath } from './state-security.js'
 
-const currentOwnerId = (): number | undefined => process.getuid?.()
+const DAEMON_LEASE_FILE = 'daemon.pid'
 
 const leasePath = (stateDir: string): string => resolve(stateDir, DAEMON_LEASE_FILE)
 
+/**
+ * The lease sits inside the executor's state directory. On POSIX its own uid
+ * and mode carry the proof; on Windows it inherits that directory's explicit
+ * DACL, so the directory is what gets verified — reading a Windows file mode
+ * would prove nothing, since Node reports a fixed `0o666`-shaped value there.
+ */
 const assertOwnerOnlyLease = async (path: string): Promise<Awaited<ReturnType<typeof lstat>>> => {
-  const metadata = await lstat(path)
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
-    throw new Error('Executor daemon lease must be an ordinary file.')
-  }
-  if (currentOwnerId() !== undefined && metadata.uid !== currentOwnerId()) {
-    throw new Error('Executor daemon lease must be owned by the current user.')
-  }
-  if ((metadata.mode & MODE_MASK_GROUP_OR_OTHER) !== 0) {
-    throw new Error('Executor daemon lease must not be accessible by other users.')
-  }
-  return metadata
+  await assertOwnerOnlyStatePath(path, 'file')
+  return lstat(path)
 }
 
+/**
+ * Node's `process.kill` documentation states that signal `0` "can be sent to
+ * test for the existence of a process" and is "a platform independent way to
+ * test for the existence of a process" — Windows has no signals, and this is
+ * one of the cases Node emulates, so no signal is delivered anywhere. `ESRCH`
+ * is the only answer that proves absence — `EPERM` means the process exists and
+ * belongs to somebody else — so anything else is treated as alive.
+ */
 const processIsLive = (pid: number): boolean => {
   try {
     process.kill(pid, 0)
