@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 
 import Fastify from 'fastify'
+import multipart from '@fastify/multipart'
 import { PrismaClient } from '@prisma/client'
 import { createFileService, getStorage, type FileService } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
@@ -98,6 +99,7 @@ export const buildApp = (
   actingUserId: string,
 ) => {
   const app = Fastify({ logger: false })
+  void app.register(multipart)
   const deps = {
     prisma,
     fileService,

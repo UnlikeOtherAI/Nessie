@@ -42,6 +42,26 @@ test('demonstration capture writes full redacted arguments behind the recording 
   assert.equal(argumentJson.includes('[REDACTED]'), true)
 })
 
+test('demonstration capture masks credentials stored under ordinary keys', async () => {
+  const statements: Array<{ values?: unknown[] }> = []
+  const prisma = {
+    $executeRaw: async (statement: { values?: unknown[] }) => {
+      statements.push(statement)
+      return 1
+    },
+  } as unknown as PrismaClient
+  const token = ['sk', 'proj', 'abcdefghijklmnopqrstuv'].join('-')
+
+  await captureDemonstrationToolEnd(prisma, {
+    ...captureInput,
+    argumentsValue: { command: `publish ${token}` },
+  })
+
+  const serialized = JSON.stringify(statements[0]?.values)
+  assert.doesNotMatch(serialized, /abcdefghijklmnopqrstuv/)
+  assert.match(serialized, new RegExp(`sk-proj-${'•'.repeat(12)}`))
+})
+
 test('demonstration control calls do not record themselves', async () => {
   let writes = 0
   const prisma = {

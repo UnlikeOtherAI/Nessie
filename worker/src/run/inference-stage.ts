@@ -12,6 +12,7 @@ import {
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import {
+  createSecretRedactingStream,
   redactDetectedSecrets,
   type AuthorizedActionContext,
   type CandidateOutput,
@@ -30,6 +31,7 @@ import {
 } from './inference-provider.js'
 import type { ProviderRequestHeadersResolver } from './inference-identity.js'
 import { InferenceAbortedError } from './inference-abort.js'
+import { sanitizeProviderToolCalls } from './tool-util.js'
 
 // The cache-key derivation lives in @nessie/runtime beside the connectors
 // that consume it, shared with the model client's utility calls. The anchor it
@@ -255,6 +257,8 @@ export const executeStage = async (
     const maxOutputTokens = input.maxOutputTokensOverride ?? input.modelConfig.maxTokens
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
+      const reasoningStream = createSecretRedactingStream()
+      const textStream = createSecretRedactingStream()
       const source = service.stream?.({
         actorContext: input.actorContext,
         maxOutputTokens,
@@ -277,29 +281,30 @@ export const executeStage = async (
       while (!next.done) {
         if (next.value.type === 'reasoning_text.delta') {
           if (next.value.text && input.onVisibleReasoningDelta) {
-            await input.onVisibleReasoningDelta(next.value.text)
+            const safe = reasoningStream.push(next.value.text)
+            if (safe) await input.onVisibleReasoningDelta(safe)
           }
         }
         if (next.value.type === 'output_text.delta') {
           outputText += next.value.text
           if (next.value.text && input.onVisibleTextDelta) {
-            await input.onVisibleTextDelta(next.value.text)
+            const safe = textStream.push(next.value.text)
+            if (safe) await input.onVisibleTextDelta(safe)
           }
-        }
-        if (next.value.type === 'tool_call.delta' && next.value.text) {
-          input.onToolCallDelta?.({
-            id: next.value.id,
-            index: next.value.index,
-            invocationId,
-            text: next.value.text,
-            toolName: next.value.toolName,
-          })
         }
         next = await source.next()
       }
-      outputText = next.value.outputText
+      if (input.onVisibleReasoningDelta) {
+        const safeReasoningTail = reasoningStream.finish()
+        if (safeReasoningTail) await input.onVisibleReasoningDelta(safeReasoningTail)
+      }
+      if (input.onVisibleTextDelta) {
+        const safeTextTail = textStream.finish()
+        if (safeTextTail) await input.onVisibleTextDelta(safeTextTail)
+      }
+      outputText = redactDetectedSecrets(next.value.outputText)
       invocation = next.value.invocations.at(-1)
-      toolCalls = next.value.toolCalls
+      toolCalls = sanitizeProviderToolCalls(next.value.toolCalls)
     } else {
       const result = await service.run({
         actorContext: input.actorContext,
@@ -315,11 +320,27 @@ export const executeStage = async (
         tools: input.tools,
         toolChoice: input.toolChoice,
       })
-      outputText = result.outputText
+      outputText = redactDetectedSecrets(result.outputText)
       invocation = result.invocations.at(-1)
-      toolCalls = result.toolCalls
+      toolCalls = sanitizeProviderToolCalls(result.toolCalls)
       if (outputText && input.emitBufferedOutput && input.onVisibleTextDelta) {
         await input.onVisibleTextDelta(outputText)
+      }
+    }
+
+    // Tool arguments cannot be streamed safely: credentials and JSON strings
+    // may span arbitrary provider deltas. Replay the complete sanitized call
+    // once, preserving the document recorder's byte-match invariant while no
+    // raw fragment reaches its live or durable lanes.
+    if (input.onToolCallDelta) {
+      for (const [index, toolCall] of toolCalls.entries()) {
+        input.onToolCallDelta({
+          id: toolCall.toolCallId,
+          index,
+          invocationId,
+          text: JSON.stringify(toolCall.arguments),
+          toolName: toolCall.toolName,
+        })
       }
     }
 

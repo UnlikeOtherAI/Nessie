@@ -5,10 +5,24 @@ import {
   MAX_PREVIEW_LENGTH,
   MAX_RAW_BODY_CHARS,
   MAX_TOOL_RESULT_CHARS,
+  sanitizeProviderToolCalls,
   summarizeToolInput,
   truncate,
   truncateToolResult,
 } from './tool-util.js'
+
+test('provider tool calls replace secret arguments and carry a block marker', () => {
+  const token = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')
+  const [sanitized] = sanitizeProviderToolCalls([{
+    arguments: { nested: { apiKey: token }, ordinary: 'visible' },
+    toolCallId: 'call-1',
+    toolName: 'external_publish',
+  }])
+
+  assert.equal(sanitized?.secretArgumentBlocked, true)
+  assert.equal(sanitized?.arguments.ordinary, 'visible')
+  assert.doesNotMatch(JSON.stringify(sanitized?.arguments), /1234567890/)
+})
 
 test('summarizeToolInput redacts secret-bearing fields recursively', () => {
   const summary = summarizeToolInput({
@@ -39,6 +53,20 @@ test('tool summaries and results mask structural credentials under ordinary keys
   assert.doesNotMatch(summary, /1234567890abcdefghijklmnop/)
   assert.doesNotMatch(output, /1234567890abcdefghijklmnop/)
   assert.match(output, new RegExp(`sk_live_${'•'.repeat(12)}`))
+})
+
+test('tool result redaction precedes cuts and already-truncated early returns', () => {
+  const token = ['sk', 'proj', 'abcdefghijklmnopqrstuv'].join('-')
+  const acrossCut = truncateToolResult(`${'x'.repeat(135)}${token}${'y'.repeat(100)}`, 200)
+  const withMarker = truncateToolResult(
+    `${token}\n\n[... truncated 20 chars ...]\n\nend`,
+    20,
+  )
+
+  assert.doesNotMatch(acrossCut, /abcdefghijklmnopqrstuv/)
+  assert.match(acrossCut, /truncated/)
+  assert.doesNotMatch(withMarker, /abcdefghijklmnopqrstuv/)
+  assert.match(withMarker, new RegExp(`sk-proj-${'•'.repeat(12)}`))
 })
 
 test('truncateToolResult leaves within-cap output untouched', () => {

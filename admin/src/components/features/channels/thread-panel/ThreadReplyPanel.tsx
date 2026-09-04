@@ -152,12 +152,13 @@ export const ThreadReplyPanel = ({
     changeEditingContent,
     confirmDelete,
     deleteConfirm,
+    secretCaptureDialog,
     editingContent,
     editingMessageId,
     startEdit,
     submitEdit,
     updatePending,
-  } = useChannelMessageActions(activeThreadId)
+  } = useChannelMessageActions(activeThreadId, activeChannel.projectId)
 
   // Escape closes the panel — except while typing in the composer, where
   // Escape belongs to the input/mention menu.
@@ -367,6 +368,7 @@ export const ThreadReplyPanel = ({
       </SidePanelShell>
 
       {deleteConfirm}
+      {secretCaptureDialog}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

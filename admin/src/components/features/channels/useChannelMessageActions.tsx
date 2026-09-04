@@ -1,13 +1,27 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { detectSecrets } from '@nessie/schemas'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { SecretCaptureDialog } from './SecretCaptureDialog'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import {
   useAddMessageReaction,
   useDeleteMessage,
   useUpdateMessage,
 } from '../../../facades/messages/hooks'
+import type { SecretRecord } from '../../../facades/secrets/hooks'
+import {
+  advanceSecretCapture,
+  createSecretCapture,
+  protectedReplacement,
+  type SecretCapture,
+} from './secret-capture'
 
-export const useChannelMessageActions = (threadId?: string) => {
+type PendingEditSecretCapture = {
+  capture: SecretCapture
+  messageId: string
+}
+
+export const useChannelMessageActions = (threadId?: string, projectId?: string | null) => {
   const { mutate: addMessageReaction } = useAddMessageReaction(threadId)
   const { isPending: updatePending, mutateAsync: updateMessage } =
     useUpdateMessage(threadId)
@@ -20,9 +34,18 @@ export const useChannelMessageActions = (threadId?: string) => {
   // message, so Escape keeps it instead of discarding a person's rewrite.
   const editDraft = useDraft<string>(draftKey('message-edit', editingMessageId), {
     initial: editingBaseline,
+    isEmpty: (value) => value === editingBaseline || detectSecrets(value).length > 0,
   })
   const editingContent = editDraft.draft
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [pendingSecretEdit, setPendingSecretEdit] =
+    useState<PendingEditSecretCapture | null>(null)
+  const pendingSecretEditRef = useRef<PendingEditSecretCapture | null>(null)
+
+  const storePendingSecretEdit = useCallback((value: PendingEditSecretCapture | null) => {
+    pendingSecretEditRef.current = value
+    setPendingSecretEdit(value)
+  }, [])
 
   // The confirm outlives a channel switch: this hook sits at page level while
   // the dialog renders inside a surface that stays mounted. Without this, a
@@ -31,7 +54,8 @@ export const useChannelMessageActions = (threadId?: string) => {
   // it blocked.
   useEffect(() => {
     setPendingDeleteId(null)
-  }, [threadId])
+    storePendingSecretEdit(null)
+  }, [storePendingSecretEdit, threadId])
 
   const startEdit = useCallback((messageId: string, content: string) => {
     setEditingBaseline(content)
@@ -51,6 +75,14 @@ export const useChannelMessageActions = (threadId?: string) => {
         return
       }
 
+      const capture = createSecretCapture({ content: next, projectId })
+      if (capture) {
+        storePendingSecretEdit({ capture, messageId })
+        editDraft.clear()
+        setEditingMessageId(null)
+        return
+      }
+
       try {
         await updateMessage({ content: next, messageId })
         // Saved: the rewrite is no longer unsent, so its draft goes.
@@ -59,8 +91,30 @@ export const useChannelMessageActions = (threadId?: string) => {
         setEditingMessageId(null)
       }
     },
-    [editDraft, editingContent, updateMessage],
+    [editDraft, editingContent, projectId, storePendingSecretEdit, updateMessage],
   )
+
+  const confirmSecretEdit = useCallback(async (
+    secret: SecretRecord,
+    identity: { captureId: string; currentIndex: number },
+  ) => {
+    const pending = pendingSecretEditRef.current
+    if (
+      !pending
+      || pending.capture.captureId !== identity.captureId
+      || pending.capture.currentIndex !== identity.currentIndex
+    ) return
+    const next = advanceSecretCapture(pending.capture, secret.name)
+    if (next) {
+      storePendingSecretEdit({ ...pending, capture: next })
+      return
+    }
+    storePendingSecretEdit(null)
+    await updateMessage({
+      content: protectedReplacement(pending.capture, secret.name),
+      messageId: pending.messageId,
+    })
+  }, [storePendingSecretEdit, updateMessage])
 
   // Asking is all this does now. `window.confirm` blocked here and returned the
   // answer inline; a themed dialog cannot, so the delete moved to the one place
@@ -103,6 +157,14 @@ export const useChannelMessageActions = (threadId?: string) => {
       title="Delete this message?"
     />
   )
+  const secretCaptureDialog: ReactNode = pendingSecretEdit ? (
+    <SecretCaptureDialog
+      capture={pendingSecretEdit.capture}
+      key={`${pendingSecretEdit.capture.captureId}:${pendingSecretEdit.capture.currentIndex}`}
+      onClose={() => storePendingSecretEdit(null)}
+      onSaved={confirmSecretEdit}
+    />
+  ) : null
 
   return {
     addReaction,
@@ -110,6 +172,7 @@ export const useChannelMessageActions = (threadId?: string) => {
     changeEditingContent: editDraft.setDraft,
     confirmDelete,
     deleteConfirm,
+    secretCaptureDialog,
     editingContent,
     editingMessageId,
     startEdit,

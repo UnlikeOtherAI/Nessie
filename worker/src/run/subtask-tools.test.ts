@@ -18,6 +18,7 @@ const teamId = '00000000-0000-4000-8000-000000000011'
 
 test('spawned child strips every explicit grant while preserving ordinary policy', async () => {
   let createdToolPolicy: unknown
+  let childSystemPrompt = ''
   const parentToolPolicy = {
     ordinary_allow: true,
     ordinary_deny: false,
@@ -29,8 +30,9 @@ test('spawned child strips every explicit grant while preserving ordinary policy
   const tx = {
     $executeRaw: async () => 1,
     agent: {
-      create: async ({ data }: { data: { toolPolicy?: unknown } }) => {
+      create: async ({ data }: { data: { systemPrompt?: string; toolPolicy?: unknown } }) => {
         createdToolPolicy = data.toolPolicy
+        childSystemPrompt = data.systemPrompt ?? ''
         return { id: childAgentId, name: 'Child' }
       },
     },
@@ -88,4 +90,23 @@ test('spawned child strips every explicit grant while preserving ordinary policy
     ordinary_allow: true,
     ordinary_deny: false,
   })
+  assert.match(childSystemPrompt, /secure form before you see it/)
+})
+
+test('spawn_subtask refuses credential-bearing tasks before durable writes', async () => {
+  let transactionStarted = false
+  const context = {
+    prisma: {
+      $transaction: async () => {
+        transactionStarted = true
+      },
+    },
+  } as unknown as BuiltinToolRuntimeContext
+  const token = ['sk', 'proj', 'abcdefghijklmnopqrstuv'].join('-')
+
+  await assert.rejects(
+    runSpawnSubtaskTool(context, { task: `Inspect ${token}` }),
+    /possible credential/,
+  )
+  assert.equal(transactionStarted, false)
 })

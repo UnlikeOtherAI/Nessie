@@ -148,12 +148,13 @@ export const ChannelAgentInfoDrawer = ({
     changeEditingContent,
     confirmDelete,
     deleteConfirm,
+    secretCaptureDialog,
     editingContent,
     editingMessageId,
     startEdit,
     submitEdit,
     updatePending,
-  } = useChannelMessageActions(activeChannel?.defaultThreadId)
+  } = useChannelMessageActions(activeChannel?.defaultThreadId, activeChannel?.projectId)
 
   const agentMap = useMemo(
     () => new Map(agents.map((entry) => [entry.id, entry])),
@@ -387,6 +388,7 @@ export const ChannelAgentInfoDrawer = ({
       </Sheet>
 
       {deleteConfirm}
+      {secretCaptureDialog}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

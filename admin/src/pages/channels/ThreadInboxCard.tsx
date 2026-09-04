@@ -90,7 +90,7 @@ export const ThreadInboxCard = ({
     threadMessages: messages,
   })
   const markRead = useMarkThreadRead()
-  const messageActions = useChannelMessageActions(channel?.defaultThreadId)
+  const messageActions = useChannelMessageActions(channel?.defaultThreadId, channel?.projectId)
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const isLoading = rootQuery.isLoading || repliesQuery.isLoading
   const hasFailed = rootQuery.isError || repliesQuery.isError
@@ -278,6 +278,7 @@ export const ThreadInboxCard = ({
         }}
         onSendAsFile={composer.sendAsFile}
       />
+      {messageActions.secretCaptureDialog}
     </article>
   )
 }

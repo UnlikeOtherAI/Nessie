@@ -115,6 +115,7 @@ interface ChannelConversationSurfaceProps {
     | 'changeEditingContent'
     | 'confirmDelete'
     | 'deleteConfirm'
+    | 'secretCaptureDialog'
     | 'editingContent'
     | 'editingMessageId'
     | 'startEdit'
@@ -211,6 +212,7 @@ export const ChannelConversationSurface = ({
     changeEditingContent,
     confirmDelete,
     deleteConfirm,
+    secretCaptureDialog,
     editingContent,
     editingMessageId,
     startEdit,
@@ -421,6 +423,7 @@ export const ChannelConversationSurface = ({
       ) : null}
 
       {deleteConfirm}
+      {secretCaptureDialog}
       <Dialog
         description="Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically."
         dismissDisabled={startDemonstration.isPending || stopDemonstration.isPending}

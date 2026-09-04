@@ -134,6 +134,34 @@ test('a delegate sub-agent is never shown the delegate tool itself', async () =>
   )
 })
 
+test('delegate refuses a credential-bearing task before inference', async () => {
+  let inferenceCalls = 0
+  const token = ['sk', 'proj', 'abcdefghijklmnopqrstuv'].join('-')
+  const result = await runDelegate(
+    { task: `Inspect ${token}` },
+    {
+      mcpToolset: emptyMcpToolset(),
+      mcpView: emptyMcpView(),
+      runInference: async () => {
+        inferenceCalls += 1
+        return inferenceResult({ outputText: 'should not run' })
+      },
+      authorizeSubAgentTool: async () => {
+        throw new Error('should not authorize')
+      },
+      executeBuiltinTool: async () => {
+        throw new Error('should not execute')
+      },
+      builtinDescriptors: [],
+    },
+  )
+
+  assert.equal(result.success, false)
+  assert.match(result.output, /possible credential/)
+  assert.doesNotMatch(result.inputSummary, /abcdefghijklmnopqrstuv/)
+  assert.equal(inferenceCalls, 0)
+})
+
 test('a sub-agent that calls delegate anyway is refused, not recursed', async () => {
   let turn = 0
   const result = await runDelegate(

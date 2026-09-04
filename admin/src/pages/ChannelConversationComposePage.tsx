@@ -22,9 +22,17 @@ import { UserAvatar } from '../components/primitives/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
+import { SecretCaptureDialog } from '../components/features/channels/SecretCaptureDialog'
+import {
+  advanceSecretCapture,
+  createSecretCapture,
+  protectedReplacement,
+  type SecretCapture,
+} from '../components/features/channels/secret-capture'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import type { SecretRecord } from '../facades/secrets/hooks'
 
 const optionKey = recipientKey
 
@@ -62,6 +70,13 @@ export const ChannelConversationComposePage = () => {
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+  const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
+  const secretCaptureRef = useRef<SecretCapture | null>(null)
+
+  const storeSecretCapture = useCallback((capture: SecretCapture | null) => {
+    secretCaptureRef.current = capture
+    setSecretCapture(capture)
+  }, [])
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -143,6 +158,14 @@ export const ChannelConversationComposePage = () => {
         return
       }
 
+      const capture = createSecretCapture({ content })
+      if (capture) {
+        storeSecretCapture(capture)
+        mentionRef.current?.clear()
+        setMessage('')
+        return
+      }
+
       setError(null)
       try {
         const channel = await startConversation.mutateAsync({
@@ -164,8 +187,39 @@ export const ChannelConversationComposePage = () => {
         setError(err instanceof Error ? err.message : 'Could not start chat.')
       }
     },
-    [navigate, recipients, sendMessage, startConversation],
+    [navigate, recipients, sendMessage, startConversation, storeSecretCapture],
   )
+
+  const captureOversizePaste = useCallback((paste: string) => {
+    const capture = createSecretCapture({ content: paste, replacementMode: 'file' })
+    if (!capture) {
+      setOversizePaste(paste)
+      return
+    }
+    setOversizePaste(null)
+    storeSecretCapture(capture)
+    mentionRef.current?.clear()
+    setMessage('')
+  }, [storeSecretCapture])
+
+  const confirmSecretCapture = useCallback(async (
+    secret: SecretRecord,
+    identity: { captureId: string; currentIndex: number },
+  ) => {
+    const capture = secretCaptureRef.current
+    if (
+      !capture
+      || capture.captureId !== identity.captureId
+      || capture.currentIndex !== identity.currentIndex
+    ) return
+    const next = advanceSecretCapture(capture, secret.name)
+    if (next) {
+      storeSecretCapture(next)
+      return
+    }
+    storeSecretCapture(null)
+    await submit(protectedReplacement(capture, secret.name))
+  }, [storeSecretCapture, submit])
 
   const hasSelectableOptions = options.length > 0
 
@@ -361,7 +415,7 @@ export const ChannelConversationComposePage = () => {
               entities={mentionEntities}
               maxLength={CHAT_MESSAGE_MAX_CHARS}
               onChange={setMessage}
-              onOversizePaste={setOversizePaste}
+              onOversizePaste={captureOversizePaste}
               onSubmit={(text) => void submit(text)}
               placeholder="Message"
             />
@@ -403,6 +457,14 @@ export const ChannelConversationComposePage = () => {
           open={oversizePaste !== null}
           pastedText={oversizePaste ?? ''}
         />
+        {secretCapture ? (
+          <SecretCaptureDialog
+            capture={secretCapture}
+            key={`${secretCapture.captureId}:${secretCapture.currentIndex}`}
+            onClose={() => storeSecretCapture(null)}
+            onSaved={confirmSecretCapture}
+          />
+        ) : null}
         </div>
       </div>
     </OverlayPortal>

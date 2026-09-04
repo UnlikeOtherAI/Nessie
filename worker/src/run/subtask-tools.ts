@@ -6,12 +6,15 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
+  redactDetectedSecrets,
   withActionContext,
 } from '@nessie/schemas'
 import { stripProtectedExplicitToolPolicy } from '@nessie/runtime'
 import { enqueueRunExecution } from '../queue.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
+import { AGENT_SECRET_SAFETY_INSTRUCTION } from './execute/prompt.js'
+import { sanitizeToolArguments } from './tool-util.js'
 
 const normalizeSubtaskRole = (value: unknown): string => {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -32,6 +35,7 @@ const buildSubtaskSystemPrompt = (input: {
     `You are a delegated ${roleLabel} sub-agent working for ${input.parentName}.`,
     'Focus only on the assigned sub-task, use the available tools when needed, and report concrete results back in this thread.',
     'Do not ask the user to restate context already present in the thread, and do not spawn further subtasks.',
+    AGENT_SECRET_SAFETY_INSTRUCTION,
   ]
 
   const parentPrompt = input.parentSystemPrompt?.trim()
@@ -52,6 +56,12 @@ export const runSpawnSubtaskTool = async (
   const task = typeof input.task === 'string' ? input.task.trim() : ''
   if (!task) {
     throw new Error('task is required.')
+  }
+  const safeInput = sanitizeToolArguments({ task })
+  if (safeInput.detected) {
+    throw new Error(
+      'The subtask contained a possible credential. Save it through the secure form and retry with a secret reference.',
+    )
   }
 
   const role = normalizeSubtaskRole(input.role)
@@ -140,7 +150,7 @@ export const runSpawnSubtaskTool = async (
       data: {
         agentId: childAgent.id,
         organizationId: context.channel.organizationId,
-        purpose: task.slice(0, 200),
+        purpose: redactDetectedSecrets(task).slice(0, 200),
         runId: run.id,
         status: 'inbox',
       },
@@ -194,7 +204,7 @@ export const runSpawnSubtaskTool = async (
   )
 
   return {
-    inputSummary: task.slice(0, 200),
+    inputSummary: redactDetectedSecrets(task).slice(0, 200),
     outputPreview: [
       `Spawned ${role} sub-agent.`,
       `agentId=${child.agentId} | name="${child.agentName}"`,

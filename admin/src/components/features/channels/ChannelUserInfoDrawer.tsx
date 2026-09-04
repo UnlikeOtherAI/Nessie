@@ -147,12 +147,13 @@ export const ChannelUserInfoDrawer = ({
     changeEditingContent,
     confirmDelete,
     deleteConfirm,
+    secretCaptureDialog,
     editingContent,
     editingMessageId,
     startEdit,
     submitEdit,
     updatePending,
-  } = useChannelMessageActions(dmChannel?.defaultThreadId)
+  } = useChannelMessageActions(dmChannel?.defaultThreadId, dmChannel?.projectId)
 
   const drawerScroll = useStickToBottom(dmChannel?.id, true, {
     failed: messageHistory.isFetchNextPageError,
@@ -303,6 +304,7 @@ export const ChannelUserInfoDrawer = ({
       </Sheet>
 
       {deleteConfirm}
+      {secretCaptureDialog}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

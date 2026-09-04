@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import {
-  CHAT_MESSAGE_MAX_CHARS,
-  detectSecrets,
-  extractDetectedSecretValue,
-  redactDetectedSecrets,
-  type DetectedSecret,
-} from '@nessie/schemas'
+import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { MentionInputHandle, PersonalAssistantMention } from '../../shared/MentionInput'
 import {
   useSendMessage,
@@ -27,6 +21,12 @@ import {
 } from './composer-draft'
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
+import {
+  advanceSecretCapture,
+  createSecretCapture,
+  protectedReplacement,
+  type SecretCapture,
+} from './secret-capture'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
@@ -46,7 +46,7 @@ interface UseChannelComposerResult {
   setMessage: React.Dispatch<React.SetStateAction<string>>
   optimisticMessages: OptimisticMessage[]
   oversizePaste: string | null
-  setOversizePaste: React.Dispatch<React.SetStateAction<string | null>>
+  setOversizePaste: (paste: string | null) => void
   mentionRef: React.RefObject<MentionInputHandle | null>
   isSendPending: boolean
   sendError: string | null
@@ -62,7 +62,10 @@ interface UseChannelComposerResult {
   invitePendingAgent: (agentId: string) => Promise<void>
   dismissPendingAgent: (agentId: string) => void
   secretCapture: SecretCapture | null
-  confirmSecretCapture: (secret: SecretRecord) => Promise<void>
+  confirmSecretCapture: (
+    secret: SecretRecord,
+    identity: { captureId: string; currentIndex: number },
+  ) => Promise<void>
   dismissSecretCapture: () => void
 }
 
@@ -70,16 +73,6 @@ const newClientMessageId = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`
-
-export type SecretCapture = {
-  agentMentions: PersonalAssistantMention[]
-  detected: DetectedSecret
-  replacementContent: string
-  replacementMode: 'file' | 'message'
-  scopeId?: string
-  scopeType: 'personal' | 'project'
-  value: string
-}
 
 export const useChannelComposer = ({
   activeChannel,
@@ -104,19 +97,25 @@ export const useChannelComposer = ({
   const setDraft = draft.setDraft
   const clearDraft = draft.clear
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
-  const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+  const [oversizePaste, setOversizePasteState] = useState<string | null>(null)
   const [pendingAgentInvites, setPendingAgentInvites] = useState<PendingAgentInvite[]>([])
   const [pendingInviteMessageIds, setPendingInviteMessageIds] = useState<Record<string, string>>({})
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
   const [sendError, setSendError] = useState<string | null>(null)
   const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
+  const secretCaptureRef = useRef<SecretCapture | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
   // One idempotency key per unsent draft. It is minted at the first attempt and
   // retained while that attempt is unresolved, so a double-submit or a client
   // retry of the same post resolves to the message the first attempt created
   // rather than a second copy; a success mints a fresh one for the next post.
   const clientMessageIdRef = useRef<string | null>(null)
+
+  const storeSecretCapture = useCallback((capture: SecretCapture | null) => {
+    secretCaptureRef.current = capture
+    setSecretCapture(capture)
+  }, [])
 
   const setMessage = useCallback<React.Dispatch<React.SetStateAction<string>>>(
     (value) => {
@@ -175,51 +174,20 @@ export const useChannelComposer = ({
     setPendingInviteMessageIds({})
     setInviteErrors({})
     setSendError(null)
-    setSecretCapture(null)
+    setOversizePasteState(null)
+    storeSecretCapture(null)
     // A different conversation is a different post: never carry one channel's
     // idempotency key into the next.
     clientMessageIdRef.current = null
-  }, [activeChannel?.id])
+  }, [activeChannel?.id, storeSecretCapture])
 
-  const sendText = useCallback(
-    async (rawText: string, agentMentions: PersonalAssistantMention[] = []) => {
-      const text = rawText.trim()
-      const attachmentIds = attachments.attachmentIds
-      // A post needs text or at least one uploaded file (attachment-only send).
-      if (!activeChannel || (!text && attachmentIds.length === 0)) {
-        return
-      }
-
-      if (text.length > CHAT_MESSAGE_MAX_CHARS) {
-        // Typed-past-the-limit path: show the same dialog so the user can
-        // trim or cancel instead of getting a server 413 after the round
-        // trip.
-        setOversizePaste(text)
-        return
-      }
-
-      const detected = detectSecrets(text)[0]
-      if (detected) {
-        // Stop before a request, optimistic row, browser notification, or
-        // message-memory path can receive the material. The value stays only
-        // in this protected capture state until the vault POST succeeds.
-        setSecretCapture({
-          agentMentions,
-          detected,
-          replacementContent: redactDetectedSecrets(text),
-          replacementMode: 'message',
-          ...(activeChannel.projectId
-            ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
-            : { scopeType: 'personal' as const }),
-          value: extractDetectedSecretValue(text, detected),
-        })
-        // Cancel the debounced local write and synchronously remove any draft
-        // written while the credential was still incomplete.
-        clearDraft()
-        mentionRef.current?.clear()
-        return
-      }
-
+  const postSafeText = useCallback(
+    async (
+      text: string,
+      agentMentions: PersonalAssistantMention[],
+      attachmentIds: string[],
+    ) => {
+      if (!activeChannel || (!text && attachmentIds.length === 0)) return
       const clientId = newClientMessageId()
       clientMessageIdRef.current ??= newClientMessageId()
       const clientMessageId = clientMessageIdRef.current
@@ -281,6 +249,50 @@ export const useChannelComposer = ({
       }
     },
     [activeChannel, attachments, clearDraft, sendMessage, getSendExtras],
+  )
+
+  const captureSecretText = useCallback((input: {
+    agentMentions?: PersonalAssistantMention[]
+    attachmentIds?: string[]
+    content: string
+    replacementMode?: SecretCapture['replacementMode']
+  }): boolean => {
+    const capture = createSecretCapture({
+      ...input,
+      projectId: activeChannel?.projectId,
+    })
+    if (!capture) return false
+    storeSecretCapture(capture)
+    // Replace the draft with attachment metadata only. The credential-aware
+    // draft predicate removes any already-written text and no raw message is
+    // left behind for a later restore.
+    setDraft((current) => ({ ...current, text: '' }))
+    mentionRef.current?.clear()
+    return true
+  }, [activeChannel?.projectId, setDraft, storeSecretCapture])
+
+  const setOversizePaste = useCallback((paste: string | null) => {
+    if (paste && captureSecretText({ content: paste, replacementMode: 'file' })) {
+      setOversizePasteState(null)
+      return
+    }
+    setOversizePasteState(paste)
+  }, [captureSecretText])
+
+  const sendText = useCallback(
+    async (rawText: string, agentMentions: PersonalAssistantMention[] = []) => {
+      const text = rawText.trim()
+      const attachmentIds = attachments.attachmentIds
+      if (!activeChannel || (!text && attachmentIds.length === 0)) return
+
+      if (captureSecretText({ agentMentions, attachmentIds, content: text })) return
+      if (text.length > CHAT_MESSAGE_MAX_CHARS) {
+        setOversizePasteState(text)
+        return
+      }
+      await postSafeText(text, agentMentions, attachmentIds)
+    },
+    [activeChannel, attachments.attachmentIds, captureSecretText, postSafeText],
   )
 
   const insertEmoji = useCallback((emoji: string) => {
@@ -361,21 +373,7 @@ export const useChannelComposer = ({
       if (!activeChannel) {
         return
       }
-      const detected = detectSecrets(rawText)[0]
-      if (detected) {
-        setSecretCapture({
-          agentMentions: [],
-          detected,
-          replacementContent: redactDetectedSecrets(rawText),
-          replacementMode: 'file',
-          ...(activeChannel.projectId
-            ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
-            : { scopeType: 'personal' as const }),
-          value: extractDetectedSecretValue(rawText, detected),
-        })
-        setOversizePaste(null)
-        return
-      }
+      if (captureSecretText({ content: rawText, replacementMode: 'file' })) return
       setSendError(null)
       try {
         const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
@@ -388,7 +386,7 @@ export const useChannelComposer = ({
           ...getSendExtras?.(),
         })
         clearDraft()
-        setOversizePaste(null)
+        setOversizePasteState(null)
       } catch (error) {
         setSendError(
           error instanceof Error && error.message
@@ -397,30 +395,39 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, clearDraft, uploadAttachment, sendMessage, getSendExtras],
+    [activeChannel, captureSecretText, clearDraft, uploadAttachment, sendMessage, getSendExtras],
   )
 
   const confirmSecretCapture = useCallback(
-    async (secret: SecretRecord) => {
-      const capture = secretCapture
-      if (!capture) return
+    async (
+      secret: SecretRecord,
+      identity: { captureId: string; currentIndex: number },
+    ) => {
+      const capture = secretCaptureRef.current
+      if (
+        !capture
+        || capture.captureId !== identity.captureId
+        || capture.currentIndex !== identity.currentIndex
+      ) return
 
-      // Drop the only React state holding the raw value before doing any chat
-      // work. The follow-up contains only the scanner-produced replacement and
-      // the non-secret key the person approved.
-      setSecretCapture(null)
-      const replacement = [
-        capture.replacementContent,
-        `[Secret protected and saved as ${secret.name}; the value was replaced.]`,
-      ].filter(Boolean).join('\n\n')
+      const next = advanceSecretCapture(capture, secret.name)
+      if (next) {
+        storeSecretCapture(next)
+        return
+      }
+
+      // Drop every raw value before chat work. The follow-up contains only the
+      // scanner-produced replacement and the non-secret names the person chose.
+      storeSecretCapture(null)
+      const replacement = protectedReplacement(capture, secret.name)
 
       if (capture.replacementMode === 'file') {
         await sendAsFile(replacement)
         return
       }
-      await sendText(replacement, capture.agentMentions)
+      await postSafeText(replacement, capture.agentMentions, capture.attachmentIds)
     },
-    [secretCapture, sendAsFile, sendText],
+    [postSafeText, sendAsFile, storeSecretCapture],
   )
 
   return {
@@ -444,6 +451,6 @@ export const useChannelComposer = ({
     dismissPendingAgent,
     secretCapture,
     confirmSecretCapture,
-    dismissSecretCapture: () => setSecretCapture(null),
+    dismissSecretCapture: () => storeSecretCapture(null),
   }
 }

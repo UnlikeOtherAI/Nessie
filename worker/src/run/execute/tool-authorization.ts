@@ -16,7 +16,11 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
-import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
+import {
+  hashJsonValue,
+  sanitizeToolArguments,
+  summarizeToolInput,
+} from '../tool-util.js'
 import {
   reviewableToolSurface,
   type AutoReviewResult,
@@ -194,6 +198,26 @@ export const authorizeToolExecution = async (
   const toolActorContext = buildToolActorContext(baseActorContext, context, toolName)
   const emitAudit: ToolAuthorizationAuditEmitter =
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
+
+  // This gate is repeated here even though provider-created calls are cleaned
+  // in the loop. Replays, resumed calls, and direct callers must never persist
+  // raw credentials in approval state or dispatch them to a tool.
+  const safeArguments = sanitizeToolArguments(args)
+  if (safeArguments.detected) {
+    const reason = 'secret_argument_blocked'
+    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+      source: 'worker_secret_boundary',
+    }, reason)
+    return {
+      decision: 'deny',
+      result: toolDeniedResult(toolName, safeArguments.value, {
+        message:
+          'Tool call blocked because its arguments contained a possible credential. '
+          + 'Save it through the secure form and retry with a secret reference.',
+        reason,
+      }),
+    }
+  }
 
   if (await hooks.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
     return {

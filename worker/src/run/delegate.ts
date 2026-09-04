@@ -7,7 +7,7 @@ import type {
 import { runAgenticLoop } from './agentic-loop.js'
 import { DELEGATE_BUDGET } from './run-budget.js'
 import type { McpToolset } from './mcp-toolset.js'
-import { summarizeToolInput } from './tool-util.js'
+import { sanitizeToolArguments, summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 import type { ToolActorContext, ToolAuthorizationDecision } from './execute/tool-authorization.js'
 import { AGENT_SECRET_SAFETY_INSTRUCTION } from './execute/prompt.js'
@@ -86,7 +86,20 @@ export const runDelegate = async (
   const task = typeof args['task'] === 'string' ? (args['task'] as string).trim() : ''
   const hintRaw = args['hint']
   const hint = typeof hintRaw === 'string' ? hintRaw.trim() : undefined
-  const inputSummary = summarizeToolInput({ task: task.slice(0, 160), hint })
+  const safeInput = sanitizeToolArguments({ task, ...(hint ? { hint } : {}) })
+  const inputSummary = summarizeToolInput(safeInput.value, 160)
+
+  if (safeInput.detected) {
+    return {
+      inputSummary,
+      output: 'delegate failed: the task contained a possible credential. Save it through the secure form and delegate using a secret reference.',
+      success: false,
+      invocations: [],
+      iterations: 0,
+      toolCallsUsed: 0,
+      exhaustedBudget: null,
+    }
+  }
 
   if (!task) {
     return {

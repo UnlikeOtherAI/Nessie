@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 
 import { secretKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -43,6 +44,21 @@ export const useCreateSecret = () => {
     mutationFn: (input: CreateSecretInput) => apiClient.post<SecretRecord>('/api/secrets', input),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: secretKeys.all }),
   })
+}
+
+/**
+ * Secure-capture values must not enter TanStack's application-wide mutation
+ * cache. This direct request retains the raw value only for the lifetime of
+ * the awaited vault POST, then invalidates the ordinary metadata query.
+ */
+export const useTransientSecretSave = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useCallback(async (input: CreateSecretInput): Promise<SecretRecord> => {
+    const secret = await apiClient.post<SecretRecord>('/api/secrets', input)
+    void queryClient.invalidateQueries({ queryKey: secretKeys.all })
+    return secret
+  }, [apiClient, queryClient])
 }
 
 export const useRevokeSecret = () => {

@@ -243,6 +243,48 @@ test('the loop never retains or emits bypassed secret material', async () => {
   assert.match(result.finalText, new RegExp(`sk-proj-${'•'.repeat(12)}`))
 })
 
+test('secret-bearing tool arguments are sanitized and refused before preparation', async () => {
+  const token = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')
+  let turn = 0
+  let prepared = false
+  let executed = false
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 3 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      executed = true
+      return { inputSummary: 'unsafe', output: 'ran', success: true }
+    },
+    initialMessages: initial,
+    prepareTool: async () => {
+      prepared = true
+      return { kind: 'execute', execute: async () => ({
+        inputSummary: 'unsafe',
+        output: 'ran',
+        success: true,
+      }) }
+    },
+    runInference: async () => {
+      turn += 1
+      if (turn > 1) return finalAnswerInference('done')
+      return {
+        ...finalAnswerInference(''),
+        toolCalls: [{
+          arguments: { apiKey: token },
+          toolCallId: 'secret-call',
+          toolName: 'external_publish',
+        }],
+      }
+    },
+    tools: [],
+  })
+
+  assert.equal(prepared, false)
+  assert.equal(executed, false)
+  assert.doesNotMatch(JSON.stringify(result.messages), /1234567890/)
+  assert.match(JSON.stringify(result.messages), /Tool call blocked/)
+})
+
 test('oversized tool results are truncated before entering the loop context', async () => {
   let capturedMessages: ProviderMessage[] = []
   let turn = 0

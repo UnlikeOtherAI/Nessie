@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { redactDetectedSecrets } from '@nessie/schemas'
+import type { ProviderToolCall } from '@nessie/runtime'
 
 import type { AgenticToolResult, ToolExecutionUsage, AgentCardSuspension } from './tool-types.js'
 
@@ -115,9 +116,95 @@ const SECRET_KEY_PATTERN =
   )
 
 const REDACTED = '[REDACTED]'
+export type SanitizedProviderToolCall = ProviderToolCall & {
+  secretArgumentBlocked?: true
+}
+
+const TOOL_ARGUMENT_SECRET_KEY = new RegExp(
+  [
+    'api[_-]?key',
+    'authorization',
+    'client[_-]?secret',
+    'credential',
+    'password',
+    'private[_-]?key',
+    'refresh[_-]?token',
+    'secret[_-]?access[_-]?key',
+    'signing[_-]?secret',
+  ].join('|'),
+  'i',
+)
+
+export type SanitizedToolArguments = {
+  detected: boolean
+  value: Record<string, unknown>
+}
+
+const redactToolArgumentSecrets = (
+  value: unknown,
+  key = '',
+  depth = 0,
+): { detected: boolean; value: unknown } => {
+  if (depth > 8) return { detected: false, value: '[MaxDepth]' }
+  if (typeof value === 'string') {
+    if (TOOL_ARGUMENT_SECRET_KEY.test(key) && value.length >= 8) {
+      return { detected: true, value: '[REDACTED_SECRET]' }
+    }
+    const redacted = redactDetectedSecrets(value)
+    return { detected: redacted !== value, value: redacted }
+  }
+  if (value === null || typeof value !== 'object') return { detected: false, value }
+
+  let detected = false
+  if (Array.isArray(value)) {
+    const entries = value.map((entry) => {
+      const result = redactToolArgumentSecrets(entry, key, depth + 1)
+      detected ||= result.detected
+      return result.value
+    })
+    return { detected, value: entries }
+  }
+
+  const entries: Record<string, unknown> = {}
+  for (const [entryKey, entry] of Object.entries(value as Record<string, unknown>)) {
+    const result = redactToolArgumentSecrets(entry, entryKey, depth + 1)
+    detected ||= result.detected
+    entries[entryKey] = result.value
+  }
+  return { detected, value: entries }
+}
+
+export const sanitizeToolArguments = (
+  value: Record<string, unknown>,
+): SanitizedToolArguments => {
+  const result = redactToolArgumentSecrets(value)
+  return {
+    detected: result.detected,
+    value: result.value as Record<string, unknown>,
+  }
+}
+
+/**
+ * Provider-created arguments are context, approval state, demonstrations, and
+ * potentially external side effects. Replace any credential-shaped value and
+ * mark the call so orchestration can refuse execution without persisting raw
+ * arguments or sending a corrupted credential to a tool.
+ */
+export const sanitizeProviderToolCalls = (
+  toolCalls: ProviderToolCall[],
+): SanitizedProviderToolCall[] => toolCalls.map((toolCall) => {
+  const result = sanitizeToolArguments(toolCall.arguments)
+  if (!result.detected) return toolCall
+  return {
+    ...toolCall,
+    arguments: result.value as Record<string, unknown>,
+    secretArgumentBlocked: true,
+  }
+})
 
 export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
   if (depth > 8) return '[MaxDepth]'
+  if (typeof value === 'string') return redactDetectedSecrets(value)
   if (value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) {
     return value.map((entry) => redactToolInputValue(entry, depth + 1))
