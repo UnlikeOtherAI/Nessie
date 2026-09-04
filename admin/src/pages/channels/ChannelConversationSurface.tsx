@@ -13,7 +13,10 @@ import { CallBanner } from '../../components/shared/CallBanner'
 import { DropZoneOverlay } from '../../components/shared/DropZoneOverlay'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
 import { ChannelHeader } from '../../components/features/channels/ChannelHeader'
-import { ChannelMessageFeed } from '../../components/features/channels/ChannelMessageFeed'
+import {
+  ChannelMessageFeed,
+  type MessageHistoryStatus,
+} from '../../components/features/channels/ChannelMessageFeed'
 import { ChannelSearchPanel } from '../../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../../components/features/channels/ChannelTabBar'
 import { Pill } from '../../components/primitives/Pill'
@@ -96,6 +99,7 @@ interface ChannelConversationSurfaceProps {
   externalAgentIdentity: ExternalAgentIdentity | null
   feedItems: ReturnType<typeof buildFeedItems>
   feedScroll: ReturnType<typeof useStickToBottom>
+  messageHistory: MessageHistoryStatus
   isConversationSurface: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -169,6 +173,7 @@ export const ChannelConversationSurface = ({
   externalAgentIdentity,
   feedItems,
   feedScroll,
+  messageHistory,
   isConversationSurface,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -320,6 +325,7 @@ export const ChannelConversationSurface = ({
               editingMessageId={editingMessageId}
               externalAgentDisplayName={activeChannel?.label}
               feedItems={feedItems}
+              historyStatus={messageHistory}
               isExternalAgentConversation={isExternalAgentConversation}
               isPersonalAssistantConversation={isPersonalAssistantConversation}
               meAvatar={{

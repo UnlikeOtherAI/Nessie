@@ -274,6 +274,7 @@ export const ChannelMessageRow = ({
       aria-label={`Message from ${displayName}`}
       className="admin-msg-row relative py-1"
       data-actions-open={activeActionMessageId === message.id}
+      data-message-id={message.id}
       onClick={() => {
         setActiveActionMessageId((current) => (current === message.id ? null : message.id))
       }}

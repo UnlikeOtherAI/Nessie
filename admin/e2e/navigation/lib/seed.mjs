@@ -7,7 +7,7 @@ import { readBootstrapToken } from './servers.mjs'
 
 const CHANNEL_LABELS = ['Design Review', 'Release Notes']
 
-const call = async (path, { body, method = 'GET', token } = {}) => {
+const request = async (path, { body, method = 'GET', token } = {}) => {
   const response = await fetch(`${API_URL}${path}`, {
     body: body === undefined ? undefined : JSON.stringify(body),
     headers: {
@@ -21,8 +21,10 @@ const call = async (path, { body, method = 'GET', token } = {}) => {
   if (!response.ok) {
     throw new Error(`${method} ${path} → ${response.status} ${text.slice(0, 300)}`)
   }
-  return payload?.data ?? payload
+  return payload
 }
+
+const call = async (path, options) => (await request(path, options))?.data
 
 // Two ways in, both already in the product: the one-time owner bootstrap on
 // a fresh database, and the localhost-only dev-login on a database that
@@ -87,9 +89,25 @@ export const seedTeam = async (apiServer) => {
       id: channel.id,
       label: channel.label,
       slug: channel.slug ?? channel.label,
+      defaultThreadId: channel.defaultThreadId,
     })),
     origin: session.origin,
     project: { id: project.id, name: project.name },
     token: session.token,
+  }
+}
+
+/** Ensure one real chat crosses the API's first 50-row history boundary. */
+export const seedMessageHistory = async (token, threadId) => {
+  const current = await request(`/api/threads/${threadId}/messages?limit=50`, { token })
+  if (current?.meta?.hasMore) return
+
+  const missing = 55 - (current?.data?.length ?? 0)
+  for (let index = 0; index < missing; index += 1) {
+    await call(`/api/threads/${threadId}/messages`, {
+      body: { content: `History pagination proof ${String(index + 1).padStart(2, '0')}` },
+      method: 'POST',
+      token,
+    })
   }
 }

@@ -71,8 +71,12 @@ export const ThreadInboxCard = ({
     [repliesQuery.data, rootQuery.data],
   )
   const inboxMessages = useMemo(
-    () => splitThreadInboxMessages(rootQuery.data?.message, repliesQuery.data ?? []),
-    [repliesQuery.data, rootQuery.data],
+    () => splitThreadInboxMessages(
+      rootQuery.data?.message,
+      repliesQuery.data ?? [],
+      activity.replyCount,
+    ),
+    [activity.replyCount, repliesQuery.data, rootQuery.data],
   )
   const getSendExtras = useCallback(
     () => ({ alsoSendToChannel, rootMessageId: activity.rootMessageId }),

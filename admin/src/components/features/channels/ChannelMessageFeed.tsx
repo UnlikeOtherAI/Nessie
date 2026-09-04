@@ -40,6 +40,13 @@ import { useResolveReactorName } from './useResolveReactorName'
 // dialog's effects on a fresh array.
 const EMPTY_DOCUMENT_SESSIONS: DocumentStreamEntry[] = []
 
+export type MessageHistoryStatus = {
+  hasOlder: boolean
+  isLoadingOlder: boolean
+  olderLoadFailed: boolean
+  retryOlder: () => void
+}
+
 // Tombstone for a deleted message that still has replies below it: a small
 // light-dashed bubble in place of the original row (no avatar/name).
 const DeletedBubble = () => (
@@ -55,6 +62,7 @@ interface ChannelMessageFeedProps {
   documentSessions?: DocumentStreamEntry[]
   documentStore?: DocumentStreamStore
   feedItems: FeedItem[]
+  historyStatus?: MessageHistoryStatus
   optimisticMessages: OptimisticMessage[]
   pendingMessages: PendingStreamMessage[]
   agentMap: Map<string, AgentRecord>
@@ -123,6 +131,7 @@ export const ChannelMessageFeed = ({
   documentSessions,
   documentStore,
   feedItems,
+  historyStatus,
   optimisticMessages,
   pendingMessages,
   agentMap,
@@ -297,6 +306,27 @@ export const ChannelMessageFeed = ({
 
   return (
     <div className="admin-chat-feed" data-message-feed>
+      {historyStatus?.isLoadingOlder ? (
+        <div
+          aria-live="polite"
+          className="px-5 py-2 text-center text-xs text-[color:var(--tx3)]"
+          role="status"
+        >
+          Loading earlier messages…
+        </div>
+      ) : historyStatus?.olderLoadFailed && historyStatus.hasOlder ? (
+        <div className="flex items-center justify-center gap-2 px-5 py-2 text-xs text-[color:var(--danger-text)]">
+          <span>Earlier messages could not be loaded.</span>
+          <button
+            className="admin-button admin-button-secondary admin-button-compact"
+            onClick={historyStatus.retryOlder}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+
       {feedItems.length === 0 &&
       pendingMessages.length === 0 &&
       optimisticMessages.length === 0 ? (
