@@ -69,7 +69,11 @@ sandbox daemon is never force-killed.
 `windows-latest` runner — the NSIS installer, the desktop MSI, and the
 standalone executor MSI — runs the Rust tests for the shell, the executor's
 native helper, the shared provenance crate, the service, and the tray, signs
-what it built, and then proves both packages install, launch, and uninstall. It
+what it built, and then proves both packages install, launch, and uninstall. The
+desktop native helper is signed before its runtime hash is written; the
+standalone service, tray, native helper, Hyper-V bridge, and Windows initrd
+builder are signed before packaging. Both packaged Node executables must retain
+their valid upstream Authenticode signature. It
 runs on `workflow_dispatch` and on a `desktop-v*` tag.
 
 Signing is a deployment fact, configured through repository secrets. The
@@ -83,9 +87,11 @@ reputation. The keys are placeholders in
 rest are `null`) and the workflow overrides them:
 
 A `desktop-v*` tag is a release boundary: the workflow fails immediately when
-any signing setting is absent, and every executable and installer must have a
-valid signature whose subject and exact certificate thumbprint match the pinned
-publisher. Manual unsigned builds remain development evidence only.
+any signing setting is absent, and every Nessie executable and installer must
+have a valid signature whose subject and exact certificate thumbprint match the
+pinned publisher. Manual and non-tag builds never receive signing credentials
+and remain unsigned development evidence only; a `source_ref` override cannot
+be used for a signed release.
 
 | Secret | What it holds |
 | --- | --- |

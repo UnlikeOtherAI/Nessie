@@ -216,14 +216,19 @@ jobs:
         run: |
           # The `secrets` context is not usable in a step's `if`, so every later
           # step branches on these outputs rather than on the secrets directly.
+          $release = $env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -like 'desktop-v*'
+          if ($release -and '${{ inputs.source_ref }}') {
+            throw 'A signed desktop release must build the tagged source; source_ref is for unsigned development builds only.'
+          }
           $configured = [bool]($env:WINDOWS_SIGN_COMMAND -and $env:WINDOWS_SIGNER_THUMBPRINT -and $env:WINDOWS_SIGNER_SUBJECT)
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and -not $configured) {
+          if ($release -and -not $configured) {
             throw 'A desktop-v* release requires the Windows signing command, signer thumbprint, and signer subject.'
           }
-          "signed=$($configured.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          $installs = [bool]($configured -and $env:WINDOWS_SIGN_TOOL_INSTALL)
+          $signed = [bool]($release -and $configured)
+          "signed=$($signed.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $installs = [bool]($signed -and $env:WINDOWS_SIGN_TOOL_INSTALL)
           "install_tool=$($installs.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          if ($configured) {
+          if ($signed) {
             Write-Host 'Signing with the configured Windows publisher.'
             # The publisher compiled into the release is what the desktop
             # companion and the executor service pin at runtime; without it a
@@ -231,7 +236,7 @@ jobs:
             "NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT=$env:WINDOWS_SIGNER_THUMBPRINT" |
               Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
-            Write-Host '::warning::No Windows signing identity is configured. This is an unsigned development build, not a release.'
+            Write-Host '::warning::Manual and non-tag builds are unsigned development builds, not releases.'
           }
 
       # Azure Artifact Signing is the recommended configuration: no private key
@@ -247,16 +252,17 @@ jobs:
         env:
           # Read by the signing CLI when the configuration is Azure Artifact
           # Signing; unused by a certificate-thumbprint configuration.
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+          AZURE_CLIENT_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_TENANT_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ steps.signing.outputs.signed == 'true' && secrets.AZURE_CLIENT_SECRET || '' }}
+          WINDOWS_SIGN_COMMAND: ${{ steps.signing.outputs.signed == 'true' && secrets.WINDOWS_SIGN_COMMAND || '' }}
         run: |
           # `signCommand` carries `%1`, which Tauri replaces with each artifact's
           # path. The placeholder values in tauri.windows.conf.json are null, so
           # an unsigned build simply does not sign.
           $arguments = @('--bundles', 'nsis,msi')
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+            $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
             $config = @{ bundle = @{ windows = @{ signCommand = $env:WINDOWS_SIGN_COMMAND } } } |
               ConvertTo-Json -Depth 5 -Compress
             $arguments += @('--config', $config)
@@ -274,10 +280,10 @@ jobs:
       - name: Build the standalone executor package
         shell: pwsh
         env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+          AZURE_CLIENT_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_TENANT_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ steps.signing.outputs.signed == 'true' && secrets.AZURE_CLIENT_SECRET || '' }}
+          WINDOWS_SIGN_COMMAND: ${{ steps.signing.outputs.signed == 'true' && secrets.WINDOWS_SIGN_COMMAND || '' }}
         run: |
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
             $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
@@ -314,6 +320,18 @@ jobs:
           Copy-Item executor/service-windows/target/release/nessie-executor-service.exe artifacts/binaries/
           Copy-Item executor/tray-windows/src-tauri/target/release/nessie-executor-tray.exe artifacts/binaries/
           Copy-Item executor/native/target/release/nessie-executor-native.exe artifacts/binaries/
+          New-Item -ItemType Directory -Path artifacts/runtime -Force | Out-Null
+          Copy-Item desktop/src-tauri/resources/executor-runtime/nessie-executor-native.exe `
+            artifacts/runtime/nessie-desktop-executor-native.exe
+          Copy-Item desktop/src-tauri/resources/executor-runtime/node.exe artifacts/runtime/node.exe
+          $executorPackage = Get-ChildItem artifacts -Filter 'NessieExecutor_*_x64.msi' |
+            Select-Object -First 1
+          $executorPayload = Join-Path $PWD 'executor-payload'
+          Start-Process msiexec -ArgumentList "/a `"$($executorPackage.FullName)`" /qn TARGETDIR=`"$executorPayload`"" -Wait
+          New-Item -ItemType Directory -Path artifacts/executor-payload -Force | Out-Null
+          Get-ChildItem $executorPayload -Include *.exe -Recurse -File | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path artifacts/executor-payload $_.Name)
+          }
           Get-ChildItem artifacts -Recurse -File | Format-Table Name, Length
 
       # The release gate. Every artifact must carry a valid signature from the
@@ -334,7 +352,9 @@ jobs:
           if ($expectedThumbprint.Length -ne 40) {
             throw 'WINDOWS_SIGNER_THUMBPRINT must contain exactly 40 hexadecimal characters.'
           }
-          Get-ChildItem artifacts -Include *.exe, *.msi -Recurse -File | ForEach-Object {
+          Get-ChildItem artifacts -Include *.exe, *.msi -Recurse -File |
+            Where-Object { $_.Name -ne 'node.exe' } |
+            ForEach-Object {
             $signature = Get-AuthenticodeSignature $_.FullName
             $subject = $signature.SignerCertificate.Subject
             $thumbprint = $signature.SignerCertificate.Thumbprint -replace '[^0-9A-Fa-f]', ''
@@ -348,6 +368,13 @@ jobs:
             }
           }
           if ($failed.Count -gt 0) { throw "unsigned or wrongly signed: $($failed -join ', ')" }
+          Get-ChildItem artifacts -Filter node.exe -Recurse -File | ForEach-Object {
+            $node = Get-AuthenticodeSignature $_.FullName
+            Write-Host "$($_.FullName): $($node.Status) $($node.SignerCertificate.Subject)"
+            if ($node.Status -ne 'Valid') {
+              throw "the packaged Node runtime $($_.FullName) does not carry a valid upstream Authenticode signature"
+            }
+          }
 
       - name: Checksums
         shell: pwsh

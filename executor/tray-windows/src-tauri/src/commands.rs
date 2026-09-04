@@ -123,8 +123,9 @@ pub async fn pair<R: Runtime>(app: AppHandle<R>, invitation: String) -> Result<S
         format!(
             "Nessie Executor will create a private machine key and pair this computer with \
              Nessie. Windows will ask for administrator approval once, to give the {SERVICE_ACCOUNT} \
-             service account access to the workspace you chose. The workspace stays on this \
-             computer and is used only through the executor's reviewed policy.",
+             service account access to the workspace you chose. Selected file contents and \
+             command output may be sent to Nessie and its configured model, but only through \
+             the executor's reviewed policy.",
         ),
         "Pair executor",
     )

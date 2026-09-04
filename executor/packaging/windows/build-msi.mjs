@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { prepareExecutorRuntime, resolveWindowsPackagedNodeLicense } from '../../scripts/prepare-runtime.mjs'
+import { signWindowsArtifacts } from '../../scripts/windows-sign.mjs'
 import { BUILT_BINARIES, msiFileName, msiVersion } from './msi-plan.mjs'
 
 const run = promisify(execFile)
@@ -55,28 +56,6 @@ const cargoRelease = async (manifestDirectory) => {
 }
 
 /**
- * Signs the binaries this package builds, in place, before they are staged.
- *
- * The order matters: the native helper's bytes are pinned in the runtime
- * manifest, so it has to be signed *before* the manifest hashes it, or the
- * shipped file would never match its own manifest. `NESSIE_WINDOWS_SIGN_COMMAND`
- * carries `%1` where the file path goes, the same shape Tauri's `signCommand`
- * uses, so one configured identity signs everything on a release runner. With no
- * command configured this is a development build and nothing is signed —
- * which is exactly what makes it refuse executor controls at runtime.
- */
-const signBuiltBinaries = async (paths) => {
-  const template = process.env.NESSIE_WINDOWS_SIGN_COMMAND
-  if (!template) return
-  if (!template.includes('%1')) {
-    throw new Error('NESSIE_WINDOWS_SIGN_COMMAND must contain %1, the file being signed.')
-  }
-  for (const path of paths) {
-    await run(template.replace('%1', `"${path}"`), { shell: true })
-  }
-}
-
-/**
  * The tray is a Tauri application, so its executable is produced by the Tauri
  * CLI rather than by cargo directly: `--bundles none` builds and signs nothing,
  * leaving the binary for the MSI to carry.
@@ -105,14 +84,16 @@ const stageResources = async (destination) => {
 
   await cargoRelease(join(executorDirectory, 'hyperv-bridge'))
   const bridgePath = join(executorDirectory, 'hyperv-bridge/target/release/nessie-hyperv-bridge.exe')
-  await signBuiltBinaries([bridgePath])
+  await signWindowsArtifacts([bridgePath])
   await copyFile(bridgePath, join(destination, 'nessie-hyperv-bridge.exe'))
 
   const guestDirectory = join(executorDirectory, 'guest')
-  await run('go', ['build', '-trimpath', '-o', join(destination, 'guest/build-initrd.exe'), './cmd/build-initrd'], {
+  const initrdBuilderPath = join(destination, 'guest/build-initrd.exe')
+  await run('go', ['build', '-trimpath', '-o', initrdBuilderPath, './cmd/build-initrd'], {
     cwd: guestDirectory,
     env: { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'windows' },
   })
+  await signWindowsArtifacts([initrdBuilderPath])
   await run('go', ['build', '-trimpath', '-o', join(destination, 'guest/init'), '.'], {
     cwd: guestDirectory,
     env: { ...process.env, CGO_ENABLED: '0', GOARCH: 'amd64', GOOS: 'linux' },
@@ -179,7 +160,7 @@ const stage = async () => {
       'tray-windows/src-tauri/target/release/nessie-executor-tray.exe',
     ),
   }
-  await signBuiltBinaries([nativeHelperPath, ...BUILT_BINARIES.map((name) => sources[name])])
+  await signWindowsArtifacts([nativeHelperPath, ...BUILT_BINARIES.map((name) => sources[name])])
 
   // One producer for the runtime layout and its manifest, shared with the
   // desktop bundle and the Linux package. The native helper is pinned in that

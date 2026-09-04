@@ -8,6 +8,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { prepareExecutorRuntime, resolveWindowsPackagedNodeLicense } from '../../executor/scripts/prepare-runtime.mjs'
+import { signWindowsArtifacts } from '../../executor/scripts/windows-sign.mjs'
 
 const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryDirectory = resolve(desktopDirectory, '..')
@@ -15,7 +16,7 @@ const repositoryDirectory = resolve(desktopDirectory, '..')
 // can write and verify, so the helper ships beside `node.exe` and is pinned by
 // the runtime manifest. POSIX hosts prove privacy with ownership and mode bits
 // and package no helper, exactly as before.
-const windowsNativeHelperPath = () => {
+const windowsNativeHelperPath = async () => {
   const manifestPath = resolve(repositoryDirectory, 'executor/native/Cargo.toml')
   const build = spawnSync(
     'cargo',
@@ -29,12 +30,17 @@ const windowsNativeHelperPath = () => {
   if (!existsSync(helperPath)) {
     throw new Error(`The Windows executor native helper was not produced at ${helperPath}.`)
   }
+  // Tauri signs its application and installers, not arbitrary resource
+  // executables. Sign this child before prepareExecutorRuntime hashes it so
+  // Smart App Control sees a trusted publisher and the manifest pins the exact
+  // signed bytes the desktop will launch.
+  await signWindowsArtifacts([helperPath])
   return helperPath
 }
 
 const windowsRuntimeOptions = process.platform === 'win32'
   ? {
-    nativeHelperPath: windowsNativeHelperPath(),
+    nativeHelperPath: await windowsNativeHelperPath(),
     nodeLicenseContents: await resolveWindowsPackagedNodeLicense(),
   }
   : {}
