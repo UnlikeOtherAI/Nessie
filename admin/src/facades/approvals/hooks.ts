@@ -19,6 +19,20 @@ export type ApprovalRequest = {
   status: string
 }
 
+export type EmailApprovalReview = {
+  approvalId: string
+  attachments: { filename: string; mimeType: string; sizeBytes: number }[]
+  bcc: string[]
+  cc: string[]
+  expiresAt: string
+  kind: 'gmail' | 'mailbox'
+  mailboxLabel: string
+  senderAddress: string
+  subject: string
+  text: string
+  to: string[]
+}
+
 export type PendingApprovalCount = { count: number }
 
 export const useApprovalRequests = (enabled = true) => {
@@ -38,6 +52,17 @@ export const useApprovalRequest = (approvalId: string | undefined) => {
     queryKey: approvalKeys.detail(approvalId),
     queryFn: () => apiClient.get(`/api/approvals/${approvalId}`),
     placeholderData: keepPreviousData,
+  })
+}
+
+/** The exact email is a short-lived, pin-only projection — never list data. */
+export const useEmailApprovalReview = (approvalId: string | undefined, enabled: boolean) => {
+  const apiClient = useApiClient()
+  return useQuery<EmailApprovalReview>({
+    enabled: enabled && Boolean(approvalId),
+    queryKey: [...approvalKeys.detail(approvalId), 'email-review'],
+    queryFn: () => apiClient.get(`/api/approvals/${approvalId}/email-review`),
+    retry: false,
   })
 }
 

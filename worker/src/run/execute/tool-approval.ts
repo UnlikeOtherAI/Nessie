@@ -246,6 +246,14 @@ export const postAllowedByRuleCard = async (
 const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
 const MAILBOX_APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000
 
+/**
+ * A send proposal's exact correspondence belongs only in its frozen resume
+ * state. The review route materializes that state for the required approver;
+ * public approval context must not retain even an argument summary for it.
+ */
+const hasPrivateEmailProposal = (toolName: string): boolean =>
+  toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
+
 const approvalExpiryFor = (toolName: string): number =>
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
     ? MAILBOX_APPROVAL_EXPIRY_MS
@@ -288,10 +296,12 @@ export const createToolApprovalRequest = async (
     context: {
       approvalActionType: input.approvalActionType ?? null,
       boundaryReason: input.boundaryReason ?? null,
-      inputSummary: summarizeToolInputForTool(input.toolName, input.args),
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
       ...describeGatedAction(input.toolName, input.args),
+      ...(!hasPrivateEmailProposal(input.toolName)
+        ? { inputSummary: summarizeToolInputForTool(input.toolName, input.args) }
+        : {}),
       ...(input.contextExtra ?? {}),
     } as Prisma.InputJsonValue,
     continuationToken: randomUUID(),

@@ -368,7 +368,13 @@ export const resolveApprovalRequest = async (
     metadata: { resolution, agentId: approval.agentId, action: approval.action },
   })
 
-  return { approval: mapApproval(updated) }
+  // Keep the pin available to the route that chooses the realtime audience,
+  // but deliberately do not add it to the client presenter. A pin is an
+  // internal delivery decision, not an approval-list field.
+  return {
+    approval: mapApproval(updated),
+    requiredApproverUserId: updated.requiredApproverUserId,
+  }
 }
 
 export const getPendingApprovalCount = async (
@@ -439,6 +445,7 @@ const mapApproval = (approval: {
   expiresAt: Date
   createdAt: Date
   updatedAt: Date
+  toolName?: string | null
 }) => ({
   id: approval.id,
   organizationId: approval.organizationId,
@@ -451,7 +458,7 @@ const mapApproval = (approval: {
   requesterId: approval.requesterId,
   action: approval.action,
   reason: approval.reason,
-  context: approval.context as Record<string, unknown> | null,
+  context: presentApprovalContext(approval.context, approval.toolName ?? null),
   status: approval.status,
   resolverId: approval.resolverId,
   resolvedAt: approval.resolvedAt?.toISOString() ?? null,
@@ -462,3 +469,49 @@ const mapApproval = (approval: {
   createdAt: approval.createdAt.toISOString(),
   updatedAt: approval.updatedAt.toISOString(),
 })
+
+const PRIVATE_EMAIL_TOOL_NAMES = new Set(['email_send', 'gmail_draft_send', 'mailbox_send'])
+
+/**
+ * Historic rows may already contain a generic input summary. Never present an
+ * email proposal from that public blob: its recipients, subject and body are
+ * only materialized from `resumeState` through the exact-approver review API.
+ */
+const presentApprovalContext = (
+  context: unknown,
+  toolName: string | null,
+): Record<string, unknown> | null => {
+  if (!PRIVATE_EMAIL_TOOL_NAMES.has(toolName ?? '')) {
+    return context as Record<string, unknown> | null
+  }
+
+  const raw = context !== null && typeof context === 'object' && !Array.isArray(context)
+    ? context as Record<string, unknown>
+    : {}
+  const emailSummary = toolName === 'gmail_draft_send'
+    ? {
+      audience: 'The recipients will receive it',
+      headline: 'Send an email as you',
+    }
+    : toolName === 'mailbox_send'
+      ? {
+        audience: 'The recipients will receive it',
+        headline: 'Send an email from a connected mailbox',
+      }
+      : {
+        audience: 'The recipients will receive it',
+        headline: 'Send an email from the agent mailbox',
+      }
+
+  // Gmail's standing-consent shortcut needs only the frozen connection id.
+  // It is not a recipient/body/subject and remains visible only through the
+  // pin-aware approval presenter.
+  const approvedGoogleConnectionId = raw['approvedGoogleConnectionId']
+  return {
+    ...emailSummary,
+    ...(typeof approvedGoogleConnectionId === 'string'
+      ? { approvedGoogleConnectionId }
+      : {}),
+    toolName,
+  }
+}

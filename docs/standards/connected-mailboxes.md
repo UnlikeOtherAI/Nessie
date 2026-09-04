@@ -20,8 +20,13 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   **every send is approved and pinned** to the personal owner or the shared
   mailbox's installer, live-checked, with any source the recipient cannot reach
   named on the request. A pin is also the approval's read and delivery audience:
-  its card/reason and alert reach only that exact active person, whose existing
-  Approvals home remains reachable even outside the source channel. A missing or
+  its card/reason, alert, and pending/resolved realtime events reach only that
+  exact active person, whose existing Approvals home remains reachable even
+  outside the source channel. The list remains address/body-free; when that
+  person chooses **Review email**, a short-lived server projection materializes
+  the frozen sender, recipients, subject and body for an explicit confirm. It
+  disappears at resolution and is never copied into approval context, audit,
+  tool metadata, or websocket data. A missing or
   inactive accountable person (the personal owner or shared installer) denies
   the send rather than creating an unpinned or unanswerable approval: an owner
   or admin reconnects a shared mailbox under an active approver, while a
