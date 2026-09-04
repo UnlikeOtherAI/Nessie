@@ -190,3 +190,22 @@ test('a 204 through the envelope path reports no data rather than throwing', asy
     },
   )
 })
+
+test('a caller can abort an in-flight post without bypassing session auth', async () => {
+  const controller = new AbortController()
+  let signal: AbortSignal | undefined
+  await withMockFetch(
+    async (_input, init) => {
+      signal = init?.signal ?? undefined
+      return Response.json({ data: { transcript: 'kept local' } })
+    },
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      await client.post('/api/voice/transcriptions', { audioBase64: 'AAAA' }, undefined, {
+        signal: controller.signal,
+      })
+    },
+  )
+
+  assert.equal(signal, controller.signal)
+})

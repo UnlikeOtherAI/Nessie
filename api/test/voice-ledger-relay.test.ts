@@ -10,6 +10,10 @@ import {
   mintVoiceCredential,
   relayVoiceUsage,
 } from '../src/services/voice/ledger-gemini-live.js'
+import {
+  transcribeVoiceDictation,
+  VOICE_DICTATION_LEDGER_TIMEOUT_MS,
+} from '../src/services/voice/ledger-google-speech.js'
 
 const actorContext: AuthorizedActionContext = {
   actionContext: {
@@ -248,4 +252,73 @@ test('a superseded usage report surfaces as a conflict the client can drop', asy
     }),
     (error: unknown) => error instanceof LedgerVoiceError && error.status === 409,
   )
+})
+
+test('dictation uses the same signed private Ledger seam and preserves its idempotency key', async () => {
+  let captured: { url: string; headers: Headers; body: Record<string, unknown> } | null = null
+  const transcript = await transcribeVoiceDictation({
+    actorContext,
+    audioBase64: 'AAECAw==',
+    env,
+    idempotencyKey: '00000000-0000-4000-8000-000000000123',
+    ledgerIdentity: identity,
+    locale: 'en-GB',
+    fetchImpl: (async (url, init) => {
+      captured = {
+        url: String(url),
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body)),
+      }
+      return jsonResponse({ transcript: 'Hello from dictation' })
+    }) as never,
+  })
+  assert.equal(transcript, 'Hello from dictation')
+  assert.ok(captured)
+  assert.equal(captured!.url, 'https://ledger.example.com/v1/google-speech/transcriptions')
+  assert.equal(captured!.headers.get('authorization'), 'Bearer proxy-token')
+  assert.equal(captured!.headers.get('x-nessie-context'), 'context-jwt')
+  assert.equal(captured!.headers.get('idempotency-key'), '00000000-0000-4000-8000-000000000123')
+  assert.deepEqual(captured!.body, {
+    audioBase64: 'AAECAw==',
+    idempotencyKey: '00000000-0000-4000-8000-000000000123',
+    locale: 'en-GB',
+  })
+})
+
+test('dictation surfaces an ambiguous Ledger conflict and never fabricates a transcript', async () => {
+  await assert.rejects(
+    transcribeVoiceDictation({
+      actorContext,
+      audioBase64: 'AAECAw==',
+      env,
+      idempotencyKey: '00000000-0000-4000-8000-000000000124',
+      ledgerIdentity: identity,
+      fetchImpl: (async () => jsonResponse({ error: 'pending' }, 409)) as never,
+    }),
+    (error: unknown) => error instanceof LedgerVoiceError && error.status === 409,
+  )
+})
+
+test('dictation supplies its 45-second Ledger deadline for a settled transcript', async () => {
+  let suppliedTimeout: number | undefined
+  const controller = new AbortController()
+  const transcript = await transcribeVoiceDictation({
+    actorContext,
+    audioBase64: 'AAECAw==',
+    env,
+    idempotencyKey: '00000000-0000-4000-8000-000000000125',
+    ledgerIdentity: identity,
+    timeoutSignalFactory: (timeoutMs) => {
+      suppliedTimeout = timeoutMs
+      return controller.signal
+    },
+    fetchImpl: (async (_url, init) => {
+      assert.equal(init?.signal?.aborted, false)
+      return jsonResponse({ transcript: 'Settled text' })
+    }) as never,
+  })
+
+  assert.equal(suppliedTimeout, VOICE_DICTATION_LEDGER_TIMEOUT_MS)
+  assert.ok(VOICE_DICTATION_LEDGER_TIMEOUT_MS > 15_000)
+  assert.equal(transcript, 'Settled text')
 })

@@ -10,6 +10,6 @@
        all — which surfaces as "undefined is not an object", not as a denied
        permission prompt. -->
   <key>NSMicrophoneUsageDescription</key>
-  <string>Nessie uses the microphone so you can talk to your Personal Assistant on a call.</string>
+  <string>Nessie uses the microphone for voice dictation and calls with your Personal Assistant.</string>
 </dict>
 </plist>

@@ -22,6 +22,37 @@ glyph. Spec and phasing:
   never leaves the server; the ephemeral credential is the only one a client
   holds. Ledger requires signed UOA subject/org/team on a product-bound token,
   so on a signing deployment a caller with no linked UOA identity fails closed.
+- **Text dictation is a separate, bounded paid request — never a browser
+  provider call.** Every chat composer uses the same `getUserMedia` +
+  AudioWorklet capture core to collect fixed mono 16 kHz LINEAR16 PCM locally.
+  `POST /api/voice/transcriptions` accepts an ordinary session only (never the
+  call/device credential), rate-limits both IP and account, then signs one
+  request through Ledger's `/v1/google-speech/transcriptions` broker. Ledger
+  reserves the maximum 55-second Google Speech-to-Text Standard
+  non-data-logging **list-price estimate** before dispatching; it settles
+  Google's `totalBilledTime`, or exact PCM duration if Google omits it. Google
+  supplies duration, not invoice cost, so the request row is never labelled
+  provider actual (including its monthly free tier); invoice reconciliation is
+  a separate Ledger finance operation. No browser or
+  Nessie process holds a Google credential, and neither audio nor transcript is
+  stored for billing: Ledger retains only a content hash, state, provider
+  request id, billed seconds and ledger entry reference. A post-dispatch
+  failure remains an ambiguous reservation and is never auto-retried. Nessie
+  waits up to 45 seconds for this route — longer than Ledger's bounded OAuth +
+  recognition + settlement path — so a paid, settled transcript is not lost to
+  the generic broker timeout. The
+  restricted Google API key is owned by Ledger and must use Ledger's verified
+  egress IP — do not assume the public Nessie web-server address is the caller.
+- **Dictation changes the draft, not the conversation.** Recording blocks Send
+  but preserves the current text, structured mentions, files and cursor;
+  Cancel, Escape and unmount abort and invalidate the request as well as
+  discarding the captured audio. Stop transcribes then
+  inserts the text at the current cursor and does not send it. The control
+  hard-stops by sample count at 55 seconds (the timer is only a secondary
+  convenience), names live state for assistive technology, honours
+  reduced motion, and its module-level recorder claim ensures two mounted
+  composers cannot capture concurrently. The iOS/macOS microphone explanation
+  names both dictation and calls.
 - **`voice_installations` are server-minted.** Ledger reserves daily budget per
   device slot, so a client-chosen device id would let one account multiply
   those reservations; ids come from the row and per-user caps

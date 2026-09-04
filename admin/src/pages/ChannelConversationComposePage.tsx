@@ -24,6 +24,8 @@ import { MentionInput, type MentionEntity, type MentionInputHandle } from '../co
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import { VoiceDictationControl } from '../components/features/channels/VoiceDictationControl'
+import { type VoiceDictationState, voiceDictationBlocksSubmit } from '../components/features/channels/voice-dictation-state'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const optionKey = recipientKey
@@ -62,6 +64,7 @@ export const ChannelConversationComposePage = () => {
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+  const [voiceState, setVoiceState] = useState<VoiceDictationState>('idle')
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -353,6 +356,7 @@ export const ChannelConversationComposePage = () => {
             style={{ marginBottom: 'var(--keyboard-inset, 0px)' }}
             onSubmit={(event) => {
               event.preventDefault()
+              if (voiceDictationBlocksSubmit(voiceState)) return
               void submit(mentionRef.current?.getText() ?? message)
             }}
           >
@@ -364,31 +368,47 @@ export const ChannelConversationComposePage = () => {
               onOversizePaste={setOversizePaste}
               onSubmit={(text) => void submit(text)}
               placeholder="Message"
+              submitDisabled={voiceDictationBlocksSubmit(voiceState)}
             />
             <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
               <div className="text-sm text-[color:var(--danger-text)]">
                 {error}
               </div>
-              <button
-                aria-label="Send message"
-                className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
-                disabled={recipients.length === 0 || !message.trim() || isPending}
-                type="submit"
-              >
-                <svg
-                  className="admin-compose-action-icon h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
+              <div className="flex items-center gap-2">
+                <VoiceDictationControl
+                  disabled={isPending}
+                  onInsertTranscript={(text) => {
+                    mentionRef.current?.insertDictationText(text)
+                    mentionRef.current?.focus()
+                  }}
+                  onStateChange={setVoiceState}
+                />
+                <button
+                  aria-label="Send message"
+                  className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
+                  disabled={
+                    recipients.length === 0
+                    || !message.trim()
+                    || isPending
+                    || voiceDictationBlocksSubmit(voiceState)
+                  }
+                  type="submit"
                 >
-                  <path
-                    d="m12 19 9 2-9-18-9 18 9-2Zm0 0v-8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+                  <svg
+                    className="admin-compose-action-icon h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="m12 19 9 2-9-18-9 18 9-2Zm0 0v-8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
           </form>
         </div>

@@ -6,12 +6,15 @@ import {
   StartVoiceSessionRequestSchema,
   VoiceSessionCredentialSchema,
   VoiceSessionRotationSchema,
+  VoiceDictationRequestSchema,
+  VoiceDictationResponseSchema,
   VoiceToolCallRequestSchema,
   VoiceToolCallResponseSchema,
 } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { relayVoiceUsage } from '../services/voice/ledger-gemini-live.js'
+import { transcribeVoiceDictation } from '../services/voice/ledger-google-speech.js'
 import {
   buildVoiceFunctionDeclarations,
   buildVoiceSystemInstruction,
@@ -36,6 +39,7 @@ import { registerVoiceCallRecordRoute } from './voice-call-record.js'
 import { registerVoiceConversationRoutes } from './voice-conversation.js'
 import { registerVoiceEnrolmentRoutes } from './voice-enrolment.js'
 import { sendVoiceError } from './voice-route-errors.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 
 import type { RouteDeps } from './types.js'
 
@@ -60,6 +64,7 @@ import type { RouteDeps } from './types.js'
  * | DELETE | /api/voice/installations/:id         | its owner           | session         |*
  * | POST   | /api/voice/device-token              | any active member   | session         |*
  * | POST   | /api/voice/device-token/refresh      | the device itself   | device          |*
+ * | POST   | /api/voice/transcriptions            | any active member   | session         |
  * | POST   | /api/voice/sessions                  | any active member   | session, device |
  * | POST   | /api/voice/sessions/:id/rotate       | the call's own user | session, device |
  * | POST   | /api/voice/sessions/:id/usage        | the call's own user | session, device |
@@ -95,6 +100,8 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
     loadPersonalAssistantState,
     requireActorContext,
     requireUserActor,
+    config,
+    rateLimiter,
   } = deps
 
   /**
@@ -111,6 +118,42 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
   registerVoiceEnrolmentRoutes(app, deps)
   registerVoiceConversationRoutes(app, deps, duringACall)
   registerVoiceCallRecordRoute(app, deps, duringACall)
+
+  // Dictation is intentionally outside `duringACall`: an ordinary user session
+  // chooses where its transcript goes by inserting it in the current composer;
+  // a device credential may never turn into generic message-writing authority.
+  app.post('/api/voice/transcriptions', { bodyLimit: 2_500_000 }, async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext || !requireUserActor(actorContext, reply)) return reply
+    if (!(await guardAuthRequest(
+      rateLimiter,
+      { bucket: RATE_LIMIT_BUCKETS.voiceTranscriptionIp, rule: config.api.rateLimit.voiceTranscriptionIp },
+      request,
+      reply,
+      {
+        account: {
+          bucket: RATE_LIMIT_BUCKETS.voiceTranscriptionAccount,
+          rule: config.api.rateLimit.voiceTranscriptionAccount,
+        },
+        accountIdentity: actorContext.actor.actorId,
+        auditContext: actorContext,
+      },
+    ))) return reply
+    const body = parseInput(VoiceDictationRequestSchema, request.body ?? {}, reply)
+    if (!body) return reply
+    try {
+      const transcript = await transcribeVoiceDictation({
+        actorContext,
+        ledgerIdentity,
+        audioBase64: body.audioBase64,
+        idempotencyKey: body.idempotencyKey,
+        locale: body.locale,
+      })
+      return reply.send(createApiResponse(VoiceDictationResponseSchema.parse({ transcript })))
+    } catch (error) {
+      return sendVoiceError(reply, error) ?? Promise.reject(error)
+    }
+  })
 
   app.post('/api/voice/sessions', duringACall, async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ChatMessage } from '../../../../facades/designer/hooks'
 import { useAgentDesignerAgent } from '../../../../facades/designer/agent-designer-identity'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { Notice } from '../../../primitives/Notice'
 import type { DesignerPageContext } from './DesignerAssistantPanelContext'
+import { VoiceDictationControl } from '../../channels/VoiceDictationControl'
+import { type VoiceDictationState, voiceDictationBlocksSubmit } from '../../channels/voice-dictation-state'
+import { formatDictationInsertion } from '../../../../lib/dictation-text'
 
 type DesignerChatProps = {
   error: string | null
@@ -64,6 +67,7 @@ export const DesignerChat = ({
   const designer = useAgentDesignerAgent()
   const designerName = designer?.name ?? DEFAULT_DESIGNER_NAME
   const [input, setInput] = useState('')
+  const [voiceState, setVoiceState] = useState<VoiceDictationState>('idle')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -81,7 +85,7 @@ export const DesignerChat = ({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || streaming) return
+    if (!input.trim() || streaming || voiceDictationBlocksSubmit(voiceState)) return
     onSend(input)
     setInput('')
   }
@@ -92,6 +96,20 @@ export const DesignerChat = ({
       handleSubmit(e)
     }
   }
+
+  const insertTranscript = useCallback((transcript: string) => {
+    const element = inputRef.current
+    const start = element?.selectionStart ?? input.length
+    const end = element?.selectionEnd ?? input.length
+    const before = input.slice(0, start)
+    const after = input.slice(end)
+    const insertion = formatDictationInsertion(before, transcript, after)
+    setInput(`${before}${insertion}${after}`)
+    window.setTimeout(() => {
+      element?.focus({ preventScroll: true })
+      element?.setSelectionRange(start + insertion.length, start + insertion.length)
+    }, 0)
+  }, [input])
 
   return (
     <div className="flex h-full flex-col">
@@ -219,13 +237,19 @@ export const DesignerChat = ({
               Stop
             </button>
           ) : (
-            <button
-              className="admin-button admin-button-primary flex-shrink-0"
-              disabled={!input.trim()}
-              type="submit"
-            >
-              Send
-            </button>
+            <>
+              <VoiceDictationControl
+                onInsertTranscript={insertTranscript}
+                onStateChange={setVoiceState}
+              />
+              <button
+                className="admin-button admin-button-primary flex-shrink-0"
+                disabled={!input.trim() || voiceDictationBlocksSubmit(voiceState)}
+                type="submit"
+              >
+                Send
+              </button>
+            </>
           )}
         </form>
       </div>

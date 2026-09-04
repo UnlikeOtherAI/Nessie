@@ -14,7 +14,12 @@ export type ApiClient = {
   // of taking the last write (docs/navigation/overview.md → "Drafts").
   patch: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
     Promise<TData>
-  post: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+  post: <TData>(
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+    options?: { signal?: AbortSignal },
+  ) =>
     Promise<TData>
   put: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
     Promise<TData>
@@ -147,11 +152,12 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
       }),
-    post: (path, body, headers) =>
+    post: (path, body, headers, options) =>
       request(path, {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
+        ...(options?.signal ? { signal: options.signal } : {}),
       }),
     put: (path, body, headers) =>
       request(path, {
