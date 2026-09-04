@@ -95,6 +95,8 @@ export const recordMailboxConnectionCredentialRejection = async (
   })
 
 export type ReconnectMailboxConnectionInput = {
+  /** The live manager who performed this explicit recovery. */
+  actorUserId: string
   connection: MailboxConnectionRow
   imapHost: string
   imapPort: number
@@ -104,6 +106,11 @@ export type ReconnectMailboxConnectionInput = {
   smtpPort: number
   smtpSecurity: MailSecurity
   username: string
+}
+
+type PersistMailboxReconnectionInput = Omit<ReconnectMailboxConnectionInput, 'connection' | 'password'> & {
+  connectionId: string
+  secretCiphertext: string
 }
 
 /**
@@ -123,6 +130,62 @@ export const resolveMailboxConnectionHealthAlerts = async (
       readAt: null,
     },
   })
+}
+
+/**
+ * Persist a credential replacement after its two mail legs have been tested.
+ *
+ * A shared mailbox's `createdByUserId` is also its future send approver. A
+ * manager taking over explicit recovery must become that accountable person;
+ * retaining a deactivated original installer would make the recovered mailbox
+ * unable to send. Personal mailboxes intentionally retain their owner and
+ * creator: an admin can never take over somebody else's correspondence.
+ */
+export const persistMailboxReconnection = async (
+  prisma: PrismaClient,
+  input: PersistMailboxReconnectionInput,
+): Promise<MailboxConnectionRecord> => {
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.mailboxConnection.findUnique({
+      select: { ownerUserId: true, teamId: true },
+      where: { id: input.connectionId },
+    })
+    if (!current) {
+      throw new MailboxConnectionError('connection_not_found', 'That mailbox connection is gone.')
+    }
+    const isShared = current.ownerUserId === null && current.teamId !== null
+    const connection = await tx.mailboxConnection.update({
+      data: {
+        ...(isShared ? { createdByUserId: input.actorUserId } : {}),
+        healthRevision: { increment: 1 },
+        imapHost: input.imapHost,
+        imapPort: input.imapPort,
+        imapSecurity: input.imapSecurity,
+        lastVerifiedAt: new Date(),
+        smtpHost: input.smtpHost,
+        smtpPort: input.smtpPort,
+        smtpSecurity: input.smtpSecurity,
+        status: 'active',
+        statusReason: null,
+        username: input.username,
+      },
+      include: { agentAccess: { select: { agentId: true } } },
+      where: { id: input.connectionId },
+    })
+    await tx.mailboxConnectionCredential.upsert({
+      create: {
+        connectionId: connection.id,
+        secretCiphertext: input.secretCiphertext,
+      },
+      update: {
+        secretCiphertext: input.secretCiphertext,
+      },
+      where: { connectionId: connection.id },
+    })
+    await resolveMailboxConnectionHealthAlerts(tx, connection.id)
+    return connection
+  })
+  return presentMailboxConnection(updated)
 }
 
 /**
@@ -149,37 +212,16 @@ export const reconnectMailboxConnection = async (
     throw new MailboxConnectionError(failure, mailboxConnectionFailureMessage(failure))
   }
 
-  const secretCiphertext = sealSecret(options.encryptionSecret, input.password)
-  const updated = await prisma.$transaction(async (tx) => {
-    const connection = await tx.mailboxConnection.update({
-      data: {
-        healthRevision: { increment: 1 },
-        imapHost: input.imapHost,
-        imapPort: input.imapPort,
-        imapSecurity: input.imapSecurity,
-        lastVerifiedAt: new Date(),
-        smtpHost: input.smtpHost,
-        smtpPort: input.smtpPort,
-        smtpSecurity: input.smtpSecurity,
-        status: 'active',
-        statusReason: null,
-        username: input.username,
-      },
-      include: { agentAccess: { select: { agentId: true } } },
-      where: { id: input.connection.id },
-    })
-    await tx.mailboxConnectionCredential.upsert({
-      create: {
-        connectionId: connection.id,
-        secretCiphertext,
-      },
-      update: {
-        secretCiphertext,
-      },
-      where: { connectionId: connection.id },
-    })
-    await resolveMailboxConnectionHealthAlerts(tx, connection.id)
-    return connection
+  return persistMailboxReconnection(prisma, {
+    actorUserId: input.actorUserId,
+    connectionId: input.connection.id,
+    imapHost: input.imapHost,
+    imapPort: input.imapPort,
+    imapSecurity: input.imapSecurity,
+    secretCiphertext: sealSecret(options.encryptionSecret, input.password),
+    smtpHost: input.smtpHost,
+    smtpPort: input.smtpPort,
+    smtpSecurity: input.smtpSecurity,
+    username: input.username,
   })
-  return presentMailboxConnection(updated)
 }

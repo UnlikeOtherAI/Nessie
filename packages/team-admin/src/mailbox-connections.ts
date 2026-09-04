@@ -105,13 +105,7 @@ export const mailboxConnectionTestFailure = (
   return 'test_failed'
 }
 
-/**
- * The only diagnostics we persist or show for a mailbox connection.
- *
- * Protocol error text is untrusted provider input: it can include credentials,
- * host details, or instructions written by a remote server. Keep the failure
- * classification, never the provider's wording.
- */
+/** Provider errors are untrusted; persist and show only this structural diagnosis. */
 export const mailboxConnectionFailureMessage = (
   failure: MailboxConnectionTestFailure,
 ): string => {
@@ -392,6 +386,20 @@ export const loadManageableMailboxConnection = async (
  * briefly unreachable is not a credential a person needs to re-enter, and
  * saying so would send them to fix something that is not broken.
  */
+export const recordMailboxConnectionVerification = async (
+  prisma: PrismaClient,
+  connectionId: string,
+): Promise<boolean> => {
+  // A saved-credential check is observation, not explicit recovery. A provider
+  // rejection can stop the mailbox while the dial is in flight; do not erase
+  // that state or its alert merely because a probe succeeds afterwards.
+  const verified = await prisma.mailboxConnection.updateMany({
+    data: { lastVerifiedAt: new Date() },
+    where: { id: connectionId, status: 'active' },
+  })
+  return verified.count === 1
+}
+
 export const verifyMailboxConnection = async (
   prisma: PrismaClient,
   connection: MailboxConnectionRow,
@@ -400,20 +408,19 @@ export const verifyMailboxConnection = async (
   ok: boolean
   detail: string
   failureCode?: Uppercase<MailboxConnectionTestFailure>
+  /** A saved-credential check proved connectivity but cannot revive a stopped mailbox. */
+  recoveryRequired?: boolean
 }> => {
   const endpoints = await mailboxEndpointsFor(prisma, connection, options.encryptionSecret)
   try {
     const result = await testMailboxConnection(endpoints, mailboxDialOptions())
-    const { resolveMailboxConnectionHealthAlerts } = await import(
-      './mailbox-connection-recovery.js'
-    )
-    await prisma.$transaction(async (tx) => {
-      await tx.mailboxConnection.update({
-        data: { lastVerifiedAt: new Date(), status: 'active', statusReason: null },
-        where: { id: connection.id },
-      })
-      await resolveMailboxConnectionHealthAlerts(tx, connection.id)
-    })
+    if (!await recordMailboxConnectionVerification(prisma, connection.id)) {
+      return {
+        detail: 'The saved settings respond, but this mailbox remains stopped. Reconnect it to restore access.',
+        ok: false,
+        recoveryRequired: true,
+      }
+    }
     return {
       detail: `${result.folder} is reachable (${result.messagesVisible} messages) and sending works.`,
       ok: true,
