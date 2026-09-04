@@ -149,7 +149,10 @@ from the live no-store conversation beside the form and never enter
 
 - Gmail creates/updates the provider draft through the existing
   `GmailDraftAction` service, then uses the existing fingerprint check and undo
-  hold to send.
+  hold to send. Create requests carry a stable client idempotency key and are
+  persisted before Gmail is called. A lost create/send response becomes the
+  human-visible, non-retryable `delivery_unknown` state; no worker reclaims or
+  repeats an externally ambiguous Gmail request.
 - SMTP/IMAP keeps unsent human text locally and sends directly only from the
   mailbox owner/team member's explicit click. An agent still uses
   `mailbox_send`, which remains pinned to a person and structurally approval
@@ -324,7 +327,8 @@ colour is expressed through existing tokens in `styles.css`.
   missing-origin browser, simple-form, empty-body, and wrong-content-type
   requests are refused before provider work. Gmail REST send still re-reads the
   live provider draft, compares the reviewed fingerprint, and claims the send;
-  the human route does not bypass that service.
+  the human route does not bypass that service. A claim never retries a stale
+  Gmail provider request: its outcome is marked `delivery_unknown` instead.
 - No connected-account message, snippet, recipient, search, or draft body is
   persisted by the new read surface or written to logs/audit metadata.
 - Read responses set `Cache-Control: no-store` and are not placed in a durable

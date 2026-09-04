@@ -76,7 +76,7 @@ const FromApprovalSchema = z.object({
 
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
-  if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE') return 409
+  if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE' || code === 'DELIVERY_UNKNOWN') return 409
   if (code === 'PROVIDER_FAILED') return 502
   return 400
 }

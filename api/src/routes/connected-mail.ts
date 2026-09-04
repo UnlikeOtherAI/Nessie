@@ -1,5 +1,6 @@
 import {
   ConnectedMailComposeInputSchema,
+  ConnectedMailDraftCreateInputSchema,
   ConnectedMailConversationParamsSchema,
   ConnectedMailGmailDraftSendInputSchema,
   ConnectedMailSendInputSchema,
@@ -89,7 +90,8 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
     }
     if (error instanceof GmailDraftError) {
       const status = error.code === 'DRAFT_NOT_FOUND' ? 404
-        : error.code === 'DRAFT_CHANGED' || error.code === 'DRAFT_NOT_SENDABLE' ? 409
+        : error.code === 'DRAFT_CHANGED' || error.code === 'DRAFT_NOT_SENDABLE'
+          || error.code === 'DELIVERY_UNKNOWN' ? 409
           : error.code === 'PROVIDER_FAILED' ? 502 : 400
       sendApiError(reply, status, error.code, 'Gmail draft is unavailable')
       return reply
@@ -142,7 +144,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
     const resolved = actor(request, reply)
     if (!resolved || !requireMailMutationRequest(request, reply, deps)) return reply
     const params = parseInput(AccountParamsSchema, request.params, reply, 'params')
-    const body = parseInput(ConnectedMailComposeInputSchema, request.body, reply)
+    const body = parseInput(ConnectedMailDraftCreateInputSchema, request.body, reply)
     if (!params || !body) return reply
     if (params.source !== 'gmail') {
       sendApiError(reply, 409, 'CAPABILITY_UNSUPPORTED', 'Only Gmail has provider drafts')
@@ -160,6 +162,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
           to: body.to,
         },
         organizationId: resolved.mailActor.organizationId,
+        idempotencyKey: body.idempotencyKey,
         providerThreadId: body.providerThreadId,
         userId: resolved.mailActor.userId,
       }, serviceDeps)

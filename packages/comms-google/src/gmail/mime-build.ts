@@ -49,6 +49,16 @@ const assertHeaderSafe = (label: string, value: string): void => {
   }
 }
 
+/** Emit one canonical RFC Message-ID pair, never a caller's nested brackets. */
+const formatMessageId = (label: string, value: string): string => {
+  assertHeaderSafe(label, value)
+  const bare = value.trim().replace(/^<+/, '').replace(/>+$/, '')
+  if (!bare || /[<>\s]/.test(bare)) {
+    throw new MimeBuildError(`${label} contains an invalid Message-ID`)
+  }
+  return `<${bare}>`
+}
+
 // Deliberately permissive: full RFC 5322 addressing is not worth reimplementing,
 // and Gmail rejects what it dislikes. This only rules out the shapes that would
 // corrupt the envelope or inject a header.
@@ -131,14 +141,10 @@ export const buildRawMessage = (message: OutboundMessage): string => {
     'MIME-Version: 1.0',
   ]
   if (message.inReplyTo) {
-    assertHeaderSafe('In-Reply-To', message.inReplyTo)
-    headers.push(`In-Reply-To: ${message.inReplyTo}`)
+    headers.push(`In-Reply-To: ${formatMessageId('In-Reply-To', message.inReplyTo)}`)
   }
   if (message.references && message.references.length > 0) {
-    for (const reference of message.references) {
-      assertHeaderSafe('References', reference)
-    }
-    headers.push(`References: ${message.references.join(' ')}`)
+    headers.push(`References: ${message.references.map((reference) => formatMessageId('References', reference)).join(' ')}`)
   }
 
   const attachments = message.attachments ?? []

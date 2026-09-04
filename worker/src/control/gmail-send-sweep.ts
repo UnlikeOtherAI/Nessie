@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { dispatchClaimedDraft } from '@nessie/team-admin'
+import { dispatchClaimedDraft, resolveStaleGmailDispatches } from '@nessie/team-admin'
 
 /**
  * Dispatch email whose undo window has elapsed.
@@ -10,22 +10,19 @@ import { dispatchClaimedDraft } from '@nessie/team-admin'
  *
  * The claim lives inside `dispatchClaimedDraft`: it flips `sending` to
  * `dispatching` atomically BEFORE any Gmail call, so two worker replicas
- * ticking the same interval can never both send one email. It also reclaims a
- * row left `dispatching` by a worker that died mid-send once
- * `STALE_CLAIM_WINDOW_MS` has passed, so a dead worker cannot strand a draft.
- * The loser throws `DRAFT_NOT_SENDABLE` and is counted as failed — the
- * correct no-op for a row another replica owns.
+ * ticking the same interval can never both send one email. A worker that dies
+ * after starting Gmail's request is marked `delivery_unknown`, not reclaimed:
+ * a lost response is not evidence that Gmail did not accept the message.
  *
  * Each row is dispatched independently and a failure never stops the batch:
- * `dispatchClaimedDraft` already returns a failed row to `draft` so the person
- * keeps an affordance, and one provider error must not strand every other
- * person's mail behind it.
+ * one provider error must not strand every other person's mail behind it.
  */
 export const sweepDueGmailSends = async (
   prisma: PrismaClient,
   deps: { encryptionSecret: string; now?: () => Date },
-): Promise<{ dispatched: number; failed: number }> => {
+): Promise<{ dispatched: number; failed: number; deliveryUnknown: number }> => {
   const now = deps.now?.() ?? new Date()
+  const deliveryUnknown = await resolveStaleGmailDispatches(prisma, { now: () => now })
   const due = await prisma.gmailDraftAction.findMany({
     where: { state: 'sending', sendAfter: { lte: now } },
     select: { id: true },
@@ -45,5 +42,5 @@ export const sweepDueGmailSends = async (
       failed += 1
     }
   }
-  return { dispatched, failed }
+  return { dispatched, failed, deliveryUnknown }
 }

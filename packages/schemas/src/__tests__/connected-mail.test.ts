@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   ConnectedMailComposeInputSchema,
+  ConnectedMailDraftCreateInputSchema,
   ConnectedMailMessageSchema,
   ConnectedMailThreadsQuerySchema,
 } from '../connected-mail.js'
@@ -15,6 +16,14 @@ test('connected mail compose input refuses a client-supplied sender', () => {
     to: ['recipient@example.test'],
   })
   assert.equal(result.success, false)
+})
+
+test('Gmail draft creation requires a stable idempotency key', () => {
+  const base = { body: 'Hello', subject: 'Hi', to: ['recipient@example.test'] }
+  assert.equal(ConnectedMailDraftCreateInputSchema.safeParse(base).success, false)
+  assert.equal(ConnectedMailDraftCreateInputSchema.safeParse({
+    ...base, idempotencyKey: '00000000-0000-4000-8000-000000000001',
+  }).success, true)
 })
 
 test('connected mail compose input refuses line-break recipient and header injection', () => {

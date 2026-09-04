@@ -256,6 +256,7 @@ export const runGmailDraftCreateTool = async (
       context.prisma,
       {
         organizationId: context.channel.organizationId,
+        idempotencyKey: randomUUID(),
         userId,
         message: {
           to: args.to,
@@ -334,3 +335,4 @@ export const runGmailDraftUpdateTool = async (
     return explainGoogleFailure(context, 'gmail.compose', userId, error)
   }
 }
+import { randomUUID } from 'node:crypto'

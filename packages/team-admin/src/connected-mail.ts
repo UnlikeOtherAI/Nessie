@@ -31,7 +31,11 @@ import {
   loadUserGoogleCommsCredential,
   markCommsConnectionNeedsReauthorization,
 } from './comms-credential-coordinator.js'
-import { mailboxDialOptions, mailboxEndpointsFor } from './mailbox-connection-endpoints.js'
+import {
+  MailboxCredentialMissingError,
+  mailboxDialOptions,
+  mailboxEndpointsFor,
+} from './mailbox-connection-endpoints.js'
 import { markMailboxNeedsReauthorization } from './mailbox-connection-access.js'
 import { mailboxConnectionTestFailure } from './mailbox-connections.js'
 
@@ -247,7 +251,7 @@ export const listConnectedMailThreads = async (
     )
     return validatedPage({ ...page, items: mapThreads(page.items) })
   } catch (error) {
-    if (error instanceof ImapError && error.kind === 'auth') {
+    if (error instanceof MailboxCredentialMissingError || (error instanceof ImapError && error.kind === 'auth')) {
       await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
@@ -295,7 +299,7 @@ export const readConnectedMailConversation = async (
     )
   } catch (error) {
     if (error instanceof ConnectedMailError) throw error
-    if (mailboxConnectionTestFailure(error) === 'credential_rejected') {
+    if (error instanceof MailboxCredentialMissingError || mailboxConnectionTestFailure(error) === 'credential_rejected') {
       await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
@@ -324,7 +328,7 @@ export const sendConnectedMailboxMail = async (
       to: input.to,
     }, mailboxDialOptions())
   } catch (error) {
-    if (mailboxConnectionTestFailure(error) === 'credential_rejected') {
+    if (error instanceof MailboxCredentialMissingError || mailboxConnectionTestFailure(error) === 'credential_rejected') {
       await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }

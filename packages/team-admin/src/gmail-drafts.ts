@@ -6,7 +6,6 @@ import {
   createGmailDraft,
   deleteGmailDraft,
   getGmailDraft,
-  sendGmailDraft,
   updateGmailDraft,
   type GmailDraftContent,
   type OutboundMessage,
@@ -18,16 +17,7 @@ import {
   CommsCredentialCoordinatorError,
   loadUserGoogleCommsCredential,
 } from './comms-credential-coordinator.js'
-
-/**
- * The one place a Gmail draft is written, read, or sent.
- *
- * Both callers go through here — the API route behind the card's Send button
- * and the worker tool an agent invokes — because `api/src/services/*` is
- * unreachable from the worker and duplicating the bookkeeping would fork the
- * state claim, the fingerprint check, and the audit trail on day one. This is
- * the route-mirroring rule applied to a provider write.
- */
+import { dispatchClaimedDraft } from './gmail-draft-dispatch.js'
 
 export type GmailDraftErrorCode =
   | 'GOOGLE_NOT_CONNECTED'
@@ -36,10 +26,9 @@ export type GmailDraftErrorCode =
   | 'NEEDS_REAUTHORIZATION'
   | 'AMBIGUOUS_ACCOUNT'
   | 'DRAFT_NOT_FOUND'
-  /** The draft changed since it was approved or rendered. */
   | 'DRAFT_CHANGED'
-  /** Another send already claimed this draft. */
   | 'DRAFT_NOT_SENDABLE'
+  | 'DELIVERY_UNKNOWN'
   | 'PROVIDER_FAILED'
 
 export class GmailDraftError extends Error {
@@ -84,14 +73,13 @@ const fingerprintOf = (draft: GmailDraftContent): string =>
     attachmentIds: draft.attachments.map((a) => `${a.filename}:${a.sizeBytes}`),
   })
 
-/** Injected so tests need no network; production uses the pinned fetch. */
 export type GmailDraftDeps = {
   encryptionSecret: string
   fetchImpl?: typeof safeFetch
   now?: () => Date
 }
 
-const gmailFetch = (deps: GmailDraftDeps) => {
+export const gmailFetch = (deps: GmailDraftDeps) => {
   const impl = deps.fetchImpl ?? safeFetch
   return async (
     url: string,
@@ -107,7 +95,7 @@ const gmailFetch = (deps: GmailDraftDeps) => {
   }
 }
 
-const loadCredential = async (
+export const loadCredential = async (
   prisma: PrismaClient,
   input: {
     organizationId: string
@@ -136,23 +124,23 @@ export type ComposeDraftInput = {
   userId: string
   connectionId?: string
   message: OutboundMessage
-  /** Reply into an existing Gmail thread. */
   providerThreadId?: string
+  idempotencyKey: string
 }
 
 export type GmailDraftActionRecord = {
   id: string
-  providerDraftId: string
+  providerDraftId: string | null
   revision: number
-  state: 'draft' | 'sending' | 'sent' | 'discarded'
+  state: 'creating' | 'draft' | 'sending' | 'dispatching' | 'delivery_unknown' | 'sent' | 'discarded'
   contentFingerprint: string
   connectionId: string
   ownerUserId: string
 }
 
-const toRecord = (row: {
+export const toRecord = (row: {
   id: string
-  providerDraftId: string
+  providerDraftId: string | null
   revision: number
   state: string
   contentFingerprint: string
@@ -168,7 +156,6 @@ const toRecord = (row: {
   ownerUserId: row.ownerUserId,
 })
 
-/** Create a real Gmail draft and the durable projection that tracks it. */
 export const composeDraftForUser = async (
   prisma: PrismaClient,
   input: ComposeDraftInput,
@@ -179,19 +166,6 @@ export const composeDraftForUser = async (
     { ...input, capabilityId: 'gmail.compose' },
     deps,
   )
-  const fetchImpl = gmailFetch(deps)
-  let ref
-  try {
-    ref = await createGmailDraft(
-      fetchImpl,
-      credential.credential.accessToken,
-      input.message,
-      input.providerThreadId,
-    )
-  } catch (error) {
-    throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
-  }
-
   const fingerprint = fingerprintDraft({
     to: input.message.to,
     cc: input.message.cc,
@@ -202,32 +176,63 @@ export const composeDraftForUser = async (
       (a) => `${a.filename}:${a.content.byteLength}`,
     ),
   })
-
-  const row = await prisma.gmailDraftAction.upsert({
-    where: {
-      connectionId_providerDraftId: {
-        connectionId: credential.id,
-        providerDraftId: ref.id,
-      },
-    },
-    create: {
+  const known = await prisma.gmailDraftAction.findUnique({
+    where: { connectionId_clientRequestId: { connectionId: credential.id, clientRequestId: input.idempotencyKey } },
+  })
+  if (known) {
+    if (known.state === 'draft' && known.providerDraftId) return toRecord(known)
+    throw new GmailDraftError('DELIVERY_UNKNOWN')
+  }
+  const now = deps.now?.() ?? new Date()
+  const action = await prisma.gmailDraftAction.create({
+    data: {
       organizationId: input.organizationId,
       ownerUserId: credential.ownerUserId,
       connectionId: credential.id,
-      providerDraftId: ref.id,
-      providerThreadId: ref.threadId ?? input.providerThreadId ?? null,
+      clientRequestId: input.idempotencyKey,
+      providerThreadId: input.providerThreadId ?? null,
       contentFingerprint: fingerprint,
-    },
-    update: {
-      contentFingerprint: fingerprint,
-      revision: { increment: 1 },
-      state: 'draft',
+      state: 'creating',
+      claimedAt: now,
     },
   })
+  const fetchImpl = gmailFetch(deps)
+  let ref
+  try {
+    ref = await createGmailDraft(
+      fetchImpl,
+      credential.credential.accessToken,
+      input.message,
+      input.providerThreadId,
+    )
+  } catch (error) {
+    await prisma.gmailDraftAction.updateMany({
+      where: { id: action.id, state: 'creating' },
+      data: { state: 'delivery_unknown', claimedAt: null },
+    })
+    throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
+  }
+  let row
+  try {
+    row = await prisma.gmailDraftAction.update({
+      where: { id: action.id },
+      data: {
+        providerDraftId: ref.id,
+        providerThreadId: ref.threadId ?? input.providerThreadId ?? null,
+        state: 'draft',
+        claimedAt: null,
+      },
+    })
+  } catch (error) {
+    await prisma.gmailDraftAction.updateMany({
+      where: { id: action.id, state: 'creating' },
+      data: { state: 'delivery_unknown', claimedAt: null },
+    })
+    throw new GmailDraftError('DELIVERY_UNKNOWN', (error as Error).message)
+  }
   return toRecord(row)
 }
 
-/** Replace a draft's content. Any edit invalidates a live approval by design. */
 export const updateDraftForUser = async (
   prisma: PrismaClient,
   input: ComposeDraftInput & { draftActionId: string },
@@ -242,6 +247,9 @@ export const updateDraftForUser = async (
   })
   if (!existing || existing.state === 'sent' || existing.state === 'discarded') {
     throw new GmailDraftError('DRAFT_NOT_FOUND')
+  }
+  if (!existing.providerDraftId || existing.state === 'creating' || existing.state === 'delivery_unknown') {
+    throw new GmailDraftError('DELIVERY_UNKNOWN')
   }
   if (input.connectionId && input.connectionId !== existing.connectionId) {
     throw new GmailDraftError('DRAFT_NOT_FOUND')
@@ -281,7 +289,6 @@ export const updateDraftForUser = async (
   return toRecord(row)
 }
 
-/** The draft as the card renders it. Owner-scoped by the caller's ids. */
 export const readDraftForUser = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string; draftActionId: string },
@@ -295,6 +302,9 @@ export const readDraftForUser = async (
     },
   })
   if (!existing) throw new GmailDraftError('DRAFT_NOT_FOUND')
+  if (!existing.providerDraftId || existing.state === 'creating' || existing.state === 'delivery_unknown') {
+    throw new GmailDraftError('DELIVERY_UNKNOWN')
+  }
   const credential = await loadCredential(
     prisma,
     { ...input, connectionId: existing.connectionId, capabilityId: 'gmail.compose' },
@@ -317,16 +327,8 @@ export type SendDraftInput = {
   organizationId: string
   userId: string
   draftActionId: string
-  /** When a route already identified an account, it must stay pinned to it. */
   connectionId?: string
-  /**
-   * The fingerprint the approver (or the person clicking Send) actually saw.
-   * When present the send refuses on mismatch — this is what stops an approved
-   * send delivering content that changed afterwards. Omitted only where the
-   * caller has no prior view, which today means nothing.
-   */
   expectedFingerprint?: string
-  /** Hold the dispatch this long so the card can offer Undo. */
   holdMs?: number
 }
 
@@ -334,13 +336,6 @@ export type SendDraftResult =
   | { status: 'held'; sendAfter: Date; action: GmailDraftActionRecord }
   | { status: 'sent'; sentMessageId: string; action: GmailDraftActionRecord }
 
-/**
- * Send a draft, or hold it for the undo window.
- *
- * Order matters: re-read the live draft, compare the fingerprint, THEN claim
- * the state transition. Claiming first would let a refused send leave the row
- * stuck in `sending`.
- */
 export const sendDraftForUser = async (
   prisma: PrismaClient,
   input: SendDraftInput,
@@ -357,6 +352,9 @@ export const sendDraftForUser = async (
   if (!existing) throw new GmailDraftError('DRAFT_NOT_FOUND')
   if (input.connectionId && input.connectionId !== existing.connectionId) {
     throw new GmailDraftError('DRAFT_NOT_FOUND')
+  }
+  if (existing.state === 'creating' || existing.state === 'delivery_unknown' || !existing.providerDraftId) {
+    throw new GmailDraftError('DELIVERY_UNKNOWN')
   }
   if (existing.state !== 'draft') throw new GmailDraftError('DRAFT_NOT_SENDABLE')
 
@@ -415,99 +413,7 @@ export const sendDraftForUser = async (
   return dispatchClaimedDraft(prisma, existing.id, deps)
 }
 
-/**
- * A row still `dispatching` this long after its claim means the worker that
- * claimed it died mid-send, and the sweep may claim it again.
- *
- * Two minutes, because the normal `dispatching` window is one Gmail API round
- * trip — a few seconds — and two minutes also covers a worker killed during a
- * slow deploy overlap. The undo window is only seconds, so by the time a sweep
- * could even see the row its `sendAfter` has already elapsed. The failure mode
- * this guards is a reclaimed send whose dead claimer actually reached Gmail
- * before dying; the odds are far better than stranding the draft forever, but
- * they are not zero.
- */
-export const STALE_CLAIM_WINDOW_MS = 2 * 60 * 1000
-
-/**
- * Dispatch a draft the caller believes is ready to send.
- *
- * The claim is the first thing this function does: an atomic conditional
- * update flips `sending → dispatching` and stamps `claimedAt`, and only the
- * caller that wins it proceeds. Anything before the flip — a `findUnique`
- * plus a state check — is read-then-check, and with two worker replicas
- * ticking the same sweep both pass it and both call Gmail, so the recipient
- * gets the email twice. Irreversible. The conditional update is the ONLY
- * gate, and it also admits a stale `dispatching` row whose `claimedAt` has
- * passed {@link STALE_CLAIM_WINDOW_MS}, so a worker that died mid-send does
- * not strand the draft.
- */
-export const dispatchClaimedDraft = async (
-  prisma: PrismaClient,
-  draftActionId: string,
-  deps: GmailDraftDeps,
-): Promise<SendDraftResult> => {
-  const now = deps.now?.() ?? new Date()
-  const claimed = await prisma.gmailDraftAction.updateMany({
-    where: {
-      id: draftActionId,
-      OR: [
-        { state: 'sending' },
-        {
-          state: 'dispatching',
-          claimedAt: { lt: new Date(now.getTime() - STALE_CLAIM_WINDOW_MS) },
-        },
-      ],
-    },
-    data: { state: 'dispatching', claimedAt: now },
-  })
-  if (claimed.count !== 1) {
-    // The loser is never an error: another dispatcher owns the row, or it was
-    // already sent/undone — either way this caller must no-op, NOT send.
-    throw new GmailDraftError('DRAFT_NOT_SENDABLE')
-  }
-  const row = await prisma.gmailDraftAction.findUniqueOrThrow({
-    where: { id: draftActionId },
-  })
-  const credential = await loadCredential(
-    prisma,
-    {
-      organizationId: row.organizationId,
-      userId: row.ownerUserId,
-      connectionId: row.connectionId,
-      capabilityId: 'gmail.compose',
-    },
-    deps,
-  )
-  let sent
-  try {
-    sent = await sendGmailDraft(
-      gmailFetch(deps),
-      credential.credential.accessToken,
-      row.providerDraftId,
-    )
-  } catch (error) {
-    // Return the row to `draft` so the person can retry or edit; leaving it in
-    // `dispatching` would strand the draft with no affordance. The condition
-    // matches the claim above, so this only clears a claim this caller holds.
-    await prisma.gmailDraftAction.updateMany({
-      where: { id: row.id, state: 'dispatching' },
-      data: { state: 'draft', sendAfter: null, claimedAt: null },
-    })
-    throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
-  }
-  const updated = await prisma.gmailDraftAction.update({
-    where: { id: row.id },
-    data: {
-      state: 'sent',
-      sentAt: now,
-      sentMessageId: sent.messageId,
-      sendAfter: null,
-      claimedAt: null,
-    },
-  })
-  return { status: 'sent', sentMessageId: sent.messageId, action: toRecord(updated) }
-}
+export { dispatchClaimedDraft, resolveStaleGmailDispatches, STALE_CLAIM_WINDOW_MS } from './gmail-draft-dispatch.js'
 
 /** Cancel a held send inside the undo window. */
 export const undoHeldSend = async (
@@ -544,6 +450,9 @@ export const discardDraftForUser = async (
   })
   if (!existing) throw new GmailDraftError('DRAFT_NOT_FOUND')
   if (existing.state === 'sent') throw new GmailDraftError('DRAFT_NOT_SENDABLE')
+  if (!existing.providerDraftId || existing.state === 'creating' || existing.state === 'delivery_unknown') {
+    throw new GmailDraftError('DELIVERY_UNKNOWN')
+  }
   const credential = await loadCredential(
     prisma,
     {

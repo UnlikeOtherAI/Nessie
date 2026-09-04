@@ -8,6 +8,7 @@ import {
 import type {
   ConnectedMailAccountRecord,
   ConnectedMailComposeInput,
+  ConnectedMailDraftCreateInput,
   ConnectedMailConversation,
   ConnectedMailSource,
   ConnectedMailThreadSummary,
@@ -95,7 +96,7 @@ const mailMutationUrl = ({ accountId, source }: MailAddress, suffix: string): st
 export const useConnectedMailDraft = (address: MailAddress | null) => {
   const apiClient = useApiClient()
   return useMutation({
-    mutationFn: (input: ConnectedMailComposeInput) => {
+    mutationFn: (input: ConnectedMailDraftCreateInput) => {
       if (!address) throw new Error('Choose a mailbox first.')
       return apiClient.post<ConnectedMailDraftResult>(mailMutationUrl(address, '/drafts'), input)
     },

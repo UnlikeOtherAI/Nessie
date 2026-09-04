@@ -178,6 +178,12 @@ export const ConnectedMailComposeInputSchema = z.object({
 }).strict()
 export type ConnectedMailComposeInput = z.infer<typeof ConnectedMailComposeInputSchema>
 
+/** A create-draft retry must reuse this id after a lost browser response. */
+export const ConnectedMailDraftCreateInputSchema = ConnectedMailComposeInputSchema.extend({
+  idempotencyKey: z.string().uuid(),
+}).strict()
+export type ConnectedMailDraftCreateInput = z.infer<typeof ConnectedMailDraftCreateInputSchema>
+
 export const ConnectedMailSendInputSchema = ConnectedMailComposeInputSchema.extend({
   expectedFingerprint: z.string().min(1).max(200).optional(),
 }).strict()

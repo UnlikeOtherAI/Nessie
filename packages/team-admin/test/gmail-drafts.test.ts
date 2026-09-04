@@ -6,7 +6,6 @@ import { sealSecret } from '@nessie/comms-connect'
 
 import {
   GmailDraftError,
-  STALE_CLAIM_WINDOW_MS,
   dispatchClaimedDraft,
   fingerprintDraft,
   sendDraftForUser,
@@ -375,7 +374,7 @@ test('the loser no-ops and leaves the row in the winner\'s state', async () => {
   assert.equal(sendCalls, 1)
 })
 
-test('a send failure returns the claimed row to draft, sendable again', async () => {
+test('an ambiguous Gmail send failure becomes non-retryable delivery_unknown', async () => {
   const { prisma, state } = makePrisma(claimedRow())
   await assert.rejects(
     dispatchClaimedDraft(
@@ -389,20 +388,14 @@ test('a send failure returns the claimed row to draft, sendable again', async ()
       }),
     ),
     (error: unknown) =>
-      error instanceof GmailDraftError && error.code === 'PROVIDER_FAILED',
+      error instanceof GmailDraftError && error.code === 'DELIVERY_UNKNOWN',
   )
-  assert.equal(state.row.state, 'draft')
+  assert.equal(state.row.state, 'delivery_unknown')
   assert.equal(state.row.claimedAt, null)
-
-  // And the person can send it again — today's behaviour, preserved.
-  let sendCalls = 0
-  const retry = await sendDraftForUser(
-    prisma,
-    { organizationId: ORG, userId: USER, draftActionId: ACTION },
-    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  await assert.rejects(
+    sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, deps(routes(liveDraft()))),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'DELIVERY_UNKNOWN',
   )
-  assert.equal(retry.status, 'sent')
-  assert.equal(sendCalls, 1)
 })
 
 test('a fresh dispatching row cannot be stolen mid-send', async () => {
@@ -425,21 +418,15 @@ test('a fresh dispatching row cannot be stolen mid-send', async () => {
   assert.equal(sendCalls, 0)
 })
 
-test('a stale claim is reclaimed after the window and sends exactly once', async () => {
-  const staleClaim = new Date(
-    new Date('2026-09-02T10:00:00.000Z').getTime() - STALE_CLAIM_WINDOW_MS - 1,
-  )
+test('a stale dispatch is never reclaimed for another Gmail send', async () => {
   const { prisma, state } = makePrisma(
-    claimedRow({ state: 'dispatching', claimedAt: staleClaim }),
+    claimedRow({ state: 'dispatching', claimedAt: new Date('2026-09-02T09:00:00.000Z') }),
   )
   let sendCalls = 0
-  const result = await dispatchClaimedDraft(
-    prisma,
-    ACTION,
-    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  await assert.rejects(
+    dispatchClaimedDraft(prisma, ACTION, deps(routes(liveDraft(), () => { sendCalls += 1 }))),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
   )
-  assert.equal(result.status, 'sent')
-  assert.equal(sendCalls, 1)
-  assert.equal(state.row.state, 'sent')
-  assert.equal(state.row.claimedAt, null)
+  assert.equal(sendCalls, 0)
+  assert.equal(state.row.state, 'dispatching')
 })

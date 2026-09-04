@@ -58,6 +58,7 @@ export const ConnectedMailCompose = ({
   const [sent, setSent] = useState<ConnectedMailDraftResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hydratedDraftRef = useRef<string | null>(null)
+  const createIdempotencyKeyRef = useRef<string | null>(null)
 
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
@@ -92,7 +93,10 @@ export const ConnectedMailCompose = ({
       const providerDraft = address.source === 'gmail'
         ? gmailDraftId
           ? await updateDraft.mutateAsync({ draftId: gmailDraftId, input })
-          : await createDraft.mutateAsync(input)
+          : await createDraft.mutateAsync({
+            ...input,
+            idempotencyKey: createIdempotencyKeyRef.current ??= crypto.randomUUID(),
+          })
         : null
       const result = address.source === 'gmail'
         ? await send.mutateAsync({
