@@ -323,7 +323,13 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
     through to ordinary private-space creator access.
   Ordinary-space creators always have full access. **Visibility is the only
   scope for ordinary spaces; an agent-owned space derives its audience from its
-  owning agent.** The
+  owning agent.** A user grant must name an active member of the same
+  organization; it may deliberately grant a private or write-restricted space
+  to a person whose project membership is elsewhere, which is the explicit
+  cross-project sharing path. A project-visible space remains visible only to
+  members of its own project. Space access changes (visibility, sensitivity,
+  write restriction, and members) are owner/creator actions; agents cannot
+  initiate a widening or a membership change. The
   space list (`GET /api/knowledge-base/spaces`), search, and summarize are
   organization-wide and narrow only when the caller passes an explicit
   `projectId`; they never fall back to the session's `proj` claim, which is just
@@ -333,12 +339,15 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
   personal "My Docs" when it was provisioned under a different project — and,
   because the admin treats an empty list as a first visit, made it seed a second
   "General" space beside the real one.
-  `listSpaces` filters to readable spaces;
+  `listSpaces` applies the readable-space predicate in SQL before pagination;
   `getSpace`/page reads return 403 to non-readers; create/edit/delete/publish/
   move/restore return 403 to non-writers; search drops unreadable hits. The space
-  record exposes the caller's effective `canWrite`. Non-human actors (agents /
-  services) bypass per-user checks for now — refined in the MCP / agent-tools
-  phase. (Schema: `KnowledgeSpace.writeRestricted` + `KnowledgeSpaceMember`.)
+  record exposes the caller's effective `canWrite`. A new space must target a
+  project in the active organization that its creator can reach. Pages inherit
+  that space project and can move only within their own space; callers cannot
+  forge a different project id on page create. A move increments the page
+  revision and honours `If-Match` just like an edit. (Schema:
+  `KnowledgeSpace.writeRestricted` + `KnowledgeSpaceMember`.)
 
 ## 6) Fit with existing docs
 

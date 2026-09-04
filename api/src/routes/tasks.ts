@@ -52,6 +52,14 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       : { accessibleProjectIds: accessible, actorUserId: actorContext.actor.actorId }
   }
 
+  const canAccessProject = async (
+    actorContext: AuthorizedActionContext,
+    projectId: string,
+  ): Promise<boolean> => {
+    const accessible = await listAccessibleProjectIds(actorContext)
+    return accessible === 'all' || accessible.includes(projectId)
+  }
+
   /**
    * Gate for every task mutation. Reads were gated but the mutation handlers
    * passed org scope only, so a non-member could both tamper with another
@@ -104,7 +112,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     return createApiResponse(AssignableUserSchema.array().parse(users))
   })
 
-  // Bulk-archive the org's done tasks (optionally only those older than N days).
+  // Archive from the board's explicit, entitled project only.
   app.post('/api/tasks/archive-done', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -112,9 +120,14 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     const body = parseInput(ArchiveDoneTasksBodySchema, request.body, reply)
     if (!body) return reply
+    if (!(await canAccessProject(actorContext, body.projectId))) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
 
     const result = await archiveDoneTasks(prisma, {
       organizationId: actorContext.tenant.organizationId,
+      projectId: body.projectId,
       olderThanDays: body.olderThanDays,
     })
     return createApiResponse(result)
@@ -127,6 +140,12 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     const body = parseInput(CreateTaskBodySchema, request.body, reply)
     if (!body) return reply
+    // A project id is not an organisation-wide capability: creation is
+    // limited to the caller's current project entitlement.
+    if (body.projectId && !(await canAccessProject(actorContext, body.projectId))) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
 
     const result = await createHumanTask(prisma, {
       actorContext,

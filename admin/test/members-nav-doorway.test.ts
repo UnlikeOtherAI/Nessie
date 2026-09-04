@@ -9,6 +9,7 @@ import {
 } from '../src/layouts/admin-shell/AdminSidebarNav.js'
 
 const viewer = (overrides: Partial<AdminNavViewer> = {}): AdminNavViewer => ({
+  canManageOrganization: false,
   isAdmin: false,
   isOwner: false,
   isSuperAdmin: false,
@@ -25,20 +26,15 @@ const navItem = (path: string) => {
 const membersItem = () => navItem('/settings/members')
 const teamMembersItem = () => navItem('/settings/team/members')
 
-test('a UOA session shows Members to every active member', () => {
-  assert.equal(isAdminNavItemVisible(membersItem(), viewer({ isUoaSession: true })), true)
+test('Organization Members requires the live organisation capability', () => {
+  assert.equal(isAdminNavItemVisible(membersItem(), viewer({ isUoaSession: true })), false)
   assert.equal(
-    isAdminNavItemVisible(membersItem(), viewer({ isUoaSession: true, isOwner: true })),
+    isAdminNavItemVisible(membersItem(), viewer({ canManageOrganization: true, isUoaSession: true })),
     true,
   )
 })
 
-test('a local session keeps Members owner-only', () => {
-  assert.equal(isAdminNavItemVisible(membersItem(), viewer()), false)
-  assert.equal(isAdminNavItemVisible(membersItem(), viewer({ isOwner: true })), true)
-})
-
-test('a UOA session shows Team > Members to every active member, same as Organization > Members', () => {
+test('a UOA session shows Team > Members to every active member', () => {
   assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer({ isUoaSession: true })), true)
   assert.equal(
     isAdminNavItemVisible(teamMembersItem(), viewer({ isUoaSession: true, isOwner: true })),
@@ -46,12 +42,12 @@ test('a UOA session shows Team > Members to every active member, same as Organiz
   )
 })
 
-test('a local session keeps Team > Members owner-only, same as Organization > Members', () => {
+test('a local session keeps Team > Members owner-only', () => {
   assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer()), false)
   assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer({ isOwner: true })), true)
 })
 
-test('the UOA session flag widens nothing else', () => {
+test('the UOA session flag widens only Team Members', () => {
   const widened = ADMIN_NAV.flatMap((group) => group.items).filter(
     (item) =>
       !isAdminNavItemVisible(item, viewer())
@@ -60,7 +56,7 @@ test('the UOA session flag widens nothing else', () => {
 
   assert.deepEqual(
     widened.map((item) => item.path).sort(),
-    ['/settings/members', '/settings/team/members'],
+    ['/settings/team/members'],
   )
 })
 

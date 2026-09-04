@@ -70,6 +70,16 @@ import {
   runProjectListTool,
   runSendMessageTool,
   runTeamCreateTool,
+  runTicketArchiveDoneTool,
+  runTicketAssignTool,
+  runTicketBoardReadTool,
+  runTicketCreateTool,
+  runTicketIterationSetTool,
+  runTicketListTool,
+  runTicketMoveTool,
+  runTicketReadTool,
+  runTicketTransitionTool,
+  runTicketUpdateTool,
   runUpdatePreferencesTool,
   runTodoStartTool,
   runTodoStepUpdateTool,
@@ -79,6 +89,11 @@ import {
   runEmailListTool,
   runEmailReadTool,
   runEmailSendTool,
+  runEmailAccountAgentAccessTool,
+  runEmailAccountCheckTool,
+  runEmailAccountConnectTool,
+  runEmailAccountDisconnectTool,
+  runEmailAccountListTool,
 } from './pa-tools.js'
 import { runAgentHandoffTool } from './pa-tools/agent-handoff.js'
 import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
@@ -291,6 +306,26 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runProjectCreateTool(context, args))
     case 'team_create':
       return wrapTool(inputSummary, () => runTeamCreateTool(context, args))
+    case 'ticket_list':
+      return wrapTool(inputSummary, () => runTicketListTool(context, args))
+    case 'ticket_read':
+      return wrapTool(inputSummary, () => runTicketReadTool(context, args))
+    case 'ticket_board_read':
+      return wrapTool(inputSummary, () => runTicketBoardReadTool(context, args))
+    case 'ticket_create':
+      return wrapTool(inputSummary, () => runTicketCreateTool(context, args))
+    case 'ticket_update':
+      return wrapTool(inputSummary, () => runTicketUpdateTool(context, args))
+    case 'ticket_assign':
+      return wrapTool(inputSummary, () => runTicketAssignTool(context, args))
+    case 'ticket_move':
+      return wrapTool(inputSummary, () => runTicketMoveTool(context, args))
+    case 'ticket_transition':
+      return wrapTool(inputSummary, () => runTicketTransitionTool(context, args))
+    case 'ticket_iteration_set':
+      return wrapTool(inputSummary, () => runTicketIterationSetTool(context, args))
+    case 'ticket_archive_done':
+      return wrapTool(inputSummary, () => runTicketArchiveDoneTool(context, args))
     case 'agent_list':
       return wrapTool(inputSummary, () => runAgentListTool(context, args))
     // Agent configuration: read one agent's record, rewrite it, list the tools
@@ -465,6 +500,16 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runEmailReadTool(context, args))
     case 'email_send':
       return wrapTool(inputSummary, () => runEmailSendTool(context, args))
+    case 'email_account_list':
+      return wrapTool(inputSummary, () => runEmailAccountListTool(context))
+    case 'email_account_connect':
+      return wrapTool(inputSummary, () => runEmailAccountConnectTool(context, args))
+    case 'email_account_check':
+      return wrapTool(inputSummary, () => runEmailAccountCheckTool(context, args))
+    case 'email_account_disconnect':
+      return wrapTool(inputSummary, () => runEmailAccountDisconnectTool(context, args))
+    case 'email_account_agent_access':
+      return wrapTool(inputSummary, () => runEmailAccountAgentAccessTool(context, args))
     case 'comms_connect_card':
       return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
     case 'meeting_link_create':

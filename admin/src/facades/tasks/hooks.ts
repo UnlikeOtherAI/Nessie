@@ -110,7 +110,7 @@ export const useArchiveDoneTasks = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { olderThanDays?: number | null }) =>
+    mutationFn: (input: { projectId: string; olderThanDays?: number | null }) =>
       apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })

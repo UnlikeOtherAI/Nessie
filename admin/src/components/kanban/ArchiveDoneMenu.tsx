@@ -4,8 +4,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useArchiveDoneTasks } from '../../facades/tasks/hooks'
 
 // Top-right action on the Done column: tuck completed work into the Archived
-// section without cancelling it (sets archivedAt, org-wide).
-export const ArchiveDoneMenu = () => {
+// section without cancelling it (sets archivedAt in this project only).
+export const ArchiveDoneMenu = ({ projectId }: { projectId: string }) => {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const archive = useArchiveDoneTasks()
@@ -20,7 +20,7 @@ export const ArchiveDoneMenu = () => {
   }, [open])
 
   const run = (olderThanDays?: number) => {
-    archive.mutate({ olderThanDays: olderThanDays ?? null })
+    archive.mutate({ projectId, olderThanDays: olderThanDays ?? null })
     setOpen(false)
   }
 

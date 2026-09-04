@@ -19,7 +19,16 @@ export {
   runAppConnectRequestTool,
   runAppSearchTool,
 } from './pa-tools/app-setup.js'
-export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
+export {
+  runCommsConnectCardTool,
+  runEmailAccountConnectTool,
+} from './pa-tools/comms-card.js'
+export {
+  runEmailAccountAgentAccessTool,
+  runEmailAccountCheckTool,
+  runEmailAccountDisconnectTool,
+  runEmailAccountListTool,
+} from './pa-tools/email-accounts.js'
 export {
   runChannelArchiveTool,
   runChannelFindTool,
@@ -84,6 +93,18 @@ export {
   runProjectListTool,
   runTeamCreateTool,
 } from './pa-tools/team-structure.js'
+export {
+  runTicketArchiveDoneTool,
+  runTicketAssignTool,
+  runTicketBoardReadTool,
+  runTicketCreateTool,
+  runTicketIterationSetTool,
+  runTicketListTool,
+  runTicketMoveTool,
+  runTicketReadTool,
+  runTicketTransitionTool,
+  runTicketUpdateTool,
+} from './pa-tools/tickets.js'
 export {
   runAgentAvatarUpdateTool,
   runAgentReadTool,

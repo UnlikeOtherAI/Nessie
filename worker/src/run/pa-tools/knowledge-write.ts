@@ -123,6 +123,23 @@ export const runKbDraftWriteTool = async (
     throw new Error('title is required when creating a new page.')
   }
 
+  if (input.taskId) {
+    // A ticket binding is part of the page's durable scope envelope. Do not
+    // let a writable space in one project claim a ticket in another: the
+    // ticket Documents surface is entitled by that ticket's project.
+    const task = await context.prisma.task.findFirst({
+      where: {
+        id: input.taskId,
+        organizationId,
+        projectId: space.projectId,
+      },
+      select: { id: true },
+    })
+    if (!task) {
+      throw new Error('Ticket not found in this knowledge space project.')
+    }
+  }
+
   const created = await provider.createPage({
     organizationId,
     projectId: space.projectId,

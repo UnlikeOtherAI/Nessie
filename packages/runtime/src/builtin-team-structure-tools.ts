@@ -23,7 +23,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'project_list',
-    category: 'team',
+    category: 'projects',
     summary: 'List the projects you can reach and the teams inside them.',
     label: 'List Projects',
     personalAssistantOnly: true,
@@ -47,7 +47,7 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'project_create',
-    category: 'team',
+    category: 'projects',
     summary: 'Create a project, owned by the user.',
     label: 'Create Project',
     personalAssistantOnly: true,
@@ -70,7 +70,7 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'team_create',
-    category: 'team',
+    category: 'projects',
     summary: 'Create a team inside a project, owned by the user.',
     label: 'Create Team',
     personalAssistantOnly: true,

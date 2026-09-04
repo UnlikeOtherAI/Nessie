@@ -1,5 +1,5 @@
-import type { PrismaClient } from '@prisma/client'
-import { listVisibleAgentIdsForUser } from '@nessie/db'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { listVisibleAgentIdsForUser, visibleKnowledgeSpaceWhere } from '@nessie/db'
 import type { KnowledgeSpaceRecord } from './types.js'
 
 // Per-space access. The space creator always has full access. `bypass` is now
@@ -153,6 +153,50 @@ export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boo
   }
 }
 
+// Query-time counterpart of canReadSpace. Lists must apply the same decision
+// before pagination: filtering a single arbitrary page in memory can hide a
+// readable private space behind a page of newer inaccessible ones.
+//
+// The user arm delegates to @nessie/db's shared agent-visibility-aware
+// predicate. The agent arm mirrors canAgentReadSpace structurally; agents do
+// not have a reusable database predicate because their reach is assembled
+// from bindings when the viewer is loaded.
+export const readableKnowledgeSpaceWhere = (
+  organizationId: string,
+  viewer: SpaceViewer,
+): Prisma.KnowledgeSpaceWhereInput | null => {
+  if (viewer.bypass) return null
+  if (!viewer.agent) {
+    if (viewer.userId === null) return { id: { in: [] } }
+    return visibleKnowledgeSpaceWhere({ organizationId, userId: viewer.userId })
+  }
+
+  const { agent } = viewer
+  const ownerAgentIds = [agent.id, ...(agent.parentAgentId ? [agent.parentAgentId] : [])]
+  const reach: Prisma.KnowledgeSpaceWhereInput[] = [
+    { privateToAgentId: agent.id },
+    { createdBy: agent.id },
+    { ownerAgentId: { in: ownerAgentIds } },
+    { members: { some: { agentId: agent.id } } },
+  ]
+  if (agent.orgBound) reach.push({ visibility: 'organization' })
+  if (agent.projectIds.size > 0) {
+    reach.push({ visibility: 'project', projectId: { in: Array.from(agent.projectIds) } })
+  }
+  if (agent.teamIds.size > 0) {
+    reach.push({ visibility: 'team', teamId: { in: Array.from(agent.teamIds) } })
+  }
+  if (agent.channelIds.size > 0) {
+    reach.push({ visibility: 'channel', channelId: { in: Array.from(agent.channelIds) } })
+  }
+  return {
+    organizationId,
+    deletedAt: null,
+    sensitivityTier: { not: 'restricted' },
+    OR: reach,
+  }
+}
+
 const loadUserViewer = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -161,7 +205,10 @@ const loadUserViewer = async (
   const [memberships, visibleAgentIds] = await Promise.all([
     prisma.projectMember.findMany({
       select: { projectId: true },
-      where: { userId },
+      // A user can be a member of projects in more than one organization.
+      // The active organization is an authorization boundary, so a project
+      // membership from another organization must never widen this viewer.
+      where: { userId, project: { organizationId } },
     }),
     listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
   ])

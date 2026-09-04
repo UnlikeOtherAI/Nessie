@@ -52,6 +52,10 @@ export const placeTask = (
   task: Pick<TaskRecord, 'columnId' | 'status'>,
   columns: BoardColumnView[],
 ): string | null => {
+  // Cancelled/failed work belongs in Archived even if a historic row still
+  // carries its previous column. New transitions clear that column; this guard
+  // keeps the UI correct while those existing rows are encountered.
+  if (ARCHIVED_STATUSES.includes(task.status)) return null
   if (task.columnId && columns.some((column) => column.id === task.columnId)) {
     return task.columnId
   }

@@ -18,6 +18,7 @@ import {
  */
 
 const viewer = (overrides: Partial<AdminNavViewer> = {}): AdminNavViewer => ({
+  canManageOrganization: false,
   isAdmin: false,
   isOwner: false,
   isSuperAdmin: false,
@@ -48,7 +49,7 @@ test('System Health is visible to the instance super-admin only', () => {
 test('org-scoped operational surfaces retain their owner doorway', () => {
   // The neighbouring items read org-filtered data, so they are deliberately
   // NOT swept into the instance role along with Health.
-  for (const path of ['/ops/usage', '/audit', '/settings/organization']) {
+  for (const path of ['/ops/usage', '/audit']) {
     assert.equal(
       isAdminNavItemVisible(navItem(path), viewer({ isOwner: true })),
       true,
@@ -75,7 +76,10 @@ test('Platform owns both operational and instance controls without creating an e
 
 test('organization settings are also reachable by an organization admin', () => {
   assert.equal(
-    isAdminNavItemVisible(navItem('/settings/organization'), viewer({ isAdmin: true })),
+    isAdminNavItemVisible(
+      navItem('/settings/organization'),
+      viewer({ canManageOrganization: true, isAdmin: true }),
+    ),
     true,
   )
 })

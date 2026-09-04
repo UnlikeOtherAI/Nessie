@@ -43,6 +43,7 @@ type ItemMap = Record<string, string[]>
 
 type KanbanBoardProps = {
   columns: BoardColumnView[]
+  projectId?: string
   tasks: TaskRecord[]
   showProject: boolean
   projectNameById: Record<string, string>
@@ -53,6 +54,7 @@ type KanbanBoardProps = {
 
 export const KanbanBoard = ({
   columns,
+  projectId,
   tasks,
   showProject,
   projectNameById,
@@ -312,7 +314,7 @@ export const KanbanBoard = ({
                     columnId={column.id}
                     count={ids.length}
                     dot={CATEGORY_DOT[column.category]}
-                    headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
+                    headerAction={column.category === 'done' && projectId ? <ArchiveDoneMenu projectId={projectId} /> : undefined}
                     itemIds={ids}
                     label={column.name}
                   >

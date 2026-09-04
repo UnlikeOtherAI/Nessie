@@ -200,7 +200,7 @@ test('native move cycle walk is scoped to the caller organization', async () => 
         if (where['id'] === parentPageId) return { id: parentPageId }
         return null
       },
-      update: async () => pageRow({ parentPageId }),
+      updateMany: async () => ({ count: 1 }),
     },
   }
   const prisma = {
@@ -450,6 +450,7 @@ const spaceRow = (members: Array<{ userId: string | null; agentId: string | null
 
 test('native createSpace rejects unknown/foreign agent ids in memberAgentIds', async () => {
   const prisma = {
+    project: { findFirst: async () => ({ id: projectId }) },
     agent: {
       findMany: async () => [{ id: agentA }],
     },
@@ -473,6 +474,8 @@ test('native createSpace rejects unknown/foreign agent ids in memberAgentIds', a
 test('native createSpace writes agent member rows (agentId set, userId null) after validating org membership', async () => {
   const createCalls: Array<Record<string, unknown>> = []
   const prisma = {
+    project: { findFirst: async () => ({ id: projectId }) },
+    organizationMember: { findMany: async () => [{ userId: 'user-1' }] },
     agent: {
       findMany: async () => [{ id: agentA }, { id: agentB }],
     },
@@ -504,6 +507,55 @@ test('native createSpace writes agent member rows (agentId set, userId null) aft
   assert.deepEqual(
     membersCreate.create.map((m) => ('agentId' in m ? m['agentId'] : null)),
     [null, agentA, agentB],
+  )
+})
+
+test('native createSpace rejects a project outside the active organization', async () => {
+  const prisma = {
+    project: { findFirst: async () => null },
+    knowledgeSpace: {
+      create: async () => {
+        throw new Error('must not create a space in a foreign project')
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.createSpace({
+      name: 'Engineering',
+      organizationId,
+      projectId,
+      createdBy: 'user-1',
+    }),
+    (error) =>
+      error instanceof KnowledgeConflictError
+      && error.message === 'Knowledge space project does not belong to this organization',
+  )
+})
+
+test('native createSpace rejects user grants outside the active organization', async () => {
+  const foreignUser = '00000000-0000-4000-8000-000000000104'
+  const prisma = {
+    project: { findFirst: async () => ({ id: projectId }) },
+    organizationMember: { findMany: async () => [] },
+    knowledgeSpace: {
+      create: async () => {
+        throw new Error('must not create a space with a foreign user grant')
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.createSpace({
+      name: 'Engineering',
+      organizationId,
+      projectId,
+      createdBy: 'user-1',
+      memberUserIds: [foreignUser],
+    }),
+    (error) => error instanceof KnowledgeConflictError && error.message.includes(foreignUser),
   )
 })
 
@@ -565,5 +617,27 @@ test('native updateSpace rejects unknown agent ids before touching membership ro
   await assert.rejects(
     provider.updateSpace(organizationId, spaceId, { memberAgentIds: [foreignAgent] }),
     (error) => error instanceof KnowledgeConflictError,
+  )
+})
+
+test('native updateSpace rejects foreign users before replacing existing grants', async () => {
+  const foreignUser = '00000000-0000-4000-8000-000000000105'
+  const tx = {
+    knowledgeSpace: { findFirst: async () => ({ id: spaceId }) },
+    organizationMember: { findMany: async () => [] },
+    knowledgeSpaceMember: {
+      deleteMany: async () => {
+        throw new Error('must not replace grants before validation')
+      },
+    },
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.updateSpace(organizationId, spaceId, { memberUserIds: [foreignUser] }),
+    (error) => error instanceof KnowledgeConflictError && error.message.includes(foreignUser),
   )
 })

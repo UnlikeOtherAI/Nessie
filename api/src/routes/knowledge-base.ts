@@ -28,6 +28,7 @@ import {
   actorAuthorType,
   attachPageEnvelope,
   attachSpaceEnvelope,
+  canViewerReachProject,
   canManageKnowledgeSpaceAccess,
   createKnowledgeAccess,
   policyTrace,
@@ -77,11 +78,10 @@ export const registerKnowledgeBaseRoutes = (
       limit: query.limit,
       viewer,
     })
-    // `total` is intentionally omitted: unlike a SQL-filtered list, a
-    // non-bypass viewer's visibility here is applied in application code
-    // *after* the page is fetched (`canReadSpace` filtering above the
-    // provider's `where`), so a separate count against the same `where` would
-    // describe a larger set than what this page actually shows.
+    // `total` is intentionally omitted: the cursor response deliberately does
+    // not add a second count query to a list view that only needs the next
+    // entitled page. The provider applies the same visibility predicate before
+    // pagination, so every returned row is already readable by this viewer.
     return createApiResponse(
       result.data.map((space) => attachSpaceEnvelope(space, decision, viewer, actorContext)),
       toKnowledgePaginationMeta(result.meta, Boolean(query.cursor), result.data.at(0)),
@@ -103,9 +103,11 @@ export const registerKnowledgeBaseRoutes = (
     // sibling project's id in the body and plant a writable space there. Human
     // actors may only create in a project they belong to; agents may only create
     // in a project reached via one of their channel bindings; services keep bypass.
-    const inProjectReach = viewer.bypass
-      || (viewer.agent ? viewer.agent.projectIds.has(projectId) : viewer.projectIds.has(projectId))
-    if (!inProjectReach) {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      select: { id: true },
+    })
+    if (!project || !canViewerReachProject(viewer, projectId)) {
       sendApiError(
         reply,
         403,
@@ -167,6 +169,8 @@ export const registerKnowledgeBaseRoutes = (
     const changesAccess = body.writeRestricted !== undefined
       || body.memberUserIds !== undefined
       || body.memberAgentIds !== undefined
+      || body.visibility !== undefined
+      || body.sensitivityTier !== undefined
     // Access administrators must be able to reverse writeRestricted even when
     // it has removed their ordinary content-write permission. Read remains the
     // floor: no administrator may configure a space they cannot discover.
@@ -253,19 +257,26 @@ export const registerKnowledgeBaseRoutes = (
     if (!actorContext) return reply
     const body = parseInput(CreateKnowledgePageBodySchema, request.body, reply)
     if (!body) return reply
-    const projectId = requireProjectId(actorContext, body.projectId, reply)
-    if (!projectId) return reply
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'create')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
+    const space = await accessSpace(actorContext, spaceId, viewer, 'write', reply)
+    if (!space) return reply
+    if (body.projectId !== undefined && body.projectId !== space.projectId) {
+      return sendApiError(
+        reply,
+        400,
+        'KNOWLEDGE_PAGE_INVALID',
+        'Knowledge pages inherit their project from the destination space',
+      )
+    }
     let page: KnowledgePageRecord
     try {
       page = await provider.createPage({
         ...body,
         organizationId: actorContext.tenant.organizationId,
-        projectId,
+        projectId: space.projectId,
         spaceId,
         authorId: actorContext.actor.actorId,
         authorType: actorAuthorType(actorContext),
@@ -518,6 +529,8 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    const ifMatch = readIfMatchRevision(request)
+    if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply)
     let page: KnowledgePageRecord | null
     try {
       page = await provider.movePage({
@@ -525,8 +538,17 @@ export const registerKnowledgeBaseRoutes = (
         pageId,
         parentPageId: body.parentPageId,
         position: body.position,
+        ...(ifMatch.kind === 'revision' ? { expectedRevision: ifMatch.revision } : {}),
       })
     } catch (error) {
+      if (error instanceof KnowledgePageRevisionConflictError) {
+        return sendRevisionConflict(
+          reply,
+          'KNOWLEDGE_PAGE_REVISION_CONFLICT',
+          'This page changed since you started moving it',
+          error.currentRevision,
+        )
+      }
       return sendKnowledgeMutationError(request, reply, error, {
         code: 'KNOWLEDGE_PAGE_MOVE_INVALID',
         message: 'Knowledge page could not be moved',

@@ -87,6 +87,17 @@ const runUoaBillingValidator = (
   },
 })
 
+// NTFS does not expose Unix owner-only permission bits through Node's stat.
+// The installers still run chmod under Git Bash; assert the directive on
+// Windows and the resulting mode wherever the filesystem supports it.
+const assertPrivateEnvFile = (fixture: { envFile: string; installer: string }): void => {
+  if (process.platform === 'win32') {
+    assert.match(readFileSync(fixture.installer, 'utf8'), /\bchmod 600\b/u)
+    return
+  }
+  assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+}
+
 test('Ledger installer pins active routes and retires the old reader key', () => {
   const fixture = makeInstallerFixture([
     'PRESERVE_ME=yes',
@@ -108,7 +119,7 @@ test('Ledger installer pins active routes and retires the old reader key', () =>
       '',
     ].join('\n'),
   )
-  assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+  assertPrivateEnvFile(fixture)
 })
 
 test('Ledger installer rejects malformed or cross-principal key reuse', () => {
@@ -216,7 +227,7 @@ test('UOA billing installer atomically installs both independent credentials', (
       '',
     ].join('\n'),
   )
-  assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+  assertPrivateEnvFile(fixture)
 })
 
 test('deployment-side UOA billing validation requires usable independent credentials', () => {

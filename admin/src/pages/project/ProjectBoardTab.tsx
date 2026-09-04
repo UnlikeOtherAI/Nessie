@@ -77,6 +77,7 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
           <KanbanBoard
             columns={columns}
             onMoveTask={handleMove}
+            projectId={projectId}
             projectNameById={projectNameById}
             showProject={false}
             tasks={tasks}

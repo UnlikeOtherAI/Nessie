@@ -13,8 +13,10 @@ import { CARD_TOOL_DEFINITIONS } from './builtin-card-tools.js'
 import { HANDOFF_TOOL_DEFINITIONS } from './builtin-handoff-tools.js'
 import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
 import { TEAM_STRUCTURE_TOOL_DEFINITIONS } from './builtin-team-structure-tools.js'
+import { TICKET_TOOL_DEFINITIONS } from './builtin-ticket-tools.js'
 import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
+import { EMAIL_ACCOUNT_TOOL_DEFINITIONS } from './builtin-email-account-tools.js'
 import { EMAIL_TOOL_DEFINITIONS } from './builtin-email-tools.js'
 import { GOOGLE_TOOL_DEFINITIONS } from './builtin-google-tools.js'
 import { MAILBOX_TOOL_DEFINITIONS } from './builtin-mailbox-tools.js'
@@ -460,6 +462,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...HANDOFF_TOOL_DEFINITIONS,
   ...CHANNEL_TOOL_DEFINITIONS,
   ...TEAM_STRUCTURE_TOOL_DEFINITIONS,
+  ...TICKET_TOOL_DEFINITIONS,
   ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...DASHBOARD_TOOL_DEFINITIONS,
   ...DASHBOARD_EMBED_TOOL_DEFINITIONS,
@@ -470,6 +473,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...BROWSER_TOOL_DEFINITIONS,
   ...INTEGRATION_TOOL_DEFINITIONS,
   ...COMMS_TOOL_DEFINITIONS,
+  ...EMAIL_ACCOUNT_TOOL_DEFINITIONS,
   ...EMAIL_TOOL_DEFINITIONS,
   ...GOOGLE_TOOL_DEFINITIONS,
   ...MAILBOX_TOOL_DEFINITIONS,

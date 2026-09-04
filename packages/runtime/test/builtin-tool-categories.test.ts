@@ -24,6 +24,18 @@ test('every builtin declares a category, and it is one the vocabulary names', ()
   assert.deepEqual(unknown, [], 'a category the vocabulary does not name renders as "Other"')
 })
 
+test('every system tool name is accepted by OpenAI-compatible function calling', () => {
+  // The provider validates every offered function before a run can start. A
+  // malformed name therefore breaks an entire agent, even when it never calls
+  // that particular tool. Keep this beside the catalogue invariants so new
+  // builtins cannot reintroduce a provider-invalid identifier.
+  const invalid = SYSTEM_TOOL_DEFINITIONS
+    .map(({ id }) => id)
+    .filter((id) => !/^[A-Za-z0-9_-]{1,64}$/.test(id))
+
+  assert.deepEqual(invalid, [])
+})
+
 test('no category is a dumping ground', () => {
   const counts = new Map<string, number>()
   for (const tool of SYSTEM_TOOL_DEFINITIONS) {
