@@ -148,24 +148,21 @@ export const requestIds = (request: FastifyRequest) => ({
   userAgent: request.headers['user-agent'],
 })
 
-// `@nessie/knowledge`'s native provider (packages/, out of this route
-// family's reach) still returns its own pre-existing `{ cursor, hasMore }`
-// cursor-page shape (`KnowledgePageCursorPage`) — that package's contract,
-// untouched here. This adapts one of its pages onto the shared
-// `PaginationMeta` contract at the API boundary: `nextCursor` carries the
-// provider's own opaque cursor forward unchanged, and `prevCursor` is
-// re-encoded from the first row of this page in that same `updatedAt|id`
-// format, present only once the caller has moved past the first page —
-// mirroring how `buildPage` derives `prevCursor`, without forking the
-// provider's own cursor encoding.
+// The provider owns both cursor directions. This adapter preserves its opaque
+// cursors rather than manufacturing a previous cursor that the provider cannot
+// actually fetch backwards.
 export const toKnowledgePaginationMeta = (
-  providerMeta: { cursor: string | null; hasMore: boolean },
-  hasCursor: boolean,
-  first: { id: string; updatedAt: string } | undefined,
+  providerMeta: {
+    cursor: string | null
+    hasMore: boolean
+    previousCursor?: string | null
+    total?: number
+  },
 ): PaginationMeta => ({
   hasMore: providerMeta.hasMore,
   nextCursor: providerMeta.cursor,
-  prevCursor: hasCursor && first ? `${first.updatedAt}|${first.id}` : null,
+  prevCursor: providerMeta.previousCursor ?? null,
+  ...(providerMeta.total === undefined ? {} : { total: providerMeta.total }),
 })
 
 // Bundles the provider plus the per-space access helpers, closing over the

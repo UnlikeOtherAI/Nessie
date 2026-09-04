@@ -3,6 +3,7 @@ import type { KnowledgeSpaceResponse } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { usePagedList } from '../usePagedList'
 
 export type KnowledgeVersionRecord = {
   id: string
@@ -93,15 +94,16 @@ const invalidateKnowledge = (
 // Org-wide by default (the Knowledge section). Pass a projectId for a
 // project's own Documents tab: the API narrows the list to that project on top
 // of the caller's per-space read access.
-export const useKnowledgeSpaces = (projectId?: string, enabled = true) => {
-  const apiClient = useApiClient()
-  const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
-
-  return useQuery<KnowledgeSpaceRecord[]>({
-    placeholderData: keepPreviousData,
+export const useKnowledgeSpaces = (
+  projectId?: string,
+  enabled = true,
+  includePersonal = false,
+) => {
+  return usePagedList<KnowledgeSpaceRecord>({
     enabled,
     queryKey: knowledgeKeys.scopedSpaces(projectId),
-    queryFn: () => apiClient.get(`/api/knowledge-base/spaces?limit=100${scope}`),
+    path: '/api/knowledge-base/spaces',
+    params: { includePersonal: includePersonal ? 'true' : undefined, projectId },
   })
 }
 
@@ -283,6 +285,17 @@ export const usePublishKnowledgePage = () => {
   return useMutation({
     mutationFn: (input: { pageId: string }) =>
       apiClient.post<KnowledgePageRecord>(`/api/knowledge-base/pages/${input.pageId}/publish`, {}),
+    onSuccess: (page) => invalidateKnowledge(queryClient, { pageId: page.id, spaceId: page.spaceId }),
+  })
+}
+
+export const useArchiveKnowledgePage = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { pageId: string }) =>
+      apiClient.delete<KnowledgePageRecord>(`/api/knowledge-base/pages/${input.pageId}`),
     onSuccess: (page) => invalidateKnowledge(queryClient, { pageId: page.id, spaceId: page.spaceId }),
   })
 }

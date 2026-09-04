@@ -7,6 +7,8 @@ export type PaginationFooterProps = {
   canPrevious: boolean
   /** Spacing only — layout, page position and page-size control are shared. */
   className?: string
+  /** Stack the position readout below the controls when a sidebar is narrow. */
+  compact?: boolean
   /**
    * A small, non-actionable list may omit its pager. Paged lists normally keep
    * it visible so people can see the selected page size before it grows.
@@ -34,6 +36,7 @@ export const PaginationFooter = ({
   canNext,
   canPrevious,
   className,
+  compact = false,
   hideWhenSinglePage = false,
   label,
   onPageChange,
@@ -42,18 +45,20 @@ export const PaginationFooter = ({
   pageCount,
   pageSize,
 }: PaginationFooterProps) => {
-  if (hideWhenSinglePage && pageCount <= 1) return null
+  if (hideWhenSinglePage && pageCount <= 1 && page === 0 && !canPrevious && !canNext) return null
 
   return (
     <div
       className={[
-        'flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[color:var(--sep)] py-3',
+        compact
+          ? 'flex flex-col items-stretch gap-2 border-t border-[color:var(--sep)] py-3'
+          : 'flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[color:var(--sep)] py-3',
         className ?? '',
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      <div className="flex items-center gap-3">
+      <div className={compact ? 'flex items-center justify-between gap-3' : 'flex items-center gap-3'}>
         <button
           aria-label="Previous page"
           className="admin-button admin-button-secondary"
@@ -63,9 +68,11 @@ export const PaginationFooter = ({
         >
           Previous
         </button>
-        <span aria-live="polite" className="text-sm tabular-nums text-[color:var(--tx2)]">
-          Page {page + 1} of {pageCount}
-        </span>
+        {!compact ? (
+          <span aria-live="polite" className="text-sm tabular-nums text-[color:var(--tx2)]">
+            Page {page + 1} of {pageCount}
+          </span>
+        ) : null}
         <button
           aria-label="Next page"
           className="admin-button admin-button-secondary"
@@ -77,7 +84,16 @@ export const PaginationFooter = ({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+      {compact ? (
+        <span aria-live="polite" className="text-center text-sm tabular-nums text-[color:var(--tx2)]">
+          Page {page + 1} of {pageCount}
+        </span>
+      ) : null}
+
+      <div className={compact
+        ? 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2'
+        : 'flex flex-wrap items-center justify-end gap-x-4 gap-y-2'}
+      >
         <span className="text-xs tabular-nums text-[color:var(--tx3)]">{label}</span>
         <label className="flex items-center gap-2 text-xs text-[color:var(--tx2)]">
           <span>Items per page</span>

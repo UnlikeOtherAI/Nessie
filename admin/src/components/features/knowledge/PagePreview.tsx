@@ -1,8 +1,17 @@
-import { useRef } from 'react'
-import { faFileLines, faFolder, faPaperclip } from '@fortawesome/free-solid-svg-icons'
+import { useRef, useState } from 'react'
+import {
+  faBoxArchive,
+  faClockRotateLeft,
+  faEllipsis,
+  faFileLines,
+  faFolder,
+  faPaperclip,
+} from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { toFormErrors } from '../../../facades/form-errors'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { Pill } from '../../primitives/Pill'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { QueryState } from '../../shared/QueryState'
 import { Row, RowList } from '../../shared/RowList'
 import { SectionLabel } from '../../primitives/SectionLabel'
@@ -20,10 +29,12 @@ type PagePreviewProps = {
   // the shared line, a failure gets Retry, success renders the body below.
   bodyQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   breadcrumbPages: KnowledgePageRecord[]
+  archivePending?: boolean
   canWrite: boolean
   // On a phone the team owns the doorway through the local-back
   // registry and passes no onBack; wider layouts keep the pane's own Back.
   onBack?: () => void
+  onArchive: () => Promise<void>
   onBrowseRoot: () => void
   onCreateChild: () => void
   onDrill: (childPageId: string) => void
@@ -49,8 +60,10 @@ const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
 export const PagePreview = ({
   bodyQuery,
   breadcrumbPages,
+  archivePending,
   canWrite,
   onBack,
+  onArchive,
   onBrowseRoot,
   onCreateChild,
   onDrill,
@@ -65,6 +78,8 @@ export const PagePreview = ({
   spaceName,
 }: PagePreviewProps) => {
   const commentsComposerRef = useRef<HTMLTextAreaElement>(null)
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   const focusComments = () => {
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
@@ -85,12 +100,6 @@ export const PagePreview = ({
       onSelect: onToggleAttachments,
       priority: 60,
     },
-    {
-      id: 'history',
-      label: 'History',
-      onSelect: onOpenHistory,
-      priority: 50,
-    },
     ...(canWrite
       ? [
           {
@@ -99,16 +108,46 @@ export const PagePreview = ({
             onSelect: onEdit,
             priority: 40,
           },
-          {
-            disabled: publishPending,
-            id: 'publish',
-            label: 'Publish',
-            onSelect: onPublish,
-            primary: true,
-            priority: 100,
-          },
+          ...(page.status !== 'published'
+            ? [{
+                disabled: publishPending,
+                id: 'publish',
+                label: 'Publish',
+                onSelect: onPublish,
+                primary: true,
+                priority: 100,
+              } satisfies PageHeaderAction]
+            : []),
         ] satisfies PageHeaderAction[]
       : []),
+    {
+      compact: true,
+      icon: faEllipsis,
+      id: 'page-actions',
+      items: [
+        {
+          icon: faClockRotateLeft,
+          id: 'history',
+          label: 'History',
+          onSelect: onOpenHistory,
+        },
+        ...(canWrite
+          ? [{
+              disabled: archivePending,
+              icon: faBoxArchive,
+              id: 'archive-page',
+              label: 'Archive page',
+              onSelect: () => {
+                setArchiveError(null)
+                setArchiveConfirmOpen(true)
+              },
+            }]
+          : []),
+      ],
+      kind: 'menu',
+      label: 'Page actions',
+      priority: 10,
+    },
   ]
 
   return (
@@ -138,9 +177,11 @@ export const PagePreview = ({
           <span aria-current="page" className="text-[color:var(--tx2)]">{page.title}</span>
         </nav>
         <div className="flex items-center gap-2">
-          <Pill size="sm" tone={pageStatusPillTone[page.status]}>
-            {page.status}
-          </Pill>
+          {page.status !== 'published' ? (
+            <Pill size="sm" tone={pageStatusPillTone[page.status]}>
+              {page.status}
+            </Pill>
+          ) : null}
           {isAgentDraft(page) ? <AgentDraftBadge /> : null}
         </div>
         <h1 className="mt-3 text-3xl font-semibold text-[var(--tx)]">{page.title}</h1>
@@ -239,6 +280,33 @@ export const PagePreview = ({
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        body={
+          <>
+            <p>The page will be removed from this space. Its version history is retained.</p>
+            {archiveError ? (
+              <p className="mt-2 text-[color:var(--danger-text)]" role="alert">{archiveError}</p>
+            ) : null}
+          </>
+        }
+        confirmLabel={archivePending ? 'Archiving…' : 'Archive page'}
+        destructive
+        onCancel={() => {
+          setArchiveConfirmOpen(false)
+          setArchiveError(null)
+        }}
+        onConfirm={() => {
+          setArchiveError(null)
+          void onArchive()
+            .then(() => setArchiveConfirmOpen(false))
+            .catch((error: unknown) => {
+              setArchiveError(toFormErrors(error).formError ?? 'Unable to archive this page.')
+            })
+        }}
+        open={archiveConfirmOpen}
+        pending={archivePending}
+        title={`Archive “${page.title}”?`}
+      />
     </KnowledgePane>
   )
 }

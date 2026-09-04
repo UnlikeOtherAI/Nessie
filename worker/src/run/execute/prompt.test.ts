@@ -77,6 +77,31 @@ test('the system prompt tells the agent to link to tool-sourced locations, not d
   assert.match(systemContent(messages), /link=` value/)
 })
 
+test('every agent receives the compact secret-form instruction', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
+  assert.match(system, /Never ask for, repeat, or put a secret in chat/)
+  assert.match(system, /replaced by a secure form before you see it/)
+})
+
+test('the provider boundary replaces bypassed secrets with a safe prefix and bullets', () => {
+  const token = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')
+  const messages = buildModelPrompt(
+    [{
+      authorAgentId: null,
+      authorAgentName: null,
+      content: `Use ${token}`,
+      role: 'user',
+    }],
+    makeContext('Aria'),
+    `Use ${token}`,
+    `Relevant memory: ${token}`,
+  )
+  const serialized = JSON.stringify(messages)
+
+  assert.doesNotMatch(serialized, /1234567890abcdefghijklmnop/)
+  assert.match(serialized, new RegExp(`sk_live_${'•'.repeat(12)}`))
+})
+
 test('other agents\' turns are name-prefixed; the acting agent\'s own turns are not', () => {
   const conversation: StoredConversationMessage[] = [
     { content: 'What is the status?', role: 'user', authorAgentId: null, authorAgentName: null },

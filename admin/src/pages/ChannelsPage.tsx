@@ -248,6 +248,7 @@ export const ChannelsPage = () => {
     invitePendingAgent,
     dismissPendingAgent,
     secretCapture,
+    confirmSecretCapture,
     dismissSecretCapture,
   } = useChannelComposer({
     activeChannel,
@@ -426,6 +427,7 @@ export const ChannelsPage = () => {
         composePlaceholder={composePlaceholder}
         composer={{
           attachments,
+          confirmSecretCapture,
           dismissPendingAgent,
           dismissSecretCapture,
           insertEmoji,

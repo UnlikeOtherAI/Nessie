@@ -414,12 +414,20 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
-    const trigger = await createWorkflowTrigger(prisma, installationId, body)
-    if (!trigger) {
-      sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
-      return reply
-    }
+  const trigger = await createWorkflowTrigger(prisma, installationId, body)
+  if (!trigger) {
+    sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
+    return reply
+  }
 
-    return reply.code(201).send(createApiResponse(AgentTriggerRecordSchema.parse(trigger)))
+  await auditWorkflowMutation(prisma, actorContext, {
+    action: 'workflow.trigger.created',
+    metadata: { installationId },
+    resourceId: trigger.id,
+    resourceType: 'workflow_trigger',
+    status: trigger.status,
+  })
+
+  return reply.code(201).send(createApiResponse(AgentTriggerRecordSchema.parse(trigger)))
   })
 }

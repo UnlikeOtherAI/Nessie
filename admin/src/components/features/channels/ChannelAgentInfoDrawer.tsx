@@ -133,6 +133,9 @@ export const ChannelAgentInfoDrawer = ({
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    secretCapture,
   } = useChannelComposer({
     activeChannel,
     currentUserId: meUserId,
@@ -363,6 +366,8 @@ export const ChannelAgentInfoDrawer = ({
             onInsertEmoji={insertEmoji}
             onInsertHashSign={() => mentionRef.current?.insertHashSign()}
             onOversizePaste={(paste) => setOversizePaste(paste)}
+            onConfirmSecretCapture={confirmSecretCapture}
+            onDismissSecretCapture={dismissSecretCapture}
             onSubmitForm={(event) => {
               drawerScroll.pinToBottom()
               void sendAddressedForm(event)
@@ -376,6 +381,7 @@ export const ChannelAgentInfoDrawer = ({
             inviteErrors={inviteErrors}
             onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
             onDismissPendingAgent={dismissPendingAgent}
+            secretCapture={secretCapture}
           />
         </div>
       </Sheet>

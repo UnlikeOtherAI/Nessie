@@ -132,6 +132,9 @@ export const ChannelUserInfoDrawer = ({
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    secretCapture,
   } = useChannelComposer({
     activeChannel: dmChannel,
     currentUserId: meUserId,
@@ -278,6 +281,8 @@ export const ChannelUserInfoDrawer = ({
               onInsertEmoji={insertEmoji}
               onInsertHashSign={() => mentionRef.current?.insertHashSign()}
               onOversizePaste={(paste) => setOversizePaste(paste)}
+              onConfirmSecretCapture={confirmSecretCapture}
+              onDismissSecretCapture={dismissSecretCapture}
               onSubmitForm={(event) => {
                 drawerScroll.pinToBottom()
                 void sendMessageSubmit(event)
@@ -291,6 +296,7 @@ export const ChannelUserInfoDrawer = ({
               inviteErrors={inviteErrors}
               onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
               onDismissPendingAgent={dismissPendingAgent}
+              secretCapture={secretCapture}
             />
           ) : null}
         </div>

@@ -253,3 +253,28 @@ access required", so the capability was invisible to the people it is for.
   input data in the payload.
 - **W29 · Failed-runs triage** on the Workflows page with a nav count, because
   push is alerting and triage is a different question.
+
+### Section H — conversational authoring and an inspectable preview (merged)
+
+The Personal Assistant now has a complete, owner-authorized workflow authoring
+path: `workflow_list`, `workflow_create`, `workflow_install`, and
+`workflow_trigger_create`.
+They use the same graph, secret-binding, installation lifecycle, and trigger
+validation as the corresponding owner surfaces, and write the same audit events.
+Trigger authoring covers every
+supported delivery type: manual, a one-off scheduled fire, cron, interval,
+webhook, and event. The trigger result deliberately never returns a webhook
+secret.
+
+`workflow_preview` posts a lightweight `workflowPreview` message reference into
+the conversation. The channel renders that reference as a compact, live,
+read-only workflow canvas, rather than a stale raster screenshot. Selecting it
+opens the same canvas in the navigation framework's full-size dialog; **Open in
+Admin** takes the owner to the workflow designer. The preview keeps graph data
+out of message metadata and reuses the designer canvas and its geometry, so the
+thumbnail and expanded view cannot drift. Non-owners see that preview access is
+restricted rather than receiving the workflow definition.
+
+Focused tests exercise all trigger timing/delivery variants and an agent
+create → install → interval-trigger lifecycle; the admin preview tests cover a
+new agent-authored sequence and a designer-authored edge.

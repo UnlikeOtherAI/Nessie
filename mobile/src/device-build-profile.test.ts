@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 const easConfig = JSON.parse(
-  readFileSync(new URL('../eas.json', import.meta.url).pathname, 'utf8'),
+  readFileSync(fileURLToPath(new URL('../eas.json', import.meta.url).toString()), 'utf8'),
 ) as {
   build: Record<
     string,

@@ -43,7 +43,7 @@ export const SidebarChannelsSection = ({
       id="sidebar-nav-channels"
       isCollapsed={channelsCollapsed}
       onToggle={toggleChannelsCollapsed}
-      title="Channels"
+      title="Shared channels"
     >
       {standaloneChannels.map((channel) => {
         const isStarredChannel = starredChannelIds.has(channel.id);

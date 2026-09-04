@@ -3,32 +3,13 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   validateWorkflowGraph,
   validateWorkflowSecretWrite,
-  WORKFLOW_SECRET_WRITE_ERROR,
-  type WorkflowBindingSecretError,
+  WorkflowSecretWriteError,
+  WorkflowTemplateValidationError,
 } from '@nessie/team-admin'
 
 import type { WorkflowGraph } from '../contracts.js'
 
-/** The typed API rejection for the shared save-time Workflow graph validator. */
-export class WorkflowTemplateValidationError extends Error {
-  readonly issues: string[]
-
-  constructor(issues: string[]) {
-    super('WORKFLOW_TEMPLATE_INVALID')
-    this.issues = issues
-  }
-}
-
-// W0: public writes never store caller-chosen refs or plaintext into a
-// reference binding. The install/update paths map this typed rejection to 400.
-export class WorkflowSecretWriteError extends Error {
-  readonly violations: WorkflowBindingSecretError[]
-
-  constructor(violations: WorkflowBindingSecretError[]) {
-    super(WORKFLOW_SECRET_WRITE_ERROR)
-    this.violations = violations
-  }
-}
+export { WorkflowSecretWriteError, WorkflowTemplateValidationError }
 
 /**
  * Save-time validation of workflow graph steps against the worker's actual

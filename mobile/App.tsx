@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
+  Alert,
   AppState,
   Dimensions,
   Linking,
@@ -8,12 +9,26 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
+import * as Application from 'expo-application'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { StatusBar } from 'expo-status-bar'
 import * as ScreenOrientation from 'expo-screen-orientation'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import WebView from 'react-native-webview'
 import type { ShouldStartLoadRequest, WebViewMessageEvent } from 'react-native-webview/lib/WebViewTypes'
-import { ADMIN_URL, CALL_JITSI_DOMAIN } from './src/config'
+import {
+  ADMIN_URL,
+  CALL_JITSI_DOMAIN,
+  DIRECT_ANDROID_UPDATE_MANIFEST_URL,
+  RELEASE_CHANNEL,
+} from './src/config'
+import {
+  DIRECT_ANDROID_UPDATE_PREFERENCE_KEY,
+  findDirectAndroidUpdate,
+  parseDirectAndroidUpdatePreference,
+  remindAboutDirectAndroidUpdateLater,
+  skipDirectAndroidUpdate,
+} from './src/lib/direct-android-updater'
 import { startDevInspector } from './src/lib/dev-inspector'
 import {
   dismissNativeNotificationCards,
@@ -93,6 +108,56 @@ import { tabIndexForSection } from './src/lib/tabs'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
+
+const checkForDirectAndroidUpdate = async (): Promise<void> => {
+  if (!IS_ANDROID || RELEASE_CHANNEL !== 'direct') return
+  const currentVersionCode = Number(Application.nativeBuildVersion)
+  const storedPreference = await AsyncStorage
+    .getItem(DIRECT_ANDROID_UPDATE_PREFERENCE_KEY)
+    .catch(() => null)
+  const update = await findDirectAndroidUpdate({
+    channel: RELEASE_CHANNEL,
+    currentVersionCode,
+    fetchRelease: fetch,
+    manifestUrl: DIRECT_ANDROID_UPDATE_MANIFEST_URL,
+    now: Date.now(),
+    preference: parseDirectAndroidUpdatePreference(storedPreference),
+  })
+  if (!update) return
+
+  Alert.alert(
+    'Update Nessie?',
+    `Version ${update.version} is ready to download. Android will ask you to confirm the install.`,
+    [
+      {
+        text: 'Skip this version',
+        onPress: () => {
+          void AsyncStorage.setItem(
+            DIRECT_ANDROID_UPDATE_PREFERENCE_KEY,
+            JSON.stringify(skipDirectAndroidUpdate(update.versionCode)),
+          )
+        },
+      },
+      {
+        text: 'Remind me tomorrow',
+        onPress: () => {
+          void AsyncStorage.setItem(
+            DIRECT_ANDROID_UPDATE_PREFERENCE_KEY,
+            JSON.stringify(remindAboutDirectAndroidUpdateLater(update.versionCode, Date.now())),
+          )
+        },
+      },
+      {
+        text: 'Update',
+        onPress: () => {
+          // Android owns the package-installer confirmation. Opening the
+          // signed APK URL is the furthest an ordinary app can safely go.
+          void Linking.openURL(update.url).catch(() => undefined)
+        },
+      },
+    ],
+  )
+}
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
@@ -279,6 +344,12 @@ const Shell = (): React.JSX.Element => {
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
+  }, [])
+
+  // A direct APK can ask Android's package installer to replace it; store
+  // builds are intentionally excluded by the build-time release channel.
+  useEffect(() => {
+    void checkForDirectAndroidUpdate()
   }, [])
 
   useEffect(
