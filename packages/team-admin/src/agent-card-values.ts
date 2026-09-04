@@ -1,4 +1,4 @@
-import { type AgentCardSpec } from '@nessie/schemas'
+import { AGENT_CARD_DEFAULT_INPUT_MAX_CHARS, type AgentCardSpec } from '@nessie/schemas'
 
 /**
  * Validating what a person submitted against the card the agent posted.
@@ -26,6 +26,7 @@ const coerce = (
   input: unknown,
   kind: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'date',
   key: string,
+  maxLength: number | undefined,
   options: { value: string }[] | undefined,
 ): string | number | boolean => {
   if (kind === 'checkbox') {
@@ -39,6 +40,9 @@ const coerce = (
   }
   if (typeof input !== 'string') throw new AgentCardValueError(`"${key}" must be text.`, [key])
   const trimmed = input.trim()
+  if (trimmed.length > (maxLength ?? AGENT_CARD_DEFAULT_INPUT_MAX_CHARS)) {
+    throw new AgentCardValueError(`"${key}" is too long.`, [key])
+  }
   if (kind === 'select' && !(options ?? []).some((option) => option.value === trimmed)) {
     throw new AgentCardValueError(`"${key}" is not one of the offered options.`, [key])
   }
@@ -91,7 +95,7 @@ export const validateAgentCardSubmission = (input: {
       if (block.required) missing.push(block.key)
       continue
     }
-    values[block.key] = coerce(raw, block.input, block.key, block.options)
+    values[block.key] = coerce(raw, block.input, block.key, block.maxLength, block.options)
   }
 
   const secrets: Record<string, string> = {}

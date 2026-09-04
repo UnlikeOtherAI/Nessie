@@ -100,16 +100,14 @@ test('a shared mailbox pins the approval to whoever connected it', async () => {
   assert.match(decision?.reason ?? '', /shared team mailbox/)
 })
 
-test('a departed approver leaves the request unpinned rather than unanswerable', async () => {
-  const decision = await evaluateMailboxSendGate(
-    makePrisma([shared], { liveApprover: false }),
-    makeContext(),
-    { connectionId: null, effectiveUserId: null },
-  )
-  assert.equal(
-    decision?.requiredApproverUserId,
-    null,
-    'falling back to ordinary approval visibility is the safe direction',
+test('a departed approver blocks the send instead of exposing an unpinned approval', async () => {
+  await assert.rejects(
+    evaluateMailboxSendGate(
+      makePrisma([shared], { liveApprover: false }),
+      makeContext(),
+      { connectionId: null, effectiveUserId: null },
+    ),
+    /no active accountable owner/i,
   )
 })
 
@@ -161,7 +159,7 @@ test('the hook claims mailbox_send and nothing else', async () => {
   assert.equal(claimed?.escalate, true, 'every send from a connected mailbox is asked')
   assert.equal(
     (claimed?.contextExtra as { mailboxConnectionId?: unknown })?.mailboxConnectionId,
-    null,
+    SHARED,
   )
   assert.equal(
     Object.values(claimed?.contextExtra ?? {}).some(

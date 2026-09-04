@@ -61,6 +61,12 @@ export {
   type GmailThreadSummary,
   type GmailMessageDetail,
 } from './gmail/read.js'
+export {
+  listGmailMailThreads,
+  readGmailMailThread,
+  type GmailMailConversation,
+  type GmailMailThreadPage,
+} from './gmail/mail-surface.js'
 
 export {
   listCalendars,

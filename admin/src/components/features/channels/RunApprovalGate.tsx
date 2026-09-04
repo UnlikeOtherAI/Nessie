@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import {
   useApprovalRequest,
+  useMailboxSendApprovalDraft,
   useResolveApproval,
 } from '../../../facades/approvals/hooks'
 import {
@@ -12,6 +13,7 @@ import {
 import { useToasts } from '../../../providers/ToastProvider'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
+import { MailboxSendApprovalPreview } from './MailboxSendApprovalPreview'
 
 const ApprovalGateSchema = z.object({
   approvalId: z.string().min(1),
@@ -56,7 +58,9 @@ const readString = (
  * and how to stop being asked. The audience line is the point: it is the actual
  * thing being approved. Exact arguments sit behind a disclosure, because they
  * are what a person checks when something looks wrong rather than what they
- * decide on.
+ * decide on. Mail sends are the exception: their pinned approver sees the full
+ * frozen draft before approval, because a truncated argument summary cannot
+ * provide informed consent for blind copies or the body.
  */
 export const RunApprovalGate = ({
   metadata,
@@ -65,6 +69,10 @@ export const RunApprovalGate = ({
 }) => {
   const gate = readApprovalGate(metadata)
   const approval = useApprovalRequest(gate?.approvalId)
+  const isMailboxSend = gate?.toolName === 'mailbox_send'
+  const mailboxDraft = useMailboxSendApprovalDraft(
+    isMailboxSend ? gate?.approvalId : undefined,
+  )
   const resolve = useResolveApproval()
   const { pushToast } = useToasts()
   const grant = useGrantFromApproval()
@@ -87,10 +95,11 @@ export const RunApprovalGate = ({
   // audience line is what the person is really being asked about.
   const headline = readString(context, 'headline')
   const audience = readString(context, 'audience')
-  const details = readString(context, 'inputSummary')
+  const details = isMailboxSend ? null : readString(context, 'inputSummary')
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
   const isCalendar = gate.toolName.startsWith('calendar_')
+  const canApprove = !isMailboxSend || Boolean(mailboxDraft.data)
 
   const submit = () => {
     resolve.mutate(
@@ -148,6 +157,17 @@ export const RunApprovalGate = ({
           ) : null}
         </div>
       ) : null}
+      {isMailboxSend && mailboxDraft.data ? (
+        <MailboxSendApprovalPreview draft={mailboxDraft.data} />
+      ) : null}
+      {isMailboxSend && mailboxDraft.isLoading ? (
+        <p className="mt-2 text-xs text-[color:var(--tx3)]">Loading the full email to send…</p>
+      ) : null}
+      {isMailboxSend && mailboxDraft.isError ? (
+        <p className="mt-2 text-xs text-[color:var(--danger-text)]">
+          The complete email can no longer be read. It cannot be approved.
+        </p>
+      ) : null}
       {approval.isError ? (
         <p className="mt-2 text-xs text-[color:var(--tx3)]">Approval details are no longer available.</p>
       ) : null}
@@ -172,6 +192,7 @@ export const RunApprovalGate = ({
                 : 'border border-[var(--danger-border)] bg-[var(--panel)] text-[var(--danger-text)]',
             ].join(' ')}
             data-testid="run-approval-gate-open-confirm"
+            disabled={resolve.isPending || (resolution === 'approved' && !canApprove)}
             onClick={() => setConfirmOpen(true)}
             type="button"
           >
@@ -186,7 +207,7 @@ export const RunApprovalGate = ({
       {/* Stopping the asking belongs here, not on a separate settings trip:
           somebody who wants their assistant running their diary should not
           confirm every entry. It never applies to a schedule or an automation. */}
-      {active ? (
+      {active && !isMailboxSend ? (
         <div className="mt-3 border-t border-[color:var(--warning-border)] pt-2">
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--tx3)]">
             <span>
@@ -271,7 +292,7 @@ export const RunApprovalGate = ({
           </button>
           <button
             className={['admin-button', resolution === 'approved' ? 'admin-button-primary' : 'admin-button-danger'].join(' ')}
-            disabled={resolve.isPending}
+            disabled={resolve.isPending || (resolution === 'approved' && !canApprove)}
             onClick={submit}
             type="button"
           >

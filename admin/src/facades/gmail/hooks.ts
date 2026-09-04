@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -16,7 +15,7 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type GmailDraftView = {
   id: string
-  state: 'draft' | 'sending' | 'sent' | 'discarded'
+  state: 'draft' | 'updating' | 'sending' | 'dispatching' | 'delivery_unknown' | 'sent' | 'discarded'
   revision: number
   contentFingerprint: string
   to: string[]
@@ -38,9 +37,6 @@ export const useGmailDraft = (id: string | null) => {
     queryKey: gmailKeys.draft(id ?? 'none'),
     queryFn: () => apiClient.get(`/api/gmail/drafts/${id}`),
     enabled: id !== null,
-    // Keep the rendered draft while a refetch runs, so acting on the card does
-    // not blank it back to a skeleton mid-interaction.
-    placeholderData: keepPreviousData,
     // A non-owner gets an indistinguishable 404; retrying it would just burn
     // requests to reach the same answer.
     retry: false,

@@ -10,6 +10,7 @@ import {
   recordGoogleRead,
   resolveGoogleActingUserId,
 } from './google-access.js'
+import { mailPresentationReference } from './mail-presentation-reference.js'
 
 /**
  * Send a draft as the requesting person.
@@ -26,7 +27,7 @@ import {
 
 const SendSchema = z.object({ draftId: z.string().uuid() }).strict()
 
-/** How long a consented send is held so the card can offer Undo. */
+/** How long a consented send is held so Mail can offer Undo. */
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
 
 export const runGmailDraftSendTool = async (
@@ -62,8 +63,8 @@ export const runGmailDraftSendTool = async (
   const approved = Boolean(context.actorContext.approval?.approvalProof)
   if (!consented && !approved) {
     throw new Error(
-      'I need approval before sending that. The draft card in the chat has a '
-        + 'Send button, or you can let me send on your behalf from '
+        'I need approval before sending that. Open the draft in Mail and use '
+        + 'its Send button, or let me send on your behalf from '
         + '/settings/connections.',
     )
   }
@@ -88,11 +89,24 @@ export const runGmailDraftSendTool = async (
       outputPreview: JSON.stringify(
         result.status === 'held'
           ? {
+              mailPresentation: mailPresentationReference({
+                accountId: draft.connectionId,
+                mode: 'account',
+                source: 'gmail',
+              }),
               status: 'sending',
               undoUntil: result.sendAfter.toISOString(),
-              note: 'Sending shortly; the chat card shows an Undo button until then.',
+              note: 'Sending shortly; Mail shows an Undo button until then.',
             }
-          : { status: 'sent', messageId: result.sentMessageId },
+          : {
+              mailPresentation: mailPresentationReference({
+                accountId: draft.connectionId,
+                mode: 'account',
+                source: 'gmail',
+              }),
+              messageId: result.sentMessageId,
+              status: 'sent',
+            },
       ),
       toolName: 'gmail_draft_send',
     }

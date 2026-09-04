@@ -1,18 +1,18 @@
 import { useEffect, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import type { EmailMessageRecord } from '@nessie/schemas'
-
-import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { QueryState } from '../components/shared/QueryState'
+import { MailConversation } from '../components/features/mailbox/MailConversation'
+import { MailboxThreadList, MailboxWorkspace } from '../components/features/mailbox/MailboxWorkspace'
 import { TabBar } from '../components/primitives/TabBar'
-import { useTabParam } from '../navigation/useTabParam'
+import { QueryState } from '../components/shared/QueryState'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
   useAgentMailbox,
   useMailboxConversation,
   useMailboxConversations,
 } from '../facades/agent-mailbox/hooks'
 import { useAgents } from '../facades/agents/queries'
-import { EmailMessageBody } from '../components/features/mailbox/EmailMessageBody'
+import { useNavigationLayout } from '../lib/mobile-shell'
+import { useTabParam } from '../navigation/useTabParam'
 
 type MailboxFilter = 'all' | 'inbox' | 'sent'
 
@@ -37,6 +37,7 @@ export const AgentMailboxPage = () => {
   )
 
   const agentsQuery = useAgents()
+  const layout = useNavigationLayout()
   const mailboxQuery = useAgentMailbox(agentId)
   const conversationsQuery = useMailboxConversations(agentId, filter)
 
@@ -84,95 +85,45 @@ export const AgentMailboxPage = () => {
           Email section.
         </p>
       ) : (
-        <div className="flex min-h-0 flex-1 gap-4 px-[var(--page-gutter)] pb-6">
-          <aside
-            className="flex w-[22rem] shrink-0 flex-col gap-3 overflow-hidden"
-            data-testid="mailbox-conversation-list"
-          >
-            <TabBar
-              ariaLabel="Filter conversations"
-              fullWidth
-              items={[
-                { label: 'All', value: 'all' },
-                { label: 'Inbox', value: 'inbox' },
-                { label: 'Sent', value: 'sent' },
-              ]}
-              onChange={(value) => setFilter(value)}
-              role="radiogroup"
-              size="sm"
-              value={filter}
-            />
-            <QueryState
-              emptyLabel="No conversations yet."
-              errorLabel="Could not load this mailbox."
-              isEmpty={conversations.length === 0}
-              loadingLabel="Loading conversations…"
-              query={conversationsQuery}
-            >
-              {() => (
-              <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                {conversations.map((conversation) => {
-                  const isSelected = conversation.id === selectedId
-                  return (
-                    <li key={conversation.id}>
-                      <button
-                        className={[
-                          'w-full border-b border-[var(--border)] px-3 py-3 text-left',
-                          isSelected ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]',
-                        ].join(' ')}
-                        onClick={() => {
-                          const next = new URLSearchParams(searchParams)
-                          next.set('conversation', conversation.id)
-                          setSearchParams(next)
-                        }}
-                        type="button"
-                      >
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium text-[color:var(--tx1)]">
-                            {conversation.subject}
-                          </span>
-                          <span className="shrink-0 text-xs text-[color:var(--tx3)]">
-                            {new Date(conversation.lastMessageAt).toLocaleDateString()}
-                          </span>
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-[color:var(--tx3)]">
-                          {conversation.participants.join(', ')}
-                        </span>
-                        <span className="mt-1 block truncate text-xs text-[color:var(--tx2)]">
-                          {conversation.snippet}
-                        </span>
-                        {(conversation.awaitingApproval || conversation.hasBounce) && (
-                          <span className="mt-1.5 flex gap-1.5">
-                            {conversation.awaitingApproval && (
-                              <span className="rounded-full bg-[var(--warning-bg)] px-2 py-0.5 text-[11px] text-[color:var(--warning-text)]">
-                                Awaiting approval
-                              </span>
-                            )}
-                            {conversation.hasBounce && (
-                              <span className="rounded-full bg-[var(--danger-bg)] px-2 py-0.5 text-[11px] text-[color:var(--danger-text)]">
-                                Delivery problem
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-              )}
-            </QueryState>
-          </aside>
-
-          <section
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-            data-testid="mailbox-reading-pane"
-          >
-            {selected && (
-              <h2 className="mb-3 text-lg font-semibold text-[color:var(--tx1)]">
-                {selected.subject}
-              </h2>
-            )}
+        <MailboxWorkspace
+          layout={layout}
+          conversationList={(
+            <aside className="flex min-h-0 flex-col gap-3 overflow-hidden" data-testid="mailbox-conversation-list">
+              <TabBar
+                ariaLabel="Filter conversations"
+                fullWidth
+                items={[
+                  { label: 'All', value: 'all' },
+                  { label: 'Inbox', value: 'inbox' },
+                  { label: 'Sent', value: 'sent' },
+                ]}
+                onChange={(value) => setFilter(value)}
+                role="radiogroup"
+                size="sm"
+                value={filter}
+              />
+              <QueryState
+                emptyLabel="No conversations yet."
+                errorLabel="Could not load this mailbox."
+                isEmpty={conversations.length === 0}
+                loadingLabel="Loading conversations…"
+                query={conversationsQuery}
+              >
+                {() => (
+                  <MailboxThreadList
+                    onSelect={(conversationId) => {
+                      const next = new URLSearchParams(searchParams)
+                      next.set('conversation', conversationId)
+                      setSearchParams(next, { replace: true })
+                    }}
+                    selectedId={selectedId}
+                    threads={conversations}
+                  />
+                )}
+              </QueryState>
+            </aside>
+          )}
+          conversation={(
             <QueryState
               emptyLabel="Select a conversation to read it."
               errorLabel="Could not load this conversation."
@@ -180,71 +131,13 @@ export const AgentMailboxPage = () => {
               loadingLabel="Loading messages…"
               query={messagesQuery}
             >
-              {() => (
-                <ol className="flex flex-col gap-4">
-                  {(messagesQuery.data ?? []).map((message) => (
-                    <EmailMessageItem key={message.id} message={message} />
-                  ))}
-                </ol>
-              )}
+              {() => <MailConversation messages={messagesQuery.data ?? []} thread={selected} />}
             </QueryState>
-          </section>
-        </div>
+          )}
+        />
       )}
     </div>
   )
-}
-
-const EmailMessageItem = ({ message }: { message: EmailMessageRecord }) => (
-  <li className="border-b border-[var(--border)] pb-4 last:border-b-0">
-    <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-      <span className="font-medium text-[color:var(--tx1)]">
-        {message.direction === 'inbound'
-          ? message.fromName ?? message.fromAddress
-          : `You (${message.fromAddress})`}
-      </span>
-      <span className="text-xs text-[color:var(--tx3)]">to {message.toAddresses.join(', ')}</span>
-      <span className="ml-auto text-xs text-[color:var(--tx3)]">
-        {new Date(message.occurredAt).toLocaleString()}
-      </span>
-    </div>
-    {message.deliveryState && message.deliveryState !== 'sent' && (
-      <p className="mb-2 text-xs text-[color:var(--warning-text)]">
-        {deliveryLabel(message.deliveryState)}
-      </p>
-    )}
-    <EmailMessageBody message={message} />
-    {message.attachments.length > 0 && (
-      <ul className="mt-2 flex flex-wrap gap-2">
-        {message.attachments.map((attachment) => (
-          <li
-            className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[color:var(--tx2)]"
-            key={attachment.id}
-          >
-            {attachment.filename}
-          </li>
-        ))}
-      </ul>
-    )}
-  </li>
-)
-
-const deliveryLabel = (state: NonNullable<EmailMessageRecord['deliveryState']>): string => {
-  switch (state) {
-    case 'queued':
-      return 'Queued to send.'
-    case 'sending':
-      return 'Sending…'
-    case 'bounced':
-      return 'This message bounced. The recipient will not receive it.'
-    case 'complained':
-      return 'The recipient reported this message as spam.'
-    case 'delivery_unknown':
-      // Deliberately not retried: a retry would be a duplicate email.
-      return 'Delivery is unconfirmed — it may or may not have been sent. It was not retried.'
-    default:
-      return ''
-  }
 }
 
 export default AgentMailboxPage

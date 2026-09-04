@@ -96,6 +96,11 @@ const KEEP_PREVIOUS_EXEMPT = [
   // Billing is scoped per UOA org/team and must never reuse another team's
   // projection across an active-team switch (see lib/query-keys.ts).
   'src/facades/billing/hooks.ts',
+  // A connected mailbox can change account, provider and entitlement in one
+  // navigation. Its former list, thread or draft is private provider content,
+  // so it must never paint while the next identity is resolving.
+  'src/facades/gmail/hooks.ts',
+  'src/facades/mail/hooks.ts',
 ]
 
 test('every per-id facade query keeps its previous data', () => {
@@ -138,7 +143,8 @@ test('every per-id facade query keeps its previous data', () => {
     violations,
     [],
     'A useQuery keyed by, or gated on, an entity id must pass '
-      + '`placeholderData: keepPreviousData` — see docs/navigation/overview.md '
+      + '`placeholderData: keepPreviousData` unless its documented identity '
+      + 'boundary forbids replaying private data — see docs/navigation/overview.md '
       + '§"Arriving with content".',
   )
 })

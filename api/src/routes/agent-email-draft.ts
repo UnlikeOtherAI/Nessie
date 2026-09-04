@@ -105,6 +105,71 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
       }),
     )
   })
+
+  app.get('/api/mailbox-connections/approvals/:approvalId/draft', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { approvalId } = request.params as { approvalId: string }
+
+    const approval = await prisma.approvalRequest.findFirst({
+      select: {
+        context: true,
+        expiresAt: true,
+        id: true,
+        requiredApproverUserId: true,
+        resumeState: true,
+        status: true,
+      },
+      where: {
+        id: approvalId,
+        organizationId: actorContext.tenant.organizationId,
+        toolName: 'mailbox_send',
+      },
+    })
+    if (!approval || approval.requiredApproverUserId !== actorContext.actor.actorId) {
+      // A mailbox-send approval is always pinned. Do not disclose whether a
+      // guessed UUID exists to an owner or a public-channel member.
+      return sendApiError(reply, 404, 'NOT_FOUND', 'Approval not found.')
+    }
+
+    const parsed = ResumeStateSchema.safeParse(approval.resumeState)
+    if (!parsed.success) {
+      return sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This draft can no longer be read.')
+    }
+
+    const contextRecord = (approval.context ?? {}) as Record<string, unknown>
+    const connectionId = contextRecord.mailboxConnectionId
+    if (typeof connectionId !== 'string') {
+      return sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This mailbox is no longer available.')
+    }
+    const mailbox = await prisma.mailboxConnection.findFirst({
+      select: { address: true },
+      where: { id: connectionId, organizationId: actorContext.tenant.organizationId },
+    })
+    if (!mailbox) {
+      return sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This mailbox is no longer available.')
+    }
+
+    const externalSources = Array.isArray(contextRecord.externalDisclosureSources)
+      ? contextRecord.externalDisclosureSources.filter(
+          (source): source is string => typeof source === 'string',
+        )
+      : []
+    return reply.send(
+      createApiResponse({
+        approvalId: approval.id,
+        bcc: parsed.data.args.bcc ?? [],
+        cc: parsed.data.args.cc ?? [],
+        expiresAt: approval.expiresAt.toISOString(),
+        externalDisclosureSources: externalSources,
+        mailboxAddress: mailbox.address,
+        status: approval.status,
+        subject: parsed.data.args.subject ?? '',
+        text: parsed.data.args.text,
+        to: parsed.data.args.to ?? [],
+      }),
+    )
+  })
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import {
   GmailDraftError,
   discardDraftForUser,
@@ -14,6 +14,7 @@ import {
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { isOriginAllowed } from '../lib/server-origin-policy.js'
 import { emitAuditEvent } from '../services/audit.js'
 import type { RouteDeps } from './types.js'
 
@@ -75,9 +76,28 @@ const FromApprovalSchema = z.object({
 
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
-  if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE') return 409
+  if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE' || code === 'DELIVERY_UNKNOWN') return 409
   if (code === 'PROVIDER_FAILED') return 502
   return 400
+}
+
+const requireDraftUndoRequest = (
+  request: FastifyRequest,
+  reply: Parameters<typeof sendApiError>[0],
+  deps: RouteDeps,
+): boolean => {
+  const origin = deps.parseHeaderValue(request.headers.origin)
+  if (!origin || !isOriginAllowed({
+    allowedOrigins: deps.allowedCorsOrigins, mode: deps.config.mode, origin,
+  })) {
+    sendApiError(reply, 403, 'ORIGIN_FORBIDDEN', 'A permitted browser origin is required')
+    return false
+  }
+  if (!deps.isJsonContentType(request)) {
+    sendApiError(reply, 415, 'UNSUPPORTED_MEDIA_TYPE', 'Expected application/json')
+    return false
+  }
+  return true
 }
 
 export const registerGmailDraftRoutes = (
@@ -110,6 +130,7 @@ export const registerGmailDraftRoutes = (
         },
         draftDeps,
       )
+      reply.header('Cache-Control', 'private, no-store')
       return createApiResponse({
         id: draft.action.id,
         state: draft.action.state,
@@ -177,7 +198,7 @@ export const registerGmailDraftRoutes = (
       )
       await emitAuditEvent(prisma, {
         actorContext,
-        action: 'gmail.draft.sent',
+        action: result.status === 'held' ? 'gmail.draft.held' : 'gmail.draft.sent',
         resourceType: 'gmail_draft_action',
         resourceId: id,
         outcome: 'success',
@@ -196,13 +217,21 @@ export const registerGmailDraftRoutes = (
   // ── POST /api/gmail/drafts/:id/undo ───────────────────────────────────────
   app.post('/api/gmail/drafts/:id/undo', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
+    if (!actorContext || !requireDraftUndoRequest(request, reply, deps)) return reply
     const { id } = request.params as { id: string }
     try {
       const action = await undoHeldSend(prisma, {
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         draftActionId: id,
+      })
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'gmail.draft.undone',
+        resourceType: 'gmail_draft_action',
+        resourceId: id,
+        outcome: 'success',
+        metadata: { status: action.state },
       })
       return createApiResponse({ id: action.id, state: action.state })
     } catch (error) {

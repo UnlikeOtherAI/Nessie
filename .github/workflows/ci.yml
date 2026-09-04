@@ -381,6 +381,11 @@ jobs:
       - name: Run secret capture suite
         run: pnpm --filter @nessie/admin test:e2e:secret-capture
 
+      # Connected mail uses a deterministic provider boundary, but renders the
+      # production admin shell, mailbox and chat doorway in Chromium.
+      - name: Run connected mail browser suite
+        run: pnpm --filter @nessie/admin test:e2e:connected-mail
+
       - name: Upload transition frames
         if: always()
         uses: actions/upload-artifact@v4
@@ -395,4 +400,11 @@ jobs:
         with:
           name: secret-capture-frame
           path: e2e/screenshots/secret-capture
+
+      - name: Upload connected mail screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connected-mail-screenshots
+          path: e2e/screenshots/connected-mail
           if-no-files-found: warn

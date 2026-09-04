@@ -1264,6 +1264,7 @@ model Organization {
   emailMessages                    EmailMessage[]
   mailboxConnections               MailboxConnection[]
   mailboxConnectionAgentAccess     MailboxConnectionAgentAccess[]
+  mailboxSendActions               MailboxSendAction[]
 
   agentCards              AgentCard[]
   gmailDraftActions       GmailDraftAction[]
@@ -5545,8 +5546,13 @@ model GmailDraftAction {
   organizationId     String                @map("organization_id") @db.Uuid
   ownerUserId        String                @map("owner_user_id") @db.Uuid
   connectionId       String                @map("connection_id") @db.Uuid
-  /// Gmail's draft id. Stable across updates, unlike the message id.
-  providerDraftId    String                @map("provider_draft_id")
+  /// Gmail's draft id. It is absent only while a create request has an
+  /// externally ambiguous outcome; that action is never retried blindly.
+  providerDraftId    String?               @map("provider_draft_id")
+  /// Stable browser request id for create-draft replay. It is recorded before
+  /// contacting Gmail, so a lost provider response cannot make a retry create
+  /// a second draft.
+  clientRequestId    String?               @map("client_request_id") @db.Uuid
   /// Gmail thread this draft replies into, when it is a reply.
   providerThreadId   String?               @map("provider_thread_id")
   /// SHA-256 over the canonical recipients/subject/body/attachments.
@@ -5559,8 +5565,8 @@ model GmailDraftAction {
   /// Set when a send is held for the undo window; the job fires at this time.
   sendAfter          DateTime?             @map("send_after")
   /// Set when a dispatcher claims the row (`sending → dispatching`). Cleared
-  /// on every terminal transition. A row still `dispatching` long after this
-  /// timestamp means the claiming worker died mid-send and may be reclaimed.
+  /// on every terminal transition. A stale dispatch becomes
+  /// `delivery_unknown`, never a second provider call.
   claimedAt          DateTime?             @map("claimed_at")
   sentAt             DateTime?             @map("sent_at")
   sentMessageId      String?               @map("sent_message_id")
@@ -5571,21 +5577,29 @@ model GmailDraftAction {
   connection   CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, providerDraftId])
+  @@unique([connectionId, clientRequestId])
   @@index([organizationId, ownerUserId, state])
   @@index([state, sendAfter])
   @@map("gmail_draft_actions")
 }
 
 enum GmailDraftActionState {
+  /// A create request was recorded before contacting Gmail.
+  creating
   draft
+  /// An edit owns the provider draft while its new content is being written.
+  /// A stale edit is released back to draft; it never authorizes a send.
+  updating
   /// Held for the undo window, ready for the send sweep to claim.
   sending
   /// Atomically claimed by a dispatcher (the API's immediate send or the
   /// worker's send sweep) ahead of the provider call. The flip
   /// `sending → dispatching` is the cross-worker ownership claim, so two
   /// worker replicas can never both pass it and send the same email twice.
-  /// Not user-visible — a row should sit here only for a send's duration.
   dispatching
+  /// Gmail may have accepted a create or send whose response was lost. It is
+  /// deliberately visible and non-retryable until a person resolves it.
+  delivery_unknown
   sent
   discarded
 }
@@ -6957,11 +6971,46 @@ model MailboxConnection {
   ownerMembership OrganizationMember?            @relation("MailboxConnectionOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
   credential      MailboxConnectionCredential?
   agentAccess     MailboxConnectionAgentAccess[]
+  sendActions     MailboxSendAction[]
 
   @@index([organizationId, status])
   @@index([organizationId, ownerUserId])
   @@index([teamId])
   @@map("mailbox_connections")
+}
+
+/// A human or agent SMTP send is recorded before the provider call, but never
+/// stores the connected message body. The fingerprint and stable Message-ID
+/// make a retry identifiable without giving a lost DATA response permission to
+/// send a second copy.
+model MailboxSendAction {
+  id                 String                 @id @db.Uuid
+  organizationId     String                 @map("organization_id") @db.Uuid
+  ownerUserId        String                 @map("owner_user_id") @db.Uuid
+  connectionId       String                 @map("connection_id") @db.Uuid
+  clientRequestId    String                 @map("client_request_id") @db.Uuid
+  contentFingerprint String                 @map("content_fingerprint")
+  messageId          String                 @map("message_id")
+  state              MailboxSendActionState @default(ready)
+  claimedAt          DateTime?              @map("claimed_at")
+  sentAt             DateTime?              @map("sent_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   MailboxConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, clientRequestId])
+  @@unique([connectionId, messageId])
+  @@index([organizationId, ownerUserId, state])
+  @@map("mailbox_send_actions")
+}
+
+enum MailboxSendActionState {
+  ready
+  dispatching
+  sent
+  delivery_unknown
 }
 
 /// The password, isolated in its own table exactly as `CommsConnectionCredential`

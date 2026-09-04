@@ -26,6 +26,17 @@ test('builds an RFC 5322 message with the expected headers', () => {
   assert.ok(!/\r\nFrom:/i.test(raw))
 })
 
+test('canonicalizes reply Message-IDs to exactly one bracket pair', () => {
+  const raw = decode(buildRawMessage({
+    to: ['a@example.com'], subject: 'Re: update', body: 'Thanks',
+    inReplyTo: '<<parent@example.com>>',
+    references: ['<root@example.com>', 'child@example.com'],
+  }))
+  assert.match(raw, /In-Reply-To: <parent@example\.com>/)
+  assert.match(raw, /References: <root@example\.com> <child@example\.com>/)
+  assert.doesNotMatch(raw, /<<|>>/)
+})
+
 // Header injection: the model writes these values, so a newline in a subject
 // must never be able to add a real Bcc.
 test('refuses a line break in any header value', () => {

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint src test e2e --max-warnings 0",
     "test:e2e:executor-companion": "node e2e/executor-companion/run.mjs",
+    "test:e2e:connected-mail": "node e2e/connected-mail/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
     "test:e2e:secret-capture": "node e2e/secret-capture/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
