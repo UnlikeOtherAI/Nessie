@@ -13,7 +13,10 @@ import {
   type SubscriptionDescriptor,
   type SyncResult,
 } from '@nessie/comms-connect'
-import { executeCommsIncrementalSyncJob } from '../src/control/comms-sync.js'
+import {
+  executeCommsIncrementalSweepJob,
+  executeCommsIncrementalSyncJob,
+} from '../src/control/comms-sync.js'
 
 const ENCRYPTION_SECRET = 'test-comms-secret'
 const CONNECTION_ID = '11111111-1111-1111-1111-111111111111'
@@ -241,4 +244,56 @@ test('an ordinary error still fails the job and rethrows for queue retry', async
   assert.equal(state.job.status, 'failed')
   assert.equal(state.job.retryCount, 1)
   assert.equal(state.connection.status, 'active')
+})
+
+test('incremental polling selects only opted-in providers and pages past its limit', async () => {
+  const ids = [
+    '10000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000003',
+  ]
+  const queried: unknown[] = []
+  const queued: Array<{ values?: unknown[] }> = []
+  const prisma = {
+    commsConnection: {
+      findMany: (input: { where: { provider: string; id?: { gt: string } }; take: number }) => {
+        queried.push(input)
+        const after = input.where.id?.gt
+        return Promise.resolve(
+          ids.filter((id) => !after || id > after).slice(0, input.take).map((id) => ({ id })),
+        )
+      },
+    },
+    $executeRaw: (query: { values?: unknown[] }) => {
+      queued.push(query)
+      return Promise.resolve(1)
+    },
+  } as unknown as PrismaClient
+  const polling = { ...throwingConnector(new Error('unused')), provider: 'microsoft' as const, incrementalPollingIntervalMs: 60_000 }
+  registerConnector('microsoft', () => polling)
+  registerConnector('slack', () => throwingConnector(new Error('unused')))
+
+  await executeCommsIncrementalSweepJob(
+    { prisma },
+    { provider: 'microsoft', bucket: 7, limit: 2 },
+  )
+
+  assert.equal((queried[0] as { where: { provider: string } }).where.provider, 'microsoft')
+  assert.equal(queued.length, 3) // two sync jobs plus one continuation page
+  const continuation = queued.at(-1)?.values?.find(
+    (value): value is string => typeof value === 'string' && value.includes('afterId'),
+  )
+  assert.match(continuation ?? '', /000000000002/)
+
+  await executeCommsIncrementalSweepJob(
+    { prisma },
+    { provider: 'microsoft', bucket: 7, afterId: ids[1], limit: 2 },
+  )
+  assert.equal(queued.length, 4)
+
+  await executeCommsIncrementalSweepJob(
+    { prisma },
+    { provider: 'slack', bucket: 7, limit: 2 },
+  )
+  assert.equal(queried.length, 2)
 })
