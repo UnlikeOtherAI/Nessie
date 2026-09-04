@@ -57,7 +57,7 @@ export class WorkflowTemplateAdoptionRequiredError extends Error {
   }
 }
 
-const validateEnvironmentTemplateIds = async (
+export const validateWorkflowEnvironmentTemplateIds = async (
   prisma: PrismaClient,
   organizationId: string,
   templateIds: string[],
@@ -108,7 +108,7 @@ export const createWorkflowTemplateForActor = async (
 ) => {
   const issues = await validateWorkflowGraph(prisma, actorContext, input.graph)
   if (issues.length > 0) throw new WorkflowTemplateValidationError(issues)
-  await validateEnvironmentTemplateIds(
+  await validateWorkflowEnvironmentTemplateIds(
     prisma,
     actorContext.tenant.organizationId,
     input.requiredEnvironmentTemplateIds ?? [],

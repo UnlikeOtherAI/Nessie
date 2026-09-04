@@ -4,6 +4,7 @@ import { useChannels } from '../../../facades/channels/hooks'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentStatusDot } from '../agents/AgentStatusDot'
+import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
 import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
   DashboardSectionCard,
@@ -64,6 +65,7 @@ export const ProjectAgentsSection = ({ className, projectId }: ProjectAgentsSect
         >
           <AgentAvatar agent={agent} size={28} token={token} />
           <span className="truncate text-sm text-[color:var(--tx)]">{agent.name}</span>
+          <AgentVisibilityPill visibility={agent.visibility} />
           <span className="ml-auto flex items-center gap-2">
             <span className="text-xs lowercase text-[color:var(--tx3)]">
               {agentStatusLabel(agent.status)}

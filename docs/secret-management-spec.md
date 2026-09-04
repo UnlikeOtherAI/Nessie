@@ -98,15 +98,41 @@ structural credential syntax (known provider formats, PEM blocks, JWTs,
 credential-bearing connection URLs, and explicit token assignments); it does
 not use an LLM or infer intent from prose.
 
-The composer scan happens before a chat request. It opens a protected capture
-sheet whose password field is posted only to `POST /api/secrets`. The server
-scan repeats before message persistence, realtime previews, model dispatch,
-memory capture, embeddings, indexing, or application logging. An intercepted
-message receives `SECRET_INTERCEPTED` and is never saved.
+The composer scan happens before a chat request, optimistic message, or draft
+write can survive. Every channel composer opens the same protected capture
+form with a suggested key name and scope. Its value control contains only the
+provider's structural prefix (for example `sk_live_`) plus twelve bullet
+circles; the raw value remains transient React state and is posted only to
+`POST /api/secrets`. An explicit assignment such as `API_KEY=…` stores only
+the right-hand credential bytes, not the assignment syntax.
 
-Attachment and tool-result scanning, structured secret mentions, and a
-temporary-vault interception flow are Phase 1 follow-ups; they must be
-completed before file/tool outputs can be treated as secret-safe inputs.
+After the vault accepts the secret, the composer sends a new replacement turn:
+the person's original text with every detected value reduced to its safe
+prefix and bullet mask, plus the approved secret name. That replacement is the
+only version which reaches PostgreSQL, realtime, memory, indexing, or a model.
+Discard sends no turn. This implements the requested replace semantics without
+ever persisting a raw message that would later need deletion. The server scan
+still repeats before message persistence and returns `SECRET_INTERCEPTED` to a
+client which bypasses the composer.
+
+Every primary and delegated agent receives one compact system-prompt rule: do
+not ask for, repeat, or place secrets in chat or model-visible tool arguments;
+the secure form owns capture, and masked text is only a protection notice. A
+final provider-bound scan covers conversation history, memory, checkpoints,
+and upstream stage text. The agent loop also masks initial context and model
+output, while the shared tool boundary masks textual tool inputs, results, and
+durable `ToolCall` previews. These are defence in depth; they do not make a raw
+secret available to an agent.
+
+Nessie's first-class Secrets surface writes to its configured Infisical vault.
+It does **not** write GitHub Actions repository or environment secrets: that
+would require a separately authorised GitHub destination and GitHub's encrypted
+secret-write API, which this flow must not pretend to provide.
+
+Binary attachment content scanning, structured secret mentions, and a
+temporary-vault interception flow remain Phase 1 follow-ups. Text pasted
+through the oversize-file escape hatch and textual tool results use the shared
+scanner today; arbitrary uploaded binary files are not yet secret-safe inputs.
 
 ## Deployment
 

@@ -2,6 +2,7 @@ import type { MailboxConnectionRecord } from '../../../lib/api-client'
 import { useAgents } from '../../../facades/agents/queries'
 import { useSetMailboxAgentAccess } from '../../../facades/mailbox-connections/hooks'
 import { Switch } from '../../primitives/Switch'
+import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
 
 /**
  * Which agents may use this mailbox.
@@ -34,8 +35,11 @@ export const MailboxAgentAccess = ({
     <div className="grid gap-2">
       {rows.map((agent) => (
         <div className="flex items-center justify-between gap-3" key={agent.id}>
-          <div className="min-w-0">
-            <p className="truncate text-sm text-[color:var(--tx)]">{agent.name}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm text-[color:var(--tx)]">{agent.name}</p>
+              <AgentVisibilityPill visibility={agent.visibility} />
+            </div>
             {agent.role ? (
               <p className="truncate text-xs text-[color:var(--tx3)]">{agent.role}</p>
             ) : null}

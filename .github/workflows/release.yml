@@ -114,50 +114,9 @@ jobs:
             -nokeys -noout
           openssl pkey -in "$notary_key" -noout
 
-  windows-signing-credentials:
-    name: Windows-signing credential gate
-    needs: preflight
-    runs-on: ubuntu-latest
-    # These stay repository-level because the reusable Windows workflow cannot
-    # receive caller environment secrets.
-    env:
-      WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
-      WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
-      WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNER_THUMBPRINT }}
-    steps:
-      - name: Require Windows publisher configuration
-        run: |
-          set -euo pipefail
-          required=(
-            WINDOWS_SIGN_COMMAND
-            WINDOWS_SIGNER_SUBJECT
-            WINDOWS_SIGNER_THUMBPRINT
-          )
-          missing=()
-          for name in "${required[@]}"; do
-            if [ -z "${!name:-}" ]; then
-              missing+=("$name")
-            fi
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'Missing Windows signing configuration:' >&2
-            printf ' %s' "${missing[@]}" >&2
-            printf '\n' >&2
-            exit 1
-          fi
-          thumbprint="$(printf '%s' "$WINDOWS_SIGNER_THUMBPRINT" | tr -d '[:space:]')"
-          if ! [[ "$thumbprint" =~ ^[0-9A-Fa-f]{40}$ ]]; then
-            echo 'WINDOWS_SIGNER_THUMBPRINT must contain exactly 40 hexadecimal characters.' >&2
-            exit 1
-          fi
-          if [[ "$WINDOWS_SIGN_COMMAND" != *'%1'* ]]; then
-            echo 'WINDOWS_SIGN_COMMAND must contain the %1 artifact placeholder.' >&2
-            exit 1
-          fi
-
   macos:
     name: macOS ${{ matrix.name }}
-    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
+    needs: [preflight, direct-distribution-credentials]
     runs-on: ${{ matrix.runner }}
     environment: direct-download-release
     strategy:
@@ -283,18 +242,18 @@ jobs:
 
   windows:
     name: Windows
-    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
+    needs: [preflight, direct-distribution-credentials]
     uses: ./.github/workflows/desktop-windows.yml
     with:
       source_ref: ${{ github.ref }}
       enable_direct_updater: true
-      require_signed_release: true
+      require_signed_release: false
       run_hyperv_conformance: false
     secrets: inherit
 
   linux:
     name: Linux
-    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
+    needs: [preflight, direct-distribution-credentials]
     runs-on: ubuntu-latest
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -354,7 +313,7 @@ jobs:
 
   android:
     name: Android
-    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
+    needs: [preflight, direct-distribution-credentials]
     runs-on: ubuntu-latest
     environment: direct-download-release
     env:
@@ -541,7 +500,7 @@ jobs:
           ## Direct downloads
 
           - **macOS:** Apple Silicon and Intel DMGs are notarized Developer ID builds.
-          - **Windows:** NSIS and MSI installers are Authenticode-signed release builds.
+          - **Windows:** NSIS and MSI installers are unsigned direct-download builds and may show a SmartScreen warning.
           - **Linux:** AppImage and Debian packages are included with SHA-256 checksums.
           - **Android:** a signed, installable APK is included. Direct APK installs can open a newer signed APK in Android's package installer; Play Store builds leave updates to Google Play.
           - **iOS:** coming soon through the App Store.

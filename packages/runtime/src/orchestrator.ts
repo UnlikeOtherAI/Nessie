@@ -1,3 +1,5 @@
+import type { AgentMention } from '@nessie/schemas'
+
 import { isCreditsExhaustedError } from './inference/types.js'
 import type { LedgerAttribution } from './ledger.js'
 import type { ModelClient, ModelMessage } from './model.js'
@@ -118,13 +120,9 @@ export const decideAgentEngagement = async (
     // Ids (a subset of `agents`) already following this thread. Empty for PA DMs,
     // whose single agent already answers every message on its existing path.
     followingAgentIds?: string[]
-    // PA presences are selected by a stored id-keyed mention entity. Unlike an
-    // ordinary agent mention, their display text is not an identity key.
-    agentMentions?: Array<{
-      agentId: string
-      principalUserId: string
-      type: 'agent'
-    }>
+    // Composer selections are stored as id-keyed mention entities. A PA
+    // presence adds its owner id; display text is never an identity key.
+    agentMentions?: AgentMention[]
     // Attribution for the engagement-decision LLM call so its tokens are billed
     // to the originating org/channel/thread/actor.
     usage?: LedgerAttribution
@@ -140,11 +138,9 @@ export const decideAgentEngagement = async (
     return []
   }
 
-  // A PA presence has no safe name-based fast path: several members share the
-  // one agent row and users may share display names. The API validated each
-  // entity against this channel's live bindings before it entered the payload,
-  // so this is a structural address with the same deterministic threading as
-  // ordinary agent mentions.
+  // The API validated each entity before it entered the payload, so the
+  // selected id is the exact structural address. PA presences additionally
+  // match on their owner because several members share the one agent row.
   if (input.agentMentions && input.agentMentions.length > 0) {
     const decisions: OrchestratorDecision[] = []
     const addressed = new Set<string>()
@@ -161,7 +157,7 @@ export const decideAgentEngagement = async (
       decisions.push({
         action: 'reply',
         agentId: candidate.id,
-        principalUserId: mention.principalUserId,
+        ...(mention.principalUserId ? { principalUserId: mention.principalUserId } : {}),
         replyPlacement: 'thread',
       })
     }

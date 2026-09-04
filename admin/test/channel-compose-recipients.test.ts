@@ -115,6 +115,7 @@ test('same-named agents are distinguished by visibility', () => {
 
   const listed = options([teamAgent, privateAgent], '')
   assert.deepEqual(listed.map((entry) => entry.category), ['team agent', 'private agent'])
+  assert.deepEqual(listed.map((entry) => entry.agentVisibility), ['team', 'private'])
   assert.deepEqual(
     options([teamAgent, privateAgent], 'private').map((entry) => entry.id),
     ['private-summary'],

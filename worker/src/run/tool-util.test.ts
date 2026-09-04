@@ -31,6 +31,16 @@ test('summarizeToolInput redacts secret-bearing fields recursively', () => {
   assert.ok(summary.includes('[REDACTED]'))
 })
 
+test('tool summaries and results mask structural credentials under ordinary keys', () => {
+  const token = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')
+  const summary = summarizeToolInput({ result: token })
+  const output = truncateToolResult(`remote result: ${token}`)
+
+  assert.doesNotMatch(summary, /1234567890abcdefghijklmnop/)
+  assert.doesNotMatch(output, /1234567890abcdefghijklmnop/)
+  assert.match(output, new RegExp(`sk_live_${'•'.repeat(12)}`))
+})
+
 test('truncateToolResult leaves within-cap output untouched', () => {
   const output = 'x'.repeat(100)
   assert.equal(truncateToolResult(output, 200), output)

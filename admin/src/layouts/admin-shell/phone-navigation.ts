@@ -153,3 +153,18 @@ export const shouldHighlightKnowledgeSidebarSelection = (
   pathname: string,
   phoneLayout: boolean,
 ): boolean => !phoneLayout || normalizePathname(pathname) !== '/knowledge-base'
+
+// On a phone every Knowledge selection is an addressable pushed screen. A
+// split layout normally swaps the persistent Knowledge workspace in place,
+// but Dashboard routes render a different outlet: changing provider state
+// alone cannot replace that page. In that case the sidebar doorway must also
+// navigate back into the selected Knowledge surface.
+export const resolveKnowledgeSidebarSelectionPath = (
+  pathname: string,
+  phoneLayout: boolean,
+  selection: { id: string; type: 'space' | 'view' },
+): string | null => {
+  if (!phoneLayout && !normalizePathname(pathname).startsWith('/dashboards')) return null
+  const segment = selection.type === 'space' ? 'spaces' : 'views'
+  return `/knowledge-base/${segment}/${encodeURIComponent(selection.id)}`
+}

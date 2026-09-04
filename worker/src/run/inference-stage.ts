@@ -11,15 +11,16 @@ import {
   type ProviderToolCall,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import type {
-  AuthorizedActionContext,
-  CandidateOutput,
-  InvocationRecord,
-  OperationType,
-  ProviderReasoningEffort,
-  RouteStage,
-  RoutingMode,
-  StepMetadataStep,
+import {
+  redactDetectedSecrets,
+  type AuthorizedActionContext,
+  type CandidateOutput,
+  type InvocationRecord,
+  type OperationType,
+  type ProviderReasoningEffort,
+  type RouteStage,
+  type RoutingMode,
+  type StepMetadataStep,
 } from '@nessie/schemas'
 import {
   resolveRuntimeProvider,
@@ -81,9 +82,13 @@ const buildVisibleStageMessages = (
   baseMessages: ProviderMessage[],
   upstream: CandidateOutput[],
 ): ProviderMessage[] => {
-  if (upstream.length === 0) {
-    return baseMessages
-  }
+  const redactMessages = (messages: ProviderMessage[]): ProviderMessage[] =>
+    messages.map((message) => {
+      if (typeof message.content !== 'string') return message
+      return { ...message, content: redactDetectedSecrets(message.content) } as ProviderMessage
+    })
+
+  if (upstream.length === 0) return redactMessages(baseMessages)
 
   const upstreamContext = upstream
     .map((candidate) => {
@@ -101,7 +106,7 @@ const buildVisibleStageMessages = (
     })
     .join('\n\n')
 
-  return [
+  return redactMessages([
     ...baseMessages,
     {
       content: [
@@ -111,7 +116,7 @@ const buildVisibleStageMessages = (
       ].join('\n\n'),
       role: 'system' as const,
     },
-  ]
+  ])
 }
 
 const resolveStepMetadata = (

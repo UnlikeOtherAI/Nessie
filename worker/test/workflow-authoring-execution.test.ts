@@ -6,7 +6,10 @@ import {
   runWorkflowCreateTool,
   runWorkflowInstallTool,
   runWorkflowListTool,
+  runWorkflowRunStatusTool,
+  runWorkflowRunTool,
   runWorkflowTriggerCreateTool,
+  runWorkflowUpdateTool,
 } from '../src/run/pa-tools/workflow-authoring.js'
 import type { BuiltinToolRuntimeContext } from '../src/run/tool-types.js'
 
@@ -14,6 +17,10 @@ const organizationId = randomUUID()
 const userId = randomUUID()
 const workflowTemplateId = randomUUID()
 const workflowInstallationId = randomUUID()
+const channelId = randomUUID()
+const threadId = randomUUID()
+const messageId = randomUUID()
+const workflowRunId = randomUUID()
 
 const createContext = (): {
   auditActions: string[]
@@ -38,10 +45,17 @@ const createContext = (): {
         bindingSchema: {},
         graphJson: { steps: [{ id: 'read', type: 'tool_call', input: { toolName: 'state_get' } }] },
         id: workflowTemplateId,
+        name: 'Hourly state check',
         source: 'authored',
-        version: 1,
+        version: 2,
       }),
       findMany: async () => [],
+      updateMany: async () => ({ count: 1 }),
+      update: async ({ data }: { data: { name: string } }) => ({
+        id: workflowTemplateId,
+        name: data.name,
+        version: 2,
+      }),
     },
     workflowInstallation: {
       create: async () => ({
@@ -49,10 +63,42 @@ const createContext = (): {
         status: 'active',
         workflowTemplateVersion: 1,
       }),
-      findFirst: async () => ({ id: workflowInstallationId }),
-      findUnique: async () => ({ id: workflowInstallationId }),
+      findFirst: async () => ({
+        channelId,
+        concurrency: {},
+        id: workflowInstallationId,
+        organizationId,
+      }),
+      findUnique: async () => ({
+        id: workflowInstallationId,
+        pinnedGraphJson: { steps: [] },
+        workflowTemplate: { graphJson: { steps: [] } },
+      }),
       groupBy: async () => [],
     },
+    workflowRun: {
+      count: async () => 0,
+      create: async () => ({ id: workflowRunId, status: 'pending' }),
+      findFirst: async () => ({
+        errorMessage: null,
+        finishedAt: null,
+        id: workflowRunId,
+        installationId: workflowInstallationId,
+        startedAt: now,
+        status: 'running',
+      }),
+    },
+    workflowStepRun: {
+      findMany: async () => [{
+        errorMessage: null,
+        status: 'running',
+        stepKey: 'read',
+        title: 'Read state',
+      }],
+    },
+    channel: { findFirst: async () => ({ id: channelId }) },
+    thread: { findFirst: async () => ({ channelId }) },
+    message: { findFirst: async () => ({ threadId }) },
     agentTrigger: {
       create: async ({ data }: { data: Record<string, unknown> }) => ({
         agentId: null,
@@ -92,13 +138,14 @@ const createContext = (): {
         tenant: { organizationId },
       },
       agentId: randomUUID(),
-      channel: { organizationId },
+      channel: { id: channelId, organizationId },
       prisma,
+      run: { id: randomUUID(), messageId, threadId },
     } as unknown as BuiltinToolRuntimeContext,
   }
 }
 
-test('an owner agent can create, install, and schedule a workflow', async () => {
+test('an owner agent can create, update, install, and schedule a workflow', async () => {
   const { auditActions, context } = createContext()
   const listed = await runWorkflowListTool(context, {})
   assert.match(listed.outputPreview, /No workflows exist/)
@@ -110,6 +157,16 @@ test('an owner agent can create, install, and schedule a workflow', async () => 
     name: 'Daily state check',
   })
   assert.match(created.outputPreview, new RegExp(`workflowTemplateId=${workflowTemplateId}`))
+
+  const updated = await runWorkflowUpdateTool(context, {
+    expectedVersion: 1,
+    graph: {
+      steps: [{ id: 'read', input: { toolName: 'state_get' }, type: 'tool_call' }],
+    },
+    name: 'Hourly state check',
+    workflowTemplateId,
+  })
+  assert.match(updated.outputPreview, /Updated workflow "Hourly state check" \(version 2\)/)
 
   const installed = await runWorkflowInstallTool(context, { workflowTemplateId })
   assert.match(installed.outputPreview, new RegExp(`workflowInstallationId=${workflowInstallationId}`))
@@ -123,7 +180,23 @@ test('an owner agent can create, install, and schedule a workflow', async () => 
   assert.match(scheduled.outputPreview, /next run/)
   assert.deepEqual(auditActions, [
     'workflow.template.created',
+    'workflow.template.updated',
     'workflow.installation.installed',
     'workflow.trigger.created',
   ])
+})
+
+test('an entitled agent can start and inspect a workflow run', async () => {
+  const { auditActions, context } = createContext()
+  const started = await runWorkflowRunTool(context, {
+    input: { release: 'v1.2.3' },
+    workflowInstallationId,
+  })
+  assert.match(started.outputPreview, new RegExp(`workflowRunId=${workflowRunId}`))
+  assert.match(started.outputPreview, /workflow_run_status/)
+
+  const status = await runWorkflowRunStatusTool(context, { workflowRunId })
+  assert.match(status.outputPreview, /Workflow run .*: running/)
+  assert.match(status.outputPreview, /Read state: running/)
+  assert.deepEqual(auditActions, ['workflow.run.started'])
 })

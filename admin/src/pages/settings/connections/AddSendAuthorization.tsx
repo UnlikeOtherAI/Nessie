@@ -7,6 +7,7 @@ import {
   type SendGrant,
 } from '../../../facades/gmail/hooks'
 import { SendBoundaryEditor } from './SendBoundaryEditor'
+import { agentSelectionLabel } from '../../../components/features/agents/AgentVisibilityPill'
 
 /**
  * Turning on "act without asking", from settings rather than from an approval.
@@ -52,8 +53,16 @@ export const AddSendAuthorization = ({
   )
   const assistantAgent = assistant.data?.agent
   const choices = [
-    ...(assistantAgent ? [{ id: assistantAgent.id, name: assistantAgent.name }] : []),
-    ...(agents.data ?? []).map((agent) => ({ id: agent.id, name: agent.name })),
+    ...(assistantAgent ? [{
+      id: assistantAgent.id,
+      name: assistantAgent.name,
+      visibility: assistantAgent.visibility,
+    }] : []),
+    ...(agents.data ?? []).map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      visibility: agent.visibility,
+    })),
   ].filter((agent) => !granted.has(agent.id))
 
   if (!open) {
@@ -111,7 +120,7 @@ export const AddSendAuthorization = ({
           <option value="">Choose an agent…</option>
           {choices.map((agent) => (
             <option key={agent.id} value={agent.id}>
-              {agent.name}
+              {agentSelectionLabel(agent.name, agent.visibility)}
             </option>
           ))}
         </select>

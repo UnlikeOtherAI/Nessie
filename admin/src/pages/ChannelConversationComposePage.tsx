@@ -18,9 +18,15 @@ import {
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
+import { AgentVisibilityPill } from '../components/features/agents/AgentVisibilityPill'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
-import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
+import {
+  MentionInput,
+  type AgentMention,
+  type MentionEntity,
+  type MentionInputHandle,
+} from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
@@ -132,7 +138,7 @@ export const ChannelConversationComposePage = () => {
   }, [])
 
   const submit = useCallback(
-    async (rawText: string) => {
+    async (rawText: string, agentMentions: AgentMention[] = []) => {
       const content = rawText.trim()
       if (!content) {
         return
@@ -154,6 +160,7 @@ export const ChannelConversationComposePage = () => {
             .map((recipient) => recipient.id),
         })
         await sendMessage.mutateAsync({
+          ...(agentMentions.length > 0 ? { agentMentions } : {}),
           content,
           threadId: channel.defaultThreadId,
         })
@@ -260,27 +267,35 @@ export const ChannelConversationComposePage = () => {
                 }}
                 role="presentation"
               >
-                {recipients.map((recipient) => (
-                  <span
-                    key={optionKey(recipient)}
-                    className={[
-                      'flex max-w-full items-center gap-1 rounded-md',
-                      'bg-[color:var(--overlay)] px-2 py-1 text-sm text-[color:var(--tx)]',
-                    ].join(' ')}
-                  >
-                    <span className="truncate">
-                      {getRecipientName(recipient, usersById, agentsById)}
-                    </span>
-                    <button
-                      aria-label={`Remove ${getRecipientName(recipient, usersById, agentsById)}`}
-                      className="flex h-4 w-4 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]"
-                      onClick={() => removeRecipient(recipient)}
-                      type="button"
+                {recipients.map((recipient) => {
+                  const selectedAgent = recipient.kind === 'agent'
+                    ? agentsById.get(recipient.id)
+                    : undefined
+                  return (
+                    <span
+                      key={optionKey(recipient)}
+                      className={[
+                        'flex max-w-full items-center gap-1 rounded-md',
+                        'bg-[color:var(--overlay)] px-2 py-1 text-sm text-[color:var(--tx)]',
+                      ].join(' ')}
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
+                      <span className="truncate">
+                        {getRecipientName(recipient, usersById, agentsById)}
+                      </span>
+                      {selectedAgent ? (
+                        <AgentVisibilityPill visibility={selectedAgent.visibility} />
+                      ) : null}
+                      <button
+                        aria-label={`Remove ${getRecipientName(recipient, usersById, agentsById)}`}
+                        className="flex h-4 w-4 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]"
+                        onClick={() => removeRecipient(recipient)}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )
+                })}
                 <input
                   ref={addressInputRef}
                   autoFocus
@@ -336,8 +351,12 @@ export const ChannelConversationComposePage = () => {
                       <span className="truncate">{option.label}</span>
                       <span className="truncate text-xs opacity-60">{option.detail}</span>
                     </span>
-                    <span className="ml-auto text-xs opacity-60">
-                      {option.category}
+                    <span className="ml-auto flex-shrink-0">
+                      {option.kind === 'agent' && option.agentVisibility ? (
+                        <AgentVisibilityPill visibility={option.agentVisibility} />
+                      ) : (
+                        <span className="text-xs opacity-60">{option.category}</span>
+                      )}
                     </span>
                   </button>
                 ))}
@@ -362,7 +381,7 @@ export const ChannelConversationComposePage = () => {
               maxLength={CHAT_MESSAGE_MAX_CHARS}
               onChange={setMessage}
               onOversizePaste={setOversizePaste}
-              onSubmit={(text) => void submit(text)}
+              onSubmit={(text, agentMentions) => void submit(text, agentMentions)}
               placeholder="Message"
             />
             <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">

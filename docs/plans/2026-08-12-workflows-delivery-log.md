@@ -256,12 +256,13 @@ access required", so the capability was invisible to the people it is for.
 
 ### Section H — conversational authoring and an inspectable preview (merged)
 
-The Personal Assistant now has a complete, owner-authorized workflow authoring
-path: `workflow_list`, `workflow_create`, `workflow_install`, and
-`workflow_trigger_create`.
-They use the same graph, secret-binding, installation lifecycle, and trigger
-validation as the corresponding owner surfaces, and write the same audit events.
-Trigger authoring covers every
+The Personal Assistant now has a complete workflow lifecycle: owner-authorized
+`workflow_list`, `workflow_create`, `workflow_update`, `workflow_install`, and
+`workflow_trigger_create`, plus entitlement-mirrored `workflow_run` and
+`workflow_run_status`.
+They call the same graph, optimistic-version, secret-binding, installation
+lifecycle, trigger, overlap, and workflow-read validation as their Admin
+counterparts, and write the same audit events. Trigger authoring covers every
 supported delivery type: manual, a one-off scheduled fire, cron, interval,
 webhook, and event. The trigger result deliberately never returns a webhook
 secret.

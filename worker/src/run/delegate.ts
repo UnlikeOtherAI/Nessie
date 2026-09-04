@@ -10,6 +10,7 @@ import type { McpToolset } from './mcp-toolset.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 import type { ToolActorContext, ToolAuthorizationDecision } from './execute/tool-authorization.js'
+import { AGENT_SECRET_SAFETY_INSTRUCTION } from './execute/prompt.js'
 
 const SUB_AGENT_SYSTEM_PROMPT = `You are a focused sub-agent dispatched by another agent to complete a single task using external tools (MCP).
 
@@ -18,6 +19,7 @@ Rules:
 - Be concise. Return a short, direct answer the parent can paste into a conversation.
 - If a tool fails, try at most one alternative; otherwise report the failure plainly.
 - Do not ask follow-up questions. Make the best decision with the information you have.
+- ${AGENT_SECRET_SAFETY_INSTRUCTION}
 - You cannot delegate further. Stop when you have an answer or when no progress is possible.`
 
 export type DelegateToolResultCapture = {

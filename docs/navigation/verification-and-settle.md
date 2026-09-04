@@ -45,6 +45,7 @@ so the suite survived the step-2 rewrite unchanged. Every frame also asserts
 | `tablet-split-push` / `desktop-split-push` | 768×1024 / 1280×800 | Agents → the designer pushes inside the detail column: the designer travels 100 % → 0 of the column, the list 0 → -28 %, the pinned sidebar never moves |
 | `phone-cold-start` | 390×844 | a cold link to a conversation seeds the channel list beneath it; header Back slides the conversation away over that list (0 → 100 %, -28 % → 0) |
 | `phone-intent-strip` | 390×844 | `#trigger-<id>` and `?messageId=` are consumed and stripped with a replace: the address settles on the screen, the linkable `?tab=` stays, and browser Back lands on the stripped address |
+| `desktop-chat-history` | 1280×800 | a real 50-row message window; reaching the top sends the opaque `before` cursor, prepends older rows, and keeps the first existing row at the same viewport offset |
 
 Each transition case navigates once per saved frame, deliberately: the stack
 closes its own transition on a fallback timer shortly after the animation's
@@ -124,6 +125,13 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   (`main.tsx`); retained layers keep their position for free, a fresh push
   starts at 0. Per-layer `useScrollMemory` on `split` and the second-scroller
   lint are still planned.
+- **Chat history**: every message scroller uses the shared
+  `useStickToBottom` history seam. It follows the newest row until the reader
+  scrolls away, requests another cursor page near the top, and restores the
+  same existing message to the same viewport offset after older rows prepend.
+  A short or filtered feed keeps walking older pages until it exposes visible
+  history or reaches the beginning; a failed page stops and renders an
+  explicit Retry action rather than retrying in a loop.
 - Pinned by `admin/test/navigation-settle.test.ts`.
 - **`aria-current="page"`**: the rail item and every section-sidebar row that
   carries an `active` class set it through one shared helper,
@@ -207,4 +215,3 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   mobile step (`navigation/pull-to-refresh.ts`).
 - Pinned by `admin/test/navigation-interruption.test.ts` and
   `admin/test/pull-to-refresh.test.ts`.
-

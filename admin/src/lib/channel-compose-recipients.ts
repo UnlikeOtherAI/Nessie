@@ -1,3 +1,5 @@
+import type { AgentVisibility } from '@nessie/schemas'
+
 import type { AgentRecord, UserRecord } from './api-client'
 
 /**
@@ -25,6 +27,7 @@ export type Recipient = {
 }
 
 export type RecipientOption = Recipient & {
+  agentVisibility?: AgentVisibility
   category: 'person' | 'private agent' | 'team agent'
   detail: string
   label: string
@@ -78,6 +81,7 @@ export const buildRecipientOptions = (input: {
     user,
   }))
   const agentOptions: RecipientOption[] = input.agents.map((agent) => ({
+    agentVisibility: agent.visibility,
     category: agent.visibility === 'private' ? 'private agent' : 'team agent',
     detail: agent.role,
     id: agent.id,

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { redactDetectedSecrets } from '@nessie/schemas'
 
 import type { AgenticToolResult, ToolExecutionUsage, AgentCardSuspension } from './tool-types.js'
 
@@ -48,13 +49,17 @@ export const truncateToolResult = (
   output: string,
   maxChars = MAX_TOOL_RESULT_CHARS,
 ): string => {
-  if (output.length <= maxChars) return output
-  if (TOOL_RESULT_TRUNCATION_MARKER.test(output)) return output
-  const removed = output.length - maxChars
+  // Tool results are both model context and durable ToolCall previews. Apply
+  // the structural scanner before either sink, at the same shared chokepoint
+  // that already bounds every builtin, MCP and delegated result.
+  const redacted = redactDetectedSecrets(output)
+  if (redacted.length <= maxChars) return redacted
+  if (TOOL_RESULT_TRUNCATION_MARKER.test(redacted)) return redacted
+  const removed = redacted.length - maxChars
   const headChars = Math.floor(maxChars * TRUNCATION_HEAD_SHARE)
   const tailChars = maxChars - headChars
-  const head = output.slice(0, headChars)
-  const tail = tailChars > 0 ? output.slice(output.length - tailChars) : ''
+  const head = redacted.slice(0, headChars)
+  const tail = tailChars > 0 ? redacted.slice(redacted.length - tailChars) : ''
   return `${head}\n\n[... truncated ${removed} chars ...]\n\n${tail}`
 }
 
@@ -147,7 +152,9 @@ export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
 
 export const summarizeToolInput = (value: unknown, maxLength = 200): string => {
   try {
-    return JSON.stringify(redactToolInputValue(value)).slice(0, maxLength)
+    return redactDetectedSecrets(
+      JSON.stringify(redactToolInputValue(value)),
+    ).slice(0, maxLength)
   } catch {
     return '[Unserializable tool input]'
   }

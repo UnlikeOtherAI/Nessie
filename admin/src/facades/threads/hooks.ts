@@ -1,4 +1,11 @@
-import { type InfiniteData, keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  type InfiniteData,
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
@@ -12,7 +19,12 @@ import {
 } from './document-stream'
 import type { DocumentStreamStore } from './document-stream-store'
 import type { DocumentStreamEntry } from './document-stream-helpers'
-import { fetchThreadMessages } from './queries'
+import {
+  flattenThreadMessagePages,
+  threadMessagesInfiniteQueryOptions,
+  upsertNewestThreadMessage,
+  type ThreadMessagePages,
+} from './queries'
 import {
   classifyStreamResponse,
   runStreamConnectionLoop,
@@ -63,25 +75,38 @@ const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 export const useThreadMessages = (threadId?: string) => {
   const apiClient = useApiClient()
 
-  return useQuery<ThreadMessageRecord[]>({
+  const query = useInfiniteQuery({
+    ...threadMessagesInfiniteQueryOptions(apiClient, threadId ?? ''),
     placeholderData: keepPreviousData,
-    queryKey: threadKeys.messages(threadId),
-    queryFn: () => fetchThreadMessages(apiClient, threadId ?? ''),
     enabled: Boolean(threadId),
   })
+  const messages = useMemo(() => flattenThreadMessagePages(query.data), [query.data])
+  return {
+    ...query,
+    data: messages,
+    pageCount: query.data?.pages.length ?? 0,
+  }
 }
 
 // Replies of one root message within a thread (#233 reply threads).
 export const useThreadReplies = (threadId?: string, rootMessageId?: string) => {
   const apiClient = useApiClient()
 
-  return useQuery<ThreadMessageRecord[]>({
+  const query = useInfiniteQuery({
+    ...threadMessagesInfiniteQueryOptions(
+      apiClient,
+      threadId ?? '',
+      rootMessageId,
+    ),
     placeholderData: keepPreviousData,
-    queryKey: threadKeys.repliesOf(threadId, rootMessageId),
-    queryFn: () =>
-      apiClient.get(`/api/threads/${threadId}/messages?rootMessageId=${rootMessageId}`),
     enabled: Boolean(threadId) && Boolean(rootMessageId),
   })
+  const messages = useMemo(() => flattenThreadMessagePages(query.data), [query.data])
+  return {
+    ...query,
+    data: messages,
+    pageCount: query.data?.pages.length ?? 0,
+  }
 }
 
 export type ThreadMessageDetail = {
@@ -302,8 +327,11 @@ export const useThreadStream = (threadId?: string): StreamState => {
         if (data.messageId && data.restricted) {
           void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
         } else if (data.messageId && data.content !== undefined) {
-          queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
-            threadKeys.messages(threadId),
+          const historyKey = data.rootMessageId
+            ? threadKeys.repliesOf(threadId, data.rootMessageId)
+            : threadKeys.messages(threadId)
+          queryClient.setQueryData<ThreadMessagePages | undefined>(
+            historyKey,
             (current) => {
               const finalMessage: ThreadMessageRecord = {
                 agentId: data.agentId ?? null,
@@ -315,11 +343,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
                 rootMessageId: data.rootMessageId ?? null,
                 threadId,
               }
-              const messages = current ?? []
-              return [
-                ...messages.filter((message) => message.id !== finalMessage.id),
-                finalMessage,
-              ]
+              return upsertNewestThreadMessage(current, finalMessage)
             },
           )
         }

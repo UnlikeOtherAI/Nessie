@@ -29,8 +29,14 @@ test('agent mentions trust the server-entitled list without a client visibility 
   const privateAgent = agent('00000000-0000-4000-8000-000000000002', 'Private', 'private')
 
   assert.deepEqual(
-    buildAgentMentionEntities([teamAgent, privateAgent]).map((entity) => entity.id),
-    [teamAgent.id, privateAgent.id],
+    buildAgentMentionEntities([teamAgent, privateAgent]).map((entity) => ({
+      id: entity.id,
+      visibility: entity.agentVisibility,
+    })),
+    [
+      { id: teamAgent.id, visibility: 'team' },
+      { id: privateAgent.id, visibility: 'private' },
+    ],
     'the owner-provided, server-entitled private agent stays mentionable',
   )
   assert.deepEqual(

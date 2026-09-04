@@ -4,6 +4,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { prewarmRowHandlers } from '../../../navigation/prewarm'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentOwnerCell } from './AgentOwnerCell'
+import { AgentVisibilityPill } from './AgentVisibilityPill'
 import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
 
 type AgentListRowProps = {
@@ -39,8 +40,11 @@ export const AgentListRow = ({
       <AgentAvatar agent={agent} size="sm" token={token} />
     </td>
     <td className="min-w-0 px-3 py-2.5 align-middle">
-      <div className="truncate text-sm font-medium text-[color:var(--tx)]">
-        {agent.name}
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-sm font-medium text-[color:var(--tx)]">
+          {agent.name}
+        </span>
+        <AgentVisibilityPill visibility={agent.visibility} />
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {agent.role}
