@@ -165,13 +165,19 @@ runDatabaseTest('approving a tool gate claims its checkpoint and queues one appr
   })
   assert.ok(continuation)
   assert.equal((await prisma.run.findUnique({ where: { id: suspended.run.id } }))?.status, 'completed')
-  assert.equal((await prisma.runCheckpoint.findUnique({ where: { id: suspended.checkpoint.id } }))?.consumedByRunId, continuation?.id)
+  const claimedCheckpoint = await prisma.runCheckpoint.findUnique({
+    where: { id: suspended.checkpoint.id },
+  })
+  assert.equal(claimedCheckpoint?.consumedByRunId, continuation?.id)
   const job = await prisma.$queryRaw<{ payload: { actorContext: { approval: { approvalId: string; approvalProof: string } } } }[]>`
     SELECT payload FROM queue_jobs WHERE idempotency_key = ${`run:approval:${continuation?.id}`}
   `
   assert.equal(job.length, 1)
   assert.equal(job[0]?.payload.actorContext.approval.approvalId, suspended.approval.id)
   assert.equal(job[0]?.payload.actorContext.approval.approvalProof, suspended.approval.continuationToken)
+  // The queue transports only an opaque handle. The frozen tool arguments stay
+  // in ApprovalRequest.resumeState until the worker reaches final dispatch.
+  assert.doesNotMatch(JSON.stringify(job[0]?.payload), /Ahoj|target/)
 })
 
 runDatabaseTest('concurrent approvers can create only one continuation', async (t) => {

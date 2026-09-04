@@ -13,6 +13,7 @@ import {
   TaskIdSchema,
   TeamIdSchema,
 } from './ids.js'
+import { AuthorizedActionContextSchema } from './access-context.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 // ─── Phase 2: Policy Enforcement ────────────────────────────────────────────
@@ -183,6 +184,19 @@ export const ResolveApprovalBodySchema = z.object({
   note: z.string().max(2000).optional(),
 })
 export type ResolveApprovalBody = z.infer<typeof ResolveApprovalBodySchema>
+
+/**
+ * Server-owned action data parked with a tool approval. It is deliberately
+ * internal: the API resumes an approval by opaque id/proof and the worker
+ * resolves these exact arguments only at its dispatch boundary.
+ */
+export const ToolApprovalResumeStateSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  args: z.record(z.unknown()),
+  interactive: z.boolean(),
+  messageId: z.string().min(1),
+}).strict()
+export type ToolApprovalResumeState = z.infer<typeof ToolApprovalResumeStateSchema>
 
 // ─── Phase 2: Audit Trail ──────────────────────────────────────────────────
 

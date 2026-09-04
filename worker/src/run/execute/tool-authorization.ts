@@ -189,11 +189,10 @@ export const authorizeToolExecution = async (
   } = { denial: null }
   let structuralApprovalProofUsed = false
   const policyDecision = await (async () => {
-    if (
-      !rawPolicyDecision.allowed
-      || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
-      || rawPolicyDecision.approvalProofVerified
-    ) {
+    if (!rawPolicyDecision.allowed || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)) {
+      return rawPolicyDecision
+    }
+    if (rawPolicyDecision.approvalProofVerified && !auth.revalidateApprovalBoundary) {
       if (
         rawPolicyDecision.allowed
         && STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
@@ -209,7 +208,10 @@ export const authorizeToolExecution = async (
       ? await auth.structuralGate({ args: canonicalArgs, toolName })
       : null
     if (familyDecision) {
-      if (familyDecision.outcome === 'allow') return rawPolicyDecision
+      if (familyDecision.outcome === 'allow') {
+        if (rawPolicyDecision.approvalProofVerified) structuralApprovalProofUsed = true
+        return rawPolicyDecision
+      }
       if (familyDecision.outcome === 'deny') {
         structuralState.denial = familyDecision
         return {
@@ -219,6 +221,10 @@ export const authorizeToolExecution = async (
           policyRuleId: undefined as string | undefined,
           reason: 'explicit_policy_deny' as const,
         }
+      }
+      if (rawPolicyDecision.approvalProofVerified) {
+        structuralApprovalProofUsed = true
+        return rawPolicyDecision
       }
       boundaryReason = familyDecision.reason ?? null
       structuralApprover = familyDecision.requiredApproverUserId ?? null

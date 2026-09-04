@@ -1,16 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { drainPendingThreadMessagesBestEffort } from '@nessie/db'
 import { applyReplyBookkeeping } from '@nessie/runtime'
-import { AuthorizedActionContextSchema } from '@nessie/schemas'
-import { z } from 'zod'
+import { ToolApprovalResumeStateSchema } from '@nessie/schemas'
 import { ResumeRollback, resumeSuspendedRun, type RunResumeFailure } from './run-resume-core.js'
-
-const ApprovalResumeStateSchema = z.object({
-  actorContext: AuthorizedActionContextSchema,
-  args: z.record(z.unknown()),
-  interactive: z.boolean(),
-  messageId: z.string().min(1),
-}).strict()
 
 type ResumeFailure = RunResumeFailure
 
@@ -74,7 +66,7 @@ export const resumeRunFromApproval = async (
         },
       })
       if (!approval?.runId) throw new ResumeRollback('invalid_resume_state')
-      const resumeState = ApprovalResumeStateSchema.safeParse(approval.resumeState)
+      const resumeState = ToolApprovalResumeStateSchema.safeParse(approval.resumeState)
       if (
         !resumeState.success
         || resumeState.data.actorContext.tenant.organizationId !== approval.organizationId

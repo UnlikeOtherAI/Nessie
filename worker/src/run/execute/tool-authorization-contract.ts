@@ -43,6 +43,8 @@ export type ToolAuthorizationContext = {
   runUtility?: (prompt: string) => Promise<string | null>
   /** Preflight verifies a proof but leaves its one-time claim for dispatch. */
   consumeApprovalProof?: boolean
+  /** Recheck a structural mail boundary before consuming a sealed action. */
+  revalidateApprovalBoundary?: boolean
   /** A prepared call has already received its single auto-review verdict. */
   skipAutoReview?: boolean
   resumeState?: { actorContext: AuthorizedActionContext; interactive: boolean; messageId: string }

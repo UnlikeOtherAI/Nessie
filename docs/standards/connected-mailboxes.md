@@ -103,6 +103,16 @@ Plan and as-built deltas:
   summary. The same boundary covers connected-mail, Gmail, contact, and
   connected-account lifecycle tools; a provider failure becomes a stable remedy
   rather than raw remote text.
+- **Approval continuations execute a frozen action, never a model recreation.**
+  `ApprovalRequest.resumeState` retains the strict, server-owned canonical
+  arguments. The continuation queue carries only the approval id and its
+  one-time proof; at dispatch the worker resolves that opaque handle, verifies
+  its argument hash and direct parent-run lineage, then sends the frozen action
+  through the ordinary live authorization gates. Frozen arguments never enter
+  a prompt, checkpoint, audit/event payload, ToolCall metadata, or client API.
+  A changed draft, revoked mailbox access, inactive approver, wrong lineage, or
+  already-claimed proof therefore denies the action rather than inviting a
+  model to compose a near-match.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,

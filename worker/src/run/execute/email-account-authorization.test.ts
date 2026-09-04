@@ -173,7 +173,7 @@ test('disconnect approval persists canonical arguments and names the target safe
     audience: 'Its connection credentials will be removed',
     boundaryReason: null,
     headline: 'Disconnect IMAP/SMTP mailbox …aaaaaaaa',
-    inputSummary: '{"accountId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","accountKind":"mailbox"}',
+    inputSummary: 'Manage a connected email account.',
     policyRuleId: null,
     toolName: EMAIL_ACCOUNT_DISCONNECT_TOOL_ID,
   })

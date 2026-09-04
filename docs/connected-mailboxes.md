@@ -146,6 +146,11 @@ lane offers standing consent because a grant there is one person's to give about
 their own account; a shared team mailbox has no such single owner, and one grant
 table meaning two different things is how that distinction gets lost.
 
+Approving is a one-time decision for the exact message and mailbox shown. Nessie
+keeps that action sealed while the approval is pending, then dispatches the
+frozen action after the final live access checks; it does not ask an agent to
+write the message again after you approve it.
+
 ## Reading
 
 Reads run live, and they carry their provenance. An agent that answers you out

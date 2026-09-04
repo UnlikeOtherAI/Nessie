@@ -25,6 +25,10 @@ import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.
 import { composeStructuralGates } from './structural-gates.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
+import {
+  isFrozenEmailToolApproval,
+  resumeFrozenApprovedTool,
+} from './approved-tool-resume.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
@@ -200,6 +204,7 @@ export const runExecutionAgentLoop = async (
     options: {
       consumeApprovalProof?: boolean
       maySuspendForApproval?: boolean
+      revalidateApprovalBoundary?: boolean
       skipAutoReview?: boolean
     } = {},
   ) =>
@@ -214,6 +219,7 @@ export const runExecutionAgentLoop = async (
         agentKind: context.agent.agentKind,
         allowedToolIds: input.allowedToolIds,
         consumeApprovalProof: options.consumeApprovalProof,
+        revalidateApprovalBoundary: options.revalidateApprovalBoundary,
         identityToolIds: input.identityToolIds,
         executorToolNames: input.executorToolset.handledNames,
         mcpToolNames: mcpExposedNames,
@@ -442,6 +448,36 @@ export const runExecutionAgentLoop = async (
         ? authorization.result.inputSummary
         : summarizeToolInputForTool(toolName, authorization.args),
     }
+  }
+
+  // Mail-send approvals seal a content-bearing action. Resolve it privately
+  // rather than asking inference to reproduce its arguments. Other approval
+  // types retain their existing continuation behavior.
+  if (
+    payload.actorContext.approval?.approvalId
+    && await isFrozenEmailToolApproval(deps.prisma, {
+      actorContext: payload.actorContext,
+      organizationId: context.channel.organizationId,
+    })
+  ) {
+    return resumeFrozenApprovedTool({
+      actorContext: payload.actorContext,
+      authorize: (call) => authorizeMainTool(
+        call.toolName,
+        call.args,
+        call.toolCallId,
+        {
+          maySuspendForApproval: false,
+          revalidateApprovalBoundary: true,
+          skipAutoReview: true,
+        },
+      ),
+      context,
+      dispatch: (call, authorization) =>
+        executeAuthorizedTool(call.toolName, call.toolCallId, authorization),
+      invocationSink: input.invocationSink,
+      prisma: deps.prisma,
+    })
   }
 
   const loopResult = await runAgenticLoop({

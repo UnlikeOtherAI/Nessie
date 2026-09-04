@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { BUILTIN_TOOL_DEFINITIONS, type InferenceResult, type InvocationRecord } from '@nessie/runtime'
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  MAILBOX_SEND_TOOL_ID,
+  type InferenceResult,
+  type InvocationRecord,
+} from '@nessie/runtime'
 import {
   parseOrganizationId,
   parseProjectId,
@@ -17,6 +22,7 @@ import type { ExecutorToolset } from '../executor-toolset.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { AgenticToolResult } from '../tools.js'
 import { reviewableToolSurface } from './auto-review.js'
+import { hashJsonValue } from '../tool-util.js'
 
 /**
  * Regression coverage for the pre-dispatch authorization gate (security
@@ -74,7 +80,9 @@ const runContext = (): RunContext => ({
 type FakePrisma = {
   approvalRequests: Array<Record<string, unknown>>
   auditLog: { createCalls: number; entries: Array<Record<string, unknown>> }
+  connectorUsageEvents: Array<Record<string, unknown>>
   taskEvents: Array<Record<string, unknown>>
+  toolCalls: Array<Record<string, unknown>>
   prisma: ExecutionDependencies['prisma']
   ruleLog: string[]
   setRules: (rules: Array<Record<string, unknown>>) => void
@@ -85,7 +93,9 @@ const fakePrisma = (): FakePrisma => {
   const state = {
     approvalRequests: [] as Array<Record<string, unknown>>,
     auditLog: { createCalls: 0, entries: [] as Array<Record<string, unknown>> },
+    connectorUsageEvents: [] as Array<Record<string, unknown>>,
     taskEvents: [] as Array<Record<string, unknown>>,
+    toolCalls: [] as Array<Record<string, unknown>>,
     ruleLog: [] as string[],
     setRules: (next: Array<Record<string, unknown>>) => {
       rules = next
@@ -104,6 +114,12 @@ const fakePrisma = (): FakePrisma => {
       },
     }),
     agent: { update: async () => ({}) },
+    connectorUsageEvent: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        state.connectorUsageEvents.push(data)
+        return {}
+      },
+    },
     approvalRequest: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const approval = { ...data, id: `approval-${state.approvalRequests.length + 1}` }
@@ -114,8 +130,26 @@ const fakePrisma = (): FakePrisma => {
         state.approvalRequests.find((approval) =>
           Object.entries(where).every(([key, value]) => approval[key] === value),
         ) ?? null,
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async ({ where }: { where: Record<string, unknown> }) => {
+        const approval = state.approvalRequests.find((candidate) =>
+          Object.entries(where).every(([key, value]) => candidate[key] === value),
+        )
+        if (!approval) return { count: 0 }
+        approval['proofConsumedAt'] = new Date()
+        return { count: 1 }
+      },
     },
+    mailboxConnection: {
+      findMany: async () => [{
+        address: 'shared@example.test',
+        createdByUserId: USER_ID,
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        ownerUserId: null,
+        status: 'active',
+        teamId: TEAM_ID,
+      }],
+    },
+    organizationMember: { count: async () => 1 },
     policyRule: {
       findMany: async (query: { where: { scopeId: { in: string[] } } }) => {
         state.ruleLog.push(...query.where.scopeId.in)
@@ -124,7 +158,7 @@ const fakePrisma = (): FakePrisma => {
         )
       },
     },
-    run: { findUnique: async () => null },
+    run: { findUnique: async () => ({ continuationOfRunId: 'parent-run' }) },
     taskEvent: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         state.taskEvents.push(data)
@@ -132,7 +166,10 @@ const fakePrisma = (): FakePrisma => {
       },
     },
     toolCall: {
-      create: async () => ({}),
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        state.toolCalls.push(data)
+        return {}
+      },
       updateMany: async () => ({ count: 1 }),
     },
   }
@@ -197,9 +234,11 @@ const finalTurn = (outputText = 'Done.'): InferenceResult => ({
 
 type LoopHarness = {
   dispatchedMcp: string[]
+  dispatchedMcpCalls: Array<{ args: Record<string, unknown>; toolName: string }>
   dispatchedExecutor: string[]
   fake: FakePrisma
   invocationSink: InvocationRecord[]
+  mainInferenceCalls: number
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
   subAgentToolResults: Array<{ output: string; toolName: string }>
 }
@@ -209,6 +248,11 @@ const runLoop = async (input: {
   builtinName?: string
   mcpTools?: Record<string, AgenticToolResult>
   executorTools?: Record<string, AgenticToolResult>
+  approvedContinuation?: {
+    args: Record<string, unknown>
+    toolCallId: string
+    toolName: string
+  }
   reviewer?: 'allow' | 'deny' | 'unavailable' | 'unparseable' | 'require_approval'
   resolvedBuiltinToolIds?: Set<string>
   rules?: Array<Record<string, unknown>>
@@ -222,6 +266,7 @@ const runLoop = async (input: {
     fake.setRules(input.rules)
   }
   const dispatchedMcp: string[] = []
+  const dispatchedMcpCalls: Array<{ args: Record<string, unknown>; toolName: string }> = []
   const dispatchedExecutor: string[] = []
   const mcpEntries = input.mcpTools ?? {}
   const executorEntries = input.executorTools ?? {}
@@ -233,8 +278,9 @@ const runLoop = async (input: {
         inputSchema: { properties: {}, type: 'object' },
         toolName: name,
       })),
-      dispatch: async (name: string) => {
+      dispatch: async (name: string, args: Record<string, unknown>) => {
         dispatchedMcp.push(name)
+        dispatchedMcpCalls.push({ args, toolName: name })
         return mcpEntries[name]
       },
       handledNames: new Set(Object.keys(mcpEntries)),
@@ -252,6 +298,26 @@ const runLoop = async (input: {
   } as unknown as ExecutorToolset
 
   const builtinName = input.builtinName ?? 'kb_search'
+  if (input.approvedContinuation) {
+    fake.approvalRequests.push({
+      action: 'tool.invoke',
+      argsHash: hashJsonValue(input.approvedContinuation.args),
+      continuationToken: 'approved-proof',
+      id: 'approval-1',
+      organizationId: ORG_ID,
+      proofConsumedAt: null,
+      resumeState: {
+        actorContext: actorContext(),
+        args: input.approvedContinuation.args,
+        interactive: true,
+        messageId: 'msg-1',
+      },
+      runId: 'parent-run',
+      status: 'approved',
+      toolCallId: input.approvedContinuation.toolCallId,
+      toolName: input.approvedContinuation.toolName,
+    })
+  }
   const subAgentToolResults: Array<{ output: string; toolName: string }> = []
   const invocationSink: InvocationRecord[] = []
   let mainTurn = 0
@@ -290,7 +356,15 @@ const runLoop = async (input: {
 
   const result = await runExecutionAgentLoop(
     deps(fake),
-    { actorContext: actorContext(), messageId: 'msg-1' } as never,
+    {
+      actorContext: input.approvedContinuation
+        ? {
+          ...actorContext(),
+          approval: { approvalId: 'approval-1', approvalProof: 'approved-proof' },
+        }
+        : actorContext(),
+      messageId: 'msg-1',
+    } as never,
     runContext(),
     {
       allowedToolIds: new Set([builtinName, 'delegate']),
@@ -340,7 +414,16 @@ const runLoop = async (input: {
       windDownInstruction: null,
     },
   )
-  return { dispatchedExecutor, dispatchedMcp, fake, invocationSink, result, subAgentToolResults }
+  return {
+    dispatchedExecutor,
+    dispatchedMcp,
+    dispatchedMcpCalls,
+    fake,
+    invocationSink,
+    mainInferenceCalls: mainTurn,
+    result,
+    subAgentToolResults,
+  }
 }
 
 const denyRule = (toolId: string): Record<string, unknown> => ({
@@ -438,6 +521,79 @@ test('main builtin: an approval-required allow suspends before dispatch', async 
   assert.equal(harness.fake.approvalRequests[0]?.['argsHash'] !== undefined, true)
   assert.equal(harness.fake.approvalRequests[0]?.['toolCallId'], 'call-1')
   assert.ok(harness.fake.auditLog.createCalls > 0)
+})
+
+test('an approved mailbox continuation dispatches its frozen action before any model turn', async () => {
+  const frozenArgs = {
+    connectionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    subject: 'unique frozen subject',
+    text: 'unique frozen body',
+    to: ['unique-recipient@example.test'],
+  }
+  const harness = await runLoop({
+    approvedContinuation: {
+      args: frozenArgs,
+      toolCallId: 'frozen-mailbox-call',
+      toolName: MAILBOX_SEND_TOOL_ID,
+    },
+    builtinName: MAILBOX_SEND_TOOL_ID,
+    mcpTools: {
+      [MAILBOX_SEND_TOOL_ID]: {
+        connectorUsage: {
+          calls: 1,
+          connectorType: 'email',
+          metadata: { text: 'unique frozen body' },
+          target: 'unique-recipient@example.test',
+          unitType: 'message',
+          units: 1,
+        },
+        inputSummary: 'server-approved action',
+        output: 'sent',
+        success: true,
+      },
+    },
+    toolName: MAILBOX_SEND_TOOL_ID,
+  })
+
+  assert.equal(harness.mainInferenceCalls, 0)
+  assert.deepEqual(harness.dispatchedMcpCalls, [{ args: frozenArgs, toolName: MAILBOX_SEND_TOOL_ID }])
+  assert.equal(harness.result.finalText, 'The approved action was completed.')
+  assert.equal(harness.result.toolCallsUsed, 1)
+  assert.equal(harness.fake.approvalRequests[0]?.['proofConsumedAt'] instanceof Date, true)
+  assert.doesNotMatch(JSON.stringify(harness.result), /unique frozen (subject|body)|unique-recipient/)
+  assert.equal(harness.fake.toolCalls.length, 1)
+  assert.equal(harness.fake.toolCalls[0]?.['inputSummary'], 'Approved server-owned action')
+  assert.doesNotMatch(JSON.stringify(harness.fake.toolCalls), /unique frozen (subject|body)|unique-recipient/)
+  assert.equal(harness.fake.connectorUsageEvents.length, 1)
+  assert.equal(harness.fake.connectorUsageEvents[0]?.['target'], null)
+  assert.equal(harness.fake.connectorUsageEvents[0]?.['metadata'], undefined)
+})
+
+test('a non-email approval continuation remains on the ordinary model continuation path', async () => {
+  const harness = await runLoop({
+    approvedContinuation: {
+      args: { query: 'frozen non-email query' },
+      toolCallId: 'frozen-kb-call',
+      toolName: 'kb_search',
+    },
+    builtinName: 'kb_search',
+    mcpTools: {
+      kb_search: {
+        inputSummary: 'model action',
+        output: 'found',
+        success: true,
+      },
+    },
+    toolArgs: { query: 'frozen non-email query' },
+    toolName: 'kb_search',
+  })
+
+  assert.equal(harness.mainInferenceCalls, 2)
+  assert.deepEqual(harness.dispatchedMcpCalls, [{
+    args: { query: 'frozen non-email query' },
+    toolName: 'kb_search',
+  }])
+  assert.equal(harness.result.finalText, 'Done.')
 })
 
 test('a to-do-disabled agent is refused when it names todo_start directly', async () => {
