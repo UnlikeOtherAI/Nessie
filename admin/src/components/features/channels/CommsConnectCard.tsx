@@ -13,7 +13,7 @@ import { IdentityTile } from '../../primitives/IdentityTile'
  * connected state (green check + identity) when the caller already has an
  * active connection, or a Connect button that starts the OAuth flow and opens
  * the provider authorize URL in a new tab. Microsoft is shown disabled until
- * its adapter ships.
+ * provider authorization in a new tab.
  */
 
 const PROVIDER_META: Record<
@@ -24,9 +24,9 @@ const PROVIDER_META: Record<
   google: { label: 'Gmail', connectLabel: 'Connect Gmail', glyph: 'G', enabled: true },
   microsoft: {
     label: 'Microsoft',
-    connectLabel: 'Coming soon',
+    connectLabel: 'Connect Microsoft',
     glyph: 'M',
-    enabled: false,
+    enabled: true,
   },
 }
 

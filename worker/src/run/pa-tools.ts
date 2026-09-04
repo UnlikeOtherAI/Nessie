@@ -19,7 +19,16 @@ export {
   runAppConnectRequestTool,
   runAppSearchTool,
 } from './pa-tools/app-setup.js'
-export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
+export {
+  runCommsConnectCardTool,
+  runEmailAccountConnectTool,
+} from './pa-tools/comms-card.js'
+export {
+  runEmailAccountAgentAccessTool,
+  runEmailAccountCheckTool,
+  runEmailAccountDisconnectTool,
+  runEmailAccountListTool,
+} from './pa-tools/email-accounts.js'
 export {
   runChannelArchiveTool,
   runChannelFindTool,

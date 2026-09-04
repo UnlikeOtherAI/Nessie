@@ -74,6 +74,32 @@ a real SMTP session both have to succeed. A wrong hostname or password is a
 message on the form, not a connection that fails later in the middle of
 somebody's task.
 
+## Asking the Personal Assistant to manage accounts
+
+The Personal Assistant can list the email accounts you are entitled to manage,
+open the same secure **Connect email** form, check one, disconnect one after an
+approval, and grant or revoke an agent's access to an IMAP/SMTP mailbox. For
+example: *“Which email accounts are connected?”*, *“Connect another email
+account”*, *“Check the support mailbox”*, or *“Let the Support agent use that
+mailbox.”*
+
+Connection never turns the conversation into a password box. The assistant's
+connect tool accepts no secret arguments and posts only a button into chat; the
+button opens the address-first form also used under Settings. OAuth happens on
+Google's or Microsoft's own page, and a conventional mailbox password stays in
+the protected connection form.
+
+Listing returns an exact account id and kind so a follow-up operation cannot
+guess between two addresses. Google and Microsoft checks queue their normal
+initial or incremental sync. An IMAP/SMTP check logs in to both incoming and
+outgoing services with the stored credential. Disconnect is always held for a
+person to approve before the assistant runs it.
+
+Agent access remains two decisions. Asking the assistant to grant mailbox
+access writes the per-mailbox permission only; it does not silently enable
+`mailbox_search`, `mailbox_read`, or `mailbox_send` on the agent. Manage those
+tool grants separately on the agent's **Email & calendar** tools screen.
+
 ## Giving an agent access
 
 Two separate switches, and an agent needs both:

@@ -1,19 +1,21 @@
 import type { FastifyInstance } from 'fastify'
 import {
-  COMMS_SYNC_INCREMENTAL_TOPIC,
-  COMMS_SYNC_INITIAL_TOPIC,
   CommsCapabilitiesPatchRequestSchema,
   CommsConnectionDetailSchema,
   CommsConnectionListResponseSchema,
   CommsResourcesPatchRequestSchema,
 } from '@nessie/schemas'
-import { resolveConnector } from '@nessie/comms-connect'
+import {
+  CommsConnectionManagementError,
+  disconnectOwnedCommsConnection,
+  listOwnedCommsConnections,
+  loadOwnedCommsConnection,
+  queueOwnedCommsConnectionSync,
+} from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
 import type { RouteDeps } from './types.js'
-import { buildConnectorContext } from './comms/context.js'
 import { registerCommsOAuthRoutes } from './comms/oauth-routes.js'
 import {
   serializeConnectionDetail,
@@ -31,16 +33,25 @@ export const registerCommsConnectionRoutes = (
   // protocol shaped.
   registerCommsOAuthRoutes(app, deps)
 
-  // Load a connection the caller owns (own user, own org). Returns null so the
-  // route surfaces a uniform 404 — never leaking another user's connection.
-  const loadOwnedConnection = (
+  const loadOwnedConnection = async (
     orgId: string,
     userId: string,
     connectionId: string,
-  ) =>
-    prisma.commsConnection.findFirst({
-      where: { id: connectionId, organizationId: orgId, ownerUserId: userId },
-    })
+  ) => {
+    try {
+      return await loadOwnedCommsConnection(prisma, {
+        connectionId,
+        organizationId: orgId,
+        userId,
+      })
+    } catch (error) {
+      if (
+        error instanceof CommsConnectionManagementError
+        && error.code === 'CONNECTION_NOT_FOUND'
+      ) return null
+      throw error
+    }
+  }
 
   const loadDetail = async (connectionId: string) => {
     const [row, resources, syncJobs] = await Promise.all([
@@ -63,37 +74,17 @@ export const registerCommsConnectionRoutes = (
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    const rows = await prisma.commsConnection.findMany({
-      where: {
-        organizationId: actorContext.tenant.organizationId,
-        ownerUserId: actorContext.actor.actorId,
-      },
-      orderBy: { createdAt: 'desc' },
+    const rows = await listOwnedCommsConnections(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
     })
-    const ids = rows.map((row) => row.id)
-    const [totals, synced] = ids.length
-      ? await Promise.all([
-          prisma.commsResource.groupBy({
-            by: ['connectionId'],
-            where: { connectionId: { in: ids } },
-            _count: { _all: true },
-          }),
-          prisma.commsResource.groupBy({
-            by: ['connectionId'],
-            where: { connectionId: { in: ids }, syncEnabled: true },
-            _count: { _all: true },
-          }),
-        ])
-      : [[], []]
-    const totalMap = new Map(totals.map((r) => [r.connectionId, r._count._all]))
-    const syncedMap = new Map(synced.map((r) => [r.connectionId, r._count._all]))
 
     return createApiResponse(
       CommsConnectionListResponseSchema.parse({
         connections: rows.map((row) =>
-          serializeConnectionSummary(row, {
-            total: totalMap.get(row.id) ?? 0,
-            synced: syncedMap.get(row.id) ?? 0,
+          serializeConnectionSummary(row.connection, {
+            total: row.resourceCount,
+            synced: row.syncedResourceCount,
           }),
         ),
       }),
@@ -223,24 +214,24 @@ export const registerCommsConnectionRoutes = (
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { id } = request.params as { id: string }
-    const connection = await loadOwnedConnection(
-      actorContext.tenant.organizationId,
-      actorContext.actor.actorId,
-      id,
-    )
-    if (!connection) {
-      sendApiError(reply, 404, 'NOT_FOUND', 'Connection not found')
-      return reply
+    try {
+      await queueOwnedCommsConnectionSync(prisma, {
+        connectionId: id,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      })
+      return reply.code(202).send(createApiResponse({ queued: true }))
+    } catch (error) {
+      if (error instanceof CommsConnectionManagementError) {
+        const status = error.code === 'CONNECTION_NOT_FOUND' ? 404 : 409
+        const code = error.code === 'CONNECTION_NOT_FOUND'
+          ? 'NOT_FOUND'
+          : error.code
+        sendApiError(reply, status, code, error.message)
+        return reply
+      }
+      throw error
     }
-    if (connection.status === 'disconnected') {
-      sendApiError(reply, 409, 'CONNECTION_DISCONNECTED', 'Connection is disconnected')
-      return reply
-    }
-    const topic = connection.initialSyncCompletedAt
-      ? COMMS_SYNC_INCREMENTAL_TOPIC
-      : COMMS_SYNC_INITIAL_TOPIC
-    await enqueueQueueJob(prisma, { topic, payload: { connectionId: connection.id } })
-    return reply.code(202).send(createApiResponse({ queued: true }))
   })
 
   // ── DELETE /api/comms/connections/:id (disconnect) ────────────────────────
@@ -248,45 +239,35 @@ export const registerCommsConnectionRoutes = (
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { id } = request.params as { id: string }
-    const connection = await prisma.commsConnection.findFirst({
-      where: {
-        id,
+    let disconnected: { connectionId: string; provider: string }
+    try {
+      disconnected = await disconnectOwnedCommsConnection(prisma, {
+        connectionId: id,
+        encryptionSecret: authSecret,
         organizationId: actorContext.tenant.organizationId,
-        ownerUserId: actorContext.actor.actorId,
-      },
-      include: { credential: true },
-    })
-    if (!connection) {
-      sendApiError(reply, 404, 'NOT_FOUND', 'Connection not found')
-      return reply
-    }
-
-    // Best-effort provider revoke; never block local disconnect on it.
-    if (connection.credential) {
-      try {
-        const connector = resolveConnector(connection.provider)
-        await connector.disconnect(buildConnectorContext(connection, authSecret))
-      } catch (error) {
-        request.log.warn({ err: error }, 'comms provider revoke failed')
+        userId: actorContext.actor.actorId,
+      }, {
+        onProviderRevokeError: (error) => {
+          request.log.warn({ err: error }, 'comms provider revoke failed')
+        },
+      })
+    } catch (error) {
+      if (
+        error instanceof CommsConnectionManagementError
+        && error.code === 'CONNECTION_NOT_FOUND'
+      ) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Connection not found')
+        return reply
       }
+      throw error
     }
-
-    await prisma.$transaction([
-      prisma.commsConnectionCredential.deleteMany({
-        where: { connectionId: connection.id },
-      }),
-      prisma.commsConnection.update({
-        where: { id: connection.id },
-        data: { status: 'disconnected' },
-      }),
-    ])
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'comms.connection.disconnected',
       resourceType: 'comms_connection',
-      resourceId: connection.id,
+      resourceId: disconnected.connectionId,
       outcome: 'success',
-      metadata: { provider: connection.provider },
+      metadata: { provider: disconnected.provider },
     })
     return reply.code(204).send()
   })

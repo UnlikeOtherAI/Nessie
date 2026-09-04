@@ -58,6 +58,19 @@ Plan and as-built deltas:
   native connector, while a reviewed IMAP/SMTP route keeps its server details
   hidden until the person chooses Advanced settings. A team shared mailbox stays
   Model A-only and never starts a personal OAuth connection.
+- **Account lifecycle is available from the Personal Assistant without making
+  chat a credential surface.** `email_account_list` returns the exact kind and
+  id for every Google/Microsoft account the person owns and every SMTP/IMAP
+  mailbox they may administer. `email_account_connect` posts a doorway into the
+  same address-first form used by Settings; it accepts no password, server, or
+  OAuth-code argument. `email_account_check` invokes the same provider resync or
+  live two-leg mailbox test as the account card, and
+  `email_account_disconnect` is structurally approval-gated before it invokes
+  the same disconnect service. `email_account_agent_access` changes only the
+  per-`(connection, agent)` row: it never silently rewrites that agent's tool
+  policy. These lifecycle tools are Personal-Assistant-only and stay separate
+  from the independently grantable `mailbox_search` / `mailbox_read` /
+  `mailbox_send` content tools.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,
@@ -75,5 +88,7 @@ Plan and as-built deltas:
   must open to a just-vetted literal address with SNI pinned to the configured
   hostname, and a client that owns its own socket cannot be given that.
   Lifecycle and the credential chokepoint are in `@nessie/team-admin`
-  (`mailbox-connection*.ts`); the routes are `/api/mailbox-connections*`; the
+  (`mailbox-connection*.ts` and `comms-connection-management.ts`); provider
+  routes and agent tools call those same ownership predicates and mutations.
+  The routes are `/api/mailbox-connections*`; the
   only tuning is `NESSIE_MAILBOX_TIMEOUT_MS` (20s).
