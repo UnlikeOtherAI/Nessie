@@ -5,8 +5,10 @@ import { writeAuditEntryInTransaction } from '@nessie/db'
 
 /** Kept structurally identical to the API contract so tests can inject UOA. */
 export type AutomaticMembershipUoaAdapter = {
+  assertRuleAdministrator(input: { externalOrgId: string; externalTeamIds: readonly string[]; uoaSub: string }): Promise<boolean>
+  setRuleFence(input: { externalOrgId: string; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void>
   listVerifiedDomainSubjects(input: { externalOrgId: string; domain: string; cursor?: string; snapshotId?: string; limit: number }): Promise<{ snapshotId: string; subjects: readonly string[]; cursor: string | null }>
-  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; idempotencyKey: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
+  grantMember(input: { externalOrgId: string; externalTeamId: string; uoaSub: string; idempotencyKey: string; ruleId: string; ruleGeneration: number; fenceToken: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
   getOperation(input: { operationId: string }): Promise<{ operationId: string; status: 'accepted' | 'completed' | 'already_member' | 'failed' }>
 }
 
@@ -28,31 +30,44 @@ export const runAutomaticMembershipBackfillBatch = async (
   adapter: AutomaticMembershipUoaAdapter,
   runId: string,
 ): Promise<void> => {
-  const run = await prisma.automaticMembershipBackfillRun.findFirst({
+  const candidate = await prisma.automaticMembershipBackfillRun.findFirst({
     where: { id: runId, status: { in: ['queued', 'running'] } },
     include: { rule: { include: { claim: true, targets: { include: { team: true } } } }, organization: { select: { externalOrgId: true } }, leases: { where: { expiresAt: { gt: new Date() } } } },
   })
-  if (!run || run.leases.length > 0) return
+  if (!candidate) return
   if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_KILL_SWITCH === 'true') {
     await prisma.automaticMembershipBackfillRun.update({ where: { id: runId }, data: { status: 'paused', lastError: 'Emergency kill switch is enabled.' } })
     return
   }
-  if (run.rule.state !== 'active' || run.rule.claim.state !== 'verified' || !run.rule.claim.verificationExpiresAt || run.rule.claim.verificationExpiresAt <= new Date() || !run.organization.externalOrgId) {
+  if (candidate.rule.state !== 'active' || candidate.rule.claim.state !== 'verified' || !candidate.rule.claim.verificationExpiresAt || candidate.rule.claim.verificationExpiresAt <= new Date() || !candidate.organization.externalOrgId) {
     await prisma.automaticMembershipBackfillRun.update({ where: { id: runId }, data: { status: 'paused', lastError: 'Rule is no longer eligible for provisioning.' } })
     return
   }
   const leaseToken = randomUUID()
-  await prisma.automaticMembershipGrantLease.create({ data: { runId, generation: run.generation, leaseToken, expiresAt: new Date(Date.now() + 60_000) } })
+  const leaseUntil = new Date(Date.now() + 60_000)
+  // Conditional update is the worker ownership fence. Two consumers can read
+  // the candidate, but only one can install a current token for this generation.
+  const claimed = await prisma.automaticMembershipBackfillRun.updateMany({
+    where: { id: runId, generation: candidate.generation, status: { in: ['queued', 'running'] }, OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: new Date() } }] },
+    data: { status: 'running', leaseToken, leaseGeneration: candidate.generation, leaseExpiresAt: leaseUntil },
+  })
+  if (claimed.count !== 1) return
   try {
+    const authorised = await adapter.assertRuleAdministrator({ externalOrgId: candidate.organization.externalOrgId, externalTeamIds: candidate.rule.targets.flatMap((target) => target.team.externalTeamId ? [target.team.externalTeamId] : []), uoaSub: candidate.requestedByUoaSub })
+    if (!authorised) {
+      await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { status: 'paused', lastError: 'The requesting administrator no longer has permission.' } })
+      return
+    }
+    await adapter.setRuleFence({ externalOrgId: candidate.organization.externalOrgId, ruleId: candidate.ruleId, generation: candidate.generation, fenceToken: leaseToken, active: true })
     const page = await adapter.listVerifiedDomainSubjects({
-      externalOrgId: run.organization.externalOrgId, domain: run.rule.claim.domain,
-      ...(run.cursor ? { cursor: run.cursor } : {}), ...(run.snapshotId ? { snapshotId: run.snapshotId } : {}), limit: batchSize,
+      externalOrgId: candidate.organization.externalOrgId, domain: candidate.rule.claim.domain,
+      ...(candidate.cursor ? { cursor: candidate.cursor } : {}), ...(candidate.snapshotId ? { snapshotId: candidate.snapshotId } : {}), limit: batchSize,
     })
     for (const uoaSub of page.subjects) {
       // Configuration can change while the snapshot page is in flight. Refuse
       // stale generations/targets before every individual external operation.
       const fresh = await prisma.automaticMembershipBackfillRun.findFirst({
-        where: { id: runId, generation: run.generation, status: { in: ['queued', 'running'] }, rule: { state: 'active', claim: { state: 'verified', verificationExpiresAt: { gt: new Date() } } } },
+        where: { id: runId, generation: candidate.generation, leaseToken, leaseGeneration: candidate.generation, leaseExpiresAt: { gt: new Date() }, status: 'running', rule: { state: 'active', claim: { state: 'verified', verificationExpiresAt: { gt: new Date() } } } },
         include: { rule: { include: { targets: { include: { team: true } } } }, organization: { select: { externalOrgId: true } } },
       })
       if (!fresh || process.env.NESSIE_AUTOMATIC_MEMBERSHIP_KILL_SWITCH === 'true') break
@@ -70,7 +85,7 @@ export const runAutomaticMembershipBackfillBatch = async (
           await prisma.automaticMembershipGrant.update({ where: { id: grant.id }, data: { outcome: operation.status } })
           continue
         }
-        const operation = await adapter.grantMember({ externalOrgId: fresh.organization.externalOrgId, externalTeamId: target.team.externalTeamId, uoaSub, idempotencyKey })
+        const operation = await adapter.grantMember({ externalOrgId: fresh.organization.externalOrgId, externalTeamId: target.team.externalTeamId, uoaSub, idempotencyKey, ruleId: fresh.rule.id, ruleGeneration: fresh.generation, fenceToken: leaseToken })
         await prisma.$transaction(async (tx) => {
           await tx.automaticMembershipGrant.update({ where: { id: grant.id }, data: { operationId: operation.operationId, outcome: operation.status === 'accepted' ? 'pending' : operation.status } })
           if (operation.status === 'completed' || operation.status === 'already_member') {
@@ -79,8 +94,8 @@ export const runAutomaticMembershipBackfillBatch = async (
         })
       }
     }
-    const pendingGrants = await prisma.automaticMembershipGrant.count({ where: { ruleId: run.ruleId, generation: run.generation, outcome: 'pending' } })
-    await prisma.automaticMembershipBackfillRun.update({ where: { id: runId }, data: {
+    const pendingGrants = await prisma.automaticMembershipGrant.count({ where: { ruleId: candidate.ruleId, generation: candidate.generation, outcome: 'pending' } })
+    await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: {
       // A returned cursor means the next bounded page is due. Pending upstream
       // grants retain a queued run too, so operation status is reconciled after
       // an accepted asynchronous grant instead of being guessed complete.
@@ -89,9 +104,10 @@ export const runAutomaticMembershipBackfillBatch = async (
     } })
   } catch (error) {
     const current = await prisma.automaticMembershipBackfillRun.findUnique({ where: { id: runId }, select: { failureCount: true } })
-    await prisma.automaticMembershipBackfillRun.update({ where: { id: runId }, data: { status: 'queued', failureCount: { increment: 1 }, lastError: error instanceof Error ? error.message.slice(0, 500) : 'Unknown UOA backfill failure', nextAttemptAt: retryAt(current?.failureCount ?? 0) } })
+    const failures = (current?.failureCount ?? 0) + 1
+    await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { status: failures >= 8 ? 'completed_with_failures' : 'queued', failureCount: { increment: 1 }, attemptCount: { increment: 1 }, lastError: error instanceof Error ? error.message.slice(0, 500) : 'Unknown UOA backfill failure', ...(failures >= 8 ? {} : { nextAttemptAt: retryAt(failures) }) } })
   } finally {
-    await prisma.automaticMembershipGrantLease.deleteMany({ where: { leaseToken } })
+    await prisma.automaticMembershipBackfillRun.updateMany({ where: { id: runId, leaseToken }, data: { leaseToken: null, leaseGeneration: null, leaseExpiresAt: null } })
   }
 }
 

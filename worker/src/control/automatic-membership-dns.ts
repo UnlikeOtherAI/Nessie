@@ -11,9 +11,12 @@ export const revalidateAutomaticMembershipDns = async (
   dnsLookup: (name: string) => Promise<readonly string[][]> = resolveTxt,
   limit = 20,
 ): Promise<void> => {
-  if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED !== 'true' || !authSecret) return
+  // DNS health is independent from the provisioning flag/kill switch. A
+  // disabled worker never grants access, but it must still record expired proof
+  // and suspend active rules rather than leaving a stale verified state.
+  if (!authSecret) return
   const claims = await prisma.automaticMembershipDomainClaim.findMany({
-    where: { state: 'verified', releasedAt: null, OR: [{ verificationExpiresAt: { lte: new Date() } }, { lastDnsCheckAt: { lte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] },
+    where: { state: 'verified', releasedAt: null, OR: [{ verificationExpiresAt: { lte: new Date() } }, { lastDnsCheckAt: null }, { lastDnsCheckAt: { lte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] },
     include: { rules: { where: { state: 'active' } } }, take: limit,
   })
   for (const claim of claims) {
@@ -25,7 +28,15 @@ export const revalidateAutomaticMembershipDns = async (
     } catch {
       // A transient resolver fault is not definitive loss. Keep the existing
       // proof until its expiry, but record the check for operations visibility.
-      await prisma.automaticMembershipDomainClaim.update({ where: { id: claim.id }, data: { lastDnsCheckAt: new Date(), lastDnsFailure: 'DNS lookup was unavailable' } })
+      if (claim.verificationExpiresAt && claim.verificationExpiresAt <= new Date()) {
+        await prisma.$transaction(async (tx) => {
+          await tx.automaticMembershipDomainClaim.update({ where: { id: claim.id }, data: { state: 'suspended', lastDnsCheckAt: new Date(), lastDnsFailure: 'DNS lookup was unavailable after verification expired' } })
+          await tx.automaticMembershipRule.updateMany({ where: { claimId: claim.id, state: 'active' }, data: { state: 'suspended', suspensionReason: 'DNS verification expired and could not be revalidated.' } })
+          await writeAuditEntryInTransaction(tx, { organizationId: claim.organizationId, actorType: 'service', actorId: 'automatic-membership-dns', action: 'automatic_membership.suspended', resourceType: 'automatic_membership_claim', resourceId: claim.id, outcome: 'error', metadata: { reason: 'dns_unavailable_after_expiry' }, requestId: `automatic-membership:dns:${claim.id}` })
+        })
+      } else {
+        await prisma.automaticMembershipDomainClaim.update({ where: { id: claim.id }, data: { lastDnsCheckAt: new Date(), lastDnsFailure: 'DNS lookup was unavailable' } })
+      }
       continue
     }
     if (matched) {

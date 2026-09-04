@@ -369,6 +369,7 @@ enum AutomaticMembershipBackfillStatus {
   running
   paused
   completed
+  completed_with_failures
   failed
   cancelled
   superseded
@@ -1661,7 +1662,11 @@ model AutomaticMembershipBackfillRun {
   attemptedCount           Int                              @default(0) @map("attempted_count")
   grantedCount             Int                              @default(0) @map("granted_count")
   failureCount             Int                              @default(0) @map("failure_count")
+  attemptCount             Int                              @default(0) @map("attempt_count")
   nextAttemptAt            DateTime?                        @map("next_attempt_at")
+  leaseToken               String?                          @map("lease_token")
+  leaseExpiresAt           DateTime?                        @map("lease_expires_at")
+  leaseGeneration          Int?                             @map("lease_generation")
   requestedByUoaSub        String                           @map("requested_by_uoa_sub")
   lastError                String?                          @map("last_error")
   createdAt                DateTime                         @default(now()) @map("created_at")
@@ -1671,8 +1676,19 @@ model AutomaticMembershipBackfillRun {
   leases                   AutomaticMembershipGrantLease[]
 
   @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
   @@unique([ruleId, generation])
   @@map("automatic_membership_backfill_runs")
+}
+
+model AutomaticMembershipRateLimit {
+  organizationId           String                           @map("organization_id") @db.Uuid
+  domain                   String                           @map("domain_ascii")
+  windowStartedAt          DateTime                         @map("window_started_at")
+  used                     Int                              @default(0)
+
+  @@id([organizationId, domain])
+  @@map("automatic_membership_rate_limits")
 }
 
 model AutomaticMembershipGrant {

@@ -987,18 +987,20 @@ export const startWorker = async (
   // from the product's ordinary client credentials. Without it there is no
   // automatic-member write path at all; DNS revalidation remains safe.
   let automaticMembershipSweepInFlight = false
-  const automaticMembershipInterval = options.automaticMembershipAdapter ? setInterval(async () => {
+  const automaticMembershipInterval = setInterval(async () => {
     if (automaticMembershipSweepInFlight || abortController.signal.aborted) return
     automaticMembershipSweepInFlight = true
     try {
       await revalidateAutomaticMembershipDns(prisma, config.auth.secret ?? '')
-      await sweepAutomaticMembershipBackfills(prisma, options.automaticMembershipAdapter)
+      if (options.automaticMembershipAdapter) {
+        await sweepAutomaticMembershipBackfills(prisma, options.automaticMembershipAdapter)
+      }
     } catch (error) {
       console.error('[worker.automatic-membership] reconciliation failed', error)
     } finally {
       automaticMembershipSweepInFlight = false
     }
-  }, 60_000) : null
+  }, 60_000)
 
   console.log(
     JSON.stringify(
@@ -1031,7 +1033,7 @@ export const startWorker = async (
     clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
     clearTimeout(registrySyncKickoff)
-    if (automaticMembershipInterval) clearInterval(automaticMembershipInterval)
+    clearInterval(automaticMembershipInterval)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()
