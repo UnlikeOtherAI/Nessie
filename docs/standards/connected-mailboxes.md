@@ -19,7 +19,9 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   guessed**, since sending from the wrong address cannot be taken back; and
   **every send is approved and pinned** to the personal owner or the shared
   mailbox's installer, live-checked, with any source the recipient cannot reach
-  named on the request. An inactive shared-mailbox installer never falls back
+  named on the request. A pin is also the approval's read and delivery audience:
+  its card/reason and alert reach only that exact active person, whose existing
+  Approvals home remains reachable even outside the source channel. An inactive shared-mailbox installer never falls back
   to another member: an owner or admin reconnects the mailbox under an active
   approver before it can send. Standing send grants are deliberately absent: a grant is
   the mailbox owner's to give about their own account, and a shared mailbox has
@@ -83,6 +85,12 @@ Plan and as-built deltas:
   `mailbox_send` content tools. Their schemas reject undeclared fields before a
   policy or approval record can observe them, so a secret-shaped extra argument
   never becomes durable approval state.
+- **Standing Google consent is a separately bounded exception.** Direct settings
+  grants and the approval-card shortcut both use the same shared write boundary:
+  an active Google connection owned by the granter and an eligible non-system
+  agent in that organization are required at the final write. The shortcut only
+  accepts a live pinned `tool.invoke` approval that froze the exact connection;
+  connected-mailbox and lifecycle approvals remain one-time decisions.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,

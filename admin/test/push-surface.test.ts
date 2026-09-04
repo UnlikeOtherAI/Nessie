@@ -59,6 +59,22 @@ test('keeps the selected Files, Info, or Runs tab from suppressing its reply URL
 
 test('routes each durable attention kind to its owning surface', () => {
   assert.deepEqual(getAlertLink({
+    id: '00000000-0000-4000-8000-000000000009',
+    kind: 'approval_requested',
+    messageId: '00000000-0000-4000-8000-000000000010',
+    threadId: '00000000-0000-4000-8000-000000000011',
+    channelId: '00000000-0000-4000-8000-000000000012',
+    channelLabel: 'Private channel',
+    projectId: null,
+    taskId: null,
+    knowledgePageId: null,
+    actorUserId: null,
+    actorAgentId: null,
+    actorDisplayName: 'Nessie',
+    readAt: null,
+    createdAt: '2026-08-12T10:00:00.000Z',
+  }), { to: '/approvals' })
+  assert.deepEqual(getAlertLink({
     id: '00000000-0000-4000-8000-000000000010',
     kind: 'task_assigned',
     messageId: null,

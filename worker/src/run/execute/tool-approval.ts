@@ -269,17 +269,17 @@ export const createToolApprovalRequest = async (
     toolCallId: string
     toolName: string
   },
-): Promise<{ id: string }> => {
+): Promise<{ id: string; requiredApproverUserId: string | null }> => {
   const argsHash = hashJsonValue(input.args)
   const existing = await prisma.approvalRequest.findFirst({
     where: { runId: input.context.run.id, toolCallId: input.toolCallId },
-    select: { argsHash: true, id: true, toolName: true },
+    select: { argsHash: true, id: true, requiredApproverUserId: true, toolName: true },
   })
   if (existing) {
     if (existing.argsHash !== argsHash || existing.toolName !== input.toolName) {
       throw new Error('A tool-call id was reused with a different action or arguments.')
     }
-    return { id: existing.id }
+    return { id: existing.id, requiredApproverUserId: existing.requiredApproverUserId }
   }
   const data = {
     action: 'tool.invoke',
@@ -317,17 +317,20 @@ export const createToolApprovalRequest = async (
     toolName: input.toolName,
   }
   try {
-    return await prisma.approvalRequest.create({ data, select: { id: true } })
+    return await prisma.approvalRequest.create({
+      data,
+      select: { id: true, requiredApproverUserId: true },
+    })
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
     const raced = await prisma.approvalRequest.findFirst({
       where: { runId: input.context.run.id, toolCallId: input.toolCallId },
-      select: { argsHash: true, id: true, toolName: true },
+      select: { argsHash: true, id: true, requiredApproverUserId: true, toolName: true },
     })
     if (!raced) throw error
     if (raced.argsHash !== argsHash || raced.toolName !== input.toolName) {
       throw new Error('A tool-call id was reused with a different action or arguments.')
     }
-    return { id: raced.id }
+    return { id: raced.id, requiredApproverUserId: raced.requiredApproverUserId }
   }
 }

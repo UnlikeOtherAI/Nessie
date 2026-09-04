@@ -99,10 +99,15 @@ const ApprovalGoogleConnectionSchema = z.object({
  * browser must never choose a connection after the fact.
  */
 export const approvedGoogleConnectionForStandingConsent = (input: {
+  action: string | null
   context: unknown
   toolName: string | null
 }): string | null => {
-  if (!input.toolName || !STANDING_CONSENT_APPROVAL_TOOL_IDS.has(input.toolName)) {
+  if (
+    input.action !== 'tool.invoke'
+    || !input.toolName
+    || !STANDING_CONSENT_APPROVAL_TOOL_IDS.has(input.toolName)
+  ) {
     return null
   }
   const parsed = ApprovalGoogleConnectionSchema.safeParse(input.context)
@@ -120,7 +125,7 @@ export const registerGmailDraftRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, authSecret } = deps
+  const { prisma, requireActorContext, authSecret, isAgentAccessibleToActor } = deps
   const draftDeps = { encryptionSecret: authSecret }
 
   const fail = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
@@ -293,11 +298,16 @@ export const registerGmailDraftRoutes = (
         organizationId: actorContext.tenant.organizationId,
         ownerUserId: actorContext.actor.actorId,
         provider: 'google',
+        status: 'active',
       },
       select: { id: true },
     })
     if (!connection) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Connection not found')
+      return reply
+    }
+    if (!(await isAgentAccessibleToActor(actorContext, body.agentId))) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Agent not found')
       return reply
     }
     const grant = await grantSendAuthorization(prisma, {
@@ -309,6 +319,10 @@ export const registerGmailDraftRoutes = (
       ...(body.mode ? { mode: body.mode } : {}),
       ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
     })
+    if (!grant) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Connection or agent is no longer available')
+      return reply
+    }
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'gmail.send_grant.created',
@@ -345,13 +359,14 @@ export const registerGmailDraftRoutes = (
     const approval = await prisma.approvalRequest.findFirst({
       where: {
         id: body.approvalId,
+        action: 'tool.invoke',
         organizationId: actorContext.tenant.organizationId,
         // Only the person the gate is pinned to may turn it off.
         requiredApproverUserId: actorContext.actor.actorId,
         status: 'pending',
         expiresAt: { gt: new Date() },
       },
-      select: { agentId: true, context: true, toolName: true },
+      select: { action: true, agentId: true, context: true, toolName: true },
     })
     if (!approval) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
@@ -401,6 +416,10 @@ export const registerGmailDraftRoutes = (
       mode: body.mode ?? 'always',
       ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
     })
+    if (!grant) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'The Google account or agent is no longer available.')
+      return reply
+    }
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'gmail.send_grant.created',

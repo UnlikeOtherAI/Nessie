@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { registerApprovalRoutes } from '../../src/routes/approvals.js'
-import { IDS, foreignOwner, makeApp, seedTenants } from './harness.js'
+import { actorContext, IDS, foreignOwner, makeApp, seedTenants } from './harness.js'
 import { TenantStore } from './tenant-store.js'
 
 const seedApproval = (store: TenantStore) => {
@@ -21,6 +21,7 @@ const seedApproval = (store: TenantStore) => {
       action: 'agent.invoke',
       reason: 'needs approval',
       context: null,
+      requiredApproverUserId: null,
       requiredApproverRole: null,
       continuationToken: 'tok',
       status: 'pending',
@@ -41,6 +42,30 @@ test('GET /api/approvals never lists another org\'s approvals', async () => {
   const res = await app.inject({ method: 'GET', url: '/api/approvals' })
   assert.equal(res.statusCode, 200)
   assert.deepEqual((res.json() as { data: unknown[] }).data, [])
+  await app.close()
+})
+
+test('POST /api/approvals/:id/resolve identifies a known wrong pinned approver', async () => {
+  const store = new TenantStore()
+  const rows = seedApproval(store)
+  rows[0]!.requiredApproverUserId = IDS.userA
+  const otherMember = '00000000-0000-4000-8000-0000000000d1'
+  const app = makeApp(registerApprovalRoutes, store, actorContext({
+    organizationId: IDS.orgA,
+    projectId: IDS.projectA,
+    roles: ['owner'],
+    teamId: IDS.teamA,
+    userId: otherMember,
+  }))
+
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/approvals/${IDS.approvalA}/resolve`,
+    payload: { resolution: 'approved' },
+  })
+  assert.equal(res.statusCode, 403)
+  assert.equal((res.json() as { error: { code: string } }).error.code, 'APPROVER_REQUIRED')
+  assert.equal(rows[0]?.['status'], 'pending')
   await app.close()
 })
 

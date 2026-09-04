@@ -144,7 +144,32 @@ export const grantSendAuthorization = async (
     boundary?: string | null
   },
   now: Date = new Date(),
-): Promise<{ id: string; expiresAt: Date | null }> => {
+): Promise<{ id: string; expiresAt: Date | null } | null> => {
+  // Routes perform the same entitlement checks for their caller, but this is
+  // the shared write boundary: no caller may create a grant for a stale Google
+  // connection or an agent from another organization by bypassing route code.
+  const [connection, agent] = await Promise.all([
+    prisma.commsConnection.findFirst({
+      where: {
+        id: input.connectionId,
+        organizationId: input.organizationId,
+        ownerUserId: input.grantedByUserId,
+        provider: 'google',
+        status: 'active',
+      },
+      select: { id: true },
+    }),
+    prisma.agent.findFirst({
+      where: {
+        id: input.agentId,
+        organizationId: input.organizationId,
+        systemManaged: false,
+      },
+      select: { id: true },
+    }),
+  ])
+  if (!connection || !agent) return null
+
   const expiresAt = expiryForSendGrant(input.duration, now)
   const row = await prisma.sendAuthorizationGrant.upsert({
     where: {

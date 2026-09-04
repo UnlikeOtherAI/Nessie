@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client'
 
 import {
   expiryForSendGrant,
+  grantSendAuthorization,
   hasStandingSendAuthorization,
   resolveStandingConsentForToolCall,
 } from '../src/send-authorization.js'
@@ -25,6 +26,7 @@ type FakeGrant = {
 // call time rather than a type error — `mode` and `boundary` must be modelled.
 const prismaWith = (input: {
   connectionOwner?: string | null
+  eligibleAgent?: boolean
   grant?: FakeGrant | null
   draftOwner?: string | null
 }): PrismaClient => ({
@@ -37,6 +39,9 @@ const prismaWith = (input: {
     // Google accounts up; the fake must model that query too.
     findMany: async () => [{ id: CONN }],
   },
+  agent: {
+    findFirst: async () => input.eligibleAgent === false ? null : { id: AGENT },
+  },
   sendAuthorizationGrant: {
     findUnique: async () =>
       input.grant
@@ -48,6 +53,7 @@ const prismaWith = (input: {
             revokedAt: input.grant.revokedAt,
           }
         : null,
+    upsert: async () => ({ expiresAt: null, id: 'grant-1' }),
   },
   gmailDraftAction: {
     findFirst: async () =>
@@ -126,6 +132,24 @@ test('duration maps to an expiry, and forever to none', () => {
     new Date('2026-09-02T10:10:00.000Z'),
   )
   assert.ok((expiryForSendGrant('30d', now) as Date) > now)
+})
+
+test('the shared grant write refuses an inactive connection or foreign agent', async () => {
+  const input = {
+    agentId: AGENT,
+    connectionId: CONN,
+    duration: 'today' as const,
+    grantedByUserId: OWNER,
+    organizationId: ORG,
+  }
+  assert.equal(
+    await grantSendAuthorization(prismaWith({ connectionOwner: null }), input),
+    null,
+  )
+  assert.equal(
+    await grantSendAuthorization(prismaWith({ eligibleAgent: false }), input),
+    null,
+  )
 })
 
 // ── the chokepoint resolver ─────────────────────────────────────────────────

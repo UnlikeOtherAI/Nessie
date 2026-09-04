@@ -14,7 +14,12 @@ export type ToolAuthorizationDecision =
   | {
       args: Record<string, unknown>
       decision: 'suspend'
-      approval: { id: string; notice: string; toolName: string }
+      approval: {
+        id: string
+        notice: string
+        requiredApproverUserId: string | null
+        toolName: string
+      }
     }
 
 export type ToolAuthorizationContext = {

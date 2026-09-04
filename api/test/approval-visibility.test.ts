@@ -44,6 +44,7 @@ type Row = {
   resolvedAt: Date | null
   resolution: string | null
   resolutionNote: string | null
+  requiredApproverUserId: string | null
   requiredApproverRole: string | null
   continuationToken: string
   context: unknown
@@ -71,6 +72,7 @@ const makeRow = (overrides: Partial<Row> = {}): Row => ({
   resolvedAt: null,
   resolution: null,
   resolutionNote: null,
+  requiredApproverUserId: overrides.requiredApproverUserId ?? null,
   requiredApproverRole: null,
   continuationToken: 'token',
   context: null,
@@ -132,8 +134,11 @@ const makePrisma = (rows: Row[]): PrismaClient =>
     },
   }) as unknown as PrismaClient
 
-test('an owner sees every approval in their organization', () => {
-  assert.deepEqual(approvalVisibilityWhere(actorCtx(ownerId, ['owner'])), {})
+test('an owner sees unpinned approvals in their organization', () => {
+  assert.deepEqual(
+    approvalVisibilityWhere(actorCtx(ownerId, ['owner'])),
+    { OR: [{ requiredApproverUserId: ownerId }, { requiredApproverUserId: null }] },
+  )
 })
 
 test('a member does not see a private-channel approval they are not part of', async () => {
@@ -180,6 +185,24 @@ test('an owner sees a private-channel approval they are not a member of', async 
   ])
   const result = await listApprovalRequests(prisma, actorCtx(ownerId, ['owner']))
   assert.deepEqual(result.data.map((entry) => entry.id), ['private'])
+})
+
+test('a pinned approval is visible only to its exact approver', async () => {
+  const prisma = makePrisma([
+    makeRow({
+      channelId: privateChannelId,
+      channelIsPublic: true,
+      requiredApproverUserId: memberId,
+      visibleTo: [ownerId, requesterId],
+    }),
+  ])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(memberId))).data.map((row) => row.id), ['approval-1'])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(ownerId, ['owner']))).data, [])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(requesterId))).data, [])
+  assert.equal((await getApprovalRequest(prisma, 'approval-1', actorCtx(ownerId, ['owner']))), null)
+  assert.equal((await getApprovalRequest(prisma, 'approval-1', actorCtx(memberId)))?.id, 'approval-1')
+  assert.equal(await getPendingApprovalCount(prisma, actorCtx(ownerId, ['owner'])), 0)
+  assert.equal(await getPendingApprovalCount(prisma, actorCtx(memberId)), 1)
 })
 
 test('fetching an inaccessible approval by id returns null, not its reason', async () => {

@@ -31,6 +31,7 @@ import {
 import type { RunContext } from './types.js'
 import { bindGmailDraftApprovalFingerprint } from './gmail-draft-approval.js'
 import type {
+  ToolAuthorizationAuditEmitter,
   ToolAuthorizationContext,
   ToolAuthorizationDecision,
   ToolAuthorizationHooks,
@@ -310,6 +311,7 @@ export const authorizeToolExecution = async (
         approval: {
           id: approval.id,
           notice: `⚠️ I need approval: ${describeGatedAction(toolName, canonicalArgs).headline}.`,
+          requiredApproverUserId: approval.requiredApproverUserId,
           toolName,
         },
       }
@@ -370,7 +372,12 @@ export const authorizeToolExecution = async (
           return {
             args: canonicalArgs,
             decision: 'suspend',
-            approval: { id: approval.id, notice, toolName },
+            approval: {
+              id: approval.id,
+              notice,
+              requiredApproverUserId: approval.requiredApproverUserId,
+              toolName,
+            },
           }
         }
         return {
@@ -403,7 +410,7 @@ export const authorizeToolExecution = async (
       emitAudit,
       prisma,
       toolName,
-      verifiedApproval: policyDecision.approvalProofVerified,
+      verifiedApproval: policyDecision.approvalProofVerified ?? null,
     })) {
       await auditToolAuthorizationDenial(emitAudit, toolActorContext, context, toolName, {
         source: 'worker_tool_policy',

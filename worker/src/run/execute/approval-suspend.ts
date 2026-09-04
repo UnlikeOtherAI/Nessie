@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client'
 import { STRUCTURALLY_APPROVAL_GATED_TOOL_IDS } from '@nessie/runtime'
-import { parseAgentId, type RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  parseAgentId,
+  parseOrganizationId,
+  parseUserId,
+  type RunExecuteJobPayload,
+} from '@nessie/schemas'
 import type { InvocationRecord } from '@nessie/runtime'
 
 import {
@@ -17,6 +22,7 @@ export type ApprovalSuspendPlan = {
   approvalId: string
   checkpointId: string
   notice: string
+  requiredApproverUserId: string | null
   toolName: string
 }
 
@@ -29,7 +35,7 @@ export const prepareApprovalSuspend = async (
   deps: ExecutionDependencies,
   context: RunContext,
   input: {
-    approval: { id: string; notice: string; toolName: string }
+    approval: { id: string; notice: string; requiredApproverUserId: string | null; toolName: string }
     goal: string
     inference: RunInference
     invocationSink: InvocationRecord[]
@@ -52,6 +58,7 @@ export const prepareApprovalSuspend = async (
     approvalId: input.approval.id,
     checkpointId,
     notice: input.approval.notice,
+    requiredApproverUserId: input.approval.requiredApproverUserId,
     toolName: input.approval.toolName,
   }
 }
@@ -112,9 +119,10 @@ export const suspendRunForApproval = async (
   // unrestricted, which would post "your assistant wants to send an email" and
   // the approval affordance into whatever room the run is answering in.
   if (STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)) {
-    const actingUserId = payload.actorContext.actionContext.effectiveUserId
-    if (actingUserId) {
-      context.consumedSources?.add({ scopeType: 'user', scopeId: actingUserId })
+    const approverUserId = input.requiredApproverUserId
+      ?? payload.actorContext.actionContext.effectiveUserId
+    if (approverUserId) {
+      context.consumedSources?.add({ scopeType: 'user', scopeId: approverUserId })
     }
   }
 
@@ -142,7 +150,9 @@ export const suspendRunForApproval = async (
     channelId: context.channel.id,
     organizationId: context.channel.organizationId,
     toolName: input.toolName,
-    userId: payload.actorContext.actionContext.effectiveUserId ?? null,
+    userId: input.requiredApproverUserId
+      ?? payload.actorContext.actionContext.effectiveUserId
+      ?? null,
   })
 
   await applySuspendedState(deps, payload, context, {
@@ -150,7 +160,14 @@ export const suspendRunForApproval = async (
     invocations: input.invocations,
     runStatus: 'waiting_approval',
   })
-  await deps.realtimeTransport.publishWs(buildScopes(context), {
+  const scopes = input.requiredApproverUserId
+    ? [{
+      kind: 'user' as const,
+      organizationId: parseOrganizationId(context.channel.organizationId),
+      userId: parseUserId(input.requiredApproverUserId),
+    }]
+    : buildScopes(context)
+  await deps.realtimeTransport.publishWs(scopes, {
     data: {
       action: 'tool.invoke',
       agentId: parseAgentId(context.agent.id),

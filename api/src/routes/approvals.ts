@@ -82,6 +82,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
         ALREADY_RESOLVED: { code: 409, message: 'Approval already resolved' },
         SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
         EXPIRED: { code: 410, message: 'Approval request has expired' },
+        APPROVER_REQUIRED: { code: 403, message: 'This approval is assigned to another person' },
         ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
         RUN_NOT_WAITING: { code: 409, message: 'Approval is not ready to resolve' },
       }
