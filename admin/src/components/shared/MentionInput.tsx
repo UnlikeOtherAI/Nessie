@@ -13,7 +13,9 @@ import {
   decorateMarkdownEditor,
   extractEditorText,
   insertMarkdownEditorText,
+  markdownEditorCaretOffset,
 } from '../../lib/markdown-editor'
+import { formatDictationInsertion } from '../../lib/dictation-text'
 import { useConcealedFenceInput } from '../../hooks/useConcealedFenceInput'
 import { readAgentMentions } from './mention-input-agents'
 import { clearChildren, getMentionContext, matchesEntityQuery } from './mention-input-dom'
@@ -47,6 +49,7 @@ export type MentionInputHandle = {
   getAgentMentions: () => AgentMention[]
   getText: () => string
   insertAtSign: () => void
+  insertDictationText: (text: string) => void
   insertHashSign: () => void
   insertText: (text: string) => void
   /**
@@ -64,6 +67,8 @@ type Props = {
   onChange?: (text: string) => void
   onOversizePaste?: (paste: string) => void
   onSubmit: (text: string, agentMentions: AgentMention[]) => void
+  /** Holds the draft in place while a related composer action is in progress. */
+  submitDisabled?: boolean
   placeholder: string
 }
 
@@ -73,13 +78,14 @@ type Props = {
 
 export const MentionInput = forwardRef<MentionInputHandle, Props>(
   (
-    { entities, maxLength, onChange, onOversizePaste, onSubmit, placeholder },
+    { entities, maxLength, onChange, onOversizePaste, onSubmit, submitDisabled = false, placeholder },
     ref,
   ) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
     const composingRef = useRef(false)
     const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const rememberedCaret = useRef<number | null>(null)
     const [mentionContext, setMentionContext] = useState<{
       query: string
       trigger: '@' | '#'
@@ -136,9 +142,15 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
       if (!el) return
       const text = extractEditorText(el)
       if (!composingRef.current) decorateMarkdownEditor(el, text)
+      rememberedCaret.current = markdownEditorCaretOffset(el)
       setHasContent(text.trim().length > 0)
       onChange?.(text)
     }, [onChange])
+
+    const rememberCaret = useCallback(() => {
+      const editor = editorRef.current
+      if (editor) rememberedCaret.current = markdownEditorCaretOffset(editor)
+    }, [])
 
     const checkMention = useCallback(() => {
       const el = editorRef.current
@@ -270,15 +282,34 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         const el = editorRef.current
         if (!el) return
         el.focus()
-        // Place the cursor at the end so the insertion lands predictably
-        // instead of wherever the last selection happened to be.
+        // Existing programmatic inserts (for example a quoted message) retain
+        // their historical append behavior. Dictation has a dedicated cursor-
+        // preserving method below because the microphone takes focus.
         const range = document.createRange()
         range.selectNodeContents(el)
         range.collapse(false)
-        const sel = window.getSelection()
-        sel?.removeAllRanges()
-        sel?.addRange(range)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
         applyInsertion(text)
+      },
+      insertDictationText(text: string) {
+        const el = editorRef.current
+        if (!el) return
+        const cursor = markdownEditorCaretOffset(el)
+          ?? rememberedCaret.current
+          ?? extractEditorText(el).length
+        const currentText = extractEditorText(el)
+        const insertion = formatDictationInsertion(
+          currentText.slice(0, cursor),
+          text,
+          currentText.slice(cursor),
+        )
+        el.focus()
+        // The microphone takes focus while recording, so keep the author's
+        // last contenteditable caret and restore it for the transcription.
+        onEdit(insertMarkdownEditorText(el, insertion, cursor))
+        rememberedCaret.current = cursor + insertion.length
       },
     }))
 
@@ -315,6 +346,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
             composingRef.current = true
           }}
           onBlur={() => {
+            rememberCaret()
             // Delay so mouseDown on popup fires first
             if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
             blurTimeoutRef.current = setTimeout(() => setMentionContext(null), 150)
@@ -323,6 +355,9 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
             sync()
             checkMention()
           }}
+          onKeyUp={rememberCaret}
+          onMouseUp={rememberCaret}
+          onSelect={rememberCaret}
           onKeyDown={(e) => {
             const f = filteredRef.current
             const idx = selectedIdxRef.current
@@ -362,6 +397,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
 
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
+              if (submitDisabled) return
               const editor = editorRef.current
               if (!editor) return
               const text = extractEditorText(editor).trim()

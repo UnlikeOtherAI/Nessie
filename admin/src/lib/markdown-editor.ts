@@ -285,6 +285,8 @@ const caretOffset = (editor: HTMLElement): number | null => {
     : null
 }
 
+export const markdownEditorCaretOffset = caretOffset
+
 export const decorateMarkdownEditor = (editor: HTMLElement, text: string): void => {
   const cursor = caretOffset(editor)
   const mentions = collectMentionRanges(editor)
@@ -318,8 +320,8 @@ const spliceEditorText = (
 export const insertMarkdownEditorText = (
   editor: HTMLElement,
   insertion: string,
+  cursor = caretOffset(editor) ?? extractEditorText(editor).length,
 ): string => {
-  const cursor = caretOffset(editor) ?? extractEditorText(editor).length
   return spliceEditorText(editor, cursor, cursor, insertion)
 }
 
