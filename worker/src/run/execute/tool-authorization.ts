@@ -233,11 +233,18 @@ export const authorizeToolExecution = async (
     denial: { message: string; reason: string } | null
   } = { denial: null }
   let structuralApprovalProofUsed = false
+  let approvalProofClaimed = false
+  const approvalProofPresented = Boolean(
+    toolActorContext.approval?.approvalId || toolActorContext.approval?.approvalProof,
+  )
   const policyDecision = await (async () => {
     if (!rawPolicyDecision.allowed || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)) {
       return rawPolicyDecision
     }
-    if (rawPolicyDecision.approvalProofVerified && !auth.revalidateApprovalBoundary) {
+    if (
+      rawPolicyDecision.approvalProofVerified
+      && (!auth.revalidateApprovalBoundary || toolName === GMAIL_DRAFT_SEND_TOOL_ID)
+    ) {
       if (
         rawPolicyDecision.allowed
         && STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
@@ -246,6 +253,18 @@ export const authorizeToolExecution = async (
         structuralApprovalProofUsed = true
       }
       return rawPolicyDecision
+    }
+    // A raw approval handle is never another form of standing consent. In
+    // particular, a sealed Gmail continuation must not send under a grant when
+    // its exact proof is stale, for a different tool, or already claimed.
+    if (toolName === GMAIL_DRAFT_SEND_TOOL_ID && approvalProofPresented) {
+      return {
+        ...rawPolicyDecision,
+        allowed: false as const,
+        approvalActionType: undefined as string | undefined,
+        policyRuleId: undefined as string | undefined,
+        reason: 'approval_required' as const,
+      }
     }
     // A family that owns its own escalation answers first and is final for its
     // tools; standing consent is the send-as-you path and does not apply there.
@@ -487,7 +506,13 @@ export const authorizeToolExecution = async (
         }),
       }
     }
+    approvalProofClaimed = true
   }
 
-  return { args: canonicalArgs, decision: 'allow', toolActorContext }
+  return {
+    args: canonicalArgs,
+    decision: 'allow',
+    ...(approvalProofClaimed ? { approvalProofClaimedForTool: toolName } : {}),
+    toolActorContext,
+  }
 }

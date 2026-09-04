@@ -6,8 +6,8 @@ import {
 } from '@nessie/runtime'
 import {
   parseAgentId,
-  parseOrganizationId,
   parseRunId,
+  type AuthorizedActionContext,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
@@ -27,7 +27,8 @@ import { createPreparedToolExecutor, suspendedToolResult } from './prepared-tool
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
-import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
+import { emitWorkerAuditEvent } from './policy.js'
+import { buildBuiltinRuntimeContext } from './builtin-runtime-context.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
@@ -116,72 +117,16 @@ export const runExecutionAgentLoop = async (
 
   const delegateGate = createDelegateGate()
 
-  const buildBuiltinCtx = (
-    toolActorContext: ReturnType<typeof buildToolActorContext>,
-    toolCallId: string,
-  ) => ({
-    agentId: context.agent.id,
-    agentKind: context.agent.agentKind,
-    actorContext: toolActorContext,
-    demonstrationControl: {
-      clearActive: () => {
-        context.activeDemonstrationId = null
-      },
-      setActive: (demonstrationId: string) => {
-        context.activeDemonstrationId = demonstrationId
-      },
-    },
-    channel: {
-      id: context.channel.id,
-      organizationId: parseOrganizationId(context.channel.organizationId),
-      systemChannelType: context.channel.systemChannelType,
-      teamId: context.channel.teamId ?? null,
-    },
-    agentIdentity: {
-      ownerUserId: context.agent.ownerUserId ?? null,
-      visibility: (context.agent.visibility === 'private' ? 'private' : 'team') as
-        'private' | 'team',
-    },
-    cloudBrowser: deps.cloudBrowser,
-    consumedSources: context.consumedSources,
-    documentStream: deps.documentStream,
-    executorCommandEncryptionSecret: deps.executorCommandEncryptionSecret,
-    ledgerIdentity: deps.ledgerIdentity ?? null,
-    mcpSecrets: deps.mcpSecrets,
-    memoryCaptureConfig: {
-      modelClient: deps.modelClient,
-      pool: deps.searchConfig.pool,
-    },
-    modelClient: deps.modelClient,
-    prisma: deps.prisma,
-    realtimeTransport: deps.realtimeTransport,
-    run: {
-      id: context.run.id,
-      interactive: payload.interactive === true,
-      messageId: payload.messageId,
-      principalUserId: context.run.principalUserId,
-      originatingUserId:
-        toolActorContext.actionContext.effectiveUserId
-        ?? (
-          toolActorContext.actor.actorType === 'user'
-            ? toolActorContext.actor.actorId
-            : null
-        ),
-      threadId: context.run.threadId,
-    },
-    runContext: context,
-    toolCallId,
-  })
   const executeGuardedBuiltin = (
     toolName: string,
     args: Record<string, unknown>,
-    toolActorContext: ReturnType<typeof buildToolActorContext>,
+    toolActorContext: AuthorizedActionContext,
     toolCallId: string,
   ) =>
     executeBuiltinTool(
       toolName,
       args,
-      buildBuiltinCtx(toolActorContext, toolCallId),
+      buildBuiltinRuntimeContext({ context, deps, payload, toolActorContext, toolCallId }),
       input.stubbedBuiltinToolIds,
     )
   const contextPlan = buildContextPlan({
@@ -312,7 +257,14 @@ export const runExecutionAgentLoop = async (
     return executeBuiltinTool(
       toolName,
       canonicalArgs,
-      buildBuiltinCtx(authorization.toolActorContext, toolCallId),
+      buildBuiltinRuntimeContext({
+        approvalProofClaimedForTool: authorization.approvalProofClaimedForTool,
+        context,
+        deps,
+        payload,
+        toolActorContext: authorization.toolActorContext,
+        toolCallId,
+      }),
       input.stubbedBuiltinToolIds,
     )
 }

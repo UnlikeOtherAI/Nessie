@@ -1,5 +1,18 @@
 import type { PrismaClient } from '@prisma/client'
 
+export {
+  SEND_GRANT_DURATIONS,
+  approvedGoogleConnectionForStandingConsent,
+  expiryForSendGrant,
+  grantSendAuthorization,
+  grantSendAuthorizationFromApproval,
+  type GrantSendAuthorizationFromApprovalResult,
+  type SendGrantDuration,
+  type SendGrantInput,
+  type SendGrantPrisma,
+  type SendGrantResult,
+} from './send-authorization-grants.js'
+
 /**
  * Standing consent for an agent to send email as a person without asking each
  * time, modelled on `ScopeDisclosureGrant`.
@@ -10,20 +23,6 @@ import type { PrismaClient } from '@prisma/client'
  * query, not a rule somebody has to remember.
  */
 
-export const SEND_GRANT_DURATIONS = ['10m', 'today', '30d', 'forever'] as const
-export type SendGrantDuration = (typeof SEND_GRANT_DURATIONS)[number]
-
-export const expiryForSendGrant = (
-  duration: SendGrantDuration,
-  now: Date,
-): Date | null => {
-  if (duration === 'forever') return null
-  if (duration === '10m') return new Date(now.getTime() + 10 * 60 * 1000)
-  if (duration === '30d') return new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-  const endOfDay = new Date(now)
-  endOfDay.setHours(23, 59, 59, 999)
-  return endOfDay
-}
 
 export type SendAuthorizationContext = {
   organizationId: string
@@ -130,74 +129,6 @@ export const recordSendDecision = async (
       ? { decidedCount: { increment: 1 }, lastDecidedAt: new Date() }
       : { askedCount: { increment: 1 } },
   })
-}
-
-export const grantSendAuthorization = async (
-  prisma: PrismaClient,
-  input: {
-    organizationId: string
-    connectionId: string
-    agentId: string
-    grantedByUserId: string
-    duration: SendGrantDuration
-    mode?: 'always' | 'judged'
-    boundary?: string | null
-  },
-  now: Date = new Date(),
-): Promise<{ id: string; expiresAt: Date | null } | null> => {
-  // Routes perform the same entitlement checks for their caller, but this is
-  // the shared write boundary: no caller may create a grant for a stale Google
-  // connection or an agent from another organization by bypassing route code.
-  const [connection, agent] = await Promise.all([
-    prisma.commsConnection.findFirst({
-      where: {
-        id: input.connectionId,
-        organizationId: input.organizationId,
-        ownerUserId: input.grantedByUserId,
-        provider: 'google',
-        status: 'active',
-      },
-      select: { id: true },
-    }),
-    prisma.agent.findFirst({
-      where: {
-        id: input.agentId,
-        organizationId: input.organizationId,
-        systemManaged: false,
-      },
-      select: { id: true },
-    }),
-  ])
-  if (!connection || !agent) return null
-
-  const expiresAt = expiryForSendGrant(input.duration, now)
-  const row = await prisma.sendAuthorizationGrant.upsert({
-    where: {
-      connectionId_agentId: {
-        connectionId: input.connectionId,
-        agentId: input.agentId,
-      },
-    },
-    create: {
-      organizationId: input.organizationId,
-      connectionId: input.connectionId,
-      agentId: input.agentId,
-      grantedByUserId: input.grantedByUserId,
-      expiresAt,
-      mode: input.mode ?? 'always',
-      boundary: input.boundary ?? null,
-    },
-    // Re-granting clears a previous revocation; that is the point of granting.
-    update: {
-      expiresAt,
-      revokedAt: null,
-      grantedByUserId: input.grantedByUserId,
-      ...(input.mode ? { mode: input.mode } : {}),
-      ...(input.boundary !== undefined ? { boundary: input.boundary } : {}),
-    },
-    select: { id: true, expiresAt: true },
-  })
-  return row
 }
 
 export const revokeSendAuthorization = async (

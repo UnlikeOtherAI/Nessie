@@ -124,15 +124,18 @@ export {
 
 export {
   SEND_GRANT_DURATIONS,
+  approvedGoogleConnectionForStandingConsent,
   expiryForSendGrant,
   hasStandingSendAuthorization,
   grantSendAuthorization,
+  grantSendAuthorizationFromApproval,
   revokeSendAuthorization,
   listSendAuthorizations,
   resolveStandingConsentForToolCall,
   loadLiveSendGrant,
   recordSendDecision,
   type LiveSendGrant,
+  type GrantSendAuthorizationFromApprovalResult,
   type StandingConsentDecision,
   type SendGrantDuration,
   type SendGrantRecord,
