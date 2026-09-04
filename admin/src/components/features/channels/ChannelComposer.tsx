@@ -110,7 +110,7 @@ export const ChannelComposer = ({
                 </span>
                 <span className="flex flex-shrink-0 items-center gap-2">
                   <button
-                    className="admin-button-primary"
+                    className="admin-button admin-button-primary"
                     disabled={invitingAgentId === agent.id}
                     onClick={() => onInvitePendingAgent(agent.id)}
                     type="button"
@@ -120,7 +120,7 @@ export const ChannelComposer = ({
                       : 'Invite & reply'}
                   </button>
                   <button
-                    className="admin-button-secondary"
+                    className="admin-button admin-button-secondary"
                     onClick={() => onDismissPendingAgent(agent.id)}
                     type="button"
                   >
