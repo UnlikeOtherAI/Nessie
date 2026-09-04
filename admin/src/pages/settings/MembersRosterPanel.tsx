@@ -5,17 +5,21 @@ import type { TeamInvitationRecord, TeamMemberRecord } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
 import { TabBar } from '../../components/primitives/TabBar'
 import { DataTable, type DataTableColumn } from '../../components/shared/DataTable'
+import { Dialog } from '../../components/shared/Dialog'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { FormActions, FormError } from '../../components/shared/FormActions'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import { QueryState } from '../../components/shared/QueryState'
 import {
   useMemberInvitations,
   useMemberRoster,
+  useRevokeMemberInvitation,
   type MemberRosterScope,
 } from '../../facades/users/member-roster'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SettingsPanel } from './settings-shared'
 import { MemberInvitationDialog } from './MemberInvitationDialog'
+import { MemberDetailsDialog } from './MemberDetailsDialog'
 
 type RosterTab = 'active' | 'pending' | 'deactivated'
 
@@ -31,10 +35,15 @@ const dateLabel = (value: string | undefined) => {
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleDateString()
 }
 
+const toAvatarSources = (member: TeamMemberRecord) => ({
+  avatarUrl: member.avatarImageUrl,
+  ...(member.userId ? { userId: member.userId } : { uoaSub: member.uoaSub }),
+})
+
 const memberColumns = (
   scope: MemberRosterScope,
   token: string | null,
-) : DataTableColumn<TeamMemberRecord>[] => [
+): DataTableColumn<TeamMemberRecord>[] => [
   {
     header: 'User',
     key: 'user',
@@ -44,8 +53,7 @@ const memberColumns = (
           displayName={member.displayName ?? member.email ?? 'Member'}
           size={32}
           token={token}
-          uoaSub={member.uoaSub}
-          {...(member.userId ? { userId: member.userId } : {})}
+          {...toAvatarSources(member)}
         />
         <span className="min-w-0">
           <span className="block truncate font-medium">{member.displayName ?? 'Unnamed member'}</span>
@@ -94,6 +102,9 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const { token } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<TeamMemberRecord | null>(null)
+  const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
+  const [revokeError, setRevokeError] = useState<string | null>(null)
   const requestedTab = searchParams.get('membersTab')
   const tab: RosterTab = requestedTab === 'pending' || requestedTab === 'deactivated'
     ? requestedTab
@@ -104,6 +115,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     tab !== 'pending',
   )
   const invitations = useMemberInvitations(scope, tab === 'pending')
+  const revokeInvitation = useRevokeMemberInvitation(scope)
   const current = tab === 'pending' ? invitations : roster
   const permissions = current.query.data?.data.permissions
   const canInvite = permissions?.addMember === true
@@ -122,6 +134,27 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const members = roster.items
   const invitationsRows = invitations.items
   const tabPanelId = `members-${scope}-tabpanel-${tab}`
+  const closeInvitation = () => {
+    setSelectedInvitation(null)
+    setRevokeError(null)
+  }
+  const revokeSelectedInvitation = async () => {
+    if (!selectedInvitation) return
+    if (scope === 'organization' && !selectedInvitation.team?.id) {
+      setRevokeError('This invitation no longer has a workspace target.')
+      return
+    }
+    setRevokeError(null)
+    try {
+      await revokeInvitation.mutateAsync({
+        inviteId: selectedInvitation.inviteId,
+        ...(scope === 'organization' ? { teamId: selectedInvitation.team?.id } : {}),
+      })
+      closeInvitation()
+    } catch (error) {
+      setRevokeError(error instanceof Error ? error.message : 'Unable to cancel this invitation.')
+    }
+  }
 
   return (
     <SettingsPanel
@@ -155,6 +188,11 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 empty={<EmptyState title="No pending invitations">No invitations are awaiting a response.</EmptyState>}
                 expandable={false}
                 label="Pending invitations"
+                onRowClick={(invite) => {
+                  setRevokeError(null)
+                  setSelectedInvitation(invite)
+                }}
+                rowActionLabel={(invite) => `Open invitation for ${invite.name ?? invite.email ?? 'member'}`}
                 rowKey={(invite) => invite.inviteId}
                 rows={invitationsRows}
               />
@@ -164,6 +202,8 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 empty={<EmptyState title={tab === 'active' ? 'No active users' : 'No deactivated users'}>{tab === 'active' ? 'Invite someone to add the first member.' : 'No members are deactivated.'}</EmptyState>}
                 expandable={false}
                 label={tab === 'active' ? 'Active users' : 'Deactivated users'}
+                onRowClick={setSelectedMember}
+                rowActionLabel={(member) => `Open ${member.displayName ?? member.email ?? 'member'}`}
                 rowKey={(member) => member.uoaSub}
                 rows={members}
               />
@@ -184,6 +224,47 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
         </section>
       </div>
       <MemberInvitationDialog onClose={() => setInviteOpen(false)} open={inviteOpen} scope={scope} />
+      <MemberDetailsDialog
+        member={selectedMember}
+        onClose={() => setSelectedMember(null)}
+        open={selectedMember !== null}
+        permissions={roster.query.data?.data.permissions}
+        scope={scope}
+      />
+      <Dialog
+        description="This cannot be undone. You can send a new invitation later."
+        dismissDisabled={revokeInvitation.isPending}
+        onClose={closeInvitation}
+        open={selectedInvitation !== null}
+        title="Cancel invitation"
+      >
+        <div className="space-y-4 p-4">
+          <p className="text-sm text-[color:var(--tx)]">
+            Cancel the invitation for {selectedInvitation?.name ?? selectedInvitation?.email ?? 'this person'}?
+          </p>
+          <FormError>{revokeError}</FormError>
+          <FormActions destructive={(
+            <button
+              className="admin-button admin-button-danger"
+              disabled={revokeInvitation.isPending}
+              onClick={() => void revokeSelectedInvitation()}
+              type="button"
+            >
+              {revokeInvitation.isPending ? 'Cancelling…' : 'Cancel invitation'}
+            </button>
+          )}
+          >
+            <button
+              className="admin-button admin-button-secondary"
+              disabled={revokeInvitation.isPending}
+              onClick={closeInvitation}
+              type="button"
+            >
+              Keep invitation
+            </button>
+          </FormActions>
+        </div>
+      </Dialog>
     </SettingsPanel>
   )
 }

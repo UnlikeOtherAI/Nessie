@@ -123,6 +123,8 @@ test('a DataTable renders real column headers and a caption', () => {
   assert.match(markup, /<caption class="sr-only">Agents<\/caption>/)
   assert.match(markup, /scope="col"/)
   assert.match(markup, /admin-table/)
+  assert.match(markup, /overflow-hidden rounded-xl border/)
+  assert.match(markup, /border-b border-\[color:var\(--sep\)\]/)
   assert.match(markup, /Alpha/)
   assert.doesNotMatch(markup, /aria-label="Expand Agents"/)
   // Numbers line up under each other or they cannot be compared.
@@ -143,6 +145,24 @@ test('a sorted DataTable column announces its direction', () => {
   )
 
   assert.match(markup, /aria-sort="descending"/)
+})
+
+test('a detail row has the standard trailing chevron action', () => {
+  const markup = render(
+    createElement(DataTable<{ id: string }>, {
+      columns: [{ header: 'Id', key: 'id', render: (row) => row.id }],
+      expandable: false,
+      label: 'Rows',
+      onRowClick: () => undefined,
+      rowActionLabel: (row) => `Open ${row.id}`,
+      rowKey: (row) => row.id,
+      rows: [{ id: 'one' }],
+    }),
+  )
+
+  assert.match(markup, /aria-label="Open one"/)
+  assert.match(markup, /m9 18 6-6-6-6/)
+  assert.match(markup, /tabindex="0"/)
 })
 
 test('a loading DataTable draws its shape, an empty one says so', () => {

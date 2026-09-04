@@ -4,11 +4,15 @@ import { type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
+  addTeamMember,
   createTeamInvitation,
   listMemberInvitationTargets,
   listOrganisationMemberInvitations,
   listOrganisationMembers,
+  listOrganisationMemberWorkspaceAccess,
+  removeTeamMember,
   resolveLocalUserIdsByUoaSub,
+  revokeTeamInvitation,
   setTeamMemberActivation,
   updateOrganisationMemberRole,
   UoaInvitationAlreadyAcceptedError,
@@ -54,6 +58,14 @@ const CreateMemberInvitationSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   teamId: z.string().trim().min(1).max(200),
   teamRole: z.string().trim().min(1).max(100).optional(),
+})
+
+const WorkspaceAccessSchema = z.object({
+  workspaceIds: z.array(z.string().trim().min(1).max(200)).max(100),
+})
+
+const RevokeInvitationSchema = z.object({
+  teamId: z.string().trim().min(1).max(200),
 })
 
 const resolveOrganizationExternalId = async (
@@ -231,6 +243,24 @@ export const registerOrganizationMembersRoutes = (
     relayPage(request, reply, async (orgId, _actorContext, subjectDeps) =>
       listOrganisationMemberInvitations(orgId, RosterQuerySchema.parse(request.query), subjectDeps)))
 
+  app.post<{ Params: { inviteId: string } }>(
+    '/api/organization/member-invitations/:inviteId/revoke',
+    async (request, reply) =>
+      relay(
+        request,
+        reply,
+        { parse: () => parseInput(RevokeInvitationSchema, request.body, reply) },
+        async (orgId, body, subjectDeps) => {
+          await revokeTeamInvitation(
+            { externalOrgId: orgId, externalTeamId: body.teamId },
+            request.params.inviteId,
+            subjectDeps,
+          )
+          return { ok: true }
+        },
+      ),
+  )
+
   app.post('/api/organization/member-invitations', async (request, reply) =>
     relay(
       request,
@@ -256,6 +286,61 @@ export const registerOrganizationMembersRoutes = (
         { parse: () => parseInput(OrgRoleBodySchema, request.body, reply) },
         async (orgId, body, subjectDeps) => {
           await updateOrganisationMemberRole(orgId, request.params.uoaSub, body.role, subjectDeps)
+          return { ok: true }
+        },
+      ),
+  )
+
+  app.get<{ Params: { uoaSub: string } }>(
+    '/api/organization/members/:uoaSub/workspaces',
+    async (request, reply) =>
+      relay(request, reply, {}, async (orgId, _body, subjectDeps) =>
+        listOrganisationMemberWorkspaceAccess(orgId, request.params.uoaSub, subjectDeps)),
+  )
+
+  app.put<{ Params: { uoaSub: string } }>(
+    '/api/organization/members/:uoaSub/workspaces',
+    async (request, reply) =>
+      relay(
+        request,
+        reply,
+        { parse: () => parseInput(WorkspaceAccessSchema, request.body, reply) },
+        async (orgId, body, subjectDeps) => {
+          const access = await listOrganisationMemberWorkspaceAccess(
+            orgId,
+            request.params.uoaSub,
+            subjectDeps,
+          )
+          const available = new Map(access.items.map((workspace) => [workspace.id, workspace]))
+          const selected = new Set(body.workspaceIds)
+          if (
+            !access.permissions.changeWorkspaceAccess
+            || [...selected].some((workspaceId) => !available.has(workspaceId))
+          ) {
+            throw new UoaRosterRejectedError('[uoa] workspace access selection is not permitted', 403)
+          }
+
+          // UOA reauthorizes every exact-team write. Add first so replacing a
+          // person's final workspace never briefly violates its last-workspace
+          // invariant; UOA still enforces membership limits and freshness.
+          for (const workspace of access.items) {
+            if (selected.has(workspace.id) && !workspace.hasAccess) {
+              await addTeamMember(
+                { externalOrgId: orgId, externalTeamId: workspace.id },
+                { uoaSub: request.params.uoaSub },
+                subjectDeps,
+              )
+            }
+          }
+          for (const workspace of access.items) {
+            if (!selected.has(workspace.id) && workspace.hasAccess) {
+              await removeTeamMember(
+                { externalOrgId: orgId, externalTeamId: workspace.id },
+                request.params.uoaSub,
+                subjectDeps,
+              )
+            }
+          }
           return { ok: true }
         },
       ),

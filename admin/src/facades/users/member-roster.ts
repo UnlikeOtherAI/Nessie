@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   CreateMemberInvitationRequest,
   MemberInvitationTarget,
+  MemberWorkspaceAccessResponse,
   MemberRosterPermissions,
   TeamInvitationRecord,
   TeamMemberCandidate,
@@ -75,6 +76,17 @@ export const useTeamMemberCandidates = (query: string, enabled: boolean) => {
   })
 }
 
+export const useMemberWorkspaceAccess = (uoaSub: string | null, enabled: boolean) => {
+  const api = useApiClient()
+  return useQuery({
+    enabled: enabled && uoaSub !== null,
+    queryFn: () => api.getPage<MemberWorkspaceAccessResponse>(
+      `/api/organization/members/${encodeURIComponent(uoaSub!)}/workspaces`,
+    ),
+    queryKey: organizationKeys.memberWorkspaces(uoaSub ?? undefined),
+  })
+}
+
 const invalidateRosters = (queryClient: ReturnType<typeof useQueryClient>) => {
   void queryClient.invalidateQueries({ queryKey: organizationKeys.members })
   void queryClient.invalidateQueries({ queryKey: teamKeys.members })
@@ -99,6 +111,42 @@ export const useAddTeamMember = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: { uoaSub: string }) => api.post('/api/team/members', input),
+    onSuccess: () => invalidateRosters(queryClient),
+  })
+}
+
+export const useUpdateTeamMemberRole = () => {
+  const api = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { role: string; uoaSub: string }) =>
+      api.put(`/api/team/members/${encodeURIComponent(input.uoaSub)}/role`, { role: input.role }),
+    onSuccess: () => invalidateRosters(queryClient),
+  })
+}
+
+export const useUpdateMemberWorkspaceAccess = () => {
+  const api = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { uoaSub: string; workspaceIds: string[] }) =>
+      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/workspaces`, {
+        workspaceIds: input.workspaceIds,
+      }),
+    onSuccess: () => invalidateRosters(queryClient),
+  })
+}
+
+export const useRevokeMemberInvitation = (scope: MemberRosterScope) => {
+  const api = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { inviteId: string; teamId?: string }) =>
+      scope === 'team'
+        ? api.post(`/api/team/invitations/${encodeURIComponent(input.inviteId)}/revoke`, {})
+        : api.post(`/api/organization/member-invitations/${encodeURIComponent(input.inviteId)}/revoke`, {
+            teamId: input.teamId,
+          }),
     onSuccess: () => invalidateRosters(queryClient),
   })
 }

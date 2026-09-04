@@ -361,6 +361,8 @@ export const organizationKeys = {
   current: ['organization', 'current'] as const,
   invitationTargets: ['organization', 'members', 'invitation-targets'] as const,
   members: ['organization', 'members'] as const,
+  memberWorkspaces: (uoaSub?: string) =>
+    ['organization', 'members', uoaSub ?? 'none', 'workspaces'] as const,
 }
 
 export const personalAssistantKeys = {
