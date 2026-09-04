@@ -73,7 +73,7 @@ packages' tests; the whole repository's `pnpm lint` (29 tasks) and
 | Windows service `NessieExecutor` under `NT SERVICE\NessieExecutor`: supervision, `STOP_PENDING` checkpoints, named pipe `\\.\pipe\NessieExecutor` (JSON lines: `status`, `pair`, `start`, `stop`, `configure`) | `executor/service-windows/` |
 | Tray app (Tauri `tray-icon`): four icon states, menu, frameless status window, native confirmations, elevated workspace grant (`--grant-workspace`) | `executor/tray-windows/` |
 | Shared names (`SERVICE_NAME`, account, `%ProgramData%` layout, SID helper) | `executor/windows-common/` |
-| MSI (WiX 7): service install, Hyper-V Administrators via custom action, Hyper-V socket GUIDs, tray Run entry | `executor/packaging/windows/{nessie-executor.wxs,msi-plan.mjs,build-msi.mjs}` |
+| MSI (WiX 5): service install, Hyper-V Administrators via custom action, Hyper-V socket GUIDs, tray Run entry | `executor/packaging/windows/{nessie-executor.wxs,msi-plan.mjs,build-msi.mjs}` |
 | Hyper-V backend: Generation 2 VM via pinned, digest-checked PowerShell scripts; fixed-VHD wrapper → `Convert-VHD`; FAT32 boot disk written by the executor (`EFI/BOOT/BOOTX64.EFI` + `initrd.img`); per-session args inside the initrd (`nessie.args=initrd`) | `executor/src/hyperv/**`, `executor/packaging/windows/scripts/*.ps1` |
 | Hyper-V sockets bridge (named pipe ↔ `AF_HYPERV`) | `executor/hyperv-bridge/` |
 | EFI-stub guest kernel (6.1.155, `CONFIG_EFI_STUB`, `HYPERV_STORAGE`, `HYPERV_VSOCKETS`, built-in cmdline) | `executor/guest/kernel/{PIN,config,build.sh}` |
@@ -108,8 +108,8 @@ API suites (no pgvector locally).
 ### Windows 11 Pro, Hyper-V enabled
 
 1. Pull the branch; `pnpm install`; `rustup default stable-msvc`; install
-   Visual Studio C++ build tools, Node 22, and WiX 7 (`dotnet tool install
-   --global wix --version 7.0.0`).
+   Visual Studio C++ build tools, Node 22, and WiX 5 (`dotnet tool install
+   --global wix --version 5.0.2`).
 2. Shell: `pnpm --filter @nessie/desktop dev` against `pnpm dev`. Confirm the
    frameless window, rounded corners with shadow, Nessie's own controls, drag,
    resize from every edge, double-click maximize (square) and restore (round),
@@ -203,7 +203,7 @@ node executor/packaging/linux/build-deb.mjs                     # dist/nessie-ex
 # Guest kernel for Windows (Linux host, ~8 minutes on 4 cores)
 executor/guest/kernel/build.sh                                  # pinned 6.1.155, fails if a required option is missing
 
-# Windows standalone executor package (Windows host, WiX 7)
+# Windows standalone executor package (Windows host, WiX 5)
 NESSIE_GUEST_KERNEL=<path to bzImage> node executor/packaging/windows/build-msi.mjs
 
 # Release-provenance pins compiled into the binaries

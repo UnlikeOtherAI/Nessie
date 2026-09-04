@@ -32,9 +32,10 @@ const stagingDirectory = join(outputDirectory, 'nessie-executor-windows')
 /**
  * The WiX major this authoring targets. WiX is a .NET global tool, so the
  * version is pinned rather than "whatever is installed": its schema and its CLI
- * both change between majors.
+ * both change between majors. WiX 7 requires an explicit OSMF EULA acceptance;
+ * adopting that is an owner decision and must never be hidden inside this build.
  */
-const WIX_VERSION = '7.0.0'
+const WIX_VERSION = '5.0.2'
 
 const requireWindows = () => {
   if (process.platform !== 'win32') {
@@ -202,15 +203,18 @@ await run('wix', [
   '-arch', 'x64',
   '-d', `Version=${version}`,
   '-d', `StagingDir=${stagingDirectory}`,
-  // The tray's autostart entry is a per-user registry value in a per-machine
-  // package. That is the intent — the service serves everyone, the tray is one
-  // person's control surface — and these two validators exist to warn about
-  // exactly that shape, so they are suppressed by name rather than by turning
-  // validation off.
-  '-sice:ICE38',
-  '-sice:ICE64',
   '-o', packagePath,
-], { shell: true })
+])
+// Wix.exe builds and validates as separate operations. The tray's autostart
+// entry is a per-user registry value in a per-machine package by design: the
+// service serves everyone, while the tray is one person's control surface.
+// Suppress only the two ICEs that describe that deliberate shape.
+await run('wix', [
+  'msi', 'validate',
+  '-sice', 'ICE38',
+  '-sice', 'ICE64',
+  packagePath,
+])
 await rm(stagingDirectory, { force: true, recursive: true })
 await writeFile(`${packagePath}.sha256`, `${await sha256File(packagePath)}  ${name}\n`, {
   mode: 0o644,

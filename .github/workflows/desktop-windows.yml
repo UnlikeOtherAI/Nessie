@@ -21,7 +21,9 @@ concurrency:
 env:
   # The WiX major this repository's authoring targets. Both its schema and its
   # CLI change between majors, so it is pinned rather than "whatever installs".
-  WIX_VERSION: "7.0.0"
+  # WiX 7 additionally requires accepting its OSMF EULA; changing that legal
+  # commitment is an owner decision, not something a CI job may do implicitly.
+  WIX_VERSION: "5.0.2"
 
 jobs:
   # The guest kernel is a Linux build: a bzImage with the EFI stub, the Hyper-V

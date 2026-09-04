@@ -190,11 +190,15 @@ Build it on Windows, with Node 22 (the packaged runtime is a copy of the build
 host's Node), the MSVC toolchain, and the WiX toolset:
 
 ```powershell
-dotnet tool install --global wix --version 7.0.0
+dotnet tool install --global wix --version 5.0.2
 node executor\packaging\windows\build-msi.mjs
 # dist\NessieExecutor_<version>_x64.msi
 # dist\NessieExecutor_<version>_x64.msi.sha256
 ```
+
+WiX is deliberately pinned to 5.0.2. WiX 7 requires explicit acceptance of
+its OSMF EULA; moving to that license is an owner decision and must not be
+silently accepted by the build or CI.
 
 `NESSIE_EXECUTOR_VERSION` overrides the version taken from
 `executor/package.json`; it must be `major.minor.build`, which is all Windows

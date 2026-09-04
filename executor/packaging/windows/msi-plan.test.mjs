@@ -38,6 +38,16 @@ test('the tray build uses the supported no-installer option', () => {
   assert.equal(buildScript.includes("'--bundles', 'none'"), false)
 })
 
+test('WiX builds first and validates with the intended ICE exceptions', () => {
+  assert.ok(buildScript.includes("const WIX_VERSION = '5.0.2'"))
+  assert.ok(buildScript.includes("'msi', 'validate',"))
+  assert.ok(buildScript.includes("'-sice', 'ICE38',"))
+  assert.ok(buildScript.includes("'-sice', 'ICE64',"))
+  assert.equal(buildScript.includes("'-sice:ICE38'"), false)
+  assert.equal(buildScript.includes("'-sice:ICE64'"), false)
+  assert.ok(buildScript.indexOf("'build',") < buildScript.indexOf("'msi', 'validate',"))
+})
+
 test('a Hyper-V socket GUID is the guest port in the VSOCK template', () => {
   // Microsoft's own worked example: port 2761 is 0x00000ac9.
   assert.equal(hyperVSocketServiceGuid(2761), '00000ac9-facb-11e6-bd58-64006a7986d3')
@@ -196,6 +206,7 @@ test('the group membership runs after the service exists and never fails the ins
 })
 
 test('the state root is created and never removed', () => {
+  assert.ok(authoring.includes('Id="ExecutorStateDirectory"'))
   assert.ok(authoring.includes('<CreateFolder />'))
   // RemoveFolder would take a paired executor's machine key with it.
   assert.ok(!authoring.includes('<RemoveFolder'))
