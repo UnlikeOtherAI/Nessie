@@ -90,6 +90,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
+      '@nessie/sign-in-surface':
+        specifier: workspace:*
+        version: link:../packages/sign-in-surface
       '@tailwindcss/vite':
         specifier: ^4.2.2
         version: 4.2.2(vite@7.3.2(@types/node@22.20.1)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -813,6 +816,28 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  packages/sign-in-surface:
+    dependencies:
+      '@fortawesome/fontawesome-svg-core':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/free-brands-svg-icons':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/free-solid-svg-icons':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/react-fontawesome':
+        specifier: ^3.3.0
+        version: 3.3.0(@fortawesome/fontawesome-svg-core@7.3.1)(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.17
+      react:
+        specifier: ^19.2.0
+        version: 19.2.4
+
   packages/team-admin:
     dependencies:
       '@nessie/agent-mail':
@@ -858,10 +883,10 @@ importers:
 
   web:
     dependencies:
+      '@fontsource-variable/geist':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fortawesome/fontawesome-svg-core':
-        specifier: ^7.3.1
-        version: 7.3.1
-      '@fortawesome/free-brands-svg-icons':
         specifier: ^7.3.1
         version: 7.3.1
       '@fortawesome/free-solid-svg-icons':
@@ -876,6 +901,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
+      '@nessie/sign-in-surface':
+        specifier: workspace:*
+        version: link:../packages/sign-in-surface
       react:
         specifier: ^19.2.0
         version: 19.2.4
