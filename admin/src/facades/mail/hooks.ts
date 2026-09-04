@@ -70,10 +70,14 @@ export const useConnectedMailThreads = (
   })
 }
 
-export const useConnectedMailConversation = (address: MailAddress | null, threadId: string | undefined) => {
+export const useConnectedMailConversation = (
+  address: MailAddress | null,
+  threadId: string | undefined,
+  enabled = true,
+) => {
   const apiClient = useApiClient()
   return useQuery<ConnectedMailConversation>({
-    enabled: Boolean(address && threadId),
+    enabled: Boolean(address && threadId && enabled),
     placeholderData: keepPreviousData,
     queryKey: connectedMailKeys.conversation(address ?? { accountId: '', source: 'gmail' }, threadId),
     queryFn: async () => {
@@ -96,6 +100,18 @@ export const useConnectedMailDraft = (address: MailAddress | null) => {
     mutationFn: (input: ConnectedMailComposeInput) => {
       if (!address) throw new Error('Choose a mailbox first.')
       return apiClient.post<ConnectedMailDraftResult>(mailMutationUrl(address, '/drafts'), input)
+    },
+  })
+}
+
+export const useUpdateConnectedMailDraft = (address: MailAddress | null) => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: ({ draftId, input }: { draftId: string; input: ConnectedMailComposeInput }) => {
+      if (!address || address.source !== 'gmail') throw new Error('This provider draft cannot be updated.')
+      return apiClient.patch<ConnectedMailDraftResult>(
+        mailMutationUrl(address, `/drafts/${encodeURIComponent(draftId)}`), input,
+      )
     },
   })
 }

@@ -47,6 +47,7 @@ export const ConnectedMailPage = () => {
   const filter = searchParams.get('filter') === 'unread' ? 'unread' : 'all'
   const replyThreadId = searchParams.get('threadId') ?? undefined
   const replyMessageId = searchParams.get('reply') ?? undefined
+  const gmailDraftId = searchParams.get('draftId') ?? undefined
   const pageSize = Number(searchParams.get('pageSize') ?? '25')
   const [searchDraft, setSearchDraft] = useState('')
   const [query, setQuery] = useState('')
@@ -67,6 +68,7 @@ export const ConnectedMailPage = () => {
       <ConnectedMailCompose
         account={account}
         address={address}
+        gmailDraftId={gmailDraftId}
         onSent={() => navigate(mailPath(address))}
         replyTo={replyTo}
       />

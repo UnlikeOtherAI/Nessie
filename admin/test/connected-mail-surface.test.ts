@@ -36,6 +36,8 @@ test('mail doorway metadata accepts only identifiers and never content', () => {
     accountId: 'a', mode: 'thread', source: 'gmail', threadId: 't',
   })
   assert.equal(readMailSurfaceDoorway({ mailSurfaceDoorway: { accountId: 'a', body: 'private', mode: 'account', source: 'gmail' } }), null)
+  assert.equal(readMailSurfaceDoorway({ mailSurfaceDoorway: { accountId: 'a', draftId: 'd', mode: 'thread', source: 'gmail', threadId: 't' } }), null)
+  assert.equal(readMailSurfaceDoorway({ mailSurfaceDoorway: { accountId: 'a', draftId: 'd', mode: 'compose', source: 'mailbox' } }), null)
 })
 
 test('the chat doorway uses session-only offer state and shared dialog navigation', () => {
@@ -43,5 +45,19 @@ test('the chat doorway uses session-only offer state and shared dialog navigatio
   assert.match(doorway, /sessionStorage/)
   assert.match(doorway, /<Dialog/)
   assert.match(doorway, /useConnectedMailAccounts/)
+  assert.match(doorway, /MailSurfaceDoorwayMetadataSchema/)
+  assert.match(doorway, /open && Boolean\(account\)/)
+  assert.match(doorway, /await accounts\.refetch\(\)/)
   assert.doesNotMatch(doorway, /body:|recipients:|send:/)
+})
+
+test('compose and reply keep draft references structural and provider-owned', () => {
+  const compose = source('../src/components/features/connected-mail/ConnectedMailCompose.tsx')
+  const page = source('../src/pages/ConnectedMailPage.tsx')
+  assert.match(compose, /useGmailDraft/)
+  assert.match(compose, /gmailDraftId \? null : draftKey/)
+  assert.match(compose, /useUpdateConnectedMailDraft/)
+  assert.match(page, /searchParams\.get\('draftId'\)/)
+  assert.match(page, /threadId=.*reply=/)
+  assert.doesNotMatch(page, /searchParams\.get\('query'\)/)
 })
