@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   ADMIN_NAV,
+  isAdminNavItemActive,
   isAdminNavItemVisible,
   type AdminNavViewer,
 } from '../src/layouts/admin-shell/AdminSidebarNav.js'
@@ -71,4 +72,9 @@ test('owner-only items stay owner-only on a UOA session', () => {
       `${path} must stay owner-only`,
     )
   }
+})
+
+test('Team Members owns its route without also selecting Team Settings', () => {
+  assert.equal(isAdminNavItemActive(navItem('/settings/team/members'), '/settings/team/members'), true)
+  assert.equal(isAdminNavItemActive(navItem('/settings/team'), '/settings/team/members'), false)
 })

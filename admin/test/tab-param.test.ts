@@ -263,6 +263,7 @@ const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/apps/AppSecretDialog.tsx',
   'admin/src/components/features/channels/RunApprovalGate.tsx',
   'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
+  'admin/src/pages/settings/MemberInvitationDialog.tsx',
 ]
 
 test('no tab strip keeps its selection in component state', () => {

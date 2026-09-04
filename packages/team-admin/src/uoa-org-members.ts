@@ -1,6 +1,7 @@
 import { createUoaSubjectAssertion } from '@nessie/runtime'
 import type {
   MemberInvitationTarget,
+  MemberWorkspaceAccess,
   MemberRosterPermissions,
   TeamInvitationRecord,
   UoaSessionIdentity,
@@ -54,6 +55,11 @@ export type UoaInvitationPage = {
   items: TeamInvitationRecord[]
   meta: PaginationMeta
   permissions: InvitationPermissions
+}
+
+export type UoaMemberWorkspaceAccess = {
+  items: MemberWorkspaceAccess[]
+  permissions: { changeWorkspaceAccess: boolean }
 }
 
 /**
@@ -176,6 +182,43 @@ export const listOrganisationMemberInvitations = async (
     permissions: {
       createInvitation: permissions?.createInvitation === true,
       viewPendingInvitations: permissions?.viewPendingInvitations === true,
+    },
+  }
+}
+
+/**
+ * Live, editable workspace memberships for one organisation member. A UOA
+ * team is the workspace; omitted teams are outside this caller's authority.
+ */
+export const listOrganisationMemberWorkspaceAccess = async (
+  orgId: string,
+  uoaSub: string,
+  deps: UoaRosterDeps = {},
+): Promise<UoaMemberWorkspaceAccess> => {
+  const payload = await rosterRequest(
+    requireSettings(),
+    `${orgPath({ externalOrgId: orgId })}/members/${encodeURIComponent(uoaSub)}/workspaces`,
+    { method: 'GET' },
+    deps,
+  )
+  const body = asRecord(payload)
+  const rows = Array.isArray(body?.data) ? body.data : []
+  return {
+    items: rows.flatMap((value) => {
+      const row = asRecord(value)
+      const id = text(row?.id)
+      const name = text(row?.name)
+      if (!id || !name || typeof row?.hasAccess !== 'boolean') return []
+      return [{
+        id,
+        name,
+        hasAccess: row.hasAccess,
+        ...(text(row?.slug) ? { slug: text(row?.slug) } : {}),
+        ...(text(row?.avatarImageUrl) ? { avatarImageUrl: text(row?.avatarImageUrl) } : {}),
+      }]
+    }),
+    permissions: {
+      changeWorkspaceAccess: asRecord(body?.permissions)?.changeWorkspaceAccess === true,
     },
   }
 }

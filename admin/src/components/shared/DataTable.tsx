@@ -57,6 +57,8 @@ type DataTableProps<T> = {
   /** Keeps real columns readable on a narrow viewport; the viewport scrolls. */
   minWidth?: string
   onRowClick?: (row: T) => void
+  /** Adds the standard trailing disclosure action for a row-level detail view. */
+  rowActionLabel?: (row: T) => string
   onSortChange?: (next: SortState) => void
   rowKey: (row: T) => string
   rows: T[]
@@ -82,6 +84,7 @@ export const DataTable = <T,>({
   loading = false,
   minWidth,
   onRowClick,
+  rowActionLabel,
   onSortChange,
   rowKey,
   rows,
@@ -95,7 +98,7 @@ export const DataTable = <T,>({
     >
       <caption className="sr-only">{label}</caption>
       <thead>
-        <tr>
+        <tr className="border-b border-[color:var(--sep)]">
           {columns.map((column) => {
             const active = sort?.field === column.key
             const nextOrder: SortOrder = active && sort?.order === 'asc' ? 'desc' : 'asc'
@@ -133,6 +136,7 @@ export const DataTable = <T,>({
               </th>
             )
           })}
+          {onRowClick && rowActionLabel ? <th className={headCellClass} scope="col"><span className="sr-only">Open</span></th> : null}
         </tr>
       </thead>
       <tbody>
@@ -149,6 +153,7 @@ export const DataTable = <T,>({
                   <SkeletonBlock className="h-4 w-full" />
                 </td>
               ))}
+              {onRowClick && rowActionLabel ? <td className={cellClass}><SkeletonBlock className="ml-auto h-4 w-4" /></td> : null}
             </tr>
           ))
           : rows.map((row) => (
@@ -156,6 +161,15 @@ export const DataTable = <T,>({
               className={onRowClick ? 'cursor-pointer' : undefined}
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={onRowClick
+                ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      onRowClick(row)
+                    }
+                  }
+                : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
             >
               {columns.map((column) => (
                 <td
@@ -171,6 +185,23 @@ export const DataTable = <T,>({
                   {column.render(row)}
                 </td>
               ))}
+              {onRowClick && rowActionLabel ? (
+                <td className={`${cellClass} text-right`}>
+                  <button
+                    aria-label={rowActionLabel(row)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--main-hover)] hover:text-[color:var(--tx)]"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onRowClick(row)
+                    }}
+                    type="button"
+                  >
+                    <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path d="m9 18 6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </td>
+              ) : null}
             </tr>
           ))}
       </tbody>
@@ -181,5 +212,13 @@ export const DataTable = <T,>({
     return <>{empty}</>
   }
 
-  return <ExpandableTable expandable={expandable} label={label}>{body}</ExpandableTable>
+  return (
+    <ExpandableTable
+      className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
+      expandable={expandable}
+      label={label}
+    >
+      {body}
+    </ExpandableTable>
+  )
 }
