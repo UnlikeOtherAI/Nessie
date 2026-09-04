@@ -8,6 +8,11 @@ and is the authoritative replacement for the former remote-MCP-worker design.
 No executor schema, endpoint, companion, or UI may ship while contradicting
 this document.
 
+## Table of Contents
+
+- [Protocol and threat model](#1-scope-and-non-goals)
+- [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
+
 ## 1. Scope and non-goals
 
 An executor is a paired, capability-bearing endpoint that runs a constrained
