@@ -198,7 +198,7 @@ export const registerGmailDraftRoutes = (
       )
       await emitAuditEvent(prisma, {
         actorContext,
-        action: 'gmail.draft.sent',
+        action: result.status === 'held' ? 'gmail.draft.held' : 'gmail.draft.sent',
         resourceType: 'gmail_draft_action',
         resourceId: id,
         outcome: 'success',
@@ -224,6 +224,14 @@ export const registerGmailDraftRoutes = (
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         draftActionId: id,
+      })
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'gmail.draft.undone',
+        resourceType: 'gmail_draft_action',
+        resourceId: id,
+        outcome: 'success',
+        metadata: { status: action.state },
       })
       return createApiResponse({ id: action.id, state: action.state })
     } catch (error) {

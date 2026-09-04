@@ -1,4 +1,9 @@
 import { requestJson, GMAIL_API_BASE, encodeForm, type FetchLike } from '../http.js'
+import {
+  GMAIL_MAX_METADATA_RESPONSE_BYTES,
+  GMAIL_MAX_READ_RESPONSE_BYTES,
+  GmailReadBudget,
+} from './read-budget.js'
 
 /**
  * Gmail read operations for the agent tools.
@@ -58,6 +63,7 @@ type RawPart = {
 const walk = (
   part: RawPart | undefined,
   into: { body: string; attachments: GmailMessageDetail['attachments'] },
+  budget: GmailReadBudget,
 ): void => {
   if (!part) return
   const filename = typeof part.filename === 'string' ? part.filename : ''
@@ -77,10 +83,10 @@ const walk = (
     && typeof part.body?.data === 'string'
     && into.body.length === 0
   ) {
-    into.body = Buffer.from(part.body.data, 'base64url').toString('utf8')
+    into.body = budget.decode(part.body.data)
     return
   }
-  for (const child of part.parts ?? []) walk(child, into)
+  for (const child of part.parts ?? []) walk(child, into, budget)
 }
 
 const parseInternalDate = (value: unknown): string => {
@@ -88,6 +94,23 @@ const parseInternalDate = (value: unknown): string => {
   return Number.isFinite(millis)
     ? new Date(millis).toISOString()
     : new Date(0).toISOString()
+}
+
+const mapBounded = async <T, R>(
+  values: readonly T[],
+  concurrency: number,
+  map: (value: T) => Promise<R>,
+): Promise<R[]> => {
+  const results: R[] = []
+  let nextIndex = 0
+  const worker = async (): Promise<void> => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++
+      results[index] = await map(values[index]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker))
+  return results
 }
 
 /**
@@ -100,11 +123,12 @@ export const searchGmailThreads = async (
   accessToken: string,
   input: { query?: string; maxResults?: number; labelIds?: string[] },
 ): Promise<GmailThreadSummary[]> => {
+  const budget = new GmailReadBudget()
   const params: Record<string, string> = {
     maxResults: String(Math.min(Math.max(input.maxResults ?? 15, 1), 50)),
   }
   if (input.query) params.q = input.query
-  const { body } = await requestJson(
+  const listedResponse = await requestJson(
     fetchImpl,
     'messages.list',
     `${GMAIL_API_BASE}/messages?${encodeForm(params)}${
@@ -112,23 +136,26 @@ export const searchGmailThreads = async (
         .map((id) => `&labelIds=${encodeURIComponent(id)}`)
         .join('')
     }`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(listedResponse.responseBytes ?? 0)
+  const { body } = listedResponse
   const refs = (body as { messages?: { id?: unknown }[] }).messages ?? []
 
-  const summaries: GmailThreadSummary[] = []
-  for (const ref of refs) {
-    if (typeof ref?.id !== 'string') continue
+  const messageIds = refs.flatMap((ref) => typeof ref?.id === 'string' ? [ref.id] : [])
+  const summaries = await mapBounded(messageIds, 8, async (messageId) => {
     // `metadata` format returns headers without bodies — enough for a list and
     // far smaller than pulling every full message into the context window.
-    const { body: raw } = await requestJson(
+    const response = await requestJson(
       fetchImpl,
       'messages.get',
-      `${GMAIL_API_BASE}/messages/${encodeURIComponent(ref.id)}`
+      `${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}`
         + '?format=metadata&metadataHeaders=From&metadataHeaders=To'
         + '&metadataHeaders=Subject&metadataHeaders=Date',
-      { headers: { authorization: `Bearer ${accessToken}` } },
+      { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_METADATA_RESPONSE_BYTES },
     )
+    budget.addHttp(response.responseBytes ?? 0)
+    const raw = response.body
     const message = raw as {
       id?: unknown
       threadId?: unknown
@@ -137,10 +164,10 @@ export const searchGmailThreads = async (
       labelIds?: unknown
       payload?: { headers?: RawHeader[]; parts?: RawPart[] }
     }
-    if (typeof message?.id !== 'string') continue
+    if (typeof message?.id !== 'string') return null
     const headers = message.payload?.headers ?? []
     const labelIds = Array.isArray(message.labelIds) ? message.labelIds : []
-    summaries.push({
+    return {
       threadId: typeof message.threadId === 'string' ? message.threadId : message.id,
       messageId: message.id,
       from: headerValue(headers, 'From'),
@@ -152,9 +179,9 @@ export const searchGmailThreads = async (
       hasAttachments: (message.payload?.parts ?? []).some(
         (part) => typeof part?.filename === 'string' && part.filename.length > 0,
       ),
-    })
-  }
-  return summaries
+    }
+  })
+  return summaries.filter((summary): summary is GmailThreadSummary => summary !== null)
 }
 
 export const getGmailMessage = async (
@@ -162,12 +189,15 @@ export const getGmailMessage = async (
   accessToken: string,
   messageId: string,
 ): Promise<GmailMessageDetail> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'messages.get',
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const message = body as {
     id?: unknown
     threadId?: unknown
@@ -179,7 +209,7 @@ export const getGmailMessage = async (
   }
   const headers = message.payload?.headers ?? []
   const collected = { body: '', attachments: [] as GmailMessageDetail['attachments'] }
-  walk(message.payload, collected)
+  walk(message.payload, collected, budget)
   return {
     messageId: message.id,
     threadId: typeof message.threadId === 'string' ? message.threadId : message.id,
@@ -199,12 +229,15 @@ export const getGmailThread = async (
   accessToken: string,
   threadId: string,
 ): Promise<GmailMessageDetail[]> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'threads.get',
     `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const messages = (body as { messages?: unknown[] }).messages ?? []
   return messages.flatMap((raw) => {
     const message = raw as {
@@ -216,7 +249,7 @@ export const getGmailThread = async (
     if (typeof message?.id !== 'string') return []
     const headers = message.payload?.headers ?? []
     const collected = { body: '', attachments: [] as GmailMessageDetail['attachments'] }
-    walk(message.payload, collected)
+    walk(message.payload, collected, budget)
     return [{
       messageId: message.id,
       threadId: typeof message.threadId === 'string' ? message.threadId : threadId,

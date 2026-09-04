@@ -73,6 +73,17 @@ const fingerprintOf = (draft: GmailDraftContent): string =>
     attachmentIds: draft.attachments.map((a) => `${a.filename}:${a.sizeBytes}`),
   })
 
+const fingerprintMessage = (message: OutboundMessage): string =>
+  fingerprintDraft({
+    to: message.to,
+    cc: message.cc,
+    bcc: message.bcc,
+    subject: message.subject,
+    body: message.body,
+    attachmentIds: (message.attachments ?? []).map((attachment) =>
+      `${attachment.filename}:${attachment.content.byteLength}`),
+  })
+
 export type GmailDraftDeps = {
   encryptionSecret: string
   fetchImpl?: typeof safeFetch
@@ -167,20 +178,15 @@ export const composeDraftForUser = async (
     { ...input, capabilityId: 'gmail.compose' },
     deps,
   )
-  const fingerprint = fingerprintDraft({
-    to: input.message.to,
-    cc: input.message.cc,
-    bcc: input.message.bcc,
-    subject: input.message.subject,
-    body: input.message.body,
-    attachmentIds: (input.message.attachments ?? []).map(
-      (a) => `${a.filename}:${a.content.byteLength}`,
-    ),
-  })
+  const fingerprint = fingerprintMessage(input.message)
   const known = await prisma.gmailDraftAction.findUnique({
     where: { connectionId_clientRequestId: { connectionId: credential.id, clientRequestId: input.idempotencyKey } },
   })
   if (known) {
+    // An idempotency key names one exact provider draft. Returning a previous
+    // action for changed content would let the UI show new words while Send
+    // still targets the old Gmail draft.
+    if (known.contentFingerprint !== fingerprint) throw new GmailDraftError('DRAFT_CHANGED')
     if (known.state === 'draft' && known.providerDraftId) return toRecord(known)
     throw new GmailDraftError('DELIVERY_UNKNOWN')
   }
@@ -271,13 +277,7 @@ export const updateDraftForUser = async (
   } catch (error) {
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
   }
-  const fingerprint = fingerprintDraft({
-    to: input.message.to,
-    cc: input.message.cc,
-    bcc: input.message.bcc,
-    subject: input.message.subject,
-    body: input.message.body,
-  })
+  const fingerprint = fingerprintMessage(input.message)
   const row = await prisma.gmailDraftAction.update({
     where: { id: existing.id },
     data: {

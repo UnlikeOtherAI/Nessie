@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { writeAuditEntry } from '@nessie/db'
 import { dispatchClaimedDraft, resolveStaleGmailDispatches } from '@nessie/team-admin'
 
 /**
@@ -15,8 +16,34 @@ import { dispatchClaimedDraft, resolveStaleGmailDispatches } from '@nessie/team-
  * a lost response is not evidence that Gmail did not accept the message.
  *
  * Each row is dispatched independently and a failure never stops the batch:
- * one provider error must not strand every other person's mail behind it.
+ * one provider error must not strand every other person's mail behind it. A
+ * provider outcome we cannot prove is audited as unknown, never asserted as a
+ * failed delivery.
  */
+export const writeGmailDraftDispatchAudit = async (
+  prisma: PrismaClient,
+  input: { action: 'gmail.draft.sent' | 'gmail.draft.delivery_unknown'; id: string; organizationId: string },
+  writer: typeof writeAuditEntry = writeAuditEntry,
+): Promise<void> => {
+  try {
+    await writer(prisma, {
+      action: input.action,
+      actorId: 'gmail-draft-dispatch',
+      actorType: 'system',
+      metadata: { status: input.action === 'gmail.draft.sent' ? 'sent' : 'delivery_unknown' },
+      organizationId: input.organizationId,
+      outcome: input.action === 'gmail.draft.sent' ? 'success' : 'error',
+      requestId: `gmail-draft-dispatch:${input.id}`,
+      resourceId: input.id,
+      resourceType: 'gmail_draft_action',
+    })
+  } catch {
+    // The provider state is already durable. An audit outage cannot retry or
+    // roll back a send, and must not prevent later rows from dispatching.
+    console.error('[worker.gmail-send-sweep] failed to write audit transition')
+  }
+}
+
 export const sweepDueGmailSends = async (
   prisma: PrismaClient,
   deps: { encryptionSecret: string; now?: () => Date },
@@ -25,7 +52,7 @@ export const sweepDueGmailSends = async (
   const deliveryUnknown = await resolveStaleGmailDispatches(prisma, { now: () => now })
   const due = await prisma.gmailDraftAction.findMany({
     where: { state: 'sending', sendAfter: { lte: now } },
-    select: { id: true },
+    select: { id: true, organizationId: true },
     // Bounded so one very large backlog cannot monopolise a sweep tick.
     take: 50,
     orderBy: { sendAfter: 'asc' },
@@ -36,9 +63,21 @@ export const sweepDueGmailSends = async (
   for (const row of due) {
     try {
       await dispatchClaimedDraft(prisma, row.id, deps)
+      await writeGmailDraftDispatchAudit(prisma, {
+        action: 'gmail.draft.sent', id: row.id, organizationId: row.organizationId,
+      })
       dispatched += 1
     } catch {
-      // Already returned to `draft` by the dispatcher; count and continue.
+      const action = await prisma.gmailDraftAction.findUnique({
+        where: { id: row.id }, select: { state: true },
+      })
+      if (action?.state === 'delivery_unknown') {
+        await writeGmailDraftDispatchAudit(prisma, {
+          action: 'gmail.draft.delivery_unknown', id: row.id, organizationId: row.organizationId,
+        })
+      }
+      // The dispatcher either returned this row to draft before any provider
+      // request, or made an explicitly unknown terminal outcome. Count and continue.
       failed += 1
     }
   }

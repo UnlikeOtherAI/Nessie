@@ -1,6 +1,11 @@
 import { sanitizeEmailHtml, buildSnippet, normalizeMessageId } from '@nessie/agent-mail'
 
 import { GMAIL_API_BASE, encodeForm, requestJson, type FetchLike } from '../http.js'
+import {
+  GMAIL_MAX_METADATA_RESPONSE_BYTES,
+  GMAIL_MAX_READ_RESPONSE_BYTES,
+  GmailReadBudget,
+} from './read-budget.js'
 
 const MAX_BODY_CHARS = 100_000
 const MAX_ATTACHMENTS = 100
@@ -9,6 +14,7 @@ const MAX_ATTACH_NAME_CHARS = 500
 const MAX_CONTENT_TYPE_CHARS = 200
 const MAX_HEADER_CHARS = 1_000
 const MAX_MESSAGES = 200
+export const GMAIL_THREAD_METADATA_CONCURRENCY = 8
 
 const bounded = (value: string, max: number): string => value.slice(0, max)
 const optionalHeader = (value: string, max = MAX_HEADER_CHARS): string | null =>
@@ -101,14 +107,11 @@ const date = (value: unknown): string | null => {
   return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null
 }
 
-const decode = (value: unknown): string =>
-  typeof value === 'string' ? Buffer.from(value, 'base64url').toString('utf8') : ''
-
 const collect = (part: Part | undefined, into: {
   text: string
   html: string
   attachments: GmailMailConversation['messages'][number]['attachments']
-}): void => {
+}, budget: GmailReadBudget): void => {
   if (!part) return
   const filename = typeof part.filename === 'string' ? part.filename : ''
   if (filename && (typeof part.body?.attachmentId === 'string' || typeof part.body?.data === 'string')
@@ -123,14 +126,15 @@ const collect = (part: Part | undefined, into: {
     })
     return
   }
-  if (part.mimeType === 'text/plain' && !into.text) into.text = decode(part.body?.data)
-  if (part.mimeType === 'text/html' && !into.html) into.html = decode(part.body?.data)
-  for (const child of part.parts ?? []) collect(child, into)
+  if (part.mimeType === 'text/plain' && !into.text) into.text = budget.decode(part.body?.data)
+  if (part.mimeType === 'text/html' && !into.html) into.html = budget.decode(part.body?.data)
+  for (const child of part.parts ?? []) collect(child, into, budget)
 }
 
 const toMessage = (
   raw: unknown,
   fallbackThreadId: string,
+  budget: GmailReadBudget,
 ): GmailMailConversation['messages'][number] | null => {
   const message = raw as Message
   if (typeof message.id !== 'string') return null
@@ -139,7 +143,7 @@ const toMessage = (
     html: string
     attachments: GmailMailConversation['messages'][number]['attachments']
   }
-  collect(message.payload, collected)
+  collect(message.payload, collected, budget)
   const safeHtml = sanitizeEmailHtml(collected.html)
   const bodyFormat = safeHtml.html ? 'html' : 'text'
   const body = (bodyFormat === 'html' ? safeHtml.html : collected.text).slice(0, MAX_BODY_CHARS)
@@ -199,43 +203,65 @@ const metadataSummary = (
   }
 }
 
+const mapBounded = async <T, R>(
+  values: readonly T[],
+  limit: number,
+  work: (value: T) => Promise<R>,
+): Promise<R[]> => {
+  const output: R[] = new Array(values.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
+    while (next < values.length) {
+      const index = next
+      next += 1
+      output[index] = await work(values[index]!)
+    }
+  })
+  await Promise.all(workers)
+  return output
+}
+
 /** Gmail-native thread paging. Cursors and estimates remain provider semantics. */
 export const listGmailMailThreads = async (
   fetchImpl: FetchLike,
   accessToken: string,
   input: { cursor?: string; pageSize: number; query?: string; unreadOnly?: boolean },
 ): Promise<GmailMailThreadPage> => {
+  const budget = new GmailReadBudget()
   const params: Record<string, string> = { maxResults: String(input.pageSize) }
   const query = queryFor(input.query, input.unreadOnly)
   if (query) params.q = query
   if (input.cursor) params.pageToken = input.cursor
-  const { body } = await requestJson(
+  const listedResponse = await requestJson(
     fetchImpl,
     'threads.list',
     `${GMAIL_API_BASE}/threads?${encodeForm(params)}`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(listedResponse.responseBytes ?? 0)
+  const { body } = listedResponse
   const listed = body as {
     threads?: Array<{ id?: unknown; snippet?: unknown }>
     nextPageToken?: unknown
     resultSizeEstimate?: unknown
   }
-  const items: GmailMailThreadPage['items'] = []
-  for (const ref of listed.threads ?? []) {
-    if (typeof ref?.id !== 'string') continue
-    const { body: metadata } = await requestJson(
+  const refs = (listed.threads ?? []).filter((ref): ref is { id: string; snippet?: unknown } =>
+    typeof ref?.id === 'string')
+  const summaries = await mapBounded(refs, GMAIL_THREAD_METADATA_CONCURRENCY, async (ref) => {
+    const response = await requestJson(
       fetchImpl,
       'threads.get.metadata',
       metadataThreadUrl(ref.id),
-      { headers: { authorization: `Bearer ${accessToken}` } },
+      { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_METADATA_RESPONSE_BYTES },
     )
-    const summary = metadataSummary(
+    budget.addHttp(response.responseBytes ?? 0)
+    return metadataSummary(
       ref.id,
       ref.snippet,
-      (metadata as { messages?: unknown[] }).messages ?? [],
+      (response.body as { messages?: unknown[] }).messages ?? [],
     )
-    if (summary) items.push(summary)
-  }
+  })
+  const items = summaries.filter((summary): summary is GmailMailThreadPage['items'][number] => Boolean(summary))
   return {
     ...(typeof listed.nextPageToken === 'string' ? { nextCursor: listed.nextPageToken } : {}),
     ...(typeof listed.resultSizeEstimate === 'number' ? { estimate: listed.resultSizeEstimate } : {}),
@@ -249,15 +275,18 @@ export const readGmailMailThread = async (
   accessToken: string,
   threadId: string,
 ): Promise<GmailMailConversation> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'threads.get',
     `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const normalized = ((body as { messages?: unknown[] }).messages ?? [])
     .flatMap((message) => {
-      const normalized = toMessage(message, threadId)
+      const normalized = toMessage(message, threadId, budget)
       return normalized ? [normalized] : []
     })
     .sort((left, right) => (left.receivedAt ?? '').localeCompare(right.receivedAt ?? ''))
