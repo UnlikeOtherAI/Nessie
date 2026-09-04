@@ -1,5 +1,10 @@
 import crypto from 'node:crypto'
 
+import {
+  NESSIE_UOA_ORG_CAPABILITIES,
+  NESSIE_UOA_ROLE_GRANTS,
+} from './uoa-organization-administration.js'
+
 import { loadUoaSettings, type UoaSettings } from '@nessie/team-admin'
 
 import type { SsoTheme } from '../contracts/auth.js'
@@ -258,6 +263,11 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
       // applies no per-member role check: the owner/admin gate in
       // `routes/team-members.ts` is what authorises every mutation.
       backend_org_management: true,
+      // Nessie declares the one product-specific organisation capability in
+      // the signed UOA config. UOA keeps role authority; Nessie resolves this
+      // capability against its live role response (never a local role mirror).
+      capabilities: NESSIE_UOA_ORG_CAPABILITIES,
+      role_grants: NESSIE_UOA_ROLE_GRANTS,
     },
     // Slack-style team login: ask UOA to show the team chooser (and to
     // offer email sign-in codes) so a user picks the team they're entering.

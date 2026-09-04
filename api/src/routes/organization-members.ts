@@ -23,6 +23,7 @@ import {
   type UoaRosterDeps,
   type UoaRosterPage,
 } from '../services/uoa-org-roster.js'
+import { resolveOrganizationAdministrationAccess } from '../services/uoa-organization-administration.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -87,6 +88,36 @@ const resolveOrganizationExternalId = async (
     return null
   }
   return organization.externalOrgId
+}
+
+/** The Organization section is one capability, not a local-role convention. */
+const requireOrganizationAdministrator = async (
+  actorContext: AuthorizedActionContext,
+  externalOrgId: string,
+  reply: FastifyReply,
+  rosterDeps: UoaRosterDeps,
+): Promise<boolean> => {
+  const access = await resolveOrganizationAdministrationAccess(
+    { actorContext, organization: { externalOrgId } },
+    rosterDeps,
+  )
+  if (access.status === 'allowed') return true
+  if (access.status === 'unavailable') {
+    sendApiError(
+      reply,
+      503,
+      'UOA_ORGANIZATION_ACCESS_UNAVAILABLE',
+      'UnlikeOtherAI could not confirm organisation administrator access. Try again shortly.',
+    )
+    return false
+  }
+  sendApiError(
+    reply,
+    403,
+    'ORGANIZATION_ADMIN_REQUIRED',
+    'Organisation administrator access is required.',
+  )
+  return false
 }
 
 /** Map a relay failure onto the API's error envelope. Returns true if handled. */
@@ -163,6 +194,7 @@ export const registerOrganizationMembersRoutes = (
 
     const orgId = await resolveOrganizationExternalId(deps, actorContext, reply)
     if (!orgId) return reply
+    if (!(await requireOrganizationAdministrator(actorContext, orgId, reply, rosterDeps))) return reply
 
     try {
       return createApiResponse(await run(
@@ -195,6 +227,7 @@ export const registerOrganizationMembersRoutes = (
     if (!query) return reply
     const orgId = await resolveOrganizationExternalId(deps, actorContext, reply)
     if (!orgId) return reply
+    if (!(await requireOrganizationAdministrator(actorContext, orgId, reply, rosterDeps))) return reply
     try {
       const result = await run(
         orgId,

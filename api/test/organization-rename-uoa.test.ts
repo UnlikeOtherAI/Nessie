@@ -63,6 +63,8 @@ const json = (payload: unknown, status = 200): Response =>
 
 const makeApp = (options: {
   externalOrgId: string | null
+  orgRole?: string
+  uoaContextResponse?: () => Response
   respond?: (call: UpstreamCall) => Response
   teamLinked?: boolean
   withoutUoaIdentity?: boolean
@@ -136,7 +138,10 @@ const makeApp = (options: {
             : {}),
         }
         calls.push(call)
-        return (options.respond ?? (() => json({ id: externalOrgId, name: 'UnlikeOtherAI' })))(call)
+        return new URL(call.url).pathname === '/org/me'
+          ? (options.uoaContextResponse ?? (() =>
+              json({ ok: true, org: { org_id: externalOrgId, org_role: options.orgRole ?? 'admin' } })))()
+          : (options.respond ?? (() => json({ id: externalOrgId, name: 'UnlikeOtherAI' })))(call)
       }) as PinnedFetch,
       // The egress is IP-pinned; stub DNS so the pinned transport still runs.
       resolveHost: async () => ['93.184.216.34'],
@@ -154,13 +159,15 @@ test('renaming a UOA-bound organisation writes to UnlikeOtherAI first', async ()
     const response = await rename(app)
 
     assert.equal(response.statusCode, 200)
-    assert.equal(calls.length, 1)
-    assert.equal(calls[0]?.method, 'PUT')
-    assert.match(calls[0]?.url ?? '', /\/org\/organisations\/org_acme\?/)
-    assert.deepEqual(JSON.parse(calls[0]?.body ?? '{}'), { name: 'UnlikeOtherAI' })
+    assert.equal(calls.length, 2)
+    assert.equal(calls[0]?.method, 'GET')
+    assert.match(calls[0]?.url ?? '', /\/org\/me\?/)
+    assert.equal(calls[1]?.method, 'PUT')
+    assert.match(calls[1]?.url ?? '', /\/org\/organisations\/org_acme\?/)
+    assert.deepEqual(JSON.parse(calls[1]?.body ?? '{}'), { name: 'UnlikeOtherAI' })
     // UOA authorizes the person, not the tenant: the call carries the signed
     // subject assertion, never a spendable access token.
-    assert.ok(calls[0]?.subjectAssertion)
+    assert.ok(calls[1]?.subjectAssertion)
     // The mirror is written from UOA's echoed record, so the two agree by
     // construction rather than by both being told the same string.
     assert.deepEqual(updates, [{ name: 'UnlikeOtherAI' }])
@@ -178,7 +185,7 @@ test('a refusal from UnlikeOtherAI leaves the local name untouched', async () =>
 
     assert.equal(response.statusCode, 403)
     assert.equal(response.json().error.code, 'ORGANIZATION_RENAME_REJECTED')
-    assert.equal(calls.length, 1)
+    assert.equal(calls.length, 2)
     assert.deepEqual(updates, [])
   })
 })
@@ -203,7 +210,7 @@ test('a session with no UOA identity cannot rename a UOA-bound organisation', as
     const response = await rename(app)
 
     assert.equal(response.statusCode, 403)
-    assert.equal(response.json().error.code, 'UOA_SESSION_REQUIRED')
+    assert.equal(response.json().error.code, 'ORGANIZATION_ADMIN_REQUIRED')
     assert.deepEqual(calls, [])
     assert.deepEqual(updates, [])
   })
@@ -216,7 +223,8 @@ test('a team with no UOA mapping cannot rename a UOA-bound organisation', async 
 
     assert.equal(response.statusCode, 403)
     assert.equal(response.json().error.code, 'UOA_SESSION_REQUIRED')
-    assert.deepEqual(calls, [])
+    assert.equal(calls.length, 1)
+    assert.match(calls[0]?.url ?? '', /\/org\/me\?/)
     assert.deepEqual(updates, [])
   })
 })
@@ -233,7 +241,43 @@ test('a local-mode organisation still renames locally with no upstream call', as
   })
 })
 
-test('a PATCH that changes no name never reaches UnlikeOtherAI', async () => {
+test('a UOA member cannot rename an organisation even if the local projection says admin', async () => {
+  await withUoaEnv(async () => {
+    const { app, calls, updates } = makeApp({ externalOrgId, orgRole: 'member' })
+    const response = await rename(app)
+
+    assert.equal(response.statusCode, 403)
+    assert.equal(response.json().error.code, 'ORGANIZATION_ADMIN_REQUIRED')
+    assert.equal(calls.length, 1)
+    assert.match(calls[0]?.url ?? '', /\/org\/me\?/)
+    assert.deepEqual(updates, [])
+  })
+})
+
+test('the current-organisation response distinguishes UOA denial from an outage', async () => {
+  await withUoaEnv(async () => {
+    const forbidden = makeApp({ externalOrgId, orgRole: 'member' })
+    const unavailable = makeApp({
+      externalOrgId,
+      uoaContextResponse: () => json({ error: 'unavailable' }, 503),
+    })
+
+    try {
+      const forbiddenResponse = await forbidden.app.inject({ method: 'GET', url: '/api/organizations/current' })
+      const unavailableResponse = await unavailable.app.inject({ method: 'GET', url: '/api/organizations/current' })
+
+      assert.equal(forbiddenResponse.statusCode, 200)
+      assert.equal(forbiddenResponse.json().data.administration.status, 'forbidden')
+      assert.equal(unavailableResponse.statusCode, 200)
+      assert.equal(unavailableResponse.json().data.administration.status, 'unavailable')
+    } finally {
+      await forbidden.app.close()
+      await unavailable.app.close()
+    }
+  })
+})
+
+test('a PATCH that changes no name still checks UOA administration but does not relay a rename', async () => {
   await withUoaEnv(async () => {
     const { app, calls, updates } = makeApp({ externalOrgId })
     const response = await app.inject({
@@ -243,7 +287,8 @@ test('a PATCH that changes no name never reaches UnlikeOtherAI', async () => {
     })
 
     assert.equal(response.statusCode, 200)
-    assert.deepEqual(calls, [])
+    assert.equal(calls.length, 1)
+    assert.match(calls[0]?.url ?? '', /\/org\/me\?/)
     assert.deepEqual(updates, [{ stripImageMetadata: false }])
   })
 })

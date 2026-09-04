@@ -10,6 +10,7 @@ const base = {
   logoAttachmentId: null,
   stripImageMetadata: true,
   conversationalSetupEnabled: false,
+  administration: { status: 'allowed' },
 }
 
 /**
@@ -24,6 +25,14 @@ test('an organisation summary must say whether its name is the IdP’s', () => {
   assert.throws(
     () => OrganizationSummarySchema.parse(base),
     'a summary built without nameManagedExternally must be rejected, not defaulted',
+  )
+})
+
+test('an organisation summary must name the live administration state', () => {
+  const { administration: _administration, ...withoutAdministration } = base
+  assert.throws(
+    () => OrganizationSummarySchema.parse(withoutAdministration),
+    'a summary without administration state must be rejected, not defaulted',
   )
 })
 

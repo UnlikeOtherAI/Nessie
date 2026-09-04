@@ -1,9 +1,8 @@
-import { Navigate } from 'react-router-dom'
 import { OrganizationAgentsPage } from './organization/OrganizationAgentsPage'
 import { OrganizationProfilePage } from './organization/OrganizationProfilePage'
+import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
 import { TabBar } from '../../components/primitives/TabBar'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useTabParam } from '../../navigation/useTabParam'
 
 const ORGANIZATION_SETTINGS_TABS = ['profile', 'agents'] as const
@@ -25,19 +24,10 @@ const PAGES: Record<
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
-  // Team call settings follow their API route: owners and admins can change
-  // them. The organisation's own route authorizes the same two roles, so the
-  // page remains one coherent home for its profile and agent controls.
-  const isOwner = useIsOwner()
-  const canManageOrganization = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const [activeTab, setActiveTab] = useTabParam('tab', ORGANIZATION_SETTINGS_TABS, 'profile')
 
   if (!me) {
     return null
-  }
-
-  if (!canManageOrganization) {
-    return <Navigate to="/settings/account" replace />
   }
 
   const ActivePage = PAGES[activeTab]
@@ -52,5 +42,9 @@ export const OrganizationSettingsPage = () => {
     </div>
   )
 
-  return <ActivePage tabs={tabs} />
+  return (
+    <OrganizationAdministrationGate>
+      <ActivePage tabs={tabs} />
+    </OrganizationAdministrationGate>
+  )
 }

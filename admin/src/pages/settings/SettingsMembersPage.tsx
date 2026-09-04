@@ -22,6 +22,7 @@ import { SettingsPanel } from './settings-shared'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { MembersRosterPanel } from './MembersRosterPanel'
+import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
 import { toFormErrors } from '../../facades/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
@@ -183,7 +184,11 @@ export const SettingsMembersPage = () => {
   }
 
   if (isUoaSession) {
-    return <MembersRosterPanel scope="organization" />
+    return (
+      <OrganizationAdministrationGate>
+        <MembersRosterPanel scope="organization" />
+      </OrganizationAdministrationGate>
+    )
   }
 
   // Members management is owner-only; non-owners are routed back to their profile.
