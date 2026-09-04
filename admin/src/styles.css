@@ -2144,6 +2144,15 @@ html[data-desktop-platform='linux'] #root {
   color: var(--tx2);
 }
 
+.tabbar-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.tabbar-item:disabled:hover {
+  color: var(--tx3);
+}
+
 .tabbar-item[aria-selected='true'],
 .tabbar-item[aria-checked='true'] {
   color: var(--tx);

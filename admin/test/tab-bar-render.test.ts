@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import * as React from 'react'
 import { createElement } from 'react'
@@ -26,6 +28,9 @@ const render = (props: Partial<Parameters<typeof TabBar<string>>[0]> = {}): stri
       ...props,
     }),
   )
+
+const readSource = (relativePath: string): string =>
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
 test('a tab strip marks the selected item and links it to its panel', () => {
   const html = render({ idPrefix: 'demo' })
@@ -55,6 +60,40 @@ test('a filter strip announces itself as a radio group, never as tabs', () => {
   assert.match(html, /role="radio"/)
   assert.match(html, /aria-checked="true"/)
   assert.doesNotMatch(html, /aria-selected=/)
+})
+
+test('disabled choices are unavailable to radio-style strips', () => {
+  const html = render({
+    items: [
+      { label: 'Ready', value: 'contacted' },
+      { disabled: true, label: 'Unavailable', value: 'prospects' },
+    ],
+    role: 'radiogroup',
+  })
+
+  assert.match(html, /disabled=""[^>]*>Unavailable/)
+})
+
+test('every compact form selector reaches the shared sliding strip', () => {
+  // Form-specific wrappers preserve their labels and submit behaviour, but they
+  // may not grow a second compact selection visual. These are the former
+  // button-row holdouts; cards with descriptive content are intentionally not
+  // part of this list.
+  const hosts: ReadonlyArray<readonly [string, string]> = [
+    ['../src/components/shared/ChoiceGroup.tsx', '<TabBar'],
+    ['../src/components/features/dashboards/AddWidgetPanel.tsx', '<ChoiceGroup'],
+    ['../src/components/kanban/TaskDialog.tsx', '<TabBar'],
+    ['../src/layouts/admin-shell/user-menu/PresenceControl.tsx', '<TabBar'],
+    ['../src/components/features/integrations/BuildMeProjectPanel.tsx', '<ChoiceGroup'],
+    ['../src/components/features/integrations/DeepTestSecurityPanel.tsx', '<ChoiceGroup'],
+    ['../src/components/features/integrations/DeepWaterResearchCustomControls.tsx', '<ChoiceGroup'],
+    ['../src/components/features/knowledge/VersionHistory.tsx', '<ChoiceGroup'],
+    ['../src/pages/project/ProjectSettingsPage.tsx', '<ChoiceGroup'],
+  ]
+
+  for (const [file, expected] of hosts) {
+    assert.ok(readSource(file).includes(expected), `${file} must use ${expected}`)
+  }
 })
 
 test('the sliding pill is absent until the client has measured it', () => {
