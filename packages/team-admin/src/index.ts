@@ -130,12 +130,14 @@ export {
   isCredentialRejection,
   listMailboxConnectionsForUser,
   loadManageableMailboxConnection,
+  mailboxConnectionTestFailure,
   presentMailboxConnection,
   setMailboxAgentAccess,
   verifyMailboxConnection,
   type ActingMember as MailboxActingMember,
   type CreateMailboxConnectionInput,
   type MailboxConnectionRefusal,
+  type MailboxConnectionTestFailure,
 } from './mailbox-connections.js'
 
 export {

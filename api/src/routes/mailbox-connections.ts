@@ -1,8 +1,17 @@
 import type { FastifyInstance } from 'fastify'
 import {
   CreateMailboxConnectionBodySchema,
+  DiscoverMailboxConnectionBodySchema,
+  MailboxDiscoveryResultSchema,
   SetMailboxAgentAccessBodySchema,
+  type MailboxDiscoveryExistingConnection,
+  type MailboxProviderFamily,
 } from '@nessie/schemas'
+import {
+  createMailboxDiscoveryService,
+  MailboxDiscoveryAddressError,
+} from '@nessie/agent-mail'
+import { hasConnector } from '@nessie/comms-connect'
 import {
   MailboxConnectionError,
   createMailboxConnection,
@@ -37,8 +46,11 @@ const STATUS_BY_REFUSAL: Record<string, number> = {
   address_taken: 409,
   agent_not_found: 404,
   connection_not_found: 404,
+  credential_rejected: 400,
+  invalid_certificate: 400,
   invalid_address: 400,
   not_permitted: 403,
+  server_unavailable: 503,
   team_not_found: 404,
   test_failed: 400,
 }
@@ -48,6 +60,22 @@ export const registerMailboxConnectionRoutes = (
   deps: RouteDeps,
 ): void => {
   const { prisma, requireActorContext, authSecret } = deps
+  // Classification alone must never promise an OAuth button that this process
+  // cannot complete. `hasConnector` proves the adapter was registered at
+  // startup; the matching client pair proves its deployment config exists.
+  const discovery = createMailboxDiscoveryService({
+    capabilities: {
+      appleAuthorization: false,
+      google: hasConnector('google')
+        && Boolean(
+          process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID
+          && process.env.NESSIE_COMMS_GOOGLE_CLIENT_SECRET,
+        ),
+      jmap: false,
+      microsoft: hasConnector('microsoft')
+        && Boolean(process.env.NESSIE_COMMS_MICROSOFT_CLIENT_ID),
+    },
+  })
 
   /**
    * The role the API already re-resolved for this request. `requireActorContext`
@@ -75,6 +103,93 @@ export const registerMailboxConnectionRoutes = (
     }
     throw error
   }
+
+  const existingConnectionFor = async (input: {
+    actor: MailboxActingMember
+    address: string
+    organizationId: string
+    provider: MailboxProviderFamily
+    scope?: 'user' | 'team'
+    teamId?: string
+  }): Promise<MailboxDiscoveryExistingConnection | undefined> => {
+    // Model A personal mailboxes are visible only to the person who installed
+    // them; administration role is intentionally irrelevant here.
+    const storedAddress = input.address.toLowerCase()
+    const own = await prisma.mailboxConnection.findFirst({
+      select: { id: true },
+      where: {
+        address: storedAddress,
+        organizationId: input.organizationId,
+        ownerUserId: input.actor.userId,
+      },
+    })
+    if (own) return { id: own.id, kind: 'mailbox_connection', scope: 'user' }
+
+    // A shared connection is an existence hint only for the scope a manager is
+    // explicitly setting up. This avoids both cross-team and cross-user leaks.
+    if (
+      input.scope === 'team' && input.teamId
+      && (input.actor.role === 'admin' || input.actor.role === 'owner')
+    ) {
+      const shared = await prisma.mailboxConnection.findFirst({
+        select: { id: true },
+        where: {
+          address: storedAddress,
+          organizationId: input.organizationId,
+          teamId: input.teamId,
+        },
+      })
+      if (shared) return { id: shared.id, kind: 'mailbox_connection', scope: 'team' }
+    }
+
+    // Provider-native connections are personal by model. Restricting this
+    // lookup to the caller and classified provider ensures it cannot become an
+    // account-existence oracle for somebody else's connection.
+    if (input.provider === 'google' || input.provider === 'microsoft') {
+      const comms = await prisma.commsConnection.findFirst({
+        select: { id: true },
+        where: {
+          externalUserId: storedAddress,
+          organizationId: input.organizationId,
+          ownerUserId: input.actor.userId,
+          provider: input.provider,
+        },
+      })
+      if (comms) return { id: comms.id, kind: 'comms_connection' }
+    }
+    return undefined
+  }
+
+  // ── POST /api/mailbox-connections/discover ───────────────────────────────
+  // Address-first discovery is deliberately read-only: it has no credential,
+  // creates no row, and leaves an undiscoverable mailbox as a normal manual
+  // result rather than surfacing network probe failures to a person.
+  app.post('/api/mailbox-connections/discover', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(DiscoverMailboxConnectionBodySchema, request.body, reply)
+    if (!body) return reply
+    try {
+      const result = await discovery(body.email)
+      const existingConnection = await existingConnectionFor({
+        actor: actingMember(actorContext),
+        address: result.email,
+        organizationId: actorContext.tenant.organizationId,
+        provider: result.provider,
+        ...(body.scope ? { scope: body.scope } : {}),
+        ...(body.teamId ? { teamId: body.teamId } : {}),
+      })
+      return reply.send(createApiResponse(MailboxDiscoveryResultSchema.parse({
+        ...result,
+        ...(existingConnection ? { existingConnection } : {}),
+      })))
+    } catch (error) {
+      if (error instanceof MailboxDiscoveryAddressError) {
+        return sendApiError(reply, 400, 'INVALID_EMAIL_ADDRESS', error.message, 'email')
+      }
+      throw error
+    }
+  })
 
   // ── GET /api/mailbox-connections ──────────────────────────────────────────
   app.get('/api/mailbox-connections', async (request, reply) => {

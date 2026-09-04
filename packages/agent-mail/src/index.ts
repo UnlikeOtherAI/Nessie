@@ -85,6 +85,7 @@ export {
   dialTls,
   upgradeToTls,
   type DialOptions,
+  type MailDialErrorKind,
   type MailEndpoint,
   type MailSecurity,
 } from './dial.js'
@@ -113,3 +114,23 @@ export {
   type MailboxSearchQuery,
   type MailboxSummary,
 } from './mailbox-client.js'
+
+export {
+  createMailboxDiscoveryService,
+  MailboxDiscoveryAddressError,
+  parseMailboxDiscoveryAddress,
+  type MailboxDiscoveryCapabilities,
+  type MailboxDiscoveryDeps,
+  type MailboxDiscoveryDns,
+  type MailboxDiscoveryFetch,
+  type MailboxDiscoveryTimeout,
+} from './mailbox-discovery.js'
+
+export {
+  MAILBOX_PROVIDER_REGISTRY,
+  MAILBOX_PROVIDER_REGISTRY_VERSION,
+  providerForAutodiscover,
+  providerForDomain,
+  providerForMx,
+  type MailboxProviderRegistryEntry,
+} from './provider-registry.js'
