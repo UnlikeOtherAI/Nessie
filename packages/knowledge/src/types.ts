@@ -290,6 +290,9 @@ export type MovePageInput = {
   pageId: string
   parentPageId?: string | null
   position: number
+  // A move is a page edit too. When supplied from If-Match it prevents a
+  // stale tree drag from overwriting a colleague's later change.
+  expectedRevision?: number
 }
 
 export type PublishPageInput = {

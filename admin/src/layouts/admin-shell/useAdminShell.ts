@@ -16,6 +16,7 @@ import {
 } from '../../facades/personal-assistant/hooks';
 import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
+import { useCurrentOrganization } from '../../facades/organization/hooks';
 import type { AgentRecord } from '../../lib/api-client';
 import { newChannelComposeLocationState } from '../../lib/channel-compose-navigation';
 import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
@@ -64,6 +65,8 @@ export const useAdminShell = () => {
   // Members doorway belongs to (any active member reads the roster).
   const isUoaSession = me?.auth.providerType === 'uoa';
   const { data: users = [] } = useUsers(isOwner);
+  const organization = useCurrentOrganization();
+  const canManageOrganization = organization.data?.administration.status === 'allowed';
   const isAgentsRoute = location.pathname.startsWith('/agents');
   // Dashboards render inside the Knowledge section (they are filed between
   // My Docs and Spaces), so they share its secondary column rather than
@@ -414,6 +417,7 @@ export const useAdminShell = () => {
     createProjectOpen,
     currentChannelId,
     currentProjectId,
+    canManageOrganization,
     dmCollapsed,
     isAdminRoute,
     isAgentsRoute,

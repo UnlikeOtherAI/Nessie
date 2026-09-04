@@ -78,6 +78,11 @@ import {
   runEmailListTool,
   runEmailReadTool,
   runEmailSendTool,
+  runEmailAccountAgentAccessTool,
+  runEmailAccountCheckTool,
+  runEmailAccountConnectTool,
+  runEmailAccountDisconnectTool,
+  runEmailAccountListTool,
 } from './pa-tools.js'
 import { runAgentHandoffTool } from './pa-tools/agent-handoff.js'
 import { cloudBrowserTool } from './browser-cloud/browser-tools.js'
@@ -464,6 +469,16 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runEmailReadTool(context, args))
     case 'email_send':
       return wrapTool(inputSummary, () => runEmailSendTool(context, args))
+    case 'email_account_list':
+      return wrapTool(inputSummary, () => runEmailAccountListTool(context))
+    case 'email_account_connect':
+      return wrapTool(inputSummary, () => runEmailAccountConnectTool(context, args))
+    case 'email_account_check':
+      return wrapTool(inputSummary, () => runEmailAccountCheckTool(context, args))
+    case 'email_account_disconnect':
+      return wrapTool(inputSummary, () => runEmailAccountDisconnectTool(context, args))
+    case 'email_account_agent_access':
+      return wrapTool(inputSummary, () => runEmailAccountAgentAccessTool(context, args))
     case 'comms_connect_card':
       return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
     case 'meeting_link_create':

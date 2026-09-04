@@ -19,6 +19,7 @@ import { sendFileServiceError } from './uploads.js'
 import {
   actorAuthorType,
   attachPageEnvelope,
+  canViewerReachProject,
   createKnowledgeAccess,
   requireKnowledgePolicy,
   requireProjectId,
@@ -106,6 +107,18 @@ export const registerKnowledgeTaskRoutes = (
     if (!projectId) return null
 
     const viewer = await buildViewer(actorContext)
+    // Prove entitlement before either provisioner writes. Otherwise a caller
+    // who merely knows a foreign ticket id can become the creator of its
+    // lazily-provisioned Project Documents space and bypass the project fence.
+    if (!canViewerReachProject(viewer, projectId)) {
+      sendApiError(
+        reply,
+        403,
+        'POLICY_DENIED',
+        'Knowledge base access denied: PROJECT_ACCESS_REQUIRED',
+      )
+      return null
+    }
     const { spaceId: docsSpaceId } = await ensureProjectDocumentsSpace(prisma, {
       organizationId: actorContext.tenant.organizationId,
       projectId,
@@ -140,6 +153,8 @@ export const registerKnowledgeTaskRoutes = (
       where: {
         taskId,
         organizationId: actorContext.tenant.organizationId,
+        projectId: team.projectId,
+        spaceId: team.docsSpaceId,
         deletedAt: null,
         status: { not: 'archived' },
       },

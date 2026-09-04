@@ -337,7 +337,19 @@ test('buildConfigJwt requests UOA team features', async () => {
       // Backend mode for the roster/invitation relay: without it UOA answers
       // 401 MISSING_ACCESS_TOKEN to every `/org/*` call Nessie makes.
       backend_org_management: true,
+      capabilities: ['nessie.organisation.manage'],
       enabled: true,
+      role_grants: {
+        org: {
+          admin: [
+            'members.manage',
+            'teams.manage',
+            'organisation.manage',
+            'nessie.organisation.manage',
+          ],
+        },
+        team: { admin: ['members.manage', 'teams.manage'] },
+      },
     })
     // Slack-style team chooser must be requested so UOA issues the
     // `active { orgId, teamId }` claim Nessie routes on.

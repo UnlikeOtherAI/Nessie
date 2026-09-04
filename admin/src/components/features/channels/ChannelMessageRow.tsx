@@ -26,6 +26,7 @@ import {
   readMessageEmbedIds,
 } from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
+import { EmailAccountConnectCard } from './EmailAccountConnectCard'
 import { GmailDraftCard } from './GmailDraftCard'
 import { GoogleScopeRequestCard } from './GoogleScopeRequestCard'
 import { AllowedByRuleCard } from './AllowedByRuleCard'
@@ -442,6 +443,9 @@ export const ChannelMessageRow = ({
             : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <EmailAccountConnectCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <GmailDraftCard metadata={message.metadata} />

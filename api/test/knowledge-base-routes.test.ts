@@ -11,6 +11,9 @@ import {
   KnowledgeProvider,
   KnowledgeSpaceRecord,
 } from '@nessie/knowledge'
+import {
+  canManageKnowledgeSpaceAccess,
+} from '../src/routes/knowledge-base-access.js'
 import { registerKnowledgeBaseRoutes } from '../src/routes/knowledge-base.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
@@ -263,6 +266,41 @@ test('knowledge routes derive page authorType from actor context, not request bo
   await app.close()
 })
 
+test('knowledge page creation rejects a project other than its destination space project', async () => {
+  const { app, calls } = makeApp('allow')
+  const otherProjectId = '00000000-0000-4000-8000-0000000000b1'
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/spaces/${spaceId}/pages`,
+    payload: { title: 'Runbook', body: '# Runbook', projectId: otherProjectId },
+  })
+
+  assert.equal(response.statusCode, 400)
+  assert.equal(response.json().error.code, 'KNOWLEDGE_PAGE_INVALID')
+  assert.deepEqual(calls, [])
+  await app.close()
+})
+
+test('knowledge page move forwards If-Match as its expected revision', async () => {
+  let moveInput: Record<string, unknown> | null = null
+  const { app } = makeApp('allow', {
+    movePage: async (input) => {
+      moveInput = input
+      return makePage()
+    },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/pages/${pageId}/move`,
+    headers: { 'if-match': '"7"' },
+    payload: { parentPageId: null, position: 0 },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(moveInput?.['expectedRevision'], 7)
+  await app.close()
+})
+
 test('knowledge page listing verifies the space before listing pages', async () => {
   const { app, calls } = makeApp('allow', {
     getSpace: async () => null,
@@ -414,7 +452,7 @@ test('knowledge mutations map Prisma unique conflicts without leaking constraint
   await app.close()
 })
 
-test('a plain writer cannot restrict a shared space or edit its membership', async () => {
+test('a plain writer cannot widen a shared space, raise its sensitivity, or edit membership', async () => {
   const calls: string[] = []
   const memberContext: AuthorizedActionContext = {
     ...actorContext,
@@ -433,7 +471,12 @@ test('a plain writer cannot restrict a shared space or edit its membership', asy
   const response = await app.inject({
     method: 'PATCH',
     url: `/api/knowledge-base/spaces/${spaceId}`,
-    payload: { writeRestricted: true, memberUserIds: [userId] },
+    payload: {
+      memberUserIds: [userId],
+      sensitivityTier: 'sensitive',
+      visibility: 'organization',
+      writeRestricted: true,
+    },
   })
 
   assert.equal(response.statusCode, 403)
@@ -441,6 +484,19 @@ test('a plain writer cannot restrict a shared space or edit its membership', asy
   assert.match(response.json().error.message, /SPACE_ADMIN_REQUIRED/)
   assert.deepEqual(calls, [])
   await app.close()
+})
+
+test('agents cannot initiate knowledge space access changes', () => {
+  const agentContext: AuthorizedActionContext = {
+    actor: { actorType: 'agent', actorId: '00000000-0000-4000-8000-000000000099', roles: [] },
+    tenant: { organizationId, projectId },
+    actionContext: { requestId: 'req-kb-agent-access' },
+  }
+
+  assert.equal(
+    canManageKnowledgeSpaceAccess(makeSpace({ createdBy: agentContext.actor.actorId }), agentContext),
+    false,
+  )
 })
 
 test('a plain writer may still edit non-administrative space details', async () => {

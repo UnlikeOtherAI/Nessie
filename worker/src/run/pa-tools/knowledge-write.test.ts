@@ -105,6 +105,7 @@ type FakePrismaOptions = {
   space?: ReturnType<typeof buildSpaceRow> | null
   agents?: AgentFixture[]
   pendingApprovals?: ApprovalRow[]
+  task?: { id: string } | null
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
@@ -213,6 +214,9 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     },
     projectMember: {
       findMany: async () => [{ projectId: 'project-1' }],
+    },
+    task: {
+      findFirst: async () => options.task === undefined ? { id: 'task-1' } : options.task,
     },
     approvalRequest: {
       findMany: async () => options.pendingApprovals ?? [],
@@ -347,6 +351,25 @@ test('kb_draft_write binds a newly created page to its ticket via taskId', async
   assert.equal(createPageCalls.length, 1)
   assert.equal(createPageCalls[0]?.['taskId'], 'task-1')
   assert.match(result.outputPreview, /Created draft page "Design notes"/)
+})
+
+test('kb_draft_write rejects binding a writable space to a ticket in another project', async () => {
+  const page = buildPageRow({ id: 'page-new', title: 'Design notes' })
+  const space = buildSpaceRow()
+  const { prisma, createPageCalls } = buildFakePrisma({ page, space, task: null })
+  const context = makeContext(prisma)
+
+  await assert.rejects(
+    () =>
+      runKbDraftWriteTool(context, {
+        spaceId: 'space-1',
+        title: 'Design notes',
+        body: '<p>hi</p>',
+        taskId: 'foreign-task',
+      }),
+    /Ticket not found in this knowledge space project/,
+  )
+  assert.equal(createPageCalls.length, 0)
 })
 
 test('kb_draft_write defaults taskId to null on a new page when not supplied', async () => {

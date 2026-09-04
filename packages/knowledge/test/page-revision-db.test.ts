@@ -103,4 +103,38 @@ dbTest('a knowledge page revision advances per update and refuses a stale save',
     organizationId: organization.id,
   })
   assert.equal(overwritten?.revision, 2)
+
+  const destination = await provider.createPage({
+    authorId: user.id,
+    authorType: 'user',
+    createdBy: user.id,
+    organizationId: organization.id,
+    projectId: project.id,
+    spaceId: space.id,
+    title: 'Destination folder',
+  })
+  const moved = await provider.movePage({
+    expectedRevision: 2,
+    organizationId: organization.id,
+    pageId: created.id,
+    parentPageId: destination.id,
+    position: 0,
+  })
+  assert.equal(moved?.revision, 3)
+  assert.equal(moved?.parentPageId, destination.id)
+
+  await assert.rejects(
+    provider.movePage({
+      expectedRevision: 2,
+      organizationId: organization.id,
+      pageId: created.id,
+      parentPageId: null,
+      position: 0,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof KnowledgePageRevisionConflictError)
+      assert.equal(error.currentRevision, 3)
+      return true
+    },
+  )
 })

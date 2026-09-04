@@ -15,6 +15,8 @@ export type AdminNavViewer = {
   isAdmin: boolean;
   isOwner: boolean;
   isSuperAdmin: boolean;
+  /** Live UOA capability (or the local-mode owner/admin fallback). */
+  canManageOrganization: boolean;
   /**
    * An UnlikeOtherAI session: UOA owns membership, and the team roster
    * (`GET /api/team/members`) is entitlement-scoped to any active member
@@ -278,11 +280,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     id: 'organization',
     heading: 'Organization',
+    visibleTo: ({ canManageOrganization }) => canManageOrganization,
     items: [
       {
         path: '/settings/organization',
         label: 'Settings',
-        visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
+        visibleTo: ({ canManageOrganization }) => canManageOrganization,
         icon: icon(
           <>
             <path d="M4 21V7l8-4 8 4v14" strokeLinecap="round" strokeLinejoin="round" />
@@ -293,11 +296,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/settings/members',
         label: 'Members',
-        // On a UOA session the roster read is entitlement-scoped to any active
-        // member, so everyone gets the doorway and the page renders the
-        // mutation controls for owners/admins only. A local session keeps the
-        // owner-only page (local create/role controls), so the nav follows.
-        visibleTo: ({ isOwner, isUoaSession }) => isUoaSession || isOwner,
+        visibleTo: ({ canManageOrganization }) => canManageOrganization,
         icon: icon(
           <>
             <circle cx="9" cy="8" r="3.2" />
@@ -484,6 +483,7 @@ const AdminNavSection = ({
 };
 
 export const AdminSidebarNav = ({
+  canManageOrganization,
   pathname,
   isAdmin,
   isOwner,
@@ -492,8 +492,8 @@ export const AdminSidebarNav = ({
 }: AdminSidebarNavProps) => {
   const nativeTouchShell = isReactNativeWebView();
   const viewer = useMemo<AdminNavViewer>(
-    () => ({ isAdmin, isOwner, isSuperAdmin, isUoaSession }),
-    [isAdmin, isOwner, isSuperAdmin, isUoaSession],
+    () => ({ canManageOrganization, isAdmin, isOwner, isSuperAdmin, isUoaSession }),
+    [canManageOrganization, isAdmin, isOwner, isSuperAdmin, isUoaSession],
   );
   const visibleGroups = useMemo(
     () =>

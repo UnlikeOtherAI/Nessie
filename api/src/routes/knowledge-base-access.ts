@@ -59,8 +59,20 @@ export const canManageKnowledgeSpaceAccess = (
   actorContext: AuthorizedActionContext,
 ): boolean =>
   actorContext.actor.actorType === 'service'
-  || actorContext.actor.roles?.includes('owner') === true
-  || actorContext.actor.actorId === space.createdBy
+  || (
+    actorContext.actor.actorType === 'user'
+    && (
+      actorContext.actor.roles?.includes('owner') === true
+      || actorContext.actor.actorId === space.createdBy
+    )
+  )
+
+// Project membership/binding is the entitlement for creating or provisioning
+// project-scoped document resources. A caller's session project is incidental;
+// this check uses the viewer assembled for the active organization instead.
+export const canViewerReachProject = (viewer: SpaceViewer, projectId: string): boolean =>
+  viewer.bypass
+  || (viewer.agent ? viewer.agent.projectIds.has(projectId) : viewer.projectIds.has(projectId))
 
 export const attachSpaceEnvelope = (
   space: KnowledgeSpaceRecord,

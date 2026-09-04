@@ -3,7 +3,6 @@ import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
   type AuthorizedActionContext,
-  isAdminRole,
   OrganizationSummarySchema,
   UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
@@ -18,6 +17,10 @@ import {
   withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
 } from '../services/uoa-org-roster.js'
+import {
+  resolveOrganizationAdministrationAccess,
+  type OrganizationAdministrationAccess,
+} from '../services/uoa-organization-administration.js'
 import type { RouteDeps } from './types.js'
 
 // Logos are served from a public, unauthenticated endpoint and rendered on the
@@ -122,6 +125,29 @@ export const registerOrganizationRoutes = (
     }
   }
 
+  const requireOrganizationAdministrator = (
+    reply: FastifyReply,
+    access: OrganizationAdministrationAccess,
+  ): boolean => {
+    if (access.status === 'allowed') return true
+    if (access.status === 'unavailable') {
+      sendApiError(
+        reply,
+        503,
+        'UOA_ORGANIZATION_ACCESS_UNAVAILABLE',
+        'UnlikeOtherAI could not confirm organisation administrator access. Try again shortly.',
+      )
+      return false
+    }
+    sendApiError(
+      reply,
+      403,
+      'ORGANIZATION_ADMIN_REQUIRED',
+      'Organisation administrator access is required.',
+    )
+    return false
+  }
+
   app.get('/api/organizations/current', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -139,6 +165,10 @@ export const registerOrganizationRoutes = (
     const membership = await prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId, userId } },
     })
+    const administration = await resolveOrganizationAdministrationAccess(
+      { actorContext, localRole: membership?.role ?? null, organization },
+      rosterDeps,
+    )
 
     return createApiResponse(
       OrganizationSummarySchema.parse({
@@ -148,6 +178,7 @@ export const registerOrganizationRoutes = (
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         nameManagedExternally: organization.externalOrgId !== null,
+        administration,
       }),
     )
   })
@@ -163,16 +194,19 @@ export const registerOrganizationRoutes = (
     const membership = await prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId, userId } },
     })
-    // Only owners/admins may change the org-wide logo (members get a read-only view).
-    if (!membership || !isAdminRole(membership.role)) {
-      sendApiError(
-        reply,
-        403,
-        'FORBIDDEN',
-        'Only organisation owners and admins can change organisation settings',
-      )
+    const organizationBinding = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { externalOrgId: true },
+    })
+    if (!organizationBinding) {
+      sendApiError(reply, 404, 'ORGANIZATION_NOT_FOUND', 'Organization not found')
       return reply
     }
+    const administration = await resolveOrganizationAdministrationAccess(
+      { actorContext, localRole: membership?.role ?? null, organization: organizationBinding },
+      rosterDeps,
+    )
+    if (!requireOrganizationAdministrator(reply, administration)) return reply
 
     const body = parseInput(UpdateOrganizationRequestSchema, request.body, reply)
     if (!body) return reply
@@ -238,10 +272,11 @@ export const registerOrganizationRoutes = (
       OrganizationSummarySchema.parse({
         id: organization.id,
         name: organization.name,
-        role: membership.role,
+        role: membership?.role ?? 'member',
         logoAttachmentId: organization.logoAttachmentId ?? null,
         stripImageMetadata: organization.stripImageMetadata,
         nameManagedExternally: organization.externalOrgId !== null,
+        administration,
       }),
     )
   })
