@@ -337,7 +337,7 @@ export const ChannelConversationComposePage = () => {
                       <span className="truncate text-xs opacity-60">{option.detail}</span>
                     </span>
                     <span className="ml-auto text-xs opacity-60">
-                      {option.kind}
+                      {option.category}
                     </span>
                   </button>
                 ))}

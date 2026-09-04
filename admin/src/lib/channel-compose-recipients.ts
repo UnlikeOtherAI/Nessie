@@ -25,6 +25,7 @@ export type Recipient = {
 }
 
 export type RecipientOption = Recipient & {
+  category: 'person' | 'private agent' | 'team agent'
   detail: string
   label: string
   user?: UserRecord
@@ -41,7 +42,7 @@ export const matchesRecipientQuery = (
   if (!term) {
     return true
   }
-  return `${option.label} ${option.detail}`.toLowerCase().includes(term)
+  return `${option.label} ${option.detail} ${option.category}`.toLowerCase().includes(term)
 }
 
 /**
@@ -69,6 +70,7 @@ export const buildRecipientOptions = (input: {
   users: UserRecord[]
 }): RecipientOption[] => {
   const userOptions: RecipientOption[] = input.users.map((user) => ({
+    category: 'person',
     detail: user.email,
     id: user.id,
     kind: 'user',
@@ -76,6 +78,7 @@ export const buildRecipientOptions = (input: {
     user,
   }))
   const agentOptions: RecipientOption[] = input.agents.map((agent) => ({
+    category: agent.visibility === 'private' ? 'private agent' : 'team agent',
     detail: agent.role,
     id: agent.id,
     kind: 'agent',
