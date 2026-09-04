@@ -77,7 +77,10 @@ const createdPage = (): KnowledgePageRecord => ({
   updatedAt: '2026-08-31T00:00:00.000Z',
 })
 
-const makeHarness = (space: KnowledgeSpaceRecord) => {
+const makeHarness = (
+  space: KnowledgeSpaceRecord,
+  task: { id: string } | null = { id: 'task-1' },
+) => {
   const consumedSources = createConsumedSourceSink()
   const publishCalls: unknown[] = []
   const createCalls: unknown[] = []
@@ -121,6 +124,7 @@ const makeHarness = (space: KnowledgeSpaceRecord) => {
         }),
       },
       projectMember: { findMany: async () => [] },
+      task: { findFirst: async () => task },
     },
     run: { id: 'run-1', messageId: 'message-1', threadId: 'thread-1' },
     toolCallId: null,
@@ -128,10 +132,13 @@ const makeHarness = (space: KnowledgeSpaceRecord) => {
   return { consumedSources, context, createCalls, files, provider, publishCalls, storeCalls }
 }
 
-const compose = (harness: ReturnType<typeof makeHarness>) =>
+const compose = (
+  harness: ReturnType<typeof makeHarness>,
+  input: Partial<{ taskId: string }> = {},
+) =>
   runKbDocumentComposeTool(
     harness.context,
-    { markdown: 'Hello', spaceId: 'space-1', title: 'Notes' },
+    { markdown: 'Hello', spaceId: 'space-1', title: 'Notes', ...input },
     { files: harness.files, provider: harness.provider },
   )
 
@@ -157,6 +164,18 @@ test('compose refuses a wider-audience disclosure before storing an attachment o
   assert.match(result.outputPreview, /cannot save this document/)
   assert.match(result.outputPreview, /Nothing was saved/)
   assert.doesNotMatch(result.outputPreview, /kb_publish_request/)
+})
+
+test('compose rejects a ticket outside its destination project before storing an attachment', async () => {
+  const harness = makeHarness(agentSpace('agent-1'), null)
+
+  await assert.rejects(
+    () => compose(harness, { taskId: 'foreign-task' }),
+    /Ticket not found in this knowledge space project/,
+  )
+  assert.equal(harness.storeCalls.length, 0)
+  assert.equal(harness.createCalls.length, 0)
+  assert.equal(harness.publishCalls.length, 0)
 })
 
 test('compose auto-publishes an agent document after an organization-visibility read', async () => {

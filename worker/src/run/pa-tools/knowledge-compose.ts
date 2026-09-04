@@ -114,6 +114,21 @@ export const runKbDocumentComposeTool = async (
     throw new Error('You do not have write access to this knowledge space.')
   }
 
+  // A ticket is a project-owned scope. Resolve it before claiming the session
+  // or storing an attachment so a document can never be filed against a
+  // ticket from another project just because the destination is writable.
+  if (input.taskId) {
+    const task = await context.prisma.task.findFirst({
+      where: {
+        id: input.taskId,
+        organizationId,
+        projectId: space.projectId,
+      },
+      select: { id: true },
+    })
+    if (!task) throw new Error('Ticket not found in this knowledge space project.')
+  }
+
   if (
     space.ownerAgentId !== null
     && sourcesOutsideAgentDocumentAudience(context, {

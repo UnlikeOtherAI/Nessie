@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
 import { KnowledgeSpaceList } from '../../components/features/knowledge/KnowledgeSpaceList'
+import { KnowledgeSidebarPageTree } from '../../components/features/knowledge/KnowledgeSidebarPageTree'
 import { StorageUsageMeter } from '../../components/features/knowledge/StorageUsageMeter'
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
@@ -36,9 +37,14 @@ export const KnowledgeSidebarNav = () => {
   const phoneLayout = usePhoneLayout()
   const {
     spaces,
+    spacePagination,
     spacesLoaded,
     spacesLoadFailed,
-    myDocsSpaceId,
+    rootPages,
+    childrenOf,
+    openPageId,
+    openPagePath,
+    myDocsSpace,
     selectedSpaceId,
     scopeProjectId,
     selectSpace,
@@ -70,9 +76,26 @@ export const KnowledgeSidebarNav = () => {
     }
   }
 
-  const myDocsSpace = spaces.find((space) => space.id === myDocsSpaceId)
-  // The personal space is pinned above "Spaces" — never duplicated below.
-  const otherSpaces = spaces.filter((space) => space.id !== myDocsSpaceId)
+  const openPage = (spaceId: string, path: string[]) => {
+    if (selectedSpaceId !== spaceId) selectSpace(spaceId)
+    openPagePath(path)
+    if (phoneLayout) {
+      void navigate(`/knowledge-base/spaces/${encodeURIComponent(spaceId)}`)
+    }
+  }
+
+  const selectedPageTree = (spaceId: string) => (
+    <KnowledgeSidebarPageTree
+      activePageId={showSelectedSpace ? openPageId : undefined}
+      childrenOf={childrenOf}
+      onSelect={(path) => openPage(spaceId, path)}
+      rootPages={rootPages}
+    />
+  )
+
+  // The personal space is fetched through its own stable endpoint and omitted
+  // from the paged shared list, so its pin never depends on the current page.
+  const otherSpaces = spaces
 
   // This list is organization-wide, so two projects that each seeded a
   // "General" space render as two identical rows. Name the project on every
@@ -113,11 +136,18 @@ export const KnowledgeSidebarNav = () => {
           >
             <button
               aria-current={sidebarAriaCurrent(
-                Boolean(!activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId),
+                Boolean(
+                  !activeProductView
+                  && showSelectedSpace
+                  && myDocsSpace.id === selectedSpaceId
+                  && !openPageId,
+                ),
               )}
               className={[
                 'admin-sb-item',
-                !activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId ? 'active' : '',
+                !activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId
+                  ? openPageId ? 'active-parent' : 'active'
+                  : '',
               ].join(' ')}
               onClick={() => openSpace(myDocsSpace.id)}
               type="button"
@@ -129,6 +159,9 @@ export const KnowledgeSidebarNav = () => {
               />
               <span className="min-w-0 flex-1 truncate font-medium">{myDocsSpace.name}</span>
             </button>
+            {!activeProductView && myDocsSpace.id === selectedSpaceId
+              ? selectedPageTree(myDocsSpace.id)
+              : null}
           </SidebarMenuSection>
         ) : null}
 
@@ -206,14 +239,17 @@ export const KnowledgeSidebarNav = () => {
           title="Spaces"
           titleIcon={sectionIcon(faLayerGroup)}
         >
-        <KnowledgeSpaceList
-          emptyLabel="No spaces yet"
-          isPending={!spacesLoaded && !spacesLoadFailed}
-          onSelect={openSpace}
-          projectLabels={projectLabels}
-          selectedSpaceId={activeProductView || !showSelectedSpace ? undefined : selectedSpaceId}
-          spaces={otherSpaces}
-        />
+          <KnowledgeSpaceList
+            emptyLabel="No spaces yet"
+            isPending={!spacesLoaded && !spacesLoadFailed}
+            onSelect={openSpace}
+            pagination={spacePagination}
+            projectLabels={projectLabels}
+            renderAfter={(space) => selectedPageTree(space.id)}
+            selectedPageId={showSelectedSpace ? openPageId : undefined}
+            selectedSpaceId={activeProductView || !showSelectedSpace ? undefined : selectedSpaceId}
+            spaces={otherSpaces}
+          />
         </SidebarMenuSection>
       </div>
 

@@ -340,6 +340,12 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
   because the admin treats an empty list as a first visit, made it seed a second
   "General" space beside the real one.
   `listSpaces` applies the readable-space predicate in SQL before pagination;
+  its cursor supports both forward and backward traversal, so every entitled
+  space remains reachable from the shared pager rather than only the first
+  page. Ticket-document routes require the ticket itself to have a project;
+  an unassigned ticket returns `TASK_PROJECT_REQUIRED` and never falls back to
+  the session's ambient project. A page bound to a ticket must name one in the
+  destination space's project, whether it was created by a route or a tool.
   `getSpace`/page reads return 403 to non-readers; create/edit/delete/publish/
   move/restore return 403 to non-writers; search drops unreadable hits. The space
   record exposes the caller's effective `canWrite`. A new space must target a
@@ -388,9 +394,12 @@ On `/knowledge-base` the shell swaps the channels/DMs second column for a
 dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
 that column):
 
-- The second column is **only the Spaces list** — styled like the channels list
+- The second column starts with the Spaces list — styled like the channels list
   (a collapsible "Spaces" header with a `+` that opens a centered
-  `CreateSpaceDialog` modal). No pages live here.
+  `CreateSpaceDialog` modal). The selected space expands in place into its
+  page/sub-page tree; the current page is highlighted and its ancestor branch
+  remains visible, so the sidebar and the page breadcrumbs name the same
+  location.
 - The main area uses `KnowledgePane` with the shared `ResponsivePageHeader`: a
   50px leading title/back region and a declarative, right-aligned action list.
   It measures the actual action widths with `ResizeObserver`, keeps the primary
@@ -420,13 +429,22 @@ that column):
     cookie.
   - **Tree** shows an expandable/collapsible hierarchy with animated branches.
   - **Page preview** (`PagePreview`) is a read-only document view (status, title,
-    summary, labels, rendered body, and a Sub-pages section) rendered on a
+    labels, rendered body, and a Sub-pages section) rendered on a
     centered white "sheet" (`.kb-reader`) so content reads like paper — the sheet
     stays white with dark text under **any** theme. Selecting a document from any
     browsing view opens this document state; **Back** pops to the parent document
     or browser root.
-  - **Editor** (`PageEditor`) and **version History** are full-width (the editor
-    fills the whole main area), each with a Back button.
+  - **Editor** (`PageEditor`) and **version History** are full-width. The editor
+    fills the whole main area as a borderless writing canvas: the title and body
+    are edited in place with descriptive placeholders, labels and the optional
+    change comment sit below the body, and there is no separate Summary field.
+    On creation its Location picker chooses the space root or any existing page
+    as the parent. The same **New page** action stays visible at the space root,
+    inside folders, and on an open page; it creates at that location, so from an
+    open page it preselects that page as the parent. Page previews show clickable
+    breadcrumbs from the space through every ancestor to the current page. A
+    published page shows no redundant `Published` control or status chip;
+    History and Archive page live in its always-visible three-dot action menu.
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the
@@ -446,7 +464,12 @@ route.
 (`/projects/:projectId/docs`, `ProjectDocsTab`). In that scope the space list is
 fetched with `?projectId=`, the caller's personal "My Docs" space is neither
 ensured nor listed (it belongs to the person, not the project, even though it is
-filed under whichever project provisioned it), first-visit seeding is off (an
+filed under whichever project provisioned it). The paged shared-space endpoint
+excludes only the caller's own personal space before it counts or keys results:
+that space has a stable Knowledge-sidebar pin, while a different person's
+explicitly granted personal space remains discoverable. Location pickers
+explicitly opt in when they need the caller's own personal space. First-visit
+seeding is off (an
 empty project means "nothing filed here", never "no knowledge base"), a new
 space is created in the project being viewed rather than the session's project,
 and the org-wide storage meter is hidden. Everything else is the same code: the

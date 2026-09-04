@@ -586,6 +586,45 @@ test('knowledge space listing is organization-wide unless a project is requested
   await app.close()
 })
 
+test('knowledge space listing forwards pagination direction and explicit personal-space access', async () => {
+  const seen: Array<{ cursor?: string; direction?: string; includePersonal?: boolean }> = []
+  const { app } = makeApp('allow', {
+    listSpaces: async (input) => {
+      seen.push({
+        cursor: input.cursor,
+        direction: input.direction,
+        includePersonal: input.includePersonal,
+      })
+      return {
+        data: [makeSpace()],
+        meta: {
+          cursor: 'next-from-provider',
+          hasMore: true,
+          previousCursor: 'previous-from-provider',
+        },
+      }
+    },
+  })
+
+  const response = await app.inject({
+    method: 'GET',
+    url: '/api/knowledge-base/spaces?cursor=cursor-from-client&direction=backward&includePersonal=true',
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(seen, [{
+    cursor: 'cursor-from-client',
+    direction: 'backward',
+    includePersonal: true,
+  }])
+  assert.deepEqual(response.json().meta, {
+    hasMore: true,
+    nextCursor: 'next-from-provider',
+    prevCursor: 'previous-from-provider',
+  })
+  await app.close()
+})
+
 test('knowledge search is organization-wide unless a project is requested', async () => {
   const seen: Array<string | undefined> = []
   const { app } = makeApp('allow', {

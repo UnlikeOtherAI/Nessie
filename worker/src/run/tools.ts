@@ -375,6 +375,7 @@ const executeBuiltinToolUncorrected = async (
     case 'dashboard_widget_move':
     case 'dashboard_widget_remove':
     case 'dashboard_read':
+    case 'dashboard_present':
     case 'dashboard_widget_post':
       return wrapTool(inputSummary, async () => {
         const services = await resolveDashboardToolServices(context.prisma)

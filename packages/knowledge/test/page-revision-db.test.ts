@@ -5,6 +5,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import { createNativeKnowledgeProvider } from '../src/native-provider.js'
+import { KnowledgeConflictError } from '../src/errors.js'
 import { KnowledgePageRevisionConflictError } from '../src/types.js'
 
 // Optimistic concurrency for the auto-saving page editor
@@ -137,4 +138,80 @@ dbTest('a knowledge page revision advances per update and refuses a stale save',
       return true
     },
   )
+
+  const concurrentUpdates = await Promise.allSettled([
+    provider.updatePage(created.id, {
+      authorId: user.id,
+      authorType: 'user',
+      expectedRevision: 3,
+      organizationId: organization.id,
+      title: 'First concurrent title',
+    }),
+    provider.updatePage(created.id, {
+      authorId: user.id,
+      authorType: 'user',
+      expectedRevision: 3,
+      organizationId: organization.id,
+      title: 'Second concurrent title',
+    }),
+  ])
+  assert.equal(concurrentUpdates.filter((result) => result.status === 'fulfilled').length, 1)
+  assert.equal(concurrentUpdates.filter((result) => result.status === 'rejected').length, 1)
+  const revisionConflict = concurrentUpdates.find((result) => result.status === 'rejected')
+  assert.ok(revisionConflict?.status === 'rejected')
+  assert.ok(revisionConflict.reason instanceof KnowledgePageRevisionConflictError)
+  assert.equal(revisionConflict.reason.currentRevision, 4)
+
+  const pageA = await provider.createPage({
+    authorId: user.id,
+    authorType: 'user',
+    createdBy: user.id,
+    organizationId: organization.id,
+    projectId: project.id,
+    spaceId: space.id,
+    title: 'Move A',
+  })
+  const pageB = await provider.createPage({
+    authorId: user.id,
+    authorType: 'user',
+    createdBy: user.id,
+    organizationId: organization.id,
+    projectId: project.id,
+    spaceId: space.id,
+    title: 'Move B',
+  })
+  const opposingMoves = await Promise.allSettled([
+    provider.movePage({
+      organizationId: organization.id,
+      pageId: pageA.id,
+      parentPageId: pageB.id,
+      position: 0,
+    }),
+    provider.movePage({
+      organizationId: organization.id,
+      pageId: pageB.id,
+      parentPageId: pageA.id,
+      position: 0,
+    }),
+  ])
+  assert.equal(opposingMoves.filter((result) => result.status === 'fulfilled').length, 1)
+  assert.equal(opposingMoves.filter((result) => result.status === 'rejected').length, 1)
+  const cycleConflict = opposingMoves.find((result) => result.status === 'rejected')
+  assert.ok(cycleConflict?.status === 'rejected')
+  assert.ok(cycleConflict.reason instanceof KnowledgeConflictError)
+
+  const movedPages = await prisma.knowledgePage.findMany({
+    where: { id: { in: [pageA.id, pageB.id] } },
+    select: { id: true, parentPageId: true },
+  })
+  const parents = new Map(movedPages.map((page) => [page.id, page.parentPageId]))
+  for (const pageId of [pageA.id, pageB.id]) {
+    const seen = new Set<string>()
+    let current: string | null | undefined = pageId
+    while (current) {
+      assert.equal(seen.has(current), false, 'concurrent moves must not persist a page-tree cycle')
+      seen.add(current)
+      current = parents.get(current)
+    }
+  }
 })

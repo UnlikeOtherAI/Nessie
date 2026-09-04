@@ -29,6 +29,29 @@ export const assertCardSecretDestinations = async (
 
   const validated: ValidatedCardSecretDestination[] = []
   for (const block of secretBlocks) {
+    if (block.destination.kind === 'dashboard_source_credential') {
+      const source = await context.prisma.dashboardDataSource.findFirst({
+        select: { id: true, name: true },
+        where: {
+          archivedAt: null,
+          id: block.destination.sourceId,
+          organizationId: context.channel.organizationId,
+        },
+      })
+      if (!source) {
+        throw new Error(
+          `Field "${block.key}" points at a dashboard source that does not exist here. `
+          + 'Create the source before asking for its credential.',
+        )
+      }
+      validated.push({
+        destination: block.destination,
+        key: block.key,
+        label: `the ${source.name} dashboard source`,
+      })
+      continue
+    }
+
     const instance = await context.prisma.mcpServerInstance.findFirst({
       select: {
         catalogEntry: { select: { displayName: true } },

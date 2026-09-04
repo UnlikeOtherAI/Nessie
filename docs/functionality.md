@@ -1504,7 +1504,10 @@ answers. Two structural facts govern how that reads to a person:
   excluded from the channel feed and from later model context, while the row
   itself persists for audit and for restart replay (which loads it by id and
   never checks role). The run still receives it as its prompt through
-  `payload.messageId`. Rendering it as a `user` message previously attributed
+  `payload.messageId`. Owners inspect the exact delivery payload in the
+  trigger's collapsed delivery-log row; this is the audit doorway for external
+  webhook and internal event data, rather than exposing plumbing in chat.
+  Rendering it as a `user` message previously attributed
   it to the trigger's owner, who wrote none of it, and filled monitoring
   channels with plumbing. Human-facing provenance is the Triggers page
   delivery log.
