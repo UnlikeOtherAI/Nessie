@@ -106,6 +106,13 @@ const seedApproval = async (seed) => {
         username: `support-${marker.slice(0, 8)}@example.test`,
       },
     })
+    const run = await prisma.run.create({
+      data: {
+        agentId: agent.id,
+        status: 'waiting_approval',
+        threadId: seed.channels[0].defaultThreadId,
+      },
+    })
     const approval = await prisma.approvalRequest.create({
       data: {
         action: 'tool.invoke',
@@ -124,6 +131,7 @@ const seedApproval = async (seed) => {
         reason: 'The agent needs your approval before sending email.',
         requesterId: agent.id,
         requiredApproverUserId: me.user.id,
+        runId: run.id,
         resumeState: {
           args: {
             bcc: [],
@@ -150,14 +158,14 @@ const seedApproval = async (seed) => {
         userId: me.user.id,
       },
     })
-    return { approvalId: approval.id, mailboxId: mailbox.id, prisma }
+    return { approvalId: approval.id, mailboxId: mailbox.id, prisma, senderAddress: mailbox.address }
   } catch (error) {
     await prisma.$disconnect()
     throw error
   }
 }
 
-const verify = async (browser, seed) => {
+const verify = async (browser, seed, fixture) => {
   const shell = await openViewportContext(browser, { name: 'desktop', token: seed.token })
   const target = await shell.newPage()
   try {
@@ -168,7 +176,14 @@ const verify = async (browser, seed) => {
 
     await page.getByTestId('approval-review-email').click()
     const review = page.getByRole('dialog', { name: 'Review email' })
-    await review.getByText('Customer support', { exact: true }).waitFor()
+    const sender = review
+      .getByText('From', { exact: true })
+      .locator('xpath=following-sibling::dd[1]')
+    await sender.waitFor()
+    const senderText = await sender.textContent()
+    if (!senderText?.includes('Customer support') || !senderText.includes(fixture.senderAddress)) {
+      fail(`sender identity is incomplete: ${senderText ?? 'missing'}`)
+    }
     await review.getByText('customer@example.test', { exact: true }).waitFor()
     await review.getByText('Private contract update', { exact: true }).waitFor()
     await review.getByText('The customer-specific terms are ready to send.', { exact: true }).waitFor()
@@ -205,12 +220,12 @@ const main = async () => {
   try {
     isolated = await createIsolatedDatabase(baseDatabase)
     process.env.DATABASE_URL = isolated.database
-    api = await startApi()
+    api = await startApi({ requireOwned: true })
     admin = await startAdmin()
     const seed = await seedTeam(api)
     fixture = await seedApproval(seed)
     browser = await launchBrowser()
-    await verify(browser, seed)
+    await verify(browser, seed, fixture)
     console.log(`approval email review e2e: PASS — screenshot in ${SCREENSHOT_ROOT}`)
   } finally {
     if (browser) await browser.close().catch(() => {})

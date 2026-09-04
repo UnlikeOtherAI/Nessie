@@ -67,6 +67,13 @@ const verifyViewport = async (browser, seed, viewport) => {
     }
 
     if (viewport === 'desktop') {
+      await page.screenshot({
+        fullPage: true,
+        path: resolve(SCREENSHOT_ROOT, 'desktop-chat-doorway-address-first.png'),
+      })
+    }
+
+    if (viewport === 'desktop') {
       await dialog.getByPlaceholder('name@company.com').fill('duplicate-navigation@gmail.com')
       await dialog.getByRole('button', { exact: true, name: 'Continue' }).click()
       await dialog.getByText('This email account is already connected.', { exact: true }).waitFor()
@@ -103,10 +110,12 @@ const verifyViewport = async (browser, seed, viewport) => {
       await reconnectDialog.getByRole('button', { exact: true, name: 'Cancel' }).click()
     }
 
-    await page.screenshot({
-      fullPage: true,
-      path: resolve(SCREENSHOT_ROOT, `${viewport}-chat-doorway-address-first.png`),
-    })
+    if (viewport !== 'desktop') {
+      await page.screenshot({
+        fullPage: true,
+        path: resolve(SCREENSHOT_ROOT, `${viewport}-chat-doorway-address-first.png`),
+      })
+    }
     if (target.errors.length > 0) fail(`${viewport} page errors: ${target.errors.join(' | ')}`)
   } finally {
     await target.close()
