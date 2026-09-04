@@ -117,7 +117,7 @@ const authorizationContext = () => ({
     interactive: true,
     messageId: 'message-1',
   },
-  structuralGate: async () => ({ escalate: true }),
+  structuralGate: async () => ({ outcome: 'approval' as const }),
   toolPolicy: null,
 })
 

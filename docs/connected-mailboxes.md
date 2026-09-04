@@ -122,8 +122,10 @@ per tool, so without a per-mailbox decision, connecting a second shared mailbox
 would silently hand it to every agent that already had the tools.
 
 An agent with access to more than one mailbox is asked which to use rather than
-picking one. Sending from the wrong address is not something anyone can take
-back.
+picking one. Every send names that exact mailbox connection before approval,
+even when only one is reachable at the time — a connection added while someone
+is deciding must not change which address their approval covers. Sending from
+the wrong address is not something anyone can take back.
 
 ## Sending
 
@@ -133,9 +135,11 @@ to one person: the mailbox's owner for a personal one, or whoever connected a
 shared one. The durable approval states whether it is a personal or shared
 mailbox without storing its address, and if the agent built the message out of
 something the recipient has no claim to — a private document, another person's
-mail — the approval names that too. If the shared mailbox's installer has left,
-the send remains blocked; an owner or admin reconnects it under the person who
-should approve future sends.
+mail — the approval names that too. If the shared mailbox's installer has left
+or was never assigned, the send remains blocked; an owner or admin reconnects
+it under the person who should approve future sends. A personal mailbox whose
+owner is inactive is likewise blocked until that owner is reactivated or the
+mailbox is reconnected under an active owner.
 
 There is no "let it send without asking" for connected mailboxes yet. The Google
 lane offers standing consent because a grant there is one person's to give about

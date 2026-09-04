@@ -4,6 +4,7 @@ import type { AutoReviewResult, ReviewableToolSurface } from './auto-review.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import type { AgenticToolResult } from '../tools.js'
 import type { ToolApprovalAuditEmitter } from './tool-approval.js'
+import type { StructuralGate } from './structural-gates.js'
 import type { RunContext } from './types.js'
 
 export type ToolActorContext = AuthorizedActionContext
@@ -45,17 +46,8 @@ export type ToolAuthorizationContext = {
   /** A prepared call has already received its single auto-review verdict. */
   skipAutoReview?: boolean
   resumeState?: { actorContext: AuthorizedActionContext; interactive: boolean; messageId: string }
-  /** A structurally gated family whose escalation decision is authoritative. */
-  structuralGate?: (input: {
-    toolName: string
-    args: Record<string, unknown>
-  }) => Promise<{
-    escalate: boolean
-    reason?: string
-    requiredApproverUserId?: string | null
-    /** Address-free server facts that an org owner may read on the approval. */
-    contextExtra?: Record<string, unknown>
-  } | null>
+  /** A structurally gated family whose outcome is authoritative. */
+  structuralGate?: StructuralGate
   toolPolicy: Record<string, boolean> | null
 }
 

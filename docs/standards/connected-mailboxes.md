@@ -21,9 +21,12 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   mailbox's installer, live-checked, with any source the recipient cannot reach
   named on the request. A pin is also the approval's read and delivery audience:
   its card/reason and alert reach only that exact active person, whose existing
-  Approvals home remains reachable even outside the source channel. An inactive shared-mailbox installer never falls back
-  to another member: an owner or admin reconnects the mailbox under an active
-  approver before it can send. Standing send grants are deliberately absent: a grant is
+  Approvals home remains reachable even outside the source channel. A missing or
+  inactive accountable person (the personal owner or shared installer) denies
+  the send rather than creating an unpinned or unanswerable approval: an owner
+  or admin reconnects a shared mailbox under an active approver, while a
+  personal mailbox needs its owner reactivated or reconnected. Standing send
+  grants are deliberately absent: a grant is
   the mailbox owner's to give about their own account, and a shared mailbox has
   no such owner. The reads feed the disclosure sink with the connection's scope
   in the same call that puts mail in the window — user scope for a personal

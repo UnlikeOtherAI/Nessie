@@ -57,7 +57,7 @@ export const EmailSendToolInputSchema = z.object({
 export const MailboxSendToolInputSchema = z.object({
   bcc: z.array(z.string()).max(50).optional(),
   cc: z.array(z.string()).max(50).optional(),
-  connectionId: z.string().uuid().optional(),
+  connectionId: z.string().uuid(),
   inReplyToUid: z.number().int().positive().optional(),
   subject: z.string().max(500),
   text: z.string().max(100_000),

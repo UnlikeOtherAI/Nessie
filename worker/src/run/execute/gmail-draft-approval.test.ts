@@ -66,13 +66,16 @@ const authorization = (maySuspendForApproval: boolean) => ({
   resumeState: {
     actorContext: actor(), interactive: true, messageId: 'message-1',
   },
-  structuralGate: async () => ({ escalate: true }),
+  structuralGate: async () => ({ outcome: 'approval' as const }),
   toolPolicy: { [GMAIL_DRAFT_SEND_TOOL_ID]: true },
 })
 
 const hooks = (audits: Array<Record<string, unknown>>) => ({
   deepWaterHandoffGuard: { suppressBuiltin: async () => false } as unknown as DeepWaterHandoffGuard,
-  emitAudit: async (_actor: AuthorizedActionContext, input: { metadata?: Record<string, unknown>; outcome: string }) => {
+  emitAudit: async (
+    _actor: AuthorizedActionContext,
+    input: { metadata?: Record<string, unknown>; outcome: string },
+  ) => {
     audits.push({ ...(input.metadata ?? {}), outcome: input.outcome })
   },
 })

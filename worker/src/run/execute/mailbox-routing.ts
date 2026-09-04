@@ -34,8 +34,9 @@ const GOOGLE_COMPOSE_LINE =
 
 const CONNECTED_COMPOSE_LINE =
   '- To write from a connected mailbox, use mailbox_send. It goes out as that'
-  + ' mailbox\'s own address and a person is asked to approve it first, so say'
-  + ' what you are sending rather than announcing it as already sent.'
+  + ' mailbox\'s own address. Always provide its exact connectionId; a person'
+  + ' is asked to approve it first, so say what you are sending rather than'
+  + ' announcing it as already sent.'
 
 /**
  * At most one block, appended to the system prompt. Absent entirely for an

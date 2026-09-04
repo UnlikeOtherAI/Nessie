@@ -188,11 +188,11 @@ test('an agent with no mailbox is not gated — the tool itself refuses', async 
 
 test('the hook ignores every tool but email_send', async () => {
   const hook = buildEmailSendApprovalHook(makePrisma(), makeContext(), true)
-  // null, not `{escalate:false}`: a null answer means this family does not own
+  // null, not `{outcome:'allow'}`: a null answer means this family does not own
   // the tool, so authorization falls through to the standing-consent path.
   assert.equal(await hook({ args: {}, toolName: 'kb_search' }), null)
   const owned = await hook({ args: { text: 'x' }, toolName: 'email_send' })
-  assert.equal(owned?.escalate, true)
+  assert.equal(owned?.outcome, 'approval')
 })
 
 test('a send that needs no approval is owned but not escalated', async () => {
@@ -206,7 +206,7 @@ test('a send that needs no approval is owned but not escalated', async () => {
   const decision = await hook({ args: { text: 'on it' }, toolName: 'email_send' })
   assert.deepEqual(
     decision,
-    { escalate: false },
+    { outcome: 'allow' },
     'owning the decision is what keeps email_send off the send-as-you consent path',
   )
 })
@@ -214,7 +214,7 @@ test('a send that needs no approval is owned but not escalated', async () => {
 test('the approval pins the agent’s live steward and records why it asked', async () => {
   const hook = buildEmailSendApprovalHook(makePrisma(), makeContext(), true)
   const decision = await hook({ args: { text: 'replying' }, toolName: 'email_send' })
-  assert.equal(decision?.escalate, true)
+  assert.equal(decision?.outcome, 'approval')
   assert.equal(decision?.requiredApproverUserId, OWNER)
   // The reason reaches the approval card: "approval required" alone does not
   // tell somebody whether to read the message carefully or just press send.

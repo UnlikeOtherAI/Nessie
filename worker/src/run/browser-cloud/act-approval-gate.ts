@@ -17,7 +17,7 @@ import { acquireCdp, originGateFor } from './session-pool.js'
  *
  * So the ask is narrow — a write, on an origin this browser is not signed in
  * to, after it has visited one that it is — and everything else passes
- * without a prompt. Returning `{escalate:false}` still *claims* the decision,
+ * without a prompt. Returning `{outcome:'allow'}` still *claims* the decision,
  * which keeps `browser_act` off the send-as-you standing-consent path that
  * has nothing to do with browsers.
  */
@@ -29,15 +29,15 @@ export const buildBrowserActApprovalHook = (
     if (input.toolName !== BROWSER_ACT_TOOL_ID) return null
 
     const parsed = ExecutorBrowserActArgumentsSchema.safeParse(input.args)
-    if (!parsed.success) return { escalate: false }
+    if (!parsed.success) return { outcome: 'allow' as const }
 
     const session = await findLiveSessionForRun(prisma, context.run.id)
-    if (!session) return { escalate: false }
+    if (!session) return { outcome: 'allow' as const }
 
     // No pooled state means this worker cannot drive the session at all, so
     // there is nothing to gate — the handler will say the connection is lost.
     const gate = originGateFor(session.id)
-    if (!gate) return { escalate: false }
+    if (!gate) return { outcome: 'allow' as const }
 
     // Asked, not remembered: a page can redirect itself between two tool
     // calls, and a gate keyed on the last URL *we* navigated to would judge
@@ -46,14 +46,14 @@ export const buildBrowserActApprovalHook = (
     const cdp = await acquireCdp(session.id).catch(() => null)
     const liveUrl = cdp ? await currentPageUrl(cdp) : null
     const url = liveUrl ?? gate.currentUrl
-    if (!url) return { escalate: false }
+    if (!url) return { outcome: 'allow' as const }
     if (liveUrl) noteVisitedOrigin(gate, liveUrl)
 
     const verdict = evaluateOriginGate(gate, url, parsed.data)
-    if (verdict.allowed) return { escalate: false }
+    if (verdict.allowed) return { outcome: 'allow' as const }
 
     return {
-      escalate: true,
+      outcome: 'approval' as const,
       reason: verdict.reason,
       // Address-free, like the mail gate's: an origin names a site, never a
       // person's page content, and the approvals surface is read by owners.
