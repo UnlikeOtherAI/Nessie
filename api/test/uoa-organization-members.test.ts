@@ -113,8 +113,10 @@ const json = (payload: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
-const rosterDeps = (calls: StubCall[], respond: Responder) => ({
-  fetchImpl: stubFetch(calls, respond),
+const rosterDeps = (calls: StubCall[], respond: Responder, orgRole = 'admin') => ({
+  fetchImpl: stubFetch(calls, (call) => new URL(call.url).pathname === '/org/me'
+    ? json({ ok: true, org: { org_id: externalOrgId, org_role: orgRole } })
+    : respond(call)),
   // The egress is IP-pinned; stub DNS so the pinned transport still runs.
   resolveHost: async () => ['93.184.216.34'],
 })
@@ -210,10 +212,13 @@ test('GET /api/organization/members returns the org-wide roster with org roles',
         total: 2,
       })
 
-      // One upstream read, on the ORG members path — never a team path.
+      // A live UOA capability check precedes the ORG-wide roster read.
       assert.deepEqual(
         calls.map((call) => `${call.method} ${call.url}`),
-        [`GET ${base}/members${query}&status=all&limit=25`],
+        [
+          `GET https://uoa.test/org/me${query}`,
+          `GET ${base}/members${query}&status=all&limit=25`,
+        ],
       )
       for (const call of calls) {
         assert.equal(call.hasAccessToken, false, 'UOA access tokens are never persisted or forwarded')
@@ -256,15 +261,15 @@ test('the org invite dialog receives only UOA-authorized targets and sends to it
       })
       assert.equal(invitation.statusCode, 200)
       assert.equal(
-        calls[0]?.url,
+        calls[1]?.url,
         `${base}/member-invitation-targets${query}&limit=25`,
       )
       assert.equal(
-        calls[1]?.url,
+        calls[3]?.url,
         `${base}/teams/team_product/invitations${query}`,
       )
-      assert.equal(calls[1]?.body, JSON.stringify({ email: 'new@acme.test' }))
-      assert.ok(calls[1]?.subjectAssertion)
+      assert.equal(calls[3]?.body, JSON.stringify({ email: 'new@acme.test' }))
+      assert.ok(calls[3]?.subjectAssertion)
     } finally {
       await app.close()
     }
@@ -296,25 +301,26 @@ test('an organization with no UOA link 404s and never reaches UOA', async () => 
   })
 })
 
-test('the roster read is open to any member of the organization', async () => {
+test('a UOA member cannot read the organization roster through Nessie', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
       actorContextFor(['viewer']),
-      rosterDeps(calls, () => json(orgMembers)),
+      rosterDeps(calls, () => json(orgMembers), 'member'),
     )
 
     try {
       const response = await app.inject({ method: 'GET', url: '/api/organization/members' })
-      assert.equal(response.statusCode, 200)
-      assert.equal(response.json().data.items.length, 2)
+      assert.equal(response.statusCode, 403)
+      assert.equal(response.json().error.code, 'ORGANIZATION_ADMIN_REQUIRED')
+      assert.deepEqual(calls.map((call) => new URL(call.url).pathname), ['/org/me'])
     } finally {
       await app.close()
     }
   })
 })
 
-test('the API relays UOA organization membership decisions instead of local roles', async () => {
+test('the API accepts UOA administration even when the local projection says viewer', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
@@ -329,8 +335,8 @@ test('the API relays UOA organization membership decisions instead of local role
         payload: { role: 'admin' },
       })
       assert.equal(response.statusCode, 200)
-      assert.equal(calls.length, 1)
-      assert.ok(calls[0]?.subjectAssertion)
+      assert.equal(calls.length, 2)
+      assert.ok(calls[1]?.subjectAssertion)
     } finally {
       await app.close()
     }
@@ -369,7 +375,9 @@ test('workspace access is read from UOA and only writes the selected exact teams
       assert.deepEqual(
         calls.map((call) => `${call.method} ${call.url} ${call.body ?? ''}`.trim()),
         [
+          `GET https://uoa.test/org/me${query}`,
           `GET ${base}/members/usr_grace/workspaces${query}`,
+          `GET https://uoa.test/org/me${query}`,
           `GET ${base}/members/usr_grace/workspaces${query}`,
           `POST ${base}/teams/team_design/members${query} {"user_id":"usr_grace"}`,
           `DELETE ${base}/teams/team_product/members/usr_grace${query}`,
@@ -400,8 +408,8 @@ test('workspace access never writes a team UOA did not authorize for the caller'
       })
 
       assert.equal(response.statusCode, 400)
-      assert.equal(calls.length, 1)
-      assert.equal(calls[0]?.method, 'GET')
+      assert.equal(calls.length, 2)
+      assert.equal(calls[1]?.method, 'GET')
     } finally {
       await app.close()
     }
@@ -423,8 +431,8 @@ test('an organization invitation revokes through its row target team', async () 
         payload: { teamId: 'team_product' },
       })
       assert.equal(response.statusCode, 200)
-      assert.equal(calls[0]?.method, 'DELETE')
-      assert.equal(calls[0]?.url, `${base}/teams/team_product/invitations/invite-1${query}`)
+      assert.equal(calls[1]?.method, 'DELETE')
+      assert.equal(calls[1]?.url, `${base}/teams/team_product/invitations/invite-1${query}`)
     } finally {
       await app.close()
     }
@@ -463,8 +471,11 @@ test('owners and admins drive the org-role and activation mutations', async () =
         assert.deepEqual(
           calls.map((call) => `${call.method} ${call.url} ${call.body ?? ''}`.trim()),
           [
+            `GET https://uoa.test/org/me${query}`,
             `PUT ${base}/members/usr_grace${query} {"role":"admin"}`,
+            `GET https://uoa.test/org/me${query}`,
             `POST ${base}/members/usr_grace/deactivate${query}`,
+            `GET https://uoa.test/org/me${query}`,
             `POST ${base}/members/usr_grace/reactivate${query}`,
           ],
         )

@@ -177,8 +177,15 @@ matter most:
 An assertion is pinned to the team it names: UOA requires
 `active.teamId` to equal the route's `:teamId`, so `/org/*` can only ever reach
 the current team. Reads of *another* team (the picker) therefore stay
-on `/domain/*`, backstopped by UOA's public team image. Nessie's own owner/admin
-gate stays in front of both — it is the only role check `/domain/*` gets.
+on `/domain/*`, backstopped by UOA's public team image. `/domain/*` keeps its
+local owner/admin backstop because it has no acting-person assertion. The
+**Organization** section is different: Nessie declares
+`nessie.organisation.manage` in its signed UOA config, gives that capability to
+the configured organisation-admin role, and reads the caller's fresh
+`GET /org/me` role before showing or serving that section. UOA's `owner` role
+holds every declared capability structurally. A local `OrganizationMember` row
+is therefore a binding and compatibility projection, never authority for an
+UOA-bound organisation; a failed role read answers retryably and fails closed.
 
 ## What Nessie must not store
 

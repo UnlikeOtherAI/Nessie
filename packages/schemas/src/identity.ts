@@ -255,6 +255,11 @@ export const OrganizationSummarySchema = z.object({
   // The id itself is deliberately not exposed — the client needs the fact, not
   // the external identifier.
   nameManagedExternally: z.boolean(),
+  // The Organization section is gated by a live UOA role/capability read for
+  // UOA-bound tenants. An outage is explicit so the UI never calls it a denial.
+  administration: z.object({
+    status: z.enum(['allowed', 'forbidden', 'unavailable']),
+  }),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
 
