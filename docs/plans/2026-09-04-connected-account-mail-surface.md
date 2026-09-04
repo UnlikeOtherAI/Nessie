@@ -110,11 +110,14 @@ returned an exhaustive thread.
 
 An IMAP thread token is a compact, signed, list-issued capability bound to the
 account, folder, selected `UIDVALIDITY`, structural root digest, and stable
-root UID seed. It deliberately carries neither a membership list nor a count:
+UID seed. It deliberately carries neither a membership list nor a count:
 both change when a new reply arrives. On read, the server re-derives a bounded
-current group through `THREAD=REFERENCES` where available (or structural
-headers otherwise), then authenticates its root and seed before fetching
-bodies. An unthreaded message with no usable `Message-ID` incorporates
+current group from the signed seed's structural headers, then authenticates its
+root and seed before fetching bodies. A list request scopes every IMAP search
+to one 100-UID window — never `THREAD ALL` or `SEARCH ALL` — and a reader
+follows the root through at most 20 windows and 500 related-message candidates.
+Reaching either cap is surfaced as potentially earlier mail. An unthreaded
+message with no usable `Message-ID` incorporates
 `UIDVALIDITY` and UID in its digest, so empty header values cannot collide and
 folder reset semantics are explicit. Every emitted IMAP cursor carries the
 selected `UIDVALIDITY`; a reset is rejected rather than continuing a stale

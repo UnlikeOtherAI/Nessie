@@ -17,7 +17,13 @@ const context = (actorType: 'agent' | 'user' = 'user'): AuthorizedActionContext 
   tenant: { organizationId: ORGANIZATION_ID },
 })
 
-const makeApp = (input: { actorType?: 'agent' | 'user'; authenticated?: boolean } = {}) => {
+const makeApp = (input: {
+  actorType?: 'agent'
+  | 'user'
+  authenticated?: boolean
+  mailboxFindFirst?: () => unknown
+  sendActionFindFirst?: () => unknown
+} = {}) => {
   const seen = { comms: [] as unknown[], mailboxes: [] as unknown[] }
   const prisma = {
     commsConnection: {
@@ -35,7 +41,9 @@ const makeApp = (input: { actorType?: 'agent' | 'user'; authenticated?: boolean 
         seen.mailboxes.push(args)
         return []
       },
+      findFirst: async () => input.mailboxFindFirst?.() ?? null,
     },
+    mailboxSendAction: { findFirst: async () => input.sendActionFindFirst?.() ?? null },
   } as unknown as PrismaClient
   const app = Fastify()
   registerConnectedMailRoutes(app, {
@@ -47,14 +55,20 @@ const makeApp = (input: { actorType?: 'agent' | 'user'; authenticated?: boolean 
     parseHeaderValue: (value: string | string[] | undefined) =>
       typeof value === 'string' ? value.trim() || undefined : undefined,
     prisma,
-    requireActorContext: (_request: unknown, reply: { code: (status: number) => { send: (body: unknown) => void } }) => {
+    requireActorContext: (
+      _request: unknown,
+      reply: { code: (status: number) => { send: (body: unknown) => void } },
+    ) => {
       if (input.authenticated === false) {
         reply.code(401).send({ error: { code: 'UNAUTHORIZED' } })
         return null
       }
       return context(input.actorType)
     },
-    requireUserActor: (value: AuthorizedActionContext, reply: { code: (status: number) => { send: (body: unknown) => void } }) => {
+    requireUserActor: (
+      value: AuthorizedActionContext,
+      reply: { code: (status: number) => { send: (body: unknown) => void } },
+    ) => {
       if (value.actor.actorType === 'user') return true
       reply.code(403).send({ error: { code: 'FORBIDDEN' } })
       return false
@@ -148,6 +162,28 @@ test('mail contracts refuse supplied From and unknown fields before a send or dr
       method: 'POST', url: `/api/mail/accounts/mailbox/${ACCOUNT_ID}/send`, headers, payload,
     })
     assert.equal(send.statusCode, 400)
+  } finally {
+    await app.close()
+  }
+})
+
+test('SMTP action status is user-entitled and explicitly private no-store', async () => {
+  const actionId = '44444444-4444-4444-8444-444444444444'
+  const { app } = makeApp({
+    mailboxFindFirst: () => ({ id: ACCOUNT_ID, status: 'active' }),
+    sendActionFindFirst: () => ({ id: actionId, state: 'delivery_unknown' }),
+  })
+  await app.ready()
+  try {
+    const response = await app.inject({
+      method: 'GET', url: `/api/mail/accounts/mailbox/${ACCOUNT_ID}/send-actions/${actionId}`,
+    })
+    assert.equal(response.statusCode, 200, response.body)
+    assert.equal(response.headers['cache-control'], 'private, no-store')
+    assert.deepEqual(response.json().data, { id: actionId, state: 'delivery_unknown' })
+    assert.equal((await app.inject({
+      method: 'GET', url: `/api/mail/accounts/gmail/${ACCOUNT_ID}/send-actions/${actionId}`,
+    })).statusCode, 409)
   } finally {
     await app.close()
   }

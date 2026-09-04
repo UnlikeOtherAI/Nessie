@@ -1,8 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto'
-
 import type { PrismaClient } from '@prisma/client'
 import {
-  canonicalDraftFingerprintInput,
   listGmailMailThreads,
   readGmailMailThread,
   GmailApiError,
@@ -11,8 +8,8 @@ import {
   ImapError,
   listMailboxMailThreads,
   readMailboxMailConversation,
-  sendFromMailbox,
 } from '@nessie/agent-mail'
+import type { sendFromMailbox } from '@nessie/agent-mail'
 import { safeFetch } from '@nessie/runtime'
 import {
   capabilityIsGranted,
@@ -22,7 +19,6 @@ import {
   getGoogleCapability,
   type ConnectedMailAccountRecord,
   type ConnectedMailConversation,
-  type ConnectedMailboxSendInput,
   type ConnectedMailSource,
   type ConnectedMailThreadSummary,
 } from '@nessie/schemas'
@@ -36,7 +32,6 @@ import {
   MailboxCredentialMissingError,
   mailboxDialOptions,
   mailboxEndpointsFor,
-  type MailboxConnectionRow,
 } from './mailbox-connection-endpoints.js'
 import { markMailboxNeedsReauthorization } from './mailbox-connection-access.js'
 import { mailboxConnectionTestFailure } from './mailbox-connections.js'
@@ -45,12 +40,19 @@ export type ConnectedMailErrorCode =
   | 'NOT_FOUND'
   | 'CAPABILITY_UNSUPPORTED'
   | 'NEEDS_REAUTHORIZATION'
+  | 'INVALID_RECIPIENT'
+  | 'DELIVERY_REJECTED'
   | 'DELIVERY_UNKNOWN'
   | 'PROVIDER_FAILED'
 
 /** Foreign, stale and absent resources intentionally collapse to NOT_FOUND. */
 export class ConnectedMailError extends Error {
-  constructor(readonly code: ConnectedMailErrorCode) {
+  constructor(
+    readonly code: ConnectedMailErrorCode,
+    readonly actionId?: string,
+    /** Audit a delivery-unknown transition once, never once per replay. */
+    readonly deliveryUnknownTransitioned = false,
+  ) {
     super(`[connected-mail] ${code.toLowerCase().replaceAll('_', ' ')}`)
     this.name = 'ConnectedMailError'
   }
@@ -63,7 +65,7 @@ export type ConnectedMailDeps = {
   sendMailbox?: typeof sendFromMailbox
 }
 
-type Actor = { organizationId: string; userId: string }
+export type Actor = { organizationId: string; userId: string }
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
@@ -89,7 +91,7 @@ const gmailFetch = (deps: ConnectedMailDeps) => async (
   init?: { method?: string; headers?: Record<string, string>; body?: string },
 ) => (deps.fetchImpl ?? safeFetch)(url, init ?? {})
 
-const mailboxForActor = async (
+export const mailboxForActor = async (
   prisma: PrismaClient,
   actor: Actor,
   id: string,
@@ -310,136 +312,4 @@ export const readConnectedMailConversation = async (
     }
     throw new ConnectedMailError('PROVIDER_FAILED')
   }
-}
-
-const mailboxSendFingerprint = (input: ConnectedMailboxSendInput): string =>
-  createHash('sha256').update(canonicalDraftFingerprintInput(input)).digest('hex')
-
-export type MailboxSendActionInput = {
-  clientRequestId: string
-  connection: MailboxConnectionRow
-  organizationId: string
-  ownerUserId: string
-  mail: ConnectedMailboxSendInput
-}
-
-/**
- * The sole SMTP dispatch state machine for both a person's Mail send and an
- * approved agent tool call. It persists no connected-mail body: the
- * fingerprint detects a conflicting replay, while the stored Message-ID makes
- * a known replay observable without granting an ambiguous DATA result a retry.
- */
-export const dispatchMailboxSendAction = async (
-  prisma: PrismaClient,
-  input: MailboxSendActionInput,
-  deps: ConnectedMailDeps,
-): Promise<{ status: 'sent'; actionId: string; messageId: string }> => {
-  const fingerprint = mailboxSendFingerprint(input.mail)
-  const id = randomUUID()
-  const domain = input.connection.address.split('@')[1] ?? 'localhost'
-  const action = await prisma.mailboxSendAction.upsert({
-    where: {
-      connectionId_clientRequestId: {
-        connectionId: input.connection.id,
-        clientRequestId: input.clientRequestId,
-      },
-    },
-    create: {
-      id, organizationId: input.organizationId, ownerUserId: input.ownerUserId,
-      connectionId: input.connection.id, clientRequestId: input.clientRequestId,
-      contentFingerprint: fingerprint, messageId: `nessie-${id}@${domain}`,
-    },
-    update: {},
-  })
-  // The connection/request key is globally unique, so a caller must never use
-  // another person's persisted result as proof their own request was sent.
-  if (action.ownerUserId !== input.ownerUserId) throw new ConnectedMailError('NOT_FOUND')
-  if (action.contentFingerprint !== fingerprint || action.state === 'delivery_unknown') {
-    throw new ConnectedMailError('DELIVERY_UNKNOWN')
-  }
-  if (action.state === 'dispatching') {
-    await prisma.mailboxSendAction.updateMany({
-      where: { id: action.id, state: 'dispatching' },
-      data: { state: 'delivery_unknown', claimedAt: null },
-    })
-    throw new ConnectedMailError('DELIVERY_UNKNOWN')
-  }
-  if (action.state === 'sent') {
-    return { status: 'sent', actionId: action.id, messageId: action.messageId }
-  }
-  const claimed = await prisma.mailboxSendAction.updateMany({
-    where: { id: action.id, state: 'ready' },
-    data: { state: 'dispatching', claimedAt: new Date() },
-  })
-  if (claimed.count !== 1) throw new ConnectedMailError('DELIVERY_UNKNOWN')
-  let endpoints
-  try {
-    // A known sent replay above must work after a credential has been revoked;
-    // decrypt only after this caller has won the ready -> dispatching claim.
-    endpoints = await mailboxEndpointsFor(prisma, input.connection, deps.encryptionSecret)
-  } catch (error) {
-    if (error instanceof MailboxCredentialMissingError) {
-      await prisma.mailboxSendAction.updateMany({
-        where: { id: action.id, state: 'dispatching' }, data: { state: 'ready', claimedAt: null },
-      })
-      await markMailboxNeedsReauthorization(
-        prisma, input.connection.id, 'The email address or password was not accepted.',
-      )
-      throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
-    }
-    throw error
-  }
-  try {
-    await (deps.sendMailbox ?? sendFromMailbox)(endpoints, {
-      bcc: input.mail.bcc, cc: input.mail.cc, inReplyTo: input.mail.inReplyTo,
-      messageId: action.messageId,
-      references: input.mail.inReplyTo ? [input.mail.inReplyTo] : undefined,
-      subject: input.mail.subject, text: input.mail.body, to: input.mail.to,
-    }, mailboxDialOptions())
-  } catch (error) {
-    if (error instanceof MailboxCredentialMissingError || mailboxConnectionTestFailure(error) === 'credential_rejected') {
-      await prisma.mailboxSendAction.updateMany({
-        where: { id: action.id, state: 'dispatching' }, data: { state: 'ready', claimedAt: null },
-      })
-      await markMailboxNeedsReauthorization(
-        prisma, input.connection.id, 'The email address or password was not accepted.',
-      )
-      throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
-    }
-    await prisma.mailboxSendAction.updateMany({
-      where: { id: action.id, state: 'dispatching' },
-      data: { state: 'delivery_unknown', claimedAt: null },
-    })
-    throw new ConnectedMailError('DELIVERY_UNKNOWN')
-  }
-  try {
-    await prisma.mailboxSendAction.update({
-      where: { id: action.id }, data: { state: 'sent', sentAt: new Date(), claimedAt: null },
-    })
-  } catch {
-    await prisma.mailboxSendAction.updateMany({
-      where: { id: action.id, state: 'dispatching' },
-      data: { state: 'delivery_unknown', claimedAt: null },
-    })
-    throw new ConnectedMailError('DELIVERY_UNKNOWN')
-  }
-  return { status: 'sent', actionId: action.id, messageId: action.messageId }
-}
-
-/** SMTP sends reached from the entitled human route pin the action to that person. */
-export const sendConnectedMailboxMail = async (
-  prisma: PrismaClient,
-  actor: Actor,
-  accountId: string,
-  input: ConnectedMailboxSendInput,
-  deps: ConnectedMailDeps,
-): Promise<{ status: 'sent'; actionId: string; messageId: string }> => {
-  const connection = await mailboxForActor(prisma, actor, accountId)
-  return dispatchMailboxSendAction(prisma, {
-    clientRequestId: input.idempotencyKey,
-    connection,
-    mail: input,
-    organizationId: actor.organizationId,
-    ownerUserId: actor.userId,
-  }, deps)
 }

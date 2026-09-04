@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { sendGmailDraft } from '@nessie/comms-google'
+import { deleteGmailDraft, getGmailDraft, sendGmailMessage } from '@nessie/comms-google'
 
 import {
   GmailDraftError,
@@ -9,6 +9,7 @@ import {
   loadCredential,
   toRecord,
 } from './gmail-drafts.js'
+import { fingerprintOf } from './gmail-draft-fingerprint.js'
 
 /** A stalled provider request is ambiguous, never eligible for another send. */
 export const STALE_CLAIM_WINDOW_MS = 2 * 60 * 1000
@@ -45,6 +46,20 @@ export const resolveStaleGmailDispatches = async (
     if (result.count === 1) resolved.push(candidate)
   }
   return resolved
+}
+
+/** A stalled edit never started a send, so release it for fresh validation. */
+export const resolveStaleGmailDraftUpdates = async (
+  prisma: PrismaClient,
+  deps: Pick<GmailDraftDeps, 'now'> = {},
+): Promise<number> => {
+  const now = deps.now?.() ?? new Date()
+  const staleAt = new Date(now.getTime() - STALE_CLAIM_WINDOW_MS)
+  const recovered = await prisma.gmailDraftAction.updateMany({
+    where: { state: 'updating', claimedAt: { lt: staleAt } },
+    data: { state: 'draft', claimedAt: null },
+  })
+  return recovered.count
 }
 
 /**
@@ -86,9 +101,37 @@ export const dispatchClaimedDraft = async (
     })
     throw error
   }
+  const fetchImpl = gmailFetch(deps)
+  let captured: Awaited<ReturnType<typeof getGmailDraft>>
+  try {
+    captured = await getGmailDraft(fetchImpl, credential.credential.accessToken, row.providerDraftId)
+    if (fingerprintOf(captured) !== row.contentFingerprint) {
+      throw new GmailDraftError('DRAFT_CHANGED')
+    }
+    if (captured.attachments.length > 0) {
+      throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'draft attachments cannot be sent without durable content')
+    }
+  } catch (error) {
+    // A failed validation/read never started a send. Returning to draft is
+    // safe, and forces the next attempt to validate the provider version.
+    await prisma.gmailDraftAction.updateMany({
+      where: { id: row.id, state: 'dispatching' },
+      data: { state: 'draft', claimedAt: null, sendAfter: null },
+    })
+    if (error instanceof GmailDraftError) throw error
+    throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
+  }
   let sent
   try {
-    sent = await sendGmailDraft(gmailFetch(deps), credential.credential.accessToken, row.providerDraftId)
+    // Send the bytes we just verified, rather than asking Gmail to send its
+    // mutable draft id. A later Gmail edit therefore cannot alter this send.
+    sent = await sendGmailMessage(fetchImpl, credential.credential.accessToken, {
+      to: captured.to,
+      cc: captured.cc,
+      bcc: captured.bcc,
+      subject: captured.subject,
+      body: captured.body,
+    }, captured.threadId ?? row.providerThreadId ?? undefined)
   } catch (error) {
     await prisma.gmailDraftAction.updateMany({
       where: { id: row.id, state: 'dispatching' },
@@ -103,5 +146,8 @@ export const dispatchClaimedDraft = async (
       sendAfter: null, claimedAt: null,
     },
   })
+  // Gmail direct-send leaves the source draft behind. Deletion is best effort:
+  // the sent row is authoritative and a cleanup failure must not retry mail.
+  await deleteGmailDraft(fetchImpl, credential.credential.accessToken, row.providerDraftId).catch(() => undefined)
   return { status: 'sent', sentMessageId: sent.messageId, action: toRecord(updated) }
 }

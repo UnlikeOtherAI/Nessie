@@ -114,6 +114,24 @@ export const normalizeAddress = (raw: string | null | undefined): string | null 
   return candidate
 }
 
+const BARE_EMAIL_PATTERN = new RegExp(
+  "^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$",
+  'i',
+)
+
+/**
+ * Normalize an outbound envelope address. Unlike `normalizeAddress`, this
+ * deliberately refuses display names and permissive inbound-only forms: SMTP
+ * commands and MIME recipient headers must receive one bare address.
+ */
+export const normalizeOutboundAddress = (raw: string | null | undefined): string | null => {
+  if (!raw || /[\r\n]/.test(raw)) return null
+  const value = raw.trim().toLowerCase()
+  return BARE_EMAIL_PATTERN.test(value)
+    ? value
+    : null
+}
+
 export const addressDomain = (address: string): string | null => {
   const at = address.lastIndexOf('@')
   return at === -1 ? null : address.slice(at + 1)

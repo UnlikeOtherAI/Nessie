@@ -42,6 +42,8 @@ const gmailFetch = async (
 ) => {
   const response = await safeFetch(url, init ?? {})
   return {
+    body: response.body,
+    headers: response.headers,
     ok: response.ok,
     status: response.status,
     json: () => response.json(),

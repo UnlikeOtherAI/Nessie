@@ -31,6 +31,23 @@ test('a compose draft cannot revive quoted provider material or an arbitrary Fro
   assert.equal(reviveMailComposeDraft({ from: 'spoof@example.com', to: 'a@example.com' }), null)
 })
 
+test('a local compose draft retains only its durable action identifiers across a reload', () => {
+  assert.deepEqual(reviveMailComposeDraft({
+    to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
+    gmailDraftId: '00000000-0000-4000-8000-000000000001',
+    mailboxSendActionId: '00000000-0000-4000-8000-000000000003',
+    requestId: '00000000-0000-4000-8000-000000000002',
+  }), {
+    to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
+    gmailDraftId: '00000000-0000-4000-8000-000000000001',
+    mailboxSendActionId: '00000000-0000-4000-8000-000000000003',
+    requestId: '00000000-0000-4000-8000-000000000002',
+  })
+  assert.deepEqual(reviveMailComposeDraft({
+    to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello', requestId: 'not-an-id',
+  }), { to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello' })
+})
+
 test('mail doorway metadata accepts only identifiers and never content', () => {
   assert.deepEqual(readMailSurfaceDoorway({ mailSurfaceDoorway: { accountId: 'a', mode: 'thread', source: 'gmail', threadId: 't' } }), {
     accountId: 'a', mode: 'thread', source: 'gmail', threadId: 't',
@@ -70,9 +87,21 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(compose, /useAuthSession/)
   assert.match(compose, /\$\{me\.user\.id\}:\$\{me\.context\.organizationId\}/)
   assert.match(compose, /providerDraftRef\.current/)
+  assert.match(compose, /Persist the action key before crossing the network boundary/)
+  assert.match(compose, /mailboxSendActionId/)
+  assert.match(compose, /mailbox-delivery-unknown/)
+  assert.match(compose, /Check the provider’s Sent mail/)
+  assert.match(compose, /recoveredMailboxSent/)
+  assert.match(compose, /mailboxSendLocked/)
+  assert.match(compose, /state === 'dispatching'/)
+  assert.doesNotMatch(compose, /mailboxAction\.refetch\(\)/)
+  assert.match(compose, /gmailDraftId: providerAction\.id/)
+  assert.doesNotMatch(compose, /createIdempotencyKeyRef|mailboxSendIdempotencyKeyRef/)
   assert.match(compose, /Create a new Gmail draft/)
   assert.match(compose, /undoGmailSend/)
   assert.match(compose, /setActiveGmailDraftId\(sent\.id\)/)
+  assert.match(compose, /if \(activeGmailDraftId\)/)
+  assert.match(compose, /await providerDraft\.refetch\(\)/)
   assert.match(compose, /!account\.canSend/)
   assert.match(compose, /Your email was sent/)
   assert.match(compose, /Your email is queued to send/)

@@ -33,6 +33,8 @@ export const connectedMailKeys = {
   accounts: () => ['connected-mail', 'accounts'] as const,
   conversation: ({ accountId, source }: MailAddress, threadId: string | undefined) =>
     ['connected-mail', 'conversation', source, accountId, threadId] as const,
+  sendAction: (address: MailAddress | null, actionId: string | undefined) =>
+    ['connected-mail', 'send-action', address?.source, address?.accountId, actionId] as const,
   threads: (
     { accountId, source }: MailAddress,
     input: { cursor?: string; pageSize: number; query: string; unreadOnly: boolean },
@@ -89,7 +91,17 @@ export const useConnectedMailConversation = (
   })
 }
 
-export type ConnectedMailDraftResult = { id: string; contentFingerprint?: string; sendAfter?: string; status?: string }
+export type ConnectedMailDraftResult = {
+  id: string
+  actionId?: string
+  contentFingerprint?: string
+  sendAfter?: string
+  status?: string
+}
+export type MailboxSendActionStatus = {
+  id: string
+  state: 'ready' | 'dispatching' | 'sent' | 'delivery_unknown'
+}
 
 const mailMutationUrl = ({ accountId, source }: MailAddress, suffix: string): string =>
   `/api/mail/accounts/${source}/${encodeURIComponent(accountId)}${suffix}`
@@ -125,6 +137,27 @@ export const useConnectedMailSend = (address: MailAddress | null) => {
       return apiClient.post<ConnectedMailDraftResult>(mailMutationUrl(address, '/send'), input)
     },
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: connectedMailKeys.accounts() }) },
+  })
+}
+
+/** The durable SMTP action is content-free; this read never retains mail data. */
+export const useMailboxSendActionStatus = (
+  address: MailAddress | null,
+  actionId: string | undefined,
+) => {
+  const apiClient = useApiClient()
+  return useQuery<MailboxSendActionStatus>({
+    enabled: Boolean(address?.source === 'mailbox' && actionId),
+    queryKey: connectedMailKeys.sendAction(address, actionId),
+    queryFn: async () => {
+      if (!address || address.source !== 'mailbox' || !actionId) {
+        throw new Error('Choose a mailbox send action.')
+      }
+      return apiClient.get<MailboxSendActionStatus>(
+        mailMutationUrl(address, `/send-actions/${encodeURIComponent(actionId)}`),
+      )
+    },
+    staleTime: 0,
   })
 }
 

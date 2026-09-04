@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { EmailDraftPreview } from '@nessie/schemas'
 
 import { approvalKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -38,6 +39,19 @@ export const useApprovalRequest = (approvalId: string | undefined) => {
     queryKey: approvalKeys.detail(approvalId),
     queryFn: () => apiClient.get(`/api/approvals/${approvalId}`),
     placeholderData: keepPreviousData,
+  })
+}
+
+/** The exact frozen connected-mail send, visible only to its pinned approver. */
+export const useMailboxSendApprovalDraft = (approvalId: string | undefined) => {
+  const apiClient = useApiClient()
+  return useQuery<EmailDraftPreview>({
+    enabled: Boolean(approvalId),
+    queryKey: approvalKeys.mailboxSendDraft(approvalId),
+    queryFn: () => apiClient.get(`/api/mailbox-connections/approvals/${approvalId}/draft`),
+    // A different approval can contain somebody else's complete private email.
+    // Never paint the previous approval while this exact identity resolves.
+    placeholderData: undefined,
   })
 }
 

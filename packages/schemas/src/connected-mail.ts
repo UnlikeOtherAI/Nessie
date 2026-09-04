@@ -156,10 +156,20 @@ const headerText = (max: number) => z.string().max(max).refine(
   (value) => !/[\r\n]/.test(value),
   'Mail headers cannot contain a line break.',
 )
+const BARE_EMAIL_PATTERN = new RegExp(
+  "^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$",
+  'i',
+)
+// Outbound recipients are envelope addresses, not display headers. Keep this
+// check at the browser/API boundary as well as in the MIME preflight: an
+// invalid address must not even start an SMTP dial.
 const recipient = z.string().trim().min(3).max(320).refine(
   (value) => !/[\r\n]/.test(value),
   'Mail headers cannot contain a line break.',
-)
+).refine(
+  (value) => BARE_EMAIL_PATTERN.test(value),
+  'Recipients must be bare email addresses.',
+).transform((value) => value.toLowerCase())
 const recipients = z.array(recipient).min(1).max(50)
 const optionalRecipients = z.array(recipient).max(50).optional()
 

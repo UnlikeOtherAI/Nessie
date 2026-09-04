@@ -6,11 +6,13 @@ import { parseMailboxThreadToken } from '../src/mailbox-thread-token.js'
 import {
   mailboxHeaderWindow,
   boundedThreadDetailUids,
+  discoverRelatedThreadUids,
   nativeThreadHeaderUids,
   nativeThreadSeedUids,
   validateMailboxThreadMembers,
 } from '../src/mailbox-mail-surface.js'
-import { parseThreadReferenceSets } from '../src/imap.js'
+import { uidWindowEndingAt, withinUidWindow } from '../src/imap-uid-window.js'
+import { parseThreadReferenceSets, type ImapPart, type ImapSession } from '../src/imap.js'
 import { imapAttachmentParts, parseImapBodyStructure } from '../src/imap-bodystructure.js'
 
 const ACCOUNT_ID = 'account-1'
@@ -106,6 +108,44 @@ test('THREAD=REFERENCES parser emits only flattened top-level groups', () => {
 test('fallback paging advances to a bounded older UID header window', () => {
   const uids = Array.from({ length: 101 }, (_, index) => 101 - index)
   assert.deepEqual(mailboxHeaderWindow(uids, 100), [1])
+})
+
+test('thread discovery scopes every broad IMAP criteria to one UID window', () => {
+  const window = uidWindowEndingAt(1_000)
+  assert.deepEqual(window, { lower: 901, upper: 1_000 })
+  assert.deepEqual(withinUidWindow(['ALL'], window!), ['UID 901:1000'])
+  assert.deepEqual(withinUidWindow(['UNSEEN', ' TEXT ', { literal: 'invoice' }], window!), [
+    'UID 901:1000', ' ', 'UNSEEN', ' TEXT ', { literal: 'invoice' },
+  ])
+})
+
+test('a signed visible reply seed authenticates through its structural root', () => {
+  const parsed = parse(token({ rootMessageId: 'root@example.test', uid: 8, uidValidity: 10 }))
+  assert.ok(parsed)
+  const reply = {
+    date: null, from: null, fromName: null, hasAttachments: false,
+    inReplyTo: 'root@example.test', messageId: 'reply@example.test',
+    references: ['root@example.test'], snippet: '', subject: 'Reply', to: [], uid: 8, unread: false,
+  }
+  const newerReply = { ...reply, messageId: 'newer@example.test', uid: 9 }
+  const members = validateMailboxThreadMembers(parsed, [reply, newerReply], SECRET)
+  assert.deepEqual(members?.map((member) => member.uid), [9, 8])
+})
+
+test('related-thread discovery caps a huge mailbox without an unbounded search response', async () => {
+  const requests: ImapPart[][] = []
+  const session = {
+    searchUids: async (criteria: ImapPart[]) => {
+      requests.push(criteria)
+      return Array.from({ length: 100 }, (_, index) => 1_000_000 - requests.length * 100 - index)
+    },
+  } as unknown as ImapSession
+  const discovered = await discoverRelatedThreadUids(session, 'root@example.test', 1_000_001)
+  assert.equal(discovered.capped, true)
+  assert.equal(discovered.uids.length, 500)
+  assert.equal(requests.length, 5)
+  assert.equal(requests[0]?.[0], 'UID 999901:1000000')
+  assert.ok(requests.every((criteria) => !criteria.includes('ALL')))
 })
 
 test('native THREAD paging reserves one newest header for every group', () => {

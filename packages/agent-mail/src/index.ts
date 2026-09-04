@@ -15,6 +15,7 @@ export {
   buildAddress,
   localPartRejectionMessage,
   normalizeAddress,
+  normalizeOutboundAddress,
   normalizeMessageId,
   parseReferences,
   suggestLocalParts,

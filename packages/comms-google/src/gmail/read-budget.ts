@@ -10,7 +10,7 @@ export const GMAIL_MAX_DECODED_BODY_BYTES = 256 * 1024
 export const GMAIL_MAX_METADATA_RESPONSE_BYTES = 64 * 1024
 
 export class GmailReadLimitError extends Error {
-  constructor(kind: 'http' | 'decoded') {
+  constructor(kind: 'http' | 'decoded' | 'structure') {
     super(`[comms-google] Gmail ${kind} read budget exceeded`)
     this.name = 'GmailReadLimitError'
   }

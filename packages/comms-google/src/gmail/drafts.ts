@@ -1,5 +1,10 @@
 import { requestJson, GMAIL_API_BASE, type FetchLike } from '../http.js'
 import { buildRawMessage, type OutboundMessage } from './mime-build.js'
+import {
+  GMAIL_MAX_READ_RESPONSE_BYTES,
+  GmailReadBudget,
+  GmailReadLimitError,
+} from './read-budget.js'
 
 /**
  * Gmail draft operations.
@@ -104,6 +109,14 @@ export type GmailDraftContent = {
   attachments: { filename: string; mimeType: string; sizeBytes: number }[]
 }
 
+export const GMAIL_MAX_DRAFT_HEADERS = 100
+export const GMAIL_MAX_DRAFT_HEADER_BYTES = 1_000
+export const GMAIL_MAX_DRAFT_PART_DEPTH = 20
+export const GMAIL_MAX_DRAFT_PARTS = 200
+export const GMAIL_MAX_DRAFT_ATTACHMENTS = 100
+export const GMAIL_MAX_DRAFT_FILENAME_BYTES = 500
+export const GMAIL_MAX_DRAFT_MIME_TYPE_BYTES = 200
+
 const headerValue = (
   headers: { name?: unknown; value?: unknown }[],
   name: string,
@@ -116,14 +129,14 @@ const headerValue = (
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const splitAddressList = (value: string): string[] =>
-  value
+const splitAddressList = (value: string): string[] => {
+  const addresses = value
     .split(',')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
-
-const decodeBase64Url = (value: string): string =>
-  Buffer.from(value, 'base64url').toString('utf8')
+  if (addresses.length > 50) throw new GmailReadLimitError('structure')
+  return addresses
+}
 
 type GmailPart = {
   mimeType?: unknown
@@ -135,11 +148,22 @@ type GmailPart = {
 const collectBodyAndAttachments = (
   part: GmailPart | undefined,
   into: { body: string; attachments: GmailDraftContent['attachments'] },
+  budget: GmailReadBudget,
+  depth = 0,
+  seen = { parts: 0 },
 ): void => {
   if (!part) return
+  if (depth > GMAIL_MAX_DRAFT_PART_DEPTH || ++seen.parts > GMAIL_MAX_DRAFT_PARTS) {
+    throw new GmailReadLimitError('structure')
+  }
   const filename = typeof part.filename === 'string' ? part.filename : ''
   const mimeType = typeof part.mimeType === 'string' ? part.mimeType : ''
   if (filename.length > 0) {
+    if (
+      into.attachments.length >= GMAIL_MAX_DRAFT_ATTACHMENTS
+      || Buffer.byteLength(filename) > GMAIL_MAX_DRAFT_FILENAME_BYTES
+      || Buffer.byteLength(mimeType) > GMAIL_MAX_DRAFT_MIME_TYPE_BYTES
+    ) throw new GmailReadLimitError('structure')
     into.attachments.push({
       filename,
       mimeType,
@@ -149,12 +173,13 @@ const collectBodyAndAttachments = (
   }
   if (mimeType === 'text/plain' && typeof part.body?.data === 'string') {
     if (into.body.length === 0) {
-      into.body = decodeBase64Url(part.body.data)
+      into.body = budget.decode(part.body.data)
     }
     return
   }
-  for (const child of part.parts ?? []) {
-    collectBodyAndAttachments(child, into)
+  const children = Array.isArray(part.parts) ? part.parts : []
+  for (const child of children) {
+    collectBodyAndAttachments(child, into, budget, depth + 1, seen)
   }
 }
 
@@ -163,12 +188,18 @@ export const getGmailDraft = async (
   accessToken: string,
   draftId: string,
 ): Promise<GmailDraftContent> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'drafts.get',
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(draftId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+      maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES,
+    },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const draft = body as {
     id?: unknown
     message?: {
@@ -182,8 +213,14 @@ export const getGmailDraft = async (
   }
   const payload = draft.message.payload
   const headers = payload?.headers ?? []
+  if (headers.length > GMAIL_MAX_DRAFT_HEADERS || headers.some((header) => {
+    const name = typeof header.name === 'string' ? header.name : ''
+    const value = typeof header.value === 'string' ? header.value : ''
+    return Buffer.byteLength(name) > GMAIL_MAX_DRAFT_HEADER_BYTES
+      || Buffer.byteLength(value) > GMAIL_MAX_DRAFT_HEADER_BYTES
+  })) throw new GmailReadLimitError('structure')
   const collected = { body: '', attachments: [] as GmailDraftContent['attachments'] }
-  collectBodyAndAttachments(payload, collected)
+  collectBodyAndAttachments(payload, collected, budget)
 
   return {
     id: draft.id,

@@ -1,6 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
-import { dispatchClaimedDraft, resolveStaleGmailDispatches } from '@nessie/team-admin'
+import {
+  dispatchClaimedDraft,
+  resolveStaleGmailDraftUpdates,
+  resolveStaleGmailDispatches,
+} from '@nessie/team-admin'
+
+import { sweepStaleMailboxSendActions } from './mailbox-send-sweep.js'
 
 /**
  * Dispatch email whose undo window has elapsed.
@@ -49,12 +55,16 @@ export const sweepDueGmailSends = async (
   deps: { encryptionSecret: string; now?: () => Date },
 ): Promise<{ dispatched: number; failed: number; deliveryUnknown: number }> => {
   const now = deps.now?.() ?? new Date()
+  await resolveStaleGmailDraftUpdates(prisma, { now: () => now })
   const staleDeliveryUnknown = await resolveStaleGmailDispatches(prisma, { now: () => now })
   for (const row of staleDeliveryUnknown) {
     await writeGmailDraftDispatchAudit(prisma, {
       action: 'gmail.draft.delivery_unknown', id: row.id, organizationId: row.organizationId,
     })
   }
+  // SMTP sends have no scheduled delivery work, but their abandoned claims use
+  // this same periodic mail-send seam to settle safely and surface once.
+  await sweepStaleMailboxSendActions(prisma, { now: () => now })
   const due = await prisma.gmailDraftAction.findMany({
     where: { state: 'sending', sendAfter: { lte: now } },
     select: { id: true, organizationId: true },

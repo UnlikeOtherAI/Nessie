@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
-import { writeGmailDraftDispatchAudit } from '../src/control/gmail-send-sweep.js'
+import { sweepDueGmailSends, writeGmailDraftDispatchAudit } from '../src/control/gmail-send-sweep.js'
 
 const ACTION = '00000000-0000-4000-8000-000000000001'
 const ORGANIZATION = '00000000-0000-4000-8000-000000000002'
@@ -34,4 +34,25 @@ test('an audit failure cannot affect the already-completed Gmail dispatch', asyn
   await writeGmailDraftDispatchAudit({} as PrismaClient, {
     action: 'gmail.draft.sent', id: ACTION, organizationId: ORGANIZATION,
   }, async () => { throw new Error('audit unavailable') })
+})
+
+test('the periodic mail-send sweep also settles stale SMTP claims', async () => {
+  const updates: unknown[] = []
+  const prisma = {
+    gmailDraftAction: {
+      findMany: async () => [],
+      updateMany: async () => ({ count: 0 }),
+    },
+    mailboxSendAction: {
+      findMany: async () => [{
+        connectionId: '00000000-0000-4000-8000-000000000003', id: ACTION,
+        organizationId: ORGANIZATION, ownerUserId: '00000000-0000-4000-8000-000000000004',
+      }],
+      updateMany: async (input: unknown) => { updates.push(input); return { count: 1 } },
+    },
+  } as unknown as PrismaClient
+  await sweepDueGmailSends(prisma, {
+    encryptionSecret: 'test-secret', now: () => new Date('2026-09-04T12:00:00.000Z'),
+  })
+  assert.match(JSON.stringify(updates), /delivery_unknown/)
 })

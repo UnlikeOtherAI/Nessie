@@ -8,8 +8,12 @@ import {
   ConnectedMailError,
   listConnectedMailAccounts,
   listConnectedMailThreads,
-  sendConnectedMailboxMail,
 } from '../src/connected-mail.js'
+import {
+  readMailboxSendAction,
+  resolveStaleMailboxSendDispatches,
+  sendConnectedMailboxMail,
+} from '../src/mailbox-send-actions.js'
 
 const ORGANIZATION_ID = '11111111-1111-4111-8111-111111111111'
 const USER_ID = '22222222-2222-4222-8222-222222222222'
@@ -188,4 +192,64 @@ test('an SMTP action cannot be replayed by a different owner', async () => {
     (error: unknown) => error instanceof ConnectedMailError && error.code === 'NOT_FOUND',
   )
   assert.equal(credentialReads, 0)
+})
+
+test('an invalid SMTP recipient is refused before credentials or a transport dial', async () => {
+  let credentialReads = 0
+  let sends = 0
+  const connection = {
+    id: CONNECTION_ID, organizationId: ORGANIZATION_ID, ownerUserId: USER_ID, status: 'active',
+    address: 'owner@example.test', imapHost: 'imap.example.test', imapPort: 993, imapSecurity: 'tls',
+    smtpHost: 'smtp.example.test', smtpPort: 465, smtpSecurity: 'tls', username: 'owner@example.test',
+  }
+  const prisma = {
+    mailboxConnection: { findFirst: async () => connection },
+    mailboxConnectionCredential: { findUnique: async () => { credentialReads += 1; return null } },
+    mailboxSendAction: { upsert: async () => { throw new Error('an invalid recipient creates no action') } },
+  } as unknown as PrismaClient
+  await assert.rejects(() => sendConnectedMailboxMail(prisma, {
+    organizationId: ORGANIZATION_ID, userId: USER_ID,
+  }, CONNECTION_ID, {
+    body: 'Hello', idempotencyKey: '44444444-4444-4444-8444-444444444444', subject: 'Status',
+    to: ['Recipient <recipient@example.test>'],
+  }, { encryptionSecret: 'test-secret', sendMailbox: async () => { sends += 1 } }),
+  (error: unknown) => error instanceof ConnectedMailError && error.code === 'INVALID_RECIPIENT')
+  assert.equal(credentialReads, 0)
+  assert.equal(sends, 0)
+})
+
+test('a stale SMTP dispatch becomes terminal delivery_unknown', async () => {
+  const updates: unknown[] = []
+  const prisma = {
+    mailboxSendAction: {
+      findMany: async () => [{
+        connectionId: CONNECTION_ID, id: '44444444-4444-4444-8444-444444444444',
+        organizationId: ORGANIZATION_ID, ownerUserId: USER_ID,
+      }],
+      updateMany: async (input: unknown) => { updates.push(input); return { count: 1 } },
+    },
+  } as unknown as PrismaClient
+  const settled = await resolveStaleMailboxSendDispatches(prisma, {
+    now: () => new Date('2026-09-04T12:00:00.000Z'),
+  })
+  assert.equal(settled.length, 1)
+  assert.match(JSON.stringify(updates[0]), /delivery_unknown/)
+  assert.match(JSON.stringify(updates[0]), /11:58:00.000Z/)
+})
+
+test('SMTP action status requires both mailbox entitlement and action ownership', async () => {
+  const connection = {
+    id: CONNECTION_ID, organizationId: ORGANIZATION_ID, ownerUserId: USER_ID, status: 'active',
+  }
+  const prisma = {
+    mailboxConnection: { findFirst: async () => connection },
+    mailboxSendAction: { findFirst: async (input: { where: unknown }) => {
+      assert.match(JSON.stringify(input.where), new RegExp(USER_ID))
+      return { id: '44444444-4444-4444-8444-444444444444', state: 'delivery_unknown' }
+    } },
+  } as unknown as PrismaClient
+  const action = await readMailboxSendAction(prisma, {
+    organizationId: ORGANIZATION_ID, userId: USER_ID,
+  }, CONNECTION_ID, '44444444-4444-4444-8444-444444444444')
+  assert.deepEqual(action, { id: '44444444-4444-4444-8444-444444444444', state: 'delivery_unknown' })
 })

@@ -178,12 +178,17 @@ export class ImapSession {
     }
   }
 
-  async selectFolder(folder: string): Promise<{ uidValidity: number | null }> {
+  async selectFolder(folder: string): Promise<{ uidNext: number | null; uidValidity: number | null }> {
     try {
       const result = await this.run(['SELECT ', { literal: folder }])
       const uidValidityLine = result.untagged.find((response) => /\bUIDVALIDITY\s+\d+/i.test(response.text))
       const uidValidity = Number(/\bUIDVALIDITY\s+(\d+)/i.exec(uidValidityLine?.text ?? '')?.[1])
-      return { uidValidity: Number.isSafeInteger(uidValidity) && uidValidity > 0 ? uidValidity : null }
+      const uidNextLine = result.untagged.find((response) => /\bUIDNEXT\s+\d+/i.test(response.text))
+      const uidNext = Number(/\bUIDNEXT\s+(\d+)/i.exec(uidNextLine?.text ?? '')?.[1])
+      return {
+        uidNext: Number.isSafeInteger(uidNext) && uidNext > 0 ? uidNext : null,
+        uidValidity: Number.isSafeInteger(uidValidity) && uidValidity > 0 ? uidValidity : null,
+      }
     } catch (error) {
       if (error instanceof ImapError && error.kind === 'protocol') {
         throw new ImapError(`There is no folder called “${folder}” in this mailbox.`, 'not_found')

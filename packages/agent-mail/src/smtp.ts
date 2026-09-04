@@ -23,6 +23,8 @@ export class SmtpError extends Error {
     readonly code: number | null,
     /** Auth failures are the connection's problem to fix, not a transient. */
     readonly kind: 'auth' | 'protocol' | 'recipient' | 'transient',
+    /** Once DATA is accepted, a lost response can no longer safely be retried. */
+    readonly deliveryMayHaveStarted = false,
   ) {
     super(message)
     this.name = 'SmtpError'
@@ -45,11 +47,18 @@ const readReply = async (wire: MailWire): Promise<SmtpReply> => {
   }
 }
 
-const expect = async (wire: MailWire, ok: (code: number) => boolean, what: string) => {
+const expect = async (
+  wire: MailWire,
+  ok: (code: number) => boolean,
+  what: string,
+  deliveryMayHaveStarted = false,
+) => {
   const reply = await readReply(wire)
   if (!ok(reply.code)) {
     const kind = reply.code >= 500 ? 'protocol' : 'transient'
-    throw new SmtpError(`${what} (${reply.code} ${reply.lines[0] ?? ''})`.trim(), reply.code, kind)
+    throw new SmtpError(
+      `${what} (${reply.code} ${reply.lines[0] ?? ''})`.trim(), reply.code, kind, deliveryMayHaveStarted,
+    )
   }
   return reply
 }
@@ -251,7 +260,7 @@ export const sendOverSmtp = async (
   }
   await command(wire, 'DATA', (code) => code === 354, 'The mail server refused the message body')
   wire.write(`${dotStuff(message.mime)}\r\n.\r\n`)
-  await expect(wire, (code) => code === 250, 'The mail server did not accept the message')
+  await expect(wire, (code) => code === 250, 'The mail server did not accept the message', true)
 }
 
 export const closeSmtpSession = (session: SmtpSession): void => {

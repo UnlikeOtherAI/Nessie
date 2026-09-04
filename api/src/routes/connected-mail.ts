@@ -13,6 +13,7 @@ import {
   GmailDraftError,
   listConnectedMailAccounts,
   listConnectedMailThreads,
+  readMailboxSendAction,
   readConnectedMailConversation,
   sendConnectedMailboxMail,
   sendDraftForUser,
@@ -32,6 +33,7 @@ const AccountParamsSchema = z.object({
 }).strict()
 
 const DraftParamsSchema = AccountParamsSchema.extend({ draftId: z.string().uuid() }).strict()
+const SendActionParamsSchema = AccountParamsSchema.extend({ actionId: z.string().uuid() }).strict()
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
 
 const noStore = (reply: { header: (name: string, value: string) => unknown }): void => {
@@ -41,6 +43,8 @@ const noStore = (reply: { header: (name: string, value: string) => unknown }): v
 const connectedMailStatus = (error: ConnectedMailError): number => {
   if (error.code === 'NOT_FOUND') return 404
   if (error.code === 'CAPABILITY_UNSUPPORTED') return 409
+  if (error.code === 'INVALID_RECIPIENT') return 400
+  if (error.code === 'DELIVERY_REJECTED') return 422
   if (error.code === 'DELIVERY_UNKNOWN') return 409
   if (error.code === 'NEEDS_REAUTHORIZATION') return 401
   return 502
@@ -86,7 +90,10 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
   }
   const fail = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
     if (error instanceof ConnectedMailError) {
-      sendApiError(reply, connectedMailStatus(error), error.code, 'Mail account is unavailable')
+      sendApiError(
+        reply, connectedMailStatus(error), error.code, 'Mail account is unavailable', undefined,
+        error.actionId ? { actionId: error.actionId } : undefined,
+      )
       return reply
     }
     if (error instanceof GmailDraftError) {
@@ -137,6 +144,26 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
         prisma, resolved.mailActor, params, serviceDeps,
       )
       return createApiResponse(conversation)
+    } catch (error) {
+      return fail(reply, error)
+    }
+  })
+
+  app.get('/api/mail/accounts/:source/:accountId/send-actions/:actionId', async (request, reply) => {
+    const resolved = actor(request, reply)
+    if (!resolved) return reply
+    const params = parseInput(SendActionParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    if (params.source !== 'mailbox') {
+      sendApiError(reply, 409, 'CAPABILITY_UNSUPPORTED', 'Only SMTP mailboxes have send actions')
+      return reply
+    }
+    try {
+      const action = await readMailboxSendAction(
+        prisma, resolved.mailActor, params.accountId, params.actionId,
+      )
+      noStore(reply)
+      return createApiResponse(action)
     } catch (error) {
       return fail(reply, error)
     }
@@ -252,6 +279,15 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
       noStore(reply)
       return createApiResponse(result)
     } catch (error) {
+      if (params.source === 'mailbox' && error instanceof ConnectedMailError
+        && error.code === 'DELIVERY_UNKNOWN' && error.deliveryUnknownTransitioned) {
+        await emitAuditEvent(prisma, {
+          action: 'email.send_failed', actorContext: resolved.context, outcome: 'error',
+          metadata: { source: params.source, status: 'delivery_unknown' },
+          resourceId: error.actionId ?? params.accountId,
+          resourceType: error.actionId ? 'mailbox_send_action' : 'connected_mail_account',
+        })
+      }
       return fail(reply, error)
     }
   })

@@ -44,6 +44,7 @@ type Row = {
   resolvedAt: Date | null
   resolution: string | null
   resolutionNote: string | null
+  requiredApproverUserId: string | null
   requiredApproverRole: string | null
   continuationToken: string
   context: unknown
@@ -71,6 +72,7 @@ const makeRow = (overrides: Partial<Row> = {}): Row => ({
   resolvedAt: null,
   resolution: null,
   resolutionNote: null,
+  requiredApproverUserId: overrides.requiredApproverUserId ?? null,
   requiredApproverRole: null,
   continuationToken: 'token',
   context: null,
@@ -132,8 +134,9 @@ const makePrisma = (rows: Row[]): PrismaClient =>
     },
   }) as unknown as PrismaClient
 
-test('an owner sees every approval in their organization', () => {
-  assert.deepEqual(approvalVisibilityWhere(actorCtx(ownerId, ['owner'])), {})
+test('an owner has ordinary visibility over unpinned approvals', () => {
+  const where = approvalVisibilityWhere(actorCtx(ownerId, ['owner']))
+  assert.equal(matches(makeRow(), where as Record<string, unknown>), true)
 })
 
 test('a member does not see a private-channel approval they are not part of', async () => {
@@ -190,6 +193,27 @@ test('fetching an inaccessible approval by id returns null, not its reason', asy
   assert.equal(
     (await getApprovalRequest(prisma, 'private', actorCtx(ownerId, ['owner'])))?.id,
     'private',
+  )
+})
+
+test('a pinned approval is hidden from channel members and owners other than its approver', async () => {
+  const prisma = makePrisma([
+    makeRow({
+      id: 'pinned',
+      channelId: privateChannelId,
+      channelIsPublic: true,
+      context: { inputSummary: 'bcc: private@example.test; body: not for the channel' },
+      requiredApproverUserId: requesterId,
+    }),
+  ])
+
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(memberId))).data, [])
+  assert.deepEqual((await listApprovalRequests(prisma, actorCtx(ownerId, ['owner']))).data, [])
+  assert.equal(await getApprovalRequest(prisma, 'pinned', actorCtx(memberId)), null)
+  assert.equal(await getApprovalRequest(prisma, 'pinned', actorCtx(ownerId, ['owner'])), null)
+  assert.equal(
+    (await getApprovalRequest(prisma, 'pinned', actorCtx(requesterId)))?.id,
+    'pinned',
   )
 })
 

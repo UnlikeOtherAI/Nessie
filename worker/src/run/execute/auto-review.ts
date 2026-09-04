@@ -1,7 +1,9 @@
 import { BUILTIN_TOOL_DEFINITIONS, type InferenceResult, type InvocationRecord } from '@nessie/runtime'
+import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 
 import { truncateToolResult, stableJsonStringify } from '../tool-util.js'
+import type { RunContext } from './types.js'
 
 /** The only deferred-MCP controls that never leave the worker process. */
 export const LOCAL_MCP_DIRECTORY_TOOL_NAMES = new Set([
@@ -130,6 +132,65 @@ export const reviewProposedToolAction = async (
     invocations,
     reviewerModel: result.model || null,
   }
+}
+
+/** Converts an absent or failed configured reviewer into the same human gate. */
+export const runAutoReview = async (
+  reviewProposedAction: ((input: {
+    args: Record<string, unknown>
+    surface: ReviewableToolSurface
+    toolName: string
+  }) => Promise<AutoReviewResult>) | undefined,
+  input: { args: Record<string, unknown>; surface: ReviewableToolSurface; toolName: string },
+): Promise<AutoReviewResult> => {
+  if (!reviewProposedAction) return unavailable()
+  try {
+    return await reviewProposedAction(input)
+  } catch {
+    return unavailable()
+  }
+}
+
+type AutoReviewAuditEmitter = (input: {
+  action: 'policy.evaluated'
+  metadata: Record<string, unknown>
+  outcome: 'denied' | 'success'
+  reason?: 'auto_review_denied'
+  resourceId: string
+  resourceType: 'tool'
+}) => Promise<void>
+
+/** Records the review decision before authorization acts on its verdict. */
+export const recordAutoReview = async (
+  prisma: PrismaClient,
+  emitAudit: AutoReviewAuditEmitter,
+  context: RunContext,
+  toolName: string,
+  surface: ReviewableToolSurface,
+  review: AutoReviewResult,
+): Promise<void> => {
+  await prisma.taskEvent.create({
+    data: {
+      eventType: 'tool.auto_reviewed',
+      payload: { surface, toolName, verdict: review.verdict },
+      taskId: context.task.id,
+    },
+  })
+  await emitAudit({
+    action: 'policy.evaluated',
+    metadata: {
+      agentId: context.agent.id,
+      autoReview: { reviewerModel: review.reviewerModel, verdict: review.verdict },
+      runId: context.run.id,
+      surface,
+      taskId: context.task.id,
+      toolId: toolName,
+    },
+    outcome: review.verdict === 'deny' ? 'denied' : 'success',
+    ...(review.verdict === 'deny' ? { reason: 'auto_review_denied' as const } : {}),
+    resourceId: toolName,
+    resourceType: 'tool',
+  })
 }
 
 const parseJsonObject = (output: string): unknown => {

@@ -5587,6 +5587,9 @@ enum GmailDraftActionState {
   /// A create request was recorded before contacting Gmail.
   creating
   draft
+  /// An edit owns the provider draft while its new content is being written.
+  /// A stale edit is released back to draft; it never authorizes a send.
+  updating
   /// Held for the undo window, ready for the send sweep to claim.
   sending
   /// Atomically claimed by a dispatcher (the API's immediate send or the

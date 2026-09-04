@@ -15,7 +15,7 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type GmailDraftView = {
   id: string
-  state: 'draft' | 'sending' | 'sent' | 'discarded'
+  state: 'draft' | 'updating' | 'sending' | 'dispatching' | 'delivery_unknown' | 'sent' | 'discarded'
   revision: number
   contentFingerprint: string
   to: string[]

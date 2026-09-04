@@ -1,6 +1,6 @@
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser'
 
-import { normalizeAddress, normalizeMessageId, parseReferences } from './address.js'
+import { normalizeAddress, normalizeMessageId, normalizeOutboundAddress, parseReferences } from './address.js'
 import { classifyInboundEmail, type EmailClassification } from './classification.js'
 import { buildSnippet, htmlToText, sanitizeEmailHtml } from './sanitize-html.js'
 
@@ -159,8 +159,8 @@ const assertHeaderSafe = (label: string, value: string): void => {
 /** Outbound envelope values are bare normalized addresses, never display headers. */
 const outboundAddress = (label: string, value: string): string => {
   assertHeaderSafe(label, value)
-  const normalized = normalizeAddress(value)
-  if (!normalized || normalized !== value.trim().toLowerCase()) {
+  const normalized = normalizeOutboundAddress(value)
+  if (!normalized) {
     throw new Error(`${label} must be a bare email address`)
   }
   return normalized

@@ -53,6 +53,7 @@ export * from './call-start.js'
 export * from './comms-connection-management.js'
 export * from './comms-credential-coordinator.js'
 export * from './connected-mail.js'
+export * from './mailbox-send-actions.js'
 export * from './ledger-agent-model-catalog.js'
 export * from './policy-check.js'
 export * from './project-structure.js'
@@ -114,6 +115,7 @@ export {
   sendDraftForUser,
   dispatchClaimedDraft,
   resolveStaleGmailDispatches,
+  resolveStaleGmailDraftUpdates,
   undoHeldSend,
   discardDraftForUser,
   attachDraftMessage,

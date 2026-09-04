@@ -9,12 +9,25 @@ import {
   useConnectedMailDraft,
   useConnectedMailSend,
   useConnectedMailUndo,
+  useMailboxSendActionStatus,
   useUpdateConnectedMailDraft,
 } from '../../../facades/mail/hooks'
 import { useGmailDraft } from '../../../facades/gmail/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 
-export type MailComposeDraft = { bcc: string; body: string; cc: string; subject: string; to: string }
+export type MailComposeDraft = {
+  bcc: string
+  body: string
+  cc: string
+  /** Durable action identity for a provider draft created by this composer. */
+  gmailDraftId?: string
+  /** Persisted before a create/send so a reload can replay the same action. */
+  requestId?: string
+  /** Content-free SMTP action identity for an unconfirmed-delivery recovery. */
+  mailboxSendActionId?: string
+  subject: string
+  to: string
+}
 
 const emptyDraft: MailComposeDraft = { bcc: '', body: '', cc: '', subject: '', to: '' }
 const recipients = (value: string): string[] => value.split(',').map((part) => part.trim()).filter(Boolean)
@@ -24,9 +37,16 @@ const recipients = (value: string): string[] => value.split(',').map((part) => p
 export const reviveMailComposeDraft = (stored: unknown): MailComposeDraft | null => {
   if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return null
   const record = stored as Record<string, unknown>
-  return ['bcc', 'body', 'cc', 'subject', 'to'].every((key) => typeof record[key] === 'string')
+  const hasFields = ['bcc', 'body', 'cc', 'subject', 'to'].every((key) => typeof record[key] === 'string')
+  const isUuid = (value: unknown): value is string =>
+    typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  return hasFields
     ? {
       bcc: String(record.bcc), body: String(record.body), cc: String(record.cc),
+      ...(isUuid(record.gmailDraftId) ? { gmailDraftId: record.gmailDraftId } : {}),
+      ...(isUuid(record.mailboxSendActionId) ? { mailboxSendActionId: record.mailboxSendActionId } : {}),
+      ...(isUuid(record.requestId) ? { requestId: record.requestId } : {}),
       subject: String(record.subject), to: String(record.to),
     }
     : null
@@ -61,14 +81,15 @@ export const ConnectedMailCompose = ({
   const updateDraft = useUpdateConnectedMailDraft(address)
   const send = useConnectedMailSend(address)
   const undo = useConnectedMailUndo(address)
+  const mailboxAction = useMailboxSendActionStatus(
+    address, address.source === 'mailbox' ? draft.draft.mailboxSendActionId : undefined,
+  )
   const [sent, setSent] = useState<ConnectedMailDraftResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hydratedDraftRef = useRef<string | null>(null)
-  const createIdempotencyKeyRef = useRef<string | null>(null)
   const editedProviderDraftRef = useRef(false)
   const providerDraftRef = useRef<{ contentFingerprint: string; id: string } | null>(null)
   const existingProviderDraft = address.source === 'gmail' && Boolean(activeGmailDraftId)
-  const mailboxSendIdempotencyKeyRef = useRef<string | null>(null)
   const [recreateGmailDraft, setRecreateGmailDraft] = useState(false)
 
   useEffect(() => {
@@ -76,8 +97,6 @@ export const ConnectedMailCompose = ({
     providerDraftRef.current = null
     hydratedDraftRef.current = null
     editedProviderDraftRef.current = false
-    createIdempotencyKeyRef.current = null
-    mailboxSendIdempotencyKeyRef.current = null
     setRecreateGmailDraft(false)
     setSent(null)
     setError(null)
@@ -107,7 +126,14 @@ export const ConnectedMailCompose = ({
 
   const updateComposeDraft = (next: MailComposeDraft | ((current: MailComposeDraft) => MailComposeDraft)) => {
     editedProviderDraftRef.current = true
-    draft.setDraft(next)
+    draft.setDraft((current) => {
+      const updated = typeof next === 'function' ? next(current) : next
+      // SMTP cannot bind changed content to a prior request. Gmail retains the
+      // original create id until the user explicitly chooses a new draft.
+      return address.source === 'mailbox'
+        ? { ...updated, mailboxSendActionId: undefined, requestId: undefined }
+        : updated
+    })
   }
 
   const submit = async () => {
@@ -116,6 +142,7 @@ export const ConnectedMailCompose = ({
       setError('Sending is not available for this account. Check its connection settings.')
       return
     }
+    const current = draft.draft
     const input = {
       bcc: recipients(draft.draft.bcc), body: draft.draft.body, cc: recipients(draft.draft.cc),
       // The provider-facing reply header is its RFC Message-ID, not the
@@ -124,17 +151,26 @@ export const ConnectedMailCompose = ({
       subject: draft.draft.subject, to: recipients(draft.draft.to),
     }
     if (!input.to.length || !input.body) { setError('Add at least one recipient and a message body.'); return }
+    const existingActionId = providerDraftRef.current?.id ?? current.gmailDraftId ?? activeGmailDraftId
+    let requestId = current.requestId
+    if (address.source === 'mailbox' || !existingActionId) {
+      requestId ??= crypto.randomUUID()
+      // Persist the action key before crossing the network boundary. The API
+      // owns replay after this point, even if this tab crashes mid-request.
+      draft.setDraft({ ...current, requestId })
+      await draft.flush()
+    }
     try {
       // Gmail always creates the reviewed provider draft before its held send;
       // IMAP/SMTP intentionally keeps this local and uses the explicit send route.
       const providerAction = address.source === 'gmail'
         ? providerDraftRef.current
           ? await updateDraft.mutateAsync({ draftId: providerDraftRef.current.id, input })
-          : activeGmailDraftId
-            ? await updateDraft.mutateAsync({ draftId: activeGmailDraftId, input })
+          : existingActionId
+            ? await updateDraft.mutateAsync({ draftId: existingActionId, input })
             : await createDraft.mutateAsync({
             ...input,
-            idempotencyKey: createIdempotencyKeyRef.current ??= crypto.randomUUID(),
+            idempotencyKey: requestId!,
           })
         : null
       if (providerAction) {
@@ -142,7 +178,13 @@ export const ConnectedMailCompose = ({
           contentFingerprint: providerAction.contentFingerprint ?? '',
           id: providerAction.id,
         }
-        setActiveGmailDraftId(providerAction.id)
+        if (!activeGmailDraftId) {
+          // A create can succeed even when the following send loses its
+          // response. Keep its durable action id in the local draft so retry
+          // updates/reuses it instead of creating another Gmail draft.
+          draft.setDraft({ ...current, gmailDraftId: providerAction.id, requestId })
+          await draft.flush()
+        }
         setRecreateGmailDraft(false)
       }
       const result = address.source === 'gmail'
@@ -152,16 +194,25 @@ export const ConnectedMailCompose = ({
         })
         : await send.mutateAsync({
           ...input,
-          idempotencyKey: mailboxSendIdempotencyKeyRef.current ??= crypto.randomUUID(),
+          idempotencyKey: requestId!,
         })
-      setSent({ ...result, id: result.id || providerAction?.id || '' })
-      createIdempotencyKeyRef.current = null
-      mailboxSendIdempotencyKeyRef.current = null
+      setSent({ ...result, id: result.id || result.actionId || providerAction?.id || '' })
       draft.clear()
     } catch (cause) {
       if (cause instanceof ApiClientError && cause.code === 'DRAFT_CHANGED' && !providerDraftRef.current) {
         setRecreateGmailDraft(true)
         setError('An earlier version may already be a Gmail draft. Retry the original text to recover it, or explicitly create a new draft before sending these edits.')
+      } else if (cause instanceof ApiClientError && cause.code === 'DELIVERY_UNKNOWN') {
+        const details = cause.details
+        const actionId = details && typeof details === 'object' && !Array.isArray(details)
+          && typeof (details as { actionId?: unknown }).actionId === 'string'
+          ? (details as { actionId: string }).actionId
+          : undefined
+        if (address.source === 'mailbox' && actionId) {
+          draft.setDraft({ ...current, mailboxSendActionId: actionId, requestId })
+          await draft.flush()
+        }
+        setError('We could not confirm whether this email was sent. It will not be resent automatically. Check the provider’s Sent mail before composing a new message.')
       } else {
         setError(cause instanceof ApiClientError && cause.code === 'DELIVERY_UNKNOWN'
           ? 'We could not confirm whether this email was sent. It will not be resent automatically.'
@@ -171,8 +222,10 @@ export const ConnectedMailCompose = ({
   }
 
   const startNewGmailDraft = () => {
-    createIdempotencyKeyRef.current = crypto.randomUUID()
     providerDraftRef.current = null
+    draft.setDraft((current) => ({
+      ...current, gmailDraftId: undefined, requestId: crypto.randomUUID(),
+    }))
     setRecreateGmailDraft(false)
     setError(null)
   }
@@ -180,29 +233,48 @@ export const ConnectedMailCompose = ({
   const undoGmailSend = async () => {
     if (!sent?.id) return
     await undo.mutateAsync(sent.id)
-    const refreshed = await providerDraft.refetch()
-    if (!refreshed.data) throw new Error('Could not reload the restored Gmail draft.')
-    hydratedDraftRef.current = refreshed.data.id
-    providerDraftRef.current = {
-      contentFingerprint: refreshed.data.contentFingerprint,
-      id: refreshed.data.id,
-    }
     editedProviderDraftRef.current = false
-    draft.setDraft({
-      bcc: refreshed.data.bcc.join(', '), body: refreshed.data.body,
-      cc: refreshed.data.cc.join(', '), subject: refreshed.data.subject,
-      to: refreshed.data.to.join(', '),
-    })
+    if (activeGmailDraftId) {
+      // This query is already bound to the original provider draft. Refetch
+      // and hydrate directly so cached data with the same id cannot strand an
+      // existing-draft composer on its pre-Undo content.
+      const refreshed = await providerDraft.refetch()
+      if (!refreshed.data) throw new Error('Could not reload the restored Gmail draft.')
+      hydratedDraftRef.current = refreshed.data.id
+      providerDraftRef.current = {
+        contentFingerprint: refreshed.data.contentFingerprint,
+        id: refreshed.data.id,
+      }
+      draft.setDraft({
+        bcc: refreshed.data.bcc.join(', '), body: refreshed.data.body,
+        cc: refreshed.data.cc.join(', '), subject: refreshed.data.subject,
+        to: refreshed.data.to.join(', '),
+      })
+      setSent(null)
+      return
+    }
+    // A freshly created draft is still using its local-draft key. Turn this
+    // same composer into an existing-draft flow; the now-enabled query has a
+    // new key and the hydration effect loads the restored provider content.
+    hydratedDraftRef.current = null
+    providerDraftRef.current = null
     setActiveGmailDraftId(sent.id)
     setSent(null)
   }
 
-  if (sent) return (
+  const recoveredMailboxSent = address.source === 'mailbox' && mailboxAction.data?.state === 'sent'
+    ? { id: mailboxAction.data.id, status: 'sent' }
+    : null
+  const sentConfirmation = sent ?? recoveredMailboxSent
+  const mailboxSendLocked = address.source === 'mailbox'
+    && (mailboxAction.data?.state === 'dispatching' || mailboxAction.data?.state === 'delivery_unknown')
+
+  if (sentConfirmation) return (
     <section className="px-[var(--page-gutter)] py-6" data-testid="connected-mail-sent">
       <p aria-live="polite" className="text-sm text-[color:var(--tx)]">
         {address.source === 'gmail' ? 'Your email is queued to send.' : 'Your email was sent.'}
       </p>
-      {address.source === 'gmail' && sent.id ? <button className="mt-3 admin-button admin-button-secondary" disabled={undo.isPending} onClick={() => void undoGmailSend()} type="button">Undo send</button> : null}
+      {address.source === 'gmail' && sentConfirmation.id ? <button className="mt-3 admin-button admin-button-secondary" disabled={undo.isPending} onClick={() => void undoGmailSend()} type="button">Undo send</button> : null}
       <button className="ml-2 mt-3 admin-button admin-button-primary" onClick={onSent} type="button">Back to mail</button>
     </section>
   )
@@ -234,10 +306,11 @@ export const ConnectedMailCompose = ({
         <textarea aria-label="Message" className="admin-input min-h-44 resize-y" onChange={(event) => updateComposeDraft((value) => ({ ...value, body: event.target.value }))} value={draft.draft.body} />
       </label>
       {replyTo ? <p className="text-xs text-[color:var(--tx3)]">Replying to {replyTo.from ?? 'this message'}. Previous messages are not saved in this draft.</p> : null}
+      {mailboxAction.data?.state === 'delivery_unknown' ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]" data-testid="mailbox-delivery-unknown">Delivery is unconfirmed. Check the provider’s Sent mail before composing a new message; this action will not be resent.</p> : null}
       {error ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">{error}</p> : null}
       {recreateGmailDraft ? <button className="admin-button admin-button-secondary" onClick={startNewGmailDraft} type="button">Create a new Gmail draft</button> : null}
       {!account.canSend ? <p className="text-sm text-[color:var(--tx2)]">You can prepare this email, but this account cannot send. {onOpenSettings ? <button className="font-semibold text-[color:var(--accent)]" onClick={onOpenSettings} type="button">Open mailbox settings</button> : 'Check its connection settings.'}</p> : null}
-      <div><button className="admin-button admin-button-primary" disabled={!account.canSend || send.isPending || createDraft.isPending || updateDraft.isPending} type="submit">{send.isPending ? 'Sending…' : 'Send email'}</button></div>
+      <div><button className="admin-button admin-button-primary" disabled={!account.canSend || mailboxSendLocked || send.isPending || createDraft.isPending || updateDraft.isPending} type="submit">{send.isPending ? 'Sending…' : 'Send email'}</button></div>
     </form>
   )
 }

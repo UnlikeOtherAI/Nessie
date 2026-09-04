@@ -48,6 +48,17 @@ test('connected mail compose input refuses line-break recipient and header injec
   }).success, false)
 })
 
+test('connected mail recipients are bare normalized addresses', () => {
+  const parsed = ConnectedMailComposeInputSchema.parse({
+    body: 'Hello', cc: [' COPY@Example.Test '], subject: 'Hi', to: ['Person@Example.Test'],
+  })
+  assert.deepEqual(parsed.to, ['person@example.test'])
+  assert.deepEqual(parsed.cc, ['copy@example.test'])
+  assert.equal(ConnectedMailComposeInputSchema.safeParse({
+    body: 'Hello', subject: 'Hi', to: ['Person <person@example.test>'],
+  }).success, false)
+})
+
 test('connected mail list paging is bounded and query text is optional', () => {
   assert.deepEqual(ConnectedMailThreadsQuerySchema.parse({}), { pageSize: 25 })
   assert.equal(ConnectedMailThreadsQuerySchema.parse({ unreadOnly: 'false' }).unreadOnly, false)

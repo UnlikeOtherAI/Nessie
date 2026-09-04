@@ -238,6 +238,9 @@ export const sendFromMailbox = async (
   email: Omit<OutboundEmail, 'fromAddress'>,
   options: MailboxClientOptions,
 ): Promise<void> => {
+  // MIME/address validation is deliberately before `openSmtpSession`: no DNS,
+  // socket, authentication, or provider interaction follows malformed input.
+  const mime = buildOutboundMime({ ...email, fromAddress: endpoints.address })
   const session = await openSmtpSession(
     endpoints.smtp,
     { password: endpoints.password, username: endpoints.username },
@@ -246,7 +249,7 @@ export const sendFromMailbox = async (
   try {
     await sendOverSmtp(session, {
       from: endpoints.address,
-      mime: buildOutboundMime({ ...email, fromAddress: endpoints.address }),
+      mime,
       recipients: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])],
     })
   } finally {
