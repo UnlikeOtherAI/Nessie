@@ -14,19 +14,14 @@ const CONSUMER_OR_DISPOSABLE_DOMAINS = new Set([
   'mailinator.com', 'yopmail.com', 'dispostable.com', 'trashmail.com',
 ])
 
-// A deliberately small, pinned PSL subset is not sufficient for a security
-// decision. Deployments must provide the maintained complete PSL data through
-// NESSIE_DOMAIN_PSL; without it all non-obviously-invalid domain claims are
-// refused. The static entries catch common dangerous cases in tests/dev.
-const BUILTIN_PUBLIC_SUFFIXES = new Set([
-  'com', 'net', 'org', 'edu', 'gov', 'io', 'ai', 'app', 'dev', 'co', 'uk',
-  'co.uk', 'org.uk', 'ac.uk', 'de', 'fr', 'nl', 'eu', 'us', 'ca', 'au',
-  'com.au', 'co.nz', 'jp', 'co.jp', 'in', 'co.in', 'br', 'com.br', 'cn',
-])
-
 const configuredPublicSuffixes = (): Set<string> => {
-  const supplied = process.env.NESSIE_DOMAIN_PSL
-  if (!supplied) return BUILTIN_PUBLIC_SUFFIXES
+  // This must be the complete, versioned PSL artifact supplied by deployment
+  // automation. A truncated fallback is an unsafe authorization classifier.
+  const supplied = process.env.NESSIE_AUTOMATIC_MEMBERSHIP_PSL
+  const version = process.env.NESSIE_AUTOMATIC_MEMBERSHIP_PSL_VERSION
+  if (!supplied || !version) {
+    throw new DomainPolicyError('DOMAIN_POLICY_UNAVAILABLE', 'A maintained public-suffix classifier is required before domains can be configured.')
+  }
   return new Set(supplied.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean))
 }
 
@@ -43,7 +38,7 @@ export const normalizeAutomaticMembershipDomain = (input: string): string => {
     throw new DomainPolicyError('INVALID_DOMAIN', 'Enter a valid exact email domain.')
   }
   // IPv4/IPv6 literals and localhost/private pseudo-TLDs are not DNS domains.
-  if (raw.startsWith('[') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(raw) || raw.toLowerCase() === 'localhost') {
+  if (raw.startsWith('[') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(raw) || /(^|\.)(localhost|local|internal|test|example|invalid)$/.test(raw.toLowerCase())) {
     throw new DomainPolicyError('UNSAFE_DOMAIN', 'This domain cannot be used for automatic access.')
   }
   const ascii = domainToASCII(raw).toLowerCase()

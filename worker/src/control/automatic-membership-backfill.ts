@@ -97,7 +97,7 @@ export const runAutomaticMembershipBackfillBatch = async (
 
 /** Pick due work without ever starting a local-authority fallback. */
 export const sweepAutomaticMembershipBackfills = async (prisma: PrismaClient, adapter: AutomaticMembershipUoaAdapter, limit = 5): Promise<void> => {
-  if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED !== 'true' || process.env.NESSIE_UOA_AUTOMATIC_MEMBERSHIP_ADAPTER !== 'configured') return
+  if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED !== 'true') return
   const due = await prisma.automaticMembershipBackfillRun.findMany({ where: { status: { in: ['queued', 'running'] }, OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] }, select: { id: true }, take: limit, orderBy: { createdAt: 'asc' } })
   for (const run of due) await runAutomaticMembershipBackfillBatch(prisma, adapter, run.id)
 }

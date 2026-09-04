@@ -9,6 +9,7 @@ import {
   useCreateAutomaticMembershipRule,
   useRevokeAutomaticMembershipRule,
   useRotateAutomaticMembershipRule,
+  useSuspendAutomaticMembershipRule,
   useVerifyAutomaticMembershipRule,
 } from '../../facades/users/automatic-membership'
 import { Card } from '../../components/shared/Card'
@@ -19,6 +20,7 @@ import { FormField } from '../../components/shared/FormField'
 import { Input } from '../../components/shared/FormControls'
 import { QueryState } from '../../components/shared/QueryState'
 import { Pill } from '../../components/primitives/Pill'
+import { Checkbox } from '../../components/primitives/Checkbox'
 
 type DnsInstruction = { name: string; value: string } | null
 
@@ -41,8 +43,9 @@ const RuleRow = ({ rule, scope, onInstruction }: { rule: AutomaticMembershipRule
   const rotate = useRotateAutomaticMembershipRule(scope)
   const activate = useActivateAutomaticMembershipRule(scope)
   const revoke = useRevokeAutomaticMembershipRule(scope)
+  const suspend = useSuspendAutomaticMembershipRule(scope)
   const [error, setError] = useState<string | null>(null)
-  const busy = verify.isPending || rotate.isPending || activate.isPending || revoke.isPending
+  const busy = verify.isPending || rotate.isPending || activate.isPending || revoke.isPending || suspend.isPending
   const run = async (action: () => Promise<unknown>) => {
     setError(null)
     try { await action() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to update this automatic login rule.') }
@@ -65,6 +68,7 @@ const RuleRow = ({ rule, scope, onInstruction }: { rule: AutomaticMembershipRule
         <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy || rule.state === 'revoked'} onClick={() => void run(async () => { await verify.mutateAsync({ ruleId: rule.id }) })} type="button">Verify DNS</button>
         <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy || rule.state === 'revoked'} onClick={() => void run(async () => { const result = await rotate.mutateAsync({ ruleId: rule.id }) as { dns?: DnsInstruction }; onInstruction(result.dns ?? null) })} type="button">Rotate challenge</button>
         <button className="admin-button admin-button-primary admin-button-compact" disabled={busy || rule.state === 'active' || rule.state === 'revoked'} onClick={() => void run(async () => { await activate.mutateAsync({ ruleId: rule.id }) })} type="button">Activate and backfill</button>
+        <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy || rule.state !== 'active'} onClick={() => void run(async () => { await suspend.mutateAsync({ ruleId: rule.id }) })} type="button">Suspend provisioning</button>
         <button className="admin-button admin-button-danger admin-button-compact" disabled={busy || rule.state === 'revoked'} onClick={() => void run(async () => { await revoke.mutateAsync({ ruleId: rule.id }) })} type="button">Revoke rule</button>
       </div>
       <FormError className="mt-2">{error}</FormError>
@@ -91,7 +95,7 @@ const CreateRuleDialog = ({ scope, onClose, open, onInstruction }: { scope: Memb
       <FormField label="Email domain"><Input autoComplete="off" onChange={(event) => setDomain(event.target.value)} placeholder="example.com" value={domain} /></FormField>
       <p className="text-xs text-[color:var(--tx3)]">Exact domains only. Email confirmation alone is not domain ownership proof.</p>
       <FormField label="Notification email (optional)"><Input onChange={(event) => setNotificationEmail(event.target.value)} type="email" value={notificationEmail} /></FormField>
-      {scope === 'organization' ? <fieldset><legend className="text-sm font-medium">Teams to grant after sign-in</legend><div className="mt-2 grid gap-2">{teams.data?.teams.map((team) => <label className="flex items-center gap-2 text-sm" key={team.id}><input checked={selectedTeams.includes(team.id)} onChange={() => setSelectedTeams((current) => current.includes(team.id) ? current.filter((id) => id !== team.id) : [...current, team.id])} type="checkbox" />{team.name}</label>)}</div></fieldset> : <p className="text-sm text-[color:var(--tx2)]">Matching verified users receive normal member access to this team only.</p>}
+      {scope === 'organization' ? <fieldset><legend className="text-sm font-medium">Teams to grant after sign-in</legend><div className="mt-2 grid gap-2">{teams.data?.teams.map((team) => <Checkbox checked={selectedTeams.includes(team.id)} key={team.id} label={team.name} onChange={() => setSelectedTeams((current) => current.includes(team.id) ? current.filter((id) => id !== team.id) : [...current, team.id])} />)}</div></fieldset> : <p className="text-sm text-[color:var(--tx2)]">Matching verified users receive normal member access to this team only.</p>}
       <FormError>{error}</FormError>
       <FormActions><button className="admin-button admin-button-primary" disabled={create.isPending || !domain.trim() || (scope === 'organization' && selectedTeams.length === 0)} type="submit">Create DNS challenge</button></FormActions>
     </form>

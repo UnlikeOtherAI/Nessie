@@ -11,7 +11,7 @@ export const revalidateAutomaticMembershipDns = async (
   dnsLookup: (name: string) => Promise<readonly string[][]> = resolveTxt,
   limit = 20,
 ): Promise<void> => {
-  if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED !== 'true' || process.env.NESSIE_UOA_AUTOMATIC_MEMBERSHIP_ADAPTER !== 'configured' || !authSecret) return
+  if (process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED !== 'true' || !authSecret) return
   const claims = await prisma.automaticMembershipDomainClaim.findMany({
     where: { state: 'verified', releasedAt: null, OR: [{ verificationExpiresAt: { lte: new Date() } }, { lastDnsCheckAt: { lte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] },
     include: { rules: { where: { state: 'active' } } }, take: limit,
@@ -29,7 +29,11 @@ export const revalidateAutomaticMembershipDns = async (
       continue
     }
     if (matched) {
-      await prisma.automaticMembershipDomainClaim.update({ where: { id: claim.id }, data: { lastDnsCheckAt: new Date(), lastDnsFailure: null } })
+      const checkedAt = new Date()
+      await prisma.$transaction(async (tx) => {
+        await tx.automaticMembershipDomainClaim.update({ where: { id: claim.id }, data: { lastDnsCheckAt: checkedAt, verificationExpiresAt: new Date(checkedAt.getTime() + 14 * 24 * 60 * 60 * 1000), lastDnsFailure: null } })
+        await writeAuditEntryInTransaction(tx, { organizationId: claim.organizationId, actorType: 'service', actorId: 'automatic-membership-dns', action: 'automatic_membership.dns_checked', resourceType: 'automatic_membership_claim', resourceId: claim.id, outcome: 'success', metadata: { matched: true }, requestId: `automatic-membership:dns:${claim.id}` })
+      })
       continue
     }
     await prisma.$transaction(async (tx) => {
@@ -38,6 +42,7 @@ export const revalidateAutomaticMembershipDns = async (
         await tx.automaticMembershipRule.update({ where: { id: rule.id }, data: { state: 'suspended', suspensionReason: 'DNS verification no longer passed.' } })
         await writeAuditEntryInTransaction(tx, { organizationId: claim.organizationId, actorType: 'service', actorId: 'automatic-membership-dns', action: 'automatic_membership.suspended', resourceType: 'automatic_membership_rule', resourceId: rule.id, outcome: 'success', requestId: `automatic-membership:dns:${claim.id}` })
       }
+      await writeAuditEntryInTransaction(tx, { organizationId: claim.organizationId, actorType: 'service', actorId: 'automatic-membership-dns', action: 'automatic_membership.dns_checked', resourceType: 'automatic_membership_claim', resourceId: claim.id, outcome: 'error', metadata: { matched: false }, requestId: `automatic-membership:dns:${claim.id}` })
     })
   }
 }

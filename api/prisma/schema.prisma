@@ -1636,7 +1636,6 @@ model AutomaticMembershipRule {
   grants                   AutomaticMembershipGrant[]
 
   @@index([organizationId, state])
-  @@unique([claimId, scope])
   @@map("automatic_membership_rules")
 }
 

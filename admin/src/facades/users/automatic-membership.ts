@@ -29,6 +29,8 @@ export const useActivateAutomaticMembershipRule = (scope: MemberRosterScope) =>
   useRuleMutation(scope, (api, input: { ruleId: string }) => api.post(`${path(scope)}/${input.ruleId}/activate`, {}))
 export const useRevokeAutomaticMembershipRule = (scope: MemberRosterScope) =>
   useRuleMutation(scope, (api, input: { ruleId: string }) => api.post(`${path(scope)}/${input.ruleId}/revoke`, {}))
+export const useSuspendAutomaticMembershipRule = (scope: MemberRosterScope) =>
+  useRuleMutation(scope, (api, input: { ruleId: string }) => api.post(`${path(scope)}/${input.ruleId}/suspend`, {}))
 
 export const useAutomaticMembershipTeams = (enabled: boolean) => {
   const api = useApiClient()

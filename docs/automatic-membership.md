@@ -11,12 +11,13 @@ The feature is off by default. It needs all of the following before an
 administrator can activate a rule:
 
 - `NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED=true`;
-- `NESSIE_UOA_AUTOMATIC_MEMBERSHIP_ADAPTER=configured`; and
-- a deployed UOA adapter for fresh verified-domain attestations, snapshot
+- a real deployed UOA adapter for fresh verified-domain attestations, snapshot
   paging of UOA subjects, idempotent service-scoped member grants, and
   operation-status reads.
 
-Generic UOA credentials are not an adapter. In their absence Nessie refuses
+Generic UOA credentials are not an adapter. Nessie currently has no documented
+UOA endpoint for this adapter, so production readiness is deliberately false:
+the UI cannot activate a rule and the worker cannot sweep one. In its absence Nessie refuses
 activation and no local `TeamMember`/`OrganizationMember` row is written.
 `NESSIE_AUTOMATIC_MEMBERSHIP_KILL_SWITCH=true` pauses future login grants and
 backfill. It preserves existing access and audit evidence.
@@ -33,7 +34,9 @@ removing members. Releasing/revoking a claim is explicit and audited.
 
 Only precise domain matches qualify. Subdomains require separate claims. IP
 literals, localhost/private pseudo-domains, malformed domains, public suffixes
-and a maintained, versioned consumer/disposable denylist are rejected.
+and a maintained, versioned consumer/disposable denylist are rejected. Creation
+also requires the deployment-provided complete PSL artifact
+(`NESSIE_AUTOMATIC_MEMBERSHIP_PSL` plus a version); there is no short fallback.
 
 ## Backfill and incident response
 
