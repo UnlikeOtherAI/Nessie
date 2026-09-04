@@ -468,3 +468,86 @@ describe('the wire', () => {
     wire.close()
   })
 })
+
+describe('a hostile server cannot outgrow a bounded request', () => {
+  /**
+   * Answers any UID FETCH with many individually-legal untagged responses. Each
+   * literal sits under the wire's per-buffer cap, and every literal is moved out
+   * of the buffer as it is read, so nothing here is refused by the wire itself —
+   * only the per-command budget stops it.
+   */
+  const floodingServer = async (literals: number, bytes: number): Promise<number> => {
+    const server = createServer((socket) => {
+      socket.on('error', () => undefined)
+      socket.write('* OK ready\r\n')
+      let buffer = Buffer.alloc(0)
+      let literalRemaining = 0
+      let tag = ''
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk])
+        for (;;) {
+          // LOGIN sends its username and password as synchronizing literals,
+          // so the fake has to consume them before the command line completes.
+          if (literalRemaining > 0) {
+            if (buffer.byteLength < literalRemaining) return
+            buffer = buffer.subarray(literalRemaining)
+            literalRemaining = 0
+            continue
+          }
+          const index = buffer.indexOf('\r\n')
+          if (index < 0) return
+          const line = buffer.subarray(0, index).toString('utf8')
+          buffer = buffer.subarray(index + 2)
+          if (/^n\d+ /.test(line)) tag = line.split(' ')[0] as string
+          const literal = /\{(\d+)\}$/.exec(line)
+          if (literal) {
+            literalRemaining = Number(literal[1])
+            socket.write('+ go\r\n')
+            continue
+          }
+          if (/FETCH/i.test(line)) {
+            for (let n = 0; n < literals; n += 1) {
+              socket.write(`* 1 FETCH (UID 13 BODY[TEXT] {${bytes}}\r\n`)
+              socket.write(Buffer.alloc(bytes, 0x61))
+              socket.write(')\r\n')
+            }
+            socket.write(`${tag} OK done\r\n`)
+            continue
+          }
+          socket.write(`${tag} OK done\r\n`)
+        }
+      })
+    })
+    servers.push(server)
+    await new Promise<void>((ready) => server.listen(0, '127.0.0.1', ready))
+    return (server.address() as { port: number }).port
+  }
+
+  test('a flood of untagged responses is refused instead of accumulated', async () => {
+    const port = await floodingServer(30, 900_000)
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'),
+      { password: 'x', username: 'agent@example.com' }, { timeoutMs: 5_000 },
+    )
+    // 30 x 900_000 is 25.7 MiB for a request bounded at 256 KiB. Before the
+    // per-command budget this resolved, returning a 900_000-byte literal.
+    await assert.rejects(
+      () => session.fetchBodySection(13, 'TEXT', 262_144),
+      /too much data/,
+    )
+    session.close()
+  })
+
+  test('a section larger than the requested bound is refused', async () => {
+    const port = await floodingServer(1, 500_000)
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'),
+      { password: 'x', username: 'agent@example.com' }, { timeoutMs: 5_000 },
+    )
+    await assert.rejects(
+      () => session.fetchBodySection(13, 'TEXT', 262_144),
+      /more than the requested section/,
+    )
+    session.close()
+  })
+})

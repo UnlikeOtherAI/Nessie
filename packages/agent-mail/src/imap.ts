@@ -39,6 +39,20 @@ type ImapResponse = {
 
 const LITERAL_HEADER = /\{(\d+)\}$/
 
+/**
+ * A per-command ceiling on everything a server sends before its tagged reply.
+ *
+ * The wire's buffer cap only bounds bytes not yet consumed: `readResponse`
+ * moves each literal out of the buffer, and `run` held every untagged response
+ * until the tagged OK, so a server could answer one bounded request with any
+ * number of individually-legal responses. A single `BODY.PEEK[TEXT]<0.262144>`
+ * accepted 25.7 MiB across 30 responses and grew RSS by 51 MiB. These bound the
+ * whole command, so the caller's byte limit is enforced against the server
+ * rather than trusted to it.
+ */
+const MAX_COMMAND_RESPONSE_BYTES = 2_000_000
+const MAX_UNTAGGED_RESPONSES = 2_000
+
 export class ImapSession {
   private tagCounter = 0
 
@@ -165,6 +179,7 @@ export class ImapSession {
     await this.write(tag, parts)
 
     const untagged: ImapResponse[] = []
+    let responseBytes = 0
     for (;;) {
       const response = await this.readResponse()
       if (response.text.startsWith(`${tag} `)) {
@@ -173,6 +188,11 @@ export class ImapSession {
           throw new ImapError(`The mail server refused the request: ${status}`, 'protocol')
         }
         return { text: status, untagged }
+      }
+      responseBytes += response.text.length
+        + response.literals.reduce((total, literal) => total + literal.byteLength, 0)
+      if (responseBytes > MAX_COMMAND_RESPONSE_BYTES || untagged.length >= MAX_UNTAGGED_RESPONSES) {
+        throw new ImapError('The mail server sent too much data for one request.', 'protocol')
       }
       untagged.push(response)
     }
@@ -316,7 +336,13 @@ export class ImapSession {
     const result = await this.run([`UID FETCH ${uid} (UID BODY.PEEK[${section}]<0.${maxBytes}>)`])
     const response = result.untagged.find((item) => /\bFETCH\b/i.test(item.text)
       && new RegExp(`\\bUID\\s+${uid}\\b`, 'i').test(item.text))
-    return response?.literals[0] ?? null
+    const payload = response?.literals[0] ?? null
+    // `<0.n>` is a request, not a guarantee: a server may answer with more than
+    // it was asked for, so the caller's bound is checked rather than assumed.
+    if (payload && payload.byteLength > maxBytes) {
+      throw new ImapError('The mail server returned more than the requested section.', 'protocol')
+    }
+    return payload
   }
 
   close(): void {
