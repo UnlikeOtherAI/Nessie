@@ -10,7 +10,10 @@ import {
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
-import { loadFrozenApprovedToolCall } from './approved-tool-resume.js'
+import {
+  loadFrozenApprovedToolCall,
+  resumeApprovedEmailContinuation,
+} from './approved-tool-resume.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import { hashJsonValue } from '../tool-util.js'
 import type { RunContext } from './types.js'
@@ -66,6 +69,10 @@ const fakePrisma = (input: {
   resumeArgs?: Record<string, unknown>
   toolName?: string
 }) => {
+  const state = {
+    connectorUsage: [] as Array<Record<string, unknown>>,
+    toolCalls: [] as Array<Record<string, unknown>>,
+  }
   const resumeArgs = input.resumeArgs ?? frozenArgs
   const toolName = input.toolName ?? MAILBOX_SEND_TOOL_ID
   const approval = {
@@ -88,6 +95,8 @@ const fakePrisma = (input: {
   }
   return {
     approval,
+    connectorUsage: state.connectorUsage,
+    toolCalls: state.toolCalls,
     prisma: {
       approvalRequest: {
         findFirst: async ({ where }: { where: Record<string, unknown> }) =>
@@ -95,8 +104,20 @@ const fakePrisma = (input: {
             ? approval
             : null,
       },
+      connectorUsageEvent: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          state.connectorUsage.push(data)
+          return {}
+        },
+      },
       run: {
         findUnique: async () => ({ continuationOfRunId: input.continuationOfRunId ?? ids.parentRun }),
+      },
+      toolCall: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          state.toolCalls.push(data)
+          return {}
+        },
       },
     } as unknown as PrismaClient,
   }
@@ -153,4 +174,59 @@ test('strips the server-only Gmail approval fingerprint after sealing its exact 
     toolCallId: 'frozen-mailbox-call',
     toolName: GMAIL_DRAFT_SEND_TOOL_ID,
   })
+})
+
+test('dispatches the frozen mailbox action without any model callback', async () => {
+  const state = fakePrisma({})
+  const dispatched: Array<Record<string, unknown>> = []
+  const result = await resumeApprovedEmailContinuation({
+    actorContext: actorContext(),
+    authorize: async (call) => ({
+      args: call.args,
+      decision: 'allow',
+      toolActorContext: actorContext(),
+    }),
+    context: context(),
+    dispatch: async (call) => {
+      dispatched.push(call.args)
+      return {
+        connectorUsage: {
+          calls: 1,
+          connectorType: 'email',
+          metadata: { text: 'unique frozen body' },
+          target: 'unique-recipient@example.test',
+        },
+        inputSummary: 'ignored',
+        output: 'ignored',
+        success: true,
+      }
+    },
+    invocationSink: [],
+    prisma: state.prisma,
+  })
+
+  assert.deepEqual(dispatched, [frozenArgs])
+  assert.equal(result?.finalText, 'The approved action was completed.')
+  assert.equal(result?.toolCallsUsed, 1)
+  assert.equal(state.toolCalls[0]?.['inputSummary'], 'Approved server-owned action')
+  assert.doesNotMatch(JSON.stringify(state.toolCalls), /unique frozen|unique-recipient/)
+  assert.equal(state.connectorUsage[0]?.['target'], null)
+  assert.equal(state.connectorUsage[0]?.['metadata'], undefined)
+})
+
+test('leaves a non-email approval continuation on the ordinary path', async () => {
+  const state = fakePrisma({ toolName: 'kb_search' })
+  const result = await resumeApprovedEmailContinuation({
+    actorContext: actorContext(),
+    authorize: async () => {
+      throw new Error('non-email approval must not be intercepted')
+    },
+    context: context(),
+    dispatch: async () => {
+      throw new Error('non-email approval must not be dispatched')
+    },
+    invocationSink: [],
+    prisma: state.prisma,
+  })
+  assert.equal(result, null)
 })

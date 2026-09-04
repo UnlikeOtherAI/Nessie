@@ -199,6 +199,25 @@ export const isFrozenEmailToolApproval = async (
   return Boolean(approval?.toolName && FROZEN_EMAIL_TOOL_IDS.has(approval.toolName))
 }
 
+/** Return null for every ordinary approval continuation. */
+export const resumeApprovedEmailContinuation = async (input: {
+  actorContext: AuthorizedActionContext
+  authorize: (call: FrozenApprovedToolCall) => Promise<ToolAuthorizationDecision>
+  context: RunContext
+  dispatch: (
+    call: FrozenApprovedToolCall,
+    authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
+  ) => Promise<AgenticToolResult>
+  invocationSink: InvocationRecord[]
+  prisma: PrismaClient
+}): Promise<LoopResult | null> => {
+  if (!await isFrozenEmailToolApproval(input.prisma, {
+    actorContext: input.actorContext,
+    organizationId: input.context.channel.organizationId,
+  })) return null
+  return resumeFrozenApprovedTool(input)
+}
+
 /**
  * Dispatch one sealed action without giving its arguments to an inference
  * turn. The caller supplies the ordinary authorization and tool dispatch

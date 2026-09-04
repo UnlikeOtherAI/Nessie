@@ -21,16 +21,10 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInputForTool } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
-import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
-import { composeStructuralGates } from './structural-gates.js'
-import { buildEmailSendApprovalHook } from './email-send-gate.js'
-import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
-import {
-  isFrozenEmailToolApproval,
-  resumeFrozenApprovedTool,
-} from './approved-tool-resume.js'
+import { resumeApprovedEmailContinuation } from './approved-tool-resume.js'
+import { createMainToolAuthorizer } from './main-tool-authorizer.js'
+import { createPreparedToolExecutor, suspendedToolResult } from './prepared-tool-execution.js'
 import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-authorization.js'
-import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
 import { buildToolActorContext, emitWorkerAuditEvent } from './policy.js'
@@ -178,7 +172,6 @@ export const runExecutionAgentLoop = async (
     runContext: context,
     toolCallId,
   })
-
   const executeGuardedBuiltin = (
     toolName: string,
     args: Record<string, unknown>,
@@ -191,81 +184,27 @@ export const runExecutionAgentLoop = async (
       buildBuiltinCtx(toolActorContext, toolCallId),
       input.stubbedBuiltinToolIds,
     )
-
   const contextPlan = buildContextPlan({
-    model: context.agent.model,
-    toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
+    model: context.agent.model, toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
   })
-
-  const authorizeMainTool = (
-    toolName: string,
-    args: Record<string, unknown>,
-    toolCallId: string,
-    options: {
-      consumeApprovalProof?: boolean
-      maySuspendForApproval?: boolean
-      revalidateApprovalBoundary?: boolean
-      skipAutoReview?: boolean
-    } = {},
-  ) =>
-    authorizeToolExecution(
-      deps.prisma,
-      payload.actorContext,
-      context,
-      toolName,
-      args,
-      toolCallId,
-      {
-        agentKind: context.agent.agentKind,
-        allowedToolIds: input.allowedToolIds,
-        consumeApprovalProof: options.consumeApprovalProof,
-        revalidateApprovalBoundary: options.revalidateApprovalBoundary,
-        identityToolIds: input.identityToolIds,
-        executorToolNames: input.executorToolset.handledNames,
-        mcpToolNames: mcpExposedNames,
-        skipAutoReview: options.skipAutoReview,
-        resolvedBuiltinToolIds: input.resolvedToolIds,
-        externalToolNames,
-        // One hook per family, tried in order: each returns null for tools it
-        // does not own, so adding a family costs one comparison rather than a
-        // second gate the next family could forget to consult.
-        structuralGate: composeStructuralGates([
-          buildEmailSendApprovalHook(deps.prisma, context, payload.interactive === true),
-          buildBrowserActApprovalHook(deps.prisma, context),
-          buildMailboxSendApprovalHook(
-            deps.prisma,
-            context,
-            payload.actorContext.actionContext.effectiveUserId ?? null,
-          ),
-        ]),
-        maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
-        // The send-boundary judge. Inference the run paid for, so its
-        // invocations count in the run's totals like compaction's do.
-        runUtility: async (prompt: string) => {
-          const result = await input.inference.runUtility(
-            [{ content: prompt, role: 'user' }],
-            [],
-          )
-          input.invocationSink.push(...result.invocations)
-          return result.outputText
-        },
-        parentAgentId: context.agent.parentAgentId,
-        resumeState: {
-          actorContext: payload.actorContext,
-          interactive: payload.interactive === true,
-          messageId: payload.messageId,
-        },
-        toolPolicy: input.toolPolicy,
-      },
-      {
-        deepWaterHandoffGuard: input.deepWaterHandoffGuard,
-        reviewProposedAction: async (reviewInput) => {
-          const reviewed = await reviewProposedToolAction(input.inference.runUtility, reviewInput)
-          input.invocationSink.push(...reviewed.invocations)
-          return reviewed
-        },
-      },
-    )
+  const authorizeMainTool = createMainToolAuthorizer({
+    actorContext: payload.actorContext,
+    allowedToolIds: input.allowedToolIds,
+    context,
+    deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+    executorToolNames: input.executorToolset.handledNames,
+    externalToolNames,
+    identityToolIds: input.identityToolIds,
+    inference: input.inference,
+    interactive: payload.interactive === true,
+    invocationSink: input.invocationSink,
+    isHandoffTurn: input.isHandoffTurn,
+    mcpToolNames: mcpExposedNames,
+    messageId: payload.messageId,
+    prisma: deps.prisma,
+    resolvedToolIds: input.resolvedToolIds,
+    toolPolicy: input.toolPolicy,
+  })
 
   const executeAuthorizedTool = async (
     toolName: string,
@@ -376,29 +315,14 @@ export const runExecutionAgentLoop = async (
       buildBuiltinCtx(authorization.toolActorContext, toolCallId),
       input.stubbedBuiltinToolIds,
     )
-  }
-
-  const suspensionResult = (
-    authorization: Extract<ToolAuthorizationDecision, { decision: 'suspend' }>,
-  ) => ({
-    inputSummary: summarizeToolInputForTool(authorization.approval.toolName, authorization.args),
-    output: 'Tool execution is waiting for human approval.',
-    pendingApproval: {
-      approvalId: authorization.approval.id,
-      notice: authorization.approval.notice,
-      requiredApproverUserId: authorization.approval.requiredApproverUserId,
-      toolName: authorization.approval.toolName,
-    },
-    success: false,
-  })
-
+}
   const executeMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
     const authorization = await authorizeMainTool(toolName, args, toolCallId)
     if (authorization.decision === 'deny') {
       return authorization.result
     }
     if (authorization.decision === 'suspend') {
-      return suspensionResult(authorization)
+      return suspendedToolResult(authorization)
     }
     return executeAuthorizedTool(toolName, toolCallId, authorization)
   }
@@ -419,66 +343,29 @@ export const runExecutionAgentLoop = async (
     return executeAuthorizedTool(toolName, toolCallId, authorization)
   }
 
-  const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
-    const authorization = await authorizeMainTool(toolName, args, toolCallId, {
-      consumeApprovalProof: false,
-    })
-    if (authorization.decision === 'suspend') {
-      return {
-        approval: {
-          approvalId: authorization.approval.id,
-          notice: authorization.approval.notice,
-          requiredApproverUserId: authorization.approval.requiredApproverUserId,
-          toolName: authorization.approval.toolName,
-        },
-        kind: 'suspend' as const,
-        inputSummary: summarizeToolInputForTool(
-          authorization.approval.toolName,
-          authorization.args,
-        ),
-      }
-    }
-    return {
-      execute: async () =>
-        authorization.decision === 'deny'
-          ? authorization.result
-          : executePreparedTool(toolName, args, toolCallId),
-      kind: 'execute' as const,
-      inputSummary: authorization.decision === 'deny'
-        ? authorization.result.inputSummary
-        : summarizeToolInputForTool(toolName, authorization.args),
-    }
-  }
-
+  const prepareMainTool = createPreparedToolExecutor({
+    authorize: authorizeMainTool,
+    execute: executePreparedTool,
+  })
   // Mail-send approvals seal a content-bearing action. Resolve it privately
   // rather than asking inference to reproduce its arguments. Other approval
   // types retain their existing continuation behavior.
-  if (
-    payload.actorContext.approval?.approvalId
-    && await isFrozenEmailToolApproval(deps.prisma, {
+  const approvedEmailContinuation = payload.actorContext.approval?.approvalId
+    ? await resumeApprovedEmailContinuation({
       actorContext: payload.actorContext,
-      organizationId: context.channel.organizationId,
-    })
-  ) {
-    return resumeFrozenApprovedTool({
-      actorContext: payload.actorContext,
-      authorize: (call) => authorizeMainTool(
-        call.toolName,
-        call.args,
-        call.toolCallId,
-        {
-          maySuspendForApproval: false,
-          revalidateApprovalBoundary: true,
-          skipAutoReview: true,
-        },
-      ),
+      authorize: (call) => authorizeMainTool(call.toolName, call.args, call.toolCallId, {
+        maySuspendForApproval: false,
+        revalidateApprovalBoundary: true,
+        skipAutoReview: true,
+      }),
       context,
       dispatch: (call, authorization) =>
         executeAuthorizedTool(call.toolName, call.toolCallId, authorization),
       invocationSink: input.invocationSink,
       prisma: deps.prisma,
     })
-  }
+    : null
+  if (approvedEmailContinuation) return approvedEmailContinuation
 
   const loopResult = await runAgenticLoop({
     budget: input.budget,
