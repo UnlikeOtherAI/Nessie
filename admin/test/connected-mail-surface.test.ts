@@ -97,9 +97,22 @@ test('the chat doorway uses session-only offer state and shared dialog navigatio
   assert.match(doorway, /MailSurfaceDoorwayMetadataSchema/)
   assert.match(doorway, /open && Boolean\(account\)/)
   assert.match(doorway, /accounts\.refetch\(\{ throwOnError: true \}\)/)
-  assert.match(doorway, /removeItem\('mail-doorway-overlay-open'\)/)
+  // Which doorway owns the overlay is module state, not sessionStorage: a
+  // reload does not run effect cleanup, so a stored marker outlived it and
+  // disabled auto-open for the rest of the tab. The per-message "offered"
+  // record is still sessionStorage — that one is meant to survive a reload.
+  assert.match(doorway, /let openDoorwayMessageId: string \| null = null/)
+  assert.match(doorway, /openDoorwayMessageId === messageId\) openDoorwayMessageId = null/)
+  assert.doesNotMatch(doorway, /'mail-doorway-overlay-open'/)
+  assert.match(doorway, /sessionStorage\.setItem\(storageKey/)
   assert.match(doorway, /ownsOverlayMarkerRef/)
-  assert.match(doorway, /getItem\('mail-doorway-overlay-open'\) === messageId/)
+  // The account list is only fetched for a message that actually carries a
+  // doorway; the chip mounts on every row in the feed.
+  assert.match(doorway, /useConnectedMailAccounts\(Boolean\(doorway\)\)/)
+  // A compose doorway naming a thread is a reply, and must carry the reply
+  // target into both the inline composer and the full-mail hand-off.
+  assert.match(doorway, /replyTo=\{replyTo\}/)
+  assert.match(doorway, /doorwayPath\(doorway, replyTo\?\.id\)/)
   assert.match(doorway, /<MailboxWorkspace/)
   assert.match(doorway, /<MailboxThreadList/)
   assert.match(doorway, /doorway\.mode === 'compose' \? account\.canCompose : account\.canRead/)

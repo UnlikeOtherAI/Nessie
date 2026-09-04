@@ -23,13 +23,17 @@ export const readMailSurfaceDoorway = (metadata: Record<string, unknown> | undef
   return parsed.success ? parsed.data : null
 }
 
-const doorwayPath = (doorway: MailSurfaceDoorway): string => {
+const doorwayPath = (doorway: MailSurfaceDoorway, replyMessageId?: string): string => {
   const root = mailPath({ accountId: doorway.accountId, source: doorway.source })
   if (doorway.mode === 'thread' && doorway.threadId) return `${root}/threads/${encodeURIComponent(doorway.threadId)}`
   if (doorway.mode !== 'compose') return root
   const params = new URLSearchParams()
   if (doorway.threadId) params.set('threadId', doorway.threadId)
   if (doorway.draftId) params.set('draftId', doorway.draftId)
+  // `threadId` alone names the conversation to read; `reply` is what makes the
+  // compose page resolve a reply target. Without it a doorway the agent opened
+  // against a thread silently composed a brand-new message instead.
+  if (replyMessageId) params.set('reply', replyMessageId)
   return `${root}/compose${params.size ? `?${params}` : ''}`
 }
 
@@ -166,6 +170,12 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     candidate.id === doorway.accountId && candidate.source === doorway.source,
   )
   const title = doorway.mode === 'compose' ? 'Email draft ready' : doorway.mode === 'thread' ? 'Email ready to review' : 'Mail ready to review'
+  // A compose doorway that names a thread is a reply. The newest message in the
+  // (oldest-first) conversation carries the provider thread and Message-ID the
+  // composer needs; without it the send would start an unrelated thread.
+  const replyTo = doorway.mode === 'compose' && doorway.threadId
+    ? conversation.data?.messages.at(-1)
+    : undefined
   const close = () => {
     try {
       if (openDoorwayMessageId === messageId) openDoorwayMessageId = null
@@ -177,7 +187,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const openMail = async () => {
     if (!await checkAndOpen()) return
     close()
-    navigate(doorwayPath(doorway))
+    navigate(doorwayPath(doorway, replyTo?.id))
   }
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="mail-surface-doorway" ref={targetRef}>
@@ -188,7 +198,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
       <Dialog description="Mail access is checked when this opens." onClose={close} open={open} size={layout === 'single' ? 'full' : 'xl'} title={title}>
         <div className="min-h-0 p-4">
           {doorway.mode === 'thread' && conversation.data ? <ConnectedMailConversationView conversation={conversation.data} onReply={(message) => { close(); navigate(`${mailPath({ accountId: doorway.accountId, source: doorway.source })}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`) }} /> : null}
-          {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} onOpenSettings={() => navigate(connectedMailSettingsPath(account))} onSent={close} onStartNewEmail={(id) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/compose?compose=${id}&new=1`) }} /> : null}
+          {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} replyTo={replyTo} onOpenSettings={() => navigate(connectedMailSettingsPath(account))} onSent={close} onStartNewEmail={(id) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/compose?compose=${id}&new=1`) }} /> : null}
           {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} /> : null}
           {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
           <button className="mt-3 admin-button admin-button-primary" onClick={() => void openMail()} type="button">Open full mail</button>

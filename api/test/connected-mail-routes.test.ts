@@ -153,15 +153,34 @@ test('mail contracts refuse supplied From and unknown fields before a send or dr
   await app.ready()
   try {
     const headers = { origin: 'http://localhost:5455', 'content-type': 'application/json' }
-    const payload = { body: 'Hello', from: 'spoof@example.test', subject: 'Hi', to: ['recipient@example.test'] }
-    const draft = await app.inject({
-      method: 'POST', url: `/api/mail/accounts/gmail/${ACCOUNT_ID}/drafts`, headers, payload,
-    })
-    assert.equal(draft.statusCode, 400)
-    const send = await app.inject({
-      method: 'POST', url: `/api/mail/accounts/mailbox/${ACCOUNT_ID}/send`, headers, payload,
-    })
-    assert.equal(send.statusCode, 400)
+    // Every field the schema requires is present, so a 400 can only come from
+    // `from` itself. Without the idempotency key this assertion passed against
+    // a payload that carried no From at all, proving nothing.
+    const valid = {
+      body: 'Hello',
+      idempotencyKey: '55555555-5555-4555-8555-555555555555',
+      subject: 'Hi',
+      to: ['recipient@example.test'],
+    }
+    const spoofed = { ...valid, from: 'spoof@example.test' }
+
+    for (const url of [
+      `/api/mail/accounts/gmail/${ACCOUNT_ID}/drafts`,
+      `/api/mail/accounts/mailbox/${ACCOUNT_ID}/send`,
+    ]) {
+      const refused = await app.inject({ method: 'POST', url, headers, payload: spoofed })
+      assert.equal(refused.statusCode, 400, `${url} accepted a client-supplied From`)
+      assert.equal(refused.json().error.code, 'VALIDATION_ERROR')
+      // The identical payload without From clears schema validation and is
+      // refused later, by the service, for a different reason. That difference
+      // is what attributes the refusal above to From rather than to a missing
+      // required field — which is all the previous version of this test proved.
+      const accepted = await app.inject({ method: 'POST', url, headers, payload: valid })
+      assert.notEqual(
+        accepted.json().error?.code, 'VALIDATION_ERROR',
+        `${url} rejected a well-formed payload as invalid`,
+      )
+    }
   } finally {
     await app.close()
   }

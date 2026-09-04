@@ -103,11 +103,26 @@ test('a stale validation returns to draft and a published hold dispatches once',
       findUniqueOrThrow: async () => action,
       findFirst: async () => action,
       updateMany: async ({ where, data }: {
-        where: { claimedAt?: Date | { lt: Date }; sendAfter?: Date | null; state?: string }
+        where: {
+          claimedAt?: Date | { lt: Date }
+          sendAfter?: Date | null | { lte?: Date; not?: null }
+          state?: string
+        }
         data: Record<string, unknown>
       }) => {
         if (where.state && where.state !== action.state) return { count: 0 }
-        if ('sendAfter' in where && where.sendAfter !== action.sendAfter) return { count: 0 }
+        if ('sendAfter' in where) {
+          const expected = where.sendAfter
+          if (expected === null || expected instanceof Date) {
+            if (expected !== action.sendAfter) return { count: 0 }
+          } else {
+            // The sweep claims only a hold whose window has elapsed. Modelling
+            // this predicate is what makes the undo-then-resend race testable:
+            // ignoring it let the fake claim a re-armed validating row.
+            if (!action.sendAfter) return { count: 0 }
+            if (expected?.lte && action.sendAfter > expected.lte) return { count: 0 }
+          }
+        }
         if (where.claimedAt) {
           if (!action.claimedAt) return { count: 0 }
           if (where.claimedAt instanceof Date && action.claimedAt.getTime() !== where.claimedAt.getTime()) return { count: 0 }
@@ -169,4 +184,64 @@ test('a stale validation returns to draft and a published hold dispatches once',
   assert.deepEqual(second, { dispatched: 0, failed: 0, deliveryUnknown: 0 })
   assert.equal(sends, 1)
   assert.equal(action.state, 'sent')
+})
+
+test('the sweep cannot seize a validating row re-armed by undo and then resend', async () => {
+  // The shape the guard exists for. A hold became due and the sweep selected
+  // it; before dispatch the owner pressed Undo (sending -> draft) and sent
+  // again, which claims draft -> sending with `sendAfter: null` while it
+  // validates. Claiming on state alone let the sweep dispatch that row with no
+  // undo window, and the owner's own request then failed while the mail went.
+  const action = {
+    id: ACTION,
+    organizationId: ORGANIZATION,
+    ownerUserId: USER,
+    connectionId: CONNECTION,
+    providerDraftId: 'draft-1',
+    providerThreadId: 'thread-1',
+    contentFingerprint: 'f'.repeat(64),
+    revision: 1,
+    state: 'sending',
+    sendAfter: null,
+    claimedAt: NOW,
+  }
+  let sends = 0
+  const prisma = {
+    gmailDraftAction: {
+      findUnique: async () => action,
+      findUniqueOrThrow: async () => action,
+      findFirst: async () => action,
+      updateMany: async ({ where, data }: {
+        where: { sendAfter?: Date | null | { lte?: Date }; state?: string }
+        data: Record<string, unknown>
+      }) => {
+        if (where.state && where.state !== action.state) return { count: 0 }
+        if ('sendAfter' in where) {
+          const expected = where.sendAfter
+          if (expected === null || expected instanceof Date) {
+            if (expected !== action.sendAfter) return { count: 0 }
+          } else {
+            if (!action.sendAfter) return { count: 0 }
+            if (expected?.lte && action.sendAfter > expected.lte) return { count: 0 }
+          }
+        }
+        Object.assign(action, data)
+        return { count: 1 }
+      },
+    },
+  } as unknown as PrismaClient
+  const fetchImpl = async (url: string) => {
+    if (url.includes('/messages/send')) sends += 1
+    return { ok: true, status: 200, json: async () => ({ id: 'sent-1' }), text: async () => '{}' }
+  }
+
+  const { dispatchClaimedDraft } = await import('@nessie/team-admin')
+  await assert.rejects(
+    () => dispatchClaimedDraft(prisma, ACTION, {
+      encryptionSecret: ENCRYPTION_SECRET, fetchImpl, now: () => NOW,
+    } as never),
+    /draft not sendable/,
+  )
+  assert.equal(sends, 0, 'the sweep must not dispatch a row that is mid-validation')
+  assert.equal(action.state, 'sending', 'the owner’s validating claim stays intact')
 })

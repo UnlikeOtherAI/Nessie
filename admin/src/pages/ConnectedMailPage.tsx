@@ -197,11 +197,38 @@ export const ConnectedMailPage = () => {
         backLabel="Back to mail"
         flowOwnsBack={layout === 'single' && Boolean(threadId)}
         onBack={layout === 'single' && threadId ? () => navigate(`${mailPath(address)}${routeLocation.search}`) : undefined}
-        subtitle={account ? `${account.label} · ${account.address}` : 'Loading account…'}
+        subtitle={account
+          ? `${account.label} · ${account.address}`
+          : accounts.isLoading ? 'Loading account…' : 'Account unavailable'}
         title="Mail"
       />
-      {unavailable ? <MailUnavailable account={account} /> : layout === 'single' && threadId ? reader : <MailboxWorkspace conversation={reader} conversationList={list} layout={layout} />}
+      {/* Pending is never empty, and an id that resolves to nothing is never a
+          working workspace: until the account list settles the thread query is
+          disabled, so the list would otherwise read "No matching conversations"
+          on every cold load, and an unknown or foreign id would render the full
+          mail surface under a subtitle that loaded forever. */}
+      {accounts.isLoading
+        ? <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">Loading connected accounts…</p></section>
+        : !account
+          ? <MailAccountMissing />
+          : unavailable
+            ? <MailUnavailable account={account} />
+            : layout === 'single' && threadId
+              ? reader
+              : <MailboxWorkspace conversation={reader} conversationList={list} layout={layout} />}
     </div>
+  )
+}
+
+/** An account this viewer is not entitled to reads the same as one that never
+ *  existed, so the surface says neither which it was. */
+const MailAccountMissing = () => {
+  const navigate = useNavigate()
+  return (
+    <section className="px-[var(--page-gutter)] py-6">
+      <p className="text-sm text-[color:var(--tx2)]">This mail account is not available to you.</p>
+      <button className="mt-3 admin-button admin-button-secondary" onClick={() => navigate('/mail')} type="button">Choose an account</button>
+    </section>
   )
 }
 

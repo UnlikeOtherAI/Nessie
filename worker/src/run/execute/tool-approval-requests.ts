@@ -152,17 +152,19 @@ export const createToolApprovalRequest = async (
         ...(input.contextExtra ?? {}),
       }
 
-  // Fail closed. A structurally gated send is pinned to one accountable person;
-  // persisting it with a null approver would instead let anybody who can see
-  // the channel approve mail sent from somebody else's mailbox. Refusing here
-  // means a gate that could not name an approver denies the send outright
-  // rather than widening who may authorise it.
-  if (
-    STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
-    && !(input.requiredApproverUserId ?? input.actorContext.actionContext.effectiveUserId)
-  ) {
+  // Fail closed, for connected mailboxes specifically. A `mailbox_send` is
+  // pinned to the mailbox's accountable owner; persisting it with a null
+  // approver instead lets anybody who can see the channel approve mail sent
+  // from somebody else's mailbox. `evaluateMailboxSendGate` already refuses
+  // when it can find no live owner, so reaching here with no approver means the
+  // gate did not resolve the mailbox at all — deny rather than widen.
+  //
+  // Deliberately not every structurally gated tool: that set spans the browser
+  // and calendar families, where an unpinned approval is the normal shape.
+  if (input.toolName === 'mailbox_send'
+    && !(input.requiredApproverUserId ?? input.actorContext.actionContext.effectiveUserId)) {
     throw new Error(
-      'This send has no accountable approver. Reconnect the account before sending.',
+      'This send has no accountable approver. Reconnect the mailbox before sending.',
     )
   }
 
