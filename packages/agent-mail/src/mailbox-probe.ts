@@ -10,6 +10,7 @@ import {
   type DialOptions,
   type MailEndpoint,
 } from './dial.js'
+import { mailboxDiscoveryHostname } from './mailbox-discovery-address.js'
 import { MailWire } from './wire.js'
 
 /**
@@ -44,6 +45,14 @@ export type MailboxProbeOutcome = 'confirmed' | 'insecure' | 'unreachable' | 'sk
 export type MailboxProbeOptions = {
   /** Announced in EHLO; the mail domain being set up, never an identifier. */
   clientName: string
+  /**
+   * Absolute time this leg must be finished by. It belongs to the conversation
+   * rather than the caller because `MailWire`'s timeout is *per read* and both
+   * conversations loop — untagged IMAP lines, `250-` SMTP continuations — so a
+   * server that answers slowly but never stops would reset the clock forever
+   * and hold a discovery request open. Defaults to the module budget.
+   */
+  deadline?: number
 }
 
 export type MailboxCapabilityProbe = (
@@ -79,6 +88,36 @@ const dialOutcome = (error: unknown): MailboxProbeOutcome =>
 const wireFor = (socket: Socket, options: DialOptions): MailWire =>
   new MailWire(socket, { maxBufferBytes: PROBE_MAX_BUFFER_BYTES, timeoutMs: options.timeoutMs })
 
+/**
+ * Hold a conversation to an absolute deadline, destroying the socket when it
+ * expires so the exchange cannot outlive the answer we gave about it.
+ */
+const withinDeadline = async (
+  socket: Socket,
+  deadline: number | undefined,
+  conversation: () => Promise<MailboxProbeOutcome>,
+): Promise<MailboxProbeOutcome> => {
+  const remaining = (deadline ?? Date.now() + MAILBOX_PROBE_BUDGET_MS) - Date.now()
+  if (remaining <= 0) {
+    socket.destroy()
+    return 'unreachable'
+  }
+  let expiry: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      conversation(),
+      new Promise<MailboxProbeOutcome>((resolve) => {
+        expiry = setTimeout(() => {
+          socket.destroy()
+          resolve('unreachable')
+        }, remaining)
+      }),
+    ])
+  } finally {
+    if (expiry) clearTimeout(expiry)
+  }
+}
+
 /** One tagged IMAP command, with the untagged lines it produced. */
 const imapCommand = async (
   wire: MailWire,
@@ -105,6 +144,13 @@ const imapCommand = async (
 export const runImapCapabilityProbe = async (
   connected: Socket,
   endpoint: MailEndpoint,
+  options: DialOptions & Partial<MailboxProbeOptions>,
+): Promise<MailboxProbeOutcome> =>
+  withinDeadline(connected, options.deadline, () => imapConversation(connected, endpoint, options))
+
+const imapConversation = async (
+  connected: Socket,
+  endpoint: MailEndpoint,
   options: DialOptions,
 ): Promise<MailboxProbeOutcome> => {
   let socket = connected
@@ -121,10 +167,14 @@ export const runImapCapabilityProbe = async (
       if (!(await imapCommand(wire, 'p2', 'STARTTLS')).ok) return 'insecure'
       try {
         socket = await upgradeToTls(socket, endpoint.host, options)
-      } catch (error) {
-        return dialOutcome(error)
+        // `reattach` refuses buffered plaintext carried across the boundary —
+        // the signature of an injection attempt. Both failures happen after a
+        // successful connect, so neither is "we could not reach it": we reached
+        // it and could not get a verified session, which is the answer itself.
+        wire = MailWire.reattach(wire, socket)
+      } catch {
+        return 'insecure'
       }
-      wire = MailWire.reattach(wire, socket)
       capabilities = await imapCommand(wire, 'p3', 'CAPABILITY')
       if (!capabilities.ok) return 'unreachable'
     }
@@ -164,11 +214,24 @@ export const runSmtpCapabilityProbe = async (
   connected: Socket,
   endpoint: MailEndpoint,
   options: DialOptions & MailboxProbeOptions,
+): Promise<MailboxProbeOutcome> =>
+  withinDeadline(connected, options.deadline, () => smtpConversation(connected, endpoint, options))
+
+const smtpConversation = async (
+  connected: Socket,
+  endpoint: MailEndpoint,
+  options: DialOptions & MailboxProbeOptions,
 ): Promise<MailboxProbeOutcome> => {
   let socket = connected
   let wire = wireFor(socket, options)
+  // Discovery only ever passes a canonicalised domain, but this half is
+  // exported: a caller with a CRLF in `clientName` would otherwise be writing
+  // its own SMTP commands on the plaintext leg. One assertion closes that for
+  // every future caller instead of relying on each to have been careful.
+  const clientName = mailboxDiscoveryHostname(options.clientName)
+  if (!clientName) return 'skipped'
   const greet = async (): Promise<SmtpProbeReply> => {
-    wire.write(`EHLO ${options.clientName}\r\n`)
+    wire.write(`EHLO ${clientName}\r\n`)
     return smtpReply(wire)
   }
   try {
@@ -181,10 +244,13 @@ export const runSmtpCapabilityProbe = async (
       if ((await smtpReply(wire)).code !== 220) return 'insecure'
       try {
         socket = await upgradeToTls(socket, endpoint.host, options)
-      } catch (error) {
-        return dialOutcome(error)
+        // Same reasoning as the IMAP leg: past a successful connect, a failed
+        // upgrade or refused reattach is an insecure destination, not an
+        // unreachable one.
+        wire = MailWire.reattach(wire, socket)
+      } catch {
+        return 'insecure'
       }
-      wire = MailWire.reattach(wire, socket)
       // Capabilities announced before TLS are unauthenticated and discarded.
       capabilities = await greet()
       if (capabilities.code !== 250) return 'unreachable'
@@ -226,7 +292,9 @@ const probeLeg = async (
   } catch (error) {
     return dialOutcome(error)
   }
-  return converse(socket, endpoint, dialOptions)
+  // The conversation enforces the deadline itself, so the budget covers the
+  // whole leg — dial included — rather than each individual read.
+  return converse(socket, endpoint, { ...dialOptions, deadline })
 }
 
 /**

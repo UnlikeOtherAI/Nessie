@@ -42,8 +42,20 @@ test('an available provider sign-in counts as the zero-configuration outcome', (
 })
 
 test('a recognised provider whose adapter is unconfigured is not counted as OAuth', () => {
+  // The shape discovery really produces here: Gmail is recognised, so a
+  // reviewed IMAP/SMTP fallback rides along, but with no Google adapter
+  // configured the person is sent to advanced settings rather than a one-
+  // password screen. Counting that as `password` would inflate the best
+  // outcome in the funnel, so the fixture carries the configuration the
+  // server would actually attach.
   const unconfigured = result({
     authentication: { available: false, strategy: 'oauth2', unavailableReason: 'not_configured' },
+    trustedImapSmtp: {
+      imap: { host: 'imap.gmail.com', port: 993, security: 'tls' },
+      smtp: { host: 'smtp.gmail.com', port: 465, security: 'tls' },
+      username: 'email_address',
+    },
+    ui: { ...result().ui, requiresAdvancedSettings: true },
   })
   assert.equal(mailboxDiscoveryOutcome(unconfigured), 'manual')
 })

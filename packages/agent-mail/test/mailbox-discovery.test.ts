@@ -335,3 +335,49 @@ test('an untrusted candidate is never probed and never becomes a password destin
   assert.equal(result.trustedImapSmtp, undefined)
   assert.equal(result.credentialDestinationTrust, 0)
 })
+
+test('a snapshot domain whose MX belongs to another provider still reaches its own settings', async () => {
+  // AOL and AT&T deliver through `*.yahoodns.net`, which the reviewed registry
+  // fingerprints as Yahoo. An MX suffix is the weakest evidence there is, so it
+  // must not pre-empt a reviewed configuration: it used to, which made
+  // seventeen snapshot domains unreachable and told these people they had a
+  // Yahoo mailbox before dead-ending them at a blank manual form.
+  const aol = await service({
+    mx: ['mx-aol.mail.gm0.yahoodns.net'],
+    probe: stubProbe('confirmed'),
+  })('person@aol.com')
+
+  assert.equal(aol.trustedImapSmtp?.imap.host, 'imap.aol.com')
+  assert.equal(aol.ui.providerName, 'AOL Mail')
+  assert.equal(aol.ui.requiresManualSettings, false)
+  assert.equal(aol.ui.requiresProviderConfirmation, false)
+  assert.equal(aol.credentialDestinationTrust, 1)
+
+  const att = await service({ mx: ['mx-att.mail.am0.yahoodns.net'] })('person@att.net')
+  assert.equal(att.trustedImapSmtp?.imap.host, 'imap.mail.att.net')
+})
+
+test('a provider we can actually sign in to still beats a snapshot configuration', async () => {
+  // The inverse of the rule above: OAuth is a better answer than a password,
+  // so a configured adapter keeps priority even where a snapshot entry exists.
+  const result = await service({
+    capabilities: { microsoft: true },
+    mx: ['aol-com.mail.protection.outlook.com'],
+  })('person@aol.com')
+
+  assert.equal(result.provider, 'microsoft')
+  assert.equal(result.authentication.strategy, 'oauth2')
+  assert.equal(result.preferredConnector.type, 'microsoft_graph')
+})
+
+test('a probe that refuses withholds the configuration and records why', async () => {
+  const result = await service({ probe: stubProbe('insecure') })('person@posteo.de')
+
+  assert.equal(result.trustedImapSmtp, undefined)
+  assert.equal(result.credentialDestinationTrust, 0)
+  assert.equal(result.ui.requiresManualSettings, true)
+  const refusal = result.evidence.find((item) => item.source === 'capability_probe')
+  assert.ok(refusal, 'the refusal must be recorded, not merely acted on')
+  assert.equal(refusal.trustedForCredentials, false)
+  assert.equal(refusal.score < 0, true)
+})

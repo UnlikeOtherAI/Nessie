@@ -171,3 +171,89 @@ describe('the probed endpoint pair', () => {
     )
   })
 })
+
+describe('the probe budget', () => {
+  test('a server that answers forever without finishing is cut off, not waited on', async () => {
+    // `MailWire`'s timeout is per read, so a drip of untagged lines used to
+    // reset the clock indefinitely and hold a discovery request open — a
+    // budget in name only. The deadline belongs to the conversation now.
+    let timer: NodeJS.Timeout | undefined
+    const port = await scriptedServer('* OK drip ready\r\n', (line, socket) => {
+      if (!line.endsWith('CAPABILITY')) return
+      timer = setInterval(() => socket.write('* CAPABILITY IMAP4rev1\r\n'), 20)
+      socket.on('close', () => clearInterval(timer))
+    })
+    const socket = await openSocket(port)
+    const startedAt = Date.now()
+    const outcome = await runImapCapabilityProbe(socket, endpoint('tls', port), {
+      ...options,
+      deadline: Date.now() + 300,
+      timeoutMs: 5_000,
+    })
+    const elapsed = Date.now() - startedAt
+    if (timer) clearInterval(timer)
+
+    assert.equal(outcome, 'unreachable')
+    assert.ok(elapsed < 2_000, `the leg must end at its deadline, took ${elapsed}ms`)
+    assert.equal(socket.destroyed, true, 'the socket must not outlive the answer')
+  })
+
+  test('a deadline already spent ends the leg without a conversation', async () => {
+    const port = await scriptedServer('* OK ready\r\n', () => undefined)
+    const socket = await openSocket(port)
+    const outcome = await runImapCapabilityProbe(socket, endpoint('tls', port), {
+      ...options,
+      deadline: Date.now() - 1,
+    })
+    assert.equal(outcome, 'unreachable')
+    assert.equal(socket.destroyed, true)
+  })
+})
+
+describe('the STARTTLS boundary', () => {
+  test('a server that cannot complete the upgrade is insecure, never merely unreachable', async () => {
+    // Past a successful connect, a failed upgrade means we reached the server
+    // and could not get a verified session — that is the answer, not a
+    // transient. Reported as `unreachable` it would leave the configuration
+    // standing and still offer a password screen.
+    const port = await scriptedServer('* OK mail.example.com ready\r\n', (line, socket) => {
+      const tag = line.split(' ')[0]
+      if (line.endsWith('CAPABILITY')) {
+        socket.write('* CAPABILITY IMAP4rev1 STARTTLS\r\n')
+        socket.write(`${tag} OK done\r\n`)
+        return
+      }
+      // Accepts STARTTLS, then keeps speaking plaintext: no TLS follows.
+      if (line.includes('STARTTLS')) socket.write(`${tag} OK begin\r\n`)
+    })
+    const socket = await openSocket(port)
+    const outcome = await runImapCapabilityProbe(socket, endpoint('starttls', port), {
+      ...options,
+      deadline: Date.now() + 3_000,
+    })
+    assert.equal(outcome, 'insecure')
+  })
+
+  test('an SMTP server that will not offer STARTTLS is a downgrade, not a fallback', async () => {
+    const port = await scriptedServer('220 mail.example.com ESMTP\r\n', (line, socket) => {
+      if (line.startsWith('EHLO')) socket.write('250-mail.example.com\r\n250 PIPELINING\r\n')
+    })
+    const socket = await openSocket(port)
+    const outcome = await runSmtpCapabilityProbe(socket, endpoint('starttls', port), {
+      ...options,
+      deadline: Date.now() + 3_000,
+    })
+    assert.equal(outcome, 'insecure')
+  })
+
+  test('a client name that is not a hostname is refused rather than written into EHLO', async () => {
+    const port = await scriptedServer('220 mail.example.com ESMTP\r\n', () => undefined)
+    const socket = await openSocket(port)
+    const outcome = await runSmtpCapabilityProbe(socket, endpoint('tls', port), {
+      ...options,
+      clientName: 'evil.example\r\nMAIL FROM:<a@b.c>',
+    })
+    assert.equal(outcome, 'skipped', 'CRLF must never reach the wire as a command')
+    socket.destroy()
+  })
+})

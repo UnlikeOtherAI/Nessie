@@ -58,13 +58,17 @@ provider's own published settings and records where, so it can be re-checked
 rather than trusted. The snapshot never overrides what a domain publishes
 about itself: a current autoconfiguration document always wins.
 
-Whichever route found the settings, Nessie **talks to the mail server before
-offering you a password field** — a short unauthenticated exchange that carries
-no credential and only confirms the server is really there, speaks the
-protocol, and presents a certificate that checks out. A server that will not
-establish a verified TLS session sends you to Advanced settings instead of a
-password screen. A server that simply cannot be reached right now changes
-nothing: the settings stand, and connecting reports the problem if it persists.
+Where settings were discovered rather than recognised outright — from the
+snapshot, from SRV records, or from a domain's own autoconfiguration document —
+Nessie **talks to the mail server before offering you a password field**: a
+short unauthenticated exchange that carries no credential and only confirms the
+server is really there, speaks the protocol, and presents a certificate that
+checks out. A server that will not establish a verified TLS session sends you
+to Advanced settings instead of a password screen. A server that simply cannot
+be reached right now changes nothing: the settings stand, and connecting
+reports the problem if it persists. The providers Nessie recognises by name
+(Gmail, Outlook, iCloud, Fastmail, Yahoo, Zoho) skip this exchange, because
+their settings are reviewed constants rather than something just discovered.
 
 **Where the provider offers an app password, use one** — this credential reads
 everything in the mailbox and can send as it, so a scoped, revocable one is worth

@@ -48,6 +48,11 @@ export const mailboxDiscoveryOutcome = (
   if (result.authentication.strategy === 'oauth2' && result.authentication.available) {
     return 'provider_oauth'
   }
+  // A recognised OAuth provider whose adapter this deployment never configured
+  // still carries a reviewed fallback configuration, but the person is sent to
+  // advanced settings rather than a one-password screen. Counting that as
+  // `password` would inflate the very outcome this funnel exists to watch.
+  if (result.ui.requiresAdvancedSettings) return 'manual'
   return result.trustedImapSmtp ? 'password' : 'manual'
 }
 

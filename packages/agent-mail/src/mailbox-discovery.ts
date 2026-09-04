@@ -232,6 +232,8 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
     const { isConflict, topFamily } = rankProviders(findings)
     if (isConflict) findings.push(evidence('conflict', -45, false))
 
+    let selectedCandidate = selectTrustedCandidate(candidates)
+
     if (topFamily && !isConflict) {
       const selected = registry.find((entry) => entry.family === topFamily)
       if (selected) {
@@ -241,17 +243,27 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
         const base = providerCorroborated ? 0.95 : 0.55
         const fixedOAuthAvailable = (selected.family === 'google' || selected.family === 'microsoft')
           && capabilityFor(selected.family, capabilities)
-        return providerResult({
-          candidate: selected,
-          capabilities,
-          confidence: base,
-          credentialDestinationTrust: protocolTrusted ? 1 : 0.45,
-          domain: parsed.domain,
-          email: parsed.email,
-          evidence: findings,
-          includeTrustedImapSmtp: protocolTrusted,
-          requiresProviderConfirmation: !providerCorroborated && !fixedOAuthAvailable,
-        })
+        // An MX suffix says who accepts inbound mail for the domain; it is not a
+        // configuration, and by this module's own scoring it is the weakest
+        // evidence there is (55). When a reviewed snapshot entry or a document
+        // the domain publishes about itself also answered, that is the stronger
+        // claim and it wins — otherwise `person@aol.com`, whose MX is Yahoo's,
+        // would be told it is a Yahoo mailbox and dead-ended at a blank manual
+        // form while a verified AOL configuration sat unused. A provider we can
+        // actually sign in to still wins, because OAuth beats a password.
+        if (providerCorroborated || fixedOAuthAvailable || !selectedCandidate) {
+          return providerResult({
+            candidate: selected,
+            capabilities,
+            confidence: base,
+            credentialDestinationTrust: protocolTrusted ? 1 : 0.45,
+            domain: parsed.domain,
+            email: parsed.email,
+            evidence: findings,
+            includeTrustedImapSmtp: protocolTrusted,
+            requiresProviderConfirmation: !providerCorroborated && !fixedOAuthAvailable,
+          })
+        }
       }
     }
 
@@ -266,7 +278,6 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
       })
     }
 
-    let selectedCandidate = selectTrustedCandidate(candidates)
     let credentialDestinationTrust = 0.95
     let probeRefused = false
     if (selectedCandidate) {
@@ -276,6 +287,10 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
         findings.push(evidence('capability_probe', 30, true))
         credentialDestinationTrust = 1
       } else if (outcome === 'insecure') {
+        // Recorded, not just acted on: without this the manual screen and the
+        // discovery funnel cannot say why the configuration was withheld, and
+        // how often the probe refuses is the one number that justifies its cost.
+        findings.push(evidence('capability_probe', -30, false))
         // A destination we cannot reach over a verified TLS session must never
         // authorise a password screen. `unreachable`/`skipped` change nothing:
         // a transient failure is the connect step's error copy to give, not a
