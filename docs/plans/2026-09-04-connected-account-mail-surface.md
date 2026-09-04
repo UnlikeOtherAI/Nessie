@@ -42,9 +42,10 @@ Doorways:
    `gmail.read` is usable.
 2. Each personal or shared SMTP/IMAP connection offers **Open mail** to a caller
    entitled to read it.
-3. An agent-produced Gmail draft card offers **Open in Mail**. Existing generic
-   agent cards can present a returned mail doorway, so an agent can hand a
-   person a narrowed result set without a new email-specific card renderer.
+3. An agent-produced Gmail draft leaves a restricted **Open mail** doorway.
+   Existing generic agent cards can present a returned mail doorway, so an agent
+   can hand a person a narrowed result set without a new email-specific card
+   renderer.
 4. Inside Mail, a thread row opens the reading surface, **New email** opens the
    compose flow, and **Reply** opens the same compose flow with structural reply
    context.
@@ -154,7 +155,7 @@ from the live no-store conversation beside the form and never enter
 ## Agent-driven presentation in chat
 
 Presentation is an agent capability, not a second mail implementation.
-`mail_present` is a safe UI tool whose closed modes are `account`, `thread`, and
+`mail_present` is a non-safe UI-posting tool whose closed modes are `account`, `thread`, and
 `compose`. It accepts an explicit `source` and `accountId`, plus the provider
 thread or draft reference required by the mode. For `source=mailbox`, it runs
 the identical authorization chain as `mailbox_search` and `mailbox_read`:
@@ -268,7 +269,7 @@ for connected-mailbox sends. A human route never weakens those gates.
 
 Search/list tool results return a `reviewUrl` scoped to the account and provider
 reference; search text is not encoded into a durable URL or message. Gmail
-draft cards return an **Open in Mail** doorway. `card_post` remains the single
+drafts return an **Open mail** doorway. `card_post` remains the single
 renderer for an agent-curated email preview or compose form — a dedicated
 `email_card` kind is forbidden.
 

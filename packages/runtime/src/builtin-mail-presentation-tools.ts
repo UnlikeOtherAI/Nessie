@@ -26,6 +26,8 @@ export const MAIL_PRESENT_TOOL_DEFINITION: BuiltinToolDefinition = {
     type: 'object',
   },
   requiresExplicitGrant: true,
-  safe: true,
+  // This leaves a durable, restricted doorway in the conversation. It has no
+  // provider side effect, but matches card_post rather than a read-only tool.
+  safe: false,
   summary: 'Open an entitled connected-mail review surface.',
 }
