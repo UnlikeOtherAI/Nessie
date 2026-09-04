@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   attributionFromActorContext,
+  EMAIL_SEND_TOOL_ID,
   GMAIL_DRAFT_SEND_TOOL_ID,
   recordConnectorUsage,
   type InvocationRecord,
@@ -29,6 +30,7 @@ export type FrozenApprovedToolCall = {
 }
 
 const FROZEN_EMAIL_TOOL_IDS = new Set([
+  EMAIL_SEND_TOOL_ID,
   GMAIL_DRAFT_SEND_TOOL_ID,
   'mailbox_send',
 ])

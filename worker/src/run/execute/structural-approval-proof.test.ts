@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { MAILBOX_SEND_TOOL_ID } from '@nessie/runtime'
+import { EMAIL_SEND_TOOL_ID, MAILBOX_SEND_TOOL_ID } from '@nessie/runtime'
 import {
   parseOrganizationId,
   parseProjectId,
@@ -203,6 +203,54 @@ test('mailbox approval context is content-free while frozen resume args stay exa
     (stored.context as { headline?: string }).headline,
     'Send an email from a connected mailbox',
   )
+  assert.deepEqual((stored.resumeState as { args: unknown }).args, privateArgs)
+  assert.equal(stored.argsHash, hashJsonValue(privateArgs))
+})
+
+test('hosted-mail approval context and reason are content-free while its sealed proposal stays exact', async () => {
+  const storedRows: Array<Record<string, unknown>> = []
+  const prisma = {
+    approvalRequest: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        storedRows.push(data)
+        return { id: 'approval-hosted-content-free', requiredApproverUserId: ids.user }
+      },
+      findFirst: async () => null,
+    },
+  } as unknown as PrismaClient
+  const privateArgs = {
+    approvalProposal: {
+      bcc: ['audit@example.test'],
+      cc: [],
+      conversationId: null,
+      mailboxId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      subject: 'Private renewal terms',
+      to: ['ops@example.test'],
+    },
+    subject: 'Private renewal terms',
+    text: 'Please send the private body to ops@example.test.',
+    to: ['ops@example.test'],
+  }
+
+  await createToolApprovalRequest(prisma, {
+    actorContext: actor('no-proof'),
+    args: privateArgs,
+    context: context(),
+    interactive: true,
+    messageId: 'message-hosted-content-free',
+    requiredApproverUserId: ids.user,
+    toolCallId: 'call-hosted-content-free',
+    toolName: EMAIL_SEND_TOOL_ID,
+  })
+
+  const stored = storedRows[0]
+  assert.ok(stored)
+  assert.doesNotMatch(
+    JSON.stringify({ context: stored.context, reason: stored.reason }),
+    /ops@example\.test|Private renewal|private body|audit@example/,
+  )
+  assert.equal((stored.context as { headline?: string }).headline, 'Send an email from the agent mailbox')
+  assert.equal(stored.reason, 'Review the email before deciding whether to send it.')
   assert.deepEqual((stored.resumeState as { args: unknown }).args, privateArgs)
   assert.equal(stored.argsHash, hashJsonValue(privateArgs))
 })

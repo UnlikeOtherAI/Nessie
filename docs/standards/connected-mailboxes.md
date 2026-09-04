@@ -105,7 +105,7 @@ Plan and as-built deltas:
   send, the server-owned frozen resume arguments and action hash. Approval
   context, ToolCall rows, thinking and realtime status, demonstrations,
   connector telemetry, and audit metadata carry only a fixed action/outcome
-  summary. The same boundary covers connected-mail, Gmail, contact, and
+  summary. The same boundary covers hosted agent mail, connected-mail, Gmail, contact, and
   connected-account lifecycle tools; a provider failure becomes a stable remedy
   rather than raw remote text.
 - **Approval continuations execute a frozen action, never a model recreation.**

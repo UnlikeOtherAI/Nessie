@@ -98,9 +98,12 @@ const asAddressList = (value: unknown): string[] => {
  * carried on Cc, and the subject is derived rather than invented. The mailbox's
  * own address is always removed — replying to yourself is a loop.
  */
+type RecipientResolutionContext = Pick<BuiltinToolRuntimeContext, 'prisma' | 'runContext'>
+type RecipientMailbox = Pick<RunMailbox, 'address' | 'id'>
+
 export const resolveOutboundRecipients = async (
-  context: BuiltinToolRuntimeContext,
-  mailbox: RunMailbox,
+  context: RecipientResolutionContext,
+  mailbox: RecipientMailbox,
   args: Record<string, unknown>,
 ): Promise<ResolvedRecipients> => {
   const explicitTo = asAddressList(args.to)

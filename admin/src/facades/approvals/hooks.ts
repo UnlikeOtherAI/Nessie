@@ -31,7 +31,7 @@ export type EmailApprovalReview = {
   bcc: string[]
   cc: string[]
   expiresAt: string
-  kind: 'gmail' | 'mailbox'
+  kind: 'agent' | 'gmail' | 'mailbox'
   mailboxLabel: string
   senderAddress: string
   subject: string

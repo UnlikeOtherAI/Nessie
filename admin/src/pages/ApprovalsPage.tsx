@@ -15,7 +15,7 @@ import { usePagedList } from '../facades/usePagedList'
 
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
 const TODO_TEMPLATE_PUBLISH_ACTION = 'agent.todo_template.publish'
-const REVIEWABLE_EMAIL_TOOL_NAMES = new Set(['gmail_draft_send', 'mailbox_send'])
+const REVIEWABLE_EMAIL_TOOL_NAMES = new Set(['email_send', 'gmail_draft_send', 'mailbox_send'])
 
 type KnowledgePagePublishContext = {
   pageId: string

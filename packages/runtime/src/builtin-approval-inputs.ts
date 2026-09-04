@@ -54,6 +54,35 @@ export const EmailSendToolInputSchema = z.object({
   to: z.array(z.string()).max(50).optional(),
 }).strict()
 
+/**
+ * The email tool's public input plus the server-resolved proposal it will send.
+ *
+ * `approvalProposal` is never advertised to a model. Authorization replaces it
+ * before any durable work for an ordinary call, then a continuation reuses that
+ * exact sealed value after proving it came from the approval row. Keeping the
+ * target and threading decision beside the body is what prevents a later
+ * inference turn (or a changed conversation) from silently changing a reviewed
+ * hosted-mail send.
+ */
+const EmailSendApprovalProposalSchema = z.object({
+  bcc: z.array(z.string()).max(50),
+  cc: z.array(z.string()).max(50),
+  conversationId: z.string().uuid().nullable(),
+  mailboxId: z.string().uuid(),
+  subject: z.string().min(1).max(500),
+  to: z.array(z.string()).min(1).max(50),
+}).strict()
+
+/** Accepts a model call before the server has attached its sealed proposal. */
+export const AuthorizedEmailSendToolInputSchema = EmailSendToolInputSchema.extend({
+  approvalProposal: EmailSendApprovalProposalSchema.optional(),
+}).strict()
+
+/** A persisted approval and its continuation must contain the exact proposal. */
+export const SealedEmailSendToolInputSchema = EmailSendToolInputSchema.extend({
+  approvalProposal: EmailSendApprovalProposalSchema,
+}).strict()
+
 export const MailboxSendToolInputSchema = z.object({
   bcc: z.array(z.string()).max(50).optional(),
   cc: z.array(z.string()).max(50).optional(),
@@ -69,7 +98,10 @@ const STRUCTURAL_TOOL_INPUT_SCHEMAS = {
   calendar_event_cancel: CalendarEventCancelToolInputSchema,
   calendar_event_create: CalendarEventCreateToolInputSchema,
   calendar_event_update: CalendarEventUpdateToolInputSchema,
-  email_send: EmailSendToolInputSchema,
+  // `approvalProposal` is server-authored and overwritten on an initial call;
+  // accepting the shape here lets the sealed continuation pass through the same
+  // strict parser without a second, looser authorization path.
+  email_send: AuthorizedEmailSendToolInputSchema,
   gmail_draft_send: GmailDraftSendToolInputSchema,
   mailbox_send: MailboxSendToolInputSchema,
 } as const

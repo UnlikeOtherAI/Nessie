@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { GMAIL_DRAFT_SEND_TOOL_ID, MAILBOX_SEND_TOOL_ID } from '@nessie/runtime'
+import {
+  EMAIL_SEND_TOOL_ID,
+  GMAIL_DRAFT_SEND_TOOL_ID,
+  MAILBOX_SEND_TOOL_ID,
+} from '@nessie/runtime'
 import {
   parseOrganizationId,
   parseProjectId,
@@ -34,6 +38,20 @@ const frozenArgs = {
   subject: 'unique frozen subject',
   text: 'unique frozen body',
   to: ['unique-recipient@example.test'],
+}
+
+const hostedEmailArgs = {
+  approvalProposal: {
+    bcc: ['audit@example.test'],
+    cc: [],
+    conversationId: null,
+    mailboxId: '99999999-9999-4999-8999-999999999999',
+    subject: 'unique frozen hosted subject',
+    to: ['unique-hosted-recipient@example.test'],
+  },
+  subject: 'unique frozen hosted subject',
+  text: 'unique frozen hosted body',
+  to: ['unique-hosted-recipient@example.test'],
 }
 
 const actorContext = (): AuthorizedActionContext => ({
@@ -212,6 +230,39 @@ test('dispatches the frozen mailbox action without any model callback', async ()
   assert.doesNotMatch(JSON.stringify(state.toolCalls), /unique frozen|unique-recipient/)
   assert.equal(state.connectorUsage[0]?.['target'], null)
   assert.equal(state.connectorUsage[0]?.['metadata'], undefined)
+})
+
+test('dispatches a real tool.invoke hosted-mail approval from its sealed proposal without inference', async () => {
+  const state = fakePrisma({
+    argsHashArgs: hostedEmailArgs,
+    resumeArgs: hostedEmailArgs,
+    toolName: EMAIL_SEND_TOOL_ID,
+  })
+  const dispatched: Array<Record<string, unknown>> = []
+  const result = await resumeApprovedEmailContinuation({
+    actorContext: actorContext(),
+    authorize: async (call) => ({
+      args: call.args,
+      decision: 'allow',
+      toolActorContext: actorContext(),
+    }),
+    context: context(),
+    dispatch: async (call) => {
+      dispatched.push(call.args)
+      return {
+        inputSummary: 'ignored',
+        output: 'ignored',
+        success: true,
+      }
+    },
+    invocationSink: [],
+    prisma: state.prisma,
+  })
+
+  assert.deepEqual(dispatched, [hostedEmailArgs])
+  assert.equal(result?.finalText, 'The approved action was completed.')
+  assert.equal(result?.iterations, 0, 'a frozen approval never starts an inference turn')
+  assert.doesNotMatch(JSON.stringify(state.toolCalls), /unique frozen hosted|unique-hosted-recipient/)
 })
 
 test('leaves a non-email approval continuation on the ordinary path', async () => {

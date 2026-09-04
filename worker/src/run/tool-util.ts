@@ -120,17 +120,20 @@ const REDACTED = '[REDACTED]'
  * Mail-send payloads contain the very correspondence a person is being asked
  * to authorize. Tool input summaries are copied into approvals, run history,
  * thinking, realtime status, and opt-in demonstrations, so redacting just
- * secret-shaped keys is insufficient for these two action tools.
+ * secret-shaped keys is insufficient for mail actions and mailbox reads.
  *
  * The exact arguments remain available only in ApprovalRequest.resumeState and
  * its hash, which are the execution proof. Every other durable/operational
  * caller must use these helpers when it knows the tool name.
  */
 export const isProtectedMailSendTool = (toolName: string): boolean =>
-  toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
+  toolName === 'email_send' || toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
 
 const PROTECTED_MAIL_TOOL_SUMMARIES: Record<string, string> = {
   contacts_search: 'Search contacts for an email action.',
+  email_list: 'List the agent mailbox.',
+  email_read: 'Read an agent mailbox conversation.',
+  email_send: 'Send from the agent mailbox.',
   gmail_attachment_read: 'Read a Gmail attachment.',
   gmail_draft_create: 'Create a Gmail draft.',
   gmail_draft_send: 'Send an approved Gmail draft.',

@@ -42,6 +42,21 @@ file is the rule**.
   permanently. Details: `CLAUDE.md` → "Agent email"; plan:
   `docs/plans/2026-09-02-agent-email.md`; AWS setup: `docs/deployment/configuration.md`.
 
+  A hosted-mail approval freezes more than the model's body: before the request
+  exists, the worker resolves its actual mailbox, recipients, Cc/Bcc, subject,
+  and conversation identity once and keeps that sealed proposal only in
+  `ApprovalRequest.resumeState`. The request's reason, context, ToolCall,
+  thinking/realtime, audit, demonstration and connector records carry only a
+  fixed action/outcome summary. `/api/approvals/:id/email-review` materializes
+  the exact proposal (and only filename/MIME type/size for attachments) for the
+  one active, pinned steward while the approval is pending; every response from
+  that endpoint is `Cache-Control: private, no-store`. The continuation carries
+  only the opaque approval id/proof, rechecks that exact mailbox and steward
+  live, atomically claims the proof, and queues the frozen proposal without an
+  inference turn or a fresh recipient lookup. `email_list` and `email_read`
+  still place correspondence in the authorized model context, but their
+  inputs/results receive the same operational redaction boundary.
+
 ## Detail
 
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Agent email — an agent's own mailbox".
