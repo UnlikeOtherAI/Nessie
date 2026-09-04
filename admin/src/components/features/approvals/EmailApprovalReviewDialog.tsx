@@ -1,5 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
+
 import { ApprovalDecision } from './ApprovalDecision'
-import { useEmailApprovalReview, type ApprovalRequest } from '../../../facades/approvals/hooks'
+import {
+  removeEmailApprovalReview,
+  useEmailApprovalReview,
+  type ApprovalRequest,
+} from '../../../facades/approvals/hooks'
 import { Dialog } from '../../shared/Dialog'
 
 const recipientLine = (recipients: string[]): string =>
@@ -19,13 +25,18 @@ export const EmailApprovalReviewDialog = ({
   onClose: () => void
   open: boolean
 }) => {
+  const queryClient = useQueryClient()
   const review = useEmailApprovalReview(approval?.id, open && approval !== null)
   const detail = review.data
+  const close = () => {
+    removeEmailApprovalReview(queryClient, approval?.id)
+    onClose()
+  }
 
   return (
     <Dialog
       description="Review the exact email before deciding. Only the assigned approver can open it."
-      onClose={onClose}
+      onClose={close}
       open={open}
       size="lg"
       title="Review email"
@@ -84,7 +95,7 @@ export const EmailApprovalReviewDialog = ({
               approvalId={detail.approvalId}
               blockingConfirmation
               description="This sends the exact email you just reviewed."
-              onResolved={onClose}
+              onResolved={close}
             />
           </div>
         </div>

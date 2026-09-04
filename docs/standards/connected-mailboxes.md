@@ -25,7 +25,7 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   outside the source channel. The list remains address/body-free; when that
   person chooses **Review email**, a short-lived server projection materializes
   the frozen sender, recipients, subject and body for an explicit confirm. It
-  disappears at resolution and is never copied into approval context, audit,
+  is evicted from the browser cache on close or resolution and never copied into approval context, audit,
   tool metadata, or websocket data. A missing or
   inactive accountable person (the personal owner or shared installer) denies
   the send rather than creating an unpinned or unanswerable approval: an owner

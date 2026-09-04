@@ -1,4 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { approvalKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -35,6 +41,18 @@ export type EmailApprovalReview = {
 
 export type PendingApprovalCount = { count: number }
 
+export const emailApprovalReviewKey = (approvalId: string | undefined) =>
+  [...approvalKeys.detail(approvalId), 'email-review'] as const
+
+/** Exact correspondence must leave the browser cache with its review dialog. */
+export const removeEmailApprovalReview = (
+  queryClient: QueryClient,
+  approvalId: string | undefined,
+): void => {
+  if (!approvalId) return
+  queryClient.removeQueries({ exact: true, queryKey: emailApprovalReviewKey(approvalId) })
+}
+
 export const useApprovalRequests = (enabled = true) => {
   const apiClient = useApiClient()
   return useQuery<ApprovalRequest[]>({
@@ -60,7 +78,8 @@ export const useEmailApprovalReview = (approvalId: string | undefined, enabled: 
   const apiClient = useApiClient()
   return useQuery<EmailApprovalReview>({
     enabled: enabled && Boolean(approvalId),
-    queryKey: [...approvalKeys.detail(approvalId), 'email-review'],
+    gcTime: 0,
+    queryKey: emailApprovalReviewKey(approvalId),
     queryFn: () => apiClient.get(`/api/approvals/${approvalId}/email-review`),
     retry: false,
   })

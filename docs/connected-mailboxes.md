@@ -136,7 +136,7 @@ shared one. The durable approval states whether it is a personal or shared
 mailbox without storing its address. The pinned person selects **Review email**
 to see the exact sender, recipients, subject and body, then confirms Approve or
 Reject; neither the list row nor the approval notification contains that email
-content, and the review disappears once the decision is made. If the agent built the message out of
+content, and the review disappears and is removed from the browser cache once the decision is made. If the agent built the message out of
 something the recipient has no claim to — a private document, another person's
 mail — the approval names that too. If the shared mailbox's installer has left
 or was never assigned, the send remains blocked; an owner or admin reconnects

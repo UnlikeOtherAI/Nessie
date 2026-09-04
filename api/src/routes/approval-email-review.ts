@@ -33,22 +33,6 @@ const gmailChanged = (reply: Parameters<typeof sendApiError>[0]) =>
     'The Gmail draft changed after this approval. Ask the agent to propose it again.',
   )
 
-const liveFingerprint = (input: {
-  attachments: { filename: string; sizeBytes: number }[]
-  bcc: string[]
-  body: string
-  cc: string[]
-  subject: string
-  to: string[]
-}) => fingerprintDraft({
-  attachmentIds: input.attachments.map((attachment) => `${attachment.filename}:${attachment.sizeBytes}`),
-  bcc: input.bcc,
-  body: input.body,
-  cc: input.cc,
-  subject: input.subject,
-  to: input.to,
-})
-
 export const registerApprovalEmailReviewRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -129,7 +113,14 @@ export const registerApprovalEmailReviewRoutes = (
         },
         { encryptionSecret: authSecret ?? '' },
       )
-      if (liveFingerprint(draft) !== args.data.approvalFingerprint) {
+      if (fingerprintDraft({
+        attachmentIdentities: draft.attachments,
+        bcc: draft.bcc,
+        body: draft.body,
+        cc: draft.cc,
+        subject: draft.subject,
+        to: draft.to,
+      }) !== args.data.approvalFingerprint) {
         return gmailChanged(reply)
       }
       const connection = await prisma.commsConnection.findFirst({
