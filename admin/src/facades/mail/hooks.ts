@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ConnectedMailAccountRecordSchema,
   ConnectedMailConversationSchema,
@@ -55,7 +55,6 @@ export const useConnectedMailThreads = (
   const apiClient = useApiClient()
   return useQuery<ConnectedMailPage<ConnectedMailThreadSummary>>({
     enabled: Boolean(address),
-    placeholderData: keepPreviousData,
     queryKey: connectedMailKeys.threads(address ?? { accountId: '', source: 'gmail' }, input),
     queryFn: async () => {
       if (!address) throw new Error('Choose a mailbox first.')
@@ -78,7 +77,6 @@ export const useConnectedMailConversation = (
   const apiClient = useApiClient()
   return useQuery<ConnectedMailConversation>({
     enabled: Boolean(address && threadId && enabled),
-    placeholderData: keepPreviousData,
     queryKey: connectedMailKeys.conversation(address ?? { accountId: '', source: 'gmail' }, threadId),
     queryFn: async () => {
       if (!address || !threadId) throw new Error('Choose a conversation first.')

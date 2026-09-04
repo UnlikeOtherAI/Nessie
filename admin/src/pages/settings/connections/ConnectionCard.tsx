@@ -71,6 +71,9 @@ export const ConnectionCard = ({
 
   const isDisconnected = connection.status === 'disconnected'
   const providerLabel = PROVIDER_LABEL[connection.provider]
+  const gmailReadAvailable = detail.data?.capabilities.some((capability) =>
+    capability.id === 'gmail.read' && capability.granted && !capability.blocked,
+  ) === true
 
   const keyValueItems = [
     {
@@ -113,7 +116,7 @@ export const ConnectionCard = ({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {connection.provider === 'google' && connection.status === 'active' ? (
+          {connection.provider === 'google' && connection.status === 'active' && gmailReadAvailable ? (
             <button
               className="admin-button admin-button-secondary"
               onClick={() => navigate(`/mail/gmail/${encodeURIComponent(connection.id)}`)}
