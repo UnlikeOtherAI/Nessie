@@ -32,6 +32,8 @@ export const SessionDebugIcon = () => (
 type SessionDebugDialogProps = {
   actionDisabled?: boolean
   actionLabel: string
+  /** Keeps an action with transient feedback (for example “Copied”) from reflowing its row. */
+  actionMinWidth?: string
   description: string
   error?: string | null
   onAction: () => void
@@ -50,6 +52,7 @@ type SessionDebugDialogProps = {
 export const SessionDebugDialog = ({
   actionDisabled = false,
   actionLabel,
+  actionMinWidth,
   description,
   error = null,
   onAction,
@@ -203,6 +206,7 @@ export const SessionDebugDialog = ({
               <button
                 className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={actionDisabled || pending}
+                style={actionMinWidth ? { minWidth: actionMinWidth } : undefined}
                 type="submit"
               >
                 {pending ? pendingLabel ?? actionLabel : actionLabel}
