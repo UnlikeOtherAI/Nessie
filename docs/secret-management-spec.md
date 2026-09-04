@@ -48,6 +48,32 @@ reports, notifications, summaries, or inter-agent messages.
 Humans can receive `reveal` only through a future step-up-authenticated flow.
 Agents can receive `use` only. An agent can never receive `reveal`.
 
+## How a secret is captured
+
+Two doorways, and both end at the same vault seam
+(`api/src/services/secret-vault-write.ts`):
+
+1. **The person types it.** The structural scanner
+   (`packages/schemas/src/secret-scan.ts`) runs in the composer and again at
+   every ingress route, which refuse with `422 SECRET_INTERCEPTED` so the value
+   never reaches PostgreSQL. The composer raises the capture dialog instead.
+2. **An agent asks for it, or spots one.** Every agent's system prompt carries
+   `AGENT_SECRET_SAFETY_INSTRUCTION`, which names the one thing it can do:
+   post a card with a `secret` block whose destination is `vault_secret`, with
+   the name pre-filled. This is the path for a credential the scanner cannot
+   recognise — an in-house token format, or a secret sitting in prose — because
+   the judgement is the model's rather than a pattern's.
+
+The second doorway is also the only one that can act after the fact. A model
+notices a credential *already stored*, so its card may name one message in its
+own thread (`redactMessageId`); pressing the card rewrites that message to the
+masked form in the same transaction, and the value is gone from every later
+context window. The replacement is computed by the server from the value the
+person typed — an agent chooses the target, never the text.
+
+Masking is a structural provider prefix plus twelve `•`: enough to recognise
+which credential it was, never enough to reconstruct it.
+
 ## Authority split
 
 Infisical is the vault and owns secret values, encryption, versions, rotation,

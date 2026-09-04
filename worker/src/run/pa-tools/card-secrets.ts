@@ -29,6 +29,17 @@ export const assertCardSecretDestinations = async (
 
   const validated: ValidatedCardSecretDestination[] = []
   for (const block of secretBlocks) {
+    // The vault destination names no row to check at post time: the scope is
+    // authorized against the presser at the press, where the presser is known,
+    // and the name is already constrained by the spec schema.
+    if (block.destination.kind === 'vault_secret') {
+      validated.push({
+        destination: block.destination,
+        key: block.key,
+        label: `your Secrets, as ${block.destination.name}`,
+      })
+      continue
+    }
     if (block.destination.kind === 'dashboard_source_credential') {
       const source = await context.prisma.dashboardDataSource.findFirst({
         select: { id: true, name: true },

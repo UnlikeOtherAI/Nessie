@@ -17,7 +17,18 @@ import {
   storeInstanceSecret,
   type SecretStore,
 } from '@nessie/mcp-manage'
-import type { AgentCardSpec } from '@nessie/schemas'
+import {
+  detectSecrets,
+  maskSecretValue,
+  redactDetectedSecrets,
+  type AgentCardSpec,
+} from '@nessie/schemas'
+import { InfisicalVaultError, type InfisicalSecretNamespace } from './infisical-vault.js'
+import {
+  canManageSecretScope,
+  putSecretInVault,
+  type VaultSecretWrite,
+} from './secret-vault-write.js'
 import {
   createDashboardMembership,
   resolveDashboardActor,
@@ -34,6 +45,19 @@ type ConnectorPlacement = {
   value: string
 }
 
+type VaultPlacement = {
+  description: string | undefined
+  key: string
+  name: string
+  provider: string | undefined
+  redactMessageId: string | undefined
+  scopeId: string
+  scopeType: 'personal' | 'team' | 'project' | 'organization'
+  /** Held only to scrub this exact string from the message it leaked into. */
+  value: string
+  written: VaultSecretWrite
+}
+
 type DashboardSourcePlacement = {
   actor: NonNullable<Awaited<ReturnType<typeof resolveDashboardActor>>>
   headerName: string | undefined
@@ -47,11 +71,23 @@ export type AgentCardSecretPlacements = {
   connector: ConnectorPlacement[]
   dashboardSource: DashboardSourcePlacement[]
   mcpAccess: Awaited<ReturnType<typeof resolveMcpUserAccess>> | null
+  vault: VaultPlacement[]
+}
+
+/**
+ * Drop vault material written while resolving a press that then failed to
+ * commit. Callers run this on any error after resolution; without it a
+ * rolled-back press would leave an unreachable value in the vault.
+ */
+export const rollbackAgentCardSecretPlacements = async (
+  placements: AgentCardSecretPlacements,
+): Promise<void> => {
+  for (const placement of placements.vault) await placement.written.rollback()
 }
 
 export class AgentCardSecretPlacementError extends Error {
   constructor(
-    readonly httpStatus: 403 | 409,
+    readonly httpStatus: 403 | 409 | 502 | 503,
     readonly code: string,
     message: string,
   ) {
@@ -68,6 +104,7 @@ export class AgentCardSecretPlacementError extends Error {
 export const resolveAgentCardSecretPlacements = async (
   prisma: PrismaClient,
   input: {
+    isOwner: boolean
     organizationId: string
     secrets: Record<string, string>
     spec: AgentCardSpec
@@ -77,11 +114,69 @@ export const resolveAgentCardSecretPlacements = async (
   let mcpAccess: Awaited<ReturnType<typeof resolveMcpUserAccess>> | null = null
   const connector: ConnectorPlacement[] = []
   const dashboardSource: DashboardSourcePlacement[] = []
+  const vault: VaultPlacement[] = []
 
   for (const block of input.spec.blocks) {
     if (block.type !== 'secret') continue
     const value = input.secrets[block.key]
     if (value === undefined) continue
+
+    if (block.destination.kind === 'vault_secret') {
+      const destination = block.destination
+      const scope = await canManageSecretScope({
+        actorId: input.userId,
+        isOwner: input.isOwner,
+        organizationId: input.organizationId,
+        prisma,
+        ...(destination.scopeId === undefined ? {} : { scopeId: destination.scopeId }),
+        scopeType: destination.scopeType,
+      })
+      if (!scope.allowed) {
+        throw new AgentCardSecretPlacementError(
+          403,
+          'SECRET_SCOPE_DENIED',
+          'You cannot manage secrets in this scope.',
+        )
+      }
+      const namespace: InfisicalSecretNamespace = {
+        organizationId: input.organizationId,
+        scopeId: scope.scopeId,
+        scopeType: destination.scopeType,
+      }
+      // The vault write cannot join the press transaction, so it happens here
+      // and `rollbackAgentCardSecretPlacements` undoes it if the press loses
+      // its claim. Resolving before the claim also means an instance with no
+      // vault configured refuses while the card is still answerable.
+      try {
+        vault.push({
+          description: destination.description,
+          key: block.key,
+          name: destination.name,
+          provider: destination.provider,
+          redactMessageId: destination.redactMessageId,
+          scopeId: scope.scopeId,
+          scopeType: destination.scopeType,
+          value,
+          written: await putSecretInVault({
+            ...(destination.description === undefined
+              ? {}
+              : { description: destination.description }),
+            namespace,
+            value,
+          }),
+        })
+      } catch (error) {
+        if (error instanceof InfisicalVaultError) {
+          throw new AgentCardSecretPlacementError(
+            error.code === 'NOT_CONFIGURED' ? 503 : 502,
+            error.code === 'NOT_CONFIGURED' ? 'SECRETS_NOT_CONFIGURED' : 'VAULT_UNAVAILABLE',
+            error.message,
+          )
+        }
+        throw error
+      }
+      continue
+    }
 
     if (block.destination.kind === 'dashboard_source_credential') {
       const actor = await resolveDashboardActor(prisma, {
@@ -176,7 +271,7 @@ export const resolveAgentCardSecretPlacements = async (
     })
   }
 
-  return { connector, dashboardSource, mcpAccess }
+  return { connector, dashboardSource, mcpAccess, vault }
 }
 
 /** Store validated secrets inside the press transaction, then return safe facts only. */
@@ -185,11 +280,70 @@ export const storeAgentCardSecrets = async (
   input: {
     dashboardCredentials: CredentialStore
     mcpSecretStore: SecretStore
+    organizationId: string
     placements: AgentCardSecretPlacements
+    threadId: string
     userId: string
   },
 ): Promise<Record<string, unknown>> => {
   const outcomes: Record<string, unknown> = {}
+
+  for (const placement of input.placements.vault) {
+    const secret = await tx.secret.create({
+      data: {
+        createdById: input.userId,
+        ...(placement.description === undefined ? {} : { description: placement.description }),
+        name: placement.name,
+        organizationId: input.organizationId,
+        ...(placement.provider === undefined ? {} : { provider: placement.provider }),
+        reference: placement.written.reference,
+        scopeId: placement.scopeId,
+        scopeType: placement.scopeType,
+        vaultReference: placement.written.vaultReference,
+      },
+      select: { id: true, reference: true },
+    })
+    // Take the credential back out of the conversation it leaked into. The
+    // message is bounded to this card's own thread, and the replacement is
+    // computed here — the exact value the person typed, masked to its
+    // structural prefix, plus a scanner pass for anything alongside it. An
+    // agent chooses the target, never the text.
+    let redactedMessageId: string | null = null
+    if (placement.redactMessageId) {
+      const message = await tx.message.findFirst({
+        select: { content: true, id: true },
+        where: { id: placement.redactMessageId, threadId: input.threadId },
+      })
+      if (message?.content?.includes(placement.value)) {
+        await tx.message.update({
+          data: {
+            content: redactDetectedSecrets(
+              message.content.split(placement.value).join(
+                // Let the scanner name the credential when it recognises it, so
+                // the replacement keeps `sk_live_` rather than a blind first-4.
+                maskSecretValue(
+                  placement.value,
+                  detectSecrets(placement.value)[0]?.type ?? 'high_entropy_token',
+                ),
+              ),
+            ),
+          },
+          where: { id: message.id },
+        })
+        redactedMessageId = message.id
+      }
+    }
+
+    // Safe facts only: a name and a reference the person can already see on
+    // the Secrets screen. Never the value, and never the vault path.
+    outcomes[placement.key] = {
+      kind: 'vault_secret',
+      name: placement.name,
+      ...(redactedMessageId ? { redactedMessageId } : {}),
+      reference: secret.reference,
+      scopeType: placement.scopeType,
+    }
+  }
 
   for (const placement of input.placements.connector) {
     const stored = await storeInstanceSecret(tx, input.mcpSecretStore, {

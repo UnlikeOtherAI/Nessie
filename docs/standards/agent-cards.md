@@ -27,7 +27,19 @@ file is the rule**.
   transaction — `storeInstanceSecret` for a connector or
   `setSourceCredential` for a dashboard source — and is absent from the row,
   the message, the audit metadata, the realtime payload, the presenter and the
-  model: only that it was provided, and where. Details:
+  model: only that it was provided, and where. A third destination,
+  `vault_secret`, is the general one — the person's own Secrets, for a
+  credential belonging to them rather than to a connector. It is the only
+  destination whose write is an external HTTP call and so cannot join the
+  press transaction: the vault write happens at resolution and is rolled back
+  if the press does not commit, through the one `secret-vault-write.ts` seam
+  `POST /api/secrets` also uses, so the two doors cannot authorise a scope
+  differently. The agent supplies the NAME the form arrives pre-filled with,
+  and may name one message in the card's own thread to scrub
+  (`redactMessageId`) — the half that takes a credential back out of a context
+  it already reached. The replacement text is server-computed from the value
+  the person typed; the block is `.strict()`, so an agent can neither choose
+  the new wording nor edit a message by this route. Details:
   `CLAUDE.md` → "Agent chat cards"; spec:
   `docs/plans/2026-09-01-agent-chat-cards.md`.
 
@@ -84,7 +96,15 @@ afterwards. Spec:
   `connector_credential` goes through `storeInstanceSecret` and the exact
   authorization of `POST /api/mcp/instances/:id/secret`; a
   `dashboard_source_credential` goes through `setSourceCredential` and the
-  exact authorization of its dashboard-source route. Both run inside the press
+  exact authorization of its dashboard-source route; a `vault_secret` goes
+  through `putSecretInVault` and `canManageSecretScope` — the same seam
+  `POST /api/secrets` uses, so `personal` is the presser's own and every wider
+  scope stays owner-only and must resolve inside the organisation.
+- **A plain `input` block is not a credential field.** Its value is written to
+  `resolutionValues`, to the response message, to realtime and into the agent's
+  next context, so a credential typed into one is refused at the press with
+  `SECRET_INTERCEPTED` — the same interception the composer and message routes
+  use. An agent that needs a credential uses a `secret` block or gets nothing. Both run inside the press
   transaction and are absent from the row, message, audit metadata (key names
   only), realtime payload, presenter and model. `secretOutcomes[key]` keeps
   only the destination kind and its safe id/placement — never a value, ref,

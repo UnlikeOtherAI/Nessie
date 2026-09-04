@@ -4,6 +4,7 @@ import type { CredentialStore } from '@nessie/dashboard'
 import {
   AgentCardRespondBodySchema,
   AgentCardSpecSchema,
+  detectSecrets,
   parseChannelId,
   parseOrganizationId,
   parseThreadId,
@@ -26,6 +27,7 @@ import {
 import {
   AgentCardSecretPlacementError,
   resolveAgentCardSecretPlacements,
+  rollbackAgentCardSecretPlacements,
   storeAgentCardSecrets,
 } from '../services/agent-card-secret-placement.js'
 import { ResumeRollback, resumeSuspendedRun } from '../services/run-resume-core.js'
@@ -127,12 +129,36 @@ export const registerAgentCardRoutes = (
       throw error
     }
 
+    // An `input` block is ordinary text: its value is written to
+    // `resolutionValues`, to the response message, to realtime and into the
+    // agent's next context. A credential typed into one — an agent asking
+    // "paste your API key" in a plain field rather than a `secret` block —
+    // would therefore persist in the clear, so it is refused here with the
+    // same interception the composer and message routes use. The `secret`
+    // blocks are exempt: their values never reach any of those sinks.
+    const interceptedField = Object.entries(submission.values).find(
+      ([, value]) => typeof value === 'string' && detectSecrets(value).length > 0,
+    )
+    if (interceptedField) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this card was answered. '
+          + 'Save it through Secrets instead.',
+        interceptedField[0],
+        { fieldKeys: [interceptedField[0]] },
+      )
+      return reply
+    }
+
     // Destination access is re-checked before the conditional claim. A card
     // which could no longer store a secret remains answerable once the person
     // repairs that access, and placement still commits with the press below.
     let secretPlacements
     try {
       secretPlacements = await resolveAgentCardSecretPlacements(prisma, {
+        isOwner: actorContext.actor.roles?.includes('owner') ?? false,
         organizationId,
         secrets: submission.secrets,
         spec: spec.data,
@@ -197,7 +223,9 @@ export const registerAgentCardRoutes = (
         const secretOutcomes = await storeAgentCardSecrets(tx, {
           dashboardCredentials: deps.dashboardCredentials,
           mcpSecretStore: deps.mcpSecretStore,
+          organizationId,
           placements: secretPlacements,
+          threadId: card.threadId,
           userId,
         })
 
@@ -284,6 +312,9 @@ export const registerAgentCardRoutes = (
         }
       })
     } catch (error) {
+      // A vault write is the one placement that already happened by now, so
+      // a press that did not commit must not leave it behind.
+      await rollbackAgentCardSecretPlacements(secretPlacements)
       if (error instanceof ResumeRollback) {
         sendApiError(
           reply,

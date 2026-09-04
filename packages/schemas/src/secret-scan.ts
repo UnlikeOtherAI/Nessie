@@ -151,7 +151,11 @@ const ENTROPY_RUNS: { accept: (value: string) => boolean; expression: RegExp }[]
   },
   {
     accept: (value) => !GIT_OBJECT_SHAPE.test(value) && entropy(value) >= 3.5,
-    expression: /(?<!\b(?:sha1|sha256|sha384|sha512|md5|blake3)[:-])(?<![A-Za-z0-9_-])(?:[0-9a-f]{32,}|[0-9A-F]{32,})(?![A-Za-z0-9_-])/g,
+    expression: new RegExp(
+      '(?<!\\b(?:sha1|sha256|sha384|sha512|md5|blake3)[:-])'
+      + '(?<![A-Za-z0-9_-])(?:[0-9a-f]{32,}|[0-9A-F]{32,})(?![A-Za-z0-9_-])',
+      'g',
+    ),
   },
   {
     accept: (value) =>
@@ -228,8 +232,12 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
   for (const candidate of ordered) {
     const previous = nonOverlapping.at(-1)
     if (previous && candidate.start < previous.end) continue
-    const { priority: _priority, ...match } = candidate
-    nonOverlapping.push(match)
+    nonOverlapping.push({
+      type: candidate.type,
+      prefix: candidate.prefix,
+      start: candidate.start,
+      end: candidate.end,
+    })
   }
   return nonOverlapping
 }
@@ -247,3 +255,24 @@ export const redactDetectedSecrets = (content: string): string => {
   }
   return result + content.slice(cursor)
 }
+
+/**
+ * The secret rule every agent carries, on every surface that assembles a
+ * system prompt — typed runs, delegated sub-agents and live voice calls alike.
+ *
+ * It lives here rather than in the worker because the voice prompt is built in
+ * the API and must not diverge: an agent that answers one way in chat and
+ * another on a call is the failure this single constant exists to prevent.
+ *
+ * Two sentences, carried on every turn, so the cost is paid once per prompt
+ * rather than per detection. The first is the prohibition; the second is the
+ * only thing an agent can usefully *do* instead, which is what turns a refusal
+ * into a capture. Masked text (`sk_live_••••`) is a scanner replacement, never
+ * something to echo, complete, or ask a person to resend.
+ */
+export const AGENT_SECRET_SAFETY_INSTRUCTION = [
+  'Never ask for, repeat, or put a secret in chat, a plain card input, or tool arguments;',
+  'masked text (••••) is already-protected and must not be echoed or resent.',
+  'When a credential is needed or you spot one, call card_post with a secret block',
+  '(destination vault_secret, name it e.g. STRIPE_API_KEY) so it goes straight to Secrets.',
+].join(' ')
