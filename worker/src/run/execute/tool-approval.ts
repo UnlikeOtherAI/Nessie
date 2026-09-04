@@ -12,7 +12,7 @@ import {
 import type { AutoReviewResult, ReviewableToolSurface } from './auto-review.js'
 import type { RunContext } from './types.js'
 import { emitWorkerAuditEvent } from './policy.js'
-import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
+import { hashJsonValue, summarizeToolInputForTool } from '../tool-util.js'
 
 export type ToolApprovalAuditEmitter = (
   actorContext: AuthorizedActionContext,
@@ -100,7 +100,7 @@ export const judgeAgainstSendBoundary = async (input: {
   try {
     const raw = await input.runUtility(buildSendBoundaryPrompt({
       boundary: input.boundary,
-      proposal: `${input.toolName} with ${summarizeToolInput(input.args)}`,
+      proposal: `${input.toolName} with ${summarizeToolInputForTool(input.toolName, input.args)}`,
       request: 'See the conversation this action came from.',
     }))
     return readSendBoundaryVerdict(raw)
@@ -193,12 +193,11 @@ export const describeGatedAction = (
   }
   if (toolName === 'mailbox_send') {
     const recipients = Array.isArray(args.to) ? args.to.length : 0
-    const subject = typeof args.subject === 'string' ? args.subject : null
     return {
       audience: recipients > 0
         ? `${recipients} ${recipients === 1 ? 'recipient' : 'recipients'} will receive it`
         : 'The recipients will receive it',
-      headline: subject ? `Send “${subject}” from a connected mailbox` : 'Send an email',
+      headline: 'Send an email from a connected mailbox',
     }
   }
   if (toolName === 'email_account_disconnect') {
@@ -230,7 +229,7 @@ export const postAllowedByRuleCard = async (
         content: described.headline,
         metadata: { card: {
           audience: described.audience,
-          details: summarizeToolInput(input.args),
+          details: summarizeToolInputForTool(input.toolName, input.args),
           headline: described.headline,
           kind: 'allowed_by_rule',
           rule: input.rule,
@@ -289,7 +288,7 @@ export const createToolApprovalRequest = async (
     context: {
       approvalActionType: input.approvalActionType ?? null,
       boundaryReason: input.boundaryReason ?? null,
-      inputSummary: summarizeToolInput(input.args),
+      inputSummary: summarizeToolInputForTool(input.toolName, input.args),
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
       ...describeGatedAction(input.toolName, input.args),
