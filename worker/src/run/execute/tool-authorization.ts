@@ -333,7 +333,15 @@ export const authorizeToolExecution = async (
       policyRuleId: undefined as string | undefined,
       reason: 'approval_required' as const,
     })
-    if (consent.outcome === 'ask') return escalate()
+    if (consent.outcome === 'ask') {
+      // A standing-consent rule is per Google connection. Keep the exact
+      // connection the gate resolved with the approval rather than resolving a
+      // person's active accounts again when they choose "don't ask again".
+      structuralContext = consent.connectionId
+        ? { approvedGoogleConnectionId: consent.connectionId }
+        : null
+      return escalate()
+    }
     if (consent.outcome === 'proceed') {
       await postAllowedByRuleCard(prisma, context, toolActorContext, {
         args: canonicalArgs,

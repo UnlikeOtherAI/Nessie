@@ -87,7 +87,7 @@ test('a personal mailbox pins the approval to its owner', async () => {
   )
   assert.equal(decision?.requiredApproverUserId, OWNER)
   assert.match(decision?.reason ?? '', /personal mailbox/)
-  assert.match(decision?.reason ?? '', /petra@example\.com/)
+  assert.doesNotMatch(decision?.reason ?? '', /@/)
 })
 
 test('a shared mailbox pins the approval to whoever connected it', async () => {
@@ -100,17 +100,14 @@ test('a shared mailbox pins the approval to whoever connected it', async () => {
   assert.match(decision?.reason ?? '', /shared team mailbox/)
 })
 
-test('a departed approver leaves the request unpinned rather than unanswerable', async () => {
+test('an inactive shared-mailbox installer keeps the send blocked for reassignment', async () => {
   const decision = await evaluateMailboxSendGate(
     makePrisma([shared], { liveApprover: false }),
     makeContext(),
     { connectionId: null, effectiveUserId: null },
   )
-  assert.equal(
-    decision?.requiredApproverUserId,
-    null,
-    'falling back to ordinary approval visibility is the safe direction',
-  )
+  assert.equal(decision?.requiredApproverUserId, INSTALLER)
+  assert.match(decision?.reason ?? '', /Reassign the shared mailbox/i)
 })
 
 test('reading its own mailbox is not reported as a disclosure', async () => {
@@ -170,4 +167,5 @@ test('the hook claims mailbox_send and nothing else', async () => {
     false,
     'the approval row carries no address',
   )
+  assert.doesNotMatch(claimed?.reason ?? '', /@/)
 })

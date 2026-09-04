@@ -33,8 +33,8 @@ export type MailboxSendGateDecision = {
 const describe = (mailbox: ReachableMailbox, externalSources: string[]): string => {
   const who =
     mailbox.scope === 'user'
-      ? `This would go out as ${mailbox.connection.address}, a personal mailbox.`
-      : `This would go out as ${mailbox.connection.address}, a shared team mailbox.`
+      ? 'This would go out from your personal connected mailbox.'
+      : 'This would go out from a shared team mailbox.'
   if (externalSources.length === 0) return who
   return (
     `${who} It was also built from material the recipient cannot reach: `
@@ -74,15 +74,30 @@ export const evaluateMailboxSendGate = async (
     ...context.boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
   ]).map((scope) => `${scope.scopeType}:${scope.scopeId}`)
 
+  const accountableUserId = mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId
+  const liveApprover = await liveApproverOrNull(prisma, {
+    organizationId: context.channel.organizationId,
+    userId: accountableUserId,
+  })
+
+  if (mailbox.scope === 'team' && accountableUserId && !liveApprover) {
+    return {
+      // Keep this approval pinned to its installer even though they can no
+      // longer resolve it. Falling back to another channel member would let an
+      // unrelated person authorise mail from the shared address. An owner or
+      // admin must reconnect it under the new accountable person instead.
+      requiredApproverUserId: accountableUserId,
+      reason:
+        `${describe(mailbox, externalSources)} The person assigned to approve `
+        + 'sends is no longer active. Reassign the shared mailbox before it can send.',
+    }
+  }
+
   return {
     reason: describe(mailbox, externalSources),
-    // The person accountable for the mailbox: its owner for a personal one, and
-    // whoever connected a shared one. Null falls back to ordinary approval
-    // visibility rather than pinning the request to somebody who has left.
-    requiredApproverUserId: await liveApproverOrNull(prisma, {
-      organizationId: context.channel.organizationId,
-      userId: mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId,
-    }),
+    // The person accountable for the mailbox: its owner for a personal one,
+    // and whoever connected a shared one.
+    requiredApproverUserId: liveApprover,
   }
 }
 
