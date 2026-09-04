@@ -42,6 +42,7 @@ export type {
   CloudBrowserConnectionRecord,
   MailboxConnectionRecord,
   MailboxConnectionScope,
+  MailboxDiscoveryResult,
   MailboxTransportSecurity,
   CloudBrowserScope,
   CloudBrowserSessionDetail,

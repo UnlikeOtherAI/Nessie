@@ -1,112 +1,172 @@
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+
 import {
   useCommsConnections,
   useStartCommsConnection,
 } from '../../facades/connections/hooks'
-import type { CommsProvider } from '../../lib/api-client'
+import {
+  MailboxConnectionForm,
+} from '../../components/features/mailbox-connections/MailboxConnectionForm'
+import {
+  MailboxConnectionsPanel,
+} from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { EmptyState } from '../../components/shared/EmptyState'
-import { MailboxConnectionsPanel } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
 
-const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
-  { provider: 'slack', label: 'Connect Slack' },
-  { provider: 'google', label: 'Connect Gmail' },
-]
+const callbackErrorCopy: Record<string, string> = {
+  access_denied: 'Connection was not completed.',
+  account_mismatch: 'The account you chose does not match the connection you started.',
+  connect_failed: 'Your email provider could not complete the connection. Try again.',
+  connector_unavailable: 'This email provider is not available in this deployment.',
+  invalid_callback: 'Connection was not completed. Try again.',
+  provider_access_blocked: 'Your organisation does not currently allow this app to access email.',
+  state_invalid: 'That connection link has expired. Start again to continue.',
+}
 
-const ConnectButtons = ({
+const callbackMessage = (connected: string | null, error: string | null): string | null => {
+  if (connected) return connected === 'slack' ? 'Slack connected.' : 'Email connected.'
+  return error ? callbackErrorCopy[error] ?? 'Connection was not completed. Try again.' : null
+}
+
+const SlackConnectButton = ({
   onConnect,
   pending,
-  variant,
 }: {
-  onConnect: (provider: CommsProvider) => void
+  onConnect: () => void
   pending: boolean
-  variant: 'primary' | 'secondary'
 }) => (
-  <div className="flex gap-2">
-    {CONNECTABLE.map((entry) => (
-      <button
-        className={`admin-button admin-button-${variant} admin-button-compact`}
-        disabled={pending}
-        key={entry.provider}
-        onClick={() => onConnect(entry.provider)}
-        type="button"
-      >
-        {entry.label}
-      </button>
-    ))}
-  </div>
+  <button
+    className="admin-button admin-button-secondary admin-button-compact"
+    disabled={pending}
+    onClick={onConnect}
+    type="button"
+  >
+    Connect Slack
+  </button>
 )
 
 /**
- * "Connected accounts" — the user's Individual Communications Connector control
- * surface. Lists the caller's own Slack / Gmail / Microsoft connections with
- * identity, team, granted permissions, imported-history status, last sync,
- * a health pill, per-resource include toggles, and Resync / Disconnect / Delete
- * imported data controls. Chat (the Chief of Staff connect card) is the primary
- * connect surface; the buttons here are the secondary path.
+ * Slack remains its own communications lane. Email is one user-facing surface:
+ * Google/Microsoft use native sync while generic IMAP mail stays live and is
+ * never imported, so one email doorway must not promise either behaviour for
+ * every provider.
  */
 export const ConnectionsPage = () => {
   const connections = useCommsConnections()
   const start = useStartCommsConnection()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [callbackNotice, setCallbackNotice] = useState<string | null>(null)
+  const connected = searchParams.get('connected')
+  const callbackError = searchParams.get('error')
   const rows = connections.data?.connections ?? []
+  const slackConnections = rows.filter((connection) => connection.provider === 'slack')
+  const emailConnections = rows.filter((connection) => connection.provider !== 'slack')
 
-  const onConnect = async (provider: CommsProvider) => {
-    const result = await start.mutateAsync(provider)
-    window.open(result.authorizeUrl, '_blank', 'noopener,noreferrer')
+  useEffect(() => {
+    const message = callbackMessage(connected, callbackError)
+    if (!message) return
+    setCallbackNotice(message)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('connected')
+      next.delete('error')
+      next.delete('provider')
+      return next
+    }, { replace: true })
+  }, [callbackError, connected, setSearchParams])
+
+  const connectSlack = async () => {
+    try {
+      const result = await start.mutateAsync('slack')
+      window.location.assign(result.authorizeUrl)
+    } catch {
+      setCallbackNotice('Slack could not start the connection. Try again.')
+    }
   }
 
   return (
     <SettingsPanel eyebrow="User" title="Connected accounts">
       <div className="flex flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
-          Link your Slack, Gmail, or Microsoft account so your Chief of Staff can
-          work across your messages. You choose exactly what is imported, and you
-          can disconnect or delete imported data at any time.
+          Connect Slack or email accounts for your Chief of Staff. Native Gmail and Microsoft
+          accounts sync only what you choose; other mailboxes stay live with their provider.
         </p>
 
-        <QueryState
-          errorLabel="Could not load your connections."
-          loadingLabel="Loading connections…"
-          query={connections}
-        >
-          {() => (
-            rows.length === 0 ? (
-              <EmptyState
-                action={
-                  <ConnectButtons
-                    onConnect={(provider) => void onConnect(provider)}
-                    pending={start.isPending}
-                    variant="primary"
-                  />
-                }
-                title="No connected accounts yet"
-              >
-                Connect an account below, or ask your Chief of Staff in chat — it
-                will post a card with a one-click Connect button.
+        {callbackNotice ? (
+          <p aria-live="polite" className="text-sm text-[color:var(--tx2)]">{callbackNotice}</p>
+        ) : null}
+
+        <section className="grid gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-[color:var(--tx)]">Slack</h2>
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">
+                Connect Slack separately from your email accounts.
+              </p>
+            </div>
+            <SlackConnectButton onConnect={() => void connectSlack()} pending={start.isPending} />
+          </div>
+          <QueryState
+            errorLabel="Could not load your Slack connections."
+            loadingLabel="Loading Slack connections…"
+            query={connections}
+          >
+            {() => slackConnections.length === 0 ? (
+              <EmptyState title="No Slack account connected">
+                Connect Slack to let your Chief of Staff work across your messages.
               </EmptyState>
             ) : (
               <div className="grid gap-4">
-                {rows.map((connection) => (
+                {slackConnections.map((connection) => (
                   <ConnectionCard connection={connection} key={connection.id} />
                 ))}
-                <SendAuthorizationSection />
-                <ConnectButtons
-                  onConnect={(provider) => void onConnect(provider)}
-                  pending={start.isPending}
-                  variant="secondary"
-                />
               </div>
-            )
-          )}
-        </QueryState>
+            )}
+          </QueryState>
+        </section>
 
         <div className="h-px bg-[color:var(--bd1)]" />
 
+        <section className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-[color:var(--tx)]">Email</h2>
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">
+                Gmail and Microsoft sign in securely and sync selected email. Other providers
+                connect live with secure IMAP and SMTP settings.
+              </p>
+            </div>
+            <MailboxConnectionForm scope="user" />
+          </div>
+
+          <QueryState
+            errorLabel="Could not load synced email accounts."
+            loadingLabel="Loading synced email accounts…"
+            query={connections}
+          >
+            {() => (
+              <>
+                {emailConnections.length > 0 ? (
+                  <div className="grid gap-4">
+                    {emailConnections.map((connection) => (
+                      <ConnectionCard connection={connection} key={connection.id} />
+                    ))}
+                  </div>
+                ) : null}
+                {emailConnections.length > 0 ? <SendAuthorizationSection /> : null}
+              </>
+            )}
+          </QueryState>
+          <MailboxConnectionsPanel embedded scope="user" showConnectAction={false} />
+        </section>
+
+        <div className="h-px bg-[color:var(--bd1)]" />
         <ModelSubscriptionSection />
-        <MailboxConnectionsPanel scope="user" />
       </div>
     </SettingsPanel>
   )

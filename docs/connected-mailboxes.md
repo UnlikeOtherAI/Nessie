@@ -1,14 +1,19 @@
 # Connected mailboxes — an agent working in a mailbox you already have
 
 An agent can work in a mailbox that exists somewhere else: your own, or a team's
-shared `support@`. You connect it over SMTP/IMAP, choose which agents may use
-it, and then ask them things — *"anything from the bank?"*, *"reply to Petra
-that Thursday works"*.
+shared `support@`. A personal Gmail or Microsoft account can use its native,
+secure sign-in and selected-mail sync; another provider, or a team's shared
+mailbox, connects over SMTP/IMAP. You then choose which agents may use the live
+mailbox and ask them things — *"anything from the bank?"*, *"reply to Petra that
+Thursday works"*.
 
-There is no inbox screen for this, deliberately. The provider holds the mail;
-Nessie holds a credential and an audit trail, and reads it live when an agent is
-asked something. Nothing is imported, nothing is copied, and disconnecting
-leaves no trace of the correspondence behind.
+The IMAP/SMTP route has no inbox screen, deliberately. The provider holds the
+mail; Nessie holds a credential and an audit trail, and reads it live when an
+agent is asked something. Nothing is imported, nothing is copied, and
+disconnecting leaves no trace of that correspondence behind. Native Gmail and
+Microsoft cards share the personal Email page but are different connectors: they
+show their own selected-email sync behaviour rather than making the live-mail
+claim.
 
 This is agent email **Model A**. The other model gives an agent its own hosted
 address on the deployment's Amazon SES account, with a real mailbox surface
@@ -22,15 +27,23 @@ Two scopes, and the difference matters:
 
 | | **Your mailbox** | **A team's shared mailbox** |
 |---|---|---|
-| Where | `/settings/connections` → *Your mailboxes* | `/settings/organization` → *Shared mailboxes* |
+| Where | `/settings/connections` → *Email* | `/settings/organization` → *Shared mailboxes* |
 | Who can connect it | Anybody | An owner or an admin |
 | Which runs reach it | Only ones acting **as you** — you asking directly, or a schedule you set up under your own account | Any run by an agent you gave access to |
 | Who can manage it | You. Not your org owner, not an admin | An owner or an admin |
 
-You need the mailbox's IMAP and SMTP servers, ports, and a password. **Where the
-provider offers an app password, use one** — this credential reads everything in
-the mailbox and can send as it, so a scoped, revocable one is worth the two
-minutes it takes to create.
+Start with the mailbox address. Nessie recognises the common secure sign-in
+routes and, for a reviewed IMAP/SMTP configuration, keeps server names, ports
+and transport choices out of the normal path. A personal Google or Microsoft
+account goes straight to its provider's sign-in page when that connector is
+available. A shared mailbox never uses that personal OAuth route. If a provider
+requires an app-specific password, Nessie says so before showing the one password
+field. Advanced settings are the recovery path when secure settings cannot be
+confirmed or you choose to override them.
+
+**Where the provider offers an app password, use one** — this credential reads
+everything in the mailbox and can send as it, so a scoped, revocable one is worth
+the two minutes it takes to create.
 
 Common settings:
 

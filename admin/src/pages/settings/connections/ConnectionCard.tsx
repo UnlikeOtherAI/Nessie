@@ -4,6 +4,7 @@ import type {
   CommsConnectionStatus,
   CommsProvider,
 } from '../../../lib/api-client'
+import { connectionAnchorId } from '../../../lib/connection-anchor'
 import { Pill, type PillTone } from '../../../components/primitives/Pill'
 import { Switch } from '../../../components/primitives/Switch'
 import { Card } from '../../../components/shared/Card'
@@ -90,7 +91,7 @@ export const ConnectionCard = ({
   ]
 
   return (
-    <Card as="section">
+    <Card as="section" id={connectionAnchorId(connection.id)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -219,7 +220,9 @@ export const ConnectionCard = ({
               ? 'Everything imported from this account is permanently removed.'
               : undefined
         }
-        confirmLabel={pendingAction === 'disconnect' ? 'Disconnect' : 'Delete imported data'}
+        confirmLabel={
+          pendingAction === 'disconnect' ? 'Disconnect' : 'Delete imported data'
+        }
         destructive
         onCancel={() => setPendingAction(null)}
         onConfirm={() => {

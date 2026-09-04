@@ -53,7 +53,11 @@ Plan and as-built deltas:
   scope as a parameter — the `CloudBrowserPanel` shape. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting tests both
   legs before it stores, and only a provider rejection (`auth`-kind) flips a
-  connection to `needs_reauthorization`.
+  connection to `needs_reauthorization`. The personal Email doorway is
+  address-first: a server-approved Google or Microsoft OAuth route starts its
+  native connector, while a reviewed IMAP/SMTP route keeps its server details
+  hidden until the person chooses Advanced settings. A team shared mailbox stays
+  Model A-only and never starts a personal OAuth connection.
 - **Seams.** Protocol clients live in `@nessie/agent-mail` (`dial`, `wire`,
   `smtp`, `imap`, `mailbox-client`) beside the SES transport, because MIME
   building and address handling are transport-neutral and `buildOutboundMime`
@@ -63,4 +67,3 @@ Plan and as-built deltas:
   Lifecycle and the credential chokepoint are in `@nessie/team-admin`
   (`mailbox-connection*.ts`); the routes are `/api/mailbox-connections*`; the
   only tuning is `NESSIE_MAILBOX_TIMEOUT_MS` (20s).
-
