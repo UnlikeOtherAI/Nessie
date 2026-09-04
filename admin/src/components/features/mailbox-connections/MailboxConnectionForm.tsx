@@ -2,12 +2,16 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import type {
   MailboxConnectionScope,
+  MailboxConnectionRecord,
   MailboxDiscoveryResult,
   MailboxTransportSecurity,
 } from '../../../lib/api-client'
-import { connectionAnchorId } from '../../../lib/connection-anchor'
 import { useStartCommsConnection } from '../../../facades/connections/hooks'
-import { useConnectMailbox, useDiscoverMailbox } from '../../../facades/mailbox-connections/hooks'
+import {
+  useConnectMailbox,
+  useDiscoverMailbox,
+  useReconnectMailbox,
+} from '../../../facades/mailbox-connections/hooks'
 import { useTeams } from '../../../facades/projects/hooks'
 import { Dialog } from '../../shared/Dialog'
 import {
@@ -26,6 +30,10 @@ import { MailboxManualSettings } from './MailboxManualSettings'
 type MailboxConnectionFormProps = {
   scope: MailboxConnectionScope
   onConnected?: () => void
+  /** The owning surface chooses the route; this component never navigates itself. */
+  onOpenExisting?: (connectionId: string, scope: MailboxConnectionScope) => void
+  /** Reuses this form to rotate a Model A credential without creating a row. */
+  reconnectConnection?: MailboxConnectionRecord
 }
 
 type FormValues = {
@@ -52,18 +60,18 @@ type DiscoveryInFlight = {
   promise: Promise<MailboxDiscoveryResult | null>
 }
 
-const createFormValues = (): FormValues => ({
-  address: '',
-  imapHost: '',
-  imapPort: 993,
-  imapSecurity: 'tls',
-  label: '',
+const createFormValues = (connection?: MailboxConnectionRecord): FormValues => ({
+  address: connection?.address ?? '',
+  imapHost: connection?.imapHost ?? '',
+  imapPort: connection?.imapPort ?? 993,
+  imapSecurity: connection?.imapSecurity ?? 'tls',
+  label: connection?.label ?? '',
   password: '',
-  smtpHost: '',
-  smtpPort: 587,
-  smtpSecurity: 'starttls',
-  teamId: '',
-  username: '',
+  smtpHost: connection?.smtpHost ?? '',
+  smtpPort: connection?.smtpPort ?? 587,
+  smtpSecurity: connection?.smtpSecurity ?? 'starttls',
+  teamId: connection?.teamId ?? '',
+  username: connection?.username ?? '',
 })
 
 const discoveryKey = (input: {
@@ -77,13 +85,19 @@ const discoveryKey = (input: {
  * decides where credentials may go; this component never promotes an inferred
  * host to a password form on its own.
  */
-export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionFormProps) => {
+export const MailboxConnectionForm = ({
+  scope,
+  onConnected,
+  onOpenExisting,
+  reconnectConnection,
+}: MailboxConnectionFormProps) => {
   const connect = useConnectMailbox()
+  const reconnect = useReconnectMailbox()
   const { mutateAsync: discoverMailbox } = useDiscoverMailbox()
   const startComms = useStartCommsConnection()
   const teams = useTeams()
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<FormValues>(createFormValues)
+  const [form, setForm] = useState<FormValues>(() => createFormValues(reconnectConnection))
   const [screen, setScreen] = useState<MailboxOnboardingStep>('start')
   const [discovery, setDiscovery] = useState<MailboxDiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -94,6 +108,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   const discovered = useRef<DiscoveryCacheEntry | null>(null)
   const inFlightDiscovery = useRef<DiscoveryInFlight | null>(null)
   const emailInput = useRef<HTMLInputElement>(null)
+  const isReconnect = Boolean(reconnectConnection)
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]): void =>
     setForm((current) => ({ ...current, [key]: value }))
@@ -104,12 +119,12 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
     inFlightDiscovery.current = null
     setDiscovery(null)
     setError(null)
-    setForm(createFormValues())
+    setForm(createFormValues(reconnectConnection))
     setHelpOpen(false)
     setIsDiscovering(false)
     setIsSubmittingDiscovery(false)
     setScreen('start')
-  }, [])
+  }, [reconnectConnection])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -155,7 +170,10 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   }, [discoverMailbox, form.teamId, scope])
 
   useEffect(() => {
-    if (!shouldDiscoverMailbox(screen)) {
+    // A reconnect form starts with the saved, non-secret address. Discovery is
+    // useful only after its dialog opens; otherwise each stopped-row render
+    // would start a network request just by appearing on Settings.
+    if (!open || !shouldDiscoverMailbox(screen)) {
       activeDiscoveryKey.current = ''
       setIsDiscovering(false)
       return undefined
@@ -181,7 +199,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       void discoverAddress(address)
     }, 350)
     return () => window.clearTimeout(timer)
-  }, [discoverAddress, form.address, form.teamId, scope, screen])
+  }, [discoverAddress, form.address, form.teamId, open, scope, screen])
 
   const beginOAuth = async (provider: 'google' | 'microsoft', loginHint?: string) => {
     setError(null)
@@ -194,8 +212,15 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   }
 
   const continueWithDiscovery = async (result: MailboxDiscoveryResult, confirmed = false) => {
-    if (result.existingConnection) {
+    if (
+      result.existingConnection
+      && (!reconnectConnection || result.existingConnection.id !== reconnectConnection.id)
+    ) {
       setScreen('existing')
+      return
+    }
+    if (isReconnect) {
+      setScreen(hasTrustedMailboxConfiguration(result) ? 'password' : 'manual')
       return
     }
     const oauthProvider = commsOAuthProvider(result, scope)
@@ -265,6 +290,30 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       : form.username.trim() || address
 
     setError(null)
+    const callbacks = {
+      onError: (cause: unknown) => setError(mailboxErrorMessage(
+        cause,
+        isReconnect ? 'Could not reconnect this mailbox.' : 'Could not connect this mailbox.',
+      )),
+      onSuccess: () => {
+        close()
+        onConnected?.()
+      },
+    }
+    if (reconnectConnection) {
+      reconnect.mutate({
+        connectionId: reconnectConnection.id,
+        imapHost: imap.host,
+        imapPort: imap.port,
+        imapSecurity: imap.security,
+        password: form.password,
+        smtpHost: smtp.host,
+        smtpPort: smtp.port,
+        smtpSecurity: smtp.security,
+        username,
+      }, callbacks)
+      return
+    }
     connect.mutate({
       address,
       imapHost: imap.host,
@@ -278,24 +327,14 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       smtpSecurity: smtp.security,
       teamId: scope === 'team' ? form.teamId || null : null,
       username,
-    }, {
-      onError: (cause: unknown) =>
-        setError(mailboxErrorMessage(cause, 'Could not connect this mailbox.')),
-      onSuccess: () => {
-        close()
-        onConnected?.()
-      },
-    })
+    }, callbacks)
   }
 
   const revealExisting = () => {
     const id = discovery?.existingConnection?.id
+    const existingScope = discovery?.existingConnection?.scope ?? scope
     close()
-    if (id) {
-      window.requestAnimationFrame(() => {
-        document.getElementById(connectionAnchorId(id))?.scrollIntoView({ block: 'center' })
-      })
-    }
+    if (id) onOpenExisting?.(id, existingScope)
   }
 
   const showManual = () => {
@@ -315,7 +354,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
         onClick={() => setOpen(true)}
         type="button"
       >
-        Connect email
+        {isReconnect ? 'Reconnect' : 'Connect email'}
       </button>
     )
   }
@@ -326,11 +365,12 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       onClose={close}
       open={open}
       size="lg"
-      title="Connect email"
+      title={isReconnect ? 'Reconnect email' : 'Connect email'}
     >
       {screen === 'start' ? (
         <MailboxAddressStart
           address={form.address}
+          addressReadOnly={isReconnect}
           discovery={discovery}
           emailInput={emailInput}
           error={error}
@@ -349,7 +389,8 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           }}
           onOtherProvider={showManual}
           onProvider={(entry) => {
-            if (scope === 'user') void beginOAuth(entry, form.address.trim())
+            if (isReconnect) showManual()
+            else if (scope === 'user') void beginOAuth(entry, form.address.trim())
             else setError('A shared mailbox needs its secure server credential.')
           }}
           pending={isSubmittingDiscovery}
@@ -373,9 +414,10 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           onPasswordChange={(value) => set('password', value)}
           onTeamChange={(value) => set('teamId', value)}
           password={form.password}
-          pending={connect.isPending}
+          pending={isReconnect ? reconnect.isPending : connect.isPending}
           result={discovery}
           scope={scope}
+          showIdentityFields={!isReconnect}
           screen={screen}
           teamId={form.teamId}
           teams={teams.data ?? []}
@@ -385,6 +427,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       {screen === 'manual' ? (
         <MailboxManualSettings
           address={form.address}
+          addressReadOnly={isReconnect}
           error={error}
           imapHost={form.imapHost}
           imapPort={form.imapPort}
@@ -404,8 +447,9 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           onTeamChange={(value) => set('teamId', value)}
           onUsernameChange={(value) => set('username', value)}
           password={form.password}
-          pending={connect.isPending}
+          pending={isReconnect ? reconnect.isPending : connect.isPending}
           scope={scope}
+          showIdentityFields={!isReconnect}
           smtpHost={form.smtpHost}
           smtpPort={form.smtpPort}
           smtpSecurity={form.smtpSecurity}

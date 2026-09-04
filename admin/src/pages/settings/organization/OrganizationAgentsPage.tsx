@@ -3,6 +3,8 @@ import { CloudBrowserPanel } from '../../../components/features/browser-cloud/Cl
 import { MailboxConnectionsPanel } from '../../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
 import { useCurrentOrganization } from '../../../facades/organization/hooks'
+import { useMailboxConnections } from '../../../facades/mailbox-connections/hooks'
+import { useConnectionAnchorScroll } from '../../../components/features/mailbox-connections/useConnectionAnchorScroll'
 
 /**
  * What agents across the organisation may use: where their calls are hosted,
@@ -11,6 +13,8 @@ import { useCurrentOrganization } from '../../../facades/organization/hooks'
  */
 export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
   const { data: organization } = useCurrentOrganization()
+  const mailboxes = useMailboxConnections()
+  useConnectionAnchorScroll(mailboxes.isSuccess)
 
   return (
     <SettingsPanel eyebrow="Organization" title="Agents">

@@ -40,6 +40,7 @@ const reachable = (url) => new Promise((done) => {
 const fail = (message) => { throw new Error(`email onboarding e2e: ${message}`) }
 
 const verifyViewport = async (browser, seed, viewport) => {
+  await mkdir(SCREENSHOT_ROOT, { recursive: true })
   const shell = await openViewportContext(browser, { name: viewport, token: seed.token })
   const target = await shell.newPage()
   try {
@@ -65,7 +66,43 @@ const verifyViewport = async (browser, seed, viewport) => {
       fail(`${viewport} exposes server settings before discovery`)
     }
 
-    await mkdir(SCREENSHOT_ROOT, { recursive: true })
+    if (viewport === 'desktop') {
+      await dialog.getByPlaceholder('name@company.com').fill('duplicate-navigation@gmail.com')
+      await dialog.getByRole('button', { exact: true, name: 'Continue' }).click()
+      await dialog.getByText('This email account is already connected.', { exact: true }).waitFor()
+      await dialog.getByRole('button', { exact: true, name: 'Open existing' }).click()
+
+      await page.waitForURL(new RegExp(`/settings/connections#connection-${seed.mailboxConnectionId}$`))
+      const existingCard = page.locator(`#connection-${seed.mailboxConnectionId}`)
+      await existingCard.getByText('Duplicate navigation mailbox', { exact: true }).waitFor()
+      await existingCard.scrollIntoViewIfNeeded()
+      if (target.errors.length > 0) {
+        fail(`desktop duplicate navigation page errors: ${target.errors.join(' | ')}`)
+      }
+
+      const recoveryCard = page.locator(`#connection-${seed.recoveryMailboxConnectionId}`)
+      await recoveryCard.getByText('Reconnect navigation mailbox', { exact: true }).waitFor()
+      await recoveryCard.getByText('Needs reconnecting', { exact: true }).waitFor()
+      await recoveryCard.getByRole('button', { exact: true, name: 'Reconnect' }).click()
+
+      const reconnectDialog = page.getByRole('dialog', { name: 'Reconnect email' })
+      await reconnectDialog.waitFor()
+      const reconnectAddress = reconnectDialog.getByPlaceholder('name@company.com')
+      if (await reconnectAddress.inputValue() !== 'reconnect-navigation@example.test') {
+        fail('reconnect does not retain the existing mailbox address')
+      }
+      if (await reconnectAddress.getAttribute('readonly') !== '') {
+        fail('reconnect permits changing the existing mailbox address')
+      }
+      if (await reconnectDialog.locator('input[type="password"]').count() !== 0) {
+        fail('reconnect exposes a credential before the person continues')
+      }
+      await reconnectDialog.screenshot({
+        path: resolve(SCREENSHOT_ROOT, 'desktop-reconnect-address-readonly.png'),
+      })
+      await reconnectDialog.getByRole('button', { exact: true, name: 'Cancel' }).click()
+    }
+
     await page.screenshot({
       fullPage: true,
       path: resolve(SCREENSHOT_ROOT, `${viewport}-chat-doorway-address-first.png`),

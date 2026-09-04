@@ -65,7 +65,11 @@ Plan and as-built deltas:
   scope as a parameter — the `CloudBrowserPanel` shape. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting tests both
   legs before it stores, and only a provider rejection (`auth`-kind) flips a
-  connection to `needs_reauthorization`. The personal Email doorway is
+  connection to `needs_reauthorization`. That conditional health transition
+  increments its revision and creates one content-free `UserAlert` pointing to
+  its owning personal or shared mailbox surface; reconnect resolves the prior
+  revision and is an explicit credential
+  replacement that retains the connection and its agent-access rows. The personal Email doorway is
   address-first: a server-approved Google or Microsoft OAuth route starts its
   native connector, while a reviewed IMAP/SMTP route keeps its server details
   hidden until the person chooses Advanced settings. A team shared mailbox stays

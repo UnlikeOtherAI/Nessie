@@ -154,8 +154,16 @@ export {
   type ActingMember as MailboxActingMember,
   type CreateMailboxConnectionInput,
   type MailboxConnectionRefusal,
+  type MailboxConnectionHealthTransition,
   type MailboxConnectionTestFailure,
 } from './mailbox-connections.js'
+
+export {
+  reconnectMailboxConnection,
+  recordMailboxConnectionCredentialRejection,
+  resolveMailboxConnectionHealthAlerts,
+  type ReconnectMailboxConnectionInput,
+} from './mailbox-connection-recovery.js'
 
 export {
   MailboxCredentialMissingError,

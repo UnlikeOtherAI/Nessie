@@ -1,4 +1,6 @@
 import { MailboxConnectionForm } from '../mailbox-connections/MailboxConnectionForm'
+import { useNavigate } from 'react-router-dom'
+import { mailboxConnectionHome } from '../../../lib/connection-anchor'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -27,6 +29,7 @@ export const EmailAccountConnectCard = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const navigate = useNavigate()
   const scope = readEmailAccountConnectScope(metadata)
   if (!scope) return null
   const shared = scope === 'team'
@@ -44,7 +47,11 @@ export const EmailAccountConnectCard = ({
         available connection method.
       </p>
       <div className="mt-3">
-        <MailboxConnectionForm scope={scope} />
+        <MailboxConnectionForm
+          onOpenExisting={(id, existingScope) =>
+            void navigate(mailboxConnectionHome({ id, scope: existingScope }))}
+          scope={scope}
+        />
       </div>
     </div>
   )

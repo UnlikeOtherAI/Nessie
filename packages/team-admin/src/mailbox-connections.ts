@@ -67,6 +67,11 @@ export type MailboxConnectionTestFailure = Extract<
   'credential_rejected' | 'invalid_certificate' | 'server_unavailable' | 'test_failed'
 >
 
+export type MailboxConnectionHealthTransition = {
+  connectionId: string
+  healthRevision: number
+}
+
 const NETWORK_ERROR_CODES = new Set([
   'EAI_AGAIN',
   'ECONNREFUSED',
@@ -399,9 +404,15 @@ export const verifyMailboxConnection = async (
   const endpoints = await mailboxEndpointsFor(prisma, connection, options.encryptionSecret)
   try {
     const result = await testMailboxConnection(endpoints, mailboxDialOptions())
-    await prisma.mailboxConnection.update({
-      data: { lastVerifiedAt: new Date(), status: 'active', statusReason: null },
-      where: { id: connection.id },
+    const { resolveMailboxConnectionHealthAlerts } = await import(
+      './mailbox-connection-recovery.js'
+    )
+    await prisma.$transaction(async (tx) => {
+      await tx.mailboxConnection.update({
+        data: { lastVerifiedAt: new Date(), status: 'active', statusReason: null },
+        where: { id: connection.id },
+      })
+      await resolveMailboxConnectionHealthAlerts(tx, connection.id)
     })
     return {
       detail: `${result.folder} is reachable (${result.messagesVisible} messages) and sending works.`,
@@ -411,10 +422,10 @@ export const verifyMailboxConnection = async (
     const failure = mailboxConnectionTestFailure(error)
     const detail = mailboxConnectionFailureMessage(failure)
     if (failure === 'credential_rejected') {
-      await prisma.mailboxConnection.update({
-        data: { status: 'needs_reauthorization', statusReason: detail },
-        where: { id: connection.id },
-      })
+      const { recordMailboxConnectionCredentialRejection } = await import(
+        './mailbox-connection-recovery.js'
+      )
+      await recordMailboxConnectionCredentialRejection(prisma, connection.id)
     }
     return { detail, failureCode: failure.toUpperCase() as Uppercase<MailboxConnectionTestFailure>, ok: false }
   }

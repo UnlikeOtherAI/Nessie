@@ -236,7 +236,10 @@ export const runEmailAccountDisconnectTool = async (
   await deleteMailboxConnection(context.prisma, connection.id)
   await audit(context, member, {
     action: 'mailbox.connection.deleted',
-    metadata: { address: connection.address },
+    // The audit row is broadly readable operational history. The mailbox
+    // address remains in the private lifecycle response, while the record
+    // retains only the structural scope needed to understand the deletion.
+    metadata: { scope: connection.ownerUserId ? 'user' : 'team' },
     resourceId: connection.id,
     resourceType: 'mailbox_connection',
   })

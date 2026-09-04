@@ -364,8 +364,9 @@ test('provider disconnect removes its local credential and marks the owned accou
   }
 })
 
-test('mailbox disconnect uses the management predicate and deletes only its id', async () => {
+test('mailbox disconnect uses the management predicate, deletes only its id, and audits no address', async () => {
   let deletedId: string | null = null
+  let auditMetadata: unknown = null
   const mailbox = {
     address: 'support@example.com',
     id: ids.mailbox,
@@ -374,6 +375,12 @@ test('mailbox disconnect uses the management predicate and deletes only its id',
     teamId: null,
   }
   const prisma = buildPrisma({
+    auditLog: {
+      create: async ({ data }: { data: { metadata: unknown } }) => {
+        auditMetadata = data.metadata
+      },
+      findFirst: async () => null,
+    },
     mailboxConnection: {
       delete: async ({ where }: { where: { id: string } }) => {
         deletedId = where.id
@@ -381,6 +388,13 @@ test('mailbox disconnect uses the management predicate and deletes only its id',
       findFirst: async () => mailbox,
     },
   })
+  ;(prisma as unknown as {
+    $executeRaw: () => Promise<void>
+    $transaction: (callback: (tx: PrismaClient) => Promise<void>) => Promise<void>
+  }).$executeRaw = async () => undefined
+  ;(prisma as unknown as {
+    $transaction: (callback: (tx: PrismaClient) => Promise<void>) => Promise<void>
+  }).$transaction = async (callback) => callback(prisma)
   const context = buildContext(prisma)
   const consumedSources = createConsumedSourceSink()
   context.consumedSources = consumedSources
@@ -390,6 +404,12 @@ test('mailbox disconnect uses the management predicate and deletes only its id',
   })
   assert.equal(deletedId, ids.mailbox)
   assert.match(result.outputPreview, /Disconnected support@example\.com/)
+  assert.deepEqual(auditMetadata, {
+    delegatedByAgentId: ids.agent,
+    runId: 'run-1',
+    scope: 'user',
+  })
+  assert.doesNotMatch(JSON.stringify(auditMetadata), /support@example\.com|imap|smtp|password/i)
   assert.deepEqual(consumedSources.list(), [{ scopeId: ids.user, scopeType: 'user' }])
 })
 

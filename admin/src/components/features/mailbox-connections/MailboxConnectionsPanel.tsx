@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { MailboxConnectionRecord, MailboxConnectionScope } from '../../../lib/api-client'
-import { connectionAnchorId } from '../../../lib/connection-anchor'
+import { connectionAnchorId, mailboxConnectionHome } from '../../../lib/connection-anchor'
 import {
   useDisconnectMailbox,
   useMailboxConnections,
@@ -95,6 +96,12 @@ const ConnectionRow = ({ connection }: { connection: MailboxConnectionRecord }) 
       </div>
 
       <div className="mt-2 flex gap-2">
+        {connection.status === 'needs_reauthorization' ? (
+          <MailboxConnectionForm
+            reconnectConnection={connection}
+            scope={connection.scope}
+          />
+        ) : null}
         <button
           className="admin-button admin-button-secondary admin-button-compact"
           disabled={test.isPending}
@@ -157,6 +164,7 @@ export const MailboxConnectionsPanel = ({
   scope,
   showConnectAction = true,
 }: MailboxConnectionsPanelProps) => {
+  const navigate = useNavigate()
   const connections = useMailboxConnections()
   const copy = SCOPE_COPY[scope]
   const rows = (connections.data?.connections ?? []).filter((row) => row.scope === scope)
@@ -194,7 +202,13 @@ export const MailboxConnectionsPanel = ({
         </QueryState>
       </div>
 
-      {showConnectAction ? <MailboxConnectionForm scope={scope} /> : null}
+      {showConnectAction ? (
+        <MailboxConnectionForm
+          onOpenExisting={(id, existingScope) =>
+            void navigate(mailboxConnectionHome({ id, scope: existingScope }))}
+          scope={scope}
+        />
+      ) : null}
     </section>
   )
 }

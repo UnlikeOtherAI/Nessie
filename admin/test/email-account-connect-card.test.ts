@@ -22,6 +22,7 @@ const { act, createElement: h } = React
 const { createRoot } = await import('react-dom/client')
 const { ApiClientProvider } = await import('@nessie/client-core')
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
+const { MemoryRouter } = await import('react-router-dom')
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -99,9 +100,13 @@ test('the chat doorway opens the reused address-first modal without a password f
         h(
           ApiClientProvider,
           { client: apiClient },
-          h(EmailAccountConnectCard, {
-            metadata: { card: { kind: 'email_account_connect', scope: 'user' } },
-          }),
+          h(
+            MemoryRouter,
+            null,
+            h(EmailAccountConnectCard, {
+              metadata: { card: { kind: 'email_account_connect', scope: 'user' } },
+            }),
+          ),
         ),
       ))
     })
