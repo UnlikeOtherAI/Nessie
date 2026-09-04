@@ -209,6 +209,12 @@ export const createGoogleConnector = (
 
   return {
     provider: 'google',
+    // A configured Gmail watch wakes incremental sync through Pub/Sub. Without
+    // a topic, explicitly join the shared bounded polling lane instead of
+    // silently leaving a connected mailbox with no ongoing reconciliation.
+    ...(deps.pubsubTopic.trim().length === 0
+      ? { incrementalPollingIntervalMs: 5 * 60 * 1000 }
+      : {}),
     connect,
     refreshCredentials,
     discoverResources,

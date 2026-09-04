@@ -37,6 +37,12 @@ const resolveRateLimitRule = (request: FastifyRequest): RateLimitRule | null => 
   if (method === 'POST' && routePath === '/api/threads/:threadId/messages') {
     return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60_000 }
   }
+  // Discovery fans one address out to DNS and several bounded HTTPS requests.
+  // It is authenticated, but still needs an IP budget so one account cannot
+  // turn the service into an outbound-probe amplifier.
+  if (method === 'POST' && routePath === '/api/mailbox-connections/discover') {
+    return { keyPrefix: `${method}:${routePath}`, max: 30, windowMs: 60_000 }
+  }
   if (
     routePath.startsWith('/api/agents')
     && ['DELETE', 'PATCH', 'POST', 'PUT'].includes(method)

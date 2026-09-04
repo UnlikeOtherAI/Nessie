@@ -77,6 +77,21 @@ const connection = (
   ...overrides,
 })
 
+test('opts into bounded polling only when Gmail Pub/Sub is not configured', () => {
+  const withWatch = createGoogleConnector(baseDeps(makeFetch(() => {
+    throw new Error('not called')
+  })))
+  assert.equal(withWatch.incrementalPollingIntervalMs, undefined)
+
+  const withoutWatch = createGoogleConnector({
+    ...baseDeps(makeFetch(() => {
+      throw new Error('not called')
+    })),
+    pubsubTopic: '',
+  })
+  assert.equal(withoutWatch.incrementalPollingIntervalMs, 5 * 60 * 1000)
+})
+
 test('connect exchanges the code and resolves the mailbox identity', async () => {
   const fetchImpl = makeFetch((url) => {
     if (url.endsWith('/token')) {
