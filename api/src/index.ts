@@ -402,7 +402,11 @@ export const startApiServer = async () => {
   // hook BEFORE app.listen() — Fastify rejects addHook once the server is listening.
   if (config.mode === 'local') {
     const { startWorker } = await import('@nessie/worker')
-    const embeddedWorker = await startWorker()
+    const { createProductionUoaAutomaticMembershipAdapter } = await import('./services/uoa-automatic-membership-production.js')
+    const automaticMembershipAdapter = createProductionUoaAutomaticMembershipAdapter()
+    const embeddedWorker = await startWorker({
+      automaticMembershipAdapter: automaticMembershipAdapter ?? undefined,
+    })
     app.addHook('onClose', async () => {
       await embeddedWorker.stop()
     })

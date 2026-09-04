@@ -105,7 +105,6 @@ export const RunApprovalGate = ({
   const isCalendar = gate.toolName.startsWith('calendar_')
   const canApprove = !isMailboxSend || Boolean(mailboxDraft.data)
   const canCreateStandingConsent = canCreateStandingConsentFromApproval(gate.toolName, context)
-  const canApprove = !isMailboxSend || Boolean(mailboxDraft.data)
 
   const submit = () => {
     resolve.mutate(

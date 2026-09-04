@@ -1,4 +1,5 @@
 import {
+  ConnectedMailError,
   dispatchMailboxSendAction,
   MailboxAccessError,
   markMailboxNeedsReauthorization,
@@ -116,6 +117,10 @@ const runAgainstMailbox = async <T>(
   try {
     return await work()
   } catch (error) {
+    // Dispatch has already classified durable send outcomes. Reclassifying one
+    // as a connection failure would hide a delivery-unknown state and invite
+    // an unsafe retry.
+    if (error instanceof ConnectedMailError) throw error
     const failure = mailboxConnectionTestFailure(error)
     const detail = mailboxToolFailureMessage(error)
     if (failure === 'credential_rejected') {

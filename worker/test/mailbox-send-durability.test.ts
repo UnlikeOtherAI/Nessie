@@ -89,6 +89,7 @@ test('agent mailbox_send replays one stable Message-ID and never resends an ambi
   process.env.NESSIE_AUTH_SECRET = 'test-secret'
   try {
     const send = () => runMailboxSendTool(buildContext(prisma), {
+      connectionId: ids.connection,
       subject: 'Status', text: 'Hello', to: ['recipient@example.test'],
     })
     await assert.rejects(send, /delivery unknown/)

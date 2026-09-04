@@ -341,6 +341,40 @@ enum MemberRole {
   viewer
 }
 
+// DNS ownership proof and automatic access are intentionally separate state
+// machines. Losing DNS proof stops future provisioning; it never removes a
+// membership UOA already granted.
+enum AutomaticMembershipClaimState {
+  pending
+  verified
+  suspended
+  revoked
+  challenge_rotation
+}
+
+enum AutomaticMembershipRuleState {
+  inactive
+  active
+  suspended
+  revoked
+}
+
+enum AutomaticMembershipRuleScope {
+  organization
+  team
+}
+
+enum AutomaticMembershipBackfillStatus {
+  queued
+  running
+  paused
+  completed
+  completed_with_failures
+  failed
+  cancelled
+  superseded
+}
+
 // ─── Phase 2 Enums ──────────────────────────────────────────────────────────
 
 enum PolicyScope {
@@ -1279,6 +1313,10 @@ model Organization {
   voiceInstallations     VoiceInstallation[]
   voiceSessions          VoiceSession[]
   voiceDeviceCredentials VoiceDeviceCredential[]
+  automaticMembershipClaims AutomaticMembershipDomainClaim[]
+  automaticMembershipRules  AutomaticMembershipRule[]
+  automaticMembershipRuns   AutomaticMembershipBackfillRun[]
+  automaticMembershipGrants AutomaticMembershipGrant[]
 
   @@map("organizations")
 }
@@ -1549,8 +1587,143 @@ model Team {
   mailboxConnections      MailboxConnection[]
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionTeam")
   scopedSettings          ScopedSetting[]          @relation("ScopedSettingTeam")
+  automaticMembershipRuleTargets AutomaticMembershipRuleTarget[]
+  automaticMembershipGrants AutomaticMembershipGrant[]
 
   @@map("teams")
+}
+
+/// A globally exclusive exact domain claim. `challengeDigest` is retained for
+/// evidence and comparison; the raw random TXT challenge is encrypted in the
+/// service boundary and is never returned after creation.
+model AutomaticMembershipDomainClaim {
+  id                       String                          @id @default(uuid()) @db.Uuid
+  organizationId           String                          @map("organization_id") @db.Uuid
+  domain                   String                          @map("domain_ascii")
+  state                    AutomaticMembershipClaimState  @default(pending)
+  challengeDigest          String                          @map("challenge_digest")
+  challengeEncrypted       String                          @map("challenge_encrypted")
+  challengeGeneration      Int                             @default(1) @map("challenge_generation")
+  notificationEmail        String?                         @map("notification_email")
+  classifierVersion        String                          @map("classifier_version")
+  verifiedAt               DateTime?                       @map("verified_at")
+  verificationExpiresAt    DateTime?                       @map("verification_expires_at")
+  lastDnsCheckAt           DateTime?                       @map("last_dns_check_at")
+  lastDnsFailure           String?                         @map("last_dns_failure")
+  releasedAt               DateTime?                       @map("released_at")
+  createdAt                DateTime                        @default(now()) @map("created_at")
+  updatedAt                DateTime                        @updatedAt @map("updated_at")
+  organization             Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rules                    AutomaticMembershipRule[]
+
+  @@index([organizationId, state])
+  @@map("automatic_membership_domain_claims")
+}
+
+model AutomaticMembershipRule {
+  id                       String                        @id @default(uuid()) @db.Uuid
+  organizationId           String                        @map("organization_id") @db.Uuid
+  claimId                  String                        @map("claim_id") @db.Uuid
+  scope                    AutomaticMembershipRuleScope
+  state                    AutomaticMembershipRuleState @default(inactive)
+  generation               Int                           @default(1)
+  suspensionReason         String?                       @map("suspension_reason")
+  createdByUoaSub          String                        @map("created_by_uoa_sub")
+  createdAt                DateTime                      @default(now()) @map("created_at")
+  updatedAt                DateTime                      @updatedAt @map("updated_at")
+  organization             Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  claim                    AutomaticMembershipDomainClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  targets                  AutomaticMembershipRuleTarget[]
+  backfillRuns             AutomaticMembershipBackfillRun[]
+  grants                   AutomaticMembershipGrant[]
+
+  @@index([organizationId, state])
+  @@map("automatic_membership_rules")
+}
+
+model AutomaticMembershipRuleTarget {
+  ruleId                   String                        @map("rule_id") @db.Uuid
+  teamId                   String                        @map("team_id") @db.Uuid
+  rule                     AutomaticMembershipRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  team                     Team                          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, teamId])
+  @@index([teamId])
+  @@map("automatic_membership_rule_targets")
+}
+
+model AutomaticMembershipBackfillRun {
+  id                       String                           @id @default(uuid()) @db.Uuid
+  organizationId           String                           @map("organization_id") @db.Uuid
+  ruleId                   String                           @map("rule_id") @db.Uuid
+  generation               Int
+  status                   AutomaticMembershipBackfillStatus @default(queued)
+  cursor                   String?                          @map("cursor_token")
+  snapshotId               String?                          @map("snapshot_id")
+  attemptedCount           Int                              @default(0) @map("attempted_count")
+  grantedCount             Int                              @default(0) @map("granted_count")
+  failureCount             Int                              @default(0) @map("failure_count")
+  attemptCount             Int                              @default(0) @map("attempt_count")
+  nextAttemptAt            DateTime?                        @map("next_attempt_at")
+  leaseToken               String?                          @map("lease_token")
+  leaseExpiresAt           DateTime?                        @map("lease_expires_at")
+  leaseGeneration          Int?                             @map("lease_generation")
+  requestedByUoaSub        String                           @map("requested_by_uoa_sub")
+  lastError                String?                          @map("last_error")
+  createdAt                DateTime                         @default(now()) @map("created_at")
+  updatedAt                DateTime                         @updatedAt @map("updated_at")
+  organization             Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule                     AutomaticMembershipRule         @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  leases                   AutomaticMembershipGrantLease[]
+
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+  @@unique([ruleId, generation])
+  @@map("automatic_membership_backfill_runs")
+}
+
+model AutomaticMembershipRateLimit {
+  organizationId           String                           @map("organization_id") @db.Uuid
+  domain                   String                           @map("domain_ascii")
+  windowStartedAt          DateTime                         @map("window_started_at")
+  used                     Int                              @default(0)
+
+  @@id([organizationId, domain])
+  @@map("automatic_membership_rate_limits")
+}
+
+model AutomaticMembershipGrant {
+  id                       String                         @id @default(uuid()) @db.Uuid
+  organizationId           String                         @map("organization_id") @db.Uuid
+  ruleId                   String                         @map("rule_id") @db.Uuid
+  teamId                   String                         @map("team_id") @db.Uuid
+  uoaSub                   String                         @map("uoa_sub")
+  generation               Int
+  idempotencyKey           String                         @unique @map("idempotency_key")
+  operationId              String?                        @map("uoa_operation_id")
+  outcome                  String                         @default("pending")
+  createdAt                DateTime                       @default(now()) @map("created_at")
+  updatedAt                DateTime                       @updatedAt @map("updated_at")
+  rule                     AutomaticMembershipRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  team                     Team                           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  organization             Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, teamId, uoaSub, generation])
+  @@index([organizationId, outcome])
+  @@map("automatic_membership_grants")
+}
+
+model AutomaticMembershipGrantLease {
+  id                       String                         @id @default(uuid()) @db.Uuid
+  runId                    String                         @map("run_id") @db.Uuid
+  generation               Int
+  leaseToken               String                         @unique @map("lease_token")
+  expiresAt                DateTime                       @map("expires_at")
+  createdAt                DateTime                       @default(now()) @map("created_at")
+  run                      AutomaticMembershipBackfillRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, expiresAt])
+  @@map("automatic_membership_grant_leases")
 }
 
 model TeamMember {

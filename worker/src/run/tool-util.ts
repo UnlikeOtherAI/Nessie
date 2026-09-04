@@ -235,6 +235,7 @@ const PROTECTED_MAIL_TOOL_SUMMARIES: Record<string, string> = {
   gmail_organise: 'Organize Gmail messages.',
   gmail_search: 'Search Gmail.',
   gmail_thread_read: 'Read a Gmail thread.',
+  mailbox_compose: 'Prepare a connected mailbox draft.',
   mailbox_read: 'Read a connected mailbox message.',
   mailbox_search: 'Search a connected mailbox.',
   mailbox_send: 'Send from a connected mailbox.',

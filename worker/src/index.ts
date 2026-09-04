@@ -129,6 +129,11 @@ import { executeExecutorCommandJob } from './control/executor-commands.js'
 import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
 import { handleCallRingTimeout, sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import { handleCallRingCancel, handleCallRingDispatch } from './control/call-ring-dispatch.js'
+import {
+  sweepAutomaticMembershipBackfills,
+  type AutomaticMembershipUoaAdapter,
+} from './control/automatic-membership-backfill.js'
+import { revalidateAutomaticMembershipDns } from './control/automatic-membership-dns.js'
 
 const config = loadConfig()
 if (!process.env.DATABASE_URL) {
@@ -145,7 +150,7 @@ const isMainModule = (): boolean =>
   Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href
 
 export const startWorker = async (
-  options: { standalone?: boolean } = {},
+  options: { standalone?: boolean; automaticMembershipAdapter?: AutomaticMembershipUoaAdapter } = {},
 ): Promise<{ stop: () => Promise<void> }> => {
   // Only a standalone worker process owns the OS signals. When the api embeds
   // the worker (import('@nessie/worker') + startWorker()), registering signal
@@ -978,6 +983,25 @@ export const startWorker = async (
     void runRegistrySyncSweep()
   }, 60 * 1000)
 
+  // The upstream UOA adapter is deliberately injected rather than fabricated
+  // from the product's ordinary client credentials. Without it there is no
+  // automatic-member write path at all; DNS revalidation remains safe.
+  let automaticMembershipSweepInFlight = false
+  const automaticMembershipInterval = setInterval(async () => {
+    if (automaticMembershipSweepInFlight || abortController.signal.aborted) return
+    automaticMembershipSweepInFlight = true
+    try {
+      await revalidateAutomaticMembershipDns(prisma, config.auth.secret ?? '')
+      if (options.automaticMembershipAdapter) {
+        await sweepAutomaticMembershipBackfills(prisma, options.automaticMembershipAdapter)
+      }
+    } catch (error) {
+      console.error('[worker.automatic-membership] reconciliation failed', error)
+    } finally {
+      automaticMembershipSweepInFlight = false
+    }
+  }, 60_000)
+
   console.log(
     JSON.stringify(
       {
@@ -1009,6 +1033,7 @@ export const startWorker = async (
     clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
     clearTimeout(registrySyncKickoff)
+    clearInterval(automaticMembershipInterval)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()
