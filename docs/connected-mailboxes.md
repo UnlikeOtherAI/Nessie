@@ -50,6 +50,22 @@ target without corroboration, conflicting provider evidence, or an unknown
 domain cannot. JMAP may be recognised, but until its connector is installed the
 flow falls back to a trusted IMAP/SMTP configuration or Advanced settings.
 
+Beyond the providers Nessie recognises by name, a reviewed snapshot of
+long-tail provider settings answers for roughly a hundred more mail domains —
+GMX, WEB.DE, Telekom, Posteo, mailbox.org, Mail.ru, Yandex, Seznam, Orange,
+Free, Libero, AOL, Xfinity, BT, QQ and others. Each entry was read from that
+provider's own published settings and records where, so it can be re-checked
+rather than trusted. The snapshot never overrides what a domain publishes
+about itself: a current autoconfiguration document always wins.
+
+Whichever route found the settings, Nessie **talks to the mail server before
+offering you a password field** — a short unauthenticated exchange that carries
+no credential and only confirms the server is really there, speaks the
+protocol, and presents a certificate that checks out. A server that will not
+establish a verified TLS session sends you to Advanced settings instead of a
+password screen. A server that simply cannot be reached right now changes
+nothing: the settings stand, and connecting reports the problem if it persists.
+
 **Where the provider offers an app password, use one** — this credential reads
 everything in the mailbox and can send as it, so a scoped, revocable one is worth
 the two minutes it takes to create.
