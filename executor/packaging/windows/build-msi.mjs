@@ -3,9 +3,10 @@
 //
 // It stages exactly what the installer ships — the packaged runtime from the one
 // shared preparation, plus the two Rust binaries this package adds — and then
-// hands that directory to the WiX toolset. Nothing here signs anything: signing
-// is a release-pipeline step with its own credentials, and a build that signed
-// itself would be attesting to nothing.
+// hands that directory to the WiX toolset. When the trusted release pipeline
+// supplies its signing command, every executable child is signed before its
+// bytes enter a runtime or resource manifest; the workflow signs the finished
+// MSI separately. A development build receives no signing command.
 //
 // This runs on Windows only, and says so immediately rather than failing three
 // steps later on a missing `.exe`.

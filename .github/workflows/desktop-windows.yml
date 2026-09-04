@@ -327,7 +327,7 @@ jobs:
           Copy-Item desktop/src-tauri/target/release/bundle/nsis/*.exe artifacts/
           Copy-Item desktop/src-tauri/target/release/bundle/msi/*.msi artifacts/
           Copy-Item dist/NessieExecutor_*.msi artifacts/
-          # The two binaries the MSI carries, as built and signed. They travel
+          # The three binaries the MSI carries, as built and signed. They travel
           # beside the installers so the signature gate below covers every
           # executable a person can right-click, not only the installers.
           New-Item -ItemType Directory -Path artifacts/binaries -Force | Out-Null
