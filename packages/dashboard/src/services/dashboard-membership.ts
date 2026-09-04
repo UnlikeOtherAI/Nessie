@@ -12,10 +12,12 @@
  * enqueue-time snapshot, so revocation takes effect on the next read.
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { DashboardActor, DashboardMembership } from '../index.js'
 
-export const createDashboardMembership = (prisma: PrismaClient): DashboardMembership => ({
+export const createDashboardMembership = (
+  prisma: PrismaClient | Prisma.TransactionClient,
+): DashboardMembership => ({
   isProjectMember: async (userId, projectId) =>
     (await prisma.projectMember.count({ where: { userId, projectId } })) > 0,
 

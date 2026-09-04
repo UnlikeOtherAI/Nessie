@@ -10,6 +10,7 @@ import { upsertChannel } from '../channels/channel-cache'
  * which system-agent DM belongs to which blueprint.
  */
 export const AGENT_DESIGNER_SLUG = 'agent-designer'
+export const DASHBOARD_DESIGNER_SLUG = 'dashboard-designer'
 
 /**
  * Open a global agent's home DM, provisioning it if this person has none.

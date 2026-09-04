@@ -1,14 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { Prisma } from '@prisma/client'
-import {
-  canManageInstanceScope,
-  getCatalogEntry,
-  getInstance,
-  isManagedIntegrationInstance,
-  listInstancesVisibleToUser,
-  resolveMcpUserAccess,
-  storeInstanceSecret,
-} from '@nessie/mcp-manage'
+import type { CredentialStore } from '@nessie/dashboard'
 import {
   AgentCardRespondBodySchema,
   AgentCardSpecSchema,
@@ -31,6 +23,11 @@ import {
   presentAgentCard,
   validateSubmission,
 } from '../services/agent-cards.js'
+import {
+  AgentCardSecretPlacementError,
+  resolveAgentCardSecretPlacements,
+  storeAgentCardSecrets,
+} from '../services/agent-card-secret-placement.js'
 import { ResumeRollback, resumeSuspendedRun } from '../services/run-resume-core.js'
 import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
 import type { RouteDeps } from './types.js'
@@ -42,7 +39,10 @@ import type { RouteDeps } from './types.js'
  * response message. Either all of it happened or none of it did, so a card can
  * never read "resolved" beside a credential that was not stored.
  */
-export const registerAgentCardRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+export const registerAgentCardRoutes = (
+  app: FastifyInstance,
+  deps: RouteDeps & { dashboardCredentials: CredentialStore },
+): void => {
   const { prisma, realtimeHub, requireActorContext } = deps
 
   app.get('/api/agent-cards/:cardId', async (request, reply) => {
@@ -127,71 +127,23 @@ export const registerAgentCardRoutes = (app: FastifyInstance, deps: RouteDeps): 
       throw error
     }
 
-    // Secret placement mirrors `POST /api/mcp/instances/:id/secret` exactly —
-    // no weaker, no stronger — and is resolved before the transaction so a
-    // refusal never leaves a half-claimed card.
-    // Resolved once while validating placements, reused inside the transaction.
-    let mcpAccess: Awaited<ReturnType<typeof resolveMcpUserAccess>> | null = null
-    const secretPlacements: {
-      authConfig: unknown
-      authMethod: string
-      instance: Awaited<ReturnType<typeof getInstance>>
-      key: string
-      shared: boolean | undefined
-      value: string
-    }[] = []
-    for (const block of spec.data.blocks) {
-      if (block.type !== 'secret') continue
-      const value = submission.secrets[block.key]
-      if (value === undefined) continue
-
-      const instance = await getInstance(prisma, organizationId, block.destination.instanceId)
-      if (!instance) {
-        sendApiError(reply, 409, 'CARD_SECRET_REFUSED', 'That connector no longer exists.')
-        return reply
-      }
-      if (await isManagedIntegrationInstance(prisma, organizationId, instance.id)) {
-        sendApiError(
-          reply,
-          409,
-          'INTEGRATION_MANAGED_CREDENTIAL',
-          'This first-party connector manages its own credentials.',
-        )
-        return reply
-      }
-      const access = await resolveMcpUserAccess(prisma, organizationId, userId)
-      mcpAccess = access
-      const manageable = canManageInstanceScope(
-        access,
+    // Destination access is re-checked before the conditional claim. A card
+    // which could no longer store a secret remains answerable once the person
+    // repairs that access, and placement still commits with the press below.
+    let secretPlacements
+    try {
+      secretPlacements = await resolveAgentCardSecretPlacements(prisma, {
+        organizationId,
+        secrets: submission.secrets,
+        spec: spec.data,
         userId,
-        instance.scopeType,
-        instance.scopeId,
-      )
-      if (!manageable) {
-        const visible = await listInstancesVisibleToUser(prisma, organizationId, userId)
-        if (!visible.some((row) => row.id === instance.id)) {
-          sendApiError(
-            reply,
-            403,
-            'CARD_SECRET_REFUSED',
-            'You do not have access to that connector.',
-          )
-          return reply
-        }
-      }
-      const catalogEntry = await getCatalogEntry(prisma, organizationId, instance.catalogEntryId)
-      if (!catalogEntry) {
-        sendApiError(reply, 409, 'CARD_SECRET_REFUSED', 'That connector is not set up.')
+      })
+    } catch (error) {
+      if (error instanceof AgentCardSecretPlacementError) {
+        sendApiError(reply, error.httpStatus, error.code, error.message)
         return reply
       }
-      secretPlacements.push({
-        authConfig: catalogEntry.authConfig,
-        authMethod: catalogEntry.authMethod,
-        instance,
-        key: block.key,
-        shared: block.destination.shared,
-        value,
-      })
+      throw error
     }
 
     const content = buildResponseContent({
@@ -242,26 +194,12 @@ export const registerAgentCardRoutes = (app: FastifyInstance, deps: RouteDeps): 
           })
         }
 
-        const secretOutcomes: Record<string, unknown> = {}
-        for (const placement of secretPlacements) {
-          if (!placement.instance) continue
-          const stored = await storeInstanceSecret(tx, deps.mcpSecretStore, {
-            access: mcpAccess ?? { role: null },
-            authConfig: placement.authConfig,
-            authMethod: placement.authMethod,
-            instance: placement.instance,
-            secret: placement.value,
-            ...(placement.shared === undefined ? {} : { shared: placement.shared }),
-            userId,
-          })
-          // The reference is deliberately absent: the row records that a
-          // secret was provided and where it landed, never how to read it.
-          secretOutcomes[placement.key] = {
-            instanceId: placement.instance.id,
-            kind: 'connector_credential',
-            placement: stored.placement,
-          }
-        }
+        const secretOutcomes = await storeAgentCardSecrets(tx, {
+          dashboardCredentials: deps.dashboardCredentials,
+          mcpSecretStore: deps.mcpSecretStore,
+          placements: secretPlacements,
+          userId,
+        })
 
         const rootMessageId = card.message.rootMessageId ?? card.messageId
         const responseMessage = await tx.message.create({

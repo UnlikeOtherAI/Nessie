@@ -87,6 +87,11 @@ import {
 } from './services/dashboard-runtime.js'
 
 export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  // Dashboard HTTP and dashboard secret-card presses need the same namespaced
+  // credential store. Construct it once so both routes preserve the exact same
+  // write-only boundary.
+  const dashboardCredentials = createDashboardCredentialStore(deps.prisma, deps.authSecret ?? '')
+
   registerHealthRoutes(app, deps)
   registerAuthRoutes(app, deps)
   registerChannelRoutes(app, deps)
@@ -129,7 +134,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
     egressPolicy: buildDashboardEgressPolicy({
       apiPublicUrl: deps.config.api.publicUrl ?? null,
     }),
-    credentials: createDashboardCredentialStore(deps.prisma, deps.authSecret ?? ''),
+    credentials: dashboardCredentials,
   })
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
@@ -161,7 +166,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAuditLogRoutes(app, deps)
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
-  registerAgentCardRoutes(app, deps)
+  registerAgentCardRoutes(app, { ...deps, dashboardCredentials })
   registerBrowserCloudRoutes(app, deps)
   registerScopedSettingsRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)

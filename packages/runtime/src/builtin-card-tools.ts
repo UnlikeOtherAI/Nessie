@@ -68,7 +68,10 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
               + '{"type":"input","key":"environment","label":"Environment","input":"select",'
               + '"options":[{"value":"prod","label":"Production"}],"required":true}; '
               + '{"type":"secret","key":"api_key","label":"API key",'
-              + '"destination":{"kind":"connector_credential","instanceId":"<uuid>"}}.',
+              + '"destination":{"kind":"connector_credential","instanceId":"<uuid>"}}; '
+              + 'or {"type":"secret","key":"api_key","label":"API key",'
+              + '"destination":{"kind":"dashboard_source_credential","sourceId":"<uuid>",'
+              + '"mode":"bearer"}} (header mode also needs headerName).',
             items: { type: 'object' },
           },
           actions: {
