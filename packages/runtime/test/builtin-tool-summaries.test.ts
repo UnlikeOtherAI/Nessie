@@ -50,6 +50,13 @@ test('knowledge document summaries distinguish drafting, composing, and editing'
   )
 })
 
+test('dashboard source import has a concise summary', () => {
+  assert.equal(
+    summaryFor('dashboard_source_import'),
+    'Import structured data or text as a static dashboard source.',
+  )
+})
+
 test('message search summaries distinguish team, channel, and author scope', () => {
   const expectedSummaries = new Map([
     ['team_search', 'Search accessible team conversations, threads, and messages.'],
