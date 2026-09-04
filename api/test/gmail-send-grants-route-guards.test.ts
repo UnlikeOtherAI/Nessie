@@ -39,6 +39,47 @@ const requestGrantFromApproval = async (store: TenantStore) => {
   }
 }
 
+const seedLiveGrantTarget = (store: TenantStore) => {
+  store.seed('commsConnection', [{
+    id: IDS.connectionA,
+    organizationId: IDS.orgA,
+    ownerUserId: IDS.userA,
+    provider: 'google',
+    status: 'active',
+  }])
+  store.seed('agent', [{
+    id: IDS.agentA,
+    organizationId: IDS.orgA,
+    status: 'idle',
+    systemManaged: false,
+  }])
+}
+
+test('a standing-consent shortcut writes through the transactional approval boundary', async () => {
+  const store = new TenantStore()
+  seedApproval(store)
+  seedLiveGrantTarget(store)
+
+  const response = await requestGrantFromApproval(store)
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(store.rows('sendAuthorizationGrant').length, 1)
+  assert.equal(store.rows('sendAuthorizationGrant')[0]?.['connectionId'], IDS.connectionA)
+  assert.equal(store.rows('sendAuthorizationGrant')[0]?.['agentId'], IDS.agentA)
+})
+
+test('the shortcut fails closed when the final live agent is offline', async () => {
+  const store = new TenantStore()
+  seedApproval(store)
+  seedLiveGrantTarget(store)
+  store.rows('agent')[0]!['status'] = 'offline'
+
+  const response = await requestGrantFromApproval(store)
+
+  assert.equal(response.statusCode, 404)
+  assert.equal(store.rows('sendAuthorizationGrant').length, 0)
+})
+
 test('a standing-consent shortcut refuses a wrong pinned approver', async () => {
   const store = new TenantStore()
   seedApproval(store, { requiredApproverUserId: IDS.userB })

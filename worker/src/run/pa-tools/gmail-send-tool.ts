@@ -47,18 +47,33 @@ export const runGmailDraftSendTool = async (
   }
   recordGoogleRead(context, draft.ownerUserId)
 
-  // A run that reached here without an approval proof is relying on standing
-  // consent. Re-check it at the moment of sending rather than trusting the
-  // gate's earlier decision: a grant can be revoked or expire mid-run.
-  const consented = await hasStandingSendAuthorization(context.prisma, {
-    organizationId: context.channel.organizationId,
-    connectionId: draft.connectionId,
-    agentId: context.agentId,
-    requestingUserId: userId,
-    interactive: context.actorContext.actionContext.purpose !== 'trigger',
-  })
-  const approved = Boolean(context.actorContext.approval?.approvalProof)
-  if (!consented && !approved) {
+  const approvalProofClaimed =
+    context.authorization?.approvalProofClaimedForTool === 'gmail_draft_send'
+  const approvalProofPresented = Boolean(
+    context.actorContext.approval?.approvalId || context.actorContext.approval?.approvalProof,
+  )
+
+  // A raw queue proof is only an untrusted handle. The dispatcher alone turns
+  // it into this capability fact after exact verification and atomic claim.
+  // Never let an invalid or replayed proof fall back to an otherwise-live
+  // standing grant: a sealed continuation is still the action a person saw.
+  if (approvalProofPresented && !approvalProofClaimed) {
+    throw new Error('I need approval before sending that.')
+  }
+
+  // A non-approved call may rely on standing consent, but re-check it at the
+  // moment of sending rather than trusting the earlier gate: it can be revoked
+  // or expire while the run is in flight.
+  const consented = approvalProofClaimed
+    ? false
+    : await hasStandingSendAuthorization(context.prisma, {
+      organizationId: context.channel.organizationId,
+      connectionId: draft.connectionId,
+      agentId: context.agentId,
+      requestingUserId: userId,
+      interactive: context.actorContext.actionContext.purpose !== 'trigger',
+    })
+  if (!consented && !approvalProofClaimed) {
     throw new Error(
       'I need approval before sending that. The draft card in the chat has a '
         + 'Send button, or you can let me send on your behalf from '
@@ -76,7 +91,7 @@ export const runGmailDraftSendTool = async (
         expectedFingerprint: args.approvalFingerprint,
         // Only a consented send is held: an explicitly approved one was just
         // confirmed by a person, so making them wait again adds nothing.
-        ...(consented && !approved && UNDO_WINDOW_MS > 0
+        ...(consented && UNDO_WINDOW_MS > 0
           ? { holdMs: UNDO_WINDOW_MS }
           : {}),
       },

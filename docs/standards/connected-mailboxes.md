@@ -100,9 +100,12 @@ Plan and as-built deltas:
 - **Standing Google consent is a separately bounded exception.** Direct settings
   grants and the approval-card shortcut both use the same shared write boundary:
   an active Google connection owned by the granter and an eligible non-system
-  agent in that organization are required at the final write. The shortcut only
-  accepts a live pinned `tool.invoke` approval that froze the exact connection;
-  connected-mailbox and lifecycle approvals remain one-time decisions.
+  agent in that organization are required at the final write. The shortcut's
+  live pinned `tool.invoke` approval, frozen Google connection, and grant
+  upsert run in one serializable transaction, so expiry, resolution, disconnect,
+  or an offline agent fails closed. The shortcut only accepts a supported Gmail
+  or calendar approval that froze the exact connection; connected-mailbox and
+  lifecycle approvals remain one-time decisions.
 - **Correspondence never becomes operational telemetry.** Exact recipients,
   addresses, subjects, bodies, attachment/provider responses, credentials and
   server details remain only in the authorized run context and, for an approved
@@ -117,7 +120,10 @@ Plan and as-built deltas:
   arguments. The continuation queue carries only the approval id and its
   one-time proof; at dispatch the worker resolves that opaque handle, verifies
   its argument hash and direct parent-run lineage, then sends the frozen action
-  through the ordinary live authorization gates. Frozen arguments never enter
+  through the ordinary live authorization gates. A handler receives only the
+  dispatcher-produced, content-free fact that the exact proof was verified and
+  atomically claimed; it never treats the raw proof as authorization or falls
+  back to a standing grant when that proof is invalid. Frozen arguments never enter
   a prompt, checkpoint, audit/event payload, ToolCall metadata, or client API.
   A changed draft, revoked mailbox access, inactive approver, wrong lineage, or
   already-claimed proof therefore denies the action rather than inviting a

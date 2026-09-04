@@ -10,7 +10,17 @@ import type { RunContext } from './types.js'
 export type ToolActorContext = AuthorizedActionContext
 
 export type ToolAuthorizationDecision =
-  | { args: Record<string, unknown>; decision: 'allow'; toolActorContext: ToolActorContext }
+  | {
+      args: Record<string, unknown>
+      decision: 'allow'
+      /**
+       * Set only after the dispatcher verified this exact approval against the
+       * canonical action and won its atomic proof claim. It is deliberately a
+       * content-free capability fact, never the opaque proof itself.
+       */
+      approvalProofClaimedForTool?: string
+      toolActorContext: ToolActorContext
+    }
   | { decision: 'deny'; result: AgenticToolResult }
   | {
       args: Record<string, unknown>

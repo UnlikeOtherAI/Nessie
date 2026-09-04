@@ -51,6 +51,13 @@ export type BuiltinToolRuntimeContext = {
   agentKind: 'personal_assistant' | 'shared'
   actorContext: RunExecuteJobPayload['actorContext']
   /**
+   * Facts produced by the pre-dispatch authorization chokepoint. A handler
+   * must never promote a raw queue proof into authorization on its own.
+   */
+  authorization?: {
+    approvalProofClaimedForTool?: string
+  }
+  /**
    * Keeps the run-local opt-in capture state in sync when the model starts or
    * stops a demonstration during this very run. Ordinary tool fixtures need
    * not provide it.

@@ -89,7 +89,11 @@ const hooks = (audits: Array<Record<string, unknown>>) => ({
   },
 })
 
-const fakePrisma = (state: { contentFingerprint: string }, claimSucceeds = true) => {
+const fakePrisma = (
+  state: { contentFingerprint: string },
+  claimSucceeds = true,
+  liveGrant = false,
+) => {
   const approvals: Array<Record<string, unknown>> = []
   const prisma = {
     approvalRequest: {
@@ -114,9 +118,19 @@ const fakePrisma = (state: { contentFingerprint: string }, claimSucceeds = true)
         return { count: 1 }
       },
     },
-    gmailDraftAction: { findFirst: async () => ({ contentFingerprint: state.contentFingerprint }) },
+    commsConnection: { findFirst: async () => ({ ownerUserId: ids.user }) },
+    gmailDraftAction: {
+      findFirst: async () => ({
+        connectionId: 'connection-1', contentFingerprint: state.contentFingerprint,
+      }),
+    },
     policyRule: { findMany: async () => [] },
     run: { findUnique: async () => ({ continuationOfRunId: ids.parentRun }) },
+    sendAuthorizationGrant: {
+      findUnique: async () => liveGrant
+        ? { boundary: null, expiresAt: null, id: 'grant-1', mode: 'always', revokedAt: null }
+        : null,
+    },
   } as unknown as PrismaClient
   return { approvals, prisma }
 }
@@ -189,6 +203,10 @@ test('an unchanged Gmail draft consumes its proof once and records one sanitized
   )
   assert.equal(allowed.decision, 'allow')
   assert.ok(approval.proofConsumedAt instanceof Date)
+  assert.equal(
+    allowed.decision === 'allow' ? allowed.approvalProofClaimedForTool : null,
+    GMAIL_DRAFT_SEND_TOOL_ID,
+  )
   assert.deepEqual(allowed.decision === 'allow' ? allowed.args : null, {
     approvalFingerprint: fingerprint('c'), draftId: ids.draft,
   })
@@ -226,6 +244,59 @@ test('a losing atomic Gmail proof claim does not record a successful claim audit
   )
   assert.equal(denied.decision, 'deny')
   assert.equal(audits.filter((audit) => audit.approvalProofClaimed === true).length, 0)
+})
+
+test('a raw proof for the wrong tool cannot fall back to a live standing grant', async () => {
+  const fake = fakePrisma({ contentFingerprint: fingerprint('g') }, true, true)
+  await authorizeToolExecution(
+    fake.prisma, actor(), runContext(), GMAIL_DRAFT_SEND_TOOL_ID, toolArgs, 'call-4',
+    authorization(true), hooks([]),
+  )
+  const approval = fake.approvals[0]!
+  approve(approval)
+  approval.toolName = 'calendar_event_create'
+
+  const denied = await authorizeToolExecution(
+    fake.prisma,
+    actor(true),
+    runContext(),
+    GMAIL_DRAFT_SEND_TOOL_ID,
+    toolArgs,
+    'call-4',
+    { ...authorization(false), structuralGate: undefined },
+    hooks([]),
+  )
+  assert.equal(denied.decision, 'deny')
+  assert.equal(approval.proofConsumedAt, null)
+})
+
+test('a changed frozen Gmail action cannot fall back to a live standing grant', async () => {
+  const state = { contentFingerprint: fingerprint('h') }
+  const fake = fakePrisma(state, true, true)
+  await authorizeToolExecution(
+    fake.prisma, actor(), runContext(), GMAIL_DRAFT_SEND_TOOL_ID, toolArgs, 'call-5',
+    authorization(true), hooks([]),
+  )
+  const approval = fake.approvals[0]!
+  approve(approval)
+  state.contentFingerprint = fingerprint('i')
+
+  const denied = await authorizeToolExecution(
+    fake.prisma,
+    actor(true),
+    runContext(),
+    GMAIL_DRAFT_SEND_TOOL_ID,
+    toolArgs,
+    'call-5',
+    {
+      ...authorization(false),
+      revalidateApprovalBoundary: true,
+      structuralGate: undefined,
+    },
+    hooks([]),
+  )
+  assert.equal(denied.decision, 'deny')
+  assert.equal(approval.proofConsumedAt, null)
 })
 
 test('a model cannot supply an approval fingerprint', async () => {

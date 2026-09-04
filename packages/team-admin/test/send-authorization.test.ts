@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   expiryForSendGrant,
   grantSendAuthorization,
+  grantSendAuthorizationFromApproval,
   hasStandingSendAuthorization,
   resolveStandingConsentForToolCall,
 } from '../src/send-authorization.js'
@@ -22,11 +23,24 @@ type FakeGrant = {
   boundary?: string | null
 }
 
+type FakeApproval = {
+  action: string
+  agentId: string
+  context: unknown
+  expiresAt: Date
+  id: string
+  organizationId: string
+  requiredApproverUserId: string
+  status: string
+  toolName: string
+}
+
 // A cast fake is unityped, so a column the query now selects is `undefined` at
 // call time rather than a type error — `mode` and `boundary` must be modelled.
 const prismaWith = (input: {
   connectionOwner?: string | null
   eligibleAgent?: boolean
+  approval?: FakeApproval | null
   grant?: FakeGrant | null
   draftOwner?: string | null
 }): PrismaClient => ({
@@ -41,6 +55,27 @@ const prismaWith = (input: {
   },
   agent: {
     findFirst: async () => input.eligibleAgent === false ? null : { id: AGENT },
+  },
+  approvalRequest: {
+    findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+      const approval = input.approval
+      if (!approval) return null
+      if (
+        where.id !== approval.id
+        || where.action !== approval.action
+        || where.organizationId !== approval.organizationId
+        || where.requiredApproverUserId !== approval.requiredApproverUserId
+        || where.status !== approval.status
+      ) return null
+      const expiresAt = where.expiresAt as { gt?: Date } | undefined
+      if (expiresAt?.gt && approval.expiresAt <= expiresAt.gt) return null
+      return {
+        action: approval.action,
+        agentId: approval.agentId,
+        context: approval.context,
+        toolName: approval.toolName,
+      }
+    },
   },
   sendAuthorizationGrant: {
     findUnique: async () =>
@@ -150,6 +185,50 @@ test('the shared grant write refuses an inactive connection or foreign agent', a
     await grantSendAuthorization(prismaWith({ eligibleAgent: false }), input),
     null,
   )
+})
+
+test('the approval shortcut validates its live pinned approval and target inside the grant boundary', async () => {
+  const approval: FakeApproval = {
+    action: 'tool.invoke',
+    agentId: AGENT,
+    context: { approvedGoogleConnectionId: CONN },
+    expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+    id: 'approval-1',
+    organizationId: ORG,
+    requiredApproverUserId: OWNER,
+    status: 'pending',
+    toolName: 'gmail_draft_send',
+  }
+  const input = {
+    approvalId: approval.id,
+    duration: 'today' as const,
+    grantedByUserId: OWNER,
+    organizationId: ORG,
+  }
+  const granted = await grantSendAuthorizationFromApproval(
+    prismaWith({ approval }), input, new Date('2026-09-04T10:00:00.000Z'),
+  )
+  assert.equal(granted.kind, 'granted')
+  if (granted.kind === 'granted') assert.equal(granted.agentId, AGENT)
+
+  const expired = await grantSendAuthorizationFromApproval(
+    prismaWith({ approval: { ...approval, expiresAt: new Date('2000-01-01T00:00:00.000Z') } }),
+    input,
+    new Date('2026-09-04T10:00:00.000Z'),
+  )
+  assert.equal(expired.kind, 'approval_unavailable')
+
+  const unsupported = await grantSendAuthorizationFromApproval(
+    prismaWith({ approval: { ...approval, toolName: 'mailbox_send' } }),
+    input,
+    new Date('2026-09-04T10:00:00.000Z'),
+  )
+  assert.equal(unsupported.kind, 'approval_not_eligible')
+
+  const unavailableTarget = await grantSendAuthorizationFromApproval(
+    prismaWith({ approval, eligibleAgent: false }), input, new Date('2026-09-04T10:00:00.000Z'),
+  )
+  assert.equal(unavailableTarget.kind, 'target_unavailable')
 })
 
 // ── the chokepoint resolver ─────────────────────────────────────────────────

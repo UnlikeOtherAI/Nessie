@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import {
   GmailDraftError,
+  approvedGoogleConnectionForStandingConsent,
   discardDraftForUser,
   grantSendAuthorization,
+  grantSendAuthorizationFromApproval,
   listSendAuthorizations,
   readDraftForUser,
   revokeSendAuthorization,
@@ -11,12 +13,6 @@ import {
   updateDraftForUser,
   SEND_GRANT_DURATIONS,
 } from '@nessie/team-admin'
-import {
-  CALENDAR_EVENT_CANCEL_TOOL_ID,
-  CALENDAR_EVENT_CREATE_TOOL_ID,
-  CALENDAR_EVENT_UPDATE_TOOL_ID,
-  GMAIL_DRAFT_SEND_TOOL_ID,
-} from '@nessie/runtime'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -79,40 +75,7 @@ const FromApprovalSchema = z.object({
   { message: 'Deciding for you needs a note saying what you are happy with.' },
 )
 
-// A send grant has semantics only for Gmail draft sends and calendar changes
-// that notify attendees. Connected mailboxes and lifecycle tools intentionally
-// have no standing-consent lane: their approval remains one decision at a time.
-const STANDING_CONSENT_APPROVAL_TOOL_IDS = new Set([
-  GMAIL_DRAFT_SEND_TOOL_ID,
-  CALENDAR_EVENT_CREATE_TOOL_ID,
-  CALENDAR_EVENT_UPDATE_TOOL_ID,
-  CALENDAR_EVENT_CANCEL_TOOL_ID,
-])
-
-const ApprovalGoogleConnectionSchema = z.object({
-  approvedGoogleConnectionId: z.string().uuid(),
-}).passthrough()
-
-/**
- * A grant made from an approval is valid only when authorization froze both a
- * supported Google tool family and the exact connection it resolved. The
- * browser must never choose a connection after the fact.
- */
-export const approvedGoogleConnectionForStandingConsent = (input: {
-  action: string | null
-  context: unknown
-  toolName: string | null
-}): string | null => {
-  if (
-    input.action !== 'tool.invoke'
-    || !input.toolName
-    || !STANDING_CONSENT_APPROVAL_TOOL_IDS.has(input.toolName)
-  ) {
-    return null
-  }
-  const parsed = ApprovalGoogleConnectionSchema.safeParse(input.context)
-  return parsed.success ? parsed.data.approvedGoogleConnectionId : null
-}
+export { approvedGoogleConnectionForStandingConsent }
 
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
@@ -296,22 +259,6 @@ export const registerGmailDraftRoutes = (
     const body = parseInput(GrantSchema, request.body, reply)
     if (!body) return reply
 
-    // The grant is the mailbox owner's to give, so the connection must be
-    // theirs; anything else is an indistinguishable 404.
-    const connection = await prisma.commsConnection.findFirst({
-      where: {
-        id: body.connectionId,
-        organizationId: actorContext.tenant.organizationId,
-        ownerUserId: actorContext.actor.actorId,
-        provider: 'google',
-        status: 'active',
-      },
-      select: { id: true },
-    })
-    if (!connection) {
-      sendApiError(reply, 404, 'NOT_FOUND', 'Connection not found')
-      return reply
-    }
     if (!(await isAgentAccessibleToActor(actorContext, body.agentId))) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Agent not found')
       return reply
@@ -362,25 +309,19 @@ export const registerGmailDraftRoutes = (
     const body = parseInput(FromApprovalSchema, request.body, reply)
     if (!body) return reply
 
-    const approval = await prisma.approvalRequest.findFirst({
-      where: {
-        id: body.approvalId,
-        action: 'tool.invoke',
-        organizationId: actorContext.tenant.organizationId,
-        // Only the person the gate is pinned to may turn it off.
-        requiredApproverUserId: actorContext.actor.actorId,
-        status: 'pending',
-        expiresAt: { gt: new Date() },
-      },
-      select: { action: true, agentId: true, context: true, toolName: true },
+    const result = await grantSendAuthorizationFromApproval(prisma, {
+      approvalId: body.approvalId,
+      organizationId: actorContext.tenant.organizationId,
+      grantedByUserId: actorContext.actor.actorId,
+      duration: body.duration,
+      mode: body.mode ?? 'always',
+      ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
     })
-    if (!approval) {
+    if (result.kind === 'approval_unavailable') {
       sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply
     }
-
-    const connectionId = approvedGoogleConnectionForStandingConsent(approval)
-    if (!connectionId) {
+    if (result.kind === 'approval_not_eligible') {
       sendApiError(
         reply,
         409,
@@ -389,43 +330,11 @@ export const registerGmailDraftRoutes = (
       )
       return reply
     }
-
-    // The authorization gate stored this id when it created the approval. Do
-    // not re-resolve a person's accounts here: a second connection could have
-    // appeared after they were shown the approved action.
-    const connection = await prisma.commsConnection.findFirst({
-      where: {
-        id: connectionId,
-        organizationId: actorContext.tenant.organizationId,
-        ownerUserId: actorContext.actor.actorId,
-        provider: 'google',
-        status: 'active',
-      },
-      select: { id: true },
-    })
-    if (!connection) {
-      sendApiError(
-        reply,
-        404,
-        'NOT_FOUND',
-        'The Google account approved for this action is no longer connected.',
-      )
-      return reply
-    }
-
-    const grant = await grantSendAuthorization(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      connectionId: connection.id,
-      agentId: approval.agentId,
-      grantedByUserId: actorContext.actor.actorId,
-      duration: body.duration,
-      mode: body.mode ?? 'always',
-      ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
-    })
-    if (!grant) {
+    if (result.kind === 'target_unavailable') {
       sendApiError(reply, 404, 'NOT_FOUND', 'The Google account or agent is no longer available.')
       return reply
     }
+    const { grant } = result
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'gmail.send_grant.created',
@@ -433,7 +342,7 @@ export const registerGmailDraftRoutes = (
       resourceId: grant.id,
       outcome: 'success',
       metadata: {
-        agentId: approval.agentId,
+        agentId: result.agentId,
         duration: body.duration,
         mode: body.mode ?? 'always',
         fromApproval: body.approvalId,

@@ -54,4 +54,9 @@ file is the rule**.
   ToolCall history, thinking/realtime status, demonstrations, connector
   telemetry, or audit metadata; those operational records name only the action
   and outcome. Unknown provider failures are mapped to a stable support code,
-  never rethrown into those sinks. Details: `CLAUDE.md` → the Google bullets.
+  never rethrown into those sinks. The handler receives a content-free fact
+  only after that chokepoint verified the exact proof and won its atomic claim;
+  a raw continuation token is never treated as approval. A stale, mismatched,
+  or replayed Gmail continuation therefore denies rather than switching to a
+  standing grant, while ordinary standing consent is re-read immediately before
+  send. Details: `CLAUDE.md` → the Google bullets.
