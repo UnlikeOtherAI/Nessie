@@ -94,14 +94,14 @@ export const registerAutomaticMembershipRoutes = (app: FastifyInstance, deps: Ro
         const access = await requireScopeAdministrator(deps, request, reply, scope)
         if (!access) return reply
         try {
-          return createApiResponse({ teams: await listAutomaticMembershipTargetTeams(deps.prisma, access.context.tenant.organizationId, access.externalOrgId) })
+          return createApiResponse({ teams: await listAutomaticMembershipTargetTeams(deps.prisma, access.externalOrgId) })
         } catch (error) { if (sendServiceError(reply, error)) return reply; throw error }
       })
     }
     app.get(base(scope), async (request, reply) => {
       const access = await requireScopeAdministrator(deps, request, reply, scope)
       if (!access) return reply
-      return createApiResponse(await listAutomaticMembershipRules(deps.prisma, access.context.tenant.organizationId, scope, access.teamId))
+      return createApiResponse(await listAutomaticMembershipRules(deps.prisma, access.context.tenant.organizationId, scope, access.teamId, deps.authSecret))
     })
     app.post(base(scope), async (request, reply) => {
       const access = await requireScopeAdministrator(deps, request, reply, scope)

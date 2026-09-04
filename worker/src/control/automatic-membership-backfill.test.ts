@@ -8,7 +8,6 @@ test('automatic membership worker has no local membership authority', async () =
     automaticMembershipBackfillRun: { findMany: async () => { queried = true; return [] } },
   } as never, {
     assertRuleAdministrator: async () => true,
-    setRuleFence: async () => undefined,
     listVerifiedDomainSubjects: async () => ({ snapshotId: 'snapshot', subjects: [], cursor: null }),
     grantMember: async () => ({ operationId: 'operation', status: 'completed' }),
     getOperation: async () => ({ operationId: 'operation', status: 'completed' }),

@@ -33,12 +33,14 @@ export const provisionAutomaticMembershipAtLogin = async (
           externalOrgId: rule.organization.externalOrgId,
           externalTeamId: target.team.externalTeamId,
           uoaSub,
+          domain: claim.domain,
           idempotencyKey: `automatic-membership:login:${rule.id}:${target.teamId}:${uoaSub}:${rule.generation}`,
           ruleId: rule.id,
           ruleGeneration: rule.generation,
-          // UOA validates the rule-generation fence against Nessie's callback;
-          // this one-time login fence cannot be replayed as a background lease.
-          fenceToken: `login:${rule.id}:${rule.generation}`,
+          // This is the lifecycle-installed UOA fence for this exact rule
+          // generation. A worker lease is strictly local and never crosses the
+          // UOA boundary, so a suspension/revoke fences login and backfill alike.
+          fenceToken: rule.uoaFenceToken,
         })
         if (grant.status === 'completed' || grant.status === 'already_member') targets.set(`${rule.organization.externalOrgId}:${target.team.externalTeamId}`, { externalOrgId: rule.organization.externalOrgId, externalTeamId: target.team.externalTeamId })
       }

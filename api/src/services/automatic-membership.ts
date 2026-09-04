@@ -1,5 +1,5 @@
 /* eslint-disable max-len -- typed Prisma transaction payloads remain more legible unwrapped. */
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { resolveTxt } from 'node:dns/promises'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
@@ -14,6 +14,12 @@ import {
 import { createProductionUoaAutomaticMembershipAdapter } from './uoa-automatic-membership-production.js'
 
 const verificationLifetimeMs = 14 * 24 * 60 * 60 * 1000
+
+const setUoaFence = async (input: { externalOrgId: string | null; ruleId: string; generation: number; fenceToken: string; active: boolean }): Promise<void> => {
+  const adapter = createProductionUoaAutomaticMembershipAdapter()
+  if (!adapter || !input.externalOrgId) throw new AutomaticMembershipError('AUTOMATIC_MEMBERSHIP_NOT_CONFIGURED', 'Automatic membership is not configured on this deployment.', 503)
+  await adapter.setRuleFence({ externalOrgId: input.externalOrgId, ruleId: input.ruleId, generation: input.generation, fenceToken: input.fenceToken, active: input.active })
+}
 
 export const automaticMembershipEnabled = (): boolean =>
   process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED === 'true'
@@ -81,7 +87,7 @@ const targetTeams = async (prisma: PrismaClient, externalOrgId: string, input: s
 const presentRule = (rule: {
   id: string; scope: RuleScope; state: string; generation: number; suspensionReason: string | null
   claim: { domain: string; state: string; notificationEmail: string | null; verifiedAt: Date | null; verificationExpiresAt: Date | null; lastDnsCheckAt: Date | null }
-  targets: Array<{ teamId: string }>
+  targets: Array<{ teamId: string; team?: { name: string } }>
 }) => ({
   id: rule.id, domain: rule.claim.domain, claimState: rule.claim.state, state: rule.state,
   scope: rule.scope, generation: rule.generation, notificationEmail: rule.claim.notificationEmail,
@@ -89,9 +95,10 @@ const presentRule = (rule: {
   verifiedAt: rule.claim.verifiedAt?.toISOString() ?? null,
   verificationExpiresAt: rule.claim.verificationExpiresAt?.toISOString() ?? null,
   suspensionReason: rule.suspensionReason, targetTeamIds: rule.targets.map((target) => target.teamId),
+  targetTeams: rule.targets.flatMap((target) => target.team ? [{ id: target.teamId, name: target.team.name }] : []),
 })
 
-export const listAutomaticMembershipRules = async (prisma: PrismaClient, organizationId: string, scope: RuleScope, teamId?: string | null) => {
+export const listAutomaticMembershipRules = async (prisma: PrismaClient, organizationId: string, scope: RuleScope, teamId?: string | null, authSecret?: string) => {
   if (scope === 'team' && !teamId) {
     throw new AutomaticMembershipError('TEAM_NOT_LINKED', 'This team is not linked to UnlikeOtherAI.', 404)
   }
@@ -101,13 +108,35 @@ export const listAutomaticMembershipRules = async (prisma: PrismaClient, organiz
       scope,
       ...(scope === 'team' ? { targets: { some: { teamId: teamId! } } } : {}),
     },
-    include: { claim: true, targets: true }, orderBy: { createdAt: 'desc' },
+    include: { claim: true, targets: { include: { team: { select: { name: true } } } }, backfillRuns: { orderBy: { createdAt: 'desc' }, take: 1 } }, orderBy: { createdAt: 'desc' },
   })
-  return { featureEnabled: automaticMembershipEnabled(), killSwitchEnabled: automaticMembershipKillSwitchEnabled(), rules: rules.map(presentRule) }
+  const ruleIds = rules.map((rule) => rule.id)
+  const audits = ruleIds.length === 0 ? [] : await prisma.auditLog.findMany({
+    where: { organizationId, resourceType: 'automatic_membership_rule', resourceId: { in: ruleIds } },
+    orderBy: { createdAt: 'desc' }, take: 20,
+    select: { action: true, resourceId: true, outcome: true, createdAt: true },
+  })
+  const dns = new Map<string, { name: string; value: string }>()
+  if (authSecret) for (const rule of rules) {
+    try { dns.set(rule.id, { name: automaticMembershipTxtName(rule.claim.domain), value: decryptAutomaticMembershipChallenge(rule.claim.challengeEncrypted, authSecret) }) } catch { /* an old key cannot disclose a stale challenge */ }
+  }
+  return {
+    featureEnabled: automaticMembershipEnabled(), killSwitchEnabled: automaticMembershipKillSwitchEnabled(),
+    permissions: { manageRules: true, manageClaim: scope === 'organization' },
+    rules: rules.map((rule) => ({
+      ...presentRule(rule), claimId: rule.claimId, dns: dns.get(rule.id) ?? null,
+      backfill: rule.backfillRuns[0] ? {
+        status: rule.backfillRuns[0].status, processedCount: rule.backfillRuns[0].attemptedCount,
+        grantedCount: rule.backfillRuns[0].grantedCount, failedCount: rule.backfillRuns[0].failureCount,
+        nextRetryAt: rule.backfillRuns[0].nextAttemptAt?.toISOString() ?? null,
+      } : null,
+    })),
+    auditEvents: audits.map((entry) => ({ action: entry.action, ruleId: entry.resourceId, outcome: entry.outcome, createdAt: entry.createdAt.toISOString() })),
+  }
 }
 
 /** Live UOA directory, joined only to Nessie's stable UOA team bindings. */
-export const listAutomaticMembershipTargetTeams = async (prisma: PrismaClient, organizationId: string, externalOrgId: string) => {
+export const listAutomaticMembershipTargetTeams = async (prisma: PrismaClient, externalOrgId: string) => {
   const adapter = createProductionUoaAutomaticMembershipAdapter()
   if (!adapter) throw new AutomaticMembershipError('UOA_TEAM_DIRECTORY_REQUIRED', 'Automatic organisation rules require UOA’s live team-directory contract.', 503)
   const directory = await adapter.listTeams({ externalOrgId })
@@ -147,7 +176,7 @@ export const createAutomaticMembershipRule = async (
         organizationId: context.tenant.organizationId, claimId: claim.id, scope, createdByUoaSub: subject,
         targets: { createMany: { data: targets.map((teamId) => ({ teamId })) } },
       }, include: { claim: true, targets: true } })
-      await audit(tx, context, 'automatic_membership.claim_created', rule.id, { domain, scope }, scope === 'team' ? options.teamId ?? null : null)
+      await audit(tx, context, createdClaim ? 'automatic_membership.claim_created' : 'automatic_membership.rule_created', rule.id, { domain, scope }, scope === 'team' ? options.teamId ?? null : null)
       return { rule: presentRule(rule), ...(createdClaim ? { dns: { name: automaticMembershipTxtName(domain), value: challenge } } : {}) }
     })
   } catch (error) {
@@ -172,6 +201,13 @@ export const verifyAutomaticMembershipClaim = async (
   const matched = records.some((chunks) => chunks.join('') === challenge)
   const now = new Date()
   const expiresAt = new Date(now.getTime() + verificationLifetimeMs)
+  if (!matched) {
+    const [organization, dependents] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } }),
+      prisma.automaticMembershipRule.findMany({ where: { claimId: rule.claimId, state: 'active' }, select: { id: true, generation: true, uoaFenceToken: true } }),
+    ])
+    for (const dependent of dependents) await setUoaFence({ externalOrgId: organization?.externalOrgId ?? null, ruleId: dependent.id, generation: dependent.generation, fenceToken: dependent.uoaFenceToken, active: false })
+  }
   const updated = await prisma.$transaction(async (tx) => {
     const claim = await tx.automaticMembershipDomainClaim.update({ where: { id: rule.claimId }, data: matched
       ? { state: 'verified', verifiedAt: now, verificationExpiresAt: expiresAt, lastDnsCheckAt: now, lastDnsFailure: null }
@@ -191,6 +227,9 @@ export const rotateAutomaticMembershipClaim = async (prisma: PrismaClient, conte
   if (!rule) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic login rule not found.', 404)
   const otherRules = await prisma.automaticMembershipRule.count({ where: { claimId: rule.claimId, id: { not: rule.id }, state: { not: 'revoked' } } })
   if (rule.scope === 'team' && otherRules > 0) throw new AutomaticMembershipError('SHARED_CLAIM_ORGANIZATION_ADMIN_REQUIRED', 'Only an organisation administrator can rotate a shared domain claim.', 403)
+  const organization = await prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } })
+  const dependents = await prisma.automaticMembershipRule.findMany({ where: { claimId: rule.claimId, state: { not: 'revoked' } }, select: { id: true, generation: true, uoaFenceToken: true } })
+  for (const dependent of dependents) await setUoaFence({ externalOrgId: organization?.externalOrgId ?? null, ruleId: dependent.id, generation: dependent.generation, fenceToken: dependent.uoaFenceToken, active: false })
   const challenge = createAutomaticMembershipChallenge()
   const claim = await prisma.$transaction(async (tx) => {
     const next = await tx.automaticMembershipDomainClaim.update({ where: { id: rule.claimId }, data: {
@@ -198,7 +237,7 @@ export const rotateAutomaticMembershipClaim = async (prisma: PrismaClient, conte
       challengeEncrypted: encryptAutomaticMembershipChallenge(challenge, authSecret), verifiedAt: null, verificationExpiresAt: null, lastDnsFailure: null,
     } })
     // Rotation is an immediate provisioning stop even before the next DNS check.
-    await tx.automaticMembershipRule.update({ where: { id: rule.id }, data: { state: 'suspended', suspensionReason: 'DNS challenge rotated; verify the new TXT record before resuming.' } })
+    await tx.automaticMembershipRule.updateMany({ where: { claimId: rule.claimId, state: { not: 'revoked' } }, data: { state: 'suspended', suspensionReason: 'DNS challenge rotated; verify the new TXT record before resuming.' } })
     await audit(tx, context, 'automatic_membership.rotated', rule.id)
     return next
   })
@@ -215,12 +254,15 @@ export const updateAutomaticMembershipRule = async (prisma: PrismaClient, contex
   const organization = await prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } })
   if (!organization?.externalOrgId) throw new AutomaticMembershipError('ORGANIZATION_NOT_LINKED', 'Automatic logins require an UnlikeOtherAI organisation.', 404)
   const targets = input.targetTeamIds === undefined ? existing.targets.map((target) => target.teamId) : await targetTeams(prisma, organization.externalOrgId, input.targetTeamIds, scope, teamId)
+  const nextGeneration = existing.generation + 1
+  const nextFenceToken = randomUUID()
+  await setUoaFence({ externalOrgId: organization.externalOrgId, ruleId, generation: nextGeneration, fenceToken: nextFenceToken, active: existing.state === 'active' })
   const rule = await prisma.$transaction(async (tx) => {
     await tx.automaticMembershipBackfillRun.updateMany({ where: { ruleId, generation: existing.generation, status: { in: ['queued', 'running', 'paused'] } }, data: { status: 'superseded' } })
     if (input.notificationEmail !== undefined) await tx.automaticMembershipDomainClaim.update({ where: { id: existing.claimId }, data: { notificationEmail: input.notificationEmail } })
     await tx.automaticMembershipRuleTarget.deleteMany({ where: { ruleId } })
     await tx.automaticMembershipRuleTarget.createMany({ data: targets.map((targetTeamId) => ({ ruleId, teamId: targetTeamId })) })
-    const updated = await tx.automaticMembershipRule.update({ where: { id: ruleId }, data: { generation: { increment: 1 } }, include: { claim: true, targets: true } })
+    const updated = await tx.automaticMembershipRule.update({ where: { id: ruleId }, data: { generation: nextGeneration, uoaFenceToken: nextFenceToken }, include: { claim: true, targets: true } })
     if (updated.state === 'active' && updated.claim.state === 'verified' && updated.claim.verificationExpiresAt && updated.claim.verificationExpiresAt > new Date()) {
       await tx.automaticMembershipBackfillRun.create({ data: {
         organizationId: context.tenant.organizationId, ruleId, generation: updated.generation,
@@ -239,6 +281,8 @@ export const activateAutomaticMembershipRule = async (prisma: PrismaClient, cont
   const rule = await prisma.automaticMembershipRule.findFirst({ where: { id: ruleId, organizationId: context.tenant.organizationId }, include: { claim: true, targets: true } })
   if (!rule) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic login rule not found.', 404)
   if (rule.claim.state !== 'verified' || !rule.claim.verificationExpiresAt || rule.claim.verificationExpiresAt <= new Date()) throw new AutomaticMembershipError('DOMAIN_NOT_VERIFIED', 'Verify the DNS TXT record before activating this rule.', 409)
+  const organization = await prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } })
+  await setUoaFence({ externalOrgId: organization?.externalOrgId ?? null, ruleId, generation: rule.generation, fenceToken: rule.uoaFenceToken, active: true })
   const subject = subjectFor(context)
   const next = await prisma.$transaction(async (tx) => {
     const updated = await tx.automaticMembershipRule.update({ where: { id: ruleId }, data: { state: 'active', suspensionReason: null }, include: { claim: true, targets: true } })
@@ -253,6 +297,8 @@ export const activateAutomaticMembershipRule = async (prisma: PrismaClient, cont
 export const revokeAutomaticMembershipRule = async (prisma: PrismaClient, context: AuthorizedActionContext, ruleId: string) => {
   const rule = await prisma.automaticMembershipRule.findFirst({ where: { id: ruleId, organizationId: context.tenant.organizationId }, include: { claim: true, targets: true } })
   if (!rule) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic login rule not found.', 404)
+  const organization = await prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } })
+  await setUoaFence({ externalOrgId: organization?.externalOrgId ?? null, ruleId, generation: rule.generation, fenceToken: rule.uoaFenceToken, active: false })
   const updated = await prisma.$transaction(async (tx) => {
     await tx.automaticMembershipBackfillRun.updateMany({ where: { ruleId, status: { in: ['queued', 'running', 'paused'] } }, data: { status: 'cancelled' } })
     const next = await tx.automaticMembershipRule.update({ where: { id: ruleId }, data: { state: 'revoked', suspensionReason: 'Revoked by an administrator.' }, include: { claim: true, targets: true } })
@@ -266,6 +312,8 @@ export const revokeAutomaticMembershipRule = async (prisma: PrismaClient, contex
 export const suspendAutomaticMembershipRule = async (prisma: PrismaClient, context: AuthorizedActionContext, ruleId: string) => {
   const rule = await prisma.automaticMembershipRule.findFirst({ where: { id: ruleId, organizationId: context.tenant.organizationId }, include: { claim: true, targets: true } })
   if (!rule) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic login rule not found.', 404)
+  const organization = await prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } })
+  await setUoaFence({ externalOrgId: organization?.externalOrgId ?? null, ruleId, generation: rule.generation, fenceToken: rule.uoaFenceToken, active: false })
   const updated = await prisma.$transaction(async (tx) => {
     await tx.automaticMembershipBackfillRun.updateMany({ where: { ruleId, status: { in: ['queued', 'running', 'paused'] } }, data: { status: 'paused' } })
     const next = await tx.automaticMembershipRule.update({ where: { id: ruleId }, data: { state: 'suspended', suspensionReason: 'Suspended by an administrator.' }, include: { claim: true, targets: true } })

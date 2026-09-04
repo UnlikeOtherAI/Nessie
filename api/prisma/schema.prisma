@@ -1626,6 +1626,7 @@ model AutomaticMembershipRule {
   scope                    AutomaticMembershipRuleScope
   state                    AutomaticMembershipRuleState @default(inactive)
   generation               Int                           @default(1)
+  uoaFenceToken            String                        @default(uuid()) @map("uoa_fence_token")
   suspensionReason         String?                       @map("suspension_reason")
   createdByUoaSub          String                        @map("created_by_uoa_sub")
   createdAt                DateTime                      @default(now()) @map("created_at")
