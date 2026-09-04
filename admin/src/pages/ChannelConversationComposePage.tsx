@@ -19,6 +19,12 @@ import { usePhoneLayout } from '../lib/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
 import { AgentVisibilityPill } from '../components/features/agents/AgentVisibilityPill'
+import { DirectMessageAgentCreator } from '../components/features/channels/DirectMessageAgentCreator'
+import {
+  DIRECT_MESSAGE_TARGET_VALUES,
+  DirectMessageTargetTabs,
+  type DirectMessageTarget,
+} from '../components/features/channels/DirectMessageTargetTabs'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
 import {
@@ -31,6 +37,7 @@ import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { useTabParam } from '../navigation/useTabParam'
 
 const optionKey = recipientKey
 
@@ -61,13 +68,20 @@ export const ChannelConversationComposePage = () => {
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
 
+  const [target, setTarget] = useTabParam(
+    'with',
+    DIRECT_MESSAGE_TARGET_VALUES,
+    'people',
+  )
   const [recipients, setRecipients] = useState<Recipient[]>([])
+  const [newAgentVisibility, setNewAgentVisibility] = useState<'private' | 'team'>('private')
   const [query, setQuery] = useState('')
   const [addressFocused, setAddressFocused] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+  const [leavingForDesigner, setLeavingForDesigner] = useState(false)
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -108,8 +122,14 @@ export const ChannelConversationComposePage = () => {
     [recipients],
   )
   const options = useMemo<RecipientOption[]>(
-    () => buildRecipientOptions({ agents, limit: 8, query, selectedKeys, users }),
-    [agents, query, selectedKeys, users],
+    () => buildRecipientOptions({
+      agents: target === 'agents' ? agents : [],
+      limit: 8,
+      query,
+      selectedKeys,
+      users: target === 'people' ? users : [],
+    }),
+    [agents, query, selectedKeys, target, users],
   )
 
   const mentionEntities = useMemo<MentionEntity[]>(
@@ -136,6 +156,27 @@ export const ChannelConversationComposePage = () => {
       current.filter((item) => optionKey(item) !== optionKey(recipient)),
     )
   }, [])
+
+  const selectTarget = useCallback((next: DirectMessageTarget) => {
+    setTarget(next)
+    setQuery('')
+    setHighlightedIndex(0)
+    window.setTimeout(() => addressInputRef.current?.focus(), 0)
+  }, [setTarget])
+
+  const continueToAgentDesigner = useCallback(() => {
+    // This Flow is a portal on split layouts. The navigation stack retains its
+    // outgoing screen as an underlay, so remove the Flow from the current
+    // entry before pushing the Designer; otherwise its portal escapes that
+    // underlay's inert/hidden boundary and keeps covering the destination.
+    setLeavingForDesigner(true)
+    void navigate(returnTo, { flushSync: true, replace: true })
+    window.setTimeout(() => {
+      void navigate(`/agents/designer?visibility=${newAgentVisibility}`, {
+        state: { returnTo },
+      })
+    }, 0)
+  }, [navigate, newAgentVisibility, returnTo])
 
   const submit = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {
@@ -211,6 +252,7 @@ export const ChannelConversationComposePage = () => {
   if (!me) {
     return null
   }
+  if (leavingForDesigner) return null
 
   return (
     <OverlayPortal active={!phoneLayout}>
@@ -253,7 +295,26 @@ export const ChannelConversationComposePage = () => {
             titleId="channel-conversation-compose-title"
           />
 
-          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
+          <DirectMessageTargetTabs onChange={selectTarget} value={target} />
+
+          <div
+            aria-labelledby={`direct-message-target-tab-${target}`}
+            className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5"
+            id={`direct-message-target-tabpanel-${target}`}
+            role="tabpanel"
+          >
+          {target === 'agents' ? (
+            <DirectMessageAgentCreator
+              onContinue={continueToAgentDesigner}
+              onVisibilityChange={setNewAgentVisibility}
+              visibility={newAgentVisibility}
+            />
+          ) : null}
+          {target === 'agents' ? (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">
+              Or message an existing agent
+            </p>
+          ) : null}
           <div className="relative flex-shrink-0 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
             <div className="flex min-h-[38px] items-center gap-2">
               <span className="w-8 flex-shrink-0 text-sm font-semibold text-[color:var(--tx2)]">
@@ -311,7 +372,9 @@ export const ChannelConversationComposePage = () => {
                   }}
                   onFocus={() => setAddressFocused(true)}
                   onKeyDown={onAddressKeyDown}
-                  placeholder={recipients.length === 0 ? 'Type a name or email address' : ''}
+                  placeholder={recipients.length === 0
+                    ? (target === 'people' ? 'Type a name or email address' : 'Type an agent name')
+                    : ''}
                   value={query}
                 />
               </div>

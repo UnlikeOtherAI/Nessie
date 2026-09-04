@@ -13,6 +13,7 @@ import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
 import { ToolPicker } from './ToolPicker'
 import { Switch } from '../../../primitives/Switch'
+import { AgentVisibilityPicker } from '../AgentVisibilityPicker'
 import { FieldLabel } from '../../../primitives/FieldLabel'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { Card } from '../../../shared/Card'
@@ -119,41 +120,11 @@ export const AgentDesignerForm = ({
         />
       </FormField>
 
-      <Card className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <SectionLabel size="sm">Visibility</SectionLabel>
-          {visibilityReadOnly ? (
-            <>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-                {state.visibility === 'private' ? 'Only visible to you' : 'Team-visible'}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
-                Visibility is set when an agent is created and cannot be changed.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-                {state.visibility === 'private'
-                  ? 'Private — only you can see it.'
-                  : 'Team-visible — people in this team can find it.'}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
-                A private agent cannot be added to any project, channel, or conversation, and only
-                you can see it.
-              </p>
-            </>
-          )}
-        </div>
-        {!visibilityReadOnly ? (
-          <Switch
-            checked={state.visibility === 'private'}
-            disabled={readOnly}
-            label="Only visible to me"
-            onChange={(checked) => actions.setVisibility(checked ? 'private' : 'team')}
-          />
-        ) : null}
-      </Card>
+      <AgentVisibilityPicker
+        onChange={actions.setVisibility}
+        readOnly={visibilityReadOnly || readOnly}
+        value={state.visibility}
+      />
 
       {/* Model stays outside `FormField`, and the reason is not its pinned id
           — `FormField` takes one now. `ModelCombobox` is a bespoke combobox
