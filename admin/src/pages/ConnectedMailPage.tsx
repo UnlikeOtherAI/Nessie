@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import type { ConnectedMailMessage, ConnectedMailSource, ConnectedMailThreadSummary } from '@nessie/schemas'
+import type { ConnectedMailAccountRecord, ConnectedMailMessage, ConnectedMailSource, ConnectedMailThreadSummary } from '@nessie/schemas'
 
 import { ConnectedMailCompose } from '../components/features/connected-mail/ConnectedMailCompose'
 import { ConnectedMailConversationView } from '../components/features/connected-mail/ConnectedMailConversation'
@@ -59,18 +59,22 @@ export const ConnectedMailPage = () => {
   const account = accounts.data?.find((item) => item.source === source && item.id === accountId)
   const isCompose = Boolean(address && routeLocation.pathname.endsWith('/compose'))
   const filter = searchParams.get('filter') === 'unread' ? 'unread' : 'all'
-  const query = searchParams.get('query') ?? ''
   const replyThreadId = searchParams.get('threadId') ?? undefined
   const replyMessageId = searchParams.get('reply') ?? undefined
   const gmailDraftId = searchParams.get('draftId') ?? undefined
   const requestedPageSize = Number(searchParams.get('pageSize') ?? '25')
   const pageSize = PAGE_SIZES.includes(requestedPageSize as typeof PAGE_SIZES[number]) ? requestedPageSize : 25
+  const accountIdentity = `${source ?? ''}:${accountId ?? ''}`
+  const [searchState, setSearchState] = useState({ draft: '', identity: '', query: '' })
+  // Search phrases are provider content, so they belong to this mounted mail
+  // session only. The identity guard also ensures a prior account's phrase
+  // cannot reach the next account during the route transition.
+  const query = searchState.identity === accountIdentity ? searchState.query : ''
+  const searchDraft = searchState.identity === accountIdentity ? searchState.draft : ''
   const listIdentity = `${source ?? ''}:${accountId ?? ''}:${filter}:${query}:${pageSize}`
-  const [searchDraft, setSearchDraft] = useState(query)
   const [cursorState, setCursorState] = useState<{ identity: string; values: string[] }>({ identity: '', values: [] })
   const cursors = cursorState.identity === listIdentity ? cursorState.values : []
   const cursor = cursors.at(-1)
-  useEffect(() => { setSearchDraft(query) }, [query])
   useEffect(() => {
     setCursorState((current) => current.identity === listIdentity
       ? current
@@ -93,6 +97,15 @@ export const ConnectedMailPage = () => {
     identity: listIdentity,
     values: update(current.identity === listIdentity ? current.values : []),
   }))
+  const updateSearchDraft = (draft: string) => setSearchState((current) => ({
+    draft,
+    identity: accountIdentity,
+    query: current.identity === accountIdentity ? current.query : '',
+  }))
+  const applySearch = () => setSearchState((current) => {
+    const draft = current.identity === accountIdentity ? current.draft : ''
+    return { draft, identity: accountIdentity, query: draft }
+  })
 
   if (!address) return <ConnectedMailAccounts />
   if (isCompose && account) return (
@@ -136,8 +149,8 @@ export const ConnectedMailPage = () => {
           </select>
         </label>
       </div>
-      <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); setState({ query: searchDraft || null }) }}>
-        <input aria-label="Search mail" className="admin-input min-w-0 flex-1" onChange={(event) => setSearchDraft(event.target.value)} placeholder="Search mail" value={searchDraft} />
+      <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); applySearch() }}>
+        <input aria-label="Search mail" className="admin-input min-w-0 flex-1" onChange={(event) => updateSearchDraft(event.target.value)} placeholder="Search mail" value={searchDraft} />
         <button className="admin-button admin-button-secondary" type="submit">Search</button>
       </form>
       <TabBar ariaLabel="Mail filter" fullWidth items={[{ label: 'All', value: 'all' }, { label: 'Unread', value: 'unread' }]} onChange={(value) => setState({ filter: value === 'unread' ? 'unread' : null })} role="radiogroup" size="sm" value={filter} />
@@ -183,14 +196,23 @@ const MailUnavailable = ({ account }: { account: { id: string; scope: 'personal'
 
 const ConnectedMailAccounts = () => {
   const accounts = useConnectedMailAccounts()
-  const navigate = useNavigate()
   return (
     <div className="flex h-full flex-col">
       <ScreenHeader title="Mail" />
       <QueryState emptyLabel="No connected email accounts are available to you." errorLabel="Could not load connected accounts." isEmpty={(accounts.data?.length ?? 0) === 0} loadingLabel="Loading connected accounts…" query={accounts}>
-        {() => <ul className="divide-y divide-[color:var(--sep)] px-[var(--page-gutter)]">{accounts.data?.map((account) => <li className="flex flex-wrap items-center justify-between gap-3 py-4" key={`${account.source}:${account.id}`}><div><p className="font-medium text-[color:var(--tx)]">{account.label}</p><p className="text-sm text-[color:var(--tx2)]">{account.address} · {account.scope} · {account.status}</p></div><button className="admin-button admin-button-secondary" disabled={!account.canRead} onClick={() => navigate(mailPath({ accountId: account.id, source: account.source }))} type="button">Open mail</button></li>)}</ul>}
+        {() => <ul className="divide-y divide-[color:var(--sep)] px-[var(--page-gutter)]">{accounts.data?.map((account) => <ConnectedMailAccountRow account={account} key={`${account.source}:${account.id}`} />)}</ul>}
       </QueryState>
     </div>
+  )
+}
+
+const ConnectedMailAccountRow = ({ account }: { account: ConnectedMailAccountRecord }) => {
+  const navigate = useNavigate()
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-4">
+      <div><p className="font-medium text-[color:var(--tx)]">{account.label}</p><p className="text-sm text-[color:var(--tx2)]">{account.address} · {account.scope} · {account.status}</p>{!account.canRead ? <p className="mt-1 text-sm text-[color:var(--tx2)]">{errorCopy(account.status)}</p> : null}</div>
+      {account.canRead ? <button className="admin-button admin-button-secondary" onClick={() => navigate(mailPath({ accountId: account.id, source: account.source }))} type="button">Open mail</button> : <button className="admin-button admin-button-secondary" onClick={() => navigate(settingsPath(account))} type="button">Open mailbox settings</button>}
+    </li>
   )
 }
 
