@@ -51,19 +51,24 @@ belong inside a people table. The no-IdP surface remains a separate migration.
    selected state is a replace-only URL parameter, so refreshes and shared
    links preserve it without Back-stack noise. The invite dialog's two team
    choices are local dialog state, not page URL state.
-3. Render every tab with `DataTable` plus `PaginationFooter`, never a card
-   list. Rows use the shared identity primitive. Narrow layouts fold secondary
-   facts into the user cell rather than silently discard them.
-4. Member rows show the UOA-authorized identity fields and role for the selected
-   scope. Email is not assumed to be universally visible: UOA makes the
-   disclosure decision and omits it when the reader lacks the permission.
-   Role/lifecycle/removal controls remain out of this first table because UOA
-   roles are configurable and no authoritative option vocabulary is yet in the
-   roster contract; the live capability response is retained for that follow-up.
+3. Render every tab with the framed `DataTable` treatment plus
+   `PaginationFooter`, never a card list. It uses the same bordered header,
+   zebra rows and hover state as the Agents table. Rows use the shared identity
+   primitive. Narrow layouts fold secondary facts into the user cell rather
+   than silently discard them.
+4. Every roster row ends with the shared `DataTable` disclosure chevron. Team
+   member rows open one dialog where an authorized manager can change the role
+   from UOA's live `teamRoleOptions` vocabulary; ownership is never an option.
+   Organisation member rows open that same dialog in workspace-access mode,
+   where the caller selects the member's UOA teams (workspaces) from only the
+   scopes UOA says they may manage. Email remains UOA-controlled and is omitted
+   when the reader lacks permission.
 5. Pending-invitation rows show recipient, target team where relevant and
-   expiry. They use the same server pagination as member rows; the UI never
-   loads an unbounded history then slices it in the browser.
-7. **Send invitation** opens the shared `Dialog` in the header action.
+   expiry. Opening a row offers **Cancel invitation** and relays the target
+   team id to UOA for the authoritative revoke. They use the same server
+   pagination as member rows; the UI never loads an unbounded history then
+   slices it in the browser.
+6. **Send invitation** opens the shared `Dialog` in the header action.
    - In organisation scope, the dialog first requires an explicit target-team
      selection from teams the actor may invite into, then collects the email.
      It never silently uses the session's active team.
@@ -152,6 +157,11 @@ changes Nessie can safely fake.
    endpoints use bidirectional opaque keyset cursors and filtered totals. The
    current forward-only organisation roster and unpaged team invite history
    cannot meet Nessie's standard pagination contract at scale.
+6. **Member editing metadata.** Expose a manager's assignable team-role
+   vocabulary with the team roster (excluding ownership), and expose a selected
+   organisation member's editable workspace memberships. The latter returns
+   only teams where the caller currently holds `members.manage`; Nessie makes
+   every selected-team add/remove through UOA's existing exact-team endpoints.
 
 The UOA work must retain the distinction between `DEACTIVATED` (an
 organisation-wide lifecycle that deactivates/restores all active team
@@ -175,6 +185,9 @@ rename one as the other.
 5. Add per-action visibility, accessible labels, query invalidation and
    mutation handling. Update any affected settings/member documentation with
    the final UOA contract and scope semantics.
+6. Keep tabs compact unless a caller explicitly requests the full-width
+   `TabBar` variant, and mark Team Settings exact so Team Members is the sole
+   selected Team navigation entry.
 
 ## Verification and release gate
 

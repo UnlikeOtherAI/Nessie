@@ -373,10 +373,12 @@ export const paginationKeys = {
 
 export const organizationKeys = {
   current: ['organization', 'current'] as const,
-  invitationTargets: () => [...organizationMembersKey, 'invitation-targets'] as const,
+  invitationTargets: [...organizationMembersKey, 'invitation-targets'] as const,
   memberRoster: (resource: 'members' | 'invitations') =>
     [...organizationMembersKey, resource] as const,
   members: organizationMembersKey,
+  memberWorkspaces: (uoaSub?: string) =>
+    [...organizationMembersKey, uoaSub ?? 'none', 'workspaces'] as const,
 }
 
 export const personalAssistantKeys = {

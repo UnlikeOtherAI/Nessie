@@ -65,10 +65,10 @@ const NOT_LINKED_MESSAGE =
 const NOT_IN_TEAM_MESSAGE =
   'This person has no UnlikeOtherAI avatar in this team'
 
-// UOA's own vocabulary for a team role. "owner" is a transfer-ownership
-// operation upstream, not a role write, so it is not offered here.
+// UOA validates this against the configured, live team-role vocabulary. The
+// roster's `teamRoleOptions` intentionally excludes ownership.
 const TeamRoleBodySchema = z.object({
-  role: z.enum(['admin', 'member']),
+  role: z.string().trim().min(1).max(100).refine((role) => role !== 'owner'),
 })
 
 const CreateMemberInvitationSchema = z.object({

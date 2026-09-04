@@ -247,6 +247,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/settings/team',
         label: 'Settings',
+        exact: true,
         visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
         icon: icon(
           <>

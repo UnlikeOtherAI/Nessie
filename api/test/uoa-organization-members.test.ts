@@ -337,6 +337,100 @@ test('the API relays UOA organization membership decisions instead of local role
   })
 })
 
+test('workspace access is read from UOA and only writes the selected exact teams', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const access = {
+      data: [
+        { id: 'team_product', name: 'Product', hasAccess: true },
+        { id: 'team_design', name: 'Design', hasAccess: false },
+      ],
+      permissions: { changeWorkspaceAccess: true },
+    }
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, (call) => call.method === 'GET' ? json(access) : json({ ok: true })),
+    )
+
+    try {
+      const read = await app.inject({
+        method: 'GET',
+        url: '/api/organization/members/usr_grace/workspaces',
+      })
+      assert.equal(read.statusCode, 200)
+      assert.deepEqual(read.json().data.items, access.data)
+
+      const update = await app.inject({
+        method: 'PUT',
+        url: '/api/organization/members/usr_grace/workspaces',
+        payload: { workspaceIds: ['team_design'] },
+      })
+      assert.equal(update.statusCode, 200)
+      assert.deepEqual(
+        calls.map((call) => `${call.method} ${call.url} ${call.body ?? ''}`.trim()),
+        [
+          `GET ${base}/members/usr_grace/workspaces${query}`,
+          `GET ${base}/members/usr_grace/workspaces${query}`,
+          `POST ${base}/teams/team_design/members${query} {"user_id":"usr_grace"}`,
+          `DELETE ${base}/teams/team_product/members/usr_grace${query}`,
+        ],
+      )
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+test('workspace access never writes a team UOA did not authorize for the caller', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, () => json({
+        data: [{ id: 'team_product', name: 'Product', hasAccess: true }],
+        permissions: { changeWorkspaceAccess: true },
+      })),
+    )
+
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/organization/members/usr_grace/workspaces',
+        payload: { workspaceIds: ['team_secret'] },
+      })
+
+      assert.equal(response.statusCode, 400)
+      assert.equal(calls.length, 1)
+      assert.equal(calls[0]?.method, 'GET')
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+test('an organization invitation revokes through its row target team', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, () => json({ ok: true })),
+    )
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations/invite-1/revoke',
+        payload: { teamId: 'team_product' },
+      })
+      assert.equal(response.statusCode, 200)
+      assert.equal(calls[0]?.method, 'DELETE')
+      assert.equal(calls[0]?.url, `${base}/teams/team_product/invitations/invite-1${query}`)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
 test('owners and admins drive the org-role and activation mutations', async () => {
   for (const role of ['owner', 'admin']) {
     await withUoaEnv(async () => {

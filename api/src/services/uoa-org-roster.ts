@@ -50,6 +50,7 @@ export {
   listMemberInvitationTargets,
   listOrganisationMemberInvitations,
   listOrganisationMembers,
+  listOrganisationMemberWorkspaceAccess,
   updateOrganisationMemberRole,
   withUoaOrgRosterSubjectAssertion,
 } from '@nessie/team-admin'

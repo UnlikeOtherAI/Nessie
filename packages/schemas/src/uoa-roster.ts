@@ -44,6 +44,8 @@ export type MemberRosterPermissions = {
   reactivateMember?: boolean
   viewMemberEmail: boolean
   searchMemberCandidates?: boolean
+  /** UOA's live, assignable team-role vocabulary (never ownership). */
+  teamRoleOptions?: string[]
 }
 
 /** A stateless UOA list response, retaining its keyset pagination contract. */
@@ -67,6 +69,20 @@ export type MemberInvitationTarget = {
   name: string
   slug?: string
   avatarImageUrl?: string
+}
+
+/** An editable team membership at organisation scope; a UOA team is a workspace. */
+export type MemberWorkspaceAccess = {
+  id: string
+  name: string
+  slug?: string
+  avatarImageUrl?: string
+  hasAccess: boolean
+}
+
+export type MemberWorkspaceAccessResponse = {
+  items: MemberWorkspaceAccess[]
+  permissions: { changeWorkspaceAccess: boolean }
 }
 
 export type TeamInvitationRecord = {
