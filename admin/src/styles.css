@@ -85,6 +85,7 @@
   --duration-base: 200ms;
   --easing-standard: ease;
   --desktop-window-control-inactive: #b8b8b8;
+  --desktop-window-layout-scale: 0.5;
   /* Navigation motion. The numbers live in admin/src/navigation/motion.ts
      and are mirrored here for the static poses; a test pins them equal. */
   --nav-duration: 300ms;
@@ -1005,6 +1006,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
    the native Tauri window instead of imitating a browser panel. */
 .desktop-window-layout-popover {
   width: 366px;
+  zoom: var(--desktop-window-layout-scale);
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
   border-radius: 22px;
