@@ -170,6 +170,13 @@ const desktopMail = async ({ browser, fixture }) => {
     await page.getByText('Your email was sent.').waitFor()
     assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/mailbox/mailbox-1/send')), 'mailbox send was not driven')
     assert(!fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/mailbox/mailbox-1/drafts')), 'mailbox incorrectly requested a Gmail-style provider draft')
+
+    fixture.setGmailCapabilities({ canCompose: false, canSend: false })
+    await page.goto(`${adminUrl}/mail/gmail/gmail-1/compose`)
+    await page.getByText('Drafting email is not available for this account.').waitFor()
+    await page.getByRole('button', { name: 'Open mailbox settings' }).waitFor()
+    assert(await page.getByRole('button', { name: 'Send email' }).count() === 0, 'an account without compose capability exposed an active email form')
+    fixture.setGmailCapabilities({ canCompose: true, canSend: true })
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()
@@ -290,6 +297,34 @@ const chatDoorway = async ({ browser, fixture }) => {
   }
 }
 
+const phoneDoorway = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 844, name: 'phone', width: 390 })
+  const { page } = target
+  try {
+    fixture.showDoorway()
+    await page.addInitScript(() => {
+      sessionStorage.setItem('mail-doorway-offered:88888888-8888-4888-8888-888888888888', 'offered')
+    })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const opener = page.getByRole('button', { name: 'Open mail' })
+    await opener.waitFor()
+    await opener.click()
+    const dialog = page.getByRole('dialog', { name: 'Email ready to review' })
+    await dialog.waitFor()
+    const bounds = await dialog.boundingBox()
+    assert((bounds?.width ?? 0) >= 350, `phone doorway is not a useful full-surface Flow (${bounds?.width ?? 0}px)`)
+    await page.locator('body').evaluate((body) => { body.style.zoom = '200%' })
+    await shot(page, 'phone-doorway-200-percent-reduced-motion')
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'detached' })
+    assert(await opener.evaluate((element) => document.activeElement === element), 'phone doorway Back did not restore focus to its opener')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
 const main = async () => {
   await rm(screenshots, { force: true, recursive: true })
   await mkdir(screenshots, { recursive: true })
@@ -300,6 +335,7 @@ const main = async () => {
     await desktopMail({ browser, fixture })
     await responsiveMail({ browser, fixture })
     await chatDoorway({ browser, fixture })
+    await phoneDoorway({ browser, fixture })
   } finally {
     await browser.close()
     await server.stop()
