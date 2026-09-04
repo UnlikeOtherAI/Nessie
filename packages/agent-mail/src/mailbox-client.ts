@@ -276,20 +276,29 @@ export const listMailboxMailThreads = async (
   const uids = nativeGroups
     ? nativeGroups.flat()
     : await session.searchUids(criteria)
-  const pageUnits = nativeGroups
-    ? nativeGroups.slice(cursor.offset, cursor.offset + input.pageSize)
+  const orderedNativeGroups = nativeGroups?.sort(
+    (left, right) => Math.max(...right) - Math.max(...left),
+  )
+  const pageUnits = orderedNativeGroups
+    ? orderedNativeGroups.slice(cursor.offset, cursor.offset + input.pageSize)
     : uids.slice(cursor.offset, cursor.offset + input.pageSize).map((uid) => [uid])
-  const pageUids = [...new Set(pageUnits.flat())].slice(0, HEADER_WINDOW_LIMIT)
+  const pageUids = [...new Set(pageUnits.flat())]
+    .sort((left, right) => right - left)
+    .slice(0, HEADER_WINDOW_LIMIT)
   const fetched = await session.fetchMessages(pageUids, 'headers')
   const headers = await Promise.all(fetched.map((message) =>
     summarizeThreadHeader(message.uid, message.raw, message.flags)))
-  const groups: Array<{ id?: string; members: ThreadHeader[] }> = nativeGroups
+  const groups: Array<{ id?: string; members: ThreadHeader[]; messageCount: number }> = orderedNativeGroups
     ? pageUnits.map((uids) => ({
         members: headers.filter((header) => uids.includes(header.uid)),
+        messageCount: uids.length,
       }))
-    : threadHeaders(headers, input.accountId, folder, selected.uidValidity)
+    : threadHeaders(headers, input.accountId, folder, selected.uidValidity).map((group) => ({
+        ...group,
+        messageCount: group.members.length,
+      }))
   const rows = groups
-    .map(({ id, members }) => {
+    .map(({ id, members, messageCount }) => {
       const fallback = members[0]
       const threadId = id ?? (fallback
         ? mailboxThreadToken({
@@ -305,7 +314,7 @@ export const listMailboxMailThreads = async (
         from: newest.from,
         hasAttachments: members.some((member) => member.hasAttachments),
         id: threadId,
-        messageCount: members.length,
+        messageCount,
         receivedAt: newest.date,
         snippet: newest.snippet,
         subject: newest.subject,
@@ -315,7 +324,7 @@ export const listMailboxMailThreads = async (
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
     .sort((left, right) => (right.receivedAt ?? '').localeCompare(left.receivedAt ?? ''))
   const nextOffset = cursor.offset + pageUnits.length
-  const totalUnits = nativeGroups?.length ?? uids.length
+  const totalUnits = orderedNativeGroups?.length ?? uids.length
   return {
     items: rows,
     ...(nextOffset < totalUnits
