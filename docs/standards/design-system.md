@@ -44,12 +44,14 @@ summary and points here; **this file is the rule**.
   that are part of Projects, Knowledge, or Channels use `true`, so the shared
   viewport keeps its horizontal-scroll behaviour without leaking an expand
   control into operational screens.
-- **One tab bar, everywhere.** Every single-select strip in the admin — detail
-  tabs, page sections, and filter segments — is
-  `components/primitives/TabBar.tsx` (a single sliding pill, `role="tablist"`
-  or `role="radiogroup"`). Its state model — a URL param written with
-  `replace`, never a history entry — and the rule against a tenth fork live in
-  [docs/navigation/overview.md](../navigation/overview.md).
+- **One segmented strip, everywhere.** Every compact single-select strip in
+  the admin — detail tabs, page sections, filter segments, and inline form
+  choices — is `components/primitives/TabBar.tsx` (a single sliding pill,
+  `role="tablist"` or `role="radiogroup"`). `ChoiceGroup` delegates its inline
+  form variant to it; explanatory card choices remain cards. Page and filter
+  state lives in a URL param written with `replace`, never a history entry;
+  transient form values do not. The navigation rule against another fork lives
+  in [docs/navigation/overview.md](../navigation/overview.md).
 - **One identity picture, one shape, one source.** Every avatar in the admin is
   `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
   for its kind; a call site says what it depicts and never assembles a tile. Its

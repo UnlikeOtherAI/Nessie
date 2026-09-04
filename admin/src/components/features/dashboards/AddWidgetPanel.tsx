@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react'
 import type { DashboardTone, DashboardWidgetKind } from '@nessie/schemas'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useDashboardSources, type DashboardSourceRecord } from '../../../facades/dashboards/hooks'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
 import { SidePanel } from '../../shared/SidePanel'
 
 const CATALOGUE: { kind: DashboardWidgetKind; question: string; label: string }[] = [
@@ -236,25 +237,15 @@ export const AddWidgetPanel = ({
               </Field>
             ) : null}
 
-            <Field label="Tone">
-              <div className="flex flex-wrap gap-1">
-                {TONES.map((candidate) => (
-                  <button
-                    className={[
-                      'rounded px-2 py-1 text-[11px] capitalize',
-                      tone === candidate
-                        ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-                        : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx2)]',
-                    ].join(' ')}
-                    key={candidate}
-                    onClick={() => setTone(candidate)}
-                    type="button"
-                  >
-                    {candidate}
-                  </button>
-                ))}
-              </div>
-            </Field>
+            <ChoiceGroup
+              label="Tone"
+              onChange={setTone}
+              options={TONES.map((candidate) => ({
+                label: candidate,
+                value: candidate,
+              }))}
+              value={tone}
+            />
 
             {error ? (
               <p className="text-xs text-[color:var(--danger-text)]">

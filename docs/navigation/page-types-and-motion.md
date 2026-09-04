@@ -114,12 +114,15 @@ through. The registry folds all seven into one `tabHost` identity and they
 render the same element, so React reconciles one `ProjectView` across them: the
 switch swaps the section without remounting the page or animating a layer.
 
-**Three deliberate non-hosts**, each recorded where it stands: the scope choice
-in `AppConnectDialog` and the key scope in `AppSecretDialog` are fields of a
-form inside a modal — answered once and submitted, so a URL param would outlive
-the dialog and collide with the tab of the page it was opened over; and the
-top-bar search overlay's mode stays a device preference, because that overlay
-floats over whatever route the reader is on.
+**Transient radio strips are not tab hosts.** A compact form choice may render
+the shared `TabBar` in `radiogroup` mode so it gets the same sliding selection
+pill and keyboard behaviour without becoming a URL-backed page section.
+`ChoiceGroup` is that form wrapper; its card variant remains a native radio
+field. The scope choice in `AppConnectDialog` and the key scope in
+`AppSecretDialog` are answered once and submitted, so a URL param would
+outlive the dialog and collide with the tab of the page it was opened over.
+The top-bar search overlay's mode likewise stays a device preference because
+the overlay floats over whatever route the reader is on.
 
 Pinned by `admin/test/tab-param.test.ts`: the hook's three promises under a
 `MemoryRouter`, the project switch's `replace` and single mount, the host/param
@@ -190,4 +193,3 @@ One spec, `admin/src/navigation/motion.ts`:
   viewport's fallback timer.
 - The blanket `prefers-reduced-motion` CSS rule stays as the baseline for
   non-navigation CSS motion; navigation reads the query in JS.
-

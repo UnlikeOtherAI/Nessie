@@ -12,6 +12,8 @@ import {
 export type TabBarItem<T extends string> = {
   /** Rendered as a dimmed `(n)` after the label — the distribution at a glance. */
   count?: number
+  /** A radio-style choice that is currently unavailable. */
+  disabled?: boolean
   icon?: ReactNode
   label: string
   testId?: string
@@ -33,7 +35,8 @@ type TabBarProps<T extends string> = {
   onChange: (value: T) => void
   /**
    * `tablist` when the strip switches panels, `radiogroup` when it narrows a
-   * list. The look is identical; only what a screen reader announces differs.
+   * list or chooses a compact form value. The look is identical; only what a
+   * screen reader announces differs.
    */
   role?: 'tablist' | 'radiogroup'
   size?: 'sm' | 'md'
@@ -43,10 +46,10 @@ type TabBarProps<T extends string> = {
 type Pill = { animate: boolean; left: number; width: number }
 
 /**
- * The one single-select strip in the admin: channel/detail tabs, page sections,
- * and filter segments. The selected item is a single pill that *slides* to
- * whatever was tapped rather than a per-item background that blinks on and off,
- * so a tab change reads as one object moving.
+ * The one compact, single-select strip in the admin: channel/detail tabs, page
+ * sections, filters, and compact form choices. The selected item is a single
+ * pill that *slides* to whatever was tapped rather than a per-item background
+ * that blinks on and off, so a selection change reads as one object moving.
  */
 export const TabBar = <T extends string>({
   ariaLabel,
@@ -104,21 +107,41 @@ export const TabBar = <T extends string>({
     return () => observer.disconnect()
   }, [items, measure])
 
-  const move = (event: KeyboardEvent<HTMLDivElement>, step: number) => {
+  const selectItem = (item: TabBarItem<T>) => {
+    onChange(item.value)
+    itemRefs.current.get(item.value)?.focus()
+  }
+
+  const move = (event: KeyboardEvent<HTMLDivElement>, step: -1 | 1) => {
     event.preventDefault()
     const index = items.findIndex((item) => item.value === value)
     if (index < 0) return
-    const next = items[(index + step + items.length) % items.length]
-    if (!next) return
-    onChange(next.value)
-    itemRefs.current.get(next.value)?.focus()
+    for (let offset = 1; offset <= items.length; offset += 1) {
+      const next = items[(index + step * offset + items.length) % items.length]
+      if (next && !next.disabled) {
+        selectItem(next)
+        return
+      }
+    }
+  }
+
+  const moveToBoundary = (event: KeyboardEvent<HTMLDivElement>, step: -1 | 1) => {
+    event.preventDefault()
+    const start = step === 1 ? 0 : items.length - 1
+    for (let index = start; index >= 0 && index < items.length; index += step) {
+      const item = items[index]
+      if (item && !item.disabled) {
+        selectItem(item)
+        return
+      }
+    }
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') move(event, 1)
     else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') move(event, -1)
-    else if (event.key === 'Home') move(event, -items.length)
-    else if (event.key === 'End') move(event, items.length - 1)
+    else if (event.key === 'Home') moveToBoundary(event, 1)
+    else if (event.key === 'End') moveToBoundary(event, -1)
   }
 
   const isTabs = role === 'tablist'
@@ -148,6 +171,7 @@ export const TabBar = <T extends string>({
             aria-selected={isTabs ? selected : undefined}
             className="tabbar-item"
             data-testid={item.testId}
+            disabled={item.disabled}
             id={isTabs && idPrefix ? `${idPrefix}-tab-${item.value}` : undefined}
             key={item.value}
             onClick={() => {

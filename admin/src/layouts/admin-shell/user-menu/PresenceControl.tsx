@@ -1,9 +1,12 @@
 import type { PresenceManualState } from '../../../lib/api-client'
 import { PresenceBadge } from '../../../components/primitives/PresenceBadge'
+import { TabBar } from '../../../components/primitives/TabBar'
 import { useSelfPresence } from '../../../providers/PresenceProvider'
 import { useFocusMode } from '../../../providers/FocusModeProvider'
 
-type Choice = { key: string; label: string; manual: PresenceManualState | null }
+type PresenceChoiceKey = 'active' | 'auto' | 'away'
+
+type Choice = { key: PresenceChoiceKey; label: string; manual: PresenceManualState | null }
 
 const CHOICES: Choice[] = [
   { key: 'auto', label: 'Auto', manual: null },
@@ -24,7 +27,11 @@ export const PresenceControl = () => {
   const { focusModeEnabled } = useFocusMode()
   if (!self) return null
 
-  const current = self.manual ?? 'auto'
+  const current: PresenceChoiceKey = self.manual ?? 'auto'
+  const chooseAvailability = (key: PresenceChoiceKey) => {
+    const choice = CHOICES.find((candidate) => candidate.key === key)
+    if (choice) self.setManual(choice.manual)
+  }
 
   return (
     <div className="px-2 py-1.5">
@@ -32,27 +39,19 @@ export const PresenceControl = () => {
         <PresenceBadge focusModeEnabled={focusModeEnabled} ringColor="var(--panel)" size={9} state={self.state} />
         <span>Availability — {STATE_LABEL[self.state] ?? 'Active'}</span>
       </div>
-      <div className="flex gap-1 rounded-lg bg-[color:var(--overlay-weak)] p-0.5">
-        {CHOICES.map((choice) => {
-          const active = current === choice.key
-          return (
-            <button
-              className={[
-                'flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                active
-                  ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-                  : 'text-[color:var(--tx2)] hover:text-[color:var(--tx)]',
-              ].join(' ')}
-              disabled={self.pending}
-              key={choice.key}
-              onClick={() => self.setManual(choice.manual)}
-              type="button"
-            >
-              {choice.label}
-            </button>
-          )
-        })}
-      </div>
+      <TabBar
+        ariaLabel="Availability"
+        fullWidth
+        items={CHOICES.map((choice) => ({
+          disabled: self.pending,
+          label: choice.label,
+          value: choice.key,
+        }))}
+        onChange={chooseAvailability}
+        role="radiogroup"
+        size="sm"
+        value={current}
+      />
     </div>
   )
 }

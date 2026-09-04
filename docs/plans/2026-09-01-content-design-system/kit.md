@@ -104,7 +104,7 @@ from the required `total`, not from whichever slice the browser currently has.
 | `shared/FormControls` — `Input`, `Select`, `Textarea` | `size`: `default` or `compact`; `mono`. Never hand-roll `.admin-input`. |
 | `primitives/Switch` | One thing on or off. |
 | `primitives/Checkbox` | Several things out of many. |
-| `shared/ChoiceGroup` | Pick exactly one, in a form. Real radios, `fieldset`/`legend`. `variant`: `inline` or `card`. Not `TabBar` — that switches a view. |
+| `shared/ChoiceGroup` | Pick exactly one in a form, inside a `fieldset`/`legend`. Its compact `inline` variant renders the shared sliding `TabBar` in `radiogroup` mode; its explanatory `card` variant stays native radios. |
 | `shared/FormActions` — `FormActions` | The action row: right-aligned, primary rightmost, Cancel to its left only when there is an edit to discard. `destructive` pins a record-level delete to the left edge. |
 | `shared/FormActions` — `FormError`, `FormSuccess` | Whole-form outcome. Both render nothing when empty, so write them unconditionally and the failure path cannot be forgotten. |
 | `facades/form-errors` — `toFormErrors` | Maps a rejected request onto `{ fieldErrors, formError }`. |
