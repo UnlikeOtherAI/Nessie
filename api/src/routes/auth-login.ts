@@ -36,7 +36,6 @@ import {
 import { UoaUnrecognizedRoleError } from '../services/uoa-roles.js'
 import { resolveUoaTeamContext } from '../services/team-context.js'
 import { provisionAutomaticMembershipAtLogin } from '../services/automatic-membership-login.js'
-import { refreshUoaSession } from '../services/uoa-session.js'
 import { UoaSubjectConflictError } from '../services/team-principal.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
@@ -144,29 +143,15 @@ export const registerAuthLoginRoute = (
           throw new Error('UnlikeOtherAI did not return a renewable session proof.')
         }
         // A matching address is never trusted from Nessie's exchanged profile.
-        // UOA re-attests the stable subject's *currently verified* email, then
-        // grants only member access. If exactly one new team applies, refresh
-        // into that UOA-selected team before any local context is resolved.
+        // Provisioning is best-effort and must never change the team UOA chose
+        // for this login: selecting a different ambient team is a separate,
+        // explicit UOA action. A UOA outage also cannot turn a valid sign-in
+        // into a failed sign-in.
         if (uoaSession && !recoveryClaims) {
-          const automaticTargets = await provisionAutomaticMembershipAtLogin(
-            prisma,
-            uoaSession.identity.externalSubject,
-          )
-          const current = resolveExternalTeamSelection(uoaSession.identity.team)
-          const automaticTarget = automaticTargets.length === 1 ? automaticTargets[0] : undefined
-          if (automaticTarget && (current.organizationId !== automaticTarget.externalOrgId || current.teamId !== automaticTarget.externalTeamId)) {
-            uoaSession = await refreshUoaSession({
-              configUrl: uoaSession.configUrl,
-              expectedIdentity: {
-                organizationId: automaticTarget.externalOrgId,
-                subject: uoaSession.identity.externalSubject,
-                teamId: automaticTarget.externalTeamId,
-                tokenVersion: uoaSession.identity.uoaTokenVersion,
-              },
-              refreshToken: uoaSession.refreshToken,
-              teamSwitch: { organizationId: automaticTarget.externalOrgId, teamId: automaticTarget.externalTeamId },
-            })
-            identity = uoaSession.identity
+          try {
+            await provisionAutomaticMembershipAtLogin(prisma, uoaSession.identity.externalSubject)
+          } catch (error) {
+            request.log.warn({ err: error }, 'automatic_membership_login_provisioning_failed')
           }
         }
         const verifiedUoaTeam = uoaSession

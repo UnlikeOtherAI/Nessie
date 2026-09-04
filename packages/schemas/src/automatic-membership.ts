@@ -38,7 +38,26 @@ export const AutomaticMembershipRuleSchema = z.object({
     grantedCount: z.number().int().nonnegative(),
     failedCount: z.number().int().nonnegative(),
     nextRetryAt: z.string().datetime().nullable(),
+    updatedAt: z.string().datetime(),
   }).nullable(),
+  auditEvents: z.array(z.object({
+    id: z.string().uuid(),
+    action: z.string(),
+    outcome: z.string(),
+    createdAt: z.string().datetime(),
+  })),
+  // Lifecycle authority is claim-sensitive. A team administrator can manage
+  // an unshared team claim, but must not be offered a control that the server
+  // will reject once another rule shares that claim.
+  capabilities: z.object({
+    edit: z.boolean(),
+    verify: z.boolean(),
+    rotate: z.boolean(),
+    activate: z.boolean(),
+    suspend: z.boolean(),
+    revoke: z.boolean(),
+    release: z.boolean(),
+  }),
 })
 export type AutomaticMembershipRule = z.infer<typeof AutomaticMembershipRuleSchema>
 
@@ -47,7 +66,13 @@ export const AutomaticMembershipRulesResponseSchema = z.object({
   killSwitchEnabled: z.boolean(),
   permissions: z.object({ manageRules: z.boolean(), manageClaim: z.boolean() }),
   rules: z.array(AutomaticMembershipRuleSchema),
-  auditEvents: z.array(z.object({ action: z.string(), ruleId: z.string().uuid().nullable(), outcome: z.string(), createdAt: z.string().datetime() })),
+  auditEvents: z.array(z.object({
+    id: z.string().uuid(),
+    action: z.string(),
+    ruleId: z.string().uuid().nullable(),
+    outcome: z.string(),
+    createdAt: z.string().datetime(),
+  })),
 })
 export type AutomaticMembershipRulesResponse = z.infer<typeof AutomaticMembershipRulesResponseSchema>
 

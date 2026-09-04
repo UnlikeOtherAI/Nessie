@@ -13,7 +13,6 @@ import {
   useUpdateAutomaticMembershipRule,
   useVerifyAutomaticMembershipRule,
 } from '../../facades/users/automatic-membership'
-import { Checkbox } from '../../components/primitives/Checkbox'
 import { Pill, type PillTone } from '../../components/primitives/Pill'
 import { Card } from '../../components/shared/Card'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
@@ -24,6 +23,7 @@ import { Input } from '../../components/shared/FormControls'
 import { FormField } from '../../components/shared/FormField'
 import { QueryState } from '../../components/shared/QueryState'
 import { useToasts } from '../../providers/ToastProvider'
+import { AutomaticMembershipBackfillSummary, AutomaticMembershipTeamMapping } from './AutomaticMembershipRuleDetails'
 
 type DnsInstruction = { name: string; value: string } | null
 type PendingAction = 'activate' | 'suspend' | 'revoke' | 'release'
@@ -53,38 +53,6 @@ const DnsInstructions = ({ instruction }: { instruction: DnsInstruction }) => {
       </dl>
       <button className="admin-button admin-button-secondary admin-button-compact mt-3" onClick={() => void navigator.clipboard?.writeText(instruction.value)} type="button">Copy value</button>
     </div>
-  )
-}
-
-const TeamMapping = ({
-  teams,
-  selected,
-  setSelected,
-}: {
-  teams: ReturnType<typeof useAutomaticMembershipTeams>
-  selected: string[]
-  setSelected: (next: string[]) => void
-}) => {
-  if (teams.isLoading) return <p className="text-sm text-[color:var(--tx3)]">Loading teams available to this organization…</p>
-  if (teams.isError) return <div className="text-sm text-[color:var(--danger-text)]">Teams could not be loaded. <button className="underline" onClick={() => void teams.refetch()} type="button">Retry</button></div>
-  if (!teams.data?.teams.length) return <p className="text-sm text-[color:var(--danger-text)]">There are no eligible teams. Create a team first, then return to map this domain.</p>
-  return (
-    <fieldset>
-      <legend className="text-sm font-medium">Teams to grant after sign-in</legend>
-      <p className="mt-1 text-sm text-[color:var(--tx2)]">Matching verified users receive only normal member access to the checked teams.</p>
-      <div className="mt-3 grid gap-2">
-        {teams.data.teams.map((team) => (
-          <Checkbox
-            checked={selected.includes(team.id)}
-            key={team.id}
-            label={team.name}
-            onChange={() => setSelected(selected.includes(team.id)
-              ? selected.filter((id) => id !== team.id)
-              : [...selected, team.id])}
-          />
-        ))}
-      </div>
-    </fieldset>
   )
 }
 
@@ -157,24 +125,11 @@ const RuleEditorDialog = ({
         {initialRule ? <FormField label="Email domain"><Input disabled value={initialRule.domain} /></FormField> : <FormField label="Email domain"><Input autoComplete="off" onChange={(event) => setDomain(event.target.value)} placeholder="example.com" value={domain} /></FormField>}
         <p className="text-xs text-[color:var(--tx3)]">Exact domains only. A domain never authenticates a person; UOA must assert a currently verified email at sign-in.</p>
         <FormField label="Notification email (optional)"><Input onChange={(event) => setNotificationEmail(event.target.value)} type="email" value={effectiveEmail} /></FormField>
-        {scope === 'organization' ? <TeamMapping selected={effectiveTeams} setSelected={setSelectedTeams} teams={teams} /> : <p className="text-sm text-[color:var(--tx2)]">Matching verified users receive normal member access to this team only.</p>}
+        {scope === 'organization' ? <AutomaticMembershipTeamMapping selected={effectiveTeams} setSelected={setSelectedTeams} teams={teams} /> : <p className="text-sm text-[color:var(--tx2)]">Matching verified users receive normal member access to this team only.</p>}
         <FormError>{error}</FormError>
         <FormActions><button className="admin-button admin-button-primary" disabled={create.isPending || update.isPending || (!isEdit && !domain.trim()) || (scope === 'organization' && (!effectiveTeams.length || teams.isLoading || teams.isError || !teams.data?.teams.length))} type="submit">{isEdit ? 'Save rule' : 'Create DNS challenge'}</button></FormActions>
       </form>
     </Dialog>
-  )
-}
-
-const BackfillSummary = ({ rule }: { rule: AutomaticMembershipRuleView }) => {
-  const backfill = rule.backfill
-  if (!backfill) return null
-  return (
-    <div className="mt-3 border-t border-[color:var(--border)] pt-3 text-sm text-[color:var(--tx2)]">
-      <p className="font-medium text-[color:var(--tx)]">Reconciliation</p>
-      <p className="mt-1">{backfill.status.replace(/_/g, ' ')} · {backfill.processedCount} processed · {backfill.grantedCount} granted · {backfill.failedCount} failed</p>
-      {backfill.nextRetryAt ? <p>Next retry: {dateLabel(backfill.nextRetryAt)}</p> : null}
-      <p className="mt-1 text-xs text-[color:var(--tx3)]">Progress is aggregate only. Matching people stay in UOA and are not listed here.</p>
-    </div>
   )
 }
 
@@ -184,7 +139,7 @@ const AuditHistory = ({ rule }: { rule: AutomaticMembershipRuleView }) => {
     <div className="mt-3 border-t border-[color:var(--border)] pt-3 text-sm">
       <p className="font-medium">Recent audit history</p>
       <ul className="mt-2 space-y-1 text-[color:var(--tx2)]">
-        {rule.auditEvents.slice(0, 5).map((event) => <li key={event.id}>{dateLabel(event.createdAt, 'Unknown time')} · {event.action.replace(/_/g, ' ')}{event.detail ? ` · ${event.detail}` : ''}</li>)}
+        {rule.auditEvents.slice(0, 5).map((event) => <li key={event.id}>{dateLabel(event.createdAt, 'Unknown time')} · {event.action.replace(/_/g, ' ')}</li>)}
       </ul>
     </div>
   )
@@ -192,7 +147,6 @@ const AuditHistory = ({ rule }: { rule: AutomaticMembershipRuleView }) => {
 
 const RuleRow = ({
   canManage,
-  canManageClaim,
   onConfirm,
   onEdit,
   onInstruction,
@@ -200,7 +154,6 @@ const RuleRow = ({
   scope,
 }: {
   canManage: boolean
-  canManageClaim: boolean
   onConfirm: (next: ConfirmingAction) => void
   onEdit: (rule: AutomaticMembershipRuleView) => void
   onInstruction: (next: DnsInstruction) => void
@@ -237,16 +190,16 @@ const RuleRow = ({
       </dl>
       <DnsInstructions instruction={rule.dns ?? null} />
       {scope === 'organization' && rule.targetTeams?.length ? <p className="mt-3 text-sm text-[color:var(--tx2)]"><span className="font-medium text-[color:var(--tx)]">Mapped teams: </span>{rule.targetTeams.map((team) => team.name).join(', ')}</p> : null}
-      <BackfillSummary rule={rule} />
+      <AutomaticMembershipBackfillSummary rule={rule} />
       <AuditHistory rule={rule} />
       {canManage ? <div className="mt-3 flex flex-wrap gap-2">
-        <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy || rule.state === 'revoked'} onClick={() => onEdit(rule)} type="button">Edit mapping</button>
-        {canManageClaim ? <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy || rule.state === 'revoked'} onClick={() => void run('DNS verification requested', () => verify.mutateAsync({ ruleId: rule.id }))} type="button">Verify DNS</button> : null}
-        {canManageClaim ? <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy || rule.state === 'revoked'} onClick={() => void run('DNS challenge rotated', () => rotate.mutateAsync({ ruleId: rule.id }))} type="button">Rotate challenge</button> : null}
-        <button className="admin-button admin-button-primary admin-button-compact" disabled={rule.state === 'active' || rule.state === 'revoked' || rule.claimState !== 'verified'} onClick={() => onConfirm({ action: 'activate', rule })} type="button">Activate and backfill</button>
-        <button className="admin-button admin-button-secondary admin-button-compact" disabled={rule.state !== 'active'} onClick={() => onConfirm({ action: 'suspend', rule })} type="button">Suspend provisioning</button>
-        <button className="admin-button admin-button-danger admin-button-compact" disabled={rule.state === 'revoked'} onClick={() => onConfirm({ action: 'revoke', rule })} type="button">Revoke rule</button>
-        {canManageClaim && rule.state === 'revoked' ? <button className="admin-button admin-button-danger admin-button-compact" onClick={() => onConfirm({ action: 'release', rule })} type="button">Release domain</button> : null}
+        {rule.capabilities.edit ? <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy} onClick={() => onEdit(rule)} type="button">Edit mapping</button> : null}
+        {rule.capabilities.verify ? <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy} onClick={() => void run('DNS verification requested', () => verify.mutateAsync({ ruleId: rule.id }))} type="button">Verify DNS</button> : null}
+        {rule.capabilities.rotate ? <button className="admin-button admin-button-secondary admin-button-compact" disabled={busy} onClick={() => void run('DNS challenge rotated', () => rotate.mutateAsync({ ruleId: rule.id }))} type="button">Rotate challenge</button> : null}
+        {rule.capabilities.activate ? <button className="admin-button admin-button-primary admin-button-compact" onClick={() => onConfirm({ action: 'activate', rule })} type="button">Activate and backfill</button> : null}
+        {rule.capabilities.suspend ? <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => onConfirm({ action: 'suspend', rule })} type="button">Suspend provisioning</button> : null}
+        {rule.capabilities.revoke ? <button className="admin-button admin-button-danger admin-button-compact" onClick={() => onConfirm({ action: 'revoke', rule })} type="button">Revoke rule</button> : null}
+        {rule.capabilities.release ? <button className="admin-button admin-button-danger admin-button-compact" onClick={() => onConfirm({ action: 'release', rule })} type="button">Release domain</button> : null}
       </div> : null}
       <FormError className="mt-2">{error}</FormError>
     </Card>
@@ -272,7 +225,6 @@ export const AutomaticMembershipRulesPanel = ({ scope }: { scope: MemberRosterSc
   const [confirming, setConfirming] = useState<ConfirmingAction>(null)
   const [instruction, setInstruction] = useState<DnsInstruction>(null)
   const canManage = rules.data?.permissions?.manageRules === true
-  const canManageClaim = rules.data?.permissions?.manageClaim === true
   const actionPending = activate.isPending || suspend.isPending || revoke.isPending || release.isPending
   const applyConfirmedAction = async () => {
     if (!confirming) return
@@ -297,7 +249,7 @@ export const AutomaticMembershipRulesPanel = ({ scope }: { scope: MemberRosterSc
         {!rules.data?.featureEnabled ? <div className="border-y border-[color:var(--border)] py-3 text-sm text-[color:var(--tx2)]">Automatic provisioning is disabled for this deployment. Rules cannot activate until an administrator enables the feature.</div> : null}
         {!canManage ? <div className="border-y border-[color:var(--border)] py-3 text-sm text-[color:var(--tx2)]" role="status">Only an authorized {scope === 'organization' ? 'organization' : 'team'} owner or administrator can manage automatic login rules.</div> : null}
         <DnsInstructions instruction={instruction} />
-        {rules.data?.rules.length ? <div className="grid gap-3">{rules.data.rules.map((rule) => <RuleRow canManage={canManage} canManageClaim={canManageClaim} key={rule.id} onConfirm={setConfirming} onEdit={setEditorRule} onInstruction={setInstruction} rule={rule} scope={scope} />)}</div> : <EmptyState title="No automatic login rules">{canManage ? 'Add and verify a company email domain to configure normal member access after sign-in.' : 'There are no automatic login rules to view.'}</EmptyState>}
+        {rules.data?.rules.length ? <div className="grid gap-3">{rules.data.rules.map((rule) => <RuleRow canManage={canManage} key={rule.id} onConfirm={setConfirming} onEdit={setEditorRule} onInstruction={setInstruction} rule={rule} scope={scope} />)}</div> : <EmptyState title="No automatic login rules">{canManage ? 'Add and verify a company email domain to configure normal member access after sign-in.' : 'There are no automatic login rules to view.'}</EmptyState>}
       </>}</QueryState>
       <RuleEditorDialog initialRule={editorRule === 'new' ? null : editorRule} onClose={() => setEditorRule(null)} onInstruction={setInstruction} open={editorRule !== null} scope={scope} />
       {copy ? <ConfirmDialog body={copy.body} confirmLabel={copy.confirmLabel} destructive={confirming?.action !== 'activate'} onCancel={() => setConfirming(null)} onConfirm={() => void applyConfirmedAction()} open title={copy.title} pending={actionPending} /> : null}

@@ -46,7 +46,15 @@ const key = (scope: MemberRosterScope) => ['automatic-membership', scope] as con
 
 export const useAutomaticMembershipRules = (scope: MemberRosterScope) => {
   const api = useApiClient()
-  return useQuery({ queryKey: key(scope), queryFn: () => api.get<AutomaticMembershipRulesView>(path(scope)) })
+  return useQuery({
+    queryKey: key(scope),
+    queryFn: () => api.get<AutomaticMembershipRulesView>(path(scope)),
+    // Only running/queued reconciliation needs refresh; completed history is
+    // stable and must not turn the Members page into a background poller.
+    refetchInterval: (query) => query.state.data?.rules.some((rule) =>
+      rule.backfill?.status === 'queued' || rule.backfill?.status === 'running',
+    ) ? 5_000 : false,
+  })
 }
 
 const useRuleMutation = <TInput, TResult>(scope: MemberRosterScope, run: (api: ReturnType<typeof useApiClient>, input: TInput) => Promise<TResult>) => {

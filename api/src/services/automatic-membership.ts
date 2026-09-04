@@ -111,10 +111,19 @@ export const listAutomaticMembershipRules = async (prisma: PrismaClient, organiz
     include: { claim: true, targets: { include: { team: { select: { name: true } } } }, backfillRuns: { orderBy: { createdAt: 'desc' }, take: 1 } }, orderBy: { createdAt: 'desc' },
   })
   const ruleIds = rules.map((rule) => rule.id)
+  // A domain claim may be shared by an organisation rule and several team
+  // rules. Claim-changing controls are safe for a team administrator only
+  // while that team rule is the sole live rule on the claim.
+  const claimRuleCounts = rules.length === 0 ? [] : await prisma.automaticMembershipRule.groupBy({
+    by: ['claimId'],
+    where: { claimId: { in: rules.map((rule) => rule.claimId) }, state: { not: 'revoked' } },
+    _count: { _all: true },
+  })
+  const liveRulesByClaim = new Map(claimRuleCounts.map((entry) => [entry.claimId, entry._count._all]))
   const audits = ruleIds.length === 0 ? [] : await prisma.auditLog.findMany({
     where: { organizationId, resourceType: 'automatic_membership_rule', resourceId: { in: ruleIds } },
     orderBy: { createdAt: 'desc' }, take: 20,
-    select: { action: true, resourceId: true, outcome: true, createdAt: true },
+    select: { id: true, action: true, resourceId: true, outcome: true, createdAt: true },
   })
   const dns = new Map<string, { name: string; value: string }>()
   if (authSecret) for (const rule of rules) {
@@ -122,16 +131,31 @@ export const listAutomaticMembershipRules = async (prisma: PrismaClient, organiz
   }
   return {
     featureEnabled: automaticMembershipEnabled(), killSwitchEnabled: automaticMembershipKillSwitchEnabled(),
-    permissions: { manageRules: true, manageClaim: scope === 'organization' },
-    rules: rules.map((rule) => ({
+    permissions: { manageRules: true, manageClaim: rules.some((rule) => rule.scope === 'organization' || (liveRulesByClaim.get(rule.claimId) ?? 0) <= 1) },
+    rules: rules.map((rule) => {
+      const liveRuleCount = liveRulesByClaim.get(rule.claimId) ?? 0
+      const mayManageClaim = rule.scope === 'organization' || liveRuleCount <= 1
+      return ({
       ...presentRule(rule), claimId: rule.claimId, dns: dns.get(rule.id) ?? null,
       backfill: rule.backfillRuns[0] ? {
         status: rule.backfillRuns[0].status, processedCount: rule.backfillRuns[0].attemptedCount,
         grantedCount: rule.backfillRuns[0].grantedCount, failedCount: rule.backfillRuns[0].failureCount,
         nextRetryAt: rule.backfillRuns[0].nextAttemptAt?.toISOString() ?? null,
+        updatedAt: rule.backfillRuns[0].updatedAt.toISOString(),
       } : null,
-    })),
-    auditEvents: audits.map((entry) => ({ action: entry.action, ruleId: entry.resourceId, outcome: entry.outcome, createdAt: entry.createdAt.toISOString() })),
+      auditEvents: audits.filter((entry) => entry.resourceId === rule.id).map((entry) => ({ id: entry.id, action: entry.action, outcome: entry.outcome, createdAt: entry.createdAt.toISOString() })),
+      capabilities: {
+        edit: rule.state !== 'revoked',
+        verify: rule.state !== 'revoked',
+        rotate: rule.state !== 'revoked' && mayManageClaim,
+        activate: automaticMembershipEnabled() && !automaticMembershipKillSwitchEnabled() && rule.state !== 'active' && rule.state !== 'revoked' && rule.claim.state === 'verified',
+        suspend: rule.state === 'active',
+        revoke: rule.state !== 'revoked',
+        release: rule.state === 'revoked' && liveRuleCount === 0 && mayManageClaim,
+      },
+    })
+    }),
+    auditEvents: audits.map((entry) => ({ id: entry.id, action: entry.action, ruleId: entry.resourceId, outcome: entry.outcome, createdAt: entry.createdAt.toISOString() })),
   }
 }
 

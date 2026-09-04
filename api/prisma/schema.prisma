@@ -1617,6 +1617,7 @@ model AutomaticMembershipDomainClaim {
   rules                    AutomaticMembershipRule[]
 
   @@index([organizationId, state])
+  @@index([state, verificationExpiresAt])
   @@map("automatic_membership_domain_claims")
 }
 

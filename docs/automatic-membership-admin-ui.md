@@ -8,13 +8,15 @@ The panel consumes `GET /api/{organization|team}/automatic-membership` with:
 
 - `featureEnabled`, `killSwitchEnabled`, and `permissions.manageRules`; the UI
   shows management controls only when the server says the caller may use them.
-- `permissions.manageClaim` for DNS challenge verification, rotation, and
-  release. The API must set it false for a team administrator who must not
-  mutate an organization-shared claim.
+- Per-rule `capabilities` for lifecycle actions. A team administrator can
+  verify, rotate, and activate that team's own unshared rule; controls for a
+  claim shared with another rule are omitted when only an organization
+  administrator can safely change it.
 - Each rule's normal schema fields plus optional `dns`, named `targetTeams`, a
   single aggregate `backfill` summary, and a bounded `auditEvents` history.
   It must never include a matching-person directory or copied identity profile
   data.
+  The query refreshes only while the aggregate backfill is queued or running.
 
 Mutation endpoints are scoped identically: `POST` to create, `PATCH /:ruleId`
 to change notification email or organization team mapping, then `POST`

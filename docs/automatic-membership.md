@@ -50,3 +50,9 @@ suspension, DNS failure, kill switch, or revocation removes a member.
 The Automatic logins tab deliberately shows aggregate progress/failures rather
 than a list of matching identities. The audit log has claim, DNS, lifecycle,
 backfill and grant events but never stores email/profile values.
+
+Interactive sign-in provisioning is deliberately bounded. It looks up a small
+page of live claims through an indexed lifecycle query, re-attests the UOA
+subject for each exact domain, and records the UOA member-grant idempotency key
+before calling UOA. It never changes the team selected by the existing UOA
+session, and provisioning errors are logged without failing that valid sign-in.
