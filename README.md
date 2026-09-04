@@ -143,7 +143,23 @@ docs/          Standards, plans, and product documentation
 | [Remote Tech Stack](docs/remote/techstack.md) | Remote service technology choices |
 | [Remote SSO](docs/remote/sso.md) | Remote authentication notes |
 | [Validated Findings](docs/review-findings.md) | cleaned review of the repo's real issues |
+| [Licensing](docs/licensing.md) | FSL-1.1-ALv2 explained — what self-hosting, modifying and redistributing Nessie allows |
 
 ## License
 
-Apache 2.0
+Nessie is licensed under the [Functional Source License, Version 1.1, Apache
+2.0 Future License](https://fsl.software/) (FSL-1.1-ALv2):
+
+- **Free to self-host**, including for commercial organisations running it
+  for their own internal use.
+- **Free to inspect, modify, and fork** for internal use, non-commercial
+  education/research, or while providing services to a licensee running
+  Nessie.
+- **Not free to turn into a competing commercial product or service** — you
+  cannot take a current release and offer it (or something substantially
+  similar) as a hosted alternative to Nessie.
+- **Automatically becomes Apache License 2.0 two years after each release**,
+  at which point that release is fully open source with no restrictions.
+
+See [`LICENSE`](LICENSE) for the full legal text and
+[`docs/licensing.md`](docs/licensing.md) for the plain-English explanation.
