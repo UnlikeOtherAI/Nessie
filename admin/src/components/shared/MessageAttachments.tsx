@@ -163,18 +163,16 @@ const DownloadChip = ({
 const hasPreview = (attachment: AttachmentRecord): boolean =>
   attachment.hasThumbnail === true || attachment.kind === 'image'
 
-export const MessageAttachments = ({
-  messageId,
-  onOpenAttachment,
-}: {
-  messageId: string
-  onOpenAttachment?: (attachment: AttachmentRecord) => void
-}) => {
+export const useMessageAttachments = (messageId: string | null): AttachmentRecord[] => {
   const { token } = useAuthSession()
   const [attachments, setAttachments] = useState<AttachmentRecord[]>([])
 
   useEffect(() => {
     let cancelled = false
+    if (!messageId) {
+      setAttachments([])
+      return
+    }
     const headers = new Headers()
     if (token) headers.set('authorization', `Bearer ${token}`)
     fetch(`${getBaseUrl()}/api/messages/${messageId}/attachments`, { headers })
@@ -192,11 +190,27 @@ export const MessageAttachments = ({
     }
   }, [messageId, token])
 
-  if (attachments.length === 0) return null
+  return attachments
+}
+
+export const MessageAttachments = ({
+  attachments,
+  onOpenAttachment,
+  omitAttachmentId,
+}: {
+  attachments: AttachmentRecord[]
+  onOpenAttachment?: (attachment: AttachmentRecord) => void
+  /** Render this attachment at its owning surface instead of duplicating it here. */
+  omitAttachmentId?: string | null
+}) => {
+  const { token } = useAuthSession()
+  const visibleAttachments = attachments.filter((attachment) => attachment.id !== omitAttachmentId)
+
+  if (visibleAttachments.length === 0) return null
 
   return (
     <div className="mt-2 flex flex-col gap-2">
-      {attachments.map((attachment) =>
+      {visibleAttachments.map((attachment) =>
         hasPreview(attachment) ? (
           <AttachmentPreview
             attachment={attachment}
