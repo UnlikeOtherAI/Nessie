@@ -94,7 +94,7 @@ test('a personal mailbox pins the approval to its owner', async () => {
   assert.equal(decision.outcome, 'approval')
   if (decision.outcome !== 'approval') return
   assert.equal(decision.requiredApproverUserId, OWNER)
-  assert.match(decision.reason, /personal mailbox/)
+  assert.match(decision.reason, /personal connected mailbox/)
   assert.doesNotMatch(decision.reason, /@/)
 })
 
@@ -124,15 +124,16 @@ test('an inactive shared-mailbox installer denies without an unpinned approval',
   })
 })
 
-test('an inactive personal-mailbox owner denies without using the effective user', async () => {
+test('an inactive personal-mailbox owner denies without a fallback approver', async () => {
   const decision = await evaluateMailboxSendGate(
     makePrisma([personal], { liveApprover: false }),
     makeContext(),
-    { connectionId: PERSONAL, effectiveUserId: 'another-live-user' },
+    { connectionId: PERSONAL, effectiveUserId: OWNER },
   )
   assert.equal(decision.outcome, 'deny')
   if (decision.outcome !== 'deny') return
   assert.match(decision.message, /personal mailbox owner is no longer active/i)
+  assert.equal('requiredApproverUserId' in decision, false)
 })
 
 test('an unassigned shared mailbox denies and requires reconnecting it under an approver', async () => {
