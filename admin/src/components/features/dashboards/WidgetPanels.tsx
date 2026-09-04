@@ -113,7 +113,11 @@ export const TableWidgetView = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ExpandableTable className="min-h-0 flex-1" label={widget.presentation.title ?? 'Dashboard table'}>
+      <ExpandableTable
+        className="min-h-0 flex-1"
+        expandable
+        label={widget.presentation.title ?? 'Dashboard table'}
+      >
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr>

@@ -11,6 +11,7 @@ import {
   CreateSecretDialog,
 } from '../src/components/features/settings/CreateSecretDialog.js'
 import { SecretMetadataTable } from '../src/components/features/settings/SecretMetadataTable.js'
+import { ExpandableTable } from '../src/components/shared/ExpandableTable.js'
 import type { ProjectRecord } from '../src/lib/api-client.js'
 import type { CreateSecretInput, SecretRecord } from '../src/facades/secrets/hooks.js'
 
@@ -180,7 +181,7 @@ test('copying a secret reference announces useful feedback', async () => {
   }
 })
 
-test('a table opens in a near-fullscreen dialog and closes again', async () => {
+test('an Admin table stays in its own surface', async () => {
   const restoreDom = installDom()
   const container = dom.window.document.createElement('div')
   dom.window.document.body.appendChild(container)
@@ -196,7 +197,30 @@ test('a table opens in a near-fullscreen dialog and closes again', async () => {
         secrets: [secret],
       }))
     })
-    const expand = container.querySelector<HTMLButtonElement>('button[aria-label="Expand Secrets table"]')
+    assert.equal(container.querySelector('button[aria-label="Expand Secrets table"]'), null)
+    assert.equal(dom.window.document.querySelector('[role="dialog"]'), null)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    restoreDom()
+  }
+})
+
+test('an enabled content table opens in a near-fullscreen dialog', async () => {
+  const restoreDom = installDom()
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await act(async () => {
+      root.render(h(
+        ExpandableTable,
+        { expandable: true, label: 'Message table' },
+        h('table', null, h('tbody', null, h('tr', null, h('td', null, 'Cell')))),
+      ))
+    })
+    const expand = container.querySelector<HTMLButtonElement>('button[aria-label="Expand Message table"]')
     assert.ok(expand)
 
     await act(async () => expand.click())

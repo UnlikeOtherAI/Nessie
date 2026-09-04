@@ -184,6 +184,7 @@ export const SecretMetadataTable = ({
       <DataTable
         columns={columns}
         empty={<EmptyState>No secrets saved yet. Use “Save a secret” to add one.</EmptyState>}
+        expandable={false}
         label="Secrets table"
         loading={isLoading}
         minWidth="46rem"
