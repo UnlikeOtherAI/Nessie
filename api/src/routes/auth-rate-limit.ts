@@ -28,6 +28,8 @@ export const RATE_LIMIT_BUCKETS = {
   // unbounded, one member could get that client throttled for everyone.
   subscriptionDeviceIp: 'model_subscription.device.ip',
   subscriptionDeviceAccount: 'model_subscription.device.account',
+  voiceTranscriptionIp: 'voice.transcription.ip',
+  voiceTranscriptionAccount: 'voice.transcription.account',
 } as const
 
 /**

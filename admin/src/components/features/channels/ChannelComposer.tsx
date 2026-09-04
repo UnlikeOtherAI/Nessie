@@ -1,4 +1,4 @@
-import { useState, useRef, type FocusEvent, type FormEvent, type Ref } from 'react'
+import { useState, useRef, type FocusEvent, type FormEvent, type RefObject } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -16,9 +16,11 @@ import { ComposerEmojiButton } from './ComposerEmojiButton'
 import { SecretCaptureDialog } from './SecretCaptureDialog'
 import type { SecretCapture } from './useChannelComposer'
 import type { ComposerAttachments as ComposerAttachmentsState } from './useComposerAttachments'
+import { VoiceDictationControl } from './VoiceDictationControl'
+import { type VoiceDictationState, voiceDictationBlocksSubmit } from './voice-dictation-state'
 
 interface ChannelComposerProps {
-  mentionRef: Ref<MentionInputHandle>
+  mentionRef: RefObject<MentionInputHandle | null>
   mentionEntities: MentionEntity[]
   placeholder: string
   message: string
@@ -72,11 +74,13 @@ export const ChannelComposer = ({
 }: ChannelComposerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocusWithin, setIsFocusWithin] = useState(false)
+  const [voiceState, setVoiceState] = useState<VoiceDictationState>('idle')
   // Text or at least one finished upload, and never mid-upload.
   const canSend =
     (message.trim().length > 0 || attachments.attachmentIds.length > 0)
     && !attachments.isUploading
     && !isSendPending
+    && !voiceDictationBlocksSubmit(voiceState)
 
   // At rest the composer is a single line: just the placeholder and Send. It
   // opens while focus is anywhere inside it, and stays open while anything is
@@ -159,7 +163,13 @@ export const ChannelComposer = ({
         data-expanded={isExpanded ? 'true' : 'false'}
         onBlur={handleBlur}
         onFocus={() => setIsFocusWithin(true)}
-        onSubmit={onSubmitForm}
+        onSubmit={(event) => {
+          if (voiceDictationBlocksSubmit(voiceState)) {
+            event.preventDefault()
+            return
+          }
+          onSubmitForm(event)
+        }}
       >
         <MentionInput
           ref={mentionRef}
@@ -168,6 +178,7 @@ export const ChannelComposer = ({
           onChange={onChangeMessage}
           onOversizePaste={onOversizePaste}
           onSubmit={onSubmitText}
+          submitDisabled={voiceDictationBlocksSubmit(voiceState)}
           placeholder={placeholder}
         />
         <ComposerAttachments attachments={attachments} />
@@ -257,6 +268,14 @@ export const ChannelComposer = ({
             toolbar, so Send holds its place on screen while the editor grows
             upward past it. */}
         <div className="admin-compose-send-slot">
+          <VoiceDictationControl
+            disabled={isSendPending}
+            onInsertTranscript={(text) => {
+              mentionRef.current?.insertDictationText(text)
+              mentionRef.current?.focus()
+            }}
+            onStateChange={setVoiceState}
+          />
           <button
             aria-label="Send message"
             className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"

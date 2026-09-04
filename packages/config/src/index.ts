@@ -164,6 +164,8 @@ export const NessieConfigSchema = z.object({
       // while still bounding what one member can aim at the provider.
       subscriptionDeviceIp: RateLimitRuleSchema.default({ max: 240, windowMs: 10 * 60_000 }),
       subscriptionDeviceAccount: RateLimitRuleSchema.default({ max: 120, windowMs: 10 * 60_000 }),
+      voiceTranscriptionIp: RateLimitRuleSchema.default({ max: 30, windowMs: 10 * 60_000 }),
+      voiceTranscriptionAccount: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
     }).default({}),
     // Public origin of the API as reachable from a user's browser (e.g.
     // https://api.nessie.works). Used to build OAuth redirect URIs minted
@@ -287,6 +289,10 @@ export const ConfigEnvMap = {
   NESSIE_RATE_LIMIT_STEP_UP_IP_WINDOW_MS: 'api.rateLimit.stepUpIp.windowMs',
   NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_MAX: 'api.rateLimit.stepUpAccount.max',
   NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_WINDOW_MS: 'api.rateLimit.stepUpAccount.windowMs',
+  NESSIE_RATE_LIMIT_VOICE_TRANSCRIPTION_IP_MAX: 'api.rateLimit.voiceTranscriptionIp.max',
+  NESSIE_RATE_LIMIT_VOICE_TRANSCRIPTION_IP_WINDOW_MS: 'api.rateLimit.voiceTranscriptionIp.windowMs',
+  NESSIE_RATE_LIMIT_VOICE_TRANSCRIPTION_ACCOUNT_MAX: 'api.rateLimit.voiceTranscriptionAccount.max',
+  NESSIE_RATE_LIMIT_VOICE_TRANSCRIPTION_ACCOUNT_WINDOW_MS: 'api.rateLimit.voiceTranscriptionAccount.windowMs',
   NESSIE_API_PUBLIC_URL: 'api.publicUrl',
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
@@ -378,6 +384,8 @@ const DEFAULT_CONFIG: NessieConfig = {
       stepUpAccount: { max: 5, windowMs: 10 * 60_000 },
       subscriptionDeviceIp: { max: 240, windowMs: 10 * 60_000 },
       subscriptionDeviceAccount: { max: 120, windowMs: 10 * 60_000 },
+      voiceTranscriptionIp: { max: 30, windowMs: 10 * 60_000 },
+      voiceTranscriptionAccount: { max: 20, windowMs: 10 * 60_000 },
     },
   },
   github: {

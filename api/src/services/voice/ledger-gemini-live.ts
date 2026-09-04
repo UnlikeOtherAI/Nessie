@@ -1,11 +1,13 @@
 import { createHmac } from 'node:crypto'
 
 import {
-  attributionFromActorContext,
-  safeFetch,
-  type LedgerIdentityService,
-} from '@nessie/runtime'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+  LedgerVoiceError,
+  isLedgerConfigured,
+  postLedgerJson,
+  type LedgerVoiceCallInput,
+} from './ledger-client.js'
+
+export { LedgerVoiceError } from './ledger-client.js'
 
 /**
  * The Ledger side of a voice call: minting Google's one-use Gemini Live
@@ -18,12 +20,6 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
  * hands the client only Google's ephemeral credential.
  */
 
-const LIVE_TOKEN_PATH = '/v1/gemini/live-token'
-const LEDGER_TIMEOUT_MS = 15_000
-
-/** Only these identity headers may reach Ledger; anything else is a defect. */
-const ALLOWED_IDENTITY_HEADERS = new Set(['x-nessie-context', 'x-uoa-delegation'])
-
 /**
  * Whether this deployment is wired to Ledger at all.
  *
@@ -31,20 +27,7 @@ const ALLOWED_IDENTITY_HEADERS = new Set(['x-nessie-context', 'x-uoa-delegation'
  * Gemini Live grants, which only Ledger can answer. A deployment with no
  * Ledger at all cannot call, and should not offer the control.
  */
-export const isVoiceConfigured = (env: NodeJS.ProcessEnv = process.env): boolean =>
-  Boolean(env['LEDGER_PUBLIC_URL']?.trim() && env['LEDGER_PROXY_TOKEN']?.trim())
-
-export class LedgerVoiceError extends Error {
-  readonly code: string
-  readonly status: number
-
-  constructor(code: string, message: string, status = 502) {
-    super(message)
-    this.name = 'LedgerVoiceError'
-    this.code = code
-    this.status = status
-  }
-}
+export const isVoiceConfigured = isLedgerConfigured
 
 export type LedgerVoiceCredential = {
   sessionId: string
@@ -55,71 +38,7 @@ export type LedgerVoiceCredential = {
   websocketUrl: string
 }
 
-type LedgerCallInput = {
-  actorContext: AuthorizedActionContext
-  ledgerIdentity: LedgerIdentityService | null
-  env?: NodeJS.ProcessEnv
-  fetchImpl?: typeof safeFetch
-}
-
-const readLedgerConfig = (env: NodeJS.ProcessEnv) => {
-  const baseUrl = env['LEDGER_PUBLIC_URL']?.trim()
-  const proxyToken = env['LEDGER_PROXY_TOKEN']?.trim()
-  if (!baseUrl || !proxyToken) {
-    throw new LedgerVoiceError(
-      'VOICE_LEDGER_UNCONFIGURED',
-      'Voice calling requires LEDGER_PUBLIC_URL and LEDGER_PROXY_TOKEN.',
-      503,
-    )
-  }
-  let origin: string
-  try {
-    // Only the origin is used: a configured path would otherwise be prepended
-    // to the endpoint and silently produce a 404. Same rule as `web_search`.
-    origin = new URL(baseUrl).origin
-  } catch {
-    throw new LedgerVoiceError(
-      'VOICE_LEDGER_UNCONFIGURED',
-      'LEDGER_PUBLIC_URL is not a valid URL.',
-      503,
-    )
-  }
-  return { origin, proxyToken }
-}
-
-/**
- * Builds the headers for one Ledger call.
- *
- * Signing follows the deployment-wide rule for every Ledger call: when a
- * signer is configured the identity is mandatory and a user with no linked UOA
- * identity fails closed; with no signer configured at all the app key travels
- * alone and Ledger decides whether that token needs provenance.
- */
-const buildLedgerHeaders = async (input: LedgerCallInput, proxyToken: string) => {
-  const headers = new Headers({
-    Authorization: `Bearer ${proxyToken}`,
-    'Content-Type': 'application/json',
-  })
-
-  if (!input.ledgerIdentity) return headers
-
-  const attribution = attributionFromActorContext(input.actorContext, {
-    systemComponent: 'voice-call',
-  })
-  const identityHeaders = await input.ledgerIdentity.requestHeaders(attribution, {
-    requireUoaIdentity: true,
-  })
-  for (const [name, value] of Object.entries(identityHeaders)) {
-    if (!ALLOWED_IDENTITY_HEADERS.has(name.toLowerCase()) || !value.trim()) {
-      throw new LedgerVoiceError(
-        'VOICE_LEDGER_IDENTITY_INVALID',
-        'Ledger signing identity returned an unexpected header.',
-      )
-    }
-    headers.set(name, value)
-  }
-  return headers
-}
+type LedgerCallInput = LedgerVoiceCallInput
 
 /**
  * The device identifier Ledger sees.
@@ -195,48 +114,18 @@ const parseCredential = (payload: unknown, fallbackWebsocketUrl: string): Ledger
 export const DEFAULT_GEMINI_LIVE_WEBSOCKET_URL =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained'
 
-const readErrorMessage = async (response: Response): Promise<string> => {
-  const body = (await response.json().catch(() => null)) as Record<string, unknown> | null
-  const nested = (body?.['error'] as Record<string, unknown> | undefined)?.['message']
-  if (typeof nested === 'string') return nested
-  const flat = body?.['error'] ?? body?.['message']
-  return typeof flat === 'string' ? flat : 'Ledger rejected the request'
-}
-
 /** Mints one credential. Also used for rotation — Ledger supersedes the slot. */
 export const mintVoiceCredential = async (
   input: LedgerCallInput & { deviceId: string },
 ): Promise<LedgerVoiceCredential> => {
-  const env = input.env ?? process.env
-  const { origin, proxyToken } = readLedgerConfig(env)
-  const headers = await buildLedgerHeaders(input, proxyToken)
-  const fetchImpl = input.fetchImpl ?? safeFetch
-
-  let response: Response
-  try {
-    response = await fetchImpl(
-      new URL(LIVE_TOKEN_PATH, origin),
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ deviceId: input.deviceId }),
-        signal: AbortSignal.timeout(LEDGER_TIMEOUT_MS),
-      },
-      { maxRedirects: 0 },
-    )
-  } catch {
-    throw new LedgerVoiceError('VOICE_LEDGER_UNAVAILABLE', 'Could not reach Ledger.')
-  }
-
-  if (!response.ok) {
-    const message = await readErrorMessage(response)
-    // 402/403/429 are Ledger's own verdicts (budget, grants, concurrency) and
-    // are the caller's to act on; everything else is an upstream fault.
-    const status = [402, 403, 429].includes(response.status) ? response.status : 502
-    throw new LedgerVoiceError('VOICE_LEDGER_REJECTED', message, status)
-  }
-
-  return parseCredential(await response.json().catch(() => null), DEFAULT_GEMINI_LIVE_WEBSOCKET_URL)
+  const payload = await postLedgerJson<unknown>({
+    ...input,
+    path: '/v1/gemini/live-token',
+    body: { deviceId: input.deviceId },
+    systemComponent: 'voice-call',
+    acceptedStatuses: [402, 403, 429],
+  })
+  return parseCredential(payload, DEFAULT_GEMINI_LIVE_WEBSOCKET_URL)
 }
 
 export type LedgerUsageRelayInput = LedgerCallInput & {
@@ -263,43 +152,20 @@ export type LedgerUsageRelayResult = {
 export const relayVoiceUsage = async (
   input: LedgerUsageRelayInput,
 ): Promise<LedgerUsageRelayResult> => {
-  const env = input.env ?? process.env
-  const { origin, proxyToken } = readLedgerConfig(env)
-  const headers = await buildLedgerHeaders(input, proxyToken)
-  headers.set('Idempotency-Key', `${input.ledgerSessionId}:${input.sequence}`)
-  const fetchImpl = input.fetchImpl ?? safeFetch
-
   const path = `/v1/gemini/live-sessions/${encodeURIComponent(input.ledgerSessionId)}/usage`
-  let response: Response
-  try {
-    response = await fetchImpl(
-      new URL(path, origin),
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          sequence: input.sequence,
-          model: input.model,
-          usage: input.usage,
-          ...(input.complete ? { complete: true } : {}),
-        }),
-        signal: AbortSignal.timeout(LEDGER_TIMEOUT_MS),
-      },
-      { maxRedirects: 0 },
-    )
-  } catch {
-    throw new LedgerVoiceError('VOICE_LEDGER_UNAVAILABLE', 'Could not reach Ledger.')
-  }
-
-  if (!response.ok) {
-    const message = await readErrorMessage(response)
-    // A conflict means a newer report already landed: the client's queue is
-    // behind, not wrong, and it must not keep retrying this one forever.
-    const status = response.status === 409 ? 409 : 502
-    throw new LedgerVoiceError('VOICE_LEDGER_REJECTED', message, status)
-  }
-
-  const body = ((await response.json().catch(() => null)) ?? {}) as Record<string, unknown>
+  const body = await postLedgerJson<Record<string, unknown>>({
+    ...input,
+    path,
+    body: {
+      sequence: input.sequence,
+      model: input.model,
+      usage: input.usage,
+      ...(input.complete ? { complete: true } : {}),
+    },
+    idempotencyKey: `${input.ledgerSessionId}:${input.sequence}`,
+    systemComponent: 'voice-call',
+    acceptedStatuses: [409],
+  })
   return {
     acceptedSequence:
       typeof body['acceptedSequence'] === 'number' ? body['acceptedSequence'] : input.sequence,

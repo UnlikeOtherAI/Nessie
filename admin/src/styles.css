@@ -2357,7 +2357,109 @@ html[data-desktop-platform='linux'] #root {
   bottom: 0;
   display: flex;
   align-items: center;
+  gap: 6px;
   height: var(--compose-line);
+}
+
+/* The dictation control shares the composer’s bottom line. Recording replaces
+   only the microphone affordance, keeping the draft and Send exactly where a
+   person left them. The wave is decorative; the live label carries the state. */
+.voice-dictation-control,
+.voice-dictation-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.voice-dictation-control {
+  position: relative;
+}
+
+.voice-dictation-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--overlay);
+  color: var(--tx);
+}
+
+.voice-dictation-button:hover:not(:disabled) {
+  background: var(--overlay-strong);
+}
+
+.voice-dictation-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.voice-dictation-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.voice-dictation-wave {
+  display: flex;
+  width: min(21vw, 168px);
+  align-items: center;
+  gap: 2px;
+}
+
+.voice-dictation-wave span {
+  width: 2px;
+  height: calc(7px + (var(--voice-level, 0) * 17px));
+  border-radius: 999px;
+  background: var(--tx2);
+  /* Silence must still read as an active recording; live amplitude expands
+     this baseline rather than collapsing the waveform to an empty strip. */
+  transform: scaleY(calc(0.6 + (var(--voice-level, 0) * 0.4)));
+  transform-origin: center;
+  transition: transform 80ms linear, height 80ms linear;
+}
+
+.voice-dictation-wave span:nth-child(3n) { height: 25px; }
+.voice-dictation-wave span:nth-child(4n) { height: 12px; }
+
+.voice-dictation-stop {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.voice-dictation-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--tx3);
+  border-top-color: var(--tx);
+  border-radius: 999px;
+  animation: voice-dictation-spin 720ms linear infinite;
+}
+
+.voice-dictation-error {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: min(22rem, 80vw);
+  border: 1px solid var(--danger-text);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 6px 8px;
+  color: var(--danger-text);
+  font-size: 0.75rem;
+  z-index: 2;
+}
+
+@keyframes voice-dictation-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-dictation-wave span,
+  .voice-dictation-spinner { animation: none; transition: none; }
 }
 
 /* The emoji button sits at the left of the toolbar, but its popover is
@@ -2437,11 +2539,11 @@ html[data-desktop-platform='linux'] #root {
 }
 
 /* Collapsed: one line of text, optically centred in the composer's own bottom
-   line, with room kept clear on the right for the pinned Send button. */
+   line, with room kept clear on the right for the microphone and Send pair. */
 .admin-compose[data-expanded='false'] .mention-editor {
   min-height: var(--compose-line);
   max-height: var(--compose-line);
-  padding: calc((var(--compose-line) - 1.25rem) / 2) 60px
+  padding: calc((var(--compose-line) - 1.25rem) / 2) 96px
     calc((var(--compose-line) - 1.25rem) / 2) 16px;
 }
 
