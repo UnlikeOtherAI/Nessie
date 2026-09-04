@@ -148,12 +148,13 @@ const rosterDeps = (urls: string[], respond: (url: string) => Response) => ({
 })
 
 const respondRoster = (url: string): Response => {
-  assert.match(
-    url,
-    new RegExp(`/org/organisations/${EXTERNAL_ORG_ID}/teams/${EXTERNAL_TEAM_ID}/members`),
+  const rosterUrl = new URL(url)
+  assert.equal(
+    rosterUrl.pathname,
+    `/org/organisations/${EXTERNAL_ORG_ID}/teams/${EXTERNAL_TEAM_ID}/members`,
   )
-  assert.match(url, /[?&]status=ACTIVE(?:&|$)/)
-  assert.match(url, /[?&]limit=100(?:&|$)/)
+  assert.equal(rosterUrl.searchParams.get('status'), 'ACTIVE')
+  assert.equal(rosterUrl.searchParams.get('limit'), '100')
   return json(activeTeamRoster)
 }
 

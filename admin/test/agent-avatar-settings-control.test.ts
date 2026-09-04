@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+    .replaceAll('\r\n', '\n')
 
 test('agent details put the avatar editor at the agent detail surface for its editors only', () => {
   const drawer = readSource('../src/components/features/agents/AgentDetailDrawer.tsx')

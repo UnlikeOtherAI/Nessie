@@ -1,23 +1,40 @@
-import { createHash, generateKeyPairSync, type KeyObject, sign } from 'node:crypto'
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  sign,
+} from 'node:crypto'
+import { lstat, readdir } from 'node:fs/promises'
+import { resolve } from 'node:path'
 
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
+  ExecutorEnrollmentRequestSchema,
   ImplementedExecutorOperationKeySchema,
+  type ExecutorEnrollmentRequest,
   type ExecutorSignedDescriptor,
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
-import { buildSignedDescriptor } from './descriptor.js'
+import { assertHostSupportsOperations, buildSignedDescriptor } from './descriptor.js'
 import { compileExecutorEgressPolicy } from './egress-policy.js'
 import { verifyPrivateCodexAuthProfile, verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
 import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
+import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
 import { verifyNativeHelperPath } from './native-helper.js'
 import {
+  clearExecutorPreparedPairing,
+  loadExecutorPreparedPairing,
+  saveExecutorPreparedPairing,
   saveExecutorState,
   type ExecutorBrowserSandboxConfig,
   type ExecutorCodexSandboxConfig,
   type ExecutorLocalState,
+  type ExecutorPreparedPairing,
 } from './state-store.js'
 import { configureWorkspaceRoot } from './workspace.js'
 
@@ -32,13 +49,8 @@ export type PairExecutorInput = {
   workspaceRoot: string
 }
 
-export const COW_WORKSPACE_OPERATION_KEYS = [
-  'file.list',
-  'file.read',
-  'file.write',
-  'workspace.review',
-  'sandbox.stop',
-] as const
+/** The daemon-owned copy-on-write bundle, named once in `@nessie/schemas`. */
+export const COW_WORKSPACE_OPERATION_KEYS = EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
 export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe', 'browser.act'] as const
@@ -95,6 +107,7 @@ const configuredOperationKeys = (
   requestedOperationKeys: string[],
   browserConfigured: boolean,
   codexConfigured: boolean,
+  host: ExecutorHost,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -138,13 +151,17 @@ const configuredOperationKeys = (
   )) {
     throw new Error('command.run requires workspace.review and sandbox.stop.')
   }
-  return [
+  const operationKeys = [
     ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(COMMAND_OPERATION_KEY) ? [COMMAND_OPERATION_KEY] : []),
     ...BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
   ]
+  // The same refusal the descriptor build makes, raised here so a person
+  // proposing a policy hears it now instead of at the next connect.
+  assertHostSupportsOperations(host, operationKeys, profilesForOperationKeys(operationKeys))
+  return operationKeys
 }
 
 const profilesForOperationKeys = (operationKeys: string[]): string[] =>
@@ -153,6 +170,25 @@ const profilesForOperationKeys = (operationKeys: string[]): string[] =>
   ))
     ? ['workspace_sandbox', 'coding_session']
     : ['workspace_sandbox']
+
+const assertWorkspaceMayChange = async (stateDir: string): Promise<void> => {
+  const runtimeDirectory = resolve(stateDir, 'runtime')
+  let metadata
+  try {
+    metadata = await lstat(runtimeDirectory)
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw cause
+  }
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error('Local executor runtime state must be an ordinary directory.')
+  }
+  if ((await readdir(runtimeDirectory)).length > 0) {
+    throw new Error(
+      'Remove every local draft and stop every sandbox before changing the workspace folder.',
+    )
+  }
+}
 
 /**
  * Update the companion's locally enforced policy. Promotion additionally needs
@@ -165,11 +201,18 @@ export const configureExecutorLocalPolicy = async (
   state: ExecutorLocalState,
   requestedOperationKeys: string[],
   nativeHelperPath?: string,
+  host: ExecutorHost = detectExecutorHost(),
+  workspaceRoot: string = state.workspaceRoot,
 ): Promise<ExecutorLocalState> => {
+  if (workspaceRoot !== state.workspaceRoot) await assertWorkspaceMayChange(stateDir)
+  const canonicalWorkspaceRoot = workspaceRoot === state.workspaceRoot
+    ? state.workspaceRoot
+    : await configureWorkspaceRoot(workspaceRoot)
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
     Boolean(state.codexSandbox),
+    host,
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -185,6 +228,7 @@ export const configureExecutorLocalPolicy = async (
       profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
     },
+    workspaceRoot: canonicalWorkspaceRoot,
     ...(helper ? { nativeHelperPath: helper } : {}),
   }
   await saveExecutorState(stateDir, next)
@@ -201,6 +245,7 @@ export const configureExecutorBrowserSandbox = async (
     kernelPath: string
     vmHelperPath: string
   },
+  host: ExecutorHost = detectExecutorHost(),
 ): Promise<ExecutorLocalState> => {
   const egress = compileExecutorEgressPolicy({ allowedOrigins: input.allowedOrigins })
   const artifacts = await verifyGuestVmArtifacts(input)
@@ -224,7 +269,7 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox))
+  ])], true, Boolean(state.codexSandbox), host)
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -248,6 +293,7 @@ export const configureExecutorCodexSandbox = async (
   stateDir: string,
   state: ExecutorLocalState,
   input: GuestVmArtifactInput & { codexAuthProfilePath: string },
+  host: ExecutorHost = detectExecutorHost(),
 ): Promise<ExecutorLocalState> => {
   const [artifacts, codexAuthProfilePath] = await Promise.all([
     verifyGuestVmArtifacts(input),
@@ -273,7 +319,7 @@ export const configureExecutorCodexSandbox = async (
     'workspace.review',
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
-  ])], Boolean(state.browserSandbox), true)
+  ])], Boolean(state.browserSandbox), true, host)
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,
@@ -288,8 +334,29 @@ export const configureExecutorCodexSandbox = async (
   return next
 }
 
-export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerprint: string }> => {
-  const workspaceRoot = await configureWorkspaceRoot(input.workspaceRoot)
+type PairExecutorDependencies = {
+  clearPrepared: (stateDir: string) => Promise<void>
+  loadPrepared: (stateDir: string) => Promise<ExecutorPreparedPairing | null>
+  savePrepared: (stateDir: string, prepared: ExecutorPreparedPairing) => Promise<void>
+  saveState: (stateDir: string, state: ExecutorLocalState) => Promise<void>
+  submitEnrollment: (
+    baseUrl: string,
+    request: ExecutorEnrollmentRequest,
+  ) => Promise<{ executorId: string; fingerprint: string }>
+}
+
+const pairExecutorDependencies: PairExecutorDependencies = {
+  clearPrepared: clearExecutorPreparedPairing,
+  loadPrepared: loadExecutorPreparedPairing,
+  savePrepared: saveExecutorPreparedPairing,
+  saveState: saveExecutorState,
+  submitEnrollment: executorApi.submitEnrollment,
+}
+
+const preparePairing = (
+  input: PairExecutorInput,
+  workspaceRoot: string,
+): ExecutorPreparedPairing => {
   const keys = generateKeyPairSync('ed25519')
   const machinePublicKey = rawEd25519PublicKey(keys.publicKey)
   const descriptor = buildSignedDescriptor(
@@ -299,32 +366,90 @@ export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerpr
   const digest = `sha256:${createHash('sha256')
     .update(canonicalExecutorJson(descriptor.descriptor))
     .digest('hex')}`
-  const proof = sign(
-    null,
-    Buffer.from(canonicalExecutorPayload('nessie.executor.enrollment.v1', {
-      challenge: input.challenge,
-      descriptorDigest: digest,
-      enrollmentId: input.enrollmentId,
-      machinePublicKey,
-    })),
-    keys.privateKey,
-  ).toString('base64url')
-  const pending = await executorApi.submitEnrollment(input.apiBaseUrl, {
+  const request = ExecutorEnrollmentRequestSchema.parse({
     challenge: input.challenge,
     descriptor,
     enrollmentId: input.enrollmentId,
     machinePublicKey,
-    proof,
+    proof: sign(
+      null,
+      Buffer.from(canonicalExecutorPayload('nessie.executor.enrollment.v1', {
+        challenge: input.challenge,
+        descriptorDigest: digest,
+        enrollmentId: input.enrollmentId,
+        machinePublicKey,
+      })),
+      keys.privateKey,
+    ).toString('base64url'),
   })
-  const state: ExecutorLocalState = {
+  return {
     apiBaseUrl: input.apiBaseUrl,
-    descriptor: initialLocalPolicy,
-    executorId: pending.executorId,
-    machinePrivateKey: keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url'),
-    machinePublicKey,
+    enrollmentId: input.enrollmentId,
+    machinePrivateKey: keys.privateKey.export({
+      format: 'der',
+      type: 'pkcs8',
+    }).toString('base64url'),
+    request,
     workspaceRoot,
   }
-  await saveExecutorState(input.stateDir, state)
+}
+
+const assertPreparedPairingMatches = (
+  input: PairExecutorInput,
+  workspaceRoot: string,
+  prepared: ExecutorPreparedPairing,
+): void => {
+  let storedPublicKey: string
+  try {
+    const privateKey = createPrivateKey({
+      format: 'der',
+      key: Buffer.from(prepared.machinePrivateKey, 'base64url'),
+      type: 'pkcs8',
+    })
+    storedPublicKey = rawEd25519PublicKey(createPublicKey(privateKey))
+  } catch {
+    throw new Error('Executor pairing state contains an invalid private key.')
+  }
+  if (
+    prepared.apiBaseUrl !== input.apiBaseUrl
+    || prepared.enrollmentId !== input.enrollmentId
+    || prepared.request.enrollmentId !== prepared.enrollmentId
+    || prepared.request.challenge !== input.challenge
+    || prepared.request.machinePublicKey !== storedPublicKey
+    || prepared.workspaceRoot !== workspaceRoot
+  ) {
+    throw new Error(
+      'This executor state directory contains a different unfinished pairing. '
+      + 'Complete that pairing before starting another.',
+    )
+  }
+}
+
+export const pairExecutor = async (
+  input: PairExecutorInput,
+  dependencies: PairExecutorDependencies = pairExecutorDependencies,
+): Promise<{ fingerprint: string }> => {
+  const workspaceRoot = await configureWorkspaceRoot(input.workspaceRoot)
+  let prepared = await dependencies.loadPrepared(input.stateDir)
+  if (prepared) {
+    assertPreparedPairingMatches(input, workspaceRoot, prepared)
+  } else {
+    prepared = preparePairing(input, workspaceRoot)
+    // No enrollment request may leave the host until its exact key and proof
+    // can survive a lost response or process restart.
+    await dependencies.savePrepared(input.stateDir, prepared)
+  }
+  const pending = await dependencies.submitEnrollment(prepared.apiBaseUrl, prepared.request)
+  const state: ExecutorLocalState = {
+    apiBaseUrl: prepared.apiBaseUrl,
+    descriptor: initialLocalPolicy,
+    executorId: pending.executorId,
+    machinePrivateKey: prepared.machinePrivateKey,
+    machinePublicKey: prepared.request.machinePublicKey,
+    workspaceRoot: prepared.workspaceRoot,
+  }
+  await dependencies.saveState(input.stateDir, state)
+  await dependencies.clearPrepared(input.stateDir)
   return { fingerprint: pending.fingerprint }
 }
 

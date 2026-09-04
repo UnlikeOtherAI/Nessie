@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,7 @@ import { JSDOM } from 'jsdom'
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 const readSource = (relativePath: string): string =>
-  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8').replaceAll('\r\n', '\n')
 
 type Harness = {
   dispose: () => Promise<void>
@@ -267,7 +267,7 @@ const COMPONENT_STATE_ALLOWLIST = [
 ]
 
 test('no tab strip keeps its selection in component state', () => {
-  const tracked = execSync("git ls-files 'admin/src/*.tsx' 'admin/src/*.ts'", {
+  const tracked = execFileSync('git', ['ls-files', 'admin/src/*.tsx', 'admin/src/*.ts'], {
     cwd: repoRoot,
     encoding: 'utf8',
   })

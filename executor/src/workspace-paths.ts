@@ -17,9 +17,21 @@ export const safeRelativeWorkspacePath = (value: string | undefined): string => 
   if (path.includes('\0') || isAbsolute(path)) {
     throw new WorkspacePathError('Workspace paths must be relative.')
   }
+  // Interpret both separator spellings before making reserved-path decisions.
+  // A Windows executor accepts `/` and `\\`, while POSIX must still reject a
+  // Windows-shaped alias instead of treating the backslash as an ordinary byte.
+  const normalized = path.replaceAll('\\', '/').split('/').reduce<string[]>((segments, segment) => {
+    if (!segment || segment === '.') return segments
+    if (segment === '..') {
+      segments.pop()
+      return segments
+    }
+    segments.push(segment)
+    return segments
+  }, []).join('/') || '.'
   if (
-    path === EXECUTOR_PROMOTION_JOURNAL_DIRECTORY
-    || path.startsWith(`${EXECUTOR_PROMOTION_JOURNAL_DIRECTORY}/`)
+    normalized === EXECUTOR_PROMOTION_JOURNAL_DIRECTORY
+    || normalized.startsWith(`${EXECUTOR_PROMOTION_JOURNAL_DIRECTORY}/`)
   ) {
     throw new WorkspacePathError('Workspace paths may not access executor journal state.')
   }

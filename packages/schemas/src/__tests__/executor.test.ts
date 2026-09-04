@@ -97,7 +97,7 @@ test('agents can use but cannot administer a private executor', () => {
   )
 })
 
-test('capability descriptors enforce the initial supported platform and known operations', () => {
+test('capability descriptors carry the host facts and known operations', () => {
   const descriptor = ExecutorCapabilityDescriptorSchema.parse({
     limits: {
       maxCommandRuntimeSeconds: 300,
@@ -110,6 +110,8 @@ test('capability descriptors enforce the initial supported platform and known op
     profiles: ['workspace_sandbox'],
     protocolVersion: 1,
     revision: 1,
+    sandboxBackend: 'virtualization_framework',
+    supervisor: 'desktop',
   })
 
   assert.equal(descriptor.revision, 1)
@@ -120,13 +122,23 @@ test('capability descriptors enforce the initial supported platform and known op
     }).success,
     true,
   )
+  // A Linux host is now a first-class executor, so this is accepted where it
+  // used to be refused.
   assert.equal(
     ExecutorCapabilityDescriptorSchema.safeParse({
       ...descriptor,
       platform: { architecture: 'x64', os: 'linux', osMajorVersion: 6 },
+      sandboxBackend: 'firecracker',
+      supervisor: 'service',
     }).success,
-    false,
+    true,
   )
+  // The host facts are required: a descriptor from before the platform
+  // contract widened cannot validate under it.
+  const withoutHostFacts: Record<string, unknown> = { ...descriptor }
+  delete withoutHostFacts.sandboxBackend
+  delete withoutHostFacts.supervisor
+  assert.equal(ExecutorCapabilityDescriptorSchema.safeParse(withoutHostFacts).success, false)
 })
 
 test('daemon challenge contracts accept exactly two base64url segments', () => {

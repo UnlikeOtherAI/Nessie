@@ -33,7 +33,9 @@ const deviceName = (userAgent: string): { mobile: boolean; name: string } => {
 }
 
 const nativeDevice: Record<SessionClientType, SessionDevice> = {
-  'native-desktop': { name: 'Nessie desktop app', detail: 'Native app on Mac' },
+  // The desktop shell is one app on macOS, Windows and Linux, and the session
+  // record does not carry which — so the label must not claim a Mac.
+  'native-desktop': { name: 'Nessie desktop app', detail: 'Native app on a computer' },
   'native-ios': { name: 'Nessie iOS app', detail: 'Native app on iPhone or iPad' },
   'native-android': { name: 'Nessie Android app', detail: 'Native app on Android' },
   'native-mobile': { name: 'Nessie mobile app', detail: 'Native app' },

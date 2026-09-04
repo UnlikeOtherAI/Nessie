@@ -136,7 +136,7 @@ docs/          Standards, plans, and product documentation
 | [Deployment](docs/deployment.md) | **Production deployment** (self-hosted, Hetzner + shared Caddy) |
 | [Secret management](docs/secret-management-spec.md) | **A configured Infisical vault is required to save any secret** — scope, grants, and what is stored where |
 | [Apple publishing & direct device delivery](docs/publishing-apple-testflight.md) | TestFlight releases and the default standalone phone/tablet delivery policy |
-| [Running the native apps](docs/running-the-apps.md#default-physical-device-delivery) | Direct installation policy and local development paths |
+| [Running the native apps](docs/running-the-apps/overview.md#default-physical-device-delivery) | Direct installation policy and local development paths |
 | [Product Brief](docs/brief.md) | Vision, modes, architecture, MVP direction |
 | [Team Model](docs/standards/team-model.md) | Organisation, team, project — what each is and which the SSO owns |
 | [Remote Brief](docs/remote/brief.md) | Remote control-plane scope |

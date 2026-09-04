@@ -66,10 +66,27 @@
     }).catch(() => undefined)
   }
 
+  const invoke = () => window.__TAURI__
+    && window.__TAURI__.core
+    && typeof window.__TAURI__.core.invoke === 'function'
+    ? window.__TAURI__.core.invoke
+    : null
+
   window.__nessieDesktopRequestNotificationPermission = requestPermission
   window.__nessieDesktopSetBadgeCount = async (input) => {
     const parsed = Number(input)
     const count = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null
+    // The shell command knows what this platform can actually show — a Dock
+    // badge, a taskbar overlay icon, or nothing at all. The window API is the
+    // fallback for a shell that predates it.
+    const invokeCommand = invoke()
+    if (invokeCommand) {
+      try {
+        return (await invokeCommand('desktop_set_badge', { count })) === true
+      } catch {
+        // An older shell has no such command; try the window API below.
+      }
+    }
     const currentWindow = desktopWindow()
     if (!currentWindow || typeof currentWindow.setBadgeCount !== 'function') return false
     try {

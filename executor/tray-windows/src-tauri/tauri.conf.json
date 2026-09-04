@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nessie Executor Tray",
+  "mainBinaryName": "nessie-executor-tray",
+  "version": "0.1.0",
+  "identifier": "com.unlikeotherai.nessie.executor.tray",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "status",
+        "title": "Nessie Executor",
+        "width": 420,
+        "height": 320,
+        "resizable": false,
+        "decorations": false,
+        "shadow": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "center": true,
+        "backgroundColor": "#141221"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'",
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [],
+    "publisher": "UnlikeOtherAI",
+    "copyright": "Copyright (c) 2026 UnlikeOtherAI",
+    "category": "Productivity",
+    "shortDescription": "Control surface for the Nessie Executor service.",
+    "longDescription": "Shows the state of every executor paired on this computer and starts, stops, and pairs them through the Nessie Executor service.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "signCommand": null
+    }
+  }
+}

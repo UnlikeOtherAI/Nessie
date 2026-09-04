@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -13,7 +13,7 @@ function fail(message) {
 }
 
 function getTrackedMarkdownFiles() {
-  const output = execSync("git ls-files '*.md'", {
+  const output = execFileSync('git', ['ls-files', '*.md'], {
     encoding: 'utf8',
   });
   return output

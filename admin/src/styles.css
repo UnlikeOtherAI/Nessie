@@ -70,6 +70,9 @@
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
+  /* The height of the app's live area. Full-height roots resolve this token
+     rather than restating the viewport unit. */
+  --app-live-height: 100dvh;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -267,7 +270,7 @@
 html,
 body,
 #root {
-  height: 100dvh;
+  height: var(--app-live-height);
 }
 
 body {
@@ -349,7 +352,7 @@ a {
 .admin-frame {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: var(--app-live-height);
   background: var(--rail);
   color: var(--tx);
 }
@@ -863,7 +866,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 }
 
 .admin-frame.has-mobile-tabbar {
-  height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
+  height: calc(var(--app-live-height) - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
 }
 
 /* Browser counterpart to the installed phone shell's team bar. It only

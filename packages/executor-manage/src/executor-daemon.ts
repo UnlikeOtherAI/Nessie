@@ -1,11 +1,14 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { ExecutorSignedDescriptor } from '@nessie/schemas'
+import { ExecutorPlatformFactsSchema, type ExecutorSignedDescriptor } from '@nessie/schemas'
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import {
+  EXECUTOR_HEARTBEAT_FRESHNESS_MS,
+  expireStaleExecutorHeartbeats,
+} from './executor-liveness.js'
 
-const HEARTBEAT_SKEW_MS = 60_000
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 
 const challengeHash = (challenge: string): string =>
@@ -174,10 +177,12 @@ export const claimExecutorConnection = async (
     data: {
       activeConnectionEpoch: { increment: 1 },
       lastSeenAt: new Date(),
-      status: executor.status === 'paused' ? 'paused' : 'online',
-      statusDetail: executor.status === 'paused'
-        ? 'Executor is paused while the daemon is connected.'
-        : 'Authenticated executor daemon connected.',
+      status: executor.status === 'offline' ? 'online' : executor.status,
+      statusDetail: executor.status === 'offline'
+        ? 'Authenticated executor daemon connected.'
+        : executor.status === 'paused'
+          ? 'Executor is paused while the daemon is connected.'
+          : undefined,
     },
     select: { activeConnectionEpoch: true, status: true },
   })
@@ -195,7 +200,10 @@ export const reportExecutorHeartbeat = async (
   now = new Date(),
 ): Promise<{ connectionEpoch: string; status: string }> => {
   const observedAt = new Date(input.observedAt)
-  if (Number.isNaN(observedAt.getTime()) || Math.abs(now.getTime() - observedAt.getTime()) > HEARTBEAT_SKEW_MS) {
+  if (
+    Number.isNaN(observedAt.getTime())
+    || Math.abs(now.getTime() - observedAt.getTime()) > EXECUTOR_HEARTBEAT_FRESHNESS_MS
+  ) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.HEARTBEAT_STALE, 'Executor heartbeat is stale.')
   }
   return prisma.$transaction(async (tx) => {
@@ -292,11 +300,14 @@ export const submitExecutorDescriptor = async (
   await tx.executor.update({
     where: { id: executor.id },
     data: {
-      platformFacts: {
-        architecture: input.descriptor.descriptor.platform.architecture,
-        os: input.descriptor.descriptor.platform.os,
-        osMajorVersion: input.descriptor.descriptor.platform.osMajorVersion,
-      },
+      // The host facts the machine signed, denormalized so the Executors page
+      // can name the computer and its supervisor without re-reading a
+      // capability revision. Server-written only; no API caller can set them.
+      platformFacts: ExecutorPlatformFactsSchema.parse({
+        platform: input.descriptor.descriptor.platform,
+        sandboxBackend: input.descriptor.descriptor.sandboxBackend,
+        supervisor: input.descriptor.descriptor.supervisor,
+      }),
       profiles: input.descriptor.descriptor.profiles,
     },
   })
@@ -307,7 +318,7 @@ export const submitExecutorDescriptor = async (
  * Validate an authenticated daemon control call. This deliberately uses its
  * own signed domain so a heartbeat cannot be replayed as a poll or receipt.
  */
-export const authorizeExecutorDaemonControlCall = async (
+export const authorizeExecutorDaemonControlCall = async <Result>(
   prisma: PrismaClient,
   input: {
     connectionEpoch: string
@@ -317,14 +328,19 @@ export const authorizeExecutorDaemonControlCall = async (
     signature: string
     type: 'poll' | 'receipt'
   },
+  action: (tx: Prisma.TransactionClient) => Promise<Result>,
   now = new Date(),
-): Promise<void> => {
+): Promise<Result> => {
   const observedAt = new Date(input.observedAt)
-  if (Number.isNaN(observedAt.getTime()) || Math.abs(now.getTime() - observedAt.getTime()) > HEARTBEAT_SKEW_MS) {
+  if (
+    Number.isNaN(observedAt.getTime())
+    || Math.abs(now.getTime() - observedAt.getTime()) > EXECUTOR_HEARTBEAT_FRESHNESS_MS
+  ) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.HEARTBEAT_STALE, 'Executor control call is stale.')
   }
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await lockExecutorConnection(tx, input.executorId)
+    await expireStaleExecutorHeartbeats(tx, { executorId: input.executorId }, now)
     const executor = await requireDaemonExecutor(tx, input.executorId)
     if (executor.status !== 'online' || executor.activeConnectionEpoch.toString() !== input.connectionEpoch) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.CONNECTION_FENCED, 'Executor connection is fenced.')
@@ -341,5 +357,6 @@ export const authorizeExecutorDaemonControlCall = async (
       where: { id: executor.id },
       data: { lastSeenAt: !executor.lastSeenAt || observedAt > executor.lastSeenAt ? observedAt : executor.lastSeenAt },
     })
+    return action(tx)
   })
 }

@@ -5,8 +5,10 @@ import {
   ExecutorCapabilityDescriptorSchema,
   ExecutorScopeSchema, IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
 } from '@nessie/schemas'
+import { ExecutorPlatformFactsSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
+  ExecutorPlatformFacts,
   ExecutorProfile,
   ExecutorScope,
 } from '@nessie/schemas'
@@ -20,6 +22,7 @@ import {
   type ExecutorHumanAccess,
 } from './executor-access.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 
 const PAIRING_TTL_MS = 10 * 60 * 1_000
 
@@ -46,7 +49,8 @@ export type ExecutorRecord = {
   scope: ExecutorScope
   label: string
   profiles: ExecutorProfile[]
-  platformFacts: Record<string, unknown>
+  /** Read-only host facts the daemon stated under its own signature. */
+  platformFacts?: ExecutorPlatformFacts
   machineKeyFingerprint?: string
   status: ExecutorRow['status']
   authorizationRevision: number
@@ -110,6 +114,14 @@ export type CreateExecutorInput = {
   >
 }
 
+// A row written before the platform contract widened states no supervisor or
+// sandbox backend, so it reads as absent rather than half-guessed; the daemon
+// replaces it with its next proposed revision.
+const platformFactsFor = (stored: unknown): { platformFacts?: ExecutorPlatformFacts } => {
+  const parsed = ExecutorPlatformFactsSchema.safeParse(stored)
+  return parsed.success ? { platformFacts: parsed.data } : {}
+}
+
 const recordFromRow = (row: ExecutorRow): ExecutorRecord => ({
   id: row.id,
   scope: ExecutorScopeSchema.parse(row.scopeKind === 'project'
@@ -117,10 +129,7 @@ const recordFromRow = (row: ExecutorRow): ExecutorRecord => ({
     : { kind: row.scopeKind, organizationId: row.organizationId }),
   label: row.label,
   profiles: row.profiles,
-  platformFacts: row.platformFacts && typeof row.platformFacts === 'object'
-    && !Array.isArray(row.platformFacts)
-    ? row.platformFacts as Record<string, unknown>
-    : {},
+  ...platformFactsFor(row.platformFacts),
   ...(row.machineKeyFingerprint ? { machineKeyFingerprint: row.machineKeyFingerprint } : {}),
   status: row.status,
   authorizationRevision: row.authorizationRevision,
@@ -297,6 +306,7 @@ export const createExecutor = async (
 export const listVisibleExecutors = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
+  now = new Date(),
 ): Promise<ExecutorRecord[]> => {
   const userId = requireHumanActor(actorContext)
   if (!userId) return []
@@ -312,6 +322,7 @@ export const listVisibleExecutors = async (
     }),
   ])
   if (!membership || membership.deactivatedAt) return []
+  await expireStaleExecutorHeartbeats(prisma, { organizationId }, now)
   const visibleSharedScope = isOrganizationManager(membership.role)
   const projectIds = projectMemberships.map((entry) => entry.projectId)
   const rows = await prisma.executor.findMany({

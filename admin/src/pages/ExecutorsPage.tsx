@@ -259,6 +259,7 @@ export const ExecutorsPage = () => {
           <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">Finish pairing on the companion</h2>
             <p className="text-xs text-[color:var(--tx3)]">Replace the workspace placeholder with one existing absolute directory. The companion stores its canonical root and machine key in owner-only state, and can only read bounded files under that root. This invitation expires at {created.invitation.expiresAt}.</p>
+            <p className="text-xs text-[color:var(--tx3)]">Supported platforms: macOS 15+ on Apple Silicon, Ubuntu Linux x86_64, Windows 11/10 x86_64 (Windows and Linux support arrive with their releases).</p>
             <code className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx)]">{pairingCommand}</code>
           </section>
         ) : null}

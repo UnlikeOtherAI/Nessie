@@ -19,6 +19,8 @@ const descriptor = {
   localPolicyDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   operationKeys: ['sandbox.stop'],
   platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+  sandboxBackend: 'virtualization_framework',
+  supervisor: 'desktop',
   profiles: ['workspace_sandbox'],
   protocolVersion: 1,
   revision: 1,
@@ -36,6 +38,7 @@ const availableExecutor = (agentAssigned = true) => ({
   projectId: null,
   scopeKind: 'private',
   status: 'online',
+  lastSeenAt: new Date('2026-08-12T11:59:30.000Z'),
 })
 
 const availabilityPrisma = (
@@ -48,7 +51,22 @@ const availabilityPrisma = (
       toolPolicy: { 'executor.sandbox.stop': true },
     }),
   },
-  executor: { findMany: async () => [executor] },
+  executor: {
+    findMany: async () => [executor],
+    updateMany: async ({ data, where }: {
+      data: { status: 'offline'; statusDetail: string }
+      where: { OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: Date } }]; status: 'online' }
+    }) => {
+      if (
+        executor.status === where.status
+        && (!executor.lastSeenAt || executor.lastSeenAt < where.OR[1].lastSeenAt.lt)
+      ) {
+        Object.assign(executor, data)
+        return { count: 1 }
+      }
+      return { count: 0 }
+    },
+  },
   executorAvailabilityCandidate: {
     create: async ({ data }: { data: Record<string, unknown> }) => {
       created.push(data)
@@ -88,8 +106,27 @@ test('private availability fails closed when the exact agent assignment is absen
     availabilityPrisma(availableExecutor(false), []),
     actorContext,
     { agentId, operationKeys: ['sandbox.stop'] },
+    new Date('2026-08-12T12:00:00.000Z'),
   )
 
   assert.deepEqual(response.candidates, [])
   assert.deepEqual(response.explanations, [{ readiness: 'unavailable', reason: 'scope_mismatch' }])
+})
+
+test('an expired heartbeat is durably offline before availability is resolved', async () => {
+  const executor = availableExecutor()
+  executor.lastSeenAt = new Date('2026-08-12T11:58:59.999Z')
+  const response = await resolveExecutorAvailabilityCandidates(
+    availabilityPrisma(executor, []),
+    actorContext,
+    { agentId, operationKeys: ['sandbox.stop'] },
+    new Date('2026-08-12T12:00:00.000Z'),
+  )
+
+  assert.equal(executor.status, 'offline')
+  assert.deepEqual(response.candidates, [])
+  assert.deepEqual(response.explanations, [{
+    readiness: 'unavailable',
+    reason: 'executor_offline',
+  }])
 })

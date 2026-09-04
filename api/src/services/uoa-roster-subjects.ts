@@ -15,8 +15,8 @@ import {
  * page is served from (`listTeamMembers`) — never a second membership
  * source that could drift from what the page shows.
  *
- * The roster read is two `/org/*` calls, and a roster of N people renders N
- * avatars at once, so the subject set is cached briefly: bounded, in-memory,
+ * The roster read is one exact-team `/org/*` call, and a roster of N people
+ * renders N avatars at once, so the subject set is cached briefly: bounded, in-memory,
  * per team. Entries hold the in-flight promise, so one page load asks UOA
  * once rather than once per row. The TTL is the staleness a removed member's
  * picture can survive for — seconds, not minutes.

@@ -132,10 +132,10 @@ for (const path of walk(SRC).filter((file) => file.endsWith('.tsx'))) {
   modals.push({
     composesA11yHook: (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y')
       || (imports.get(OVERLAY_HOOK) ?? []).includes('useOverlay'),
-    file: relative(SRC, path),
+    file: relative(SRC, path).replaceAll('\\', '/'),
     importsShell,
     paintsScrim,
-    path: `src/${relative(SRC, path)}`,
+    path: `src/${relative(SRC, path).replaceAll('\\', '/')}`,
   })
 }
 

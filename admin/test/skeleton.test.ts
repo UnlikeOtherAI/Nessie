@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -62,7 +62,10 @@ const PULSE_ALLOWLIST = [
 ]
 
 test('no file outside Skeleton.tsx declares shimmer markup of its own', () => {
-  const tracked = execSync("git ls-files 'admin/src/*'", { cwd: repoRoot, encoding: 'utf8' })
+  const tracked = execFileSync('git', ['ls-files', 'admin/src/*'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
@@ -96,7 +99,10 @@ const KEEP_PREVIOUS_EXEMPT = [
 ]
 
 test('every per-id facade query keeps its previous data', () => {
-  const files = execSync("git ls-files 'admin/src/facades/*'", { cwd: repoRoot, encoding: 'utf8' })
+  const files = execFileSync('git', ['ls-files', 'admin/src/facades/*'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => /\.tsx?$/.test(line))

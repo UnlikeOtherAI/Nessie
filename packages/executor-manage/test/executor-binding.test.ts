@@ -22,6 +22,8 @@ const descriptor = {
   localPolicyDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   operationKeys: ['file.read', 'sandbox.stop', 'workspace.review'],
   platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+  sandboxBackend: 'virtualization_framework',
+  supervisor: 'desktop',
   profiles: ['workspace_sandbox'],
   protocolVersion: 1,
   revision: 1,
