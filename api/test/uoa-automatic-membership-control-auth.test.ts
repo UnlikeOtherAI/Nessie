@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto'
 import test from 'node:test'
 
 import {
+  completeUoaAutomaticMembershipControlRequest,
   reserveUoaAutomaticMembershipControlRequest,
   verifyUoaAutomaticMembershipControlSignature,
 } from '../src/services/uoa-automatic-membership-control-auth.js'
@@ -44,11 +45,13 @@ test('UOA control HMAC accepts only the exact parsed body in the allowed clock w
   )
 })
 
-test('UOA control replay reservation expires an old request and rejects concurrent duplicates', async () => {
+test('UOA control replay reservations distinguish in-flight, completed, and mismatched retries', async () => {
   const calls: string[] = []
   const expired = await reserveUoaAutomaticMembershipControlRequest({
     async deleteMany() { calls.push('delete') },
     async create() { calls.push('create') },
+    async findUnique() { return null },
+    async update() {},
   }, {
     requestId: body.request_id, requestDigest: 'digest', organizationId: 'org', uoaActorSub: 'sub', action: 'list',
     now: new Date('2026-01-01T00:00:00.000Z'), ttlMs: 300_000,
@@ -56,12 +59,44 @@ test('UOA control replay reservation expires an old request and rejects concurre
   const duplicate = await reserveUoaAutomaticMembershipControlRequest({
     async deleteMany() {},
     async create() { throw Object.assign(new Error('duplicate'), { code: 'P2002' }) },
+    async findUnique() { return { requestDigest: 'digest', completedAt: null } },
+    async update() {},
   }, {
     requestId: body.request_id, requestDigest: 'digest', organizationId: 'org', uoaActorSub: 'sub', action: 'list', ttlMs: 300_000,
   })
   assert.deepEqual(calls, ['delete', 'create'])
-  assert.equal(expired, true)
-  assert.equal(duplicate, false)
+  assert.equal(expired, 'reserved')
+  assert.equal(duplicate, 'in_progress')
+
+  const completed = await reserveUoaAutomaticMembershipControlRequest({
+    async deleteMany() {},
+    async create() { throw Object.assign(new Error('duplicate'), { code: 'P2002' }) },
+    async findUnique() { return { requestDigest: 'digest', completedAt: new Date() } },
+    async update() {},
+  }, {
+    requestId: body.request_id, requestDigest: 'digest', organizationId: 'org', uoaActorSub: 'sub', action: 'list', ttlMs: 300_000,
+  })
+  const mismatched = await reserveUoaAutomaticMembershipControlRequest({
+    async deleteMany() {},
+    async create() { throw Object.assign(new Error('duplicate'), { code: 'P2002' }) },
+    async findUnique() { return { requestDigest: 'different', completedAt: new Date() } },
+    async update() {},
+  }, {
+    requestId: body.request_id, requestDigest: 'digest', organizationId: 'org', uoaActorSub: 'sub', action: 'list', ttlMs: 300_000,
+  })
+  assert.equal(completed, 'completed')
+  assert.equal(mismatched, 'mismatched')
+
+  const completedAt = new Date('2026-01-01T00:00:00.000Z')
+  await completeUoaAutomaticMembershipControlRequest({
+    async deleteMany() {},
+    async create() {},
+    async findUnique() { return null },
+    async update(input) {
+      assert.equal(input.where.requestId, body.request_id)
+      assert.deepEqual(input.data, { completedAt })
+    },
+  }, body.request_id, completedAt)
 })
 
 test('UOA control rejects cross-org team mapping and invalid action payloads', () => {

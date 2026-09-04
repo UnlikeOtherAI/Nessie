@@ -11,10 +11,19 @@ The feature is off by default. It needs all of the following before an
 administrator can activate a rule:
 
 - `NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED=true`;
-- `UOA_AUTOMATIC_MEMBERSHIP_APP_KEY`, a dedicated `uak_` service key issued to
+- `UOA_AUTOMATIC_MEMBERSHIP_APP_KEY`, a dedicated `uoa_app_` service key issued to
   Nessie by UOA; and HTTPS UOA settings (`UOA_BASE_URL`, `UOA_DOMAIN`,
   `UOA_CONFIG_URL`, `UOA_JWKS_URL`, `UOA_REDIRECT_URL`,
   `UOA_CONFIG_JWT_PRIVATE_KEY_B64`, and `UOA_CONFIG_JWT_KID`).
+
+UOA administrators can also use UOA Admin to manage the same rules. That
+server-to-server control plane additionally requires the paired
+`NESSIE_UOA_AUTOMATIC_MEMBERSHIP_CONTROL_URL` and a randomly generated
+`NESSIE_UOA_AUTOMATIC_MEMBERSHIP_CONTROL_SECRET` of at least 32 bytes. Every
+signed UOA request is replay-protected and Nessie rechecks the acting person's
+current, exact UOA organisation or team administrator role before it reads or
+changes a rule. UOA Admin is an additional doorway, not a second source of
+membership or identity data.
 
 Generic UOA credentials are not sufficient. The API and standalone worker use
 the same fail-closed UOA adapter; when enabled without this key or its HTTPS

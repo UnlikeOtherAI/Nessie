@@ -7,6 +7,7 @@ test('automatic membership worker has no local membership authority', async () =
   await sweepAutomaticMembershipBackfills({
     automaticMembershipBackfillRun: { findMany: async () => { queried = true; return [] } },
   } as never, {
+    setRuleFence: async () => {},
     assertRuleAdministrator: async () => true,
     listVerifiedDomainSubjects: async () => ({ snapshotId: 'snapshot', subjects: [], cursor: null }),
     grantMember: async () => ({ operationId: 'operation', status: 'completed' }),

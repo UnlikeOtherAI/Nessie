@@ -20,6 +20,7 @@ import {
 } from '../services/automatic-membership.js'
 import type { RouteDeps } from './types.js'
 import {
+  completeUoaAutomaticMembershipControlRequest,
   reserveUoaAutomaticMembershipControlRequest,
   verifyUoaAutomaticMembershipControlSignature,
 } from '../services/uoa-automatic-membership-control-auth.js'
@@ -326,8 +327,28 @@ export const registerUoaAutomaticMembershipControlRoutes = (app: FastifyInstance
         ttlMs: REPLAY_TTL_MS,
       },
     )
-    if (!reserved) {
-      return sendApiError(reply, 409, 'UOA_CONTROL_REPLAY', 'This UOA control request has already been processed.')
+    if (reserved === 'mismatched') {
+      return sendApiError(reply, 409, 'UOA_CONTROL_REPLAY', 'This UOA control request does not match its prior request.')
+    }
+    if (reserved === 'in_progress') {
+      return sendApiError(reply, 409, 'UOA_CONTROL_IN_PROGRESS', 'This automatic membership request is still in progress.')
+    }
+    const scope = membershipScope(body.data.scope)
+    const complete = async <T>(result: T): Promise<T> => {
+      if (reserved === 'reserved') {
+        await completeUoaAutomaticMembershipControlRequest(
+          deps.prisma.uoaAutomaticMembershipControlRequest, body.data.request_id,
+        )
+      }
+      return result
+    }
+    if (reserved === 'completed') {
+      if (body.data.action === 'teams') return complete({ teams: await toUoaTargetTeams(deps, organization.externalOrgId) })
+      return complete(await toUoaControlResponse(
+        deps,
+        await aggregate(deps, { organizationId: organization.id, scope, teamId, authSecret: deps.authSecret }),
+        { organizationId: organization.id, externalOrgId: organization.externalOrgId, scope },
+      ))
     }
 
     try {
@@ -342,11 +363,10 @@ export const registerUoaAutomaticMembershipControlRoutes = (app: FastifyInstance
         actorSub: body.data.uoa_actor_sub,
         requestId: body.data.request_id,
       })
-      const scope = membershipScope(body.data.scope)
       if (body.data.action === 'list') UoaControlPayloadSchemas.list.parse(body.data.payload)
       if (body.data.action === 'teams') {
         UoaControlPayloadSchemas.teams.parse(body.data.payload)
-        return { teams: await toUoaTargetTeams(deps, organization.externalOrgId) }
+        return complete({ teams: await toUoaTargetTeams(deps, organization.externalOrgId) })
       }
       if (body.data.action === 'create') {
         const payload = UoaControlPayloadSchemas.create.parse(body.data.payload)
@@ -414,11 +434,11 @@ export const registerUoaAutomaticMembershipControlRoutes = (app: FastifyInstance
         if (!rule) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic membership rule was not found.', 404)
         await releaseAutomaticMembershipClaim(deps.prisma, context, rule.claimId)
       }
-      return toUoaControlResponse(
+      return complete(await toUoaControlResponse(
         deps,
         await aggregate(deps, { organizationId: organization.id, scope, teamId, authSecret: deps.authSecret }),
         { organizationId: organization.id, externalOrgId: organization.externalOrgId, scope },
-      )
+      ))
     } catch (error) {
       if (error instanceof z.ZodError) {
         return sendApiError(reply, 400, 'INVALID_UOA_CONTROL_PAYLOAD', 'The action payload is invalid.')

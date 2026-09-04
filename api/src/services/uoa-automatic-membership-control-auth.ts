@@ -48,9 +48,20 @@ type ControlRequestLedger = {
     action: string
     expiresAt: Date
   } }): Promise<unknown>
+  findUnique(input: {
+    where: { requestId: string }
+    select: { requestDigest: true; completedAt: true }
+  }): Promise<{ requestDigest: string; completedAt: Date | null } | null>
+  update(input: { where: { requestId: string }; data: { completedAt: Date } }): Promise<unknown>
 }
 
-/** Returns false for a live duplicate request id, including concurrent callers. */
+export type UoaControlRequestReservation = 'reserved' | 'in_progress' | 'completed' | 'mismatched'
+
+/**
+ * A retry with the exact request id/body returns the already-completed
+ * aggregate rather than replaying a mutation. A concurrent duplicate remains
+ * in progress, while a request-id/body mismatch is refused as tampering.
+ */
 export const reserveUoaAutomaticMembershipControlRequest = async (
   ledger: ControlRequestLedger,
   input: {
@@ -62,7 +73,7 @@ export const reserveUoaAutomaticMembershipControlRequest = async (
     now?: Date
     ttlMs: number
   },
-): Promise<boolean> => {
+): Promise<UoaControlRequestReservation> => {
   const now = input.now ?? new Date()
   const request = {
     requestId: input.requestId,
@@ -74,9 +85,24 @@ export const reserveUoaAutomaticMembershipControlRequest = async (
   await ledger.deleteMany({ where: { expiresAt: { lte: now } } })
   try {
     await ledger.create({ data: { ...request, expiresAt: new Date(now.getTime() + input.ttlMs) } })
-    return true
+    return 'reserved'
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') return false
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+      const existing = await ledger.findUnique({
+        where: { requestId: input.requestId },
+        select: { requestDigest: true, completedAt: true },
+      })
+      if (!existing || existing.requestDigest !== input.requestDigest) return 'mismatched'
+      return existing.completedAt ? 'completed' : 'in_progress'
+    }
     throw error
   }
+}
+
+export const completeUoaAutomaticMembershipControlRequest = async (
+  ledger: ControlRequestLedger,
+  requestId: string,
+  now = new Date(),
+): Promise<void> => {
+  await ledger.update({ where: { requestId }, data: { completedAt: now } })
 }
