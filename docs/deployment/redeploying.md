@@ -85,9 +85,11 @@ Consequences worth knowing:
   script (and the Deploy workflow) fails red with the new container's logs.
 - The script ends with a **public-endpoint gate** — it curls
   `https://api.nessie.works/api/health`, `https://app.nessie.works/`, and
-  `https://nessie.works/` through Caddy and exits non-zero on any failure, so a
-  green deploy proves the site is actually up (previously a dead API could
-  deploy "green" silently).
+  `https://nessie.works/` through Caddy. Each endpoint has up to five attempts
+  (with a 15-second response timeout and three seconds between attempts) to
+  allow Caddy's upstream discovery to converge after the swap; a persistent
+  failure exits non-zero, so a green deploy proves the site is actually up
+  (previously a dead API could deploy "green" silently).
 - These services have **no fixed `container_name`** (a pinned name cannot scale
   to two replicas); Compose names them `compose-api-1`-style, so read logs with
   `docker compose -f infrastructure/compose/docker-compose.prod.yml logs api`.
