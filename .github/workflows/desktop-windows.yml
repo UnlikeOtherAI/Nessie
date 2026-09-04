@@ -1,9 +1,9 @@
 name: Desktop (Windows)
 
 # Builds the Windows desktop artifacts and the standalone executor package, signs
-# them where a signing identity is configured, and proves they install: a build
-# that is never installed is not a delivery, and an unsigned one is never called
-# a release.
+# them where a signing identity is configured, and proves they install. The
+# direct-download release can deliberately publish an unsigned Windows build
+# when no Authenticode identity has been configured.
 on:
   workflow_call:
     inputs:
@@ -17,7 +17,7 @@ on:
         default: false
         type: boolean
       require_signed_release:
-        description: "Fail instead of producing an unsigned development artifact."
+        description: "Require a configured Authenticode publisher for this build."
         required: false
         default: false
         type: boolean
@@ -38,7 +38,7 @@ on:
         default: false
         type: boolean
       require_signed_release:
-        description: "Require a configured Windows signing identity."
+        description: "Require a configured Authenticode publisher for this build."
         required: false
         default: false
         type: boolean
@@ -237,10 +237,9 @@ jobs:
             throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
           }
 
-      # Signing is a deployment fact. A tag release and a manual verification
-      # of the exact main branch both require the configured identity. A source
-      # override remains an unsigned development build, so repository code from
-      # another ref can never receive signing credentials.
+      # Signing is optional for the direct-download release until a Windows
+      # publisher exists. A caller can still require it for trusted release and
+      # main-branch verification builds; source overrides never receive it.
       - name: Resolve signing configuration
         id: signing
         shell: pwsh
@@ -253,11 +252,11 @@ jobs:
         run: |
           # The `secrets` context is not usable in a step's `if`, so every later
           # step branches on these outputs rather than on the secrets directly.
-          $release = `
+          $releaseSource = `
             $env:GITHUB_REF_TYPE -eq 'tag' -and `
             $env:GITHUB_REF_NAME -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and `
-            '${{ inputs.source_ref }}' -eq $env:GITHUB_REF -and `
-            $env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true'
+            '${{ inputs.source_ref }}' -eq $env:GITHUB_REF
+          $release = $releaseSource -and $env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true'
           $trustedMainVerification = `
             $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and `
             $env:GITHUB_REF -eq 'refs/heads/main' -and `
@@ -281,6 +280,8 @@ jobs:
             # release build refuses executor controls by design.
             "NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT=$env:WINDOWS_SIGNER_THUMBPRINT" |
               Out-File -FilePath $env:GITHUB_ENV -Append
+          } elseif ($releaseSource) {
+            Write-Host '::warning::Publishing an unsigned Windows installer; SmartScreen may warn before installation.'
           } else {
             Write-Host '::warning::Source-ref and non-main manual builds are unsigned development builds, not releases.'
           }
@@ -421,9 +422,8 @@ jobs:
           }
           Get-ChildItem artifacts -Recurse -File | Format-Table Name, Length
 
-      # The release gate. Every artifact must carry a valid signature from the
-      # expected publisher, or the job fails; an unsigned build skips the gate
-      # and is labelled a development build instead of quietly passing it.
+      # When a publisher is configured this proves every artifact has its valid
+      # signature. The intentionally unsigned direct release skips this gate.
       - name: Verify signatures
         shell: pwsh
         env:
@@ -431,7 +431,7 @@ jobs:
           WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNER_THUMBPRINT }}
         run: |
           if ('${{ steps.signing.outputs.signed }}' -ne 'true') {
-            Write-Host '::warning::Unsigned development build — signature verification skipped and no release may be cut from it.'
+            Write-Host '::warning::Unsigned Windows build — Authenticode verification skipped.'
             exit 0
           }
           $failed = @()
