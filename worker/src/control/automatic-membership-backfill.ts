@@ -6,7 +6,7 @@ import type { UoaAutomaticMembershipAdapter } from '@nessie/team-admin'
 
 /** Kept structurally identical to the API contract so tests can inject UOA. */
 export type AutomaticMembershipUoaAdapter = Pick<UoaAutomaticMembershipAdapter,
-  'assertRuleAdministrator' | 'listVerifiedDomainSubjects' | 'grantMember' | 'getOperation'>
+  'setRuleFence' | 'assertRuleAdministrator' | 'listVerifiedDomainSubjects' | 'grantMember' | 'getOperation'>
 
 export const AUTOMATIC_MEMBERSHIP_BACKFILL_TOPIC = 'automatic-membership.backfill'
 const batchSize = 25

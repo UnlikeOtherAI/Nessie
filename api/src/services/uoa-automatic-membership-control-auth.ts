@@ -28,7 +28,7 @@ export const verifyUoaAutomaticMembershipControlSignature = (
   now = Date.now(),
 ): boolean => {
   const parsedTimestamp = timestampAsMilliseconds(timestamp)
-  if (!hasStrongUoaAutomaticMembershipControlSecret(secret)
+  if (!secret || !hasStrongUoaAutomaticMembershipControlSecret(secret)
     || !parsedTimestamp || !signature || !/^[a-f0-9]{64}$/i.test(signature)) return false
   if (Math.abs(now - parsedTimestamp) > MAX_CLOCK_SKEW_MS) return false
   const expected = createHmac('sha256', secret)

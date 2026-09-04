@@ -61,10 +61,13 @@ const controlContext = (input: {
   requestId: string
 }): AuthorizedActionContext => ({
   actor: { actorType: 'service', actorId: `uoa:${input.actorSub}` },
-  tenant: { organizationId: input.organizationId, ...(input.teamId ? { teamId: input.teamId } : {}) },
+  tenant: {
+    organizationId: input.organizationId as AuthorizedActionContext['tenant']['organizationId'],
+    ...(input.teamId ? { teamId: input.teamId as NonNullable<AuthorizedActionContext['tenant']['teamId']> } : {}),
+  },
   actionContext: {
     requestId: input.requestId,
-    ...(input.teamId ? { teamId: input.teamId } : {}),
+    ...(input.teamId ? { teamId: input.teamId as NonNullable<AuthorizedActionContext['actionContext']['teamId']> } : {}),
     uoaControlSubject: input.actorSub,
   },
 })
