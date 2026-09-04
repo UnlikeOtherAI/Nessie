@@ -1,5 +1,6 @@
 import type { ProviderMessage } from '@nessie/runtime'
 import { estimateMessagesTokens, groupMessages } from './context-management.js'
+import { projectMailToolResultsForUtilityTranscript } from './mail-tool-transcript.js'
 
 // Real context compaction: the elder transcript is folded into a rolling
 // work-state note produced by one model call, and the conversation is rebuilt
@@ -95,7 +96,7 @@ export const selectCompactionSlice = (
 }
 
 const renderTranscript = (messages: ProviderMessage[]): string =>
-  messages
+  projectMailToolResultsForUtilityTranscript(messages)
     .map((message) => {
       if (message.role === 'tool') {
         return `[tool result ${message.toolCallId}]\n${message.content.slice(0, TRANSCRIPT_TOOL_OUTPUT_CHARS)}`

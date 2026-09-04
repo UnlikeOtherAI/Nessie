@@ -1,4 +1,5 @@
 import type { ProviderMessage } from '@nessie/runtime'
+import { projectMailToolResultsForUtilityTranscript } from '../mail-tool-transcript.js'
 import type { CheckpointSource } from './checkpoint.js'
 
 // The checkpoint note is produced by ONE bounded model call made from the
@@ -12,7 +13,7 @@ const MECHANICAL_NOTE_CHARS = 4_000
 const SOURCES_HEADING = /^##\s*sources\s*$/i
 
 const renderTranscript = (messages: ProviderMessage[]): string =>
-  messages
+  projectMailToolResultsForUtilityTranscript(messages)
     .slice(-TRANSCRIPT_MESSAGES)
     .map((message) => {
       if (message.role === 'tool') {

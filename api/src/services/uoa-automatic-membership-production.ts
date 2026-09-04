@@ -30,7 +30,7 @@ export const createProductionUoaAutomaticMembershipAdapter = (): UoaAutomaticMem
   const operation = (body: Record<string, unknown>): UoaAutomaticMembershipOperation => {
     const operationId = string(body.operation_id)
     const status = string(body.status)
-    if (operationId === null || status === null) fail('invalid operation response')
+    if (operationId === null) return fail('invalid operation response')
     if (status === 'accepted' || status === 'completed' || status === 'already_member' || status === 'failed') {
       return { operationId, status }
     }
@@ -79,7 +79,8 @@ export const createProductionUoaAutomaticMembershipAdapter = (): UoaAutomaticMem
       )
       const snapshotId = string(body.snapshot_id); const cursor = body.cursor === null ? null : string(body.cursor)
       const subjects = Array.isArray(body.subjects) ? body.subjects.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
-      if (!snapshotId || (body.cursor !== null && !cursor)) fail('invalid snapshot page')
+      if (snapshotId === null) return fail('invalid snapshot page')
+      if (body.cursor !== null && cursor === null) return fail('invalid snapshot page')
       return { snapshotId, cursor, subjects }
     },
     async grantMember(input) {
