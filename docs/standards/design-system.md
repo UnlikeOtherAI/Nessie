@@ -129,3 +129,13 @@ summary and points here; **this file is the rule**.
   `styles.css`. Text symbols remain valid only when the symbol is the content
   itself (for example a mathematical sign), not when it stands in for a button
   icon.
+- **One sign-in surface.** The admin login (`/login`) and the public landing
+  (`nessie.works`) are the same screen: `packages/sign-in-surface` owns the
+  layout (`SignInSurface`), the showcase panel, the app-download tiles and
+  the shared copy, and ships only `.signin-*` classes that read host tokens.
+  The admin supplies its themes; the landing imports the package's
+  `tokens.css`, whose values mirror the Space White block here. A change to
+  the sign-in doorway is made in the package, never by restyling one host.
+  The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
+  minted on the admin origin, so the landing hands off and the admin starts
+  the provider flow at once.

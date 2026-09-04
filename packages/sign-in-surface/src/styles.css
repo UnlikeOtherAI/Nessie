@@ -1,0 +1,764 @@
+/* The sign-in surface, shared by the admin login (/login) and the nessie.works
+   landing. Geometry, type and motion live here; every colour is a token the
+   host provides — the admin through its themes in admin/src/styles.css, the
+   landing through ./tokens.css. No hex, no host-specific class names. */
+
+/* The page is exactly the live viewport and never scrolls itself: the admin
+   body is overflow hidden (the navigation stack owns scroll), so the column
+   scrolls inside the card instead, and the landing behaves the same way. */
+.signin-page {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: var(--app-live-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--page-gutter, 16px);
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--page-gutter, 16px));
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--page-gutter, 16px));
+  background: var(--rail);
+  color: var(--tx);
+  font-family: var(--font-family-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.signin-page *,
+.signin-page *::before,
+.signin-page *::after {
+  box-sizing: border-box;
+}
+
+.signin-page ::selection {
+  background: var(--accent-soft);
+  color: var(--tx);
+}
+
+.signin-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xl, 24px);
+  background: var(--panel);
+  box-shadow: var(--shadow-panel, 0 24px 80px var(--scrim));
+}
+
+/* The aura sits on the section; the column scrolls in a layer above it, so
+   the wash stays put and its blur bleed never becomes scrollable overflow. */
+.signin-auth {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.signin-auth-scroll {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 48px 40px;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.signin-aura {
+  position: absolute;
+  inset: -80px;
+  background: var(--aura-wash);
+  filter: blur(70px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.signin-aura-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, var(--panel) 92%);
+  pointer-events: none;
+}
+
+.signin-column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 520px;
+  min-width: 0;
+  margin: auto;
+  text-align: center;
+}
+
+.signin-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  color: var(--tx);
+  font-family: var(--font-family-display);
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.signin-wordmark-mark {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.signin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 5px 12px;
+  border: 1px solid var(--sep);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--tx2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.signin-pill-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tx);
+}
+
+.signin-title {
+  margin: 0;
+  color: var(--tx);
+  font-family: var(--font-family-display);
+  font-size: 38px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.signin-lede {
+  max-width: 460px;
+  margin: 18px 0 0;
+  color: var(--tx2);
+  font-size: 15px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.signin-actions {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  margin-top: 36px;
+}
+
+/* The big sign-in control. A button or a link, one height, one voice. */
+.signin-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 56px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--radius-sm, 7px);
+  font-family: var(--font-family-display);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast, 120ms) var(--easing-standard, ease),
+    color var(--duration-fast, 120ms) var(--easing-standard, ease),
+    transform var(--duration-fast, 120ms) var(--easing-standard, ease);
+}
+
+.signin-cta:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.signin-cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.signin-cta:focus-visible,
+.signin-app:focus-visible,
+.signin-dot:focus-visible,
+.signin-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.signin-cta-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.signin-cta-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.signin-cta-secondary {
+  background: var(--panel-soft);
+  color: var(--tx);
+}
+
+.signin-cta-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--panel-soft), var(--tx) 5%);
+}
+
+.signin-cta-icon {
+  font-size: 18px;
+}
+
+.signin-note {
+  margin: 0;
+  color: var(--tx3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.signin-link {
+  color: var(--tx2);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  border-radius: 3px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.signin-link:hover {
+  color: var(--tx);
+}
+
+.signin-alert {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md, 14px);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* A quieter grouping inside the column: the local-development form, the
+   session import. Separated by a rule and space, never by a second frame. */
+.signin-section {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--sep);
+  text-align: left;
+}
+
+.signin-section-title {
+  margin: 0;
+  color: var(--tx3);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.signin-field {
+  display: grid;
+  gap: 6px;
+  color: var(--tx);
+  font-size: 14px;
+}
+
+/* Get the apps */
+
+.signin-downloads {
+  width: 100%;
+}
+
+.signin-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 34px 0 18px;
+  color: var(--tx3);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.signin-divider::before,
+.signin-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--sep);
+}
+
+.signin-apps {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.signin-apps-mobile {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.signin-apps-desktop {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.signin-app-choices {
+  margin-top: 10px;
+}
+
+.signin-app-choices[hidden] {
+  display: none;
+}
+
+.signin-app {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--sep);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--tx);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast, 120ms) var(--easing-standard, ease),
+    background var(--duration-fast, 120ms) var(--easing-standard, ease);
+}
+
+.signin-app:hover {
+  border-color: var(--border-strong);
+}
+
+.signin-app-muted {
+  background: var(--main-hover);
+  opacity: 0.7;
+  cursor: default;
+}
+
+.signin-app-muted:hover {
+  border-color: var(--sep);
+}
+
+.signin-app-dark {
+  padding: 12px 14px;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.signin-app-dark:hover {
+  border-color: transparent;
+  background: var(--accent-hover);
+}
+
+.signin-app-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  font-size: 22px;
+}
+
+.signin-app-dark .signin-app-icon {
+  width: 20px;
+  font-size: 20px;
+}
+
+.signin-app-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.signin-app-label {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.signin-app-dark .signin-app-label {
+  font-size: 14px;
+}
+
+.signin-app-detail {
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signin-app-dark .signin-app-detail {
+  color: color-mix(in srgb, var(--on-accent) 70%, transparent);
+}
+
+.signin-app-chevron {
+  flex: 0 0 auto;
+  font-size: 12px;
+  transition: transform var(--duration-base, 200ms) var(--easing-standard, ease);
+}
+
+.signin-app[aria-expanded='true'] .signin-app-chevron {
+  transform: rotate(180deg);
+}
+
+/* Showcase */
+
+.signin-showcase {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px 20px 20px 0;
+}
+
+.signin-showcase-panel {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--surface-inverse);
+  color: var(--panel);
+}
+
+.signin-showcase-aura {
+  position: absolute;
+  inset: -120px;
+  background: var(--aura-wash);
+  filter: blur(80px);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.signin-showcase-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-inverse) 5%, transparent) 0%,
+    color-mix(in srgb, var(--surface-inverse) 35%, transparent) 55%,
+    color-mix(in srgb, var(--surface-inverse) 92%, transparent) 100%
+  );
+  pointer-events: none;
+}
+
+.signin-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 64px 56px 200px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 700ms var(--easing-standard, ease);
+}
+
+.signin-slide[data-active] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@keyframes signin-slide-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.signin-slide-card {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  color: var(--tx);
+  box-shadow: var(--shadow-float, 0 20px 60px var(--scrim-strong));
+  animation: signin-slide-enter 800ms var(--easing-standard, ease) both;
+  text-align: left;
+}
+
+.signin-slide-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--sep);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.signin-slide-hash {
+  color: var(--tx3);
+  font-weight: 500;
+}
+
+.signin-slide-members {
+  margin-left: auto;
+  color: var(--tx3);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.signin-slide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.signin-msg {
+  display: flex;
+  gap: 12px;
+}
+
+.signin-msg-tile {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--sep);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--tx);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.signin-msg-tile-agent {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.signin-msg-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.signin-msg-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.signin-msg-name {
+  font-weight: 600;
+}
+
+.signin-msg-agent {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.signin-msg-time {
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.signin-msg-text {
+  margin-top: 2px;
+  color: var(--tx);
+  font-size: 13.5px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.signin-msg-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--tx2);
+  font-size: 12px;
+}
+
+.signin-showcase-foot {
+  position: absolute;
+  right: 44px;
+  bottom: 48px;
+  left: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.signin-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.signin-dot {
+  width: 56px;
+  height: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--panel) 35%, transparent);
+  cursor: pointer;
+  transition: background 300ms var(--easing-standard, ease);
+}
+
+.signin-dot[aria-selected='true'] {
+  background: var(--panel);
+}
+
+.signin-showcase-title {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.signin-showcase-body {
+  max-width: 560px;
+  margin: 12px 0 0;
+  color: color-mix(in srgb, var(--panel) 80%, transparent);
+  font-size: 15px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* Wide: the showcase joins the card and the card takes the viewport. */
+@media (min-width: 64rem) {
+  .signin-card-with-showcase {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  }
+
+  .signin-showcase {
+    display: block;
+  }
+}
+
+/* Short windows (a 900px-high laptop): tighten the vertical rhythm so the
+   whole column, download tiles included, fits without scrolling. */
+@media (min-width: 64rem) and (max-height: 60rem) {
+  .signin-auth-scroll {
+    padding: 32px 40px;
+  }
+
+  .signin-wordmark {
+    margin-bottom: 20px;
+  }
+
+  .signin-pill {
+    margin-bottom: 16px;
+  }
+
+  .signin-title {
+    font-size: 34px;
+  }
+
+  .signin-lede {
+    margin-top: 14px;
+  }
+
+  .signin-actions {
+    margin-top: 28px;
+  }
+
+  .signin-section {
+    margin-top: 22px;
+    padding-top: 18px;
+  }
+
+  .signin-divider {
+    margin: 26px 0 14px;
+  }
+
+  .signin-app {
+    padding: 10px 16px;
+  }
+
+  .signin-app-dark {
+    padding: 10px 14px;
+  }
+}
+
+/* Narrow: tighter frame, one download per row for the wide desktop tiles. */
+@media (max-width: 40rem) {
+  .signin-page {
+    padding: 12px;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
+
+  .signin-auth-scroll {
+    padding: 40px 20px 32px;
+  }
+
+  .signin-title {
+    font-size: 32px;
+  }
+
+  .signin-apps-desktop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signin-slide,
+  .signin-slide-card,
+  .signin-dot,
+  .signin-cta,
+  .signin-app,
+  .signin-app-chevron {
+    animation: none;
+    transition: none;
+  }
+}
