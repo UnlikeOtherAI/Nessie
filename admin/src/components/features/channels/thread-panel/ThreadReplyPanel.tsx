@@ -130,6 +130,9 @@ export const ThreadReplyPanel = ({
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    secretCapture,
   } = useChannelComposer({
     activeChannel,
     threadMessages: replies,
@@ -323,6 +326,8 @@ export const ThreadReplyPanel = ({
                   onInsertEmoji={insertEmoji}
                   onInsertHashSign={() => mentionRef.current?.insertHashSign()}
                   onOversizePaste={(paste) => setOversizePaste(paste)}
+                  onConfirmSecretCapture={confirmSecretCapture}
+                  onDismissSecretCapture={dismissSecretCapture}
                   onSubmitForm={(event) => {
                     threadScroll.pinToBottom()
                     markReplySent()
@@ -338,6 +343,7 @@ export const ThreadReplyPanel = ({
                   inviteErrors={inviteErrors}
                   onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
                   onDismissPendingAgent={dismissPendingAgent}
+                  secretCapture={secretCapture}
                 />
               </>
             )}

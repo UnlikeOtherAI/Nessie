@@ -4,7 +4,12 @@ import {
   type ConnectorType,
   type ConnectorUsage,
 } from '@nessie/runtime'
-import { parseAgentId, parseRunId, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  parseAgentId,
+  parseRunId,
+  redactDetectedSecrets,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
 import { captureDemonstrationToolEnd } from './demonstration-capture.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
@@ -37,6 +42,8 @@ export const recordToolEnd = async (
   },
 ): Promise<void> => {
   const endedAt = new Date()
+  const inputSummary = redactDetectedSecrets(input.inputSummary)
+  const outputPreview = redactDetectedSecrets(input.outputPreview)
 
   if (input.toolCallRecordId) {
     const updated = await deps.prisma.toolCall.updateMany({
@@ -48,8 +55,8 @@ export const recordToolEnd = async (
       data: {
         durationMs: input.durationMs,
         endedAt,
-        inputSummary: input.inputSummary,
-        outputPreview: input.outputPreview,
+        inputSummary,
+        outputPreview,
         success: input.success,
       },
     })
@@ -62,8 +69,8 @@ export const recordToolEnd = async (
         agentId: context.agent.id,
         durationMs: input.durationMs,
         endedAt,
-        inputSummary: input.inputSummary,
-        outputPreview: input.outputPreview,
+        inputSummary,
+        outputPreview,
         runId: context.run.id,
         startedAt: input.startedAt,
         success: input.success,
