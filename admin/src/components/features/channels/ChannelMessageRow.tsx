@@ -444,7 +444,9 @@ export const ChannelMessageRow = ({
               </div>
             ))
             : null}
-          {!isEditingMessage ? <DashboardPresentation metadata={message.metadata} /> : null}
+          {!isEditingMessage ? (
+            <DashboardPresentation metadata={message.metadata} threadId={message.threadId} />
+          ) : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
           ) : null}

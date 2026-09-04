@@ -147,6 +147,25 @@ export {
 
 export type { AgenticToolResult } from './tool-types.js'
 
+/**
+ * The dashboard dispatcher is injected only by unit tests so the top-level
+ * builtin routing contract can be verified without constructing a deployment
+ * storage service. Production always uses the shared service resolver below.
+ */
+export type BuiltinToolDependencies = {
+  dashboard?: {
+    resolveServices: typeof resolveDashboardToolServices
+    runTool: typeof runDashboardTool
+  }
+}
+
+const DEFAULT_BUILTIN_TOOL_DEPENDENCIES: Required<BuiltinToolDependencies> = {
+  dashboard: {
+    resolveServices: resolveDashboardToolServices,
+    runTool: runDashboardTool,
+  },
+}
+
 const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
 
 const loadBuiltinTransportConfig = async (
@@ -202,6 +221,7 @@ const executeBuiltinToolUncorrected = async (
   toolName: string,
   args: Record<string, unknown>,
   context: BuiltinToolRuntimeContext,
+  dependencies: BuiltinToolDependencies = DEFAULT_BUILTIN_TOOL_DEPENDENCIES,
 ): Promise<AgenticToolResult> => {
   const inputSummary = summarizeToolInput(args)
   const executorTool = executorManagementTool(toolName, args, context)
@@ -393,17 +413,20 @@ const executeBuiltinToolUncorrected = async (
     case 'dashboard_source_list':
     case 'dashboard_source_probe':
     case 'dashboard_source_create':
+    case 'dashboard_source_import':
     case 'dashboard_source_set_credential':
     case 'dashboard_widget_add':
     case 'dashboard_widget_update':
     case 'dashboard_widget_move':
     case 'dashboard_widget_remove':
+    case 'dashboard_presentation_update':
     case 'dashboard_read':
     case 'dashboard_present':
     case 'dashboard_widget_post':
       return wrapTool(inputSummary, async () => {
-        const services = await resolveDashboardToolServices(context.prisma)
-        return runDashboardTool(toolName, context, args, services)
+        const dashboard = dependencies.dashboard ?? DEFAULT_BUILTIN_TOOL_DEPENDENCIES.dashboard
+        const services = await dashboard.resolveServices(context.prisma)
+        return dashboard.runTool(toolName, context, args, services)
       })
     case 'web_search':
       return wrapTool(inputSummary, () =>
@@ -591,8 +614,9 @@ export const executeBuiltinTool = async (
   args: Record<string, unknown>,
   context: BuiltinToolRuntimeContext,
   stubbedIds: ReadonlySet<string> = new Set(),
+  dependencies: BuiltinToolDependencies = DEFAULT_BUILTIN_TOOL_DEPENDENCIES,
 ): Promise<AgenticToolResult> => {
-  const result = await executeBuiltinToolUncorrected(toolName, args, context)
+  const result = await executeBuiltinToolUncorrected(toolName, args, context, dependencies)
   return appendStubbedBuiltinSchema(
     toolName,
     result,

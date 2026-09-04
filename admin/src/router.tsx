@@ -158,6 +158,10 @@ export const router = createBrowserRouter([
             // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
             path: ':channelId/threads/:threadId/replies/:rootMessageId',
           },
+          {
+            // A presented dashboard is a sibling workspace panel, never a modal.
+            path: ':channelId/threads/:threadId/dashboards/:dashboardId',
+          },
           // Conversation information is a route, not a transient popup: phone
           // Back, notification deep links, tablet inspectors, and desktop all
           // resolve the same explicit hierarchy.

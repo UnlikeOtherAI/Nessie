@@ -193,6 +193,45 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'dashboard_source_import',
+    category: 'dashboards',
+    summary: 'Import JSON, CSV, Excel, document text, or article text as a self-contained static dashboard source.',
+    label: 'Import Static Dashboard Data',
+    description:
+      'Import JSON records, CSV with a header row, or a base64-encoded XLSX workbook into a self-contained '
+      + 'dashboard data source. Documents and articles are retained as a bounded line table, so use the '
+      + 'normal reading tool first and pass the extracted text. The importer validates quoted CSV, duplicate '
+      + 'headers, types, row and byte caps; it refuses spreadsheet formulas and never invents missing values. '
+      + 'The original supplied bytes are retained with a content digest; provide canonicalUrl when the article has one '
+      + 'so the source notes can show it as a user-supplied attribution claim.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Specific human-readable source name.' },
+        format: { type: 'string', enum: ['json', 'csv', 'xlsx', 'document', 'article'] },
+        content: {
+          type: 'string',
+          description: 'JSON record array/object with rows, CSV text, base64 XLSX bytes, or extracted document/article text.',
+        },
+        sourceAttachmentId: {
+          type: 'string',
+          description: 'Optional attachment id already read from this conversation. Its original bytes are re-authorized and retained for source audit.',
+        },
+        sourceReference: {
+          type: 'string',
+          description: 'Optional human-readable source identifier or citation claim to show in source notes.',
+        },
+        canonicalUrl: { type: 'string', description: 'Canonical public article URL when applicable.' },
+        provenance: {
+          type: 'object',
+          description: 'Optional source-provided provenance claims. They are retained as claims, not treated as verified facts.',
+        },
+      },
+      required: ['name', 'format', 'content'],
+    },
+    safe: false,
+  },
+  {
     id: 'dashboard_widget_add',
     category: 'dashboards',
     summary: 'Add a data-bound widget to a dashboard.',
@@ -298,6 +337,28 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'dashboard_presentation_update',
+    category: 'dashboards',
+    summary: 'Update dashboard filters, executive insights, styling, or source-note display.',
+    label: 'Update Dashboard Presentation',
+    description:
+      'Replace the dashboard-level presentation in one versioned change. Use it for requests such as '
+      + '"show Q2 only", "make this executive-ready", or "add source notes". Send the complete '
+      + 'presentation: { filters: [{ id, sourceId, column, label, values }], insights: [{ id, text, tone }], '
+      + 'attributions: [{ sourceId, label?, visible? }], style: "standard"|"executive" }. Filters use '
+      + 'exact source values only; they cannot run code or expressions. Source facts remain immutable — this '
+      + 'only controls their visible label and whether a source note is shown.',
+    parameters: {
+      type: 'object',
+      properties: {
+        dashboardId: { type: 'string' },
+        presentation: { type: 'object', description: 'The complete closed dashboard presentation object.' },
+      },
+      required: ['dashboardId', 'presentation'],
+    },
+    safe: false,
+  },
+  {
     id: 'dashboard_read',
     category: 'dashboards',
     summary: 'Read dashboard widgets, current data, and freshness.',
@@ -323,7 +384,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Post a complete dashboard into this conversation after you create or edit it. '
       + 'The preview is a literal scaled-down dashboard canvas; the person can tap it '
-      + 'to inspect the same dashboard full screen. It is only a reference: every '
+      + 'to inspect the same dashboard in the conversation workspace panel. It is only a reference: every '
       + 'viewer still needs normal dashboard access, so presenting one never shares '
       + 'or widens its audience. Use this instead of describing a finished dashboard '
       + 'in prose when the person needs to review the actual arrangement.',

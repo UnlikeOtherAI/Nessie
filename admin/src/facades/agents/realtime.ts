@@ -9,6 +9,7 @@ import {
   agentTodoKeys,
   approvalKeys,
   channelKeys,
+  dashboardKeys,
   threadKeys,
 } from '../../lib/query-keys'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -26,6 +27,7 @@ import {
 export const useAgentRealtime = (input: {
   channelId?: string
   channelIds?: string[]
+  dashboardIds?: string[]
   organizationId?: string
   threadId?: string
 }): AgentActivityRealtimeState => {
@@ -47,6 +49,11 @@ export const useAgentRealtime = (input: {
     [input.channelId, input.channelIds],
   )
   const subscriptionKey = subscriptionChannelIds.slice().sort().join(',')
+  const subscriptionDashboardIds = useMemo(
+    () => Array.from(new Set((input.dashboardIds ?? []).filter((id) => id.length > 0))).sort(),
+    [input.dashboardIds],
+  )
+  const dashboardSubscriptionKey = subscriptionDashboardIds.join(',')
 
   useEffect(() => {
     if (!token || !me?.context.organizationId) {
@@ -108,6 +115,19 @@ export const useAgentRealtime = (input: {
           agentKeys.all,
           (current) => mergeAgentSnapshot(current, message.snapshot),
         )
+        // Dashboard events are advisory invalidations rather than a replay log.
+        // A successful re-subscription is therefore the resync boundary after a
+        // dropped socket: fetch the authoritative, ACL-checked state before a
+        // compact card or workspace can keep an out-of-date revision.
+        const resyncDashboardIds = dashboardSubscriptionKey
+          .split(',')
+          .filter((dashboardId) => dashboardId.length > 0)
+        for (const dashboardId of resyncDashboardIds) {
+          void queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboardId) })
+        }
+        if (resyncDashboardIds.length > 0) {
+          void queryClient.invalidateQueries({ queryKey: dashboardKeys.widgetDataAll })
+        }
         return
       }
 
@@ -193,6 +213,14 @@ export const useAgentRealtime = (input: {
             queryKey: threadKeys.messages(message.data.threadId),
           })
         }
+        return
+      }
+
+      if (message.event === 'dashboard.updated') {
+        // The event deliberately contains only an id and monotonic revision.
+        // Refetching is the ACL check and rejects stale/out-of-order payloads.
+        void queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(message.data.dashboardId) })
+        void queryClient.invalidateQueries({ queryKey: dashboardKeys.widgetDataAll })
         return
       }
 
@@ -292,6 +320,10 @@ export const useAgentRealtime = (input: {
             kind: 'channel' as const,
             channelId,
           }))
+        const dashboardScopes = dashboardSubscriptionKey
+          .split(',')
+          .filter((dashboardId) => dashboardId.length > 0)
+          .map((dashboardId) => ({ kind: 'dashboard' as const, dashboardId }))
         socket?.send(
           JSON.stringify({
             type: 'set_subscriptions',
@@ -301,6 +333,7 @@ export const useAgentRealtime = (input: {
                 organizationId: me.context.organizationId,
               },
               ...channelScopes,
+              ...dashboardScopes,
             ],
           }),
         )
@@ -347,7 +380,7 @@ export const useAgentRealtime = (input: {
       clearPingInterval()
       socket?.close()
     }
-  }, [me?.context.organizationId, queryClient, subscriptionKey, token])
+  }, [dashboardSubscriptionKey, me?.context.organizationId, queryClient, subscriptionKey, token])
 
   return {
     connectionState,

@@ -14,16 +14,20 @@ import {
   DashboardAccessError,
   DashboardFetchError,
   DashboardNormalizeError,
+  DASHBOARD_STATIC_IMPORT_FORMATS,
   renderProbeForModel,
+  type DashboardStaticImportFormat,
   type DashboardEgressPolicy,
 } from '@nessie/dashboard'
 import {
   DashboardLayoutSchema,
+  DashboardPresentationSchema,
   formatZodIssues,
   WidgetDefinitionSchema,
   type DashboardLayout,
 } from '@nessie/schemas'
 import { z } from 'zod'
+import { createHash, randomUUID } from 'node:crypto'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { formatSection } from './tool-output.js'
@@ -77,6 +81,89 @@ const run = async (
     return { inputSummary, outputPreview: await action(), toolName }
   } catch (error) {
     return { inputSummary, outputPreview: explain(error), toolName }
+  }
+}
+
+const dashboardForWidget = async (
+  context: Awaited<ReturnType<typeof buildDashboardContext>>,
+  services: DashboardToolServices,
+  widgetId: string,
+) => {
+  const widget = await services.prisma.dashboardWidget.findFirst({
+    where: { id: widgetId, organizationId: context.actor.organizationId },
+    select: { dashboardId: true },
+  })
+  if (!widget) throw new Error('Dashboard widget not found.')
+  return services.getDashboardWithWidgets(context, widget.dashboardId)
+}
+
+const stableUuid = (parts: string[]): string => {
+  const bytes = createHash('sha256').update(parts.join('\0'), 'utf8').digest().subarray(0, 16)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = bytes.toString('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-')
+}
+
+const idForToolMutation = (
+  context: BuiltinToolRuntimeContext,
+  purpose: string,
+): string =>
+  context.toolCallId
+    ? stableUuid(['dashboard-tool', context.run.id, context.toolCallId, purpose])
+    : randomUUID()
+
+const applyAgentDelta = async (
+  runContext: BuiltinToolRuntimeContext,
+  dashboardContext: Awaited<ReturnType<typeof buildDashboardContext>>,
+  services: DashboardToolServices,
+  input: { dashboardId: string; baseRevision: number; operations: import('@nessie/schemas').DashboardDeltaOperation[] },
+) => {
+  const result = await services.applyDelta(dashboardContext, {
+    ...input,
+    mutationId: idForToolMutation(runContext, 'mutation'),
+    runId: runContext.run.id,
+  })
+  if (!result.replayed) {
+    await runContext.realtimeTransport.publishWs([{ kind: 'dashboard', dashboardId: input.dashboardId }], {
+      event: 'dashboard.updated',
+      data: { dashboardId: input.dashboardId, revision: result.dashboard.revision },
+    })
+  }
+  return result
+}
+
+const recordMaterialBasis = async (
+  runContext: BuiltinToolRuntimeContext,
+  services: DashboardToolServices,
+  sourceIds: string[],
+) => {
+  if (!runContext.consumedSources || sourceIds.length === 0) return
+  const materials = await services.prisma.dashboardSourceMaterial.findMany({
+    where: { sourceId: { in: sourceIds } },
+    select: { accessBasis: true },
+  })
+  for (const material of materials) {
+    if (!Array.isArray(material.accessBasis)) continue
+    for (const scope of material.accessBasis) {
+      if (
+        scope
+        && typeof scope === 'object'
+        && typeof (scope as { scopeId?: unknown }).scopeId === 'string'
+        && typeof (scope as { scopeType?: unknown }).scopeType === 'string'
+      ) {
+        runContext.consumedSources.add({
+          scopeId: (scope as { scopeId: string }).scopeId,
+          scopeType: (scope as { scopeType: string }).scopeType,
+        })
+      }
+    }
   }
 }
 
@@ -201,6 +288,40 @@ export const runDashboardSourceCreateTool = async (
     return `Created data source "${source.name}" (id=${source.id}).`
   })
 
+export const runDashboardSourceImportTool = async (
+  context: BuiltinToolRuntimeContext,
+  args: Record<string, unknown>,
+  services: DashboardToolServices,
+): Promise<ToolExecutionResult> =>
+  run('dashboard_source_import', `name="${String(args.name ?? '')}"`, async () => {
+    const dashboardContext = await buildDashboardContext(context, services)
+    const format = args.format
+    if (
+      typeof format !== 'string'
+      || !DASHBOARD_STATIC_IMPORT_FORMATS.includes(format as DashboardStaticImportFormat)
+    ) {
+      throw new Error('Choose one supported import format: JSON, CSV, XLSX, document, or article.')
+    }
+    const source = await services.importStaticSource(dashboardContext, {
+      name: String(args.name ?? '').trim(),
+      format: format as DashboardStaticImportFormat,
+      content: String(args.content ?? ''),
+      ...(typeof args.sourceAttachmentId === 'string'
+        ? { originalAttachmentId: z.string().uuid().parse(args.sourceAttachmentId) }
+        : {}),
+      ...(typeof args.sourceReference === 'string'
+        ? { sourceReference: z.string().trim().min(1).max(500).parse(args.sourceReference) }
+        : {}),
+      ...(typeof args.canonicalUrl === 'string' ? { canonicalUrl: args.canonicalUrl } : {}),
+      ...(args.provenance && typeof args.provenance === 'object' && !Array.isArray(args.provenance)
+        ? { provenance: args.provenance as Record<string, unknown> }
+        : {}),
+      accessBasis: context.consumedSources?.list() ?? [],
+      createdByType: 'agent',
+    })
+    return `Imported ${format.toUpperCase()} as static source "${source.name}" (id=${source.id}).`
+  })
+
 export const runDashboardSetCredentialTool = async (
   context: BuiltinToolRuntimeContext,
   args: Record<string, unknown>,
@@ -230,10 +351,16 @@ export const runDashboardWidgetAddTool = async (
 ): Promise<ToolExecutionResult> =>
   run('dashboard_widget_add', `dashboardId=${String(args.dashboardId ?? '')}`, async () => {
     const dashboardContext = await buildDashboardContext(context, services)
-    const widget = await services.addWidget(dashboardContext, {
-      dashboardId: String(args.dashboardId ?? ''),
-      definition: args.definition,
+    const dashboardId = String(args.dashboardId ?? '')
+    const dashboard = await services.getDashboardWithWidgets(dashboardContext, dashboardId)
+    const widgetId = idForToolMutation(context, 'widget')
+    const definition = WidgetDefinitionSchema.parse(args.definition)
+    await applyAgentDelta(context, dashboardContext, services, {
+      dashboardId,
+      baseRevision: dashboard.revision,
+      operations: [{ type: 'add_widget', widgetId, definition }],
     })
+    const widget = await services.prisma.dashboardWidget.findUniqueOrThrow({ where: { id: widgetId } })
     return `Added a ${widget.kind} widget (id=${widget.id}).`
   })
 
@@ -244,12 +371,15 @@ export const runDashboardWidgetUpdateTool = async (
 ): Promise<ToolExecutionResult> =>
   run('dashboard_widget_update', `widgetId=${String(args.widgetId ?? '')}`, async () => {
     const dashboardContext = await buildDashboardContext(context, services)
-    const widget = await services.updateWidget(dashboardContext, {
-      widgetId: String(args.widgetId ?? ''),
-      definition: args.definition,
-      byAgent: true,
+    const widgetId = String(args.widgetId ?? '')
+    const dashboard = await dashboardForWidget(dashboardContext, services, widgetId)
+    const definition = WidgetDefinitionSchema.parse(args.definition)
+    await applyAgentDelta(context, dashboardContext, services, {
+      dashboardId: dashboard.id,
+      baseRevision: dashboard.revision,
+      operations: [{ type: 'update_widget', widgetId, definition }],
     })
-    return `Updated the ${widget.kind} widget.`
+    return 'Updated the widget.'
   })
 
 export const runDashboardWidgetRemoveTool = async (
@@ -259,9 +389,12 @@ export const runDashboardWidgetRemoveTool = async (
 ): Promise<ToolExecutionResult> =>
   run('dashboard_widget_remove', `widgetId=${String(args.widgetId ?? '')}`, async () => {
     const dashboardContext = await buildDashboardContext(context, services)
-    await services.removeWidget(dashboardContext, {
-      widgetId: String(args.widgetId ?? ''),
-      byAgent: true,
+    const widgetId = String(args.widgetId ?? '')
+    const dashboard = await dashboardForWidget(dashboardContext, services, widgetId)
+    await applyAgentDelta(context, dashboardContext, services, {
+      dashboardId: dashboard.id,
+      baseRevision: dashboard.revision,
+      operations: [{ type: 'remove_widget', widgetId }],
     })
     return 'Removed the widget. The dashboard\'s history keeps it recoverable.'
   })
@@ -284,8 +417,30 @@ export const runDashboardWidgetMoveTool = async (
       md: rects.map((rect) => ({ ...rect, x: 0, w: Math.min(rect.w, 8) })),
       sm: rects.map((rect) => ({ ...rect, x: 0, w: 4 })),
     }
-    await services.saveLayout(dashboardContext, { dashboardId, layout, dashboard })
+    await applyAgentDelta(context, dashboardContext, services, {
+      dashboardId,
+      baseRevision: dashboard.revision,
+      operations: [{ type: 'set_layout', layout }],
+    })
     return `Rearranged ${rects.length} widget${rects.length === 1 ? '' : 's'}.`
+  })
+
+export const runDashboardPresentationUpdateTool = async (
+  context: BuiltinToolRuntimeContext,
+  args: Record<string, unknown>,
+  services: DashboardToolServices,
+): Promise<ToolExecutionResult> =>
+  run('dashboard_presentation_update', `dashboardId=${String(args.dashboardId ?? '')}`, async () => {
+    const dashboardContext = await buildDashboardContext(context, services)
+    const dashboardId = String(args.dashboardId ?? '')
+    const dashboard = await services.getDashboardWithWidgets(dashboardContext, dashboardId)
+    const presentation = DashboardPresentationSchema.parse(args.presentation)
+    await applyAgentDelta(context, dashboardContext, services, {
+      dashboardId,
+      baseRevision: dashboard.revision,
+      operations: [{ type: 'set_presentation', presentation }],
+    })
+    return 'Updated dashboard filters, insights, styling, and source-note display.'
   })
 
 export const runDashboardReadTool = async (
@@ -297,6 +452,7 @@ export const runDashboardReadTool = async (
     const dashboardContext = await buildDashboardContext(context, services)
     const dashboardId = String(args.dashboardId ?? '')
     const dashboard = await services.getDashboardWithWidgets(dashboardContext, dashboardId)
+    await recordMaterialBasis(context, services, dashboard.widgets.map((widget) => widget.sourceId))
 
     const lines: string[] = []
     for (const widget of dashboard.widgets) {
@@ -346,6 +502,8 @@ export const runDashboardTool = async (
       return runDashboardSourceProbeTool(context, args, services)
     case 'dashboard_source_create':
       return runDashboardSourceCreateTool(context, args, services)
+    case 'dashboard_source_import':
+      return runDashboardSourceImportTool(context, args, services)
     case 'dashboard_source_set_credential':
       return runDashboardSetCredentialTool(context, args, services)
     case 'dashboard_widget_add':
@@ -356,6 +514,8 @@ export const runDashboardTool = async (
       return runDashboardWidgetMoveTool(context, args, services)
     case 'dashboard_widget_remove':
       return runDashboardWidgetRemoveTool(context, args, services)
+    case 'dashboard_presentation_update':
+      return runDashboardPresentationUpdateTool(context, args, services)
     case 'dashboard_read':
       return runDashboardReadTool(context, args, services)
     case 'dashboard_present':

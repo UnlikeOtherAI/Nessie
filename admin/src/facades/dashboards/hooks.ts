@@ -10,6 +10,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   DashboardLayout,
+  DashboardPresentation,
   DashboardWidgetProjection,
   WidgetDefinition,
 } from '@nessie/schemas'
@@ -27,6 +28,7 @@ export type DashboardRecord = {
   channelId: string | null
   ownerUserId: string | null
   layout: DashboardLayout
+  presentation: DashboardPresentation
   revision: number
   createdBy: string
   createdByType: 'user' | 'agent'
@@ -46,9 +48,10 @@ export type DashboardWidgetRecord = {
 export type DashboardSourceRecord = {
   id: string
   name: string
-  origin: string
-  path: string
-  transform: string
+  kind: 'http' | 'static'
+  origin: string | null
+  path: string | null
+  transform: string | null
   outputColumns: { key: string; label: string; type: string; nullable: boolean }[]
   refreshMode: 'manual' | 'interval'
   intervalMinutes: number | null
@@ -65,6 +68,18 @@ export type DashboardVersionRecord = {
   authorId: string
   runId: string | null
   createdAt: string
+}
+
+export type DashboardSourceNote = {
+  id: string
+  name: string
+  kind: 'http' | 'static'
+  lastValidatedAt: string | null
+  sourceReference: string | null
+  canonicalUrl: string | null
+  parser: string | null
+  contentDigest: string | null
+  originalAttachmentId: string | null
 }
 
 export const useDashboards = (filter?: { home?: string; projectId?: string }) => {
@@ -109,9 +124,25 @@ export const useWidgetData = (widgetId: string, options?: { compact?: boolean })
     queryKey: dashboardKeys.widgetDataView(widgetId, suffix),
     queryFn: () =>
       client.get<DashboardWidgetProjection>(`/api/dashboard-widgets/${widgetId}/data${suffix}`),
-    // Viewing never triggers an outbound fetch; this only re-reads the cache
-    // the refresh job maintains.
-    refetchInterval: 60_000,
+    // Dashboard websocket invalidations refresh both the compact card and
+    // workspace panel. Focus/reconnect also refetches through React Query;
+    // no background poll keeps a static dashboard warm.
+    refetchOnWindowFocus: true,
+  })
+}
+
+export const useRefreshWidgetData = () => {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (widgetId: string) =>
+      client.post<{ enqueued: boolean; reason?: string }>(
+        `/api/dashboard-widgets/${widgetId}/refresh`,
+        {},
+      ),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: dashboardKeys.widgetDataAll })
+    },
   })
 }
 
@@ -131,6 +162,16 @@ export const useDashboardVersions = (dashboardId: string | undefined) => {
     queryKey: dashboardKeys.versions(dashboardId ?? ''),
     queryFn: () =>
       client.get<DashboardVersionRecord[]>(`/api/dashboards/${dashboardId}/versions`),
+  })
+}
+
+export const useDashboardSourceNotes = (dashboardId: string | undefined) => {
+  const client = useApiClient()
+  return useQuery({
+    placeholderData: keepPreviousData,
+    enabled: Boolean(dashboardId),
+    queryKey: dashboardKeys.sourceNotes(dashboardId),
+    queryFn: () => client.get<DashboardSourceNote[]>(`/api/dashboards/${dashboardId}/source-notes`),
   })
 }
 

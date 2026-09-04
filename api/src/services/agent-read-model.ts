@@ -416,6 +416,9 @@ export const buildSnapshotForScopes = async (
     if (scope.kind === 'user') {
       continue
     }
+    if (scope.kind === 'dashboard') {
+      continue
+    }
     bindingOr.push({
       channel: {
         ...(options?.visibility
