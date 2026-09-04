@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { reportPushSurface } from '../../../lib/push-surface'
 import {
+  useArchiveKnowledgePage,
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
   useEnsureMyDocsSpace,
@@ -107,6 +108,8 @@ type KnowledgeContextValue = {
   closeHistory: () => void
   publishPage: (pageId: string) => void
   publishPending: boolean
+  archivePage: (pageId: string) => Promise<void>
+  archivePending: boolean
   restoreVersion: (input: { pageId: string; versionId: string }) => void
   restorePending: boolean
 }
@@ -186,6 +189,7 @@ export const KnowledgeProvider = ({
   const createPageMutation = useCreateKnowledgePage(selectedSpaceId)
   const updatePageMutation = useUpdateKnowledgePage()
   const publishPageMutation = usePublishKnowledgePage()
+  const archivePageMutation = useArchiveKnowledgePage()
   const restoreVersionMutation = useRestoreKnowledgeVersion()
   const seedMutation = useSeedKnowledgeBase()
 
@@ -416,6 +420,16 @@ export const KnowledgeProvider = ({
     void publishPageMutation.mutateAsync({ pageId })
   }
 
+  const archivePage = async (pageId: string) => {
+    await archivePageMutation.mutateAsync({ pageId })
+    const pageIndex = pagePath.indexOf(pageId)
+    const nextPath = pageIndex >= 0 ? pagePath.slice(0, pageIndex) : []
+    setPagePath(nextPath)
+    setOpenPageId(nextPath.at(-1))
+    setEditor(null)
+    setHistoryPageId(undefined)
+  }
+
   const restoreVersion = (input: { pageId: string; versionId: string }) => {
     void restoreVersionMutation.mutateAsync({
       ...input,
@@ -470,6 +484,8 @@ export const KnowledgeProvider = ({
     closeHistory,
     publishPage,
     publishPending: publishPageMutation.isPending,
+    archivePage,
+    archivePending: archivePageMutation.isPending,
     restoreVersion,
     restorePending: restoreVersionMutation.isPending,
   }
