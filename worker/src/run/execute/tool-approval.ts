@@ -301,7 +301,11 @@ export const createToolApprovalRequest = async (
     reason: input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
     requiredApproverUserId: STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
-      ? input.requiredApproverUserId ?? input.actorContext.actionContext.effectiveUserId ?? null
+      ? input.requiredApproverUserId
+        ?? input.actorContext.actionContext.effectiveUserId
+        ?? (input.actorContext.actor.actorType === 'user'
+          ? input.actorContext.actor.actorId
+          : null)
       : null,
     resumeState: {
       actorContext: input.actorContext,

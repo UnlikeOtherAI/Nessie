@@ -10,7 +10,7 @@ import { recordSendDecision, resolveStandingConsentForToolCall } from '@nessie/t
 import { type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
-import { summarizeToolInput } from '../tool-util.js'
+import { summarizeToolInputForTool } from '../tool-util.js'
 import { reviewableToolSurface } from './auto-review.js'
 import {
   auditToolAuthorizationDenial,
@@ -115,7 +115,7 @@ export const authorizeToolExecution = async (
     return {
       decision: 'deny',
       result: {
-        inputSummary: summarizeToolInput(canonicalArgs),
+        inputSummary: summarizeToolInputForTool(toolName, canonicalArgs),
         output: DEEP_WATER_START_FAILURE_DETAIL,
         success: false,
       },

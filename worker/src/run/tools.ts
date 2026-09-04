@@ -127,7 +127,7 @@ import {
   runWebSearchTool,
 } from './content-tools.js'
 import { runSpawnSubtaskTool } from './subtask-tools.js'
-import { summarizeToolInput, truncateToolResult, wrapTool } from './tool-util.js'
+import { summarizeToolInputForTool, truncateToolResult, wrapTool } from './tool-util.js'
 import { dispatchKbTool } from './kb-tool-dispatch.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 
@@ -203,7 +203,7 @@ const executeBuiltinToolUncorrected = async (
   args: Record<string, unknown>,
   context: BuiltinToolRuntimeContext,
 ): Promise<AgenticToolResult> => {
-  const inputSummary = summarizeToolInput(args)
+  const inputSummary = summarizeToolInputForTool(toolName, args)
   const executorTool = executorManagementTool(toolName, args, context)
   if (executorTool) return wrapTool(inputSummary, executorTool)
   const connectorTool = connectorManagementTool(toolName, args, context)

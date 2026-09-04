@@ -12,6 +12,7 @@ import {
 import type { PrismaClient } from '@prisma/client'
 
 import { authorizeToolExecution } from './tool-authorization.js'
+import { createToolApprovalRequest } from './tool-approval.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import { hashJsonValue } from '../tool-util.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -163,6 +164,47 @@ test('mailbox_send rejects secret-shaped undeclared input before approval persis
   assert.equal(decision.decision, 'deny')
   assert.equal(state.approval.proofConsumedAt, null)
   assert.doesNotMatch(JSON.stringify(decision), new RegExp(secret))
+})
+
+test('mailbox approval context is content-free while frozen resume args stay exact', async () => {
+  const storedRows: Array<Record<string, unknown>> = []
+  const prisma = {
+    approvalRequest: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        storedRows.push(data)
+        return { id: 'approval-content-free', requiredApproverUserId: ids.user }
+      },
+      findFirst: async () => null,
+    },
+  } as unknown as PrismaClient
+  const privateArgs = {
+    ...args,
+    subject: 'Private renewal terms',
+    text: 'Please send the private body to ops@example.test.',
+    to: ['ops@example.test'],
+  }
+
+  await createToolApprovalRequest(prisma, {
+    actorContext: actor('no-proof'),
+    args: privateArgs,
+    context: context(),
+    interactive: true,
+    messageId: 'message-content-free',
+    requiredApproverUserId: ids.user,
+    toolCallId: 'call-content-free',
+    toolName: MAILBOX_SEND_TOOL_ID,
+  })
+
+  const stored = storedRows[0]
+  assert.ok(stored)
+  const persistedContext = JSON.stringify(stored.context)
+  assert.doesNotMatch(persistedContext, /ops@example\.test|Private renewal|private body/)
+  assert.equal(
+    (stored.context as { headline?: string }).headline,
+    'Send an email from a connected mailbox',
+  )
+  assert.deepEqual((stored.resumeState as { args: unknown }).args, privateArgs)
+  assert.equal(stored.argsHash, hashJsonValue(privateArgs))
 })
 
 test('a structural mailbox denial reaches the model without creating an approval', async () => {

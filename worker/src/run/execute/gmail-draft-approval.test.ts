@@ -57,6 +57,15 @@ const actor = (approved = false): AuthorizedActionContext => ({
   },
 })
 
+const actorWithoutEffectiveUser = (): AuthorizedActionContext => ({
+  actionContext: { requestId: 'gmail-draft-approval-test' },
+  actor: { actorId: ids.user, actorType: 'user', roles: ['member'] },
+  tenant: {
+    organizationId: parseOrganizationId(ids.organization),
+    projectId: parseProjectId(ids.project), teamId: parseTeamId(ids.team),
+  },
+})
+
 const authorization = (maySuspendForApproval: boolean) => ({
   agentKind: 'personal_assistant' as const,
   allowedToolIds: new Set([GMAIL_DRAFT_SEND_TOOL_ID]),
@@ -147,6 +156,20 @@ test('a Gmail approval proof is invalidated when recipients or body change after
   )
   assert.equal(changed.decision, 'deny')
   assert.equal(approval.proofConsumedAt, null)
+})
+
+test('a Gmail approval stays pinned to the human actor when effectiveUserId is absent', async () => {
+  const fake = fakePrisma({ contentFingerprint: fingerprint('f') })
+  const directUser = actorWithoutEffectiveUser()
+  const auth = authorization(true)
+  auth.resumeState.actorContext = directUser
+  const suspended = await authorizeToolExecution(
+    fake.prisma, directUser, runContext(), GMAIL_DRAFT_SEND_TOOL_ID, toolArgs, 'call-direct-user',
+    auth, hooks([]),
+  )
+
+  assert.equal(suspended.decision, 'suspend')
+  assert.equal(fake.approvals[0]?.requiredApproverUserId, ids.user)
 })
 
 test('an unchanged Gmail draft consumes its proof once and records one sanitized claim audit', async () => {

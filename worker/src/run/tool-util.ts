@@ -129,10 +129,37 @@ const REDACTED = '[REDACTED]'
 export const isProtectedMailSendTool = (toolName: string): boolean =>
   toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
 
-const protectedMailSendSummary = (toolName: string): string =>
-  toolName === 'gmail_draft_send'
-    ? 'Send an approved Gmail draft.'
-    : 'Send from a connected mailbox.'
+const PROTECTED_MAIL_TOOL_SUMMARIES: Record<string, string> = {
+  contacts_search: 'Search contacts for an email action.',
+  gmail_attachment_read: 'Read a Gmail attachment.',
+  gmail_draft_create: 'Create a Gmail draft.',
+  gmail_draft_send: 'Send an approved Gmail draft.',
+  gmail_draft_update: 'Update a Gmail draft.',
+  gmail_labels_list: 'List Gmail labels.',
+  gmail_message_read: 'Read a Gmail message.',
+  gmail_organise: 'Organize Gmail messages.',
+  gmail_search: 'Search Gmail.',
+  gmail_thread_read: 'Read a Gmail thread.',
+  mailbox_read: 'Read a connected mailbox message.',
+  mailbox_search: 'Search a connected mailbox.',
+  mailbox_send: 'Send from a connected mailbox.',
+}
+
+const EMAIL_ACCOUNT_TOOL_IDS = new Set([
+  'email_account_list',
+  'email_account_connect',
+  'email_account_check',
+  'email_account_disconnect',
+  'email_account_agent_access',
+])
+
+/** Lifecycle tools reject secret-shaped extra input before policy handling. */
+export const isEmailAccountLifecycleTool = (toolName: string): boolean =>
+  EMAIL_ACCOUNT_TOOL_IDS.has(toolName)
+
+export const isProtectedMailOperationalTool = (toolName: string): boolean =>
+  Object.hasOwn(PROTECTED_MAIL_TOOL_SUMMARIES, toolName)
+  || isEmailAccountLifecycleTool(toolName)
 
 export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
   if (depth > 8) return '[MaxDepth]'
@@ -162,36 +189,43 @@ export const summarizeToolInput = (value: unknown, maxLength = 200): string => {
 
 /**
  * Summary safe for durable operational surfaces. Never use the generic JSON
- * summary for a mail-send invocation: recipients, addresses, subject and body
- * are all content, even though none look like a password.
+ * summary for an email invocation: messages and account data are all content,
+ * even though none look like a password.
  */
 export const summarizeToolInputForTool = (
   toolName: string,
   value: unknown,
   maxLength = 200,
 ): string =>
-  isProtectedMailSendTool(toolName)
-    ? protectedMailSendSummary(toolName)
+  isProtectedMailOperationalTool(toolName)
+    ? (PROTECTED_MAIL_TOOL_SUMMARIES[toolName] ?? 'Manage a connected email account.')
     : summarizeToolInput(value, maxLength)
 
 /**
  * Demonstration steps are a durable operational recording, not a resumable
- * approval. Mail sends therefore keep no arguments there at all.
+ * approval. Protected mail operations therefore keep no arguments there at all.
  */
 export const redactToolInputForPersistence = (
   toolName: string,
   value: unknown,
 ): unknown =>
-  isProtectedMailSendTool(toolName) ? {} : redactToolInputValue(value)
+  isProtectedMailOperationalTool(toolName) ? {} : redactToolInputValue(value)
 
-/** A tool history entry may name a mail-send outcome but never its contents. */
+/** A tool history entry may name a mail action's outcome but never its contents. */
+const protectedMailOutcome = (toolName: string, success: boolean): string => {
+  if (isProtectedMailSendTool(toolName)) {
+    return success ? 'Email send completed.' : 'Email send did not complete.'
+  }
+  return success ? 'Email action completed.' : 'Email action did not complete.'
+}
+
 export const sanitizeToolOutputForPersistence = (
   toolName: string,
   success: boolean,
   output: string,
 ): string =>
-  isProtectedMailSendTool(toolName)
-    ? (success ? 'Email send completed.' : 'Email send did not complete.')
+  isProtectedMailOperationalTool(toolName)
+    ? protectedMailOutcome(toolName, success)
     : output
 
 export const stableJsonStringify = (value: unknown): string => {
