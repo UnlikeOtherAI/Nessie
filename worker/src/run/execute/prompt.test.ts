@@ -112,7 +112,7 @@ test('the provider boundary replaces bypassed secrets with a safe prefix and bul
   const serialized = JSON.stringify(messages)
 
   assert.doesNotMatch(serialized, /1234567890abcdefghijklmnop/)
-  assert.match(serialized, new RegExp(`sk_live_${'•'.repeat(12)}`))
+  assert.match(serialized, /\[REDACTED_SECRET\]/u)
 })
 
 test('other agents\' turns are name-prefixed; the acting agent\'s own turns are not', () => {

@@ -234,6 +234,13 @@ export class InfisicalVault {
       method: 'DELETE',
       signal: AbortSignal.timeout(10_000),
     })
+    // DELETE is convergent. A prior attempt may have committed in Infisical
+    // before its response was lost or before the local metadata transaction
+    // committed; an already-absent value is therefore the desired state.
+    if (response.status === 404) {
+      await response.body?.cancel().catch(() => undefined)
+      return
+    }
     await responseOk(response)
   }
 }

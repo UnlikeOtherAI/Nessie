@@ -240,7 +240,7 @@ test('the loop never retains or emits bypassed secret material', async () => {
   assert.doesNotMatch(serialized, /abcdefghijklmnopqrstuv/)
   assert.doesNotMatch(result.finalText, /abcdefghijklmnopqrstuv/)
   assert.doesNotMatch(emitted, /abcdefghijklmnopqrstuv/)
-  assert.match(result.finalText, new RegExp(`sk-proj-${'•'.repeat(12)}`))
+  assert.match(result.finalText, /\[REDACTED_SECRET\]/u)
 })
 
 test('secret-bearing tool arguments are sanitized and refused before preparation', async () => {

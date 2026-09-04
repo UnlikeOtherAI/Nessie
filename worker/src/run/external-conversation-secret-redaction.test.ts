@@ -13,6 +13,6 @@ test('external conversation replies and cards are safe before any sink', () => {
   })
 
   assert.equal(JSON.stringify(safe).includes(secret), false)
-  assert.match(safe.content, /•{12}/u)
-  assert.match(JSON.stringify(safe.uiCards), /•{12}/u)
+  assert.match(safe.content, /\[REDACTED_SECRET\]/u)
+  assert.match(JSON.stringify(safe.uiCards), /\[REDACTED_SECRET\]/u)
 })

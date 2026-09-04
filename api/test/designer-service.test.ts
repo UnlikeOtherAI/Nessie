@@ -168,7 +168,7 @@ test('Designer output streams and tool arguments never expose model-produced sec
   const streamed = chunks.join('')
 
   assert.doesNotMatch(streamed, /hunter2/u)
-  assert.match(streamed, /•{12}/u)
+  assert.match(streamed, /\[REDACTED_SECRET\]/u)
 })
 
 test('Designer sanitizes open tool arguments when a provider ends at EOF', async () => {
@@ -187,7 +187,7 @@ test('Designer sanitizes open tool arguments when a provider ends at EOF', async
   const { chunks } = await runDesignerChat({ messages: [], formState: baseFormState }, response)
 
   assert.doesNotMatch(chunks.join(''), /hunter2/u)
-  assert.match(chunks.join(''), /•{12}/u)
+  assert.match(chunks.join(''), /\[REDACTED_SECRET\]/u)
 })
 
 test('streamDesignerChat forwards the supplied page context into the system prompt', async () => {

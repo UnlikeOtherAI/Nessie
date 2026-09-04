@@ -100,12 +100,12 @@ The same deterministic scanner runs in the browser and API. It matches only
 structural credential syntax (known provider formats, PEM blocks, JWTs,
 credential-bearing connection URLs, explicit token assignments, and bounded
 high-entropy tokens including base64-style `/`, `+`, and padding); it does not
-use an LLM or infer intent from prose. A bullet mask is a terminal display
-placeholder rather than trusted provenance: except for a structural sequence
-of other mask-only values, later bytes are treated as camouflage and removed
-through a fixed-point redaction before reaching a sink. This deliberately
-prefers truncating prose after a user-supplied mask over letting a disguised
-value through.
+use an LLM or infer intent from prose. Inline redaction uses the stable
+`[REDACTED_SECRET]` marker so an ordinary sentence after a detected value
+survives every defence-in-depth pass. Provider-prefix-plus-bullet masks render
+only as a terminal list in the protected capture message. A user-supplied
+bullet mask followed by other bytes is treated as camouflage and removed
+through a fixed-point redaction before reaching a sink.
 
 The composer scan happens before a chat request, optimistic message, oversize
 paste state, or durable draft can survive. It covers channel posts, thread and
@@ -122,10 +122,11 @@ syntax.
 When one turn contains several credentials, the form advances through all of
 them and saves each value separately. After the vault accepts every secret,
 the composer sends a new replacement turn:
-the person's original text with every detected value reduced to its safe
-prefix and bullet mask, plus the approved secret name. That replacement is the
-only typed-message version which reaches PostgreSQL, realtime, memory, indexing,
-or a model.
+the person's original text with every detected value replaced by the stable
+redaction marker, plus a terminal list pairing each approved secret name with
+its safe provider prefix and bullet mask. That replacement is the only
+typed-message version which reaches PostgreSQL, realtime, memory, indexing, or
+a model.
 Discard sends no turn. If earlier values in a multi-secret turn were already
 saved, the form says that discarding keeps those vault entries while sending no
 message. This implements the requested replace semantics without ever
@@ -183,7 +184,9 @@ Only an active matching row may be replayed, and revoked secrets cannot be
 rotated or granted new access. Rotation, revocation, and grant changes share a
 per-secret advisory lock, so an active-state check and its mutation cannot race
 another lifecycle change. A temporary delegate cannot grant a capability past
-their own grant's expiry. If a failed metadata write leaves its
+their own grant's expiry. Revocation treats an already-absent vault value as
+success, so a retry converges after an ambiguous Infisical delete or a failed
+local metadata commit. If a failed metadata write leaves its
 deterministic vault name behind, the next locked retry replaces that orphan and
 continues instead of wedging the capture identity. A response-loss retry
 returns the original metadata row without writing the vault twice, while

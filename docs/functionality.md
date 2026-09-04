@@ -1365,9 +1365,12 @@ type ControlCommandDefinition = {
     failed form rotates that identity.
   - a delegate can grant only permissions and a lifetime they also hold;
     per-secret lifecycle locking prevents rotate/revoke/grant races, and
-    revoked secrets cannot be rotated or receive new grants.
+    revoked secrets cannot be rotated or receive new grants; an already-absent
+    vault value lets an ambiguous revocation retry converge.
   - a successful save posts only a masked replacement turn; raw secret text is
-    never the message later deleted or rewritten.
+    never the message later deleted or rewritten. Inline values become stable
+    redaction markers; provider prefixes and bullets appear in a terminal list,
+    so later prose is preserved without becoming mask camouflage.
   - broader scope selection (`global`, `team`, `channel`, `agent`, `thread`,
     `service`) remains target state.
   - capture popup supports out-of-band submission and copy-only `secretRef`.

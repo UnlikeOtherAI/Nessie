@@ -1,6 +1,7 @@
 import {
   detectSecrets,
   extractDetectedSecretValue,
+  maskSecretValue,
   redactDetectedSecrets,
   type DetectedSecret,
 } from '@nessie/schemas'
@@ -77,5 +78,10 @@ export const protectedReplacement = (
   const notice = names.length === 1
     ? `[Secret protected and saved as ${names[0]}; the value was replaced.]`
     : `[Secrets protected and saved as ${names.join(', ')}; the values were replaced.]`
-  return [notice, capture.replacementContent].filter(Boolean).join('\n\n')
+  const masks = capture.items.map((item, index) =>
+    `${names[index]}=${maskSecretValue(item.value, item.detected.type)}`,
+  )
+  return [notice, capture.replacementContent, masks.join('\n')]
+    .filter(Boolean)
+    .join('\n\n')
 }

@@ -274,7 +274,10 @@ test('hydration redacts secrets from external user and colleague turns', async (
   )
 
   assert.equal(JSON.stringify(fake.messages).includes(secret), false)
-  assert.equal(fake.messages.every((message) => message.content.includes('•')), true)
+  assert.equal(
+    fake.messages.every((message) => message.content.includes('[REDACTED_SECRET]')),
+    true,
+  )
 })
 
 test('hydration skips a user turn already tagged live by the worker driver', async () => {

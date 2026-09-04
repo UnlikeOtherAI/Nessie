@@ -8,6 +8,7 @@ import {
   parseAgentId,
   parseRunId,
   redactDetectedSecrets,
+  REDACTED_SECRET_MARKER,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
@@ -23,6 +24,18 @@ const CONNECTOR_TYPE_BY_TOOL: Record<string, ConnectorType> = {
   web_search: 'web_search',
   web_fetch: 'web_fetch',
   http_fetch: 'http',
+}
+
+const TOOL_CALL_PREVIEW_LIMIT = 1_200
+
+const truncateRedactedPreview = (value: string): string => {
+  if (value.length <= TOOL_CALL_PREVIEW_LIMIT) return value
+  const markerStart = value.lastIndexOf(REDACTED_SECRET_MARKER, TOOL_CALL_PREVIEW_LIMIT - 1)
+  if (markerStart >= 0 && markerStart + REDACTED_SECRET_MARKER.length > TOOL_CALL_PREVIEW_LIMIT) {
+    return value.slice(0, TOOL_CALL_PREVIEW_LIMIT - REDACTED_SECRET_MARKER.length)
+      + REDACTED_SECRET_MARKER
+  }
+  return value.slice(0, TOOL_CALL_PREVIEW_LIMIT)
 }
 
 export const recordToolEnd = async (
@@ -45,7 +58,7 @@ export const recordToolEnd = async (
   const inputSummary = redactDetectedSecrets(input.inputSummary)
   // Redact before enforcing the durable preview bound. Cutting first can
   // split a token below the scanner's minimum length and persist real bytes.
-  const outputPreview = redactDetectedSecrets(input.outputPreview).slice(0, 1200)
+  const outputPreview = truncateRedactedPreview(redactDetectedSecrets(input.outputPreview))
 
   if (input.toolCallRecordId) {
     const updated = await deps.prisma.toolCall.updateMany({

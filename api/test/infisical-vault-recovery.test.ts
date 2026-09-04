@@ -42,3 +42,27 @@ test('put repairs a deterministic orphan when Infisical reports an existing secr
     globalThis.fetch = originalFetch
   }
 })
+
+test('remove converges when an earlier ambiguous delete already removed the value', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response(null, { status: 404 })) as typeof fetch
+
+  try {
+    const vault = new InfisicalVault({
+      INFISICAL_API_URL: 'https://8.8.8.8',
+      INFISICAL_ENVIRONMENT: 'prod',
+      INFISICAL_PROJECT_ID: 'vault-project',
+      INFISICAL_SERVICE_TOKEN: 'test-service-token',
+    })
+    await assert.doesNotReject(vault.remove({
+      name: 'NESSIE_TEST',
+      namespace: {
+        organizationId: '10000000-0000-4000-8000-000000000001',
+        scopeId: '20000000-0000-4000-8000-000000000001',
+        scopeType: 'personal',
+      },
+    }))
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

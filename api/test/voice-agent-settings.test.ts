@@ -73,5 +73,5 @@ test('legacy agent instructions are masked before Gemini setup', () => {
   })
 
   assert.equal(instruction.includes(secret), false)
-  assert.match(instruction, /sk-proj-•{12}/u)
+  assert.match(instruction, /\[REDACTED_SECRET\]/u)
 })

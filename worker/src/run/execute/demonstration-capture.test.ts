@@ -59,7 +59,7 @@ test('demonstration capture masks credentials stored under ordinary keys', async
 
   const serialized = JSON.stringify(statements[0]?.values)
   assert.doesNotMatch(serialized, /abcdefghijklmnopqrstuv/)
-  assert.match(serialized, new RegExp(`sk-proj-${'•'.repeat(12)}`))
+  assert.match(serialized, /\[REDACTED_SECRET\]/u)
 })
 
 test('demonstration control calls do not record themselves', async () => {

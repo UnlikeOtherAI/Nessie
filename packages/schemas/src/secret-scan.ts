@@ -99,8 +99,8 @@ const PRIVATE_KEY_BEGIN = new RegExp(
   '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----',
   'gi',
 )
-
 const SECRET_MASK = '•'.repeat(12)
+export const REDACTED_SECRET_MARKER = '[REDACTED_SECRET]'
 const SAFE_REDACTION_MARKERS = new Set(['[MaxDepth]', '[REDACTED]', '[REDACTED_SECRET]'])
 const SAFE_MASK_END = String.raw`["'\x60)\]},;.]*`
 const SAFE_MASKED_VALUE = String.raw`(?:[A-Za-z_][A-Za-z0-9_.-]{0,119}\s*[:=]\s*)?`
@@ -118,13 +118,11 @@ const maskedPrivateKeyHasRawTail = (content: string, beginEnd: number): boolean 
   return /^[^\s]/u.test(tail)
     || /^[ \t]*(?:[A-Za-z0-9+/_=-]{16,})[ \t]*\r?$/mu.test(tail)
 }
-
 const DATABASE_URL = new RegExp(
   '\\b(?:https?|amqps?|ldaps?|neo4j|bolt|postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis(?:s)?|sqlserver):\\/\\/'
-    + '[^\\s/:]+:[^\\s@]+@[^\\s/]+',
+    + '[^\\s/:]+:[^\\s@]+@[^\\s"\'\\x60]+',
   'gi',
 )
-
 const PATTERNS: SecretPattern[] = [
   {
     // A mask is a terminal display placeholder, not trusted provenance. Apart
@@ -156,7 +154,7 @@ const PATTERNS: SecretPattern[] = [
   { type: 'token_assignment', expression: /\b(?:hf|npm)_[A-Za-z0-9_-]{8,}\b/g },
   { type: 'google_api_key', expression: /\bAIza[A-Za-z0-9_-]{8,}\b/g },
   { type: 'aws_access_key', expression: /\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g },
-  { type: 'database_url', expression: DATABASE_URL },
+  { type: 'database_url', expression: DATABASE_URL, stripTrailingPunctuation: true },
   { type: 'jwt', expression: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
   {
     // Shell snippets and chat frequently omit `=`. Requiring a strong label
@@ -217,7 +215,6 @@ const PROVIDER_PREFIX = new RegExp(
 
 const providerPrefixForValue = (value: string): string =>
   value.match(PROVIDER_PREFIX)?.[0] ?? ''
-
 /** Keep only provider syntax visible; never preserve bytes from an opaque key. */
 const prefixFor = (value: string, type: DetectedSecret['type']): string => {
   switch (type) {
@@ -244,7 +241,6 @@ export const maskSecretValue = (
   value: string,
   type: DetectedSecret['type'],
 ): string => `${prefixFor(value, type)}${SECRET_MASK}`
-
 /** The match range is always the credential itself, never its assignment syntax. */
 export const extractDetectedSecretValue = (
   content: string,
@@ -285,6 +281,12 @@ const trailingPunctuationLength = (value: string): number =>
 /** Returns non-overlapping structural matches in source order. */
 export const detectSecrets = (content: string): DetectedSecret[] => {
   const candidates: DetectedSecret[] = []
+  const safeMarkerRanges: Array<{ end: number; start: number }> = []
+  for (const marker of SAFE_REDACTION_MARKERS) {
+    for (let start = content.indexOf(marker); start >= 0; start = content.indexOf(marker, start + 1)) {
+      safeMarkerRanges.push({ start, end: start + marker.length })
+    }
+  }
   for (const pattern of PATTERNS) {
     pattern.expression.lastIndex = 0
     for (let match = pattern.expression.exec(content); match; match = pattern.expression.exec(content)) {
@@ -298,10 +300,17 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
       const end = start + value.length - stripped
       if (end <= start) continue
       const exactValue = content.slice(start, end)
-      if (SAFE_REDACTION_MARKERS.has(exactValue)) continue
+      if (
+        SAFE_REDACTION_MARKERS.has(exactValue)
+        || safeMarkerRanges.some((range) => start >= range.start && end <= range.end)
+      ) continue
       if (
         pattern.type === 'token_assignment'
         && exactValue === `${providerPrefixForValue(exactValue)}${SECRET_MASK}`
+      ) continue
+      if (
+        pattern.type === 'token_assignment'
+        && providerPrefixForValue(exactValue) === exactValue
       ) continue
       candidates.push({
         type: pattern.type,
@@ -338,7 +347,11 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
       })
     }
   }
-  candidates.push(...highEntropyTokens(content))
+  candidates.push(...highEntropyTokens(content).filter(
+    (candidate) => !safeMarkerRanges.some(
+      (range) => candidate.start >= range.start && candidate.end <= range.end,
+    ),
+  ))
 
   const nonOverlapping: DetectedSecret[] = []
   for (const candidate of candidates.sort(
@@ -369,7 +382,11 @@ const redactDetectedSecretsOnce = (content: string): string => {
   let result = ''
   for (const match of matches) {
     result += content.slice(cursor, match.start)
-    result += maskSecretValue(content.slice(match.start, match.end), match.type)
+    // Inline redactions must be stable when another defence-in-depth sink
+    // scans them again. Provider prefixes plus bullets are rendered separately
+    // by the capture UI; placing a bullet mask before ordinary prose is
+    // indistinguishable from user-supplied mask camouflage on a later pass.
+    result += REDACTED_SECRET_MARKER
     cursor = match.end
   }
   return result + content.slice(cursor)
@@ -410,14 +427,15 @@ export const createSecretRedactingStream = (): {
   push: (chunk: string) => string
 } => {
   let buffer = ''
-  let outputClosedAfterMask = false
+  let outputClosedAfterCamouflage = false
 
   const redactStreamContent = (content: string): string => {
-    if (outputClosedAfterMask) return ''
+    if (outputClosedAfterCamouflage) return ''
+    const closesOutput = detectSecrets(content).some(
+      (match) => content.startsWith(SECRET_MASK, match.start),
+    )
     const safe = redactDetectedSecrets(content)
-    const maskIndex = safe.indexOf(SECRET_MASK)
-    if (maskIndex < 0) return safe
-    outputClosedAfterMask = true
+    if (closesOutput) outputClosedAfterCamouflage = true
     return safe
   }
 

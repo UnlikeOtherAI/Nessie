@@ -40,6 +40,9 @@ test('multiple credentials are queued and only protected text is rebuilt', () =>
   assert.doesNotMatch(replacement, /1234567890|a{20}/)
   assert.match(replacement, /STRIPE_API_KEY, GITHUB_TOKEN/)
   assert.match(replacement, /^\[Secrets protected/)
+  assert.match(replacement, /Use \[REDACTED_SECRET\] and \[REDACTED_SECRET\]/)
+  assert.match(replacement, new RegExp(`STRIPE_API_KEY=sk_live_${'•'.repeat(12)}`))
+  assert.match(replacement, new RegExp(`GITHUB_TOKEN=ghp_${'•'.repeat(12)}$`))
   assert.equal(second.currentIndex, 1)
 })
 

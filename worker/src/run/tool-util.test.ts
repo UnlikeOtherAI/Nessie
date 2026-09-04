@@ -81,7 +81,7 @@ test('tool summaries and results mask structural credentials under ordinary keys
 
   assert.doesNotMatch(summary, /1234567890abcdefghijklmnop/)
   assert.doesNotMatch(output, /1234567890abcdefghijklmnop/)
-  assert.match(output, new RegExp(`sk_live_${'•'.repeat(12)}`))
+  assert.match(output, /\[REDACTED_SECRET\]/u)
 })
 
 test('tool result redaction precedes cuts and already-truncated early returns', () => {
@@ -95,7 +95,7 @@ test('tool result redaction precedes cuts and already-truncated early returns', 
   assert.doesNotMatch(acrossCut, /abcdefghijklmnopqrstuv/)
   assert.match(acrossCut, /truncated/)
   assert.doesNotMatch(withMarker, /abcdefghijklmnopqrstuv/)
-  assert.match(withMarker, new RegExp(`sk-proj-${'•'.repeat(12)}`))
+  assert.match(withMarker, /\[REDACTED_SECRET\]/u)
 })
 
 test('truncateToolResult leaves within-cap output untouched', () => {

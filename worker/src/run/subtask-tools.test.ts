@@ -95,7 +95,7 @@ test('spawned child strips every explicit grant while preserving ordinary policy
   // storing another copy on each ephemeral child would pay for it twice.
   assert.doesNotMatch(childSystemPrompt, /secure form before you see it/)
   assert.equal(childSystemPrompt.includes(legacySecret), false)
-  assert.match(childSystemPrompt, /sk-proj-•{12}/u)
+  assert.match(childSystemPrompt, /\[REDACTED_SECRET\]/u)
 })
 
 test('spawn_subtask refuses credential-bearing tasks before durable writes', async () => {

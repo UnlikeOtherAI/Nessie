@@ -53,5 +53,5 @@ test('tool completion redacts before bounding its durable preview', async () => 
   const preview = String(stored?.['outputPreview'])
   assert.equal(preview.length, 1200)
   assert.doesNotMatch(preview, /abcdefghijklmnopqrstuv/)
-  assert.match(preview, /sk-proj-•+$/)
+  assert.match(preview, /\[REDACTED_SECRET\]$/u)
 })

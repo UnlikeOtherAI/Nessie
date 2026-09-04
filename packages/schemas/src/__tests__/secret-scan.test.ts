@@ -26,7 +26,7 @@ test('detectSecrets catches known credential formats without interpreting prose'
   assert.equal(detected[0]?.type, 'stripe_api_key')
   assert.equal(
     redactDetectedSecrets(`key=${stripeLikeToken}`),
-    `key=sk_live_${'•'.repeat(12)}`,
+    'key=[REDACTED_SECRET]',
   )
   assert.doesNotMatch(redactDetectedSecrets(stripeLikeToken), /1234567890/)
 })
@@ -102,7 +102,7 @@ test('detectSecrets covers Slack app tokens and truncated private-key pastes', (
   assert.equal(detectSecrets(partialKey)[0]?.type, 'pem_private_key')
   assert.equal(
     redactDetectedSecrets(partialKey),
-    `-----BEGIN OPENSSH PRIVATE KEY-----${'•'.repeat(12)}`,
+    '[REDACTED_SECRET]',
   )
 })
 
@@ -116,7 +116,10 @@ test('a masked private-key prefix cannot conceal newly appended raw material', (
   )
   assert.equal(detectSecrets(`${masked}\n\n${uppercaseBody}`).length, 1)
   assert.equal(detectSecrets(`${masked}\nordinary prose`).length, 1)
-  assert.equal(redactDetectedSecrets(`${masked}\nordinary prose`), masked)
+  assert.equal(
+    redactDetectedSecrets(`${masked}\nordinary prose`),
+    '[REDACTED_SECRET]',
+  )
 })
 
 test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
@@ -142,7 +145,7 @@ test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
   }
   assert.equal(
     redactDetectedSecrets('password="abc•raw-tail"'),
-    `password="${mask}"`,
+    'password="[REDACTED_SECRET]"',
   )
   assert.equal(detectSecrets(`Protected: ${mask}.`).length, 0)
   assert.equal(
@@ -151,7 +154,7 @@ test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
   )
   assert.equal(
     redactDetectedSecrets(`OPENAI_API_KEY=sk-proj-${mask}\nSENDGRID_API_KEY=SG.${mask}\nhuntertwo`),
-    `OPENAI_API_KEY=sk-proj-${mask}`,
+    'OPENAI_API_KEY=sk-proj-[REDACTED_SECRET]',
   )
 })
 
@@ -163,7 +166,7 @@ test('provider-specific dotted and anthropic credentials are classified as one v
     detectSecrets(`${sendgrid} ${anthropic}`).map(({ type }) => type),
     ['sendgrid_api_key', 'anthropic_api_key'],
   )
-  assert.equal(redactDetectedSecrets(sendgrid), `SG.${'•'.repeat(12)}`)
+  assert.equal(redactDetectedSecrets(sendgrid), '[REDACTED_SECRET]')
 })
 
 test('display masks retain only structural provider prefixes', () => {
@@ -173,11 +176,11 @@ test('display masks retain only structural provider prefixes', () => {
   )
   assert.equal(
     redactDetectedSecrets('postgresql://admin:really-secret@db.example/nessie'),
-    `postgresql://${'•'.repeat(12)}`,
+    '[REDACTED_SECRET]',
   )
   assert.equal(
     redactDetectedSecrets('api_key=abcdefghijklmnopqrstuv'),
-    `api_key=${'•'.repeat(12)}`,
+    'api_key=[REDACTED_SECRET]',
   )
   assert.equal(
     maskSecretValue('Xz9_kLm2Pq7Rs4Tu8Vw1Yz6Ab3Cd5Ef0', 'high_entropy_token'),
@@ -208,6 +211,10 @@ test('redaction is idempotent and never creates another detected secret', () => 
     assert.equal(redactDetectedSecrets(redacted), redacted)
     assert.equal(detectSecrets(redacted).length, 0)
   }
+  assert.equal(
+    redactDetectedSecrets('Please deploy with API_KEY=abcdefghijklmnopqrstuv and report the result.'),
+    'Please deploy with API_KEY=[REDACTED_SECRET] and report the result.',
+  )
 })
 
 test('assignment extraction excludes surrounding quotes and prose punctuation', () => {
@@ -227,52 +234,58 @@ test('assignment extraction excludes surrounding quotes and prose punctuation', 
     extractDetectedSecretValue(parenthesized, detectSecrets(parenthesized)[0]!),
     'abcdefghijklmnopqrstuvwxyz123456',
   )
-  assert.equal(redactDetectedSecrets(parenthesized), `token=(${'•'.repeat(12)})`)
-  assert.equal(redactDetectedSecrets('password=pa$$word123'), `password=${'•'.repeat(12)}`)
-  assert.equal(redactDetectedSecrets(String.raw`password=pa\ssword123`), `password=${'•'.repeat(12)}`)
+  assert.equal(redactDetectedSecrets(parenthesized), 'token=([REDACTED_SECRET])')
+  assert.equal(redactDetectedSecrets('password=pa$$word123'), 'password=[REDACTED_SECRET]')
+  assert.equal(redactDetectedSecrets(String.raw`password=pa\ssword123`), 'password=[REDACTED_SECRET]')
 })
 
 test('stream redaction holds partial lines and private keys until they are safe', () => {
   const stream = createSecretRedactingStream()
   assert.equal(stream.push('before\napi_key=abc'), 'before\n')
-  assert.equal(stream.push('defghijklmnopqrstuv\nafter\n'), `api_key=${'•'.repeat(12)}`)
+  assert.equal(
+    stream.push('defghijklmnopqrstuv\nafter\n'),
+    'api_key=[REDACTED_SECRET]\nafter\n',
+  )
   assert.equal(stream.finish(), '')
 
   const pemStream = createSecretRedactingStream()
   assert.equal(pemStream.push('-----BEGIN PRIVATE KEY-----\nabc\n'), '')
   assert.equal(
     pemStream.push('-----END PRIVATE KEY-----\n'),
-    `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}\n`,
+    '[REDACTED_SECRET]\n',
   )
 
   const partialPemStream = createSecretRedactingStream()
   assert.equal(partialPemStream.push('-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc'), '')
   assert.equal(
     partialPemStream.finish(),
-    `-----BEGIN PGP PRIVATE KEY BLOCK-----${'•'.repeat(12)}`,
+    '[REDACTED_SECRET]',
   )
 
   const maskedPemStream = createSecretRedactingStream()
   const maskedPem = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
-  assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), maskedPem)
+  assert.equal(
+    maskedPemStream.push(`${maskedPem}\nafter\n`),
+    '[REDACTED_SECRET]',
+  )
   assert.equal(maskedPemStream.push('QUJDREVGR0hJSktM\n'), '')
   assert.equal(maskedPemStream.finish(), '')
 
   const appendedPemStream = createSecretRedactingStream()
   assert.equal(appendedPemStream.push(`${maskedPem}\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\n`), '')
-  assert.equal(appendedPemStream.finish(), maskedPem)
+  assert.equal(appendedPemStream.finish(), '[REDACTED_SECRET]')
 
   const blankSeparatedPemStream = createSecretRedactingStream()
   const uppercaseBody = 'QUJDREVGR0JS1TVVWVYW1234QUJDREVGR0JS1TVVWVYW1234'
   assert.equal(blankSeparatedPemStream.push(`${maskedPem}\n\n`), '')
   assert.equal(blankSeparatedPemStream.push(`${uppercaseBody}\n`), '')
-  assert.equal(blankSeparatedPemStream.finish(), maskedPem)
+  assert.equal(blankSeparatedPemStream.finish(), '[REDACTED_SECRET]')
 
   const camouflagedMaskStream = createSecretRedactingStream()
   assert.equal(camouflagedMaskStream.push(`api_key=${'•'.repeat(12)}\n`), '')
   assert.equal(
     camouflagedMaskStream.push('hunter2\n'),
-    `api_key=${'•'.repeat(12)}`,
+    'api_key=[REDACTED_SECRET]',
   )
   assert.equal(camouflagedMaskStream.push('hunter2 again\n'), '')
   assert.equal(camouflagedMaskStream.finish(), '')

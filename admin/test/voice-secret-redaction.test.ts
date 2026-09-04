@@ -14,5 +14,5 @@ test('live and finalized voice transcripts expose only protected replacements', 
   assert.equal(collector.liveAssistantText().includes(secret), false)
   collector.finalise(2_000)
   assert.equal(JSON.stringify(collector.lines()).includes(secret), false)
-  assert.match(collector.lines()[0]?.text ?? '', /sk-proj-•{12}/u)
+  assert.match(collector.lines()[0]?.text ?? '', /\[REDACTED_SECRET\]/u)
 })
