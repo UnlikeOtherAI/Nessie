@@ -135,17 +135,33 @@ export const requestJson = async (
     method?: string
     headers?: Record<string, string>
     body?: string
+    /** Bound a provider response before parsing it into our process. */
+    maxResponseBytes?: number
     notFoundOk?: boolean
   } = {},
-): Promise<{ status: number; body: unknown }> => {
+): Promise<{ status: number; body: unknown; responseBytes?: number }> => {
   const response = await fetchImpl(input, {
     method: init.method,
     headers: init.headers,
     body: init.body,
   })
   if (response.ok) {
-    const body = await response.json()
-    return { status: response.status, body }
+    if (init.maxResponseBytes === undefined) {
+      const body = await response.json()
+      return { status: response.status, body }
+    }
+    const text = await response.text()
+    const responseBytes = Buffer.byteLength(text)
+    if (responseBytes > init.maxResponseBytes) {
+      throw new Error(`[comms-google] ${operation} response exceeds ${init.maxResponseBytes} bytes`)
+    }
+    let body: unknown
+    try {
+      body = JSON.parse(text)
+    } catch {
+      throw new Error(`[comms-google] ${operation} returned invalid JSON`)
+    }
+    return { status: response.status, body, responseBytes }
   }
   if (init.notFoundOk && response.status === 404) {
     return { status: 404, body: undefined }

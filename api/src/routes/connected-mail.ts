@@ -229,9 +229,10 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
           userId: resolved.mailActor.userId,
         }, serviceDeps)
         await emitAuditEvent(prisma, {
-          action: 'email.sent', actorContext: resolved.context, outcome: 'success',
-          metadata: { source: params.source, status: result.status }, resourceId: params.accountId,
-          resourceType: 'connected_mail_account',
+          action: result.status === 'held' ? 'gmail.draft.held' : 'gmail.draft.sent',
+          actorContext: resolved.context, outcome: 'success',
+          metadata: { source: params.source, status: result.status }, resourceId: result.action.id,
+          resourceType: 'gmail_draft_action',
         })
         noStore(reply)
         return createApiResponse(result.status === 'held'

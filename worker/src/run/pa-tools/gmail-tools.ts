@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { getGoogleCapability } from '@nessie/schemas'
 import {
   getGmailMessage,
@@ -74,6 +75,21 @@ const DraftSchema = z.object({
 const DraftUpdateSchema = DraftSchema.omit({ replyToThreadId: true }).extend({
   draftId: z.string().uuid(),
 }).strict()
+
+/**
+ * A provider draft is an external side effect. Replaying a durable run must
+ * name the same action, even after Gmail accepted the create while the worker
+ * died before persisting its returned draft id.
+ */
+export const gmailDraftCreateIdempotencyKey = (
+  context: Pick<BuiltinToolRuntimeContext, 'run' | 'toolCallId'>,
+  args: Record<string, unknown>,
+): string => {
+  if (context.toolCallId) return `gmail-draft:${context.run.id}:${context.toolCallId}`
+  const deterministicInput = JSON.stringify(args, Object.keys(args).sort())
+  const digest = createHash('sha256').update(deterministicInput).digest('hex')
+  return `gmail-draft:${context.run.id}:recovered:${digest}`
+}
 
 /** Load a scope-checked, refreshed credential, or refuse in words. */
 const credentialFor = async (
@@ -256,7 +272,7 @@ export const runGmailDraftCreateTool = async (
       context.prisma,
       {
         organizationId: context.channel.organizationId,
-        idempotencyKey: randomUUID(),
+        idempotencyKey: gmailDraftCreateIdempotencyKey(context, args),
         userId,
         message: {
           to: args.to,
@@ -335,4 +351,3 @@ export const runGmailDraftUpdateTool = async (
     return explainGoogleFailure(context, 'gmail.compose', userId, error)
   }
 }
-import { randomUUID } from 'node:crypto'

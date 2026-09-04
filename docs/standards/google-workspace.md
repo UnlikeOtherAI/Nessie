@@ -43,5 +43,7 @@ file is the rule**.
   reaches every member who can read a public channel. One shared
   `sendDraftForUser` serves the human button and the agent tool; api services
   are unreachable from the worker, so a second copy forks the state claim and
-  the audit trail on day one. Details: `CLAUDE.md` → the Google bullets.
-
+  the audit trail on day one. Audit transitions are content-free and
+  state-accurate: a held draft, an Undo, a final delivery, and an ambiguous
+  provider outcome are separate records; an audit outage never changes the
+  mail state. Details: `CLAUDE.md` → the Google bullets.

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { listGmailMailThreads, readGmailMailThread } from '../src/gmail/mail-surface.js'
+import { GmailReadLimitError } from '../src/gmail/read-budget.js'
 
 const b64 = (value: string): string => Buffer.from(value).toString('base64url')
 
@@ -87,4 +88,39 @@ test('Gmail preserves quoted display-name recipients and inline filename attachm
     '"Nessie, Team" <team@example.test>', 'person@example.test',
   ])
   assert.equal(conversation.messages[0]?.attachments[0]?.filename, 'logo.png')
+})
+
+test('Gmail thread metadata requests are concurrent but bounded', async () => {
+  let active = 0
+  let peak = 0
+  const fetch = async (url: string) => {
+    if (url.includes('/threads?')) return response({
+      threads: Array.from({ length: 24 }, (_, index) => ({ id: `thread-${index}` })),
+    })
+    active += 1
+    peak = Math.max(peak, active)
+    await new Promise((resolve) => setImmediate(resolve))
+    active -= 1
+    return response({ messages: [{
+      id: 'message', internalDate: '1000', payload: {
+        headers: [{ name: 'Subject', value: 'Bounded' }], mimeType: 'text/plain', body: { data: b64('ok') },
+      }, threadId: 'thread',
+    }] })
+  }
+  const page = await listGmailMailThreads(fetch, 'token', { pageSize: 24 })
+  assert.equal(page.items.length, 24)
+  assert.ok(peak > 1, 'metadata must not be requested serially')
+  assert.ok(peak <= 8, `metadata concurrency must be bounded, received ${peak}`)
+})
+
+test('Gmail rejects a thread whose decoded bodies exceed the aggregate budget', async () => {
+  await assert.rejects(
+    readGmailMailThread(async () => response({ messages: [{
+      id: 'message-1', internalDate: '2000', payload: {
+        headers: [{ name: 'Subject', value: 'Too large' }], mimeType: 'text/plain',
+        body: { data: b64('x'.repeat(300 * 1024)) },
+      }, threadId: 'thread-1',
+    }] }), 'token', 'thread-1'),
+    GmailReadLimitError,
+  )
 })
