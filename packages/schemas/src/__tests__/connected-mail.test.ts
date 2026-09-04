@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   ConnectedMailComposeInputSchema,
   ConnectedMailDraftCreateInputSchema,
+  ConnectedMailboxSendInputSchema,
   ConnectedMailMessageSchema,
   ConnectedMailThreadsQuerySchema,
 } from '../connected-mail.js'
@@ -23,6 +24,14 @@ test('Gmail draft creation requires a stable idempotency key', () => {
   assert.equal(ConnectedMailDraftCreateInputSchema.safeParse(base).success, false)
   assert.equal(ConnectedMailDraftCreateInputSchema.safeParse({
     ...base, idempotencyKey: '00000000-0000-4000-8000-000000000001',
+  }).success, true)
+})
+
+test('SMTP send requires a stable idempotency key', () => {
+  const base = { body: 'Hello', subject: 'Hi', to: ['recipient@example.test'] }
+  assert.equal(ConnectedMailboxSendInputSchema.safeParse(base).success, false)
+  assert.equal(ConnectedMailboxSendInputSchema.safeParse({
+    ...base, idempotencyKey: '00000000-0000-4000-8000-000000000002',
   }).success, true)
 })
 

@@ -189,6 +189,12 @@ export const ConnectedMailSendInputSchema = ConnectedMailComposeInputSchema.exte
 }).strict()
 export type ConnectedMailSendInput = z.infer<typeof ConnectedMailSendInputSchema>
 
+/** SMTP sends use this id to replay a known action, never a provider call. */
+export const ConnectedMailboxSendInputSchema = ConnectedMailComposeInputSchema.extend({
+  idempotencyKey: z.string().uuid(),
+}).strict()
+export type ConnectedMailboxSendInput = z.infer<typeof ConnectedMailboxSendInputSchema>
+
 export const ConnectedMailGmailDraftSendInputSchema = z.object({
   draftId: z.string().uuid(),
   expectedFingerprint: z.string().min(1).max(200),

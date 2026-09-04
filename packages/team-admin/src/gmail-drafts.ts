@@ -125,7 +125,7 @@ export type ComposeDraftInput = {
   connectionId?: string
   message: OutboundMessage
   providerThreadId?: string
-  idempotencyKey: string
+  idempotencyKey?: string
 }
 
 export type GmailDraftActionRecord = {
@@ -161,6 +161,7 @@ export const composeDraftForUser = async (
   input: ComposeDraftInput,
   deps: GmailDraftDeps,
 ): Promise<GmailDraftActionRecord> => {
+  if (!input.idempotencyKey) throw new GmailDraftError('PROVIDER_FAILED', 'missing idempotency key')
   const credential = await loadCredential(
     prisma,
     { ...input, capabilityId: 'gmail.compose' },

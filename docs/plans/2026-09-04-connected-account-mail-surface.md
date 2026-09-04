@@ -156,7 +156,10 @@ from the live no-store conversation beside the form and never enter
 - SMTP/IMAP keeps unsent human text locally and sends directly only from the
   mailbox owner/team member's explicit click. An agent still uses
   `mailbox_send`, which remains pinned to a person and structurally approval
-  gated.
+  gated. The human SMTP route records a body-free action, client idempotency
+  key, and stable Message-ID before delivery. A transport outcome after claim
+  is `delivery_unknown`, not a retryable send; replaying the same key returns
+  the durable result or refuses without another SMTP call.
 - Reply context supplies the real provider thread id or `In-Reply-To` identity;
   it never infers a reply from subject text.
 

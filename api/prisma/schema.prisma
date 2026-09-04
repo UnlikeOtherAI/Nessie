@@ -1264,6 +1264,7 @@ model Organization {
   emailMessages                    EmailMessage[]
   mailboxConnections               MailboxConnection[]
   mailboxConnectionAgentAccess     MailboxConnectionAgentAccess[]
+  mailboxSendActions               MailboxSendAction[]
 
   agentCards              AgentCard[]
   gmailDraftActions       GmailDraftAction[]
@@ -6967,11 +6968,46 @@ model MailboxConnection {
   ownerMembership OrganizationMember?            @relation("MailboxConnectionOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
   credential      MailboxConnectionCredential?
   agentAccess     MailboxConnectionAgentAccess[]
+  sendActions     MailboxSendAction[]
 
   @@index([organizationId, status])
   @@index([organizationId, ownerUserId])
   @@index([teamId])
   @@map("mailbox_connections")
+}
+
+/// A human SMTP send is recorded before the provider call, but never stores
+/// the connected message body. The fingerprint and stable Message-ID make a
+/// retry identifiable without giving a lost DATA response permission to send
+/// a second copy.
+model MailboxSendAction {
+  id                 String                 @id @db.Uuid
+  organizationId     String                 @map("organization_id") @db.Uuid
+  ownerUserId        String                 @map("owner_user_id") @db.Uuid
+  connectionId       String                 @map("connection_id") @db.Uuid
+  clientRequestId    String                 @map("client_request_id") @db.Uuid
+  contentFingerprint String                 @map("content_fingerprint")
+  messageId          String                 @map("message_id")
+  state              MailboxSendActionState @default(ready)
+  claimedAt          DateTime?              @map("claimed_at")
+  sentAt             DateTime?              @map("sent_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   MailboxConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, clientRequestId])
+  @@unique([connectionId, messageId])
+  @@index([organizationId, ownerUserId, state])
+  @@map("mailbox_send_actions")
+}
+
+enum MailboxSendActionState {
+  ready
+  dispatching
+  sent
+  delivery_unknown
 }
 
 /// The password, isolated in its own table exactly as `CommsConnectionCredential`
