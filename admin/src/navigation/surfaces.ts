@@ -44,6 +44,7 @@ const toApps = (): SurfaceParent => ({ label: 'Apps', pathname: '/apps' })
 const toAgents = (): SurfaceParent => ({ label: 'Back to Agents', pathname: '/agents' })
 const toWorkflows = (): SurfaceParent => ({ label: 'Back to Workflows', pathname: '/agents/workflows' })
 const toStatuses = (): SurfaceParent => ({ label: 'Back to Statuses', pathname: '/settings/statuses' })
+const toMail = (): SurfaceParent => ({ label: 'Back to Mail', pathname: '/mail' })
 
 // A route that only forwards to another one. It renders no screen, so it
 // declares nothing but its section — enough for the tab bar to stay lit for
@@ -78,6 +79,49 @@ export const SURFACES: Surface[] = [
   redirect({ pattern: /^\/settings\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/settings\/agents$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/integrations$/, root: ADMIN_ROOT, section: 'admin' }),
+
+  // ── Connected mail ───────────────────────────────────────────────────────
+  {
+    depth: 0,
+    pattern: /^\/mail$/,
+    root: ADMIN_ROOT,
+    section: 'admin',
+    type: 'root',
+  },
+  {
+    depth: 2,
+    flowPresentation: 'screen',
+    identityOf: (match) => `mail-compose:${match[1]}:${match[2]}`,
+    intent: { state: ['reply', 'threadId'] },
+    keyScope: () => 'mail-compose',
+    parentOf: (match) => ({ label: 'Back to mail', pathname: `/mail/${match[1]}/${match[2]}` }),
+    pattern: /^\/mail\/([^/]+)\/([^/]+)\/compose$/,
+    root: ADMIN_ROOT,
+    section: 'admin',
+    type: 'flow',
+  },
+  {
+    depth: 2,
+    identityOf: (match) => `mail:${match[1]}:${match[2]}:${match[3]}`,
+    keyScope: () => 'mail-thread',
+    parentOf: (match) => ({ label: 'Back to mail', pathname: `/mail/${match[1]}/${match[2]}` }),
+    pattern: /^\/mail\/([^/]+)\/([^/]+)\/threads\/([^/]+)$/,
+    root: ADMIN_ROOT,
+    section: 'admin',
+    splitInline: true,
+    type: 'nested',
+  },
+  {
+    depth: 1,
+    identityOf: (match) => `mail:${match[1]}:${match[2]}`,
+    intent: { state: ['filter', 'pageSize'] },
+    keyScope: () => 'mail-account',
+    parentOf: toMail,
+    pattern: /^\/mail\/([^/]+)\/([^/]+)$/,
+    root: ADMIN_ROOT,
+    section: 'admin',
+    type: 'detail',
+  },
 
   // ── Channels ─────────────────────────────────────────────────────────────
   {

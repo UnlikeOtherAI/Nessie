@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { EmailMessageRecord } from '@nessie/schemas'
+import type { ConnectedMailMessage, EmailMessageRecord } from '@nessie/schemas'
 
 /**
  * One email's body.
@@ -12,25 +12,35 @@ import type { EmailMessageRecord } from '@nessie/schemas'
  * parks those URLs on `data-blocked-src`, and nothing fetches them until the
  * person reading asks — per message, never as a standing setting.
  */
-export const EmailMessageBody = ({ message }: { message: EmailMessageRecord }) => {
+type RenderableMailMessage = EmailMessageRecord | ConnectedMailMessage
+
+const bodyOf = (message: RenderableMailMessage): { html: string | null; text: string } => {
+  if ('bodyFormat' in message) {
+    return { html: message.bodyFormat === 'html' ? message.body : null, text: message.bodyFormat === 'text' ? message.body : '' }
+  }
+  return { html: message.htmlBody, text: message.textBody }
+}
+
+export const EmailMessageBody = ({ message }: { message: RenderableMailMessage }) => {
   const [imagesLoaded, setImagesLoaded] = useState(false)
+  const body = bodyOf(message)
 
   const hasBlockedImages = useMemo(
-    () => Boolean(message.htmlBody?.includes('data-blocked-src=')),
-    [message.htmlBody],
+    () => Boolean(body.html?.includes('data-blocked-src=')),
+    [body.html],
   )
 
   const html = useMemo(() => {
-    if (!message.htmlBody) return null
-    if (!imagesLoaded) return message.htmlBody
+    if (!body.html) return null
+    if (!imagesLoaded) return body.html
     // The reveal is a rename, not a re-parse: the sanitizer already decided
     // which URLs were allowed to exist at all.
-    return message.htmlBody.replaceAll('data-blocked-src=', 'src=')
-  }, [imagesLoaded, message.htmlBody])
+    return body.html.replaceAll('data-blocked-src=', 'src=')
+  }, [body.html, imagesLoaded])
 
   if (!html) {
     return (
-      <p className="whitespace-pre-wrap text-sm text-[color:var(--tx2)]">{message.textBody}</p>
+      <p className="whitespace-pre-wrap text-sm text-[color:var(--tx2)]">{body.text}</p>
     )
   }
 
