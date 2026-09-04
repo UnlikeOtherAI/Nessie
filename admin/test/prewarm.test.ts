@@ -51,6 +51,13 @@ const fakeApiClient = (calls: string[]): ApiClient => ({
     calls.push(`GET ${path}`)
     return [] as never
   },
+  getPage: async (path: string) => {
+    calls.push(`GET ${path}`)
+    return {
+      data: [],
+      meta: { hasMore: false, nextCursor: null, prevCursor: null },
+    } as never
+  },
   patch: async (path: string) => {
     calls.push(`PATCH ${path}`)
     return null as never
@@ -169,7 +176,7 @@ test('prewarm never spells a fetch of its own', () => {
   // A URL literal here would be a second fetcher, and the first divergence
   // would fill the cache under the right key with the wrong shape.
   assert.doesNotMatch(source, /['"`]\/api\//)
-  assert.match(source, /import \{ fetchThreadMessages \} from/)
+  assert.match(source, /import \{ threadMessagesInfiniteQueryOptions \} from/)
 })
 
 test('navigating rows prewarm before the click', () => {

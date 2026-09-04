@@ -6,6 +6,7 @@ import { desktopSelect, tabletSelect } from './wide-select.mjs'
 import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
 import { phoneColdStart } from './phone-cold-start.mjs'
 import { phoneIntentStrip } from './phone-intent-strip.mjs'
+import { desktopChatHistory } from './desktop-chat-history.mjs'
 
 export const CASES = [
   phonePush,
@@ -18,4 +19,5 @@ export const CASES = [
   desktopSplitPush,
   phoneColdStart,
   phoneIntentStrip,
+  desktopChatHistory,
 ]

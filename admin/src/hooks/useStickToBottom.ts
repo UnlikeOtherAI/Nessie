@@ -7,6 +7,28 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
  */
 const NEAR_BOTTOM_PX = 80
 
+/** Start the next history read just before the reader reaches the first row. */
+export const HISTORY_TOP_THRESHOLD_PX = 160
+
+export type OlderContentLoader = {
+  failed: boolean
+  hasMore: boolean
+  isLoading: boolean
+  itemCount: number
+  loadMore: () => Promise<unknown>
+  pageCount: number
+}
+
+type PrependSnapshot = {
+  anchor: HTMLElement | null
+  anchorId: string | null
+  anchorTop: number
+  itemCount: number
+  pageCount: number
+  scrollHeight: number
+  scrollTop: number
+}
+
 /**
  * Keeps a scroll container pinned to the bottom of its content.
  *
@@ -28,10 +50,17 @@ const NEAR_BOTTOM_PX = 80
  * document and belongs at the top. Passing false lands at the top and keeps it
  * there, so a long tool list no longer opens scrolled to its final row.
  */
-export const useStickToBottom = (resetKey?: string | null, follow = true) => {
+export const useStickToBottom = (
+  resetKey?: string | null,
+  follow = true,
+  olderContent?: OlderContentLoader,
+) => {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [content, setContent] = useState<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true)
+  const olderContentRef = useRef(olderContent)
+  const prependSnapshotRef = useRef<PrependSnapshot | null>(null)
+  olderContentRef.current = olderContent
 
   const scrollToBottom = useCallback(() => {
     if (container) {
@@ -50,14 +79,106 @@ export const useStickToBottom = (resetKey?: string | null, follow = true) => {
     scrollToBottom()
   }, [scrollToBottom])
 
+  /**
+   * Fetch one older page from a top-edge gesture. The first existing message is
+   * captured as the visual anchor; once rows prepend, the layout effect below
+   * restores that exact row to the same screen position.
+   */
+  const loadOlder = useCallback(() => {
+    const loader = olderContentRef.current
+    if (
+      !container
+      || !loader?.hasMore
+      || loader.isLoading
+      || prependSnapshotRef.current
+    ) {
+      return
+    }
+
+    const anchor = content?.querySelector<HTMLElement>('[data-message-id]') ?? null
+    const containerTop = container.getBoundingClientRect().top
+    prependSnapshotRef.current = {
+      anchor,
+      anchorId: anchor?.dataset.messageId ?? null,
+      anchorTop: anchor ? anchor.getBoundingClientRect().top - containerTop : 0,
+      itemCount: loader.itemCount,
+      pageCount: loader.pageCount,
+      scrollHeight: container.scrollHeight,
+      scrollTop: container.scrollTop,
+    }
+    void loader.loadMore().catch(() => {
+      prependSnapshotRef.current = null
+    })
+  }, [container, content])
+
   // Opening a different conversation (or tab) always lands where that section
   // starts — the newest message for a feed, the first line for a document —
   // even if the reader had scrolled in the previous one.
   useLayoutEffect(() => {
+    prependSnapshotRef.current = null
     pinnedRef.current = follow
     if (follow) scrollToBottom()
     else if (container) container.scrollTop = 0
   }, [container, follow, resetKey, scrollToBottom])
+
+  // Prepending changes scrollHeight above the reader. Restore the same message
+  // to the same visual offset before the browser paints, so history loads do
+  // not make the conversation jump. An anchor survives unrelated changes at
+  // the bottom; the height delta is the fallback when there was no message row.
+  useLayoutEffect(() => {
+    const snapshot = prependSnapshotRef.current
+    if (!container || !snapshot || olderContent?.isLoading) return
+    if (olderContent?.failed) {
+      prependSnapshotRef.current = null
+      return
+    }
+
+    // Query observers can briefly report `isLoading: false` before their
+    // derived row list reflects the page that just arrived. Settling against
+    // that intermediate render includes the disappearing loading row in the
+    // height delta and leaves the reader one status-row too high. A changed
+    // page count is the durable proof that the prepend is in this render.
+    const pageArrived = Boolean(
+      olderContent && olderContent.pageCount > snapshot.pageCount,
+    )
+    if (!pageArrived && olderContent?.hasMore) return
+
+    let addedHeight = container.scrollHeight - snapshot.scrollHeight
+    const currentAnchor = snapshot.anchor?.isConnected
+      ? snapshot.anchor
+      : [...(content?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])]
+        .find((entry) => entry.dataset.messageId === snapshot.anchorId) ?? null
+    if (currentAnchor) {
+      const nextAnchorTop =
+        currentAnchor.getBoundingClientRect().top - container.getBoundingClientRect().top
+      addedHeight = nextAnchorTop - snapshot.anchorTop
+    }
+    if (olderContent && olderContent.itemCount > snapshot.itemCount) {
+      container.scrollTop = snapshot.scrollTop + Math.max(0, addedHeight)
+    }
+    prependSnapshotRef.current = null
+
+    // A filtered chat drawer can receive a page with no matching rows. Continue
+    // the one explicit top-edge read until it finds visible history or reaches
+    // the beginning, instead of leaving the reader stuck at an inert top edge.
+    if (
+      olderContent?.hasMore
+      && pageArrived
+      && addedHeight <= 0
+      && container.scrollTop <= HISTORY_TOP_THRESHOLD_PX
+    ) {
+      queueMicrotask(loadOlder)
+    }
+  }, [
+    container,
+    content,
+    loadOlder,
+    olderContent?.failed,
+    olderContent?.hasMore,
+    olderContent?.isLoading,
+    olderContent?.itemCount,
+    olderContent?.pageCount,
+  ])
 
   useEffect(() => {
     if (!container || !content) {
@@ -69,6 +190,12 @@ export const useStickToBottom = (resetKey?: string | null, follow = true) => {
       const distanceFromBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight
       pinnedRef.current = distanceFromBottom <= NEAR_BOTTOM_PX
+      if (
+        container.scrollTop <= HISTORY_TOP_THRESHOLD_PX
+        && !olderContentRef.current?.failed
+      ) {
+        loadOlder()
+      }
     }
     container.addEventListener('scroll', onScroll, { passive: true })
 
@@ -86,11 +213,37 @@ export const useStickToBottom = (resetKey?: string | null, follow = true) => {
       container.removeEventListener('scroll', onScroll)
       observer.disconnect()
     }
-  }, [container, content, follow, scrollToBottom])
+  }, [container, content, follow, loadOlder, scrollToBottom])
+
+  // If a page is too short to overflow the viewport, there is no scroll event
+  // to reach the top. Fill it from older history until it can scroll (or the
+  // server says there is no earlier page).
+  useEffect(() => {
+    if (
+      follow
+      && container
+      && olderContent?.hasMore
+      && !olderContent.failed
+      && !olderContent.isLoading
+      && container.scrollTop <= HISTORY_TOP_THRESHOLD_PX
+      && container.scrollHeight <= container.clientHeight
+    ) {
+      loadOlder()
+    }
+  }, [
+    container,
+    follow,
+    loadOlder,
+    olderContent?.failed,
+    olderContent?.hasMore,
+    olderContent?.isLoading,
+    olderContent?.itemCount,
+  ])
 
   return {
     containerRef: setContainer,
     contentRef: setContent,
+    loadOlder,
     pinToBottom,
     releasePin,
   }

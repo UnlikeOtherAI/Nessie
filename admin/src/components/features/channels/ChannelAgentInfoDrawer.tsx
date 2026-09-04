@@ -12,9 +12,15 @@ import { Sheet } from '../../overlays/Sheet'
 import type { MentionEntity } from '../../shared/MentionInput'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelComposer } from './ChannelComposer'
-import { ChannelMessageFeed } from './ChannelMessageFeed'
+import {
+  ChannelMessageFeed,
+  type MessageHistoryStatus,
+} from './ChannelMessageFeed'
 import { buildFeedItems, type ChannelAgentParticipant } from './channel-helpers'
-import { useStickToBottom } from '../../../hooks/useStickToBottom'
+import {
+  useStickToBottom,
+  type OlderContentLoader,
+} from '../../../hooks/useStickToBottom'
 import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
@@ -33,6 +39,8 @@ type ChannelAgentInfoDrawerProps = {
   pendingMessages: PendingStreamMessage[]
   renderContent: (text: string) => ReactNode
   threadMessages: ThreadMessageRecord[]
+  threadMessageHistory: MessageHistoryStatus
+  threadMessageLoader: OlderContentLoader
   token: string | null
 }
 
@@ -103,6 +111,8 @@ export const ChannelAgentInfoDrawer = ({
   pendingMessages,
   renderContent,
   threadMessages,
+  threadMessageHistory,
+  threadMessageLoader,
   token,
 }: ChannelAgentInfoDrawerProps) => {
   const {
@@ -188,7 +198,7 @@ export const ChannelAgentInfoDrawer = ({
 
   // Same stick-to-bottom behaviour as the channel feed: opens on the newest
   // message and follows rows that keep growing (media, thinking tickers).
-  const drawerScroll = useStickToBottom(agent?.id)
+  const drawerScroll = useStickToBottom(agent?.id, true, threadMessageLoader)
 
   if (!agent || !activeChannel) {
     return null
@@ -316,6 +326,10 @@ export const ChannelAgentInfoDrawer = ({
                 editingContent={editingContent}
                 editingMessageId={editingMessageId}
                 feedItems={feedItems}
+                historyStatus={{
+                  ...threadMessageHistory,
+                  retryOlder: drawerScroll.loadOlder,
+                }}
                 isPersonalAssistantConversation={false}
                 meAvatar={meAvatar}
                 meDisplayName={meDisplayName}
