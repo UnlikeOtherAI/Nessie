@@ -13,10 +13,6 @@ import { OverlayPortal } from './OverlayPortal'
 import { useOverlay } from './useOverlay'
 import { placePopover, viewportBounds } from './placePopover'
 import type { PopoverAnchorRect, PopoverPlacement } from './placePopover'
-import {
-  usePopoverPlacement,
-  type PopoverAnchorInput,
-} from '../../lib/popover-placement-hook'
 
 /**
  * The admin's one anchored overlay (docs/navigation/overview.md §7).
@@ -103,20 +99,6 @@ export const Popover = ({
   const { panelRef, requestClose } = overlay
   const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)
 
-  // The anchor for D11's observer path is the trigger element; `anchorRect`
-  // anchors (the editor caret) are already recomputed by their owner.
-  const anchorInput: PopoverAnchorInput | null =
-    !anchorRect && anchorRef.current
-      ? { kind: 'element', element: anchorRef.current }
-      : null
-  const elementPlaced = usePopoverPlacement({
-    anchor: anchorInput,
-    matchAnchorWidth,
-    open: open && !anchorRect,
-    panelRef,
-    placement,
-  })
-
   const measure = useCallback(() => {
     const panel = panelRef.current
     if (!panel) return
@@ -142,13 +124,14 @@ export const Popover = ({
     setRectPlaced((current) => (samePlacement(current, value) ? current : value))
   }, [anchorRect, anchorRef, matchAnchorWidth, panelRef, placement])
 
-  // A rect anchor (the editor caret) has no element to observe: it is
-  // recomputed on every editor transaction by its owner, so the old
-  // measure-on-scroll/resize path stays for it. An element anchor goes through
-  // the D11 hook — the observer already covers reflow and window resize.
+  // Measure every anchor through the same viewport geometry. The panel leaves
+  // the page tree for the overlay host, so an overflow ancestor of the trigger
+  // cannot be its clipping box: it is precisely what the portal escaped. This
+  // also makes the first open deterministic — the layout effect measures before
+  // the hidden panel is first painted, instead of waiting for a later resize.
   useLayoutEffect(() => {
-    if (!open || !anchorRect) {
-      if (!open) setRectPlaced(null)
+    if (!open) {
+      setRectPlaced(null)
       return undefined
     }
     measure()
@@ -156,24 +139,29 @@ export const Popover = ({
     // Capture, so a scroll inside any ancestor — a message feed, a settings
     // form — moves the panel with its anchor rather than leaving it behind.
     window.addEventListener('scroll', measure, true)
+
+    if (typeof ResizeObserver === 'undefined') {
+      return () => {
+        window.removeEventListener('resize', measure)
+        window.removeEventListener('scroll', measure, true)
+      }
+    }
+    const observer = new ResizeObserver(measure)
+    const panel = panelRef.current
+    const anchor = anchorRef.current
+    if (panel) observer.observe(panel)
+    if (anchor) observer.observe(anchor)
+    // The viewport changes when the document's layout changes even in engines
+    // that do not report an element-level resize for the anchor.
+    observer.observe(document.body)
     return () => {
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
+      observer.disconnect()
     }
-  }, [anchorRect, measure, open])
+  }, [anchorRef, measure, open, panelRef])
 
-  const placed: Placed | null = anchorRect
-    ? rectPlaced
-    : elementPlaced
-      ? {
-          left: elementPlaced.left,
-          maxHeight: elementPlaced.maxHeight,
-          top: elementPlaced.top,
-          width: matchAnchorWidth
-            ? anchorRef.current?.getBoundingClientRect().width ?? null
-            : null,
-        }
-      : null
+  const placed = rectPlaced
 
   // Outside press. `mousedown`/`touchstart` rather than `click`, so a press
   // that starts outside dismisses before the release lands on something else.
@@ -184,6 +172,20 @@ export const Popover = ({
       if (!(target instanceof Node)) return
       if (panelRef.current?.contains(target)) return
       if (anchorRef.current?.contains(target)) return
+      // A modal or another popover can be portalled above this one. It is not
+      // an "outside" press for the lower layer: closing this menu would
+      // unmount the control that owns the higher overlay before its button's
+      // click fires (the session-debug Copy action was the visible failure).
+      // Direct children of the shared host are independent overlay trees.
+      const panel = panelRef.current
+      const host = panel?.parentElement
+      if (host?.classList.contains('admin-overlay-root')) {
+        let overlayTree = target instanceof Element ? target : target.parentElement
+        while (overlayTree && overlayTree.parentElement !== host) {
+          overlayTree = overlayTree.parentElement
+        }
+        if (overlayTree && overlayTree !== panel) return
+      }
       requestClose()
     }
     document.addEventListener('mousedown', onPress)
