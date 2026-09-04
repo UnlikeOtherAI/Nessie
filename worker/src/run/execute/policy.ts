@@ -47,6 +47,10 @@ type WorkerPolicyRule = {
 type ToolPolicyEvaluation =
   | {
       allowed: true
+      /** A server-verified proof, retained for a dispatcher to claim exactly once. */
+      approvalProofVerified?: { id: string }
+      /** This policy verdict itself depended on the verified proof. */
+      approvalProofUsed?: boolean
       policyRuleId?: string
       policySource: string
       reviewMode?: 'auto'
@@ -163,6 +167,8 @@ export const evaluateToolInvokePolicy = async (
   if (decision.allowed) {
     return {
       allowed: true,
+      ...(verifiedApproval ? { approvalProofVerified: verifiedApproval } : {}),
+      ...(decision.approvalProofUsed ? { approvalProofUsed: true } : {}),
       policyRuleId: decision.policyRuleId,
       policySource: decision.policySource,
       reviewMode: decision.reviewMode,

@@ -63,3 +63,9 @@ test('lifecycle schemas are strict and canonicalize the address-first default', 
     accountKind: 'mailbox',
   }))
 })
+
+test('every code-declared approval gate publishes a strict runtime input schema', () => {
+  const gated = BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.requiresApproval)
+  assert.ok(gated.length > 0)
+  assert.ok(gated.every((tool) => tool.inputSchema != null))
+})

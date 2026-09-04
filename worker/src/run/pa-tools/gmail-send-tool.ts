@@ -2,7 +2,7 @@ import {
   hasStandingSendAuthorization,
   sendDraftForUser,
 } from '@nessie/team-admin'
-import { z } from 'zod'
+import { GmailDraftSendToolInputSchema } from '@nessie/runtime'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
@@ -24,8 +24,6 @@ import {
  * still re-reads the live draft and refuses if its recipients or body changed.
  */
 
-const SendSchema = z.object({ draftId: z.string().uuid() }).strict()
-
 /** How long a consented send is held so the card can offer Undo. */
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
 
@@ -33,7 +31,7 @@ export const runGmailDraftSendTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = SendSchema.parse(input)
+  const args = GmailDraftSendToolInputSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
 
   const draft = await context.prisma.gmailDraftAction.findFirst({

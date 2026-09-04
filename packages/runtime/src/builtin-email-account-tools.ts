@@ -1,6 +1,10 @@
 import { z } from 'zod'
 
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import {
+  isStructuralApprovalTool,
+  parseStructuralApprovalToolArgs,
+} from './builtin-approval-inputs.js'
 
 export const EMAIL_ACCOUNT_LIST_TOOL_ID = 'email_account_list'
 export const EMAIL_ACCOUNT_CONNECT_TOOL_ID = 'email_account_connect'
@@ -10,18 +14,18 @@ export const EMAIL_ACCOUNT_AGENT_ACCESS_TOOL_ID = 'email_account_agent_access'
 
 const AccountKindSchema = z.enum(['provider', 'mailbox'])
 
-const EmailAccountListToolInputSchema = z.object({}).strict()
+export const EmailAccountListToolInputSchema = z.object({}).strict()
 
-const EmailAccountConnectToolInputSchema = z.object({
+export const EmailAccountConnectToolInputSchema = z.object({
   scope: z.enum(['user', 'team']).default('user'),
 }).strict()
 
-const EmailAccountReferenceToolInputSchema = z.object({
+export const EmailAccountReferenceToolInputSchema = z.object({
   accountId: z.string().uuid(),
   accountKind: AccountKindSchema,
 }).strict()
 
-const EmailAccountAgentAccessToolInputSchema = z.object({
+export const EmailAccountAgentAccessToolInputSchema = z.object({
   accountId: z.string().uuid(),
   agentId: z.string().uuid(),
   allowed: z.boolean(),
@@ -40,18 +44,24 @@ const EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS = {
  * before policy, audit or approval handling so unrecognised fields (including
  * a model-provided password or OAuth code) cannot become durable state.
  */
-export const parseEmailAccountToolArgs = (
+export const parseToolAuthorizationArgs = (
   toolName: string,
   args: Record<string, unknown>,
 ): Record<string, unknown> => {
   const schema = EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS[
     toolName as keyof typeof EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS
   ]
-  return schema ? schema.parse(args) : args
+  return schema ? schema.parse(args) : parseStructuralApprovalToolArgs(toolName, args)
 }
+
+/** @deprecated Use parseToolAuthorizationArgs at the authorization chokepoint. */
+export const parseEmailAccountToolArgs = parseToolAuthorizationArgs
 
 export const isEmailAccountTool = (toolName: string): boolean =>
   Object.hasOwn(EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS, toolName)
+
+export const hasStrictToolAuthorizationInput = (toolName: string): boolean =>
+  isEmailAccountTool(toolName) || isStructuralApprovalTool(toolName)
 
 const ACCOUNT_REFERENCE_PROPERTIES = {
   accountId: {
