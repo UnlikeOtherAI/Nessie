@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { MailboxConnectionRecord, MailboxConnectionScope } from '../../../lib/api-client'
+import { connectionAnchorId } from '../../../lib/connection-anchor'
 import {
   useDisconnectMailbox,
   useMailboxConnections,
@@ -23,7 +24,9 @@ import { MailboxConnectionForm } from './MailboxConnectionForm'
  */
 
 type MailboxConnectionsPanelProps = {
+  embedded?: boolean
   scope: MailboxConnectionScope
+  showConnectAction?: boolean
 }
 
 const SCOPE_COPY: Record<
@@ -43,14 +46,13 @@ const SCOPE_COPY: Record<
   },
   user: {
     blurb:
-      'Connect a mailbox of your own so your agents can answer questions about it and '
-      + 'write from it. Only runs acting as you can reach it, and nothing is copied into '
-      + 'Nessie.',
+      'These generic mailboxes are accessed live over IMAP and SMTP. Nothing is copied '
+      + 'into Nessie, and only runs acting as you can reach a personal mailbox.',
     disconnectBody:
       'Your agents will lose access to this mailbox immediately. Nothing in the mailbox '
       + 'itself is touched.',
-    empty: 'You have not connected a mailbox over SMTP/IMAP.',
-    title: 'Your mailboxes',
+    empty: 'No live IMAP mailboxes are connected yet.',
+    title: 'Live IMAP mailboxes',
   },
 }
 
@@ -74,13 +76,15 @@ const ConnectionRow = ({ connection }: { connection: MailboxConnectionRecord }) 
   const [result, setResult] = useState<string | null>(null)
 
   return (
-    <div className="border-t border-[color:var(--sep)] pt-3 first:border-t-0 first:pt-0">
+    <div
+      className="border-t border-[color:var(--sep)] pt-3 first:border-t-0 first:pt-0"
+      id={connectionAnchorId(connection.id)}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-medium text-[color:var(--tx)]">{connection.label}</p>
           <p className="text-sm text-[color:var(--tx2)]">
-            {connection.address} · IMAP {connection.imapHost}:{connection.imapPort} ·
-            {' '}SMTP {connection.smtpHost}:{connection.smtpPort}
+            {connection.address} · Secure IMAP and SMTP
           </p>
           {connection.statusReason ? (
             <p className="mt-1 text-sm text-[color:var(--danger)]">{connection.statusReason}</p>
@@ -148,18 +152,30 @@ const ConnectionRow = ({ connection }: { connection: MailboxConnectionRecord }) 
   )
 }
 
-export const MailboxConnectionsPanel = ({ scope }: MailboxConnectionsPanelProps) => {
+export const MailboxConnectionsPanel = ({
+  embedded = false,
+  scope,
+  showConnectAction = true,
+}: MailboxConnectionsPanelProps) => {
   const connections = useMailboxConnections()
   const copy = SCOPE_COPY[scope]
   const rows = (connections.data?.connections ?? []).filter((row) => row.scope === scope)
 
   return (
-    <section className="admin-card p-4" id={`mailbox-connections-${scope}`}>
-      <SectionLabel>Connected mailboxes</SectionLabel>
-      <h2 className="mt-3 font-semibold text-[color:var(--tx)]">{copy.title}</h2>
-      <p className="mt-1 max-w-2xl text-sm text-[color:var(--tx2)]">{copy.blurb}</p>
+    <section
+      aria-label={copy.title}
+      className={embedded ? 'grid gap-4' : 'admin-card p-4'}
+      id={`mailbox-connections-${scope}`}
+    >
+      {!embedded ? (
+        <>
+          <SectionLabel>Connected mailboxes</SectionLabel>
+          <h2 className="mt-3 font-semibold text-[color:var(--tx)]">{copy.title}</h2>
+          <p className="mt-1 max-w-2xl text-sm text-[color:var(--tx2)]">{copy.blurb}</p>
+        </>
+      ) : null}
 
-      <div className="mt-4">
+      <div className={embedded ? '' : 'mt-4'}>
         <QueryState
           errorLabel="Could not load connected mailboxes."
           loadingLabel="Loading mailboxes…"
@@ -178,7 +194,7 @@ export const MailboxConnectionsPanel = ({ scope }: MailboxConnectionsPanelProps)
         </QueryState>
       </div>
 
-      <MailboxConnectionForm scope={scope} />
+      {showConnectAction ? <MailboxConnectionForm scope={scope} /> : null}
     </section>
   )
 }

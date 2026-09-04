@@ -1,6 +1,6 @@
 import { connect as netConnect, isIP, type Socket } from 'node:net'
 import { checkServerIdentity, connect as tlsConnect, type TLSSocket } from 'node:tls'
-import { resolveVettedAddresses } from '@nessie/runtime'
+import { resolveVettedAddresses, UrlSafetyError } from '@nessie/runtime'
 
 /**
  * Opening a socket to an operator-supplied mail server.
@@ -32,8 +32,13 @@ export type MailEndpoint = {
   security: MailSecurity
 }
 
+export type MailDialErrorKind = 'certificate' | 'invalid_endpoint' | 'network'
+
 export class MailDialError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly kind: MailDialErrorKind = 'network',
+  ) {
     super(message)
     this.name = 'MailDialError'
   }
@@ -49,8 +54,29 @@ export type DialOptions = {
 
 const assertPort = (port: number): void => {
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new MailDialError('That port number is not valid.')
+    throw new MailDialError('That port number is not valid.', 'invalid_endpoint')
   }
+}
+
+const CERTIFICATE_ERROR_CODES = new Set([
+  'CERT_HAS_EXPIRED',
+  'CERT_NOT_YET_VALID',
+  'CERT_REVOKED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+])
+
+const socketFailure = (error: Error): MailDialError => {
+  const code = (error as NodeJS.ErrnoException).code
+  return new MailDialError(
+    CERTIFICATE_ERROR_CODES.has(code ?? '')
+      ? 'The mail server certificate could not be verified.'
+      : 'The mail server could not be reached.',
+    CERTIFICATE_ERROR_CODES.has(code ?? '') ? 'certificate' : 'network',
+  )
 }
 
 /** The one place a mail host is turned into an address we are willing to dial. */
@@ -66,9 +92,10 @@ const vettedAddress = async (host: string, options: DialOptions): Promise<string
     // hands it. Somebody typing a mail server into a form has not typed a URL,
     // so the refusal is restated in their terms — the rule is unchanged.
     throw new MailDialError(
-      error instanceof Error && /Private or local network/.test(error.message)
+      error instanceof UrlSafetyError
         ? `${host} is on a private or local network, which a mail server cannot be.`
         : `${host} could not be looked up as a mail server.`,
+      'network',
     )
   }
   const address = addresses[0]
@@ -93,9 +120,9 @@ const withConnectTimeout = <T extends Socket>(
       }
       resolve(socket)
     }
-    const onError = (error: Error): void => settle(error)
+    const onError = (error: Error): void => settle(socketFailure(error))
     const onTimeout = (): void =>
-      settle(new MailDialError('The mail server did not answer in time.'))
+      settle(new MailDialError('The mail server did not answer in time.', 'network'))
     socket.setTimeout(timeoutMs)
     socket.once('error', onError)
     socket.once('timeout', onTimeout)

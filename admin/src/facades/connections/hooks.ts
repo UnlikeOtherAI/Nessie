@@ -41,6 +41,8 @@ export const useCommsConnection = (id: string | null) => {
  */
 export type StartCommsConnectionInput = {
   provider: CommsProvider
+  /** Pre-fills the provider account chooser after mailbox discovery. */
+  loginHint?: string
   /** Google capability ids to request. Omitted → the provider default set. */
   capabilities?: GoogleCapabilityId[]
   /**
@@ -59,6 +61,7 @@ export const useStartCommsConnection = () => {
       const body: Record<string, unknown> = {}
       if (normalized.capabilities) body.capabilities = normalized.capabilities
       if (normalized.connectionId) body.connectionId = normalized.connectionId
+      if (normalized.loginHint) body.loginHint = normalized.loginHint
       return apiClient.post<CommsConnectionStartResponse>(
         `/api/comms/connections/${normalized.provider}/start`,
         body,

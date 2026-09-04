@@ -126,6 +126,7 @@ export type {
   IntegrationUiCardField,
   IntegrationUiCardStatus,
   MeResponse,
+  MailboxDiscoveryResult,
   OrganizationSummary,
   ProductAccountLinkRecord,
   ProductAccountLinkStatus,

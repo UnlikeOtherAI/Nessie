@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type {
   MailboxConnectionRecord,
   MailboxConnectionScope,
+  MailboxDiscoveryResult,
   MailboxTransportSecurity,
 } from '../../lib/api-client'
 import { mailboxConnectionKeys } from '../../lib/query-keys'
@@ -48,6 +49,35 @@ export const useConnectMailbox = () => {
     },
   })
 }
+
+/**
+ * Finds a provider and safe connection strategy before the credential form can
+ * render. Kept in the mailbox facade so components never carry `/api` paths or
+ * knowledge of the discovery wire format.
+ */
+export const useDiscoverMailbox = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (input: DiscoverMailboxInput) =>
+      apiClient.post<MailboxDiscoveryResult>(
+        '/api/mailbox-connections/discover',
+        mailboxDiscoveryRequest(input),
+      ),
+  })
+}
+
+export type DiscoverMailboxInput = {
+  email: string
+  scope: MailboxConnectionScope
+  teamId?: string
+}
+
+/** Keeps optional team scope absent instead of serialising an invalid null UUID. */
+export const mailboxDiscoveryRequest = ({ email, scope, teamId }: DiscoverMailboxInput) => ({
+  email,
+  scope,
+  ...(teamId ? { teamId } : {}),
+})
 
 export const useTestMailboxConnection = () => {
   const apiClient = useApiClient()

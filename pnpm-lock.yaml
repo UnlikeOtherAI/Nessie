@@ -519,6 +519,16 @@ importers:
         specifier: ^20.19.24
         version: 20.19.39
 
+  packages/comms-microsoft:
+    dependencies:
+      '@nessie/comms-connect':
+        specifier: workspace:*
+        version: link:../comms-connect
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   packages/comms-providers:
     dependencies:
       '@nessie/comms-connect':
@@ -527,6 +537,9 @@ importers:
       '@nessie/comms-google':
         specifier: workspace:*
         version: link:../comms-google
+      '@nessie/comms-microsoft':
+        specifier: workspace:*
+        version: link:../comms-microsoft
       '@nessie/comms-slack':
         specifier: workspace:*
         version: link:../comms-slack

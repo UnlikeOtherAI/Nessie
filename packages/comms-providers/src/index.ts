@@ -3,6 +3,7 @@ import {
   type CommsProviderId,
 } from '@nessie/comms-connect'
 import { createGoogleConnector } from '@nessie/comms-google'
+import { createMicrosoftConnector } from '@nessie/comms-microsoft'
 import { createSlackConnector } from '@nessie/comms-slack'
 
 /**
@@ -31,6 +32,11 @@ export const GOOGLE_CLIENT_ID_ENV = 'NESSIE_COMMS_GOOGLE_CLIENT_ID'
 export const GOOGLE_CLIENT_SECRET_ENV = 'NESSIE_COMMS_GOOGLE_CLIENT_SECRET'
 /** Optional fully-qualified Pub/Sub topic for Gmail `users.watch`. */
 export const GOOGLE_PUBSUB_TOPIC_ENV = 'NESSIE_COMMS_GOOGLE_PUBSUB_TOPIC'
+
+/** Env var holding the Microsoft OAuth client id (shared with oauth-config). */
+export const MICROSOFT_CLIENT_ID_ENV = 'NESSIE_COMMS_MICROSOFT_CLIENT_ID'
+/** Optional Microsoft OAuth client secret for a confidential web client. */
+export const MICROSOFT_CLIENT_SECRET_ENV = 'NESSIE_COMMS_MICROSOFT_CLIENT_SECRET'
 
 type Env = Record<string, string | undefined>
 
@@ -71,6 +77,20 @@ export const registerCommsConnectorsFromEnv = (
     })
     registerConnector('google', () => google)
     registered.push('google')
+  }
+
+  // Microsoft v2 supports a PKCE public client as well as a confidential web
+  // client. The start route requires the id; the secret is passed only when
+  // deployment registered a confidential client.
+  const microsoftClientId = env[MICROSOFT_CLIENT_ID_ENV]
+  if (microsoftClientId) {
+    const microsoft = createMicrosoftConnector({
+      fetch,
+      clientId: microsoftClientId,
+      clientSecret: env[MICROSOFT_CLIENT_SECRET_ENV],
+    })
+    registerConnector('microsoft', () => microsoft)
+    registered.push('microsoft')
   }
 
   return registered

@@ -754,8 +754,10 @@ UI build on it. See
 - **Phase 1 — Gmail + Slack (personal):** per-user OAuth connect, history
   back-fill, incremental sync, and webhook/watch ingestion for a single user's
   Gmail and Slack.
-- **Phase 2 — Microsoft Graph:** Teams chats/channels and Outlook mail/folders
-  via Microsoft Graph, including Graph subscription renewal.
+- **Phase 2 — Microsoft Graph (partial):** Outlook mail/folders are live through
+  delegated OAuth, Graph delta cursors, and bounded five-minute reconciliation.
+  Teams chats/channels and Graph change-notification subscriptions remain to be
+  built.
 - **Phase 3 — enterprise admin:** org-admin-scoped installs, tenant-wide
   consent, and per-team governance over which resources sync.
 - **Phase 4 — additional systems:** further communication and collaboration
