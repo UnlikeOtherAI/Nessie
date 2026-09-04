@@ -13,6 +13,7 @@ import {
   type DashboardDetailRecord,
   type DashboardWidgetRecord,
 } from '../../../facades/dashboards/hooks'
+import { OVERLAY_LAYER } from '../../../navigation/overlay'
 import { SkeletonBlock } from '../../primitives/Skeleton'
 import { DashboardGrid } from './DashboardGrid'
 import { DashboardWidgetCard } from './DashboardWidgetCard'
@@ -30,7 +31,8 @@ const DashboardWidgetSlot = ({
     <div className="relative h-full">
       {editable ? (
         <div
-          className="dashboard-widget-handle absolute inset-x-0 top-0 z-10 h-6 cursor-move"
+          className="dashboard-widget-handle absolute inset-x-0 top-0 h-6 cursor-move"
+          style={{ zIndex: OVERLAY_LAYER.stack }}
           title="Drag to move"
         />
       ) : null}
