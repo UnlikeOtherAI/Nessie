@@ -171,7 +171,7 @@ export const DashboardDetailPage = () => {
               },
           ]}
           subtitle={dashboard.description ? (
-            <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>
+            <p className="truncate">
               {dashboard.description}
             </p>
           ) : null}

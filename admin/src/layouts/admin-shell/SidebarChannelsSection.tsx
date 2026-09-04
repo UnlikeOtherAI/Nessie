@@ -1,8 +1,10 @@
+import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import type { ChannelRecord } from '../../lib/api-client';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { channelHashClassName, renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { SidebarIconButton, SidebarStarIcon } from './SidebarIcons';
 import type { CreateChannelTarget } from './types';
 
 type SidebarChannelsSectionProps = {
@@ -31,14 +33,12 @@ export const SidebarChannelsSection = ({
   return (
     <SidebarMenuSection
       action={
-        <button
+        <SidebarIconButton
           aria-label="Create channel"
-          className="admin-sidebar-plus"
+          icon={faPlus}
           onClick={() => onOpenCreateChannel({ scope: 'standalone' })}
-          type="button"
-        >
-          +
-        </button>
+          placement="section"
+        />
       }
       id="sidebar-nav-channels"
       isCollapsed={channelsCollapsed}
@@ -75,7 +75,7 @@ export const SidebarChannelsSection = ({
                 onToggleStar('channel', channel.id);
               }}
             >
-              {isStarredChannel ? '★' : '☆'}
+              <SidebarStarIcon starred={isStarredChannel} />
             </span>
           </button>
         );

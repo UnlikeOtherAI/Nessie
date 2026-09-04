@@ -93,9 +93,7 @@ export const AgentsList = () => {
           priority: 100,
         }]}
         subtitle={
-          <p className="text-sm text-[color:var(--tx3)]">
-            {AGENT_SCOPE_META[activeScope].description}
-          </p>
+          <p>{AGENT_SCOPE_META[activeScope].description}</p>
         }
         tabs={
           <TabBar

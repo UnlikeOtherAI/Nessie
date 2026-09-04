@@ -18,6 +18,7 @@ test('Space White is registered and used for a new light session', () => {
 
 test('Space White owns the shared product geometry instead of route-local copies', () => {
   const styles = source('../src/styles.css')
+  const header = source('../src/components/shared/ResponsivePageHeader.tsx')
   const spaceWhite = styles.slice(styles.indexOf("[data-theme='space-white'] .admin-topbar"))
 
   assert.match(styles, /\[data-theme="space-white"\]\s*\{[\s\S]*?--accent: #000000/)
@@ -28,6 +29,31 @@ test('Space White owns the shared product geometry instead of route-local copies
   assert.match(spaceWhite, /\.create-channel-panel\s*\{[\s\S]*?border-radius: 28px/)
   assert.match(spaceWhite, /\.admin-compose\s*\{[\s\S]*?border-radius: 14px/)
   assert.match(spaceWhite, /\.tabbar-indicator\s*\{[\s\S]*?height: 2px/)
+  assert.match(header, /action\.compact \? 'w-9 px-0'/)
+  assert.match(header, /admin-page-action-open/)
+  assert.match(header, /className="h-4 w-4" fixedWidth icon=\{action\.icon\}/)
+  assert.match(spaceWhite, /\.admin-page-subtitle\s*\{[\s\S]*?font-size: 13px[\s\S]*?line-height: 20px/)
+  assert.match(spaceWhite, /\.admin-page-action-selected,[\s\S]*?background: #000000[\s\S]*?color: #ffffff/)
+  assert.match(spaceWhite, /\.admin-sidebar-more\[aria-haspopup='menu'\]\[aria-expanded='true'\]/)
+})
+
+test('sidebar navigation uses one icon family for repeated actions and states', () => {
+  const icons = source('../src/layouts/admin-shell/SidebarIcons.tsx')
+  const section = source('../src/layouts/admin-shell/SidebarMenuSection.tsx')
+  const sidebarFiles = [
+    '../src/layouts/admin-shell/SidebarChannelsSection.tsx',
+    '../src/layouts/admin-shell/SidebarDmSection.tsx',
+    '../src/layouts/admin-shell/SidebarProjectsSection.tsx',
+    '../src/layouts/admin-shell/SidebarStarredSection.tsx',
+    '../src/layouts/admin-shell/ProjectsSidebarNav.tsx',
+    '../src/layouts/admin-shell/KnowledgeSidebarNav.tsx',
+  ].map(source).join('\n')
+
+  assert.match(icons, /SidebarIconButton/)
+  assert.match(icons, /faRegularStar/)
+  assert.match(icons, /faSolidStar/)
+  assert.match(section, /icon=\{faChevronDown\}/)
+  assert.doesNotMatch(sidebarFiles, />\s*[+⋯★☆]\s*</)
 })
 
 test('the supplied Starleague face and its license ship with the admin', () => {
