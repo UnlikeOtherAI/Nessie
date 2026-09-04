@@ -20,6 +20,7 @@ type StoredSecretCapture = {
   provider: string | null
   scopeId: string
   scopeType: string
+  status: string
 }
 
 export const secretReferenceForCapture = (input: {
@@ -40,6 +41,7 @@ export const secretMatchesCaptureRequest = (
   body: SecretCaptureMetadata,
   input: { actorId: string; authSecret: string; organizationId: string; scopeId: string },
 ): boolean => secret.createdById === input.actorId
+  && secret.status === 'active'
   && secret.organizationId === input.organizationId
   && secret.name === body.name
   && secret.description === (body.description ?? null)
@@ -48,13 +50,23 @@ export const secretMatchesCaptureRequest = (
   && secret.scopeId === input.scopeId
   && (secret.expiresAt?.toISOString() ?? null)
     === (body.expiresAt ? new Date(body.expiresAt).toISOString() : null)
-  && secret.captureFingerprint === captureFingerprintForValue(input.authSecret, body.value)
+  && secret.captureFingerprint === captureFingerprintForValue(
+    input.authSecret,
+    input.organizationId,
+    body.value,
+  )
 
 const CAPTURE_FINGERPRINT_DOMAIN = 'nessie.secret-capture.value.v1\0'
 
-export const captureFingerprintForValue = (authSecret: string, value: string): string =>
+export const captureFingerprintForValue = (
+  authSecret: string,
+  organizationId: string,
+  value: string,
+): string =>
   crypto.createHmac('sha256', authSecret)
     .update(CAPTURE_FINGERPRINT_DOMAIN)
+    .update(organizationId)
+    .update('\0')
     .update(value)
     .digest('base64url')
 

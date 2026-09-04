@@ -33,7 +33,7 @@ type SecretPattern = Omit<DetectedSecret, 'prefix' | 'start' | 'end'> & {
 /** Kept compact because this is injected into every typed and voice agent. */
 export const AGENT_SECRET_SAFETY_INSTRUCTION =
   'Never request, repeat, or put secrets in chat or model-visible tool arguments; '
-  + 'secure capture masks detected values before you see them.'
+  + 'secure typed capture masks detected values before chat reaches you.'
 
 const ASSIGNMENT_KEY = [
   'api[\\s_-]?key',
@@ -112,8 +112,13 @@ const maskedPrivateKeyHasRawTail = (content: string, beginEnd: number): boolean 
   if (!content.startsWith(SECRET_MASK, beginEnd)) return false
   const tail = content.slice(beginEnd + SECRET_MASK.length)
   return /^[^\s]/u.test(tail)
-    || /^(?:[A-Za-z0-9+/]{16,}={0,2})\r?$/mu.test(tail)
+    || /^[ \t]*(?:[A-Za-z0-9+/_=-]{16,})[ \t]*\r?$/mu.test(tail)
 }
+
+const MASKED_TAIL_VALUE = String.raw`(?:["'\x60([{]\s*)?(`
+  + String.raw`(?:(?=[A-Za-z0-9_./+=-]{6,})(?=[A-Za-z0-9_./+=-]*[A-Za-z])`
+  + String.raw`(?=[A-Za-z0-9_./+=-]*\d)[A-Za-z0-9_./+=-]{6,}`
+  + String.raw`|[A-Za-z][A-Za-z-]{7,}(?![A-Za-z-]|\s+[A-Za-z])|\d{6,}))`
 
 const DATABASE_URL = new RegExp(
   '\\b(?:https?|amqps?|ldaps?|neo4j|bolt|postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis(?:s)?|sqlserver):\\/\\/'
@@ -130,21 +135,18 @@ const PATTERNS: SecretPattern[] = [
     valueGroup: 1,
   },
   {
-    // A fixed mask followed by another credential-looking token is not a safe
-    // placeholder. Requiring both letters and digits avoids treating ordinary
-    // prose following a protected value as another secret.
+    // A fixed mask followed by another plausible value is camouflage, not a
+    // protected placeholder. Include quoted and newline-separated tails;
+    // alphabetic passwords and six-digit codes are credentials too.
     type: 'token_assignment',
-    expression: new RegExp(
-      `${SECRET_MASK}[ \\t]+((?=[^\\s,;.)\\]}"'\\x60]*[A-Za-z])(?=[^\\s,;.)\\]}"'\\x60]*\\d)[^\\s•,;.)\\]}"'\\x60]{6,})`,
-      'g',
-    ),
+    expression: new RegExp(`${SECRET_MASK}\\s+${MASKED_TAIL_VALUE}`, 'g'),
     valueGroup: 1,
   },
   {
     type: 'pem_private_key',
     expression: PRIVATE_KEY_BLOCK,
   },
-  { type: 'stripe_api_key', expression: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{8,}\b/g },
+  { type: 'stripe_api_key', expression: /\b(?:(?:sk|rk)_(?:live|test)_|whsec_)[A-Za-z0-9]{8,}\b/g },
   { type: 'github_token', expression: /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{8,}\b/g },
   { type: 'github_token', expression: /\bglpat-[A-Za-z0-9_-]{8,}\b/g },
   { type: 'sendgrid_api_key', expression: /\bSG\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
@@ -237,7 +239,7 @@ const prefixFor = (value: string, type: DetectedSecret['type']): string => {
     }
     case 'sendgrid_api_key': return 'SG.'
     case 'slack_token': return value.match(/^(?:xox[a-z](?:-|\.)|xapp-)/i)?.[0] ?? 'xox-'
-    case 'stripe_api_key': return value.match(/^(?:sk|rk)_(?:live|test)_/)?.[0] ?? ''
+    case 'stripe_api_key': return value.match(/^(?:(?:sk|rk)_(?:live|test)_|whsec_)/)?.[0] ?? ''
     case 'token_assignment': return providerPrefixForValue(value)
   }
 }
@@ -265,10 +267,10 @@ const entropy = (value: string): number => {
 
 const highEntropyTokens = (content: string): DetectedSecret[] => {
   const candidates: DetectedSecret[] = []
-  const expression = /\b[A-Za-z0-9_]{32,}\b/g
+  const expression = /[A-Za-z0-9_+/-]{32,}={0,2}/g
   for (let match = expression.exec(content); match; match = expression.exec(content)) {
     const value = match[0]
-    const classes = [/[a-z]/, /[A-Z]/, /\d/, /_/]
+    const classes = [/[a-z]/, /[A-Z]/, /\d/, /[_+/=-]/]
       .filter((candidate) => candidate.test(value)).length
     if (classes >= 3 && entropy(value) >= 4) {
       candidates.push({
@@ -402,6 +404,23 @@ export const createSecretRedactingStream = (): {
   push: (chunk: string) => string
 } => {
   let buffer = ''
+  let maskedPrivateKeyContext = false
+
+  const redactStreamContent = (content: string): string => {
+    const beginScan = new RegExp(PRIVATE_KEY_BEGIN.source, PRIVATE_KEY_BEGIN.flags)
+    for (let begin = beginScan.exec(content); begin; begin = beginScan.exec(content)) {
+      if (content.startsWith(SECRET_MASK, begin.index + begin[0].length)) {
+        maskedPrivateKeyContext = true
+        break
+      }
+    }
+    const safe = redactDetectedSecrets(content)
+    if (!maskedPrivateKeyContext) return safe
+    return safe.replace(
+      /^([ \t]*)[A-Za-z0-9+/_=-]{16,}([ \t]*\r?)$/gmu,
+      `$1${SECRET_MASK}$2`,
+    )
+  }
 
   const safeCut = (): number => {
     let cut = buffer.lastIndexOf('\n') + 1
@@ -412,11 +431,18 @@ export const createSecretRedactingStream = (): {
       if (begin.index >= cut) break
       const beginEnd = begin.index + begin[0].length
       if (buffer.startsWith(SECRET_MASK, beginEnd)) {
-        // A later chunk can append blank lines, comments, PEM metadata, then
-        // key bytes. Once a masked armor header appears, retain its tail until
-        // finalization can scan the complete response.
-        cut = begin.index
-        break
+        const tail = buffer.slice(beginEnd + SECRET_MASK.length, cut)
+        const firstCompleteLine = tail.split(/\r?\n/u).find((line) => line.trim())
+        if (
+          firstCompleteLine === undefined
+          || maskedPrivateKeyHasRawTail(buffer.slice(0, cut), beginEnd)
+        ) {
+          // Hold through blank/comment/metadata lines until one complete,
+          // clearly non-key line proves the masked placeholder is finished.
+          cut = begin.index
+          break
+        }
+        continue
       }
       const completeEnd = completeKeys.get(begin.index)
       if (completeEnd === undefined || completeEnd > cut) {
@@ -424,12 +450,23 @@ export const createSecretRedactingStream = (): {
         break
       }
     }
+    const complete = buffer.slice(0, cut)
+    const lastMask = complete.lastIndexOf(SECRET_MASK)
+    if (lastMask >= 0) {
+      const tail = complete.slice(lastMask + SECRET_MASK.length)
+      const firstCompleteLine = tail.split(/\r?\n/u).find((line) => line.trim())
+      if (firstCompleteLine === undefined) {
+        // Retain a terminal mask and one following complete non-empty line so
+        // a newline cannot split camouflage across two independently safe cuts.
+        cut = Math.min(cut, complete.lastIndexOf('\n', lastMask - 1) + 1)
+      }
+    }
     return cut
   }
 
   return {
     finish: () => {
-      const safe = redactDetectedSecrets(buffer)
+      const safe = redactStreamContent(buffer)
       buffer = ''
       return safe
     },
@@ -437,7 +474,7 @@ export const createSecretRedactingStream = (): {
       buffer += chunk
       const cut = safeCut()
       if (cut === 0) return ''
-      const safe = redactDetectedSecrets(buffer.slice(0, cut))
+      const safe = redactStreamContent(buffer.slice(0, cut))
       buffer = buffer.slice(cut)
       return safe
     },

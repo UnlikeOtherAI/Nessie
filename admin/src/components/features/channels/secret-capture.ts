@@ -77,5 +77,5 @@ export const protectedReplacement = (
   const notice = names.length === 1
     ? `[Secret protected and saved as ${names[0]}; the value was replaced.]`
     : `[Secrets protected and saved as ${names.join(', ')}; the values were replaced.]`
-  return [capture.replacementContent, notice].filter(Boolean).join('\n\n')
+  return [notice, capture.replacementContent].filter(Boolean).join('\n\n')
 }

@@ -40,10 +40,12 @@ and are likewise unaffected.
 
 ## Security invariant
 
-A language model may know that a secret exists and may be authorised to use it,
-but secret material must never enter model context, prompts, tool definitions or
-arguments, tool results, memory, embeddings, search, logs, traces, error
-reports, notifications, summaries, or inter-agent messages.
+Except for live microphone audio intentionally sent device-to-Gemini as
+described under Capture and ingestion, a language model may know that a secret
+exists and may be authorised to use it, but secret material handled by Nessie
+must never enter model context, prompts, tool definitions or arguments, tool
+results, memory, embeddings, search, logs, traces, error reports,
+notifications, summaries, or inter-agent messages.
 
 Humans can receive `reveal` only through a future step-up-authenticated flow.
 Agents can receive `use` only. An agent can never receive `reveal`.
@@ -64,7 +66,8 @@ the four separate capabilities:
 - `use` — perform an authorised operation without disclosing a value;
 - `reveal` — human-only raw-value disclosure, not implemented in the MVP;
 - `manage` — change metadata, replace, rotate, revoke;
-- `delegate` — issue further grants.
+- `delegate` — issue further grants, but only for capabilities the delegating
+  person also holds.
 
 Every vault location is hard-partitioned as
 `/nessie/<organizationId>/<scopeType>/<scopeId>`, using only stable structural
@@ -95,8 +98,11 @@ are preserved in the metadata model and API for an owner-managed surface.
 
 The same deterministic scanner runs in the browser and API. It matches only
 structural credential syntax (known provider formats, PEM blocks, JWTs,
-credential-bearing connection URLs, and explicit token assignments); it does
-not use an LLM or infer intent from prose.
+credential-bearing connection URLs, explicit token assignments, and bounded
+high-entropy tokens including base64-style `/`, `+`, and padding); it does not
+use an LLM or infer intent from prose. A bullet mask followed by plausible raw
+credential bytes on the same or next line is treated as camouflage and scanned
+again rather than trusted as an existing redaction.
 
 The composer scan happens before a chat request, optimistic message, oversize
 paste state, or durable draft can survive. It covers channel posts, thread and
@@ -117,8 +123,10 @@ the person's original text with every detected value reduced to its safe
 prefix and bullet mask, plus the approved secret name. That replacement is the
 only typed-message version which reaches PostgreSQL, realtime, memory, indexing,
 or a model.
-Discard sends no turn. This implements the requested replace semantics without
-ever persisting a raw message that would later need deletion. The server scan
+Discard sends no turn. If earlier values in a multi-secret turn were already
+saved, the form says that discarding keeps those vault entries while sending no
+message. This implements the requested replace semantics without ever
+persisting a raw message that would later need deletion. The server scan
 still repeats before message persistence and returns `SECRET_INTERCEPTED` to a
 client which bypasses the composer. The same pre-persistence refusal covers
 direct executor launches, ordinary agent-card response fields, and product-
@@ -165,10 +173,14 @@ secret-write API, which this flow must not pretend to provide.
 
 Capture writes use a client-stable idempotency key. Requests with the same
 identity are serialized under a transaction-scoped advisory lock before the
-vault write. The metadata row stores a keyed HMAC of the submitted value so a
-reused key with different bytes is refused without storing recoverable secret
-material. A response-loss retry returns the original metadata row without
-writing the vault twice, while
+vault write, with an explicit bounded transaction timeout. The metadata row
+stores an organisation-scoped keyed HMAC of the submitted value so a reused key
+with different bytes is refused without storing recoverable secret material.
+Only an active matching row may be replayed, and revoked secrets cannot be
+rotated or granted new access. If a failed metadata write leaves its
+deterministic vault name behind, the next locked retry replaces that orphan and
+continues instead of wedging the capture identity. A response-loss retry
+returns the original metadata row without writing the vault twice, while
 protected message retries reuse the same message identity and any completed
 oversize upload. Both the capture form and ordinary Secrets settings form use
 direct transient requests rather than retaining raw values or rejected upload

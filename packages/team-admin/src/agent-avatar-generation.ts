@@ -84,8 +84,8 @@ const avatarPromptMessages = (
     {
       role: 'user',
       content: JSON.stringify({
-        agentName: agent.name,
-        agentRole: agent.role,
+        agentName: redactDetectedSecrets(agent.name),
+        agentRole: redactDetectedSecrets(agent.role),
         agentPurpose,
       }),
     },
@@ -217,10 +217,12 @@ export const generateAgentAvatar = async (input: {
 
   let prompt: string
   try {
-    prompt = (await input.modelClient.chat(
-      avatarPromptMessages(input.agent, avatarBackgroundColor, input.instructions),
-      { maxTokens: 500, temperature: 0.4, usage: promptUsage },
-    )).trim()
+    prompt = redactDetectedSecrets(
+      (await input.modelClient.chat(
+        avatarPromptMessages(input.agent, avatarBackgroundColor, input.instructions),
+        { maxTokens: 500, temperature: 0.4, usage: promptUsage },
+      )).trim(),
+    )
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'unknown error'
     throw new AgentAvatarGenerationError(`The avatar prompt could not be generated: ${detail}`)

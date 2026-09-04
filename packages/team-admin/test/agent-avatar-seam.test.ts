@@ -93,6 +93,35 @@ test('a failed picture never fails the creation', async () => {
   assert.equal(failures.length, 1)
 })
 
+test('legacy agent fields and generated prompts are redacted across both models', async () => {
+  const rawSecret = `sk-proj-${'aB3_'.repeat(8)}`
+  let promptMessages = ''
+  let imageBody = ''
+  await generateAvatarForNewAgent({
+    actorContext,
+    agent: {
+      name: `Agent ${rawSecret}`,
+      role: `Use ${rawSecret}`,
+      systemPrompt: `Authenticate with ${rawSecret}`,
+    },
+    config,
+    fileService,
+    imageRequest: async (_url, init) => {
+      imageBody = String(init.body)
+      return imageRequest()
+    },
+    ledgerIdentity: null,
+    modelClient: {
+      chat: async (messages) => {
+        promptMessages = JSON.stringify(messages)
+        return `portrait prompt containing ${rawSecret}`
+      },
+    },
+  })
+  assert.doesNotMatch(promptMessages, new RegExp(rawSecret))
+  assert.doesNotMatch(imageBody, new RegExp(rawSecret))
+})
+
 test('an unconfigured deployment reports rather than throws', async () => {
   const failures: unknown[] = []
   const generated = await generateAvatarForNewAgent({

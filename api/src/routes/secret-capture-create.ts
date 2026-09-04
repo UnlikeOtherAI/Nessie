@@ -58,7 +58,11 @@ export const createSecretCapture = async (input: {
     written.vault = vault
     return client.secret.create({
       data: {
-        captureFingerprint: captureFingerprintForValue(input.authSecret, input.body.value),
+        captureFingerprint: captureFingerprintForValue(
+          input.authSecret,
+          input.organizationId,
+          input.body.value,
+        ),
         createdById: input.actorId,
         description: input.body.description,
         expiresAt: input.body.expiresAt ? new Date(input.body.expiresAt) : undefined,
@@ -97,12 +101,16 @@ export const createSecretCapture = async (input: {
         return { mode: 'replayed', secret: existing }
       }
       return { mode: 'created', secret: await create(tx) }
-    })
+    }, { maxWait: 10_000, timeout: 75_000 })
   } catch (error) {
     if (written.vault) {
-      await written.vault
+      const removed = await written.vault
         .remove({ name: vaultName(input.reference), namespace })
-        .catch(() => undefined)
+        .then(() => true)
+        .catch(() => false)
+      if (!removed) {
+        console.error('[secrets] Failed to remove an orphaned vault capture.')
+      }
     }
     throw error
   }

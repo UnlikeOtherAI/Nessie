@@ -69,6 +69,9 @@ export const SecretCaptureDialog = ({
   const nameRef = useRef<HTMLInputElement>(null)
   const pendingRef = useRef(false)
   const saveRequestIdRef = useRef(newCaptureRequestId())
+  const savedCount = capture.savedNames.length
+  const savedSubject = savedCount === 1 ? 'secret is' : 'secrets are'
+  const savedObject = savedCount === 1 ? 'it' : 'them'
 
   const updateName = (nextName: string) => {
     saveRequestIdRef.current = newCaptureRequestId()
@@ -133,7 +136,7 @@ export const SecretCaptureDialog = ({
         : `Credential ${capture.currentIndex + 1} of ${capture.items.length}`}
     >
       <form className="grid gap-4" onSubmit={(event) => void save(event)}>
-        <FormField label="Secret key">
+        <FormField help="Use uppercase letters, numbers, and underscores; start with a letter." label="Secret key">
           <Input
             autoComplete="off"
             disabled={isPending || savedSecret !== null}
@@ -161,6 +164,12 @@ export const SecretCaptureDialog = ({
           </Select>
         </FormField>
         <FormError>{error}</FormError>
+        {savedCount > 0 ? (
+          <p className="text-sm text-[color:var(--tx2)]">
+            {savedCount} earlier {savedSubject} already saved. Discarding will keep {savedObject}
+            {' '}in Secrets and will not send this message.
+          </p>
+        ) : null}
         <FormActions>
           <button
             className="admin-button admin-button-secondary"

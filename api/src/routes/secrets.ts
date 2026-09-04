@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -16,6 +17,12 @@ import {
   createSecretCapture,
   SecretCaptureIdempotencyConflict,
 } from './secret-capture-create.js'
+import {
+  canManageSecretScope,
+  hasEverySecretPermission,
+  hasSecretPermission,
+  secretGrantPrincipalExists,
+} from './secret-route-access.js'
 import type { RouteDeps } from './types.js'
 const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 
@@ -70,87 +77,12 @@ const sendVaultError = (reply: Parameters<typeof sendApiError>[0], error: unknow
     reply,
     error.code === 'NOT_CONFIGURED' ? 503 : 502,
     error.code === 'NOT_CONFIGURED' ? 'SECRETS_NOT_CONFIGURED' : 'VAULT_UNAVAILABLE',
-    error.message,
+    error.code === 'NOT_CONFIGURED'
+      ? 'Secret storage is not configured.'
+      : 'Secret storage is temporarily unavailable.',
   )
   return true
 }
-const canManageScope = async (input: {
-  actorId: string
-  isOwner: boolean
-  organizationId: string
-  scopeId?: string
-  scopeType: z.infer<typeof SecretScopeSchema>
-  deps: Pick<RouteDeps, 'prisma'>
-}): Promise<{ allowed: boolean; scopeId: string }> => {
-  const { actorId, deps, isOwner, organizationId, scopeType } = input
-  if (scopeType === 'personal') return { allowed: true, scopeId: actorId }
-  if (scopeType === 'organization') return { allowed: isOwner, scopeId: organizationId }
-  if (!input.scopeId) return { allowed: false, scopeId: '' }
-  if (scopeType === 'project') {
-    const project = await deps.prisma.project.findFirst({
-      where: { id: input.scopeId, organizationId },
-      select: { id: true },
-    })
-    return {
-      allowed: isOwner && Boolean(project),
-      scopeId: input.scopeId,
-    }
-  }
-  const team = await deps.prisma.team.findFirst({
-    where: { id: input.scopeId, project: { organizationId } },
-    select: { id: true },
-  })
-  return { allowed: isOwner && Boolean(team), scopeId: input.scopeId }
-}
-
-const grantPrincipalExistsInOrganization = async (input: {
-  organizationId: string
-  principalId: string
-  principalType: z.infer<typeof GrantSecretBodySchema>['principalType']
-  prisma: RouteDeps['prisma']
-}): Promise<boolean> => {
-  const { organizationId, principalId, principalType, prisma } = input
-  if (principalType === 'organization') return principalId === organizationId
-  if (principalType === 'user') {
-    return Boolean(await prisma.organizationMember.findFirst({
-      where: { organizationId, userId: principalId, deactivatedAt: null },
-      select: { id: true },
-    }))
-  }
-  if (principalType === 'agent') {
-    return Boolean(await prisma.agent.findFirst({
-      where: { id: principalId, organizationId },
-      select: { id: true },
-    }))
-  }
-  if (principalType === 'project') {
-    return Boolean(await prisma.project.findFirst({
-      where: { id: principalId, organizationId },
-      select: { id: true },
-    }))
-  }
-  return Boolean(await prisma.team.findFirst({
-    where: { id: principalId, project: { organizationId } },
-    select: { id: true },
-  }))
-}
-
-const hasSecretPermission = async (input: {
-  actorId: string
-  permission: 'manage' | 'delegate'
-  prisma: RouteDeps['prisma']
-  secretId: string
-}): Promise<boolean> => Boolean(await input.prisma.secretGrant.findFirst({
-  where: {
-    secretId: input.secretId,
-    principalType: 'user',
-    principalId: input.actorId,
-    permissions: { has: input.permission },
-    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-  },
-  select: { id: true },
-}))
-
 /** Metadata-only human control plane. Agents have no reveal endpoint. */
 export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext } = deps
@@ -192,10 +124,17 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const body = parseInput(CreateSecretBodySchema, request.body, reply)
     if (!body) return reply
     const rawIdempotencyKey = request.headers['idempotency-key']
-    const idempotencyKey = typeof rawIdempotencyKey === 'string'
-      ? rawIdempotencyKey.trim()
-      : ''
-    if (rawIdempotencyKey !== undefined && (idempotencyKey.length < 8 || idempotencyKey.length > 200)) {
+    if (rawIdempotencyKey !== undefined && typeof rawIdempotencyKey !== 'string') {
+      return sendApiError(
+        reply,
+        400,
+        'INVALID_IDEMPOTENCY_KEY',
+        'Idempotency-Key must be one value between 8 and 200 characters.',
+      )
+    }
+    const idempotencyKey = rawIdempotencyKey?.trim() ?? ''
+    if (rawIdempotencyKey !== undefined
+      && (idempotencyKey.length < 8 || idempotencyKey.length > 200)) {
       return sendApiError(
         reply,
         400,
@@ -213,11 +152,11 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       )
       return reply
     }
-    const scope = await canManageScope({
+    const scope = await canManageSecretScope({
       actorId: actorContext.actor.actorId,
-      deps,
       isOwner: actorContext.actor.roles?.includes('owner') ?? false,
       organizationId: actorContext.tenant.organizationId,
+      prisma,
       scopeId: body.scopeId,
       scopeType: body.scopeType,
     })
@@ -250,6 +189,14 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
           409,
           'IDEMPOTENCY_CONFLICT',
           'That idempotency key was already used for a different secret capture.',
+        )
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return sendApiError(
+          reply,
+          409,
+          'SECRET_NAME_TAKEN',
+          'A secret with this key already exists in that scope.',
         )
       }
       if (sendVaultError(reply, error)) return reply
@@ -299,6 +246,10 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       })
     if (!canManage) {
       sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
+      return reply
+    }
+    if (secret.status !== 'active') {
+      sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can be rotated.')
       return reply
     }
     const namespace: InfisicalSecretNamespace = {
@@ -359,6 +310,11 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
       return reply
     }
+    if (secret.status === 'revoked') return createApiResponse(publicSecret(secret))
+    if (secret.status !== 'active') {
+      sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can be revoked.')
+      return reply
+    }
     const namespace: InfisicalSecretNamespace = {
       organizationId: secret.organizationId,
       scopeId: secret.scopeId,
@@ -412,9 +368,9 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     const canDelegate = actorContext.actor.roles?.includes('owner')
       || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasSecretPermission({
+      || await hasEverySecretPermission({
         actorId: actorContext.actor.actorId,
-        permission: 'delegate',
+        permissions: body.permissions,
         prisma,
         secretId: secret.id,
       })
@@ -422,7 +378,11 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 403, 'SECRET_DELEGATE_DENIED', 'You cannot delegate access to this secret.')
       return reply
     }
-    if (!(await grantPrincipalExistsInOrganization({
+    if (secret.status !== 'active') {
+      sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can receive grants.')
+      return reply
+    }
+    if (!(await secretGrantPrincipalExists({
       organizationId: actorContext.tenant.organizationId,
       principalId: body.principalId,
       principalType: body.principalType,
@@ -456,7 +416,12 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       resourceId: secret.id,
       resourceType: 'secret',
       outcome: 'success',
-      metadata: { principalType: grant.principalType, reference: secret.reference },
+      metadata: {
+        permissions: grant.permissions,
+        principalId: grant.principalId,
+        principalType: grant.principalType,
+        reference: secret.reference,
+      },
     })
     return createApiResponse({ ...grant, expiresAt: grant.expiresAt?.toISOString() ?? null })
   })

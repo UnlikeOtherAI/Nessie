@@ -316,7 +316,7 @@ test('POST /api/secrets translates an Infisical constructor error into SECRETS_N
       assert.equal(response.statusCode, 503, response.body)
       assert.deepEqual(response.json().error, {
         code: 'SECRETS_NOT_CONFIGURED',
-        message: 'Secrets are not configured for this deployment.',
+        message: 'Secret storage is not configured.',
       })
       assert.equal(response.body.includes(secretValue), false)
     })
@@ -381,7 +381,7 @@ test('POST /api/secrets translates a vault transport failure without exposing it
         assert.equal(response.statusCode, 502, response.body)
         assert.deepEqual(response.json().error, {
           code: 'VAULT_UNAVAILABLE',
-          message: 'The vault could not complete this operation.',
+          message: 'Secret storage is temporarily unavailable.',
         })
         assert.equal(response.body.includes(secretValue), false)
       }, async () => {

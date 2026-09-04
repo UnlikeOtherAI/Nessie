@@ -41,6 +41,7 @@ import {
   assertAgentEditAuthority,
   assertAgentFieldAuthority,
   assertAgentModelSelection,
+  assertAgentSecretFreeInput,
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
   randomAgentAvatarBackgroundColor,
@@ -203,6 +204,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     let agent
     try {
+      assertAgentSecretFreeInput(body)
       // Validate before a missing avatar triggers billed prompt/image calls.
       await validateAgentCreateInput(prisma, {
         organizationId: actorContext.tenant.organizationId,

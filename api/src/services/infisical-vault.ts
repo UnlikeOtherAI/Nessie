@@ -103,6 +103,18 @@ const folderAlreadyExists = async (
   return body?.message === `Folder with name '${folder.name}' already exists in path '${folder.path}'`
 }
 
+const secretAlreadyExists = async (response: Response, name: string): Promise<boolean> => {
+  if (response.status === 409) {
+    await response.body?.cancel().catch(() => undefined)
+    return true
+  }
+  if (response.status !== 400) return false
+  const body = await response.json().catch(() => undefined) as { message?: unknown } | undefined
+  return typeof body?.message === 'string'
+    && body.message.includes(name)
+    && body.message.toLowerCase().includes('already exists')
+}
+
 /**
  * Narrow server-only Infisical boundary. It accepts secret bytes only for a
  * write/rotation request and never returns them to a route, model, or caller.
@@ -167,7 +179,14 @@ export class InfisicalVault {
       method: 'POST',
       signal: AbortSignal.timeout(10_000),
     })
-    await responseOk(response)
+    if (await secretAlreadyExists(response, input.name)) {
+      // A prior metadata failure may have left this deterministic vault name
+      // behind. Replacing it makes the same protected capture retryable while
+      // the advisory lock still guarantees one writer for this identity.
+      await this.replace(input)
+    } else {
+      await responseOk(response)
+    }
     return this.referenceFor(input)
   }
 

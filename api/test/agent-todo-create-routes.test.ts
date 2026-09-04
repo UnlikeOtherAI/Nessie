@@ -41,6 +41,7 @@ const makeCreatedAgent = (data: Record<string, unknown>) => ({
 })
 
 const makeApp = (role: 'member' | 'owner') => {
+  let avatarPromptCalls = 0
   let createCalls = 0
   const db = {
     $executeRaw: async () => 0,
@@ -87,8 +88,14 @@ const makeApp = (role: 'member' | 'owner') => {
   }
   const app = Fastify({ logger: false })
   registerAgentRoutes(app, {
-    config: { model: {} },
+    config: {
+      model: {
+        apiKey: 'lk_test',
+        baseUrl: 'https://ledger.example/v1/openai',
+      },
+    },
     createAgentVisibilityScope: () => ({}),
+    fileService: { store: async () => { throw new Error('unexpected avatar store') } },
     getChannelIfMember: async () => null,
     isAgentAccessibleToActor: async () => false,
     prisma,
@@ -98,10 +105,19 @@ const makeApp = (role: 'member' | 'owner') => {
       void reply.code(403).send({ error: { code: 'FORBIDDEN' } })
       return false
     },
+    sharedModelClient: {
+      chat: async () => {
+        avatarPromptCalls += 1
+        throw new Error('stop after prompt boundary')
+      },
+    },
   } as unknown as Parameters<typeof registerAgentRoutes>[1])
 
   return {
     app,
+    get avatarPromptCalls() {
+      return avatarPromptCalls
+    },
     get createCalls() {
       return createCalls
     },
@@ -166,15 +182,15 @@ test('agent creation refuses a credential before persistence', async () => {
     const response = await member.app.inject({
       method: 'POST',
       payload: {
-        avatarAttachmentId,
-        name: 'Unsafe agent',
-        systemPrompt: `Use sk-proj-${'aB3_'.repeat(8)} for every request.`,
+        name: `Unsafe sk-proj-${'aB3_'.repeat(8)}`,
+        role: `Use sk-proj-${'cD4_'.repeat(8)}`,
       },
       url: '/api/agents',
     })
 
     assert.equal(response.statusCode, 422)
     assert.equal(response.json().error.code, 'SECRET_INTERCEPTED')
+    assert.equal(member.avatarPromptCalls, 0)
     assert.equal(member.createCalls, 0)
   } finally {
     await member.app.close()

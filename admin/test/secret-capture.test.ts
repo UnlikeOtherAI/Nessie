@@ -39,7 +39,16 @@ test('multiple credentials are queued and only protected text is rebuilt', () =>
   const replacement = protectedReplacement(second, 'GITHUB_TOKEN')
   assert.doesNotMatch(replacement, /1234567890|a{20}/)
   assert.match(replacement, /STRIPE_API_KEY, GITHUB_TOKEN/)
+  assert.match(replacement, /^\[Secrets protected/)
   assert.equal(second.currentIndex, 1)
+})
+
+test('the form explains valid names and partial multi-secret discard behavior', () => {
+  const dialog = readSource('../src/components/features/channels/SecretCaptureDialog.tsx')
+
+  assert.match(dialog, /Use uppercase letters, numbers, and underscores/)
+  assert.match(dialog, /earlier \{savedSubject\} already saved/)
+  assert.match(dialog, /will not send this message/)
 })
 
 test('every channel composer doorway owns the same capture form', () => {
