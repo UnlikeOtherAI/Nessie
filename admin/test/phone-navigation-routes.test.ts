@@ -51,34 +51,14 @@ test('Knowledge routes: root depth0, spaces and views depth1', () => {
   })
 })
 
-test('Knowledge sidebar selections leave Dashboard routes on split layouts', () => {
+test('Knowledge sidebar destinations are always route-backed', () => {
   assert.equal(
-    resolveKnowledgeSidebarSelectionPath('/dashboards', false, {
-      id: 'my docs/one',
-      type: 'space',
-    }),
+    resolveKnowledgeSidebarSelectionPath({ id: 'my docs/one', type: 'space' }),
     '/knowledge-base/spaces/my%20docs%2Fone',
   )
   assert.equal(
-    resolveKnowledgeSidebarSelectionPath('/dashboards/dash_a', false, {
-      id: 'research',
-      type: 'view',
-    }),
+    resolveKnowledgeSidebarSelectionPath({ id: 'research', type: 'view' }),
     '/knowledge-base/views/research',
-  )
-  assert.equal(
-    resolveKnowledgeSidebarSelectionPath('/knowledge-base', false, {
-      id: 'space_a',
-      type: 'space',
-    }),
-    null,
-  )
-  assert.equal(
-    resolveKnowledgeSidebarSelectionPath('/knowledge-base', true, {
-      id: 'space_a',
-      type: 'space',
-    }),
-    '/knowledge-base/spaces/space_a',
   )
 })
 

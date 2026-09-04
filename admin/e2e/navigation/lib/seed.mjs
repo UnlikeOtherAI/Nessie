@@ -111,3 +111,57 @@ export const seedMessageHistory = async (token, threadId) => {
     })
   }
 }
+
+const ensureKnowledgePage = async (token, spaceId, title) => {
+  const pages = await call(`/api/knowledge-base/spaces/${spaceId}/pages`, { token })
+  const existing = pages.find((page) => page.title === title)
+  if (existing) return existing
+  return call(`/api/knowledge-base/spaces/${spaceId}/pages`, {
+    body: { body: `<p>${title}</p>`, title },
+    method: 'POST',
+    token,
+  })
+}
+
+const ensureKnowledgeSpace = async (token, projectId, name) => {
+  const spaces = await call('/api/knowledge-base/spaces?limit=100', { token })
+  const existing = spaces.find((space) => space.name === name)
+  if (existing) return existing
+  return call('/api/knowledge-base/spaces', {
+    body: { name, projectId },
+    method: 'POST',
+    token,
+  })
+}
+
+/** Seed every Knowledge destination needed by the cross-navigation matrix. */
+export const seedKnowledgeNavigation = async (token, projectId) => {
+  const myDocsRef = await call('/api/knowledge-base/my-docs', {
+    body: {},
+    method: 'POST',
+    token,
+  })
+  const myDocs = await call(`/api/knowledge-base/spaces/${myDocsRef.spaceId}`, { token })
+  const alpha = await ensureKnowledgeSpace(token, projectId, 'Navigation Alpha')
+  const beta = await ensureKnowledgeSpace(token, projectId, 'Navigation Beta')
+  return [
+    {
+      id: myDocs.id,
+      name: myDocs.name,
+      page: await ensureKnowledgePage(token, myDocs.id, 'Personal route proof'),
+      section: 'my-docs',
+    },
+    {
+      id: alpha.id,
+      name: alpha.name,
+      page: await ensureKnowledgePage(token, alpha.id, 'Alpha route proof'),
+      section: 'spaces',
+    },
+    {
+      id: beta.id,
+      name: beta.name,
+      page: await ensureKnowledgePage(token, beta.id, 'Beta route proof'),
+      section: 'spaces',
+    },
+  ]
+}

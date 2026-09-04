@@ -86,6 +86,8 @@ test('clears the Knowledge space highlight when a phone returns to its list', ()
   assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base', true), false)
   assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base/spaces/space_a', true), true)
   assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base', false), true)
+  assert.equal(shouldHighlightKnowledgeSidebarSelection('/dashboards', false), false)
+  assert.equal(shouldHighlightKnowledgeSidebarSelection('/dashboards/dash_a', false), false)
 })
 
 test('pushes Admin destinations from the Admin menu and returns to it', () => {

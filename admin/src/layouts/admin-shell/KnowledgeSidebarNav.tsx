@@ -67,22 +67,12 @@ export const KnowledgeSidebarNav = () => {
 
   const openSpace = (spaceId: string) => {
     selectSpace(spaceId)
-    const pathname = resolveKnowledgeSidebarSelectionPath(
-      location.pathname,
-      phoneLayout,
-      { id: spaceId, type: 'space' },
-    )
-    if (pathname) void navigate(pathname)
+    void navigate(resolveKnowledgeSidebarSelectionPath({ id: spaceId, type: 'space' }))
   }
 
   const openProductView = (view: string) => {
     selectProductView(view)
-    const pathname = resolveKnowledgeSidebarSelectionPath(
-      location.pathname,
-      phoneLayout,
-      { id: view, type: 'view' },
-    )
-    if (pathname) void navigate(pathname)
+    void navigate(resolveKnowledgeSidebarSelectionPath({ id: view, type: 'view' }))
   }
 
   const openPage = (spaceId: string, path: string[]) => {
@@ -168,7 +158,7 @@ export const KnowledgeSidebarNav = () => {
               />
               <span className="min-w-0 flex-1 truncate font-medium">{myDocsSpace.name}</span>
             </button>
-            {!activeProductView && myDocsSpace.id === selectedSpaceId
+            {!activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId
               ? selectedPageTree(myDocsSpace.id)
               : null}
           </SidebarMenuSection>
@@ -275,12 +265,7 @@ export const KnowledgeSidebarNav = () => {
         onClose={() => setCreateOpen(false)}
         onCreate={async (name, memberAgentIds, visibility) => {
           const created = await createSpace(name, memberAgentIds, visibility)
-          const pathname = resolveKnowledgeSidebarSelectionPath(
-            location.pathname,
-            phoneLayout,
-            { id: created.id, type: 'space' },
-          )
-          if (pathname) void navigate(pathname)
+          void navigate(resolveKnowledgeSidebarSelectionPath({ id: created.id, type: 'space' }))
         }}
         open={createOpen}
         pending={createSpacePending}
