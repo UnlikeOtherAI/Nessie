@@ -1,5 +1,6 @@
 import type {
   Dispatch,
+  CSSProperties,
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
   SetStateAction,
@@ -19,6 +20,7 @@ import type { WorkflowStepRunRecord } from '../../../lib/api-client'
 import { WorkflowCanvasNode } from './WorkflowCanvasNode'
 
 type WorkflowCanvasProps = {
+  className?: string
   canvasRef: MutableRefObject<HTMLDivElement | null>
   connections: WorkflowConnection[]
   connectionLayouts: WorkflowConnectionLayout[]
@@ -47,10 +49,14 @@ type WorkflowCanvasProps = {
     startHandleKind: 'input' | 'output',
   ) => void
   onConnectionDelete: (connectionId: string) => void
+  /** Uses the exact graph renderer without any editing affordances. */
+  readOnly?: boolean
+  style?: CSSProperties
 }
 
 export const WorkflowCanvas = ({
   canvasRef,
+  className,
   connections,
   connectionLayouts,
   draftConnection,
@@ -66,21 +72,27 @@ export const WorkflowCanvas = ({
   onNodePointerDown,
   onConnectionStart,
   onConnectionDelete,
+  readOnly = false,
+  style,
 }: WorkflowCanvasProps) => {
   return (
     <div
       ref={canvasRef}
-      className={canvasClass}
+      className={[canvasClass, className].filter(Boolean).join(' ')}
       onPointerDown={(event) => {
-        if (event.currentTarget === event.target) {
+        if (!readOnly && event.currentTarget === event.target) {
           onClearSelection()
         }
       }}
+      style={style}
     >
       <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full">
         {connectionLayouts.map((connectionLayout) => {
           return (
-            <g key={connectionLayout.id} className="pointer-events-auto">
+            <g
+              key={connectionLayout.id}
+              className={readOnly ? 'pointer-events-none' : 'pointer-events-auto'}
+            >
               <path
                 d={connectionLayout.path}
                 fill="none"
@@ -147,7 +159,7 @@ export const WorkflowCanvas = ({
       ) : null}
 
       {connectionLayouts.map((connectionLayout) =>
-        hoveredConnectionId === connectionLayout.id ? (
+        !readOnly && hoveredConnectionId === connectionLayout.id ? (
           <button
             key={connectionLayout.id}
             className="absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-[var(--surface-inverse)] shadow-[0_10px_24px_var(--scrim)] transition-transform hover:scale-105"
@@ -188,6 +200,7 @@ export const WorkflowCanvas = ({
           selectedNodeId={selectedNodeId}
           stepRun={stepRunsByNodeId.get(node.id)}
           isDragging={dragStateRef.current?.nodeId === node.id}
+          readOnly={readOnly}
           onNodePointerDown={onNodePointerDown}
           onConnectionStart={onConnectionStart}
         />

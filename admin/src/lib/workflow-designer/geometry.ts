@@ -3,14 +3,38 @@ import {
   CANVAS_NODE_HEIGHT,
   CANVAS_NODE_WIDTH,
   CANVAS_PADDING,
+  nodeThemes,
 } from './constants'
 import type {
   WorkflowCanvasNode,
   WorkflowConnection,
   WorkflowConnectionCandidate,
+  WorkflowConnectionLayout,
   WorkflowDraftConnection,
   WorkflowHoveredHandle,
 } from './types'
+
+/** Shared by the editable designer and read-only workflow previews. */
+export const getWorkflowConnectionLayouts = (
+  nodes: WorkflowCanvasNode[],
+  connections: WorkflowConnection[],
+): WorkflowConnectionLayout[] =>
+  connections.flatMap((connection) => {
+    const sourceNode = nodes.find((node) => node.id === connection.fromNodeId)
+    const targetNode = nodes.find((node) => node.id === connection.toNodeId)
+    if (!sourceNode || !targetNode) return []
+
+    const geometry = getConnectionGeometry(
+      getNodeOutputAnchor(sourceNode),
+      getNodeInputAnchor(targetNode),
+    )
+    return [{
+      color: nodeThemes[sourceNode.type].border,
+      id: connection.id,
+      midpoint: geometry.midpoint,
+      path: geometry.path,
+    }]
+  })
 
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
