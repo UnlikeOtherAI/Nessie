@@ -28,6 +28,7 @@ const ControlMark = ({ kind }: { kind: 'close' | 'maximize' | 'minimize' }) => {
 // to the native window actions. macOS retains its OS-provided traffic lights.
 export const DesktopWindowControls = () => {
   const [maximized, setMaximized] = useState(false)
+  const [windowFocused, setWindowFocused] = useState(true)
   const [layoutsOpen, setLayoutsOpen] = useState(false)
   const layoutOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const layoutCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -44,11 +45,22 @@ export const DesktopWindowControls = () => {
   useEffect(() => {
     if (!visible) return undefined
     let active = true
-    void getCurrentWindow().isMaximized().then((value) => {
-      if (active) setMaximized(value)
+    let unlistenFocusChanged: (() => void) | undefined
+    const appWindow = getCurrentWindow()
+    void Promise.all([appWindow.isMaximized(), appWindow.isFocused()]).then(([isMaximized, isFocused]) => {
+      if (!active) return
+      setMaximized(isMaximized)
+      setWindowFocused(isFocused)
+    })
+    void appWindow.onFocusChanged(({ payload: isFocused }) => {
+      if (active) setWindowFocused(isFocused)
+    }).then((unlisten) => {
+      if (active) unlistenFocusChanged = unlisten
+      else unlisten()
     })
     return () => {
       active = false
+      unlistenFocusChanged?.()
       clearLayoutTimers()
     }
   }, [visible])
@@ -109,7 +121,11 @@ export const DesktopWindowControls = () => {
   }
 
   return (
-    <div aria-label="Window controls" className="desktop-window-controls" role="group">
+    <div
+      aria-label="Window controls"
+      className={`desktop-window-controls${windowFocused ? '' : ' desktop-window-controls--inactive'}`}
+      role="group"
+    >
       <button
         aria-label="Close window"
         className="desktop-window-control desktop-window-control--close"

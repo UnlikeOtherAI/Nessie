@@ -84,6 +84,7 @@
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: ease;
+  --desktop-window-control-inactive: #b8b8b8;
   /* Navigation motion. The numbers live in admin/src/navigation/motion.ts
      and are mirrored here for the static poses; a test pins them equal. */
   --nav-duration: 300ms;
@@ -963,7 +964,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   font-size: 9.6px;
   font-weight: 800;
   line-height: 1;
-  transition: filter 120ms ease, transform 120ms ease;
+  transition: background-color 120ms ease, filter 120ms ease, transform 120ms ease;
 }
 
 .desktop-window-control > span {
@@ -993,6 +994,10 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 
 .desktop-window-control--maximize {
   background: #28c840;
+}
+
+.desktop-window-controls--inactive .desktop-window-control {
+  background: var(--desktop-window-control-inactive);
 }
 
 /* The green traffic light keeps its normal click-to-maximise behaviour. A
