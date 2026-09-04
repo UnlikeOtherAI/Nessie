@@ -6976,10 +6976,10 @@ model MailboxConnection {
   @@map("mailbox_connections")
 }
 
-/// A human SMTP send is recorded before the provider call, but never stores
-/// the connected message body. The fingerprint and stable Message-ID make a
-/// retry identifiable without giving a lost DATA response permission to send
-/// a second copy.
+/// A human or agent SMTP send is recorded before the provider call, but never
+/// stores the connected message body. The fingerprint and stable Message-ID
+/// make a retry identifiable without giving a lost DATA response permission to
+/// send a second copy.
 model MailboxSendAction {
   id                 String                 @id @db.Uuid
   organizationId     String                 @map("organization_id") @db.Uuid

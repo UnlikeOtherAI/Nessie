@@ -1,4 +1,5 @@
 import {
+  dispatchMailboxSendAction,
   MailboxAccessError,
   markMailboxNeedsReauthorization,
   openMailboxEndpoints,
@@ -10,9 +11,8 @@ import {
 import {
   readMailboxMessage,
   searchMailbox,
-  sendFromMailbox,
 } from '@nessie/agent-mail'
-import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -68,6 +68,25 @@ const encryptionSecret = (): string => {
   const secret = process.env.NESSIE_AUTH_SECRET
   if (!secret) throw new Error('NESSIE_AUTH_SECRET is not configured')
   return secret
+}
+
+/**
+ * `MailboxSendAction.clientRequestId` is a UUID, while providers may give a
+ * tool call any opaque string. Derive a UUID-shaped key from both durable
+ * identities instead of minting one: a redelivered run/tool call must find the
+ * same action and its original Message-ID.
+ */
+export const mailboxSendExecutionId = (runId: string, toolCallId: string): string => {
+  const bytes = createHash('sha256')
+    .update('nessie:mailbox_send:v1\0')
+    .update(runId)
+    .update('\0')
+    .update(toolCallId)
+    .digest()
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = bytes.subarray(0, 16).toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 /**
@@ -221,37 +240,44 @@ export const runMailboxSendTool = async (
   // Sending resolves the mailbox through the same predicate a read does, and
   // stamps the same scope: a send is also a read of who the mailbox is.
   const mailbox = await useMailbox(context, args.connectionId)
-  const endpoints = await openMailboxEndpoints(context.prisma, mailbox, encryptionSecret())
 
   const inReplyTo = args.inReplyToUid
-    ? (await runAgainstMailbox(context, mailbox, () =>
-        readMailboxMessage(endpoints, { uid: args.inReplyToUid as number }, mailboxDialOptions())))
+    ? (await runAgainstMailbox(context, mailbox, async () =>
+        readMailboxMessage(
+          await openMailboxEndpoints(context.prisma, mailbox, encryptionSecret()),
+          { uid: args.inReplyToUid as number }, mailboxDialOptions())))
       ?.messageId ?? null
     : null
 
-  await runAgainstMailbox(context, mailbox, () =>
-    sendFromMailbox(
-      endpoints,
-      {
-        ...(args.bcc ? { bcc: args.bcc } : {}),
-        ...(args.cc ? { cc: args.cc } : {}),
-        ...(inReplyTo ? { inReplyTo, references: [inReplyTo] } : {}),
-        // Minted here and never reused: unlike the hosted mailbox there is no
-        // queued row to retry from, so a Message-ID cannot outlive its send.
-        messageId: `${randomUUID()}@${endpoints.address.split('@')[1] ?? 'localhost'}`,
-        subject: args.subject,
-        text: args.text,
-        to: args.to,
-      },
-      mailboxDialOptions(),
-    ))
+  const actionOwnerUserId = mailbox.connection.ownerUserId
+    ?? mailbox.connection.createdByUserId
+    ?? resolveEffectiveUserId(context)
+  if (!actionOwnerUserId || !context.toolCallId) {
+    throw new Error('A connected-mail send needs its accountable owner and durable tool-call identity.')
+  }
+  const executionId = mailboxSendExecutionId(context.run.id, context.toolCallId)
+  await runAgainstMailbox(context, mailbox, () => dispatchMailboxSendAction(context.prisma, {
+    clientRequestId: executionId,
+    connection: mailbox.connection,
+    mail: {
+      ...(args.bcc ? { bcc: args.bcc } : {}),
+      ...(args.cc ? { cc: args.cc } : {}),
+      ...(inReplyTo ? { inReplyTo } : {}),
+      body: args.text,
+      idempotencyKey: executionId,
+      subject: args.subject,
+      to: args.to,
+    },
+    organizationId: context.channel.organizationId,
+    ownerUserId: actionOwnerUserId,
+  }, { encryptionSecret: encryptionSecret() }))
 
   const recipients = [...args.to, ...(args.cc ?? []), ...(args.bcc ?? [])]
   return {
     connectorUsage: mailboxUsage(mailbox, 'send', recipients.length),
     inputSummary: `to=${args.to.join(',')} subject=${args.subject}`,
     outputPreview:
-      `Sent from ${endpoints.address} to ${recipients.join(', ')} — `
+      `Sent from ${mailbox.connection.address} to ${recipients.join(', ')} — `
       + `subject "${args.subject}".`,
     toolName: 'mailbox_send',
   }
