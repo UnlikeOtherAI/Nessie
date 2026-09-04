@@ -40,7 +40,8 @@ use nessie_windows_common::{is_sid_string, sid_to_string};
 /// `FILE_APPEND_DATA` bit means `FILE_CREATE_PIPE_INSTANCE` on a pipe — that
 /// would let an admitted account stand up a rival instance of this pipe and
 /// answer for the service.
-const CLIENT_ACCESS: u32 = FILE_GENERIC_READ | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | SYNCHRONIZE;
+pub(crate) const CLIENT_ACCESS: u32 =
+    FILE_GENERIC_READ | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | SYNCHRONIZE;
 
 /// A SID copied out of the buffer that produced it, so the buffer's life stops
 /// mattering to every later use.
@@ -227,5 +228,17 @@ impl Drop for PipeSecurity {
         if !self.acl.is_null() {
             unsafe { LocalFree(self.acl as HLOCAL) };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use windows_sys::Win32::Storage::FileSystem::FILE_APPEND_DATA;
+
+    use super::CLIENT_ACCESS;
+
+    #[test]
+    fn a_control_client_cannot_create_a_rival_pipe_instance() {
+        assert_eq!(CLIENT_ACCESS & FILE_APPEND_DATA, 0);
     }
 }

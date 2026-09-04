@@ -18,8 +18,7 @@ use std::{
 };
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, HANDLE,
-    INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
@@ -34,7 +33,7 @@ use crate::{
     log::log_line,
     paths::control_client_sids,
     protocol::{parse_request, Response, MAX_REQUEST_BYTES},
-    security::{connected_client_sid_string, current_user_sid_string, PipeSecurity},
+    security::{connected_client_sid_string, current_user_sid_string, PipeSecurity, CLIENT_ACCESS},
 };
 
 pub const PIPE_NAME: &str = r"\\.\pipe\NessieExecutor";
@@ -123,7 +122,12 @@ pub fn poke() {
     let handle = unsafe {
         CreateFileW(
             wide(PIPE_NAME).as_ptr(),
-            GENERIC_READ | GENERIC_WRITE,
+            // Use exactly the rights the pipe DACL grants. `GENERIC_WRITE`
+            // expands to `FILE_APPEND_DATA`, which means
+            // `FILE_CREATE_PIPE_INSTANCE` for a named pipe and is deliberately
+            // denied. Requesting it here made the service deny its own stop
+            // wake-up and left MSI uninstall waiting on `ConnectNamedPipe`.
+            CLIENT_ACCESS,
             0,
             std::ptr::null(),
             OPEN_EXISTING,
