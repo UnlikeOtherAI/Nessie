@@ -127,6 +127,16 @@ export {
 } from './mailbox-discovery.js'
 
 export {
+  MAILBOX_PROBE_BUDGET_MS,
+  probeMailboxCapability,
+  runImapCapabilityProbe,
+  runSmtpCapabilityProbe,
+  type MailboxCapabilityProbe,
+  type MailboxProbeOptions,
+  type MailboxProbeOutcome,
+} from './mailbox-probe.js'
+
+export {
   MAILBOX_ISPDB,
   MAILBOX_ISPDB_VERSION,
   ispdbForDomain,

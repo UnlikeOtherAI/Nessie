@@ -78,7 +78,19 @@ Plan and as-built deltas:
   trust. HTTPS uses `safeFetch` with IP pinning, same-origin redirects, a 64 KiB
   cap, and one three-second budget; declarations/entities are refused by the
   narrow autoconfig parser. MX and uncorroborated external SRV records may
-  classify but never produce `trustedImapSmtp`. The UI may show the password
+  classify but never produce `trustedImapSmtp`. A reviewed long-tail snapshot
+  (`mailbox-ispdb.ts`) joins as one more *candidate*, never a short circuit:
+  candidates are selected by evidence strength — autoconfig 90, mail SRV 85,
+  snapshot 75 — so a document the domain publishes today always beats settings
+  we verified once. Only the exact-domain reviewed registry stays network-free.
+  The selected trusted candidate is then confirmed by an unauthenticated
+  capability probe (`mailbox-probe.ts`, its own 2s budget, ports 143/993/25/465/
+  587 only) that dials through the same vetting and holds no credential
+  parameter at all: `confirmed` raises credential trust to 1, `insecure`
+  withholds the configuration entirely and sends the person to manual settings,
+  and an unreachable or skipped probe changes nothing — a transient failure is
+  the connect step's error to report, not a reason to distrust a reviewed
+  configuration. The UI may show the password
   screen only when that server-authored property exists; manual settings remain
   an explicit user override and the dial path still re-vets every endpoint.
 - **Seams.** Protocol clients live in `@nessie/agent-mail` (`dial`, `wire`,

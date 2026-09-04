@@ -1,15 +1,8 @@
-import { resolveMx, resolveSrv } from 'node:dns/promises'
-
-import {
-  MailboxDiscoveryResultSchema,
-  type MailboxAuthenticationStrategy,
-  type MailboxConnectorRecommendation,
-  type MailboxDiscoveryEvidence,
-  type MailboxDiscoveryResult,
-  type MailboxProviderFamily,
-  type TrustedMailboxImapSmtpConfig,
+import type {
+  MailboxDiscoveryEvidence,
+  MailboxDiscoveryResult,
 } from '@nessie/schemas'
-import { safeFetch, type SafeFetchOptions } from '@nessie/runtime'
+import { safeFetch } from '@nessie/runtime'
 
 import {
   MAILBOX_PROVIDER_REGISTRY,
@@ -24,260 +17,70 @@ import {
   parseMailboxDiscoveryAddress,
 } from './mailbox-discovery-address.js'
 import { parseMailboxAutoconfig } from './mailbox-autoconfig.js'
+import { ispdbForDomain } from './mailbox-ispdb.js'
+import { probeMailboxCapability, type MailboxCapabilityProbe } from './mailbox-probe.js'
+import {
+  DISCOVERY_TIMEOUT_MS,
+  defaultDns,
+  defaultTimeout,
+  discoveryFetch,
+  settled,
+  type MailboxDiscoveryDns,
+  type MailboxDiscoveryFetch,
+  type MailboxDiscoveryTimeout,
+} from './mailbox-discovery-network.js'
+import {
+  CANDIDATE_SCORES,
+  configFromSrv,
+  configTrustedForDomain,
+  evidence,
+  firstSrv,
+  rankProviders,
+  sameDomain,
+  selectTrustedCandidate,
+  type ConfigCandidate,
+} from './mailbox-discovery-evidence.js'
+import {
+  capabilityFor,
+  defaultCapabilities,
+  jmapResult,
+  manualResult,
+  passwordResult,
+  providerResult,
+  type MailboxDiscoveryCapabilities,
+} from './mailbox-discovery-result.js'
+
+/**
+ * Address-first mailbox discovery: an email address in, a provider
+ * classification out, plus — only when the evidence earns it — the one
+ * `trustedImapSmtp` property that authorises the compact password screen.
+ *
+ * This file is the orchestrator. It owns the order things happen in and
+ * nothing else: the network fan-out is `mailbox-discovery-network.ts`, how
+ * findings are weighed is `mailbox-discovery-evidence.ts`, and the shapes it
+ * may answer with are `mailbox-discovery-result.ts`.
+ */
 
 export { MailboxDiscoveryAddressError, parseMailboxDiscoveryAddress } from './mailbox-discovery-address.js'
+export type {
+  MailboxDiscoveryDns,
+  MailboxDiscoveryFetch,
+  MailboxDiscoveryTimeout,
+} from './mailbox-discovery-network.js'
+export type { MailboxDiscoveryCapabilities } from './mailbox-discovery-result.js'
 
-const DISCOVERY_TIMEOUT_MS = 3_000
-const DISCOVERY_MAX_BYTES = 64 * 1024
-type MxRecord = { exchange: string; priority: number }
-type SrvRecord = { name: string; port: number; priority: number; weight: number }
-export type MailboxDiscoveryDns = {
-  mx: (domain: string) => Promise<MxRecord[]>
-  srv: (name: string) => Promise<SrvRecord[]>
-}
-
-export type MailboxDiscoveryFetch = (
-  url: URL,
-  init: RequestInit,
-  options: SafeFetchOptions,
-) => Promise<Response>
-
-/** Testable deadline seam; the default gives all generic discovery work one budget. */
-export type MailboxDiscoveryTimeout = <T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-) => Promise<T | null>
-
-/** A capability means the OAuth adapter and its deployment registration both exist. */
-export type MailboxDiscoveryCapabilities = {
-  appleAuthorization: boolean
-  google: boolean
-  jmap: boolean
-  microsoft: boolean
-}
+/** Every generic path answers with the same neutral name; only a curated entry has a real one. */
+const GENERIC_PROVIDER_NAME = 'Email provider'
 
 export type MailboxDiscoveryDeps = {
   capabilities?: Partial<MailboxDiscoveryCapabilities>
   clock?: () => number
   dns?: Partial<MailboxDiscoveryDns>
   fetch?: MailboxDiscoveryFetch
+  /** Injected so a test never opens a socket; production confirms for real. */
+  probe?: MailboxCapabilityProbe
   registry?: readonly MailboxProviderRegistryEntry[]
   timeout?: MailboxDiscoveryTimeout
-}
-
-type ProtocolConfig = TrustedMailboxImapSmtpConfig
-type ConfigCandidate = { config: ProtocolConfig; source: 'autoconfig' | 'mail_srv'; trusted: boolean }
-const defaultDns: MailboxDiscoveryDns = {
-  mx: async (domain) => resolveMx(domain),
-  srv: async (name) => resolveSrv(name),
-}
-
-const defaultCapabilities: MailboxDiscoveryCapabilities = {
-  appleAuthorization: false,
-  google: false,
-  jmap: false,
-  microsoft: false,
-}
-
-const defaultTimeout: MailboxDiscoveryTimeout = async <T>(operation: Promise<T>, timeoutMs: number) => {
-  if (timeoutMs <= 0) return null
-  return new Promise<T | null>((resolve) => {
-    let complete = false
-    const finish = (value: T | null): void => {
-      if (complete) return
-      complete = true
-      clearTimeout(timer)
-      resolve(value)
-    }
-    const timer = setTimeout(() => finish(null), timeoutMs)
-    void operation.then((value) => finish(value)).catch(() => finish(null))
-  })
-}
-
-const settled = async <T>(
-  operation: Promise<T>,
-  timeout: MailboxDiscoveryTimeout,
-  timeoutMs: number,
-): Promise<T | null> => {
-  try {
-    return await timeout(operation, timeoutMs)
-  } catch {
-    return null
-  }
-}
-
-const discoveryFetch = async (
-  run: MailboxDiscoveryFetch,
-  url: URL,
-  withinDeadline: <T>(operation: Promise<T>) => Promise<T | null>,
-): Promise<string | null> => {
-  const response = await withinDeadline(run(url, {
-    headers: { Accept: 'application/json, application/xml, text/xml;q=0.9' },
-    method: 'GET',
-    signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
-  }, {
-    maxRedirects: 2,
-    redirectPolicy: 'same-origin',
-  }))
-  if (!response || response.status !== 200) return null
-  const declared = Number(response.headers.get('content-length'))
-  if (Number.isFinite(declared) && declared > DISCOVERY_MAX_BYTES) return null
-  const reader = response.body?.getReader()
-  if (!reader) return ''
-  const chunks: Uint8Array[] = []
-  let bytes = 0
-  try {
-    while (true) {
-      // A response can send headers and then hold its body open forever. Keep
-      // each read within the same discovery deadline as DNS and connection.
-      const next = await withinDeadline(reader.read())
-      if (!next) {
-        await reader.cancel()
-        return null
-      }
-      if (next.done) break
-      bytes += next.value.byteLength
-      if (bytes > DISCOVERY_MAX_BYTES) {
-        await reader.cancel()
-        return null
-      }
-      chunks.push(next.value)
-    }
-  } catch {
-    return null
-  } finally {
-    reader.releaseLock()
-  }
-  const combined = new Uint8Array(bytes)
-  let offset = 0
-  for (const chunk of chunks) {
-    combined.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return new TextDecoder().decode(combined)
-}
-
-const sameDomain = (host: string, domain: string): boolean =>
-  host === domain || host.endsWith(`.${domain}`)
-
-const configTrustedForDomain = (
-  config: ProtocolConfig,
-  domain: string,
-  registry: readonly MailboxProviderRegistryEntry[],
-): boolean =>
-  (sameDomain(config.imap.host, domain) && sameDomain(config.smtp.host, domain))
-  || Boolean(providerForPasswordConfig(config, registry))
-
-const firstSrv = (records: SrvRecord[] | null): SrvRecord | null => {
-  if (!records?.length) return null
-  return [...records].sort((a, b) => (
-    a.priority - b.priority
-    || b.weight - a.weight
-    || a.name.localeCompare(b.name)
-  ))[0] ?? null
-}
-
-const configFromSrv = (input: {
-  imap: SrvRecord | null
-  imaps: SrvRecord | null
-  submission: SrvRecord | null
-  submissions: SrvRecord | null
-}): ProtocolConfig | null => {
-  const imap = input.imaps ?? input.imap
-  const smtp = input.submissions ?? input.submission
-  const imapHost = imap ? mailboxDiscoveryHostname(imap.name) : null
-  const smtpHost = smtp ? mailboxDiscoveryHostname(smtp.name) : null
-  if (!imap || !smtp || !imapHost || !smtpHost) return null
-  return {
-    imap: {
-      host: imapHost,
-      port: imap.port,
-      security: input.imaps ? 'tls' : 'starttls',
-    },
-    smtp: {
-      host: smtpHost,
-      port: smtp.port,
-      security: input.submissions ? 'tls' : 'starttls',
-    },
-    username: 'email_address',
-  }
-}
-
-const evidence = (
-  source: MailboxDiscoveryEvidence['source'],
-  score: number,
-  trustedForCredentials: boolean,
-  provider?: MailboxProviderFamily,
-): MailboxDiscoveryEvidence => ({
-  ...(provider ? { provider } : {}),
-  score,
-  source,
-  trustedForCredentials,
-})
-
-const recommendation = (
-  type: MailboxConnectorRecommendation['type'],
-  available: boolean,
-): MailboxConnectorRecommendation => ({
-  available,
-  type,
-  unavailableReason: available ? null : 'not_configured',
-})
-
-const capabilityFor = (
-  family: MailboxProviderFamily,
-  capabilities: MailboxDiscoveryCapabilities,
-): boolean => family === 'google' ? capabilities.google
-  : family === 'microsoft' ? capabilities.microsoft
-    : family === 'apple' ? capabilities.appleAuthorization : false
-
-const providerResult = (input: {
-  candidate: MailboxProviderRegistryEntry
-  capabilities: MailboxDiscoveryCapabilities
-  confidence: number
-  credentialDestinationTrust?: number
-  domain: string
-  email: string
-  evidence: MailboxDiscoveryEvidence[]
-  includeTrustedImapSmtp?: boolean
-  requiresProviderConfirmation: boolean
-}): MailboxDiscoveryResult => {
-  const { candidate, capabilities } = input
-  const oauthAvailable = capabilityFor(candidate.family, capabilities)
-  const appleAuthorization = candidate.family === 'apple' && oauthAvailable
-  const nativeOauth = candidate.authentication === 'oauth2'
-  const oauth = nativeOauth && oauthAvailable
-  const authentication: MailboxAuthenticationStrategy = appleAuthorization
-    ? 'apple_authorization'
-    : nativeOauth ? 'oauth2' : candidate.authentication
-  const preferred = (appleAuthorization || nativeOauth) && candidate.oauthConnector
-    ? recommendation(candidate.oauthConnector, oauthAvailable)
-    : recommendation('imap_smtp', true)
-  return MailboxDiscoveryResultSchema.parse({
-    authentication: {
-      available: appleAuthorization || oauth || !nativeOauth,
-      strategy: authentication,
-      unavailableReason: appleAuthorization || oauth || !nativeOauth ? null : 'not_configured',
-    },
-    configurationConfidence: input.confidence,
-    credentialDestinationTrust: input.credentialDestinationTrust
-      ?? (input.requiresProviderConfirmation ? 0.45 : 1),
-    domain: input.domain,
-    email: input.email,
-    evidence: input.evidence,
-    fallbackConnectors: preferred.type === 'imap_smtp' ? [] : [recommendation('imap_smtp', true)],
-    preferredConnector: preferred,
-    provider: candidate.family,
-    ...(input.includeTrustedImapSmtp !== false && !input.requiresProviderConfirmation
-      ? { trustedImapSmtp: candidate.passwordConfig } : {}),
-    ui: {
-      providerIcon: candidate.icon,
-      providerName: candidate.displayName,
-      requiresAdvancedSettings: nativeOauth && !oauthAvailable,
-      requiresManualSettings: false,
-      requiresProviderConfirmation: input.requiresProviderConfirmation,
-    },
-  })
 }
 
 export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) => {
@@ -287,12 +90,14 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
   const capabilities = { ...defaultCapabilities, ...deps.capabilities }
   const clock = deps.clock ?? Date.now
   const timeout = deps.timeout ?? defaultTimeout
+  const probe = deps.probe ?? probeMailboxCapability
 
   return async (rawEmail: string): Promise<MailboxDiscoveryResult> => {
     const parsed = parseMailboxDiscoveryAddress(rawEmail)
     const exact = providerForDomain(parsed.domain, registry)
     // Mainstream identities are reviewed facts, so they never wait on a DNS or
-    // HTTPS probe that can only make their Apple-simple path slower.
+    // HTTPS probe that can only make their Apple-simple path slower. Nothing
+    // here dials either: a reviewed configuration is not a network question.
     if (exact) {
       return providerResult({
         candidate: exact,
@@ -343,17 +148,38 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
       findings.push(evidence('mx_fingerprint', 55, false, provider.family))
     }
 
+    const candidates: ConfigCandidate[] = []
+    // The curated snapshot is a *candidate*, never a short circuit: a document
+    // the domain publishes today is more current than a settings page we read
+    // once, so the fan-out above still runs and autoconfig still outranks this.
+    const curated = ispdbForDomain(parsed.domain)
+    if (curated) {
+      findings.push(evidence('ispdb', CANDIDATE_SCORES.ispdb, true))
+      candidates.push({
+        config: curated.config,
+        confidence: 0.9,
+        providerName: curated.displayName,
+        source: 'ispdb',
+        trusted: true,
+      })
+    }
+
     const srvConfig = configFromSrv({
       imap: firstSrv(imap),
       imaps: firstSrv(imaps),
       submission: firstSrv(submission),
       submissions: firstSrv(submissions),
     })
-    const candidates: ConfigCandidate[] = []
     if (srvConfig) {
       const trusted = configTrustedForDomain(srvConfig, parsed.domain, registry)
-      findings.push(evidence('mail_srv', trusted ? 85 : 45, trusted))
-      candidates.push({ config: srvConfig, source: 'mail_srv', trusted })
+      findings.push(evidence('mail_srv', trusted ? CANDIDATE_SCORES.mail_srv : 45, trusted))
+      candidates.push({
+        config: srvConfig,
+        confidence: 0.85,
+        providerName: GENERIC_PROVIDER_NAME,
+        source: 'mail_srv',
+        trusted,
+      })
     }
     const autodiscoverProvider = autodiscover
       ?.map((record) => providerForAutodiscover(record.name, registry))
@@ -377,8 +203,14 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
       seenAutoconfig.add(key)
       const trusted = configTrustedForDomain(config, parsed.domain, registry)
       const matchedProvider = providerForPasswordConfig(config, registry)
-      findings.push(evidence('autoconfig', trusted ? 90 : 45, trusted, matchedProvider?.family))
-      candidates.push({ config, source: 'autoconfig', trusted })
+      findings.push(evidence('autoconfig', trusted ? CANDIDATE_SCORES.autoconfig : 45, trusted, matchedProvider?.family))
+      candidates.push({
+        config,
+        confidence: 0.9,
+        providerName: GENERIC_PROVIDER_NAME,
+        source: 'autoconfig',
+        trusted,
+      })
     }
 
     const jmapValid = (body: string | null, expectedHost: string): boolean => {
@@ -397,13 +229,7 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
     const hasTrustedJmap = directJmapValid || srvJmapValid
     if (hasTrustedJmap) findings.push(evidence('jmap_session', 90, true))
 
-    const providers = new Map<MailboxProviderFamily, number>()
-    for (const item of findings) {
-      if (item.provider) providers.set(item.provider, (providers.get(item.provider) ?? 0) + item.score)
-    }
-    const ranked = [...providers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    const topFamily = ranked[0]?.[0]
-    const isConflict = !exact && ranked.length > 1 && (ranked[0]?.[1] ?? 0) - (ranked[1]?.[1] ?? 0) < 50
+    const { isConflict, topFamily } = rankProviders(findings)
     if (isConflict) findings.push(evidence('conflict', -45, false))
 
     if (topFamily && !isConflict) {
@@ -415,7 +241,7 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
         const base = providerCorroborated ? 0.95 : 0.55
         const fixedOAuthAvailable = (selected.family === 'google' || selected.family === 'microsoft')
           && capabilityFor(selected.family, capabilities)
-        const result = providerResult({
+        return providerResult({
           candidate: selected,
           capabilities,
           confidence: base,
@@ -426,74 +252,52 @@ export const createMailboxDiscoveryService = (deps: MailboxDiscoveryDeps = {}) =
           includeTrustedImapSmtp: protocolTrusted,
           requiresProviderConfirmation: !providerCorroborated && !fixedOAuthAvailable,
         })
-        return result
       }
     }
 
+    const identity = { domain: parsed.domain, email: parsed.email, evidence: findings }
     if (isConflict) {
-      return MailboxDiscoveryResultSchema.parse({
-        authentication: { available: true, strategy: 'manual', unavailableReason: null },
-        configurationConfidence: 0.45,
-        credentialDestinationTrust: 0,
-        domain: parsed.domain,
-        email: parsed.email,
-        evidence: findings,
-        fallbackConnectors: [],
-        preferredConnector: recommendation('manual', true),
+      return manualResult({
+        ...identity,
+        confidence: 0.45,
         provider: 'unknown',
-        ui: { providerIcon: 'generic', providerName: 'Email services', requiresAdvancedSettings: false, requiresManualSettings: true, requiresProviderConfirmation: true },
+        providerName: 'Email services',
+        requiresProviderConfirmation: true,
       })
     }
 
-    const trustedCandidate = candidates.find((candidate) => candidate.trusted)
-    if (hasTrustedJmap && capabilities.jmap) {
-      return MailboxDiscoveryResultSchema.parse({
-        authentication: { available: capabilities.jmap, strategy: 'password', unavailableReason: capabilities.jmap ? null : 'not_supported' },
-        configurationConfidence: 0.9,
-        credentialDestinationTrust: 1,
-        domain: parsed.domain,
-        email: parsed.email,
-        evidence: findings,
-        fallbackConnectors: trustedCandidate ? [recommendation('imap_smtp', true)] : [recommendation('manual', true)],
-        preferredConnector: recommendation('jmap', capabilities.jmap),
-        provider: 'generic',
-        ...(trustedCandidate ? { trustedImapSmtp: trustedCandidate.config } : {}),
-        ui: { providerIcon: 'generic', providerName: 'Email provider', requiresAdvancedSettings: false, requiresManualSettings: !trustedCandidate, requiresProviderConfirmation: false },
-      })
+    let selectedCandidate = selectTrustedCandidate(candidates)
+    let credentialDestinationTrust = 0.95
+    let probeRefused = false
+    if (selectedCandidate) {
+      // Only the one configuration we already decided to trust is ever dialled.
+      const outcome = await probe(selectedCandidate.config, { clientName: parsed.domain })
+      if (outcome === 'confirmed') {
+        findings.push(evidence('capability_probe', 30, true))
+        credentialDestinationTrust = 1
+      } else if (outcome === 'insecure') {
+        // A destination we cannot reach over a verified TLS session must never
+        // authorise a password screen. `unreachable`/`skipped` change nothing:
+        // a transient failure is the connect step's error copy to give, not a
+        // reason to withhold a reviewed configuration.
+        selectedCandidate = null
+        probeRefused = true
+      }
     }
-    if (trustedCandidate) {
-      return MailboxDiscoveryResultSchema.parse({
-        authentication: { available: true, strategy: 'password', unavailableReason: null },
-        configurationConfidence: trustedCandidate.source === 'autoconfig' ? 0.9 : 0.85,
-        credentialDestinationTrust: 0.95,
-        domain: parsed.domain,
-        email: parsed.email,
-        evidence: findings,
-        fallbackConnectors: [recommendation('manual', true)],
-        preferredConnector: recommendation('imap_smtp', true),
-        provider: 'generic',
-        trustedImapSmtp: trustedCandidate.config,
-        ui: { providerIcon: 'generic', providerName: 'Email provider', requiresAdvancedSettings: false, requiresManualSettings: false, requiresProviderConfirmation: false },
-      })
+
+    if (hasTrustedJmap && capabilities.jmap) {
+      return jmapResult({ ...identity, available: capabilities.jmap, candidate: selectedCandidate })
+    }
+    if (selectedCandidate) {
+      return passwordResult({ ...identity, candidate: selectedCandidate, credentialDestinationTrust })
     }
     const externalSrv = candidates.find((candidate) => !candidate.trusted)
-    return MailboxDiscoveryResultSchema.parse({
-      authentication: { available: true, strategy: 'manual', unavailableReason: null },
-      configurationConfidence: externalSrv ? 0.45 : 0,
-      credentialDestinationTrust: 0,
-      domain: parsed.domain,
-      email: parsed.email,
-      evidence: findings,
-      fallbackConnectors: [],
-      preferredConnector: recommendation('manual', true),
+    return manualResult({
+      ...identity,
+      confidence: externalSrv || probeRefused ? 0.45 : 0,
       provider: 'generic',
-      ui: {
-        providerIcon: 'generic',
-        providerName: 'Email provider',
-        requiresAdvancedSettings: false,
-        requiresManualSettings: true,
-        requiresProviderConfirmation: Boolean(externalSrv),
-      },
+      providerName: GENERIC_PROVIDER_NAME,
+      requiresProviderConfirmation: Boolean(externalSrv),
     })
   }
 }

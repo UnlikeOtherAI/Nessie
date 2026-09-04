@@ -4,10 +4,36 @@ import test from 'node:test'
 import {
   createMailboxDiscoveryService,
 } from '../src/mailbox-discovery.js'
+import type { MailboxCapabilityProbe, MailboxProbeOutcome } from '../src/mailbox-probe.js'
+
+/**
+ * Discovery is exercised with every outside seam injected — DNS, HTTPS **and**
+ * the capability probe. The probe is the only part of discovery that can open a
+ * socket, so a test that let it default to the real implementation would dial
+ * whatever a fixture named. Every `createMailboxDiscoveryService` call below
+ * therefore passes a `probe`, and the default stub answers `unreachable`, which
+ * is defined to leave a result exactly as it was.
+ */
+
+/** Records what was probed so a test can assert the probe saw the selected config. */
+const stubProbe = (outcome: MailboxProbeOutcome = 'unreachable'): MailboxCapabilityProbe & {
+  calls: { host: string; port: number; clientName: string }[]
+} => {
+  const calls: { host: string; port: number; clientName: string }[] = []
+  const probe = async (
+    config: Parameters<MailboxCapabilityProbe>[0],
+    options: Parameters<MailboxCapabilityProbe>[1],
+  ): Promise<MailboxProbeOutcome> => {
+    calls.push({ clientName: options.clientName, host: config.imap.host, port: config.imap.port })
+    return outcome
+  }
+  return Object.assign(probe, { calls })
+}
 
 const service = (input: {
   capabilities?: { appleAuthorization?: boolean; google?: boolean; jmap?: boolean; microsoft?: boolean }
   mx?: string[]
+  probe?: MailboxCapabilityProbe
   srv?: Record<string, { name: string; port: number; priority: number; weight: number }[]>
   xml?: string
   jmap?: string
@@ -22,6 +48,7 @@ const service = (input: {
     if (url.pathname.endsWith('/.well-known/jmap') && input.jmap) return new Response(input.jmap)
     return new Response(null, { status: 404 })
   },
+  probe: input.probe ?? stubProbe(),
 })
 
 test('reviewed Gmail, Outlook, and iCloud domains take a network-free provider path', async () => {
@@ -32,6 +59,7 @@ test('reviewed Gmail, Outlook, and iCloud domains take a network-free provider p
       srv: async () => { throw new Error('exact provider discovery must not query DNS') },
     },
     fetch: async () => { throw new Error('exact provider discovery must not fetch') },
+    probe: async () => { throw new Error('the reviewed registry path must not dial anything') },
   })
 
   const gmail = await immediate('Name@GMAIL.COM')
@@ -175,6 +203,7 @@ test('a valid JMAP SRV target is fetched at its discovered port and selected onl
       requests.push(url.toString())
       return new Response(JSON.stringify({ apiUrl: 'https://jmap.mail.example:8443/api/' }))
     },
+    probe: stubProbe(),
   })
   const result = await discovered('person@mail.example')
   assert.equal(requests.includes('https://jmap.mail.example:8443/.well-known/jmap'), true)
@@ -218,7 +247,91 @@ test('a timed-out DNS resolver falls back without holding discovery open', async
       srv: async () => new Promise(() => undefined),
     },
     fetch: async () => new Response(null, { status: 404 }),
+    probe: stubProbe(),
     timeout: async () => null,
   })('person@unknown.example')
   assert.equal(result.authentication.strategy, 'manual')
+})
+
+test('a curated snapshot domain yields a password-only result under the provider’s own name', async () => {
+  const probe = stubProbe()
+  const result = await service({ probe })('person@posteo.de')
+
+  assert.equal(result.provider, 'generic')
+  assert.equal(result.ui.providerName, 'Posteo')
+  assert.equal(result.authentication.strategy, 'password')
+  assert.equal(result.preferredConnector.type, 'imap_smtp')
+  assert.equal(result.configurationConfidence, 0.9)
+  assert.equal(result.credentialDestinationTrust, 0.95)
+  assert.deepEqual(result.trustedImapSmtp, {
+    imap: { host: 'posteo.de', port: 993, security: 'tls' },
+    smtp: { host: 'posteo.de', port: 465, security: 'tls' },
+    username: 'email_address',
+  })
+  // Password-only: the person types a password, never a server name.
+  assert.equal(result.ui.requiresManualSettings, false)
+  assert.equal(result.ui.requiresAdvancedSettings, false)
+  assert.equal(result.ui.requiresProviderConfirmation, false)
+  assert.equal(result.evidence.some((item) => item.source === 'ispdb'), true)
+  assert.deepEqual(probe.calls, [{ clientName: 'posteo.de', host: 'posteo.de', port: 993 }])
+})
+
+test('a domain-controlled autoconfig document outranks the curated snapshot for its own domain', async () => {
+  const result = await service({
+    xml: `<clientConfig><emailProvider><incomingServer type="imap"><hostname>imap.posteo.de</hostname><port>993</port><socketType>SSL</socketType></incomingServer><outgoingServer type="smtp"><hostname>smtp.posteo.de</hostname><port>587</port><socketType>STARTTLS</socketType></outgoingServer></emailProvider></clientConfig>`,
+  })('person@posteo.de')
+
+  // The snapshot is a candidate, not a short circuit: it was found, and lost.
+  assert.equal(result.evidence.some((item) => item.source === 'ispdb'), true)
+  assert.equal(result.evidence.some((item) => item.source === 'autoconfig'), true)
+  assert.equal(result.trustedImapSmtp?.imap.host, 'imap.posteo.de')
+  assert.equal(result.trustedImapSmtp?.smtp.port, 587)
+  assert.equal(result.ui.providerName, 'Email provider')
+})
+
+test('a confirmed capability probe raises credential trust and is recorded as evidence', async () => {
+  const result = await service({ probe: stubProbe('confirmed') })('person@posteo.de')
+
+  assert.equal(result.credentialDestinationTrust, 1)
+  assert.equal(result.trustedImapSmtp?.imap.host, 'posteo.de')
+  assert.equal(
+    result.evidence.some((item) => item.source === 'capability_probe' && item.trustedForCredentials),
+    true,
+  )
+})
+
+test('a configuration the probe cannot reach securely never authorises a password screen', async () => {
+  const result = await service({ probe: stubProbe('insecure') })('person@posteo.de')
+
+  assert.equal(result.trustedImapSmtp, undefined)
+  assert.equal(result.credentialDestinationTrust, 0)
+  assert.equal(result.authentication.strategy, 'manual')
+  assert.equal(result.preferredConnector.type, 'manual')
+  assert.equal(result.ui.requiresManualSettings, true)
+})
+
+test('an unreachable probe leaves a reviewed configuration exactly as it was', async () => {
+  const unreachable = await service({ probe: stubProbe('unreachable') })('person@posteo.de')
+  assert.equal(unreachable.trustedImapSmtp?.imap.host, 'posteo.de')
+  assert.equal(unreachable.credentialDestinationTrust, 0.95)
+  assert.equal(unreachable.ui.requiresManualSettings, false)
+
+  const skipped = await service({ probe: stubProbe('skipped') })('person@posteo.de')
+  assert.equal(skipped.trustedImapSmtp?.imap.host, 'posteo.de')
+  assert.equal(skipped.credentialDestinationTrust, 0.95)
+})
+
+test('an untrusted candidate is never probed and never becomes a password destination', async () => {
+  const probe = stubProbe('confirmed')
+  const result = await service({
+    probe,
+    srv: {
+      '_imaps._tcp.company.example': [{ name: 'imap.partner.example', port: 993, priority: 0, weight: 0 }],
+      '_submissions._tcp.company.example': [{ name: 'smtp.partner.example', port: 465, priority: 0, weight: 0 }],
+    },
+  })('person@company.example')
+
+  assert.deepEqual(probe.calls, [], 'only a candidate discovery already trusts may be dialled')
+  assert.equal(result.trustedImapSmtp, undefined)
+  assert.equal(result.credentialDestinationTrust, 0)
 })
