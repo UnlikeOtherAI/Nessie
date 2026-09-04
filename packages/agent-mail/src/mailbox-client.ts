@@ -78,14 +78,23 @@ export type MailboxMailConversation = {
     bodyFormat: 'text' | 'html'
     blockedRemoteContent: boolean
     attachments: { filename: string; contentType: string; sizeBytes: number }[]
+    messageId: string | null
     inReplyTo: string | null
   }>
   earlierMessagesMayExist: boolean
 }
 
 const DEFAULT_FOLDER = 'INBOX'
-const MAX_BODY_CHARS = 20_000
+const MAX_BODY_CHARS = 100_000
 const HEADER_WINDOW_LIMIT = 100
+const MAX_ATTACHMENTS = 100
+const MAX_ADDRESS_CHARS = 1_000
+const MAX_CONTENT_TYPE_CHARS = 200
+const MAX_FILENAME_CHARS = 500
+
+const bounded = (value: string, max: number): string => value.slice(0, max)
+const boundedOptional = (value: string | null, max: number): string | null =>
+  value === null ? null : bounded(value, max)
 
 const IMAP_MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -118,11 +127,11 @@ const buildCriteria = (query: MailboxSearchQuery): ImapPart[] => {
 const summarize = (uid: number, parsed: Awaited<ReturnType<typeof parseInboundEmail>>)
 : MailboxSummary => ({
   date: parsed.date ? parsed.date.toISOString() : null,
-  from: parsed.fromAddress,
+  from: boundedOptional(parsed.fromAddress, MAX_ADDRESS_CHARS),
   fromName: parsed.fromName,
-  messageId: parsed.rfcMessageId,
-  subject: parsed.subject,
-  to: parsed.toAddresses,
+  messageId: boundedOptional(parsed.rfcMessageId, MAX_ADDRESS_CHARS),
+  subject: bounded(parsed.subject, MAX_ADDRESS_CHARS),
+  to: parsed.toAddresses.map((address) => bounded(address, MAX_ADDRESS_CHARS)).slice(0, 100),
   uid,
 })
 
@@ -164,7 +173,7 @@ const summarizeThreadHeader = async (
     hasAttachments: parsed.attachments.length > 0,
     inReplyTo: parsed.inReplyTo,
     references: parsed.references,
-    snippet: parsed.snippet,
+    snippet: bounded(parsed.snippet, MAX_ADDRESS_CHARS),
     unread: !flags.some((flag) => flag.toUpperCase() === '\\SEEN'),
   }
 }
@@ -318,7 +327,7 @@ export const listMailboxMailThreads = async (
         receivedAt: newest.date,
         snippet: newest.snippet,
         subject: newest.subject,
-        unread: newest.unread,
+        unread: members.some((member) => member.unread),
       } : null
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -353,22 +362,23 @@ export const readMailboxMailConversation = async (
     const body = parsed.htmlBody ?? parsed.textBody
     const bodyFormat: 'html' | 'text' = parsed.htmlBody ? 'html' : 'text'
     return {
-      attachments: parsed.attachments.map((attachment) => ({
-        contentType: attachment.contentType,
-        filename: attachment.filename,
+      attachments: parsed.attachments.slice(0, MAX_ATTACHMENTS).map((attachment) => ({
+        contentType: bounded(attachment.contentType || 'application/octet-stream', MAX_CONTENT_TYPE_CHARS),
+        filename: bounded(attachment.filename || 'attachment', MAX_FILENAME_CHARS),
         sizeBytes: attachment.content.byteLength,
       })),
       blockedRemoteContent: parsed.blockedRemoteContent,
       body: body.slice(0, MAX_BODY_CHARS),
       bodyFormat,
-      cc: parsed.ccAddresses,
-      from: parsed.fromAddress,
+      cc: parsed.ccAddresses.map((address) => bounded(address, MAX_ADDRESS_CHARS)).slice(0, 100),
+      from: boundedOptional(parsed.fromAddress, MAX_ADDRESS_CHARS),
       id: String(fetched.uid),
-      inReplyTo: parsed.inReplyTo,
+      inReplyTo: boundedOptional(parsed.inReplyTo, MAX_ADDRESS_CHARS),
+      messageId: boundedOptional(parsed.rfcMessageId, MAX_ADDRESS_CHARS),
       receivedAt: parsed.date?.toISOString() ?? null,
-      subject: parsed.subject,
+      subject: bounded(parsed.subject, MAX_ADDRESS_CHARS),
       threadId: input.threadId,
-      to: parsed.toAddresses,
+      to: parsed.toAddresses.map((address) => bounded(address, MAX_ADDRESS_CHARS)).slice(0, 100),
     }
   }))
   return {

@@ -155,6 +155,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
           bcc: body.bcc,
           body: body.body,
           cc: body.cc,
+          inReplyTo: body.inReplyTo,
           subject: body.subject,
           to: body.to,
         },
@@ -185,7 +186,14 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
       const action = await updateDraftForUser(prisma, {
         connectionId: params.accountId,
         draftActionId: params.draftId,
-        message: { bcc: body.bcc, body: body.body, cc: body.cc, subject: body.subject, to: body.to },
+        message: {
+          bcc: body.bcc,
+          body: body.body,
+          cc: body.cc,
+          inReplyTo: body.inReplyTo,
+          subject: body.subject,
+          to: body.to,
+        },
         organizationId: resolved.mailActor.organizationId,
         userId: resolved.mailActor.userId,
       }, serviceDeps)

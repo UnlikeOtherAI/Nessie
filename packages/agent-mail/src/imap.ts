@@ -253,7 +253,7 @@ export class ImapSession {
         : 'BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)]'
     // UIDs are integers we produced from SEARCH output, never model text.
     const set = uids.join(',')
-    const result = await this.run([`UID FETCH ${set} (UID ${item})`])
+    const result = await this.run([`UID FETCH ${set} (UID FLAGS ${item})`])
 
     const messages: { uid: number; raw: Buffer; flags: string[] }[] = []
     for (const response of result.untagged) {

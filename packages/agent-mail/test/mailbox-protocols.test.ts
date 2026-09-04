@@ -62,6 +62,24 @@ const endpoint = (security: MailEndpoint['security']): MailEndpoint => ({
 const options = { clientName: 'example.com', timeoutMs: 2_000 }
 
 describe('SMTP client', () => {
+  test('refuses envelope and greeting injection before writing an SMTP command', async () => {
+    const session = { wire: { write: () => undefined } } as never
+    await assert.rejects(
+      sendOverSmtp(session, {
+        from: 'agent@example.com\r\nRCPT TO:<attacker@example.com>',
+        mime: 'Subject: Hi\r\n\r\nHello',
+        recipients: ['person@example.com'],
+      }),
+      /line break/,
+    )
+    await assert.rejects(
+      runSmtpHandshake({} as Socket, endpoint('tls'), {
+        password: 'hunter2', username: 'agent@example.com',
+      }, { ...options, clientName: 'example.com\r\nMAIL FROM:<attacker@example.com>' }),
+      /client name is invalid/,
+    )
+  })
+
   test('greets, authenticates and delivers a message', async () => {
     const seen: string[] = []
     let body = ''

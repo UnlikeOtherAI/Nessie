@@ -152,8 +152,32 @@ const encodeHeaderValue = (value: string): string => {
   return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
 }
 
-const formatFrom = (address: string, name?: string | null): string =>
-  name && name.trim().length > 0 ? `${encodeHeaderValue(name.trim())} <${address}>` : address
+const assertHeaderSafe = (label: string, value: string): void => {
+  if (/[\r\n]/.test(value)) throw new Error(`${label} cannot contain a line break`)
+}
+
+/** Outbound envelope values are bare normalized addresses, never display headers. */
+const outboundAddress = (label: string, value: string): string => {
+  assertHeaderSafe(label, value)
+  const normalized = normalizeAddress(value)
+  if (!normalized || normalized !== value.trim().toLowerCase()) {
+    throw new Error(`${label} must be a bare email address`)
+  }
+  return normalized
+}
+
+const outboundMessageId = (label: string, value: string): string => {
+  assertHeaderSafe(label, value)
+  const normalized = normalizeMessageId(value)
+  if (!normalized) throw new Error(`${label} must not be empty`)
+  return normalized
+}
+
+const formatFrom = (address: string, name?: string | null): string => {
+  if (!name || name.trim().length === 0) return address
+  assertHeaderSafe('From name', name)
+  return `${encodeHeaderValue(name.trim())} <${address}>`
+}
 
 const foldBase64 = (value: string): string => (value.match(/.{1,76}/g) ?? []).join('\r\n')
 
@@ -166,21 +190,30 @@ const foldBase64 = (value: string): string => (value.match(/.{1,76}/g) ?? []).jo
  * for one message.
  */
 export const buildOutboundMime = (email: OutboundEmail): string => {
-  const boundary = `----nessie-${email.messageId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`
+  const fromAddress = outboundAddress('From', email.fromAddress)
+  const to = email.to.map((address) => outboundAddress('To', address))
+  const cc = (email.cc ?? []).map((address) => outboundAddress('Cc', address))
+  const bcc = (email.bcc ?? []).map((address) => outboundAddress('Bcc', address))
+  if (to.length === 0) throw new Error('At least one recipient is required')
+  const messageId = outboundMessageId('Message-ID', email.messageId)
+  const inReplyTo = email.inReplyTo ? outboundMessageId('In-Reply-To', email.inReplyTo) : null
+  const references = (email.references ?? []).map((value) => outboundMessageId('References', value))
+  assertHeaderSafe('Subject', email.subject)
+  const boundary = `----nessie-${messageId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`
   const headers: string[] = [
-    `From: ${formatFrom(email.fromAddress, email.fromName)}`,
-    `To: ${email.to.join(', ')}`,
+    `From: ${formatFrom(fromAddress, email.fromName)}`,
+    `To: ${to.join(', ')}`,
   ]
-  if (email.cc?.length) headers.push(`Cc: ${email.cc.join(', ')}`)
+  if (cc.length) headers.push(`Cc: ${cc.join(', ')}`)
   // Bcc is deliberately NOT written into the MIME: SES takes blind recipients
   // from the API destination, and a Bcc header would disclose them to everyone.
   headers.push(`Subject: ${encodeHeaderValue(email.subject)}`)
-  headers.push(`Message-ID: <${email.messageId}>`)
+  headers.push(`Message-ID: <${messageId}>`)
   headers.push(`Date: ${new Date().toUTCString()}`)
   headers.push('MIME-Version: 1.0')
-  if (email.inReplyTo) headers.push(`In-Reply-To: <${email.inReplyTo}>`)
-  if (email.references?.length) {
-    headers.push(`References: ${email.references.map((id) => `<${id}>`).join(' ')}`)
+  if (inReplyTo) headers.push(`In-Reply-To: <${inReplyTo}>`)
+  if (references.length) {
+    headers.push(`References: ${references.map((id) => `<${id}>`).join(' ')}`)
   }
 
   const attachments = email.attachments ?? []
@@ -199,6 +232,8 @@ export const buildOutboundMime = (email: OutboundEmail): string => {
     foldBase64(Buffer.from(email.text, 'utf8').toString('base64')),
   ]
   for (const attachment of attachments) {
+    assertHeaderSafe('Attachment filename', attachment.filename)
+    assertHeaderSafe('Attachment content type', attachment.contentType)
     parts.push(
       `--${boundary}`,
       `Content-Type: ${attachment.contentType}; name="${attachment.filename}"`,
@@ -208,6 +243,9 @@ export const buildOutboundMime = (email: OutboundEmail): string => {
       foldBase64(attachment.content.toString('base64')),
     )
   }
+
+  // Validate blind recipients even though they are deliberately omitted from headers.
+  void bcc
   parts.push(`--${boundary}--`, '')
 
   return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`

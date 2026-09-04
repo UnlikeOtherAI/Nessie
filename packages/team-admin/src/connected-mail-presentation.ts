@@ -24,14 +24,14 @@ export type ConnectedMailPresentationAccess = {
   source: ConnectedMailSource
 }
 
-type ActiveMember = { role: string; deactivatedAt: Date | null }
+type ActiveMember = { deactivatedAt: Date | null }
 
 const activeMemberFor = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string },
 ): Promise<ActiveMember> => {
   const member = await prisma.organizationMember.findUnique({
-    select: { deactivatedAt: true, role: true },
+    select: { deactivatedAt: true },
     where: { organizationId_userId: input },
   })
   if (!member || member.deactivatedAt) {
@@ -42,9 +42,8 @@ const activeMemberFor = async (
 
 const assertSharedMailboxViewer = async (
   prisma: PrismaClient,
-  input: { member: ActiveMember; teamId: string; userId: string },
+  input: { teamId: string; userId: string },
 ): Promise<void> => {
-  if (input.member.role === 'owner' || input.member.role === 'admin') return
   const membership = await prisma.teamMember.findUnique({
     select: { id: true },
     where: { teamId_userId: { teamId: input.teamId, userId: input.userId } },
@@ -75,7 +74,7 @@ const resolveMailboxPresentationAccess = async (
     effectiveUserId: input.effectiveUserId,
     organizationId: input.organizationId,
   })
-  const member = await activeMemberFor(prisma, {
+  await activeMemberFor(prisma, {
     organizationId: input.organizationId,
     userId: input.effectiveUserId,
   })
@@ -85,7 +84,6 @@ const resolveMailboxPresentationAccess = async (
       throw new ConnectedMailPresentationError('That mail account is not available to you.')
     }
     await assertSharedMailboxViewer(prisma, {
-      member,
       teamId,
       userId: input.effectiveUserId,
     })
@@ -99,7 +97,12 @@ const resolveMailboxPresentationAccess = async (
 
 const resolveGmailPresentationAccess = async (
   prisma: PrismaClient,
-  input: { accountId: string; effectiveUserId: string | null; organizationId: string },
+  input: {
+    accountId: string
+    draftId?: string
+    effectiveUserId: string | null
+    organizationId: string
+  },
 ): Promise<ConnectedMailPresentationAccess> => {
   if (!input.effectiveUserId) {
     throw new ConnectedMailPresentationError(
@@ -123,6 +126,17 @@ const resolveGmailPresentationAccess = async (
   if (!connection) {
     throw new ConnectedMailPresentationError('That mail account is not available to you.')
   }
+  if (input.draftId) {
+    const draft = await prisma.gmailDraftAction.findFirst({
+      where: {
+        connectionId: connection.id,
+        id: input.draftId,
+        organizationId: input.organizationId,
+        ownerUserId: input.effectiveUserId,
+      },
+    })
+    if (!draft) throw new ConnectedMailPresentationError('That mail account is not available to you.')
+  }
   return {
     accountId: connection.id,
     basis: { scopeId: connection.ownerUserId, scopeType: 'user' },
@@ -142,6 +156,7 @@ export const resolveConnectedMailPresentationAccess = async (
   input: {
     accountId?: string
     agentId: string
+    draftId?: string
     effectiveUserId: string | null
     organizationId: string
     source: ConnectedMailSource
@@ -155,6 +170,7 @@ export const resolveConnectedMailPresentationAccess = async (
   }
   return resolveGmailPresentationAccess(prisma, {
     accountId: input.accountId,
+    draftId: input.draftId,
     effectiveUserId: input.effectiveUserId,
     organizationId: input.organizationId,
   })
