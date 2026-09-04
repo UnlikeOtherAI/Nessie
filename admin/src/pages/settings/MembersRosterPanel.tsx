@@ -154,6 +154,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
               <DataTable
                 columns={invitationColumns(scope)}
                 empty={<EmptyState title="No pending invitations">No invitations are awaiting a response.</EmptyState>}
+                expandable={false}
                 label="Pending invitations"
                 rowKey={(invite) => invite.inviteId}
                 rows={invitationsRows}
@@ -162,6 +163,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
               <DataTable
                 columns={memberColumns(scope, token)}
                 empty={<EmptyState title={tab === 'active' ? 'No active users' : 'No deactivated users'}>{tab === 'active' ? 'Invite someone to add the first member.' : 'No members are deactivated.'}</EmptyState>}
+                expandable={false}
                 label={tab === 'active' ? 'Active users' : 'Deactivated users'}
                 rowKey={(member) => member.uoaSub}
                 rows={members}

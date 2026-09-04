@@ -49,6 +49,8 @@ type DataTableProps<T> = {
   columns: DataTableColumn<T>[]
   /** Shown in place of the body when there are no rows and nothing is loading. */
   empty?: ReactNode
+  /** Whether this surface offers a full-screen inspection view for the table. */
+  expandable: boolean
   /** Names the table for assistive tech and titles the expand dialog. */
   label: string
   loading?: boolean
@@ -75,6 +77,7 @@ const SortIndicator = ({ order }: { order: SortOrder }) => (
 export const DataTable = <T,>({
   columns,
   empty,
+  expandable,
   label,
   loading = false,
   minWidth,
@@ -178,5 +181,5 @@ export const DataTable = <T,>({
     return <>{empty}</>
   }
 
-  return <ExpandableTable label={label}>{body}</ExpandableTable>
+  return <ExpandableTable expandable={expandable} label={label}>{body}</ExpandableTable>
 }

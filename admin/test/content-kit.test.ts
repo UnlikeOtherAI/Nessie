@@ -113,6 +113,7 @@ test('a DataTable renders real column headers and a caption', () => {
         { header: 'Name', key: 'name', render: (row) => row.name },
         { align: 'right', header: 'Id', key: 'id', render: (row) => row.id },
       ],
+      expandable: false,
       label: 'Agents',
       rowKey: (row) => row.id,
       rows: [{ id: '1', name: 'Alpha' }],
@@ -123,6 +124,7 @@ test('a DataTable renders real column headers and a caption', () => {
   assert.match(markup, /scope="col"/)
   assert.match(markup, /admin-table/)
   assert.match(markup, /Alpha/)
+  assert.doesNotMatch(markup, /aria-label="Expand Agents"/)
   // Numbers line up under each other or they cannot be compared.
   assert.match(markup, /text-right tabular-nums/)
 })
@@ -131,6 +133,7 @@ test('a sorted DataTable column announces its direction', () => {
   const markup = render(
     createElement(DataTable<{ id: string }>, {
       columns: [{ header: 'Id', key: 'id', render: (row) => row.id, sortable: true }],
+      expandable: false,
       label: 'Rows',
       onSortChange: () => undefined,
       rowKey: (row) => row.id,
@@ -148,6 +151,7 @@ test('a loading DataTable draws its shape, an empty one says so', () => {
   const loading = render(
     createElement(DataTable<{ id: string }>, {
       columns,
+      expandable: false,
       label: 'Rows',
       loading: true,
       rowKey: (row) => row.id,
@@ -161,6 +165,7 @@ test('a loading DataTable draws its shape, an empty one says so', () => {
     createElement(DataTable<{ id: string }>, {
       columns,
       empty: createElement(EmptyState, {}, 'No rows yet.'),
+      expandable: false,
       label: 'Rows',
       rowKey: (row) => row.id,
       rows: [],

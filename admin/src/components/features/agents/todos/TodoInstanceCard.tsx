@@ -92,7 +92,7 @@ export const TodoInstanceCard = ({
         ) : null}
       </div>
 
-      <ExpandableTable label={`Steps for ${todo.title}`}>
+      <ExpandableTable expandable={false} label={`Steps for ${todo.title}`}>
         <table className="admin-table w-full border-collapse border-t border-[color:var(--sep)]">
           <tbody>
             {todo.steps.map((step, index) => (

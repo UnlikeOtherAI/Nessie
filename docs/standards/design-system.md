@@ -36,6 +36,12 @@ summary and points here; **this file is the rule**.
   consumes them through one facade and `PaginationFooter`; a route that pages,
   sorts or reports validation errors differently is refactored onto the
   contract, never accommodated by a second mode in the component.
+- **Fullscreen inspection is an explicit surface decision.** `ExpandableTable`
+  and `DataTable` require an `expandable` choice at the call site; a CSS class
+  or the current URL never decides it. Tables in Admin use `false`; tables
+  that are part of Projects, Knowledge, or Channels use `true`, so the shared
+  viewport keeps its horizontal-scroll behaviour without leaking an expand
+  control into operational screens.
 - **One tab bar, everywhere.** Every single-select strip in the admin — detail
   tabs, page sections, and filter segments — is
   `components/primitives/TabBar.tsx` (a single sliding pill, `role="tablist"`

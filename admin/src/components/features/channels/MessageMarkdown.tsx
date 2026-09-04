@@ -112,7 +112,7 @@ export const MessageMarkdown = ({
         </strong>
       ),
       table: ({ children: tableChildren, node: _node, ...props }) => (
-        <ExpandableTable label="Message table">
+        <ExpandableTable expandable label="Message table">
           <table {...props}>{tableChildren}</table>
         </ExpandableTable>
       ),
