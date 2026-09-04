@@ -1,3 +1,4 @@
+import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
@@ -12,6 +13,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { SidebarIconButton, SidebarStarIcon } from './SidebarIcons';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {
   SidebarAgentDm,
@@ -93,15 +95,13 @@ export const SidebarDmSection = ({
   return (
     <SidebarMenuSection
       action={
-        <button
+        <SidebarIconButton
           aria-label="Start new chat"
-          className="admin-sidebar-plus"
+          icon={faPlus}
           onClick={onStartNewConversation}
+          placement="section"
           title="Start new chat"
-          type="button"
-        >
-          +
-        </button>
+        />
       }
       className="mt-2"
       id="sidebar-nav-direct-messages"
@@ -267,7 +267,7 @@ export const SidebarDmSection = ({
                 onToggleStar('user', person.id);
               }}
             >
-              {isStarredUser ? '★' : '☆'}
+              <SidebarStarIcon starred={isStarredUser} />
             </span>
           </button>
         );

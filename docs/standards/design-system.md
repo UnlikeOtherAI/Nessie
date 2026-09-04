@@ -108,3 +108,23 @@ summary and points here; **this file is the rule**.
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never
   the page.
+- **One header hierarchy, and every line earns its place.** `ScreenHeader` owns
+  the title, optional eyebrow, optional subtitle and tabs. An eyebrow names a
+  stable scope or product area (`User`, `Team`, `Organization`, `Agents`); it
+  is not a second title. A subtitle exists only when it carries entity metadata,
+  a capability state, or the meaning of the active tab. Root catalogues and
+  lists do not repeat their title with generic explanatory copy. The shared
+  `.admin-page-subtitle` owns subtitle size, colour and line-height, so call
+  sites supply content and layout constraints only. Header icons are 16px in a
+  36px action, and compact actions are 36px squares. Selected, pressed and open
+  controls expose their state structurally (`selected`, `aria-pressed`,
+  `aria-expanded`) and the theme styles those states; a route never paints a
+  private active treatment.
+- **One icon family for product controls.** Repeated interface actions use the
+  installed Font Awesome set through a shared primitive, never text glyphs or
+  one-off inline SVGs. In the sidebar, section add actions, disclosure chevrons,
+  row menus and starred state are rendered by `SidebarIcons.tsx`; their
+  28px hit areas and hover, pressed, open and focus-visible states live in
+  `styles.css`. Text symbols remain valid only when the symbol is the content
+  itself (for example a mathematical sign), not when it stands in for a button
+  icon.

@@ -95,7 +95,7 @@ test('the Personal Assistant has the same favorite control as a direct-message u
   assert.match(sidebar, /onToggleStar\('agent', personalAssistantAgent\.id\)/)
   assert.match(sidebar, /starred=\{Boolean\([\s\S]*?starredAgentIds\.has\(personalAssistantAgent\.id\)/)
   assert.match(assistant, /sidebar-row-star/)
-  assert.match(assistant, /\{starred \? '★' : '☆'\}/)
+  assert.match(assistant, /<SidebarStarIcon starred=\{starred\} \/>/)
   assert.doesNotMatch(assistant, /sidebar-pa-badge/)
 })
 
