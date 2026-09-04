@@ -336,24 +336,22 @@ export const registerGmailDraftRoutes = (
       mode: body.mode ?? 'always',
       ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
     })
-    if (result.kind === 'approval_unavailable') {
-      sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
+    if (result.kind !== 'granted') {
+      if (result.kind === 'approval_unavailable') {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
+      } else if (result.kind === 'approval_not_eligible') {
+        sendApiError(
+          reply,
+          409,
+          'APPROVAL_NOT_ELIGIBLE',
+          'Only a Gmail send or calendar invitation approval can create a standing rule.',
+        )
+      } else {
+        sendApiError(reply, 404, 'NOT_FOUND', 'The Google account or agent is no longer available.')
+      }
       return reply
     }
-    if (result.kind === 'approval_not_eligible') {
-      sendApiError(
-        reply,
-        409,
-        'APPROVAL_NOT_ELIGIBLE',
-        'Only a Gmail send or calendar invitation approval can create a standing rule.',
-      )
-      return reply
-    }
-    if (result.kind === 'target_unavailable') {
-      sendApiError(reply, 404, 'NOT_FOUND', 'The Google account or agent is no longer available.')
-      return reply
-    }
-    const { grant } = result
+    const { agentId, grant } = result
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'gmail.send_grant.created',
@@ -361,7 +359,7 @@ export const registerGmailDraftRoutes = (
       resourceId: grant.id,
       outcome: 'success',
       metadata: {
-        agentId: result.agentId,
+        agentId,
         duration: body.duration,
         mode: body.mode ?? 'always',
         fromApproval: body.approvalId,

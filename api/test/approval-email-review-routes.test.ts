@@ -208,3 +208,17 @@ test('a pinned approval resolution targets only its designated user', () => {
     [{ kind: 'user', organizationId: ids.organization, userId: ids.approver }],
   )
 })
+
+test('an unpinned approval resolution preserves its organization and channel scopes', () => {
+  assert.deepEqual(
+    approvalResolutionScopes({
+      channelId: ids.channel,
+      organizationId: ids.organization,
+      requiredApproverUserId: null,
+    }),
+    [
+      { kind: 'organization', organizationId: ids.organization },
+      { channelId: ids.channel, kind: 'channel' },
+    ],
+  )
+})

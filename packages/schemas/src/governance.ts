@@ -328,9 +328,10 @@ export const AuditActionSchema = z.enum([
   'gmail.draft.sent',
   'gmail.send_grant.created',
   'gmail.send_grant.revoked',
-  // Connected SMTP/IMAP mailboxes (agent email Model A). The address and the
-  // scope are recorded; the username and password never are.
+  // Connected SMTP/IMAP mailboxes (agent email Model A). Audit metadata keeps
+  // only the structural scope, never mailbox, credential, or server details.
   'mailbox.connection.created',
+  'mailbox.connection.reconnected',
   'mailbox.connection.deleted',
   'mailbox.access.granted',
   'mailbox.access.revoked',
