@@ -134,8 +134,8 @@ const main = async () => {
   let admin = null
   let browser = null
   try {
-    api = await startApi()
-    admin = await startAdmin()
+    api = await startApi({ requireOwned: true })
+    admin = await startAdmin({ requireOwned: true })
     const seed = await seedTeam(api)
     browser = await launchBrowser()
     await verifyViewport(browser, seed, 'desktop')
