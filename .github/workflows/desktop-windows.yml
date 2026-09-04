@@ -477,7 +477,13 @@ jobs:
         shell: pwsh
         run: |
           $package = Get-ChildItem artifacts -Filter 'NessieExecutor_*_x64.msi' | Select-Object -First 1
-          Start-Process msiexec -ArgumentList "/i `"$($package.FullName)`" /qn /l*v $PWD\msi-install.log" -Wait
+          $install = Start-Process msiexec `
+            -ArgumentList "/i `"$($package.FullName)`" /qn /norestart /l*v $PWD\msi-install.log" `
+            -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            Get-Content msi-install.log -Tail 80
+            throw "the executor MSI install failed with code $($install.ExitCode)"
+          }
           $service = Get-CimInstance Win32_Service -Filter "Name='NessieExecutor'"
           if (-not $service) { Get-Content msi-install.log -Tail 60; throw 'the service was not registered' }
           # The virtual account: no password, no interactive logon, its own SID.
@@ -514,7 +520,13 @@ jobs:
           }
           Stop-Process -Id $tray.Id -Force
 
-          Start-Process msiexec -ArgumentList "/x `"$($package.FullName)`" /qn" -Wait
+          $uninstall = Start-Process msiexec `
+            -ArgumentList "/x `"$($package.FullName)`" /qn /norestart /l*v $PWD\msi-uninstall.log" `
+            -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            Get-Content msi-uninstall.log -Tail 80
+            throw "the executor MSI uninstall failed with code $($uninstall.ExitCode)"
+          }
           if (Get-Service NessieExecutor -ErrorAction SilentlyContinue) {
             throw 'the service was not removed'
           }
