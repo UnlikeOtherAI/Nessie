@@ -360,6 +360,9 @@ export const opsTelemetryKeys = {
 export const organizationKeys = {
   current: ['organization', 'current'] as const,
   members: ['organization', 'members'] as const,
+  invitationTargets: ['organization', 'members', 'invitation-targets'] as const,
+  memberWorkspaces: (uoaSub?: string) =>
+    ['organization', 'members', uoaSub ?? 'none', 'workspaces'] as const,
 }
 
 export const personalAssistantKeys = {
@@ -445,6 +448,7 @@ export const teamKeys = {
   avatarRevision: ['teams', 'avatar', 'revision'] as const,
   invitations: ['teams', 'invitations'] as const,
   members: ['teams', 'members'] as const,
+  memberCandidates: (search: string) => ['teams', 'members', 'candidates', search] as const,
 }
 
 export const threadKeys = {

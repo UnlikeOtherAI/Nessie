@@ -2076,6 +2076,7 @@ html[data-desktop-platform='linux'] #root {
 .tabbar {
   position: relative;
   display: flex;
+  width: fit-content;
   max-width: 100%;
   align-items: center;
   gap: 2px;
