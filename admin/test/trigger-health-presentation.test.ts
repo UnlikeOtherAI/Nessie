@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  formatTriggerDeliveryPayload,
   getTriggerHealthMessage,
   getTriggerTone,
 } from '../src/components/features/triggers/trigger-presentation.js'
@@ -68,4 +69,12 @@ test('needs_reauthorization reads as recoverable, not as a hard error', () => {
   assert.equal(getTriggerTone('needs_reauthorization'), 'warning')
   assert.equal(getTriggerTone('error'), 'danger')
   assert.equal(getTriggerTone('active'), 'success')
+})
+
+test('a delivery payload remains inspectable as formatted JSON', () => {
+  assert.equal(
+    formatTriggerDeliveryPayload({ nested: { count: 2 }, source: 'external' }),
+    '{\n  "nested": {\n    "count": 2\n  },\n  "source": "external"\n}',
+  )
+  assert.equal(formatTriggerDeliveryPayload(null), 'null')
 })
