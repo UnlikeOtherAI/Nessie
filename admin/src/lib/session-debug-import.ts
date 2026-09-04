@@ -30,12 +30,18 @@ export type SessionDebugImport = {
   accessToken: string
 }
 
+/**
+ * Whether the login screen should start SSO without a press: a provider
+ * configured to auto-redirect, or the landing's `?launch=sso` hand-off. An
+ * open session-import dialog always wins — the person is mid-task.
+ */
 export const shouldStartAutomaticSignIn = (input: {
   hasAutoRedirectProvider: boolean
+  launchRequested?: boolean
   sessionImportOpen: boolean
   unauthenticated: boolean
 }): boolean => input.unauthenticated
-  && input.hasAutoRedirectProvider
+  && (input.hasAutoRedirectProvider || Boolean(input.launchRequested))
   && !input.sessionImportOpen
 
 /**

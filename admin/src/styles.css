@@ -71,6 +71,16 @@
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The aura: the one place chroma touches an ordinary surface. A blurred
+     pastel wash behind the sign-in column and the showcase panel
+     (packages/sign-in-surface); never a text, button or border colour. */
+  --aura-wash:
+    radial-gradient(60% 50% at 30% 20%, #d9d3ee 0%, transparent 70%),
+    radial-gradient(45% 45% at 70% 20%, #f0e7bd 0%, transparent 70%),
+    radial-gradient(55% 40% at 50% 55%, #fbbed7 0%, transparent 70%),
+    radial-gradient(40% 35% at 25% 60%, #fbd3b0 0%, transparent 70%),
+    radial-gradient(60% 35% at 50% 85%, #bcd3f0 0%, transparent 70%),
+    radial-gradient(30% 30% at 85% 80%, #cfe7dc 0%, transparent 70%);
   /* rem-relative so FontScaleProvider's root html font-size scales all type.
      0.9375rem === 15px at the default 16px root. */
   --font-size-base: 0.9375rem;
@@ -3661,12 +3671,72 @@ button.reaction-pill-active:focus-visible {
   min-height: 32px;
   border-radius: 8px;
   font-size: 14px;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
 }
 
-[data-theme='space-white'] .admin-sb-item.active,
-[data-theme='space-white'] .admin-sb-item.active-parent {
-  background: var(--panel-soft);
+[data-theme='space-white'] .admin-sec-hdr {
+  min-height: 32px;
+  border-radius: 8px;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
+}
+
+[data-theme='space-white'] .admin-sec-hdr:hover,
+[data-theme='space-white'] .admin-sb-item:hover {
+  background: #eceef2;
   color: var(--tx);
+}
+
+[data-theme='space-white'] .admin-sb-item.active {
+  background: #e3e6ea;
+  color: var(--tx);
+  font-weight: 500;
+}
+
+[data-theme='space-white'] .admin-sb-item.active-parent {
+  background: #eceef2;
+  color: var(--tx);
+  font-weight: 500;
+}
+
+[data-theme='space-white'] .admin-sb-item.active:hover,
+[data-theme='space-white'] .admin-sb-item:active {
+  background: #dce0e5;
+}
+
+[data-theme='space-white'] .admin-sb-item.active-parent:hover {
+  background: #e3e6ea;
+}
+
+[data-theme='space-white'] .admin-sidebar-plus,
+[data-theme='space-white'] .admin-sidebar-more {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: inherit;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard);
+}
+
+[data-theme='space-white'] .admin-sidebar-plus:hover,
+[data-theme='space-white'] .admin-sidebar-more:hover {
+  background: #e3e6ea;
+  color: var(--tx);
+}
+
+[data-theme='space-white'] .admin-sidebar-plus:active,
+[data-theme='space-white'] .admin-sidebar-more:active {
+  transform: scale(0.94);
+}
+
+[data-theme='space-white'] .admin-sidebar-more[aria-haspopup='menu'][aria-expanded='true'] {
+  background: #000000;
+  color: #ffffff;
 }
 
 [data-theme='space-white'] .admin-page-header-row {
@@ -3684,6 +3754,20 @@ button.reaction-pill-active:focus-visible {
 [data-theme='space-white'] .admin-page-eyebrow {
   text-transform: none;
   letter-spacing: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+[data-theme='space-white'] .admin-page-subtitle {
+  color: var(--tx2);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+[data-theme='space-white'] .admin-page-subtitle > p {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 [data-theme='space-white'] .admin-page-action {
@@ -3692,6 +3776,7 @@ button.reaction-pill-active:focus-visible {
   border-radius: 7px;
   padding-inline: 14px;
   font-family: var(--font-family-display);
+  font-size: 13px;
   font-weight: 400;
   line-height: 1;
   transition:
@@ -3700,27 +3785,35 @@ button.reaction-pill-active:focus-visible {
     transform var(--duration-fast) var(--easing-standard);
 }
 
+[data-theme='space-white'] .admin-page-action[aria-label] {
+  padding-inline: 0;
+}
+
 [data-theme='space-white'] .admin-page-action:active:not(:disabled) {
   transform: scale(0.99);
 }
 
-[data-theme='space-white'] .admin-page-action-primary {
+[data-theme='space-white'] .admin-page-action-primary,
+[data-theme='space-white'] .admin-page-action-selected,
+[data-theme='space-white'] .admin-page-action-open,
+[data-theme='space-white'] .admin-page-action[aria-pressed='true'] {
   background: #000000;
   color: #ffffff;
 }
 
-[data-theme='space-white'] .admin-page-action-primary:hover {
+[data-theme='space-white'] .admin-page-action-primary:hover,
+[data-theme='space-white'] .admin-page-action-selected:hover,
+[data-theme='space-white'] .admin-page-action-open:hover,
+[data-theme='space-white'] .admin-page-action[aria-pressed='true']:hover {
   background: #1a1a1a;
 }
 
-[data-theme='space-white'] .admin-page-action-secondary,
-[data-theme='space-white'] .admin-page-action-selected {
+[data-theme='space-white'] .admin-page-action-secondary {
   background: var(--panel-soft);
   color: var(--tx);
 }
 
-[data-theme='space-white'] .admin-page-action-secondary:hover,
-[data-theme='space-white'] .admin-page-action-selected:hover {
+[data-theme='space-white'] .admin-page-action-secondary:hover {
   background: #e9ecf1;
 }
 
@@ -3790,6 +3883,12 @@ button.reaction-pill-active:focus-visible {
   background: #e9ecf1;
 }
 
+[data-theme='space-white'] .admin-button-secondary[aria-pressed='true'],
+[data-theme='space-white'] .admin-button-secondary[aria-expanded='true'] {
+  background: #000000;
+  color: #ffffff;
+}
+
 [data-theme='space-white'] .admin-button.admin-button-compact {
   min-height: 36px;
   padding: 0 12px;
@@ -3822,6 +3921,22 @@ button.reaction-pill-active:focus-visible {
 [data-theme='space-white'] .tabbar-item[aria-checked='true'] {
   color: var(--tx);
   font-weight: 500;
+}
+
+[data-theme='space-white'] .tabbar-item:hover:not(:disabled) {
+  color: var(--tx);
+}
+
+[data-theme='space-white'] :is(
+  .admin-page-action,
+  .admin-button,
+  .admin-sidebar-plus,
+  .admin-sidebar-more,
+  .admin-sec-hdr,
+  .admin-sb-item
+):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 [data-theme='space-white'] .tabbar-sm .tabbar-item {

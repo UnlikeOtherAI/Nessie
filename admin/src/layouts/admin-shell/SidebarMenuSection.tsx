@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
+import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { getCookie, setCookie } from '../../lib/storage'
 
 type SidebarMenuSectionProps = {
@@ -55,18 +57,15 @@ export const SidebarMenuSection = ({
         onClick={onToggle}
         type="button"
       >
-        <svg
+        <FontAwesomeIcon
+          aria-hidden="true"
           className={[
             'h-3 w-3 text-[color:var(--tx3)] transition-transform',
             isCollapsed ? '-rotate-90' : '',
           ].join(' ')}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          viewBox="0 0 24 24"
-        >
-          <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+          fixedWidth
+          icon={faChevronDown}
+        />
         {titleIcon}
         {title}
       </button>

@@ -13,16 +13,25 @@
  */
 
 import { useMemo, useState } from 'react'
-import type { DashboardTone, DashboardWidgetKind } from '@nessie/schemas'
+import {
+  DASHBOARD_METRIC_ICONS,
+  type DashboardMetricIcon,
+  type DashboardTone,
+  type DashboardWidgetKind,
+} from '@nessie/schemas'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useDashboardSources, type DashboardSourceRecord } from '../../../facades/dashboards/hooks'
 import { ChoiceGroup } from '../../shared/ChoiceGroup'
 import { SidePanel } from '../../shared/SidePanel'
+import { DASHBOARD_METRIC_ICON_LABELS } from './DashboardMetricIcon'
 
 const CATALOGUE: { kind: DashboardWidgetKind; question: string; label: string }[] = [
-  { kind: 'stat', label: 'Stat', question: 'What is the number now?' },
+  { kind: 'stat', label: 'Number card', question: 'What is the number now?' },
   { kind: 'timeseries', label: 'Trend', question: 'How has it moved over time?' },
   { kind: 'bar', label: 'Breakdown', question: 'How does it split across categories?' },
+  { kind: 'donut', label: 'Composition', question: 'What share does each category make up?' },
+  { kind: 'gauge', label: 'Target', question: 'How close is the current value to its target?' },
+  { kind: 'scatter', label: 'Correlation', question: 'How do two measures relate?' },
   { kind: 'table', label: 'Table', question: 'What are the actual records?' },
   { kind: 'status', label: 'Status', question: 'Is it ok, warning, or failing?' },
 ]
@@ -68,6 +77,7 @@ export const AddWidgetPanel = ({
   const [tone, setTone] = useState<DashboardTone>('neutral')
   const [primary, setPrimary] = useState('')
   const [secondary, setSecondary] = useState('')
+  const [statIcon, setStatIcon] = useState<DashboardMetricIcon | ''>('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -83,7 +93,12 @@ export const AddWidgetPanel = ({
     const base = { schemaVersion: 1 as const, sourceId, presentation }
     switch (kind) {
       case 'stat':
-        return { ...base, kind, binding: { value: primary, higherIsBetter: true } }
+        return {
+          ...base,
+          kind,
+          binding: { value: primary, higherIsBetter: true },
+          options: statIcon ? { icon: statIcon } : {},
+        }
       case 'timeseries':
         return {
           ...base,
@@ -103,6 +118,17 @@ export const AddWidgetPanel = ({
             series: [{ key: primary, label: columns.find((c) => c.key === primary)?.label ?? primary }],
           },
         }
+      case 'donut':
+        return {
+          ...base,
+          kind,
+          presentation: { ...presentation, legend: 'bottom' as const },
+          binding: { category: secondary, value: primary },
+        }
+      case 'gauge':
+        return { ...base, kind, binding: { value: primary, target: secondary } }
+      case 'scatter':
+        return { ...base, kind, binding: { x: secondary, y: primary } }
       case 'table':
         return {
           ...base,
@@ -124,7 +150,7 @@ export const AddWidgetPanel = ({
 
   const canSave = Boolean(kind && sourceId && title.trim()
     && (kind === 'table' || primary)
-    && (kind !== 'timeseries' && kind !== 'bar' ? true : Boolean(secondary)))
+    && (!['timeseries', 'bar', 'donut', 'gauge', 'scatter'].includes(kind) || Boolean(secondary)))
 
   const save = async () => {
     setSaving(true)
@@ -204,7 +230,15 @@ export const AddWidgetPanel = ({
             </Field>
 
             {sourceId && kind !== 'table' ? (
-              <Field label={kind === 'status' ? 'State column' : 'Value'}>
+              <Field label={
+                kind === 'status'
+                  ? 'State column'
+                  : kind === 'scatter'
+                    ? 'Y value'
+                    : kind === 'gauge'
+                      ? 'Current value'
+                      : 'Value'
+              }>
                 <select
                   className="admin-input"
                   onChange={(event) => setPrimary(event.target.value)}
@@ -220,17 +254,54 @@ export const AddWidgetPanel = ({
               </Field>
             ) : null}
 
-            {sourceId && (kind === 'timeseries' || kind === 'bar') ? (
-              <Field label={kind === 'timeseries' ? 'Time axis' : 'Category'}>
+            {sourceId && ['timeseries', 'bar', 'donut', 'gauge', 'scatter'].includes(kind) ? (
+              <Field label={
+                kind === 'timeseries'
+                  ? 'Time axis'
+                  : kind === 'scatter'
+                    ? 'X value'
+                    : kind === 'gauge'
+                      ? 'Target value'
+                      : 'Category'
+              }>
                 <select
                   className="admin-input"
                   onChange={(event) => setSecondary(event.target.value)}
                   value={secondary}
                 >
                   <option value="">Choose a column…</option>
-                  {(kind === 'timeseries' ? temporal(columns) : categorical(columns)).map((column) => (
+                  {(kind === 'timeseries'
+                    ? temporal(columns)
+                    : kind === 'gauge' || kind === 'scatter'
+                      ? numeric(columns)
+                      : categorical(columns)).map((column) => (
                     <option key={column.key} value={column.key}>
                       {column.label} ({column.type})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : null}
+
+            {kind === 'stat' ? (
+              <Field label="Card icon">
+                <select
+                  className="admin-input"
+                  data-testid="stat-icon-select"
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setStatIcon(
+                      DASHBOARD_METRIC_ICONS.includes(value as DashboardMetricIcon)
+                        ? value as DashboardMetricIcon
+                        : '',
+                    )
+                  }}
+                  value={statIcon}
+                >
+                  <option value="">No icon</option>
+                  {DASHBOARD_METRIC_ICONS.map((icon) => (
+                    <option key={icon} value={icon}>
+                      {DASHBOARD_METRIC_ICON_LABELS[icon]}
                     </option>
                   ))}
                 </select>

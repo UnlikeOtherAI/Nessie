@@ -139,10 +139,10 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
       : 'admin-page-action-secondary'
   return [
     'admin-page-action inline-flex h-9 items-center justify-center text-[13px] transition-colors',
-    action.compact ? 'w-8 px-0' : 'gap-1.5 px-2.5',
+    action.compact ? 'w-9 px-0' : 'gap-1.5 px-2.5',
     colour,
     action.tone === 'danger' ? 'page-header-action-danger' : '',
-    open ? 'ring-2 ring-[color:var(--accent-soft)]' : '',
+    open ? 'admin-page-action-open' : '',
     action.disabled ? 'cursor-not-allowed opacity-50' : '',
   ].join(' ')
 }
@@ -312,7 +312,7 @@ export const ResponsivePageHeader = ({
           target={action.target}
           title={action.title ?? action.label}
         >
-          {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+          {action.icon ? <FontAwesomeIcon className="h-4 w-4" fixedWidth icon={action.icon} /> : null}
           {action.compact ? null : <span>{action.label}</span>}
         </a>
       )
@@ -344,10 +344,10 @@ export const ResponsivePageHeader = ({
         title={action.title ?? action.label}
         type={buttonAction?.submit ? 'submit' : 'button'}
       >
-        {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+        {action.icon ? <FontAwesomeIcon className="h-4 w-4" fixedWidth icon={action.icon} /> : null}
         {action.compact ? null : <span>{action.label}</span>}
         {isMenu && !action.compact ? (
-          <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} />
+          <FontAwesomeIcon className="h-3 w-3" icon={faChevronDown} />
         ) : null}
       </button>
     )
@@ -434,7 +434,7 @@ export const ResponsivePageHeader = ({
                   title="More page actions"
                   type="button"
                 >
-                  <FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} />
+                  <FontAwesomeIcon className="h-4 w-4" icon={faEllipsis} />
                 </button>
                 <Popover
                   anchorRef={anchorRefFor(MORE_ACTION_ID)}
@@ -485,7 +485,7 @@ export const ResponsivePageHeader = ({
         ))}
         <div ref={moreMeasureRef}>
           <button className={actionClassName(moreAction, false)} type="button">
-            <FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} />
+            <FontAwesomeIcon className="h-4 w-4" icon={faEllipsis} />
           </button>
         </div>
       </div>

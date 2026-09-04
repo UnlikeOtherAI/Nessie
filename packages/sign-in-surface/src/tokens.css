@@ -1,0 +1,56 @@
+/* Space White tokens for a host without a theme system (the nessie.works
+   landing). The values mirror the `[data-theme="space-white"]` block in
+   admin/src/styles.css, which stays the source of truth for the product
+   theme; change them there first. The admin never imports this file. */
+
+@font-face {
+  font-family: 'Starleague';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('../fonts/starleague-regular.ttf') format('truetype');
+}
+
+:root {
+  color-scheme: light;
+  --rail: #f3f5f8;
+  --panel: #ffffff;
+  --panel-soft: #f3f5f8;
+  --main-hover: #f8f8f8;
+  --sep: #e3e6ea;
+  --line: rgba(10, 10, 10, 0.1);
+  --border-strong: #b5b5b5;
+  --tx: #0a0a0a;
+  --tx2: #4b4b4b;
+  --tx3: #8a8a8a;
+  --accent: #000000;
+  --accent-hover: #1a1a1a;
+  --accent-soft: rgba(10, 10, 10, 0.08);
+  --on-accent: #ffffff;
+  --surface-inverse: #000000;
+  --surface-inverse-2: #222222;
+  --scrim: rgba(10, 10, 10, 0.18);
+  --scrim-strong: rgba(10, 10, 10, 0.42);
+  --danger-soft: rgba(214, 59, 59, 0.1);
+  --danger-border: rgba(214, 59, 59, 0.28);
+  --danger-text: #c23232;
+  --font-family-body: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family-display: 'Starleague', 'Geist Variable', sans-serif;
+  --radius-sm: 7px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --page-gutter: 24px;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 20px 60px rgba(0, 0, 0, 0.18);
+  --aura-wash:
+    radial-gradient(60% 50% at 30% 20%, #d9d3ee 0%, transparent 70%),
+    radial-gradient(45% 45% at 70% 20%, #f0e7bd 0%, transparent 70%),
+    radial-gradient(55% 40% at 50% 55%, #fbbed7 0%, transparent 70%),
+    radial-gradient(40% 35% at 25% 60%, #fbd3b0 0%, transparent 70%),
+    radial-gradient(60% 35% at 50% 85%, #bcd3f0 0%, transparent 70%),
+    radial-gradient(30% 30% at 85% 80%, #cfe7dc 0%, transparent 70%);
+}

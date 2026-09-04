@@ -30,6 +30,20 @@ write-only credential reference and placement. Dashboard Designer is denied the
 plaintext credential tool, so this masked-card path is the only way it can
 attach a source secret.
 
+## Widget vocabulary
+
+Dashboard Designer chooses from the same closed widget catalogue that the
+editor exposes: number card (`stat`), trend (`timeseries`), breakdown (`bar`),
+composition (`donut`), target progress (`gauge`), correlation (`scatter`),
+table, and status. It must probe a source before choosing a widget so every
+binding names a declared field of the correct type. Number cards may choose one
+of the product's fixed Font Awesome Free icon identifiers; they cannot supply an
+SVG, CSS class, or arbitrary icon name.
+
+The agent still cannot pass chart-library configuration, HTML, styling, links,
+or code. The shared schema validates all widget definitions before storage and
+again before every renderer receives them.
+
 ## In-conversation presentation
 
 `dashboard_present` writes a normal assistant message with a strict
