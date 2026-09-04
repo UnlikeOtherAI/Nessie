@@ -7,6 +7,7 @@ import { disableWebviewZoom } from './lib/disable-zoom'
 import { installReloadShortcut } from './lib/reload-shortcut'
 import { serviceWorkerUrl } from './lib/web-push'
 import './styles.css'
+import '@nessie/sign-in-surface/styles.css'
 
 // Webview-shell behaviours (no-ops in regular browsers): Cmd/Ctrl+R refresh and
 // locking out pinch/keyboard zoom.
