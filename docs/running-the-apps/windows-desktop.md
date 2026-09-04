@@ -76,6 +76,12 @@ builder are signed before packaging. Both packaged Node executables must retain
 their valid upstream Authenticode signature. It
 runs on `workflow_dispatch` and on a `desktop-v*` tag.
 
+The Windows job also runs the executor's real control loop against a local
+protocol peer: enrollment, fresh challenge and claim, descriptor, heartbeat,
+poll, receipts, an allowed selected-folder read, a refused traversal, a COW
+write, and a draft review. The test uses the packaged Windows DACL helper and
+asserts that neither the selected host root nor an outside folder was changed.
+
 Signing is a deployment fact, configured through repository secrets. The
 recommended configuration is **Azure Artifact Signing** (formerly Azure Trusted
 Signing) through Tauri's `bundle.windows.signCommand`, because no private key

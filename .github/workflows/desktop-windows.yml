@@ -273,6 +273,15 @@ jobs:
           pnpm --dir desktop run prepare:executor-runtime
           pnpm --dir desktop exec tauri build @arguments
 
+      # This is the executable control path rather than a collection of unit
+      # seams: it pairs a machine key with a loopback control plane, claims and
+      # heartbeats with signed frames, polls four real commands, records signed
+      # receipts, proves the selected folder can be read, proves a traversal is
+      # denied, and proves writes remain in the daemon's COW state. Running it
+      # here also exercises the Windows DACL helper the desktop just packaged.
+      - name: Executor control-plane and folder-boundary end to end
+        run: node --test --import tsx executor/test/control-plane-e2e.test.ts
+
       # Tauri signs what it bundles; the executor package is not a Tauri artifact.
       # The build script signs the three binaries it produces *before* staging
       # them, because the native helper's bytes are pinned in the runtime
