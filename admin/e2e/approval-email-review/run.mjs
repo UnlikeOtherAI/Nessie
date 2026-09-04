@@ -108,7 +108,7 @@ const seedApproval = async (seed) => {
     })
     const approval = await prisma.approvalRequest.create({
       data: {
-        action: 'agent.invoke',
+        action: 'tool.invoke',
         agentId: agent.id,
         argsHash: marker,
         channelId: seed.channels[0].id,

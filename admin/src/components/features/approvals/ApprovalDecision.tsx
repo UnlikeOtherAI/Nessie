@@ -23,7 +23,10 @@ const copy: Record<Resolution, { confirm: string; label: string; title: string }
 /**
  * The single decision control for approval surfaces. It intentionally makes
  * the last click explicit: a pending action is never resolved by the first
- * press of an Approve/Reject affordance.
+ * press of an Approve/Reject affordance. Its strip is a field in an individual
+ * decision form, not a screen section: a pending-approval list can render
+ * many of these controls and the email review is transient, so a URL tab
+ * would neither address nor outlive the right choice.
  */
 export const ApprovalDecision = ({
   approvalId,
