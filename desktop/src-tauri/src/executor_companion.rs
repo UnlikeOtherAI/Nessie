@@ -6,7 +6,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 mod runtime;
 
 use runtime::{
-    companion_availability, companion_root, daemon_status, executor_state_dir, has_executor_state,
+    claim_connection, companion_availability, companion_root, daemon_status, executor_state_dir,
+    forget_local_pairing, has_executor_state, local_policy_summary, run_configure_workspace,
     run_pair, start_daemon, stop_daemon,
 };
 
@@ -174,11 +175,16 @@ fn paired_executors(
         let name = entry.file_name().to_string_lossy().into_owned();
         let state_dir = entry.path();
         if identifier(&name, "executor id").is_ok() && has_executor_state(&state_dir) {
-            if let Ok(daemon_status) = daemon_status(state, &name, &state_dir) {
+            if let (Ok(daemon_status), Ok((workspace_label, operation_keys))) = (
+                daemon_status(state, &name, &state_dir),
+                local_policy_summary(&state_dir),
+            ) {
                 result.push(ExecutorCompanionStatus {
                     daemon_status,
                     executor_id: name,
+                    operation_keys,
                     workspace_configured: true,
+                    workspace_label,
                 });
             }
         }
@@ -188,7 +194,8 @@ fn paired_executors(
 
 #[tauri::command]
 pub async fn executor_companion_pair(
-    app: AppHandle, webview: WebviewWindow, api_base_url: String, challenge: String,
+    app: AppHandle, state: State<'_, ExecutorCompanionState>, webview: WebviewWindow,
+    api_base_url: String, challenge: String,
     enrollment_id: String, executor_id: String,
 ) -> Result<ExecutorCompanionStatus, String> {
     assert_approved_companion_caller(&webview)?;
@@ -212,15 +219,14 @@ pub async fn executor_companion_pair(
     let api = api_base_url.to_owned();
     tauri::async_runtime::spawn_blocking({
         let app = app.clone();
-        move || run_pair(&app, &api, &enrollment_id, &challenge, &state_dir, &workspace)
+        let pair_state_dir = state_dir.clone();
+        move || run_pair(&app, &api, &enrollment_id, &challenge, &pair_state_dir, &workspace)
     })
     .await
     .map_err(|_| "Nessie Desktop executor pairing stopped unexpectedly.".to_owned())??;
-    Ok(ExecutorCompanionStatus {
-        daemon_status: "awaiting_confirmation",
-        executor_id,
-        workspace_configured: true,
-    })
+    let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
+    Ok(ExecutorCompanionStatus { daemon_status: "awaiting_confirmation", executor_id,
+        operation_keys, workspace_configured: true, workspace_label })
 }
 
 #[tauri::command]
@@ -237,11 +243,11 @@ pub async fn executor_companion_start(
     ).await? {
         return Err("Starting the executor was cancelled.".to_owned());
     }
-    Ok(ExecutorCompanionStatus {
-        daemon_status: start_daemon(&app, &state, &executor_id)?,
-        executor_id,
-        workspace_configured: true,
-    })
+    let daemon_status = start_daemon(&app, &state, &executor_id)?;
+    let state_dir = executor_state_dir(&app, &executor_id)?;
+    let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
+    Ok(ExecutorCompanionStatus { daemon_status, executor_id, operation_keys,
+        workspace_configured: true, workspace_label })
 }
 
 #[tauri::command]
@@ -252,17 +258,17 @@ pub async fn executor_companion_stop(
     require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
     if !confirm(
-        app, "Stop Nessie executor",
+        app.clone(), "Stop Nessie executor",
         "Stopping this executor ends its daemon connection and asks every active browser or coding sandbox to tear down.".to_owned(),
         "Stop executor",
     ).await? {
         return Err("Stopping the executor was cancelled.".to_owned());
     }
-    Ok(ExecutorCompanionStatus {
-        daemon_status: stop_daemon(&state, &executor_id)?,
-        executor_id,
-        workspace_configured: true,
-    })
+    let daemon_status = stop_daemon(&state, &executor_id)?;
+    let state_dir = executor_state_dir(&app, &executor_id)?;
+    let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
+    Ok(ExecutorCompanionStatus { daemon_status, executor_id, operation_keys,
+        workspace_configured: true, workspace_label })
 }
 
 #[tauri::command]
@@ -293,10 +299,11 @@ pub async fn executor_companion_configure_workspace(
     tauri::async_runtime::spawn_blocking({
         let app = app.clone();
         let operation_keys = operation_keys.clone();
+        let configure_state_dir = state_dir.clone();
         move || {
             let mut command = runtime::executor_command(&app)?;
             command.args(["configure", "--state-dir"]);
-            command.arg(&state_dir);
+            command.arg(&configure_state_dir);
             command.arg("--operations").arg(operation_keys.join(","));
             if command.status()
                 .map_err(|_| "Nessie Desktop could not update the local executor policy.".to_owned())?
@@ -306,11 +313,92 @@ pub async fn executor_companion_configure_workspace(
     })
     .await
     .map_err(|_| "Nessie Desktop policy configuration stopped unexpectedly.".to_owned())??;
-    Ok(ExecutorCompanionStatus {
-        daemon_status: if was_running { start_daemon(&app, &state, &executor_id)? } else { "stopped" },
-        executor_id,
-        workspace_configured: true,
+    let daemon_status = if was_running {
+        start_daemon(&app, &state, &executor_id)?
+    } else {
+        claim_connection(&app, &state_dir)?;
+        "stopped"
+    };
+    let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
+    Ok(ExecutorCompanionStatus { daemon_status, executor_id, operation_keys,
+        workspace_configured: true, workspace_label })
+}
+
+#[tauri::command]
+pub async fn executor_companion_change_workspace(
+    app: AppHandle, state: State<'_, ExecutorCompanionState>, webview: WebviewWindow,
+    executor_id: String, operation_keys: Vec<String>,
+) -> Result<ExecutorCompanionStatus, String> {
+    assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
+    identifier(&executor_id, "executor id")?;
+    let operation_keys = workspace_operation_keys(operation_keys)?;
+    let state_dir = executor_state_dir(&app, &executor_id)?;
+    if !has_executor_state(&state_dir) {
+        return Err("This executor has not been paired on this Nessie Desktop device.".to_owned());
+    }
+    let workspace = choose_workspace(app.clone()).await?;
+    let workspace_label = workspace.file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("Selected filesystem root");
+    if !confirm(
+        app.clone(), "Change executor workspace",
+        format!(
+            "Use {workspace_label} as this executor's one local workspace folder. The full path stays on this computer. Requested file content and bounded output are sent to Nessie and the configured model provider only when an allowed operation runs. This creates a new signed descriptor revision for human review.",
+        ),
+        "Change workspace",
+    ).await? {
+        return Err("Changing the executor workspace was cancelled.".to_owned());
+    }
+    let was_running = daemon_status(&state, &executor_id, &state_dir)? == "running";
+    if was_running { stop_daemon(&state, &executor_id)?; }
+    tauri::async_runtime::spawn_blocking({
+        let app = app.clone();
+        let operation_keys = operation_keys.clone();
+        move || run_configure_workspace(&app, &state_dir, &workspace, &operation_keys)
     })
+    .await
+    .map_err(|_| "Nessie Desktop workspace configuration stopped unexpectedly.".to_owned())??;
+    let state_dir = executor_state_dir(&app, &executor_id)?;
+    let daemon_status = if was_running {
+        start_daemon(&app, &state, &executor_id)?
+    } else {
+        claim_connection(&app, &state_dir)?;
+        "stopped"
+    };
+    let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
+    Ok(ExecutorCompanionStatus { daemon_status, executor_id, operation_keys,
+        workspace_configured: true, workspace_label })
+}
+
+#[tauri::command]
+pub async fn executor_companion_forget(
+    app: AppHandle, state: State<'_, ExecutorCompanionState>, webview: WebviewWindow,
+    executor_id: String,
+) -> Result<(), String> {
+    assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
+    identifier(&executor_id, "executor id")?;
+    let state_dir = executor_state_dir(&app, &executor_id)?;
+    if !has_executor_state(&state_dir) {
+        return Err("This executor has not been paired on this Nessie Desktop device.".to_owned());
+    }
+    if !confirm(
+        app, "Forget local executor pairing",
+        "Remove this computer's machine key and local workspace selection. This does not delete the executor or its audit history in Nessie; its owner must separately revoke any remaining access there.".to_owned(),
+        "Forget pairing",
+    ).await? {
+        return Err("Forgetting the local executor pairing was cancelled.".to_owned());
+    }
+    match daemon_status(&state, &executor_id, &state_dir)? {
+        "running" => { stop_daemon(&state, &executor_id)?; },
+        "stopping" => return Err(
+            "The local daemon is still stopping. Wait for it to finish before forgetting the pairing.".to_owned(),
+        ),
+        _ => {},
+    }
+    forget_local_pairing(&state_dir)
 }
 
 #[cfg(test)]

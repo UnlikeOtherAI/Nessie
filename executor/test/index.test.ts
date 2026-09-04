@@ -119,6 +119,29 @@ test('desktop pairing keeps both the challenge and workspace path off the proces
   )
 })
 
+test('desktop workspace changes keep the selected path off the process list', () => {
+  assert.deepEqual(
+    parseCommand([
+      'configure',
+      '--configuration-input-stdin',
+      '--state-dir', '/private/tmp/nessie-executor',
+    ]),
+    {
+      configurationInputFromStandardInput: true,
+      kind: 'configure',
+      stateDir: '/private/tmp/nessie-executor',
+    },
+  )
+  assert.throws(
+    () => parseCommand([
+      'configure', '--configuration-input-stdin',
+      '--workspace', '/private/tmp/nessie-workspace',
+      '--state-dir', '/private/tmp/nessie-executor',
+    ]),
+    /Usage/,
+  )
+})
+
 test('the daemon rejects an insecure API origin', () => {
   assert.throws(
     () => parseCommand([
@@ -191,6 +214,8 @@ test('Codex configuration requires only local owner-controlled sources', () => {
 
 test('local policy configuration proposes only implemented COW operations', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-configure-'))
+  const replacementWorkspace = await mkdtemp(join(tmpdir(), 'nessie-executor-replacement-workspace-'))
+  const blockedWorkspace = await mkdtemp(join(tmpdir(), 'nessie-executor-blocked-workspace-'))
   const state = {
     apiBaseUrl: 'https://api.example.test',
     descriptor: {
@@ -211,8 +236,14 @@ test('local policy configuration proposes only implemented COW operations', asyn
         'configure',
         '--state-dir', stateDir,
         '--operations', 'file.write,file.read',
+        '--workspace', replacementWorkspace,
       ]),
-      { kind: 'configure', operationKeys: ['file.write', 'file.read'], stateDir },
+      {
+        kind: 'configure',
+        operationKeys: ['file.write', 'file.read'],
+        stateDir,
+        workspaceRoot: replacementWorkspace,
+      },
     )
     const configured = await configureExecutorLocalPolicy(
       stateDir,
@@ -220,6 +251,7 @@ test('local policy configuration proposes only implemented COW operations', asyn
       ['file.write', 'file.read'],
       undefined,
       sandboxHost,
+      replacementWorkspace,
     )
     assert.deepEqual(configured.descriptor, {
       ...state.descriptor,
@@ -228,6 +260,7 @@ test('local policy configuration proposes only implemented COW operations', asyn
       revision: 4,
     })
     assert.deepEqual((await loadExecutorState(stateDir)).descriptor, configured.descriptor)
+    assert.equal((await loadExecutorState(stateDir)).workspaceRoot, await realpath(replacementWorkspace))
     await assert.rejects(
       configureExecutorLocalPolicy(stateDir, configured, ['browser.open'], undefined, sandboxHost),
       /browser\.open, browser\.observe, and browser\.act must be enabled together/,
@@ -236,8 +269,23 @@ test('local policy configuration proposes only implemented COW operations', asyn
       configureExecutorLocalPolicy(stateDir, configured, ['workspace.promote'], undefined, sandboxHost),
       /native helper path/,
     )
+    await mkdir(join(stateDir, 'runtime'))
+    await writeFile(join(stateDir, 'runtime', 'pending-draft'), 'draft')
+    await assert.rejects(
+      configureExecutorLocalPolicy(
+        stateDir,
+        configured,
+        configured.descriptor.operationKeys,
+        undefined,
+        sandboxHost,
+        blockedWorkspace,
+      ),
+      /Remove every local draft and stop every sandbox/,
+    )
   } finally {
+    await rm(blockedWorkspace, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })
+    await rm(replacementWorkspace, { force: true, recursive: true })
   }
 })
 

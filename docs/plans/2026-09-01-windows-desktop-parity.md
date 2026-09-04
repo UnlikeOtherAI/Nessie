@@ -341,6 +341,11 @@ disk is which — are stated with their remedies in
   **Agents → Executors** only on a verified release; unsigned or tampered
   builds refuse before local pairing input is read; Home edition pairs as
   workspace-only and says why.
+- The page names the selected folder by a local-only basename, restores the
+  exact per-executor operation policy, changes the one canonical root only
+  through a native confirmation and new descriptor review, and can forget the
+  local key without deleting server audit history. It never uploads a full
+  path or silently widens several folders to a common parent.
 - The standalone package installs a service under its own virtual account
   and a tray icon; pairing, start, stop, and status work from the tray with
   native confirmations; the executor is online after a reboot with nobody

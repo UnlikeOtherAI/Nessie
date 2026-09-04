@@ -49,7 +49,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(executor_companion::ExecutorCompanionState::default())
         .invoke_handler(tauri::generate_handler![
+            executor_companion::executor_companion_change_workspace,
             executor_companion::executor_companion_configure_workspace,
+            executor_companion::executor_companion_forget,
             executor_companion::executor_companion_pair,
             executor_companion::executor_companion_start,
             executor_companion::executor_companion_status,

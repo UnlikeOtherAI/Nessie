@@ -25,7 +25,14 @@ type ParsedCommand =
     stateDir: string
     workspaceRoot?: string
   }
-  | { kind: 'configure'; nativeHelperPath?: string; operationKeys: string[]; stateDir: string }
+  | {
+    configurationInputFromStandardInput?: true
+    kind: 'configure'
+    nativeHelperPath?: string
+    operationKeys?: string[]
+    stateDir: string
+    workspaceRoot?: string
+  }
   | {
     allowedOrigins: string[]
     guestInitrdBuilderPath: string
@@ -61,7 +68,10 @@ const usage = (): never => {
     + '       nessie-executor configure --state-dir <owner-only-path> '
     + '--operations <file.list,file.read,file.write,command.run,browser.open,browser.observe,'
     + 'browser.act,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop> '
-    + '[--native-helper </absolute/owner-only/nessie-executor-native>]\n'
+    + '[--native-helper </absolute/owner-only/nessie-executor-native>] '
+    + '[--workspace <absolute-read-only-root>]\n'
+    + '       nessie-executor configure --configuration-input-stdin '
+    + '--state-dir <owner-only-path>\n'
     + '       nessie-executor configure-browser --state-dir <owner-only-path> '
     + '--allowed-origins <https://origin.example,...> --guest-initrd-builder <absolute-owner-only-file> '
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
@@ -140,6 +150,35 @@ const readPairingInput = async (): Promise<{ challenge: string; workspaceRoot: s
   return parsed as { challenge: string; workspaceRoot: string }
 }
 
+const readConfigurationInput = async (): Promise<{ operationKeys: string[]; workspaceRoot: string }> => {
+  const chunks: Buffer[] = []
+  let byteLength = 0
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    byteLength += bytes.byteLength
+    if (byteLength > 12_288) throw new Error('Local policy input is too large.')
+    chunks.push(bytes)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    throw new Error('Local policy input on standard input is malformed.')
+  }
+  if (
+    !parsed
+    || typeof parsed !== 'object'
+    || Array.isArray(parsed)
+    || !Array.isArray((parsed as { operationKeys?: unknown }).operationKeys)
+    || !(parsed as { operationKeys: unknown[] }).operationKeys.every((key) => typeof key === 'string')
+    || typeof (parsed as { workspaceRoot?: unknown }).workspaceRoot !== 'string'
+    || !(parsed as { workspaceRoot: string }).workspaceRoot
+  ) {
+    throw new Error('Local policy input on standard input is malformed.')
+  }
+  return parsed as { operationKeys: string[]; workspaceRoot: string }
+}
+
 const secureApiUrl = (value: string): string => {
   let parsed: URL
   try {
@@ -175,11 +214,25 @@ export const parseCommand = (args: string[]): ParsedCommand => {
     }
   }
   if (command === 'configure') {
+    const configurationInputFromStandardInput = args.includes('--configuration-input-stdin')
+    if (configurationInputFromStandardInput && (
+      args.includes('--operations')
+      || args.includes('--workspace')
+      || args.includes('--native-helper')
+    )) return usage()
     return {
+      ...(configurationInputFromStandardInput ? { configurationInputFromStandardInput: true } : {}),
       kind: 'configure',
-      ...(args.includes('--native-helper') ? { nativeHelperPath: option(args, '--native-helper') } : {}),
-      operationKeys: option(args, '--operations').split(',').map((value) => value.trim()),
+      ...(!configurationInputFromStandardInput && args.includes('--native-helper')
+        ? { nativeHelperPath: option(args, '--native-helper') }
+        : {}),
+      ...(!configurationInputFromStandardInput
+        ? { operationKeys: option(args, '--operations').split(',').map((value) => value.trim()) }
+        : {}),
       stateDir: option(args, '--state-dir'),
+      ...(!configurationInputFromStandardInput && args.includes('--workspace')
+        ? { workspaceRoot: option(args, '--workspace') }
+        : {}),
     }
   }
   if (command === 'configure-browser') {
@@ -268,11 +321,16 @@ export const run = async (args: string[]): Promise<void> => {
   }
   const state = await loadExecutorState(command.stateDir)
   if (command.kind === 'configure') {
+    const input = command.configurationInputFromStandardInput
+      ? await readConfigurationInput()
+      : { operationKeys: command.operationKeys!, workspaceRoot: command.workspaceRoot }
     const updated = await configureExecutorLocalPolicy(
       command.stateDir,
       state,
-      command.operationKeys,
+      input.operationKeys,
       command.nativeHelperPath,
+      undefined,
+      input.workspaceRoot,
     )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `
