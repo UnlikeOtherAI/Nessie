@@ -158,7 +158,28 @@ const seedApproval = async (seed) => {
         userId: me.user.id,
       },
     })
-    return { approvalId: approval.id, mailboxId: mailbox.id, prisma, senderAddress: mailbox.address }
+    const notice = await prisma.message.create({
+      data: {
+        agentId: agent.id,
+        content: 'I have prepared an email and need your approval before I send it.',
+        metadata: {
+          approvalGate: {
+            approvalId: approval.id,
+            status: 'pending',
+            toolName: 'mailbox_send',
+          },
+        },
+        role: 'assistant',
+        threadId: seed.channels[0].defaultThreadId,
+      },
+    })
+    return {
+      approvalId: approval.id,
+      mailboxId: mailbox.id,
+      noticeId: notice.id,
+      prisma,
+      senderAddress: mailbox.address,
+    }
   } catch (error) {
     await prisma.$disconnect()
     throw error
@@ -170,11 +191,16 @@ const verify = async (browser, seed, fixture) => {
   const target = await shell.newPage()
   try {
     const { page } = target
-    await page.goto(`${ADMIN_URL}/alerts`, { waitUntil: 'domcontentloaded' })
-    await page.getByText(/needs your approval/).first().click()
-    await page.waitForURL(`${ADMIN_URL}/approvals`)
-
-    await page.getByTestId('approval-review-email').click()
+    await page.goto(`${ADMIN_URL}/channels/${seed.channels[0].id}`, { waitUntil: 'domcontentloaded' })
+    const gate = page.getByTestId('run-approval-gate')
+    await gate.waitFor()
+    await gate.getByTestId('run-approval-gate-review-email').click()
+    if (await gate.getByTestId('run-approval-gate-open-confirm').count() !== 0) {
+      fail('chat presented a generic confirmation for an email send')
+    }
+    if (await gate.getByTestId('run-approval-gate-always').count() !== 0) {
+      fail('chat presented standing consent for an email send')
+    }
     const review = page.getByRole('dialog', { name: 'Review email' })
     const sender = review
       .getByText('From', { exact: true })
@@ -197,7 +223,8 @@ const verify = async (browser, seed, fixture) => {
       path: resolve(SCREENSHOT_ROOT, 'approver-confirmation.png'),
     })
     await confirm.getByTestId('confirm-dialog-confirm').click()
-    await page.getByText('Nothing waiting on you', { exact: true }).waitFor()
+    await review.waitFor({ state: 'hidden' })
+    await gate.getByText('approved', { exact: true }).waitFor()
     if (target.errors.length > 0) fail(`page errors: ${target.errors.join(' | ')}`)
   } finally {
     await target.close()
@@ -230,6 +257,7 @@ const main = async () => {
   } finally {
     if (browser) await browser.close().catch(() => {})
     if (fixture) {
+      await fixture.prisma.message.delete({ where: { id: fixture.noticeId } })
       await fixture.prisma.userAlert.deleteMany({ where: { approvalRequestId: fixture.approvalId } })
       await fixture.prisma.approvalRequest.delete({ where: { id: fixture.approvalId } })
       await fixture.prisma.mailboxConnection.delete({ where: { id: fixture.mailboxId } })

@@ -5,16 +5,26 @@ import {
   APPROVAL_GATE_ACTIONS,
   approvalGateActionLabels,
   canCreateStandingConsentFromApproval,
+  requiresEmailApprovalReview,
 } from '../src/components/features/channels/approval-gate-eligibility.js'
 
 const CONNECTION = '00000000-0000-4000-8000-000000000001'
 
-test('only supported Google approvals offer standing consent', () => {
+test('only calendar approvals offer standing consent', () => {
   const context = { approvedGoogleConnectionId: CONNECTION }
-  assert.equal(canCreateStandingConsentFromApproval('gmail_draft_send', context), true)
   assert.equal(canCreateStandingConsentFromApproval('calendar_event_create', context), true)
+  assert.equal(canCreateStandingConsentFromApproval('gmail_draft_send', context), false)
   assert.equal(canCreateStandingConsentFromApproval('mailbox_send', context), false)
   assert.equal(canCreateStandingConsentFromApproval('email_account_disconnect', context), false)
+})
+
+test('every email send is exact-review only in chat', () => {
+  const context = { approvedGoogleConnectionId: CONNECTION }
+  for (const toolName of ['email_send', 'gmail_draft_send', 'mailbox_send']) {
+    assert.equal(requiresEmailApprovalReview(toolName), true)
+    assert.equal(canCreateStandingConsentFromApproval(toolName, context), false)
+    assert.ok(!approvalGateActionLabels(toolName, context).includes(APPROVAL_GATE_ACTIONS.standingConsent))
+  }
 })
 
 test('a supported tool without a frozen connection cannot offer standing consent', () => {

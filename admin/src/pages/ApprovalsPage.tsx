@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { ApprovalDecision } from '../components/features/approvals/ApprovalDecision'
 import { EmailApprovalReviewDialog } from '../components/features/approvals/EmailApprovalReviewDialog'
+import { requiresEmailApprovalReview } from '../components/features/channels/approval-gate-eligibility'
 import { Pill } from '../components/primitives/Pill'
 import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
@@ -15,8 +16,6 @@ import { usePagedList } from '../facades/usePagedList'
 
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
 const TODO_TEMPLATE_PUBLISH_ACTION = 'agent.todo_template.publish'
-const REVIEWABLE_EMAIL_TOOL_NAMES = new Set(['email_send', 'gmail_draft_send', 'mailbox_send'])
-
 type KnowledgePagePublishContext = {
   pageId: string
   versionId: string
@@ -68,7 +67,7 @@ const approvalTitle = (approval: ApprovalRequest): string => {
 const isReviewableEmailApproval = (approval: ApprovalRequest): boolean =>
   approval.action === 'tool.invoke'
   && typeof approval.context?.['toolName'] === 'string'
-  && REVIEWABLE_EMAIL_TOOL_NAMES.has(approval.context['toolName'])
+  && requiresEmailApprovalReview(approval.context['toolName'])
 
 export const ApprovalsPage = () => {
   const navigate = useNavigate()

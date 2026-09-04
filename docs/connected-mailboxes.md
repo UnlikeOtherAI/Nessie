@@ -144,6 +144,11 @@ it under the person who should approve future sends. A personal mailbox whose
 owner is inactive is likewise blocked until that owner is reactivated or the
 mailbox is reconnected under an active owner.
 
+The chat notice is a doorway, never a blind approval: its only send decision is
+**Review email**, which opens that same transient exact-message review and its
+second explicit confirmation. It never offers a generic Approve button or a
+"don't ask again" rule for a connected, hosted, or Gmail message.
+
 There is no "let it send without asking" for connected mailboxes yet. The Google
 lane offers standing consent because a grant there is one person's to give about
 their own account; a shared team mailbox has no such single owner, and one grant
