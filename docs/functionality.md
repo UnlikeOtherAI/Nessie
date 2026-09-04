@@ -283,7 +283,7 @@ Root app layout:
 ### 2.0e Channel scopes
 
 - A channel belongs either to a visible project or to the organisation's
-  standalone **Channels** section. Project channels always render beneath their
+  standalone **Shared channels** section. Project channels always render beneath their
   project; standalone channels never impersonate a project or a UOA team.
 - The database keeps standalone channels in one hidden, system-managed channel
   root per organisation because a channel requires a project and team foreign
