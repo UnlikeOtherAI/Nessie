@@ -31,6 +31,10 @@ import {
 const packaging = dirname(fileURLToPath(import.meta.url))
 const authoring = await readFile(join(packaging, 'nessie-executor.wxs'), 'utf8')
 const buildScript = await readFile(join(packaging, 'build-msi.mjs'), 'utf8')
+const windowsWorkflow = await readFile(
+  join(packaging, '..', '..', '..', '.github', 'workflows', 'desktop-windows.yml'),
+  'utf8',
+)
 const script = async (name) => readFile(join(packaging, 'scripts', name), 'utf8')
 
 test('the tray build uses the supported no-installer option', () => {
@@ -40,6 +44,8 @@ test('the tray build uses the supported no-installer option', () => {
 
 test('WiX builds first and validates with the intended ICE exceptions', () => {
   assert.ok(buildScript.includes("const WIX_VERSION = '5.0.2'"))
+  assert.ok(windowsWorkflow.includes('WIX_VERSION: "5.0.2"'))
+  assert.ok(windowsWorkflow.includes("-replace '^(desktop-)?v', ''"))
   assert.ok(buildScript.includes("'msi', 'validate',"))
   assert.ok(buildScript.includes("'-sice', 'ICE38',"))
   assert.ok(buildScript.includes("'-sice', 'ICE64',"))
