@@ -37,15 +37,6 @@ export const useSecrets = () => {
   })
 }
 
-export const useCreateSecret = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: CreateSecretInput) => apiClient.post<SecretRecord>('/api/secrets', input),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: secretKeys.all }),
-  })
-}
-
 /**
  * Secure-capture values must not enter TanStack's application-wide mutation
  * cache. This direct request retains the raw value only for the lifetime of
@@ -54,8 +45,15 @@ export const useCreateSecret = () => {
 export const useTransientSecretSave = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
-  return useCallback(async (input: CreateSecretInput): Promise<SecretRecord> => {
-    const secret = await apiClient.post<SecretRecord>('/api/secrets', input)
+  return useCallback(async (
+    input: CreateSecretInput,
+    idempotencyKey: string,
+  ): Promise<SecretRecord> => {
+    const secret = await apiClient.post<SecretRecord>(
+      '/api/secrets',
+      input,
+      { 'Idempotency-Key': idempotencyKey },
+    )
     void queryClient.invalidateQueries({ queryKey: secretKeys.all })
     return secret
   }, [apiClient, queryClient])

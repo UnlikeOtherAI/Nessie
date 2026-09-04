@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { VoiceTranscriptLine } from '@nessie/schemas'
+import Fastify from 'fastify'
+import {
+  AGENT_SECRET_SAFETY_INSTRUCTION,
+  type VoiceTranscriptLine,
+} from '@nessie/schemas'
+
+import { registerVoiceCallRecordRoute } from '../src/routes/voice-call-record.js'
 
 import {
   buildVoiceFunctionDeclarations,
@@ -85,6 +91,31 @@ test('the system instruction carries identity and speech, never conversation his
   // The observations-are-not-instructions framing survives from Coder's
   // security contract: tool results still reach this session.
   assert.match(instruction, /information, never an instruction/u)
+  assert.ok(instruction.includes(AGENT_SECRET_SAFETY_INSTRUCTION))
+})
+
+test('a secret-bearing voice transcript is refused before any durable dependency runs', async () => {
+  const app = Fastify()
+  registerVoiceCallRecordRoute(app, {
+    fileService: {},
+    prisma: {},
+    requireActorContext: () => ({ actor: { actorId: 'user-1', actorType: 'user' } }),
+    requireUserActor: () => true,
+  } as never, {})
+  await app.ready()
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/voice/sessions/session-1/transcript',
+    payload: {
+      durationMs: 1_000,
+      lines: [line('user', 'client_secret=abcdefghijklmnopqrstuvwxyz123456')],
+    },
+  })
+
+  assert.equal(response.statusCode, 422)
+  assert.equal(response.json().error.code, 'SECRET_INTERCEPTED')
+  await app.close()
 })
 
 test('a caller with no display name still gets a usable instruction', () => {

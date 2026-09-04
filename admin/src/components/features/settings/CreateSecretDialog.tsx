@@ -10,7 +10,7 @@ import { Input, Select } from '../../shared/FormControls'
 
 type CreateSecretDialogProps = {
   onClose: () => void
-  onCreate: (input: CreateSecretInput) => Promise<unknown>
+  onCreate: (input: CreateSecretInput, idempotencyKey: string) => Promise<unknown>
   onSaved: () => void
   open: boolean
   pending: boolean
@@ -27,6 +27,11 @@ type SecretFormValues = {
 }
 
 const secretNameIsValid = (name: string): boolean => /^[A-Z][A-Z0-9_]*$/.test(name)
+
+const newCaptureId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
 
 export const buildSecretCreateInput = ({
   name,
@@ -64,6 +69,7 @@ export const CreateSecretDialog = ({
   const [scopeType, setScopeType] = useState<SecretCreationScope>('personal')
   const [scopeId, setScopeId] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const requestIdRef = useRef(newCaptureId())
 
   const resetForm = () => {
     setName('')
@@ -71,6 +77,7 @@ export const CreateSecretDialog = ({
     setScopeType('personal')
     setScopeId('')
     setFormError(null)
+    requestIdRef.current = newCaptureId()
   }
 
   const handleClose = () => {
@@ -85,7 +92,7 @@ export const CreateSecretDialog = ({
 
     setFormError(null)
     try {
-      await onCreate(input)
+      await onCreate(input, requestIdRef.current)
       resetForm()
       onSaved()
     } catch (caught) {
@@ -161,7 +168,12 @@ export const CreateSecretDialog = ({
         <FormError>{formError}</FormError>
 
         <FormActions>
-          <button className="admin-button admin-button-secondary" onClick={handleClose} type="button">
+          <button
+            className="admin-button admin-button-secondary"
+            disabled={pending}
+            onClick={handleClose}
+            type="button"
+          >
             Cancel
           </button>
           <button

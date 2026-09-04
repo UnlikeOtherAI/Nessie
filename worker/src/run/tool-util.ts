@@ -120,29 +120,28 @@ export type SanitizedProviderToolCall = ProviderToolCall & {
   secretArgumentBlocked?: true
 }
 
-const TOOL_ARGUMENT_SECRET_KEY = new RegExp(
-  `^(?:.*[_-])?(?:${[
-    'api[_-]?key',
-    'access[_-]?token',
-    'auth[_-]?token',
-    'authorization',
-    'bearer',
-    'client[_-]?secret',
-    'credential',
-    'password',
-    'private[_-]?key',
-    'refresh[_-]?token',
-    'secret',
-    'secret[_-]?access[_-]?key',
-    'session[_-]?token',
-    'signing[_-]?secret',
-    'token',
-  ].join('|')})$`,
-  'i',
-)
-
 const normalizedToolArgumentKey = (key: string): string =>
   key.replace(/([a-z\d])([A-Z])/gu, '$1_$2').toLowerCase()
+
+const toolArgumentKeyIsSecret = (key: string): boolean => {
+  const compact = normalizedToolArgumentKey(key).replace(/[\s._-]/gu, '')
+  return compact.endsWith('token')
+    || compact.endsWith('password')
+    || compact.endsWith('passphrase')
+    || compact.endsWith('credential')
+    || compact.endsWith('secret')
+    || [
+      'apikey',
+      'authorization',
+      'bearer',
+      'credentialvalue',
+      'pin',
+      'privatekey',
+      'secretaccesskey',
+      'secretkey',
+      'secretvalue',
+    ].includes(compact)
+}
 
 export type SanitizedToolArguments = {
   detected: boolean
@@ -154,11 +153,14 @@ const redactToolArgumentSecrets = (
   key = '',
   depth = 0,
 ): { detected: boolean; value: unknown } => {
-  if (depth > 8) return { detected: false, value: '[MaxDepth]' }
+  // A shape deeper than the bounded walk is itself refused. Returning
+  // `detected: false` here used to make the caller restore the original,
+  // uninspected argument tree.
+  if (depth > 8) return { detected: true, value: '[MaxDepth]' }
+  if (key && toolArgumentKeyIsSecret(key) && value !== null) {
+    return { detected: true, value: '[REDACTED_SECRET]' }
+  }
   if (typeof value === 'string') {
-    if (TOOL_ARGUMENT_SECRET_KEY.test(normalizedToolArgumentKey(key)) && value.length >= 8) {
-      return { detected: true, value: '[REDACTED_SECRET]' }
-    }
     const redacted = redactDetectedSecrets(value)
     return { detected: redacted !== value, value: redacted }
   }
@@ -221,7 +223,7 @@ export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
 
   const out: Record<string, unknown> = {}
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = SECRET_KEY_PATTERN.test(key)
+    out[key] = toolArgumentKeyIsSecret(key) || SECRET_KEY_PATTERN.test(key)
       ? REDACTED
       : redactToolInputValue(entry, depth + 1)
   }

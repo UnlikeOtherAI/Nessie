@@ -56,6 +56,23 @@ const fakeDoneResponse = (): Response => {
   return { body: { getReader: () => reader } } as unknown as Response
 }
 
+const fakeStreamResponse = (lines: string[]): Response => {
+  const encoder = new TextEncoder()
+  let sent = false
+  const reader = {
+    read: async () => {
+      if (sent) return { done: true, value: undefined }
+      sent = true
+      return {
+        done: false,
+        value: encoder.encode(`${lines.map((entry) => `data: ${entry}\n\n`).join('')}data: [DONE]\n\n`),
+      }
+    },
+    releaseLock: () => {},
+  }
+  return { body: { getReader: () => reader } } as unknown as Response
+}
+
 /**
  * The registry reads `loadAgentToolCatalog` performs. A cast fake is unityped,
  * so a delegate it does not model is a runtime TypeError — this pair is exactly
@@ -96,18 +113,19 @@ const createFakeReply = (): { chunks: string[]; reply: FastifyReply } => {
 
 const runDesignerChat = async (
   input: DesignerChatInput,
-): Promise<{ systemPromptSent: string }> => {
+  response: Response = fakeDoneResponse(),
+): Promise<{ chunks: string[]; systemPromptSent: string }> => {
   let capturedMessages: Array<{ content: string | null; role: string }> = []
   const modelClient = {
     chatModel: 'test-chat-model',
     fetchCompletion: async (body: Record<string, unknown>) => {
       capturedMessages = body['messages'] as typeof capturedMessages
-      return fakeDoneResponse()
+      return response
     },
     usage: { record: () => {} },
   } as unknown as ModelClient
 
-  const { reply } = createFakeReply()
+  const { chunks, reply } = createFakeReply()
 
   await streamDesignerChat(
     reply,
@@ -125,8 +143,31 @@ const runDesignerChat = async (
 
   const systemMessage = capturedMessages.find((m) => m.role === 'system')
   assert.ok(systemMessage, 'a system message was sent to the model')
-  return { systemPromptSent: systemMessage!.content ?? '' }
+  return { chunks, systemPromptSent: systemMessage!.content ?? '' }
 }
+
+test('Designer output streams and tool arguments never expose model-produced secrets', async () => {
+  const secret = 'password="hunter2"'
+  const response = fakeStreamResponse([
+    JSON.stringify({ choices: [{ delta: { content: secret } }] }),
+    JSON.stringify({
+      choices: [{
+        delta: {
+          tool_calls: [{
+            function: { arguments: JSON.stringify({ content: secret }), name: 'set_system_prompt' },
+            id: 'call-secret',
+            index: 0,
+          }],
+        },
+      }],
+    }),
+  ])
+  const { chunks } = await runDesignerChat({ messages: [], formState: baseFormState }, response)
+  const streamed = chunks.join('')
+
+  assert.doesNotMatch(streamed, /hunter2/u)
+  assert.match(streamed, /•{12}/u)
+})
 
 test('streamDesignerChat forwards the supplied page context into the system prompt', async () => {
   const { systemPromptSent } = await runDesignerChat({

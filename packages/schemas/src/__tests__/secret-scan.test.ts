@@ -2,12 +2,22 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  containsDetectedSecret,
   createSecretRedactingStream,
   detectSecrets,
   extractDetectedSecretValue,
   maskSecretValue,
   redactDetectedSecrets,
+  redactDetectedSecretsInValue,
 } from '../secret-scan.js'
+
+test('containsDetectedSecret scans raw nested strings before JSON escaping', () => {
+  const secret = `sk-ant-${'aB3_'.repeat(8)}`
+  assert.equal(containsDetectedSecret({ notes: `first line\n${secret}\nlast line` }), true)
+  assert.equal(containsDetectedSecret({ notes: 'ordinary nested text' }), false)
+  const safe = redactDetectedSecretsInValue({ notes: `first line\n${secret}` })
+  assert.equal(JSON.stringify(safe).includes(secret), false)
+})
 
 test('detectSecrets catches known credential formats without interpreting prose', () => {
   const stripeLikeToken = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')
@@ -30,6 +40,8 @@ test('detectSecrets catches private key blocks and database URLs', () => {
     1,
   )
   assert.equal(detectSecrets('postgresql://admin:really-secret@db.example/nessie').length, 1)
+  assert.equal(detectSecrets('postgres://admin:pa/ssword@db.example/nessie').length, 1)
+  assert.equal(detectSecrets('https://service:opaque-password@example.com/path').length, 1)
 })
 
 test('detectSecrets catches common provider prefixes and unprefixed high-entropy tokens', () => {
@@ -37,18 +49,32 @@ test('detectSecrets catches common provider prefixes and unprefixed high-entropy
   assert.equal(detected.length, 2)
   assert.equal(detected[0]?.type, 'github_token')
   assert.equal(detected[1]?.type, 'high_entropy_token')
+  assert.equal(detectSecrets('sk-proj-abcdefghijkl')[0]?.type, 'openai_api_key')
+  assert.equal(detectSecrets('sk_live_abcdefgh')[0]?.type, 'stripe_api_key')
 })
 
 test('detectSecrets covers quoted assignments, bearer headers, and common secret fields', () => {
   const cases = [
     'Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456',
+    'Authorization: Basic dXNlcjpwYXNz',
+    'Authorization: Token abc123',
+    'Proxy-Authorization: ApiKey abc123',
+    'Authorization: Digest username="u", response="abc123"',
     'client_secret="abcdefghijklmnopqrstuvwxyz123456"',
     'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
     "password: 'correct-horse-battery-staple'",
     'MY_API_KEY=abcdefghijklmnopqrstuvwxyz123456',
     'AWS_SESSION_TOKEN=abcdefghijklmnopqrstuvwxyz123456',
     'STRIPE_WEBHOOK_SECRET=abcdefghijklmnopqrstuvwxyz123456',
+    'STRIPE_SECRET_KEY=abcdefghijklmnopqrstuvwxyz123456',
     '{"client_secret":"abcdefghijklmnopqrstuvwxyz123456"}',
+    '{"stripeSecretKey":"abcdefghijklmnopqrstuvwxyz123456"}',
+    '{"token":["abcdefghijklmnopqrstuvwxyz123456"]}',
+    'API_KEY=${abcdefghijklmnopqrstuvwxyz123456}',
+    "API_KEY=$'abcdefghijklmnopqrstuvwxyz123456'",
+    '{"client_secret":"abc\\\"defghijklmnopqrstuvwxyz123456"}',
+    'password="hunter2"',
+    'token=abc123',
   ]
   for (const value of cases) assert.equal(detectSecrets(value).length, 1, value)
 })
@@ -63,6 +89,31 @@ test('detectSecrets covers Slack app tokens and truncated private-key pastes', (
     redactDetectedSecrets(partialKey),
     `-----BEGIN OPENSSH PRIVATE KEY-----${'•'.repeat(12)}`,
   )
+})
+
+test('a masked private-key prefix cannot conceal newly appended raw material', () => {
+  const masked = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
+  assert.equal(detectSecrets(`${masked}raw-key-tail`).length, 1)
+  assert.equal(
+    detectSecrets(`${masked}\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=`).length,
+    1,
+  )
+  assert.equal(detectSecrets(`${masked}\nordinary prose`).length, 0)
+})
+
+test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
+  const mask = '•'.repeat(12)
+  for (const value of [`api_key=${mask}hunter2`, `sk-proj-${mask}raw-tail`]) {
+    const redacted = redactDetectedSecrets(value)
+    assert.equal(detectSecrets(value).length, 1)
+    assert.doesNotMatch(redacted, /hunter2|raw-tail/u)
+    assert.equal(detectSecrets(redacted).length, 0)
+  }
+  assert.equal(
+    redactDetectedSecrets('password="abc•raw-tail"'),
+    `password="${mask}"`,
+  )
+  assert.equal(detectSecrets(`Protected: ${mask}.`).length, 0)
 })
 
 test('provider-specific dotted and anthropic credentials are classified as one value', () => {
@@ -110,6 +161,7 @@ test('redaction is idempotent and never creates another detected secret', () => 
     'api_key=abcdefghijklmnopqrstuv',
     'password="correct-horse-battery-staple"',
     'Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456',
+    'Authorization: Basic dXNlcjpwYXNz',
     'client_secret=abcdefghijklmnopqrstuvwxyz123456,',
   ]
   for (const fixture of fixtures) {
@@ -163,4 +215,8 @@ test('stream redaction holds partial lines and private keys until they are safe'
   const maskedPem = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
   assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), `${maskedPem}\nafter\n`)
   assert.equal(maskedPemStream.finish(), '')
+
+  const appendedPemStream = createSecretRedactingStream()
+  assert.equal(appendedPemStream.push(`${maskedPem}\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\n`), '')
+  assert.equal(appendedPemStream.finish(), maskedPem)
 })

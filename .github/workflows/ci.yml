@@ -394,5 +394,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: secret-capture-frame
-          path: e2e/screenshots/secret-capture
+          path: admin/e2e/screenshots/secret-capture
           if-no-files-found: warn

@@ -79,8 +79,7 @@ test('the system prompt tells the agent to link to tool-sourced locations, not d
 
 test('every agent receives the compact secret-form instruction', () => {
   const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
-  assert.match(system, /Never ask for, repeat, or put a secret in chat/)
-  assert.match(system, /replaced by a secure form before you see it/)
+  assert.ok(system.includes(AGENT_SECRET_SAFETY_INSTRUCTION))
 })
 
 test('a legacy subtask prompt that already has the safety rule does not pay for it twice', () => {

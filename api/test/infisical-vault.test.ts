@@ -167,6 +167,7 @@ const makeSecretRouteApp = () => {
         stored?.organizationId === where.organizationId && stored.reference === where.reference
           ? stored
           : null,
+      findUnique: async ({ where }: { where: { reference: string } }) => stored?.reference === where.reference ? stored : null,
       update: async ({
         data,
         where,
@@ -353,6 +354,23 @@ test('POST /api/secrets refuses to duplicate the raw value into durable metadata
   }
 })
 
+test('POST /api/secrets compares trimmed values before accepting metadata', async () => {
+  const { app, stored } = makeSecretRouteApp()
+  try {
+    const response = await app.inject({
+      method: 'POST',
+      payload: { name: 'SHORT_PASSWORD', provider: 'hunter2', scopeType: 'personal', value: ' hunter2 ' },
+      url: '/api/secrets',
+    })
+
+    assert.equal(response.statusCode, 422, response.body)
+    assert.equal(response.json().error.code, 'SECRET_METADATA_REJECTED')
+    assert.equal(stored(), null)
+  } finally {
+    await app.close()
+  }
+})
+
 test('POST /api/secrets translates a vault transport failure without exposing its secret', async () => {
   const { app } = makeSecretRouteApp()
   try {
@@ -446,6 +464,34 @@ test('create, rotate, and revoke use one namespace and persist its exact vault r
             { method: 'DELETE', path: expectedPath },
           ],
         )
+      })
+    })
+  } finally {
+    await app.close()
+  }
+})
+
+test('a retried capture id returns the first secret without writing the vault twice', async () => {
+  const { app } = makeSecretRouteApp()
+  try {
+    await withInfisicalEnvironment(infisicalEnvironment, async () => {
+      await withCapturedFetch(async (requests) => {
+        const request = {
+          headers: { 'idempotency-key': 'capture-request-123' }, method: 'POST' as const,
+          payload: {
+            name: 'RETRY_TOKEN',
+            scopeType: 'personal',
+            value: 'initial-secret-value',
+          },
+          url: '/api/secrets',
+        }
+        const first = await app.inject(request)
+        const retry = await app.inject(request)
+
+        assert.equal(first.statusCode, 201, first.body)
+        assert.equal(retry.statusCode, 200, retry.body)
+        assert.equal(first.json().data.reference, retry.json().data.reference)
+        assert.equal(requests.filter((entry) => entry.path.startsWith('/api/v4/secrets/')).length, 1)
       })
     })
   } finally {

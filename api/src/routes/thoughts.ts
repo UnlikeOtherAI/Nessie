@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
   CaptureThoughtBodySchema,
+  detectSecrets,
   LinkThoughtsBodySchema,
   RecordOutcomeBodySchema,
   RecordThoughtRecallSignalBodySchema,
@@ -35,6 +36,14 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const body = parseInput(CaptureThoughtBodySchema, request.body, reply)
     if (!body) {
       return reply
+    }
+    if (detectSecrets(body.content).length > 0) {
+      return sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this memory was stored. Save it through Secrets instead.',
+      )
     }
 
     const ts = requireThoughtService(reply)

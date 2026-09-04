@@ -74,6 +74,7 @@ export const reviveComposerDraft = (stored: unknown): ComposerDraft | null => {
         || typeof clientId !== 'string'
         || typeof filename !== 'string'
         || typeof sizeBytes !== 'number'
+        || detectSecrets(filename).length > 0
       ) {
         return []
       }

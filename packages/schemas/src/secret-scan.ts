@@ -30,6 +30,11 @@ type SecretPattern = Omit<DetectedSecret, 'prefix' | 'start' | 'end'> & {
   valueGroup?: number
 }
 
+/** Kept compact because this is injected into every typed and voice agent. */
+export const AGENT_SECRET_SAFETY_INSTRUCTION =
+  'Never request, repeat, or put secrets in chat or model-visible tool arguments; '
+  + 'secure capture masks detected values before you see them.'
+
 const ASSIGNMENT_KEY = [
   'api[_-]?key',
   'access[_-]?token',
@@ -43,16 +48,19 @@ const ASSIGNMENT_KEY = [
   'refresh[_-]?token',
   'session[_-]?token',
   'secret[_-]?access[_-]?key',
+  'secret[_-]?key',
   'signing[_-]?secret',
+  'passphrase',
   'secret',
   'token',
 ].join('|')
 
-const ASSIGNMENT_SEPARATOR = String.raw`(?:\s*(?:=|:)\s*(?:bearer\s+)?|\s+bearer\s+)`
+const AUTH_SCHEME = String.raw`(?:bearer|basic|token|api[_-]?key|digest)`
+const ASSIGNMENT_SEPARATOR = String.raw`(?:\s*(?:=|:)\s*${AUTH_SCHEME}\s+|\s*(?:=|:)\s*(?!${AUTH_SCHEME}\b)|\s+${AUTH_SCHEME}\s+)`
 
 const assignmentExpression = (value: string): RegExp =>
   new RegExp(
-    String.raw`\b(?:[a-z0-9]+[_-])*(?:${ASSIGNMENT_KEY})(?:["'\x60])?${ASSIGNMENT_SEPARATOR}${value}`,
+    String.raw`\b(?:[a-z0-9]+[_-])*[a-z0-9]*(?:${ASSIGNMENT_KEY})(?:["'\x60])?${ASSIGNMENT_SEPARATOR}(?:\[\s*)?${value}`,
     'gi',
   )
 
@@ -72,58 +80,90 @@ const completePrivateKeyEnds = (content: string): Map<number, number> => {
   return ends
 }
 
+const PRIVATE_KEY_BEGIN = new RegExp(
+  '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----',
+  'gi',
+)
+
+const SECRET_MASK = '•'.repeat(12)
+const SAFE_REDACTION_MARKERS = new Set(['[MaxDepth]', '[REDACTED]', '[REDACTED_SECRET]'])
+
+/**
+ * A legitimate redaction is exactly the armor header plus the fixed mask.
+ * Non-whitespace on that same line, or a following base64-looking body line,
+ * means raw key material was appended to a safe-looking prefix.
+ */
+const maskedPrivateKeyHasRawTail = (content: string, beginEnd: number): boolean => {
+  if (!content.startsWith(SECRET_MASK, beginEnd)) return false
+  const tail = content.slice(beginEnd + SECRET_MASK.length)
+  return /^[^\s]/u.test(tail) || /^\r?\n[A-Za-z0-9+/=]{16,}/u.test(tail)
+}
+
 const DATABASE_URL = new RegExp(
-  '\\b(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis(?:s)?|sqlserver):\\/\\/'
-    + '[^\\s/:]+:[^\\s@/]+@[^\\s/]+',
+  '\\b(?:https?|amqps?|ldaps?|neo4j|bolt|postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis(?:s)?|sqlserver):\\/\\/'
+    + '[^\\s/:]+:[^\\s@]+@[^\\s/]+',
   'gi',
 )
 
 const PATTERNS: SecretPattern[] = [
   {
+    // A valid protected replacement ends at the fixed mask. Anything joined
+    // directly onto it is new material, never part of the placeholder.
+    type: 'token_assignment',
+    expression: new RegExp(`${SECRET_MASK}([^\\s•,;.)\\]}"'\\x60]+)`, 'g'),
+    valueGroup: 1,
+  },
+  {
     type: 'pem_private_key',
     expression: PRIVATE_KEY_BLOCK,
   },
-  { type: 'stripe_api_key', expression: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g },
-  { type: 'github_token', expression: /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/g },
-  { type: 'github_token', expression: /\bglpat-[A-Za-z0-9_-]{20,}\b/g },
-  { type: 'sendgrid_api_key', expression: /\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{32,}\b/g },
+  { type: 'stripe_api_key', expression: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{8,}\b/g },
+  { type: 'github_token', expression: /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{8,}\b/g },
+  { type: 'github_token', expression: /\bglpat-[A-Za-z0-9_-]{8,}\b/g },
+  { type: 'sendgrid_api_key', expression: /\bSG\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
   {
     type: 'slack_token',
-    expression: /\b(?:xox[a-z](?:-[A-Za-z0-9-]{20,}|\.[A-Za-z0-9.-]{20,})|xapp-[A-Za-z0-9-]{20,})\b/gi,
+    expression: /\b(?:xox[a-z](?:-[A-Za-z0-9-]{8,}|\.[A-Za-z0-9.-]{8,})|xapp-[A-Za-z0-9-]{8,})\b/gi,
   },
-  { type: 'anthropic_api_key', expression: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g },
-  { type: 'openai_api_key', expression: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
-  { type: 'token_assignment', expression: /\b(?:hf|npm)_[A-Za-z0-9_-]{20,}\b/g },
-  { type: 'google_api_key', expression: /\bAIza[A-Za-z0-9_-]{30,}\b/g },
+  // Provider prefixes remain sensitive even when a paste was truncated. Eight
+  // bytes after an unambiguous credential prefix is enough to fail closed.
+  { type: 'anthropic_api_key', expression: /\bsk-ant-[A-Za-z0-9_-]{8,}\b/g },
+  { type: 'openai_api_key', expression: /\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}\b/g },
+  { type: 'token_assignment', expression: /\b(?:hf|npm)_[A-Za-z0-9_-]{8,}\b/g },
+  { type: 'google_api_key', expression: /\bAIza[A-Za-z0-9_-]{8,}\b/g },
   { type: 'aws_access_key', expression: /\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g },
   { type: 'database_url', expression: DATABASE_URL },
   { type: 'jwt', expression: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
   {
     type: 'token_assignment',
-    expression: assignmentExpression(String.raw`"([^"\r\n•]{12,})"`),
+    expression: assignmentExpression(String.raw`\$?"((?:\\.|[^"\r\n])+)"`),
     valueGroup: 1,
   },
   {
     type: 'token_assignment',
-    expression: assignmentExpression(String.raw`'([^'\r\n•]{12,})'`),
+    expression: assignmentExpression(String.raw`\$?'((?:\\.|[^'\r\n])+)'`),
     valueGroup: 1,
   },
   {
     type: 'token_assignment',
-    expression: assignmentExpression(String.raw`\x60([^\x60\r\n•]{12,})\x60`),
+    expression: assignmentExpression(String.raw`\x60([^\x60\r\n]+)\x60`),
+    valueGroup: 1,
+  },
+  {
+    type: 'token_assignment',
+    expression: assignmentExpression(String.raw`\$\{([^}\r\n]+)\}`),
     valueGroup: 1,
   },
   {
     type: 'token_assignment',
     expression: assignmentExpression(
-      String.raw`(?:\(|\[|\{)?([^\s"'\x60•([{]{12,})`,
+      String.raw`(?:\(|\[|\{)?([^\s$"'\x60([{]+)`,
     ),
     stripTrailingPunctuation: true,
     valueGroup: 1,
   },
 ]
 
-const SECRET_MASK = '•'.repeat(12)
 const PROVIDER_PREFIX = new RegExp(
   '^(?:sk-(?:proj-|ant-)?|(?:sk|rk)_(?:live|test)_|github_pat_|gh[pousr]_|glpat-'
     + '|SG\\.|xox[a-z](?:-|\\.)|xapp-|hf_|npm_|AIza|AKIA|ASIA|ABIA|ACCA)',
@@ -213,6 +253,11 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
       const end = start + value.length - stripped
       if (end <= start) continue
       const exactValue = content.slice(start, end)
+      if (SAFE_REDACTION_MARKERS.has(exactValue)) continue
+      if (
+        pattern.type === 'token_assignment'
+        && exactValue === `${providerPrefixForValue(exactValue)}${SECRET_MASK}`
+      ) continue
       candidates.push({
         type: pattern.type,
         prefix: prefixFor(exactValue, pattern.type),
@@ -231,7 +276,11 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
     begin;
     begin = privateKeyBeginScan.exec(content)
   ) {
-    if (content.startsWith(SECRET_MASK, begin.index + begin[0].length)) continue
+    const beginEnd = begin.index + begin[0].length
+    if (
+      content.startsWith(SECRET_MASK, beginEnd)
+      && !maskedPrivateKeyHasRawTail(content, beginEnd)
+    ) continue
     const complete = candidates.some(
       (candidate) => candidate.type === 'pem_private_key' && candidate.start === begin!.index,
     )
@@ -256,6 +305,18 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
   return nonOverlapping
 }
 
+/** Scan JSON-like input one string at a time, before serialization can escape boundaries. */
+export const containsDetectedSecret = (value: unknown, depth = 0): boolean => {
+  if (depth > 16) return true
+  if (typeof value === 'string') return detectSecrets(value).length > 0
+  if (value === null || typeof value !== 'object') return false
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsDetectedSecret(entry, depth + 1))
+  }
+  return Object.values(value as Record<string, unknown>)
+    .some((entry) => containsDetectedSecret(entry, depth + 1))
+}
+
 export const redactDetectedSecrets = (content: string): string => {
   const matches = detectSecrets(content)
   if (matches.length === 0) return content
@@ -269,10 +330,19 @@ export const redactDetectedSecrets = (content: string): string => {
   return result + content.slice(cursor)
 }
 
-const PRIVATE_KEY_BEGIN = new RegExp(
-  '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----',
-  'gi',
-)
+/** Recursively redact string leaves before JSON-like provider data reaches a sink. */
+export const redactDetectedSecretsInValue = (value: unknown, depth = 0): unknown => {
+  if (depth > 16) return '[MaxDepth]'
+  if (typeof value === 'string') return redactDetectedSecrets(value)
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactDetectedSecretsInValue(entry, depth + 1))
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => [key, redactDetectedSecretsInValue(entry, depth + 1)]),
+  )
+}
 
 /**
  * Redacts streamed model text without exposing a token split across deltas.
@@ -292,7 +362,16 @@ export const createSecretRedactingStream = (): {
     PRIVATE_KEY_BEGIN.lastIndex = 0
     for (let begin = PRIVATE_KEY_BEGIN.exec(buffer); begin; begin = PRIVATE_KEY_BEGIN.exec(buffer)) {
       if (begin.index >= cut) break
-      if (buffer.startsWith(SECRET_MASK, begin.index + begin[0].length)) continue
+      const beginEnd = begin.index + begin[0].length
+      if (buffer.startsWith(SECRET_MASK, beginEnd)) {
+        const firstNewline = buffer.indexOf('\n', beginEnd + SECRET_MASK.length)
+        const secondNewline = firstNewline < 0 ? -1 : buffer.indexOf('\n', firstNewline + 1)
+        if (maskedPrivateKeyHasRawTail(buffer, beginEnd) || secondNewline < 0) {
+          cut = begin.index
+          break
+        }
+        continue
+      }
       const completeEnd = completeKeys.get(begin.index)
       if (completeEnd === undefined || completeEnd > cut) {
         cut = begin.index

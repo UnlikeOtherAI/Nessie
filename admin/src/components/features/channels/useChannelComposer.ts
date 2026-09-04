@@ -7,7 +7,6 @@ import {
   type PendingAgentInvite,
   type SendMessageThreadExtras,
 } from '../../../facades/messages/hooks'
-import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { OptimisticMessage } from './channel-helpers'
 import { useDraft } from '../../../navigation/useDraft'
@@ -21,6 +20,7 @@ import {
 } from './composer-draft'
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
+import { usePendingAgentInvites } from './usePendingAgentInvites'
 import {
   advanceSecretCapture,
   createSecretCapture,
@@ -84,7 +84,6 @@ export const useChannelComposer = ({
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
   const uploadAttachment = useUploadAttachment()
   const attachments = useComposerAttachments()
-  const bindAgent = useBindAgent()
   // Drafts (docs/navigation/overview.md → "Drafts"): text and staged-attachment
   // metadata persist per entity, so switching channels can no longer carry one
   // conversation's unsent post into the next.
@@ -99,10 +98,14 @@ export const useChannelComposer = ({
   const flushDraft = draft.flush
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePasteState] = useState<string | null>(null)
-  const [pendingAgentInvites, setPendingAgentInvites] = useState<PendingAgentInvite[]>([])
-  const [pendingInviteMessageIds, setPendingInviteMessageIds] = useState<Record<string, string>>({})
-  const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
-  const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
+  const {
+    addPendingInvites,
+    dismissPendingAgent,
+    inviteErrors,
+    invitePendingAgent,
+    invitingAgentId,
+    pendingAgentInvites,
+  } = usePendingAgentInvites(activeChannel)
   const [sendError, setSendError] = useState<string | null>(null)
   const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
   const secretCaptureRef = useRef<SecretCapture | null>(null)
@@ -112,6 +115,9 @@ export const useChannelComposer = ({
   // retry of the same post resolves to the message the first attempt created
   // rather than a second copy; a success mints a fresh one for the next post.
   const clientMessageIdRef = useRef<string | null>(null)
+  const activeChannelIdRef = useRef(activeChannel?.id)
+  activeChannelIdRef.current = activeChannel?.id
+  const pendingFileRef = useRef<{ filename: string; id: string; source: string } | null>(null)
 
   const storeSecretCapture = useCallback((capture: SecretCapture | null) => {
     secretCaptureRef.current = capture
@@ -171,15 +177,13 @@ export const useChannelComposer = ({
   // Reset optimistic + pending-invite state when switching channels.
   useEffect(() => {
     setOptimisticMessages([])
-    setPendingAgentInvites([])
-    setPendingInviteMessageIds({})
-    setInviteErrors({})
     setSendError(null)
     setOversizePasteState(null)
     storeSecretCapture(null)
     // A different conversation is a different post: never carry one channel's
     // idempotency key into the next.
     clientMessageIdRef.current = null
+    pendingFileRef.current = null
   }, [activeChannel?.id, storeSecretCapture])
 
   const postSafeText = useCallback(
@@ -189,6 +193,7 @@ export const useChannelComposer = ({
       attachmentIds: string[],
     ) => {
       if (!activeChannel || (!text && attachmentIds.length === 0)) return
+      const targetChannelId = activeChannel.id
       const clientId = newClientMessageId()
       clientMessageIdRef.current ??= newClientMessageId()
       const clientMessageId = clientMessageIdRef.current
@@ -218,25 +223,21 @@ export const useChannelComposer = ({
         // Staged files are dropped only once they are safely linked, so a
         // failed send keeps them for a retry. The draft goes with them: a sent
         // message is no longer unsent.
-        attachments.clearStaged()
-        clearDraft()
-        clientMessageIdRef.current = null
+        if (activeChannelIdRef.current === targetChannelId) {
+          attachments.clearStaged()
+          clearDraft()
+          clientMessageIdRef.current = null
+        }
         // Surface @mentioned agents that aren't members of this channel so the
         // user can invite them; they were not dispatched.
-        if (result.pendingAgentInvites.length > 0) {
-          setPendingAgentInvites((current) => {
-            const seen = new Set(current.map((a) => a.id))
-            return [...current, ...result.pendingAgentInvites.filter((a) => !seen.has(a.id))]
-          })
-          setPendingInviteMessageIds((current) => {
-            const next = { ...current }
-            for (const agent of result.pendingAgentInvites) {
-              next[agent.id] ??= result.message.id
-            }
-            return next
-          })
+        if (
+          activeChannelIdRef.current === targetChannelId
+          && result.pendingAgentInvites.length > 0
+        ) {
+          addPendingInvites(result.pendingAgentInvites, result.message.id)
         }
       } catch (error) {
+        if (activeChannelIdRef.current !== targetChannelId) throw error
         setOptimisticMessages((current) =>
           current.map((entry) =>
             entry.clientId === clientId ? { ...entry, status: 'failed' } : entry,
@@ -250,7 +251,7 @@ export const useChannelComposer = ({
         throw error
       }
     },
-    [activeChannel, attachments, clearDraft, sendMessage, getSendExtras],
+    [activeChannel, addPendingInvites, attachments, clearDraft, sendMessage, getSendExtras],
   )
 
   const captureSecretText = useCallback((input: {
@@ -329,61 +330,6 @@ export const useChannelComposer = ({
     mentionRef.current?.focus()
   }, [])
 
-  const clearInviteError = (agentId: string) =>
-    setInviteErrors((current) => {
-      if (!(agentId in current)) {
-        return current
-      }
-      const next = { ...current }
-      delete next[agentId]
-      return next
-    })
-
-  const dismissPendingAgent = useCallback((agentId: string) => {
-    setPendingAgentInvites((current) => current.filter((a) => a.id !== agentId))
-    setPendingInviteMessageIds((current) => {
-      const next = { ...current }
-      delete next[agentId]
-      return next
-    })
-    clearInviteError(agentId)
-  }, [])
-
-  const invitePendingAgent = useCallback(
-    async (agentId: string) => {
-      if (!activeChannel) {
-        return
-      }
-      setInvitingAgentId(agentId)
-      clearInviteError(agentId)
-      try {
-        const triggerMessageId = pendingInviteMessageIds[agentId]
-        await bindAgent.mutateAsync({
-          agentId,
-          channelId: activeChannel.id,
-          ...(triggerMessageId ? { triggerMessageId } : {}),
-        })
-        setPendingAgentInvites((current) => current.filter((a) => a.id !== agentId))
-        setPendingInviteMessageIds((current) => {
-          const next = { ...current }
-          delete next[agentId]
-          return next
-        })
-      } catch (error) {
-        setInviteErrors((current) => ({
-          ...current,
-          [agentId]:
-            error instanceof Error && error.message
-              ? error.message
-              : 'Could not invite this agent. Please try again.',
-        }))
-      } finally {
-        setInvitingAgentId(null)
-      }
-    },
-    [activeChannel, bindAgent, pendingInviteMessageIds],
-  )
-
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
     if (attachments.isUploading || sendMessage.isPending) return
@@ -403,6 +349,11 @@ export const useChannelComposer = ({
       if (!activeChannel) {
         return
       }
+      const accompanyingText = message.trim()
+      if (accompanyingText && captureSecretText({
+        content: accompanyingText,
+        replacementMode: 'message',
+      })) return
       if (captureSecretText({
         clearComposer: false,
         content: rawText,
@@ -410,19 +361,22 @@ export const useChannelComposer = ({
       })) return
       setSendError(null)
       try {
-        const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
-        const attachment = await uploadAttachment.mutateAsync(file)
-        const accompanyingText = message.trim()
+        let attachment = pendingFileRef.current?.source === rawText
+          ? pendingFileRef.current
+          : null
+        if (!attachment) {
+          const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
+          const uploaded = await uploadAttachment.mutateAsync(file)
+          attachment = { filename: uploaded.filename, id: uploaded.id, source: rawText }
+          pendingFileRef.current = attachment
+        }
         const agentMentions = mentionRef.current?.getAgentMentions() ?? []
-        await sendMessage.mutateAsync({
-          attachmentIds: [attachment.id],
-          content: accompanyingText || `Shared file: ${attachment.filename}`,
-          ...(accompanyingText && agentMentions.length > 0 ? { agentMentions } : {}),
-          // Same routing as a typed reply — without this the escape hatch posted
-          // to the channel instead of into the open reply thread.
-          ...getSendExtras?.(),
-        })
-        clearDraft()
+        await postSafeText(
+          accompanyingText || `Shared file: ${attachment.filename}`,
+          accompanyingText ? agentMentions : [],
+          [attachment.id],
+        )
+        pendingFileRef.current = null
         setOversizePasteState(null)
       } catch (error) {
         setSendError(
@@ -436,10 +390,8 @@ export const useChannelComposer = ({
     [
       activeChannel,
       captureSecretText,
-      clearDraft,
-      getSendExtras,
       message,
-      sendMessage,
+      postSafeText,
       uploadAttachment,
     ],
   )
@@ -472,7 +424,9 @@ export const useChannelComposer = ({
       } else {
         await postSafeText(replacement, capture.agentMentions, capture.attachmentIds)
       }
-      storeSecretCapture(null)
+      if (secretCaptureRef.current?.captureId === capture.captureId) {
+        storeSecretCapture(null)
+      }
     },
     [postSafeText, sendAsFile, storeSecretCapture],
   )

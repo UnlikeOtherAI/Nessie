@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  AGENT_SECRET_SAFETY_INSTRUCTION,
+  createSecretRedactingStream,
+  redactDetectedSecrets,
+  redactDetectedSecretsInValue,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 import {
   attributionFromActorContext,
   CREDITS_EXHAUSTED_USER_MESSAGE,
@@ -79,6 +85,18 @@ const writeSseEvent = (
   data: unknown,
 ): void => {
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
+const safeDesignerToolArguments = (
+  argsBuffer: string,
+): { args: unknown; serialized: string } => {
+  try {
+    const args = redactDetectedSecretsInValue(JSON.parse(argsBuffer))
+    return { args, serialized: JSON.stringify(args) }
+  } catch {
+    const serialized = redactDetectedSecrets(argsBuffer)
+    return { args: serialized, serialized }
+  }
 }
 
 /**
@@ -208,6 +226,8 @@ const streamModelTurn = async (
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  const reasoningStream = createSecretRedactingStream()
+  const textStream = createSecretRedactingStream()
   const toolCalls = new Map<
     number,
     { argsBuffer: string; id: string; name: string }
@@ -226,22 +246,19 @@ const streamModelTurn = async (
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
         if (data === '[DONE]') {
+          const reasoningTail = reasoningStream.finish()
+          const textTail = textStream.finish()
+          if (reasoningTail) writeSseEvent(reply, 'reasoning.delta', { content: reasoningTail })
+          if (textTail) writeSseEvent(reply, 'text.delta', { content: textTail })
           // Finalize open tool calls
           for (const [, tc] of toolCalls) {
-            try {
-              const args = JSON.parse(tc.argsBuffer) as Record<string, unknown>
-              writeSseEvent(reply, 'tool_call.done', {
-                id: tc.id,
-                name: tc.name,
-                args,
-              })
-            } catch {
-              writeSseEvent(reply, 'tool_call.done', {
-                id: tc.id,
-                name: tc.name,
-                args: tc.argsBuffer,
-              })
-            }
+            const safeArguments = safeDesignerToolArguments(tc.argsBuffer)
+            tc.argsBuffer = safeArguments.serialized
+            writeSseEvent(reply, 'tool_call.done', {
+              id: tc.id,
+              name: tc.name,
+              args: safeArguments.args,
+            })
           }
           return Array.from(toolCalls.values())
         }
@@ -279,13 +296,13 @@ const streamModelTurn = async (
           if (!delta) continue
 
           if (delta.reasoning_content) {
-            writeSseEvent(reply, 'reasoning.delta', {
-              content: delta.reasoning_content,
-            })
+            const safe = reasoningStream.push(delta.reasoning_content)
+            if (safe) writeSseEvent(reply, 'reasoning.delta', { content: safe })
           }
 
           if (delta.content) {
-            writeSseEvent(reply, 'text.delta', { content: delta.content })
+            const safe = textStream.push(delta.content)
+            if (safe) writeSseEvent(reply, 'text.delta', { content: safe })
           }
 
           if (delta.tool_calls) {
@@ -308,10 +325,6 @@ const streamModelTurn = async (
 
               if (tc.function?.arguments && existing) {
                 existing.argsBuffer += tc.function.arguments
-                writeSseEvent(reply, 'tool_call.delta', {
-                  id: existing.id,
-                  args: tc.function.arguments,
-                })
               }
             }
           }
@@ -358,20 +371,23 @@ export const streamDesignerChat = async (
   const messages: OpenAIMessage[] = [
     {
       role: 'system',
-      content: buildDesignerSystemPrompt({
-        availableModels: input.availableModels,
-        catalogue,
-        formState: input.formState,
-        organizationId: usageContext.actorContext.tenant.organizationId,
-        ...(input.pageContext ? { pageContext: input.pageContext } : {}),
-        webSearchAvailable: isDesignerWebSearchConfigured(
-          usageContext.ledgerIdentity,
-        ),
-      }),
+      content: redactDetectedSecrets([
+        buildDesignerSystemPrompt({
+          availableModels: input.availableModels,
+          catalogue,
+          formState: input.formState,
+          organizationId: usageContext.actorContext.tenant.organizationId,
+          ...(input.pageContext ? { pageContext: input.pageContext } : {}),
+          webSearchAvailable: isDesignerWebSearchConfigured(
+            usageContext.ledgerIdentity,
+          ),
+        }),
+        AGENT_SECRET_SAFETY_INSTRUCTION,
+      ].join('\n\n')),
     },
     ...input.messages.map((m) => ({
       role: m.role as 'assistant' | 'user',
-      content: m.content,
+      content: redactDetectedSecrets(m.content),
     })),
   ]
 
@@ -426,7 +442,7 @@ export const streamDesignerChat = async (
           const results = await executeWebSearch(query, usageContext, tc.id)
           messages.push({
             role: 'tool',
-            content: results,
+            content: redactDetectedSecrets(results),
             tool_call_id: tc.id,
           })
         } else {

@@ -4,7 +4,7 @@ import type { CredentialStore } from '@nessie/dashboard'
 import {
   AgentCardRespondBodySchema,
   AgentCardSpecSchema,
-  detectSecrets,
+  containsDetectedSecret,
   parseChannelId,
   parseOrganizationId,
   parseThreadId,
@@ -128,7 +128,7 @@ export const registerAgentCardRoutes = (
       throw error
     }
 
-    if (detectSecrets(JSON.stringify(submission.values)).length > 0) {
+    if (containsDetectedSecret(submission.values)) {
       sendApiError(
         reply,
         422,

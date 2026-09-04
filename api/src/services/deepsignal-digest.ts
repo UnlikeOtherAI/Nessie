@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 import {
   IntegrationUiCardSchema,
+  redactDetectedSecrets,
   type DeepSignalSignalKind,
   type IntegrationUiCard,
 } from '@nessie/schemas'
@@ -182,7 +183,11 @@ export const deliverInsightToDigest = async (
   const coalesceWindowMs = options.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS
   const budgetWindowMs = options.budgetWindowMs ?? DEFAULT_BUDGET_WINDOW_MS
   const budgetMax = options.budgetMax ?? DEFAULT_BUDGET_MAX
-  const { threadId, agentId, insight } = input
+  const { threadId, agentId } = input
+  const insight = {
+    ...input.insight,
+    headline: redactDetectedSecrets(input.insight.headline),
+  }
 
   return prisma.$transaction(async (tx): Promise<DigestDelivery> => {
     // Serialize per thread: the read-modify-write below is not atomic on its own.

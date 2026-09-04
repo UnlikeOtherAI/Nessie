@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { detectSecrets } from '@nessie/schemas'
 
 import { CreateMailboxMessageBodySchema, MailboxMessageRecordSchema } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -39,6 +40,14 @@ export const registerMailboxRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const body = parseInput(CreateMailboxMessageBodySchema, request.body, reply)
     if (!body) {
       return reply
+    }
+    if ([body.body, body.subject ?? ''].some((value) => detectSecrets(value).length > 0)) {
+      return sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this agent message was stored. Save it through Secrets instead.',
+      )
     }
 
     let message

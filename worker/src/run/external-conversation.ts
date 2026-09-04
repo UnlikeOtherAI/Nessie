@@ -17,6 +17,8 @@ import {
   parseAgentId,
   parseRunId,
   parseThreadId,
+  redactDetectedSecrets,
+  redactDetectedSecretsInValue,
   type IntegrationUiCard,
   type McpTransportConfig,
   type RunExecuteJobPayload,
@@ -90,13 +92,21 @@ const AUTH_ERROR_PATTERN =
 
 const looksLikeAuthError = (text: string): boolean => AUTH_ERROR_PATTERN.test(text)
 
-type ExternalTurnOutcome = {
+export type ExternalTurnOutcome = {
   content: string
   uiCards: IntegrationUiCard[]
   external?: { product: string; conversationId: string | null; turnId: string | null }
   runStatus: 'completed' | 'failed'
   agentStatus: 'idle' | 'error'
 }
+
+export const sanitizeExternalTurnOutcome = (
+  outcome: ExternalTurnOutcome,
+): ExternalTurnOutcome => ({
+  ...outcome,
+  content: redactDetectedSecrets(outcome.content),
+  uiCards: redactDetectedSecretsInValue(outcome.uiCards) as IntegrationUiCard[],
+})
 
 const dispatchTurn = async (
   deps: ExecutionDependencies,
@@ -258,7 +268,10 @@ const finalizeTurn = async (
   outcome: ExternalTurnOutcome,
   onMessageCreated?: () => void,
 ): Promise<void> => {
-  const metadata: Record<string, unknown> = { uiCards: outcome.uiCards }
+  const safeOutcome = sanitizeExternalTurnOutcome(outcome)
+  const metadata: Record<string, unknown> = {
+    uiCards: safeOutcome.uiCards,
+  }
   if (outcome.external) {
     metadata.external = outcome.external
   }
@@ -266,7 +279,7 @@ const finalizeTurn = async (
   const message = await deps.prisma.message.create({
     data: {
       agentId: context.agent.id,
-      content: outcome.content,
+      content: safeOutcome.content,
       metadata: metadata as Prisma.InputJsonValue,
       role: 'assistant',
       threadId: context.run.threadId,
@@ -283,13 +296,13 @@ const finalizeTurn = async (
 
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
-    content: outcome.content,
+    content: safeOutcome.content,
     createdAt: message.createdAt.toISOString(),
     messageId: message.id,
     runId: parseRunId(context.run.id),
   })
   await publishMessageCreated(deps.realtimeTransport, context, {
-    content: outcome.content,
+    content: safeOutcome.content,
     messageId: message.id,
     role: 'assistant',
   })

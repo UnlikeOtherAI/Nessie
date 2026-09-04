@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { checkBudget } from '@nessie/runtime'
+import { containsDetectedSecret } from '@nessie/schemas'
 import { AGENT_DESIGNER_SLUG } from '@nessie/team-admin'
 import { DesignerChatBodySchema, DesignerContinueBodySchema } from '../contracts.js'
 import { parseInput, sendApiError } from '../lib/api.js'
@@ -28,6 +29,14 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
 
     const body = parseInput(DesignerChatBodySchema, request.body, reply)
     if (!body) return reply
+    if (containsDetectedSecret(body)) {
+      return sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before it reached the Agent Designer. Save it through Secrets instead.',
+      )
+    }
 
     if (!sharedModelClient) {
       reply.code(500).send({ error: 'Model client not configured' })
@@ -87,6 +96,14 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
 
     const body = parseInput(DesignerContinueBodySchema, request.body, reply)
     if (!body) return reply
+    if (containsDetectedSecret(body)) {
+      return sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this draft entered chat. Save it through Secrets instead.',
+      )
+    }
 
     try {
       const result = await continueDesignInChat(prisma, {

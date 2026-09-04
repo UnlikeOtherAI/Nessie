@@ -1,7 +1,4 @@
-import crypto from 'node:crypto'
-
 import type { FastifyInstance } from 'fastify'
-import { detectSecrets } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -11,8 +8,12 @@ import {
   InfisicalVaultError,
   type InfisicalSecretNamespace,
 } from '../services/infisical-vault.js'
+import {
+  secretMetadataIsUnsafe,
+  secretMatchesCaptureRequest,
+  secretReferenceForCapture,
+} from './secret-capture-idempotency.js'
 import type { RouteDeps } from './types.js'
-
 const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 
 const CreateSecretBodySchema = z.object({
@@ -26,7 +27,6 @@ const CreateSecretBodySchema = z.object({
 }).strict()
 
 const RotateSecretBodySchema = z.object({ value: z.string().min(1).max(65_536) }).strict()
-
 const GrantSecretBodySchema = z.object({
   principalType: z.enum(['user', 'agent', 'team', 'project', 'organization']),
   principalId: z.string().uuid(),
@@ -59,7 +59,6 @@ const publicSecret = (secret: {
   createdAt: secret.createdAt.toISOString(),
   updatedAt: secret.updatedAt.toISOString(),
 })
-
 const vaultName = (reference: string): string => `NESSIE_${reference.slice(4).toUpperCase()}`
 
 const sendVaultError = (reply: Parameters<typeof sendApiError>[0], error: unknown): boolean => {
@@ -72,7 +71,6 @@ const sendVaultError = (reply: Parameters<typeof sendApiError>[0], error: unknow
   )
   return true
 }
-
 const canManageScope = async (input: {
   actorId: string
   isOwner: boolean
@@ -190,10 +188,20 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     const body = parseInput(CreateSecretBodySchema, request.body, reply)
     if (!body) return reply
+    const rawIdempotencyKey = request.headers['idempotency-key']
+    const idempotencyKey = typeof rawIdempotencyKey === 'string'
+      ? rawIdempotencyKey.trim()
+      : ''
+    if (rawIdempotencyKey !== undefined && (idempotencyKey.length < 8 || idempotencyKey.length > 200)) {
+      return sendApiError(
+        reply,
+        400,
+        'INVALID_IDEMPOTENCY_KEY',
+        'Idempotency-Key must contain between 8 and 200 characters.',
+      )
+    }
     const metadataFields = [body.name, body.description ?? '', body.provider ?? '']
-    if (metadataFields.some(
-      (field) => field.includes(body.value) || detectSecrets(field).length > 0,
-    )) {
+    if (secretMetadataIsUnsafe(metadataFields, body.value)) {
       sendApiError(
         reply,
         422,
@@ -215,7 +223,29 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const reference = `sec_${crypto.randomBytes(16).toString('hex')}`
+    const reference = secretReferenceForCapture({
+      actorId: actorContext.actor.actorId,
+      idempotencyKey,
+      organizationId: actorContext.tenant.organizationId,
+    })
+    if (idempotencyKey) {
+      const existing = await prisma.secret.findUnique({ where: { reference } })
+      if (existing) {
+        if (!secretMatchesCaptureRequest(existing, body, {
+          actorId: actorContext.actor.actorId,
+          organizationId: actorContext.tenant.organizationId,
+          scopeId: scope.scopeId,
+        })) {
+          return sendApiError(
+            reply,
+            409,
+            'IDEMPOTENCY_CONFLICT',
+            'That idempotency key was already used for a different secret capture.',
+          )
+        }
+        return reply.code(200).send(createApiResponse(publicSecret(existing)))
+      }
+    }
     const namespace: InfisicalSecretNamespace = {
       organizationId: actorContext.tenant.organizationId,
       scopeId: scope.scopeId,
@@ -252,6 +282,16 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         },
       })
     } catch (error) {
+      if (idempotencyKey) {
+        const existing = await prisma.secret.findUnique({ where: { reference } })
+        if (existing && secretMatchesCaptureRequest(existing, body, {
+          actorId: actorContext.actor.actorId,
+          organizationId: actorContext.tenant.organizationId,
+          scopeId: scope.scopeId,
+        })) {
+          return reply.code(200).send(createApiResponse(publicSecret(existing)))
+        }
+      }
       // Never retain a usable vault value when its Nessie metadata row failed.
       await vault.remove({ name: vaultName(reference), namespace }).catch(() => undefined)
       throw error

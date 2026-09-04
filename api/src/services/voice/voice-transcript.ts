@@ -6,7 +6,11 @@ import {
   type FileService,
   type ModelClient,
 } from '@nessie/runtime'
-import type { AuthorizedActionContext, VoiceTranscriptLine } from '@nessie/schemas'
+import {
+  redactDetectedSecrets,
+  type AuthorizedActionContext,
+  type VoiceTranscriptLine,
+} from '@nessie/schemas'
 
 import { compactCallTranscript } from './voice-compaction.js'
 import { VoiceSessionError } from './voice-session.js'
@@ -250,7 +254,7 @@ export const writeVoiceCallRecord = async (
     userDisplayName: input.userDisplayName,
     ...(input.onCompactionFailure ? { onFailure: input.onCompactionFailure } : {}),
   })
-  const content = compaction
+  const renderedContent = compaction
     ? renderCompactedCallSummary({
       compaction,
       durationMs: input.durationMs,
@@ -260,6 +264,7 @@ export const writeVoiceCallRecord = async (
       durationMs: input.durationMs,
       lines: input.lines,
     })
+  const content = redactDetectedSecrets(renderedContent)
 
   const attribution = attributionFromActorContext(input.actorContext, {
     agentId: input.session.agentId,

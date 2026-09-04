@@ -51,9 +51,15 @@ export const useSendMessageToThread = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { attachmentIds?: string[]; content: string; threadId: string }) =>
+    mutationFn: (input: {
+      attachmentIds?: string[]
+      clientMessageId?: string
+      content: string
+      threadId: string
+    }) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${input.threadId}/messages`, {
         attachmentIds: input.attachmentIds,
+        clientMessageId: input.clientMessageId,
         content: input.content,
       }),
     onSuccess: (_message, input) => {
