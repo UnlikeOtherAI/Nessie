@@ -4,7 +4,10 @@ import {
   AgentManagementError,
 } from '../services/agents.js'
 import { AgentEditAuthorityError } from '../services/agent-management.js'
-import { LedgerAgentModelCatalogError } from '@nessie/team-admin'
+import {
+  AgentSecretInputError,
+  LedgerAgentModelCatalogError,
+} from '@nessie/team-admin'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,
@@ -53,6 +56,10 @@ export const sendAgentManagementError = (
   reply: Parameters<typeof sendApiError>[0],
   error: unknown,
 ): boolean => {
+  if (error instanceof AgentSecretInputError) {
+    sendApiError(reply, 422, 'SECRET_INTERCEPTED', error.message)
+    return true
+  }
   if (
     error instanceof AgentManagementError
     && error.code === AGENT_MANAGEMENT_ERROR_CODES.PARENT_NOT_FOUND

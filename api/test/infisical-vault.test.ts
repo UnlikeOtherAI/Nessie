@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
-
 import { registerSecretRoutes } from '../src/routes/secrets.js'
 import {
   InfisicalVault,
@@ -12,7 +10,6 @@ import {
   infisicalSecretPath,
   type InfisicalSecretNamespace,
 } from '../src/services/infisical-vault.js'
-
 const ORGANIZATION_ID = '10000000-0000-4000-8000-000000000001'
 const OTHER_ORGANIZATION_ID = '10000000-0000-4000-8000-000000000002'
 const USER_ID = '20000000-0000-4000-8000-000000000001'
@@ -21,13 +18,11 @@ const TEAM_ID = '30000000-0000-4000-8000-000000000001'
 const PROJECT_ID = '40000000-0000-4000-8000-000000000001'
 const SECRET_ID = '50000000-0000-4000-8000-000000000001'
 const OPAQUE_VAULT_NAME = 'NESSIE_SEC_0123456789ABCDEF0123456789ABCDEF'
-
 const actorContext: AuthorizedActionContext = {
   actionContext: { requestId: 'infisical-vault-route-test' },
   actor: { actorId: USER_ID, actorType: 'user', roles: ['owner'] },
   tenant: { organizationId: ORGANIZATION_ID },
 }
-
 type InfisicalEnvironment = Record<
   'INFISICAL_API_URL' | 'INFISICAL_ENVIRONMENT' | 'INFISICAL_PROJECT_ID' | 'INFISICAL_SERVICE_TOKEN' | 'INFISICAL_SERVICE_TOKEN_FILE',
   string | undefined
@@ -40,9 +35,7 @@ const infisicalEnvironment: InfisicalEnvironment = {
   INFISICAL_SERVICE_TOKEN: 'test-service-token',
   INFISICAL_SERVICE_TOKEN_FILE: undefined,
 }
-
 const infisicalEnvironmentKeys = Object.keys(infisicalEnvironment) as Array<keyof InfisicalEnvironment>
-
 type VaultRequest = {
   method: string
   path: string
@@ -118,6 +111,7 @@ const expectedFolders = (namespace: InfisicalSecretNamespace) => [
 ]
 
 type StoredSecret = {
+  captureFingerprint: string | null
   createdAt: Date
   createdById: string
   description: string | null
@@ -137,21 +131,12 @@ type StoredSecret = {
 
 const makeSecretRouteApp = () => {
   let stored: StoredSecret | null = null
-  const auditTransaction = {
-    $executeRaw: async () => 0,
-    auditLog: {
-      create: async () => ({}),
-      findFirst: async () => null,
-    },
-  }
-  const prisma = {
-    $transaction: async <T>(callback: (tx: typeof auditTransaction) => Promise<T>) =>
-      callback(auditTransaction),
-    secret: {
+  const secret = {
       create: async ({ data }: { data: Omit<StoredSecret, 'createdAt' | 'id' | 'rotatedAt' | 'status' | 'updatedAt'> }) => {
         const now = new Date('2026-08-31T12:00:00.000Z')
         stored = {
           ...data,
+          captureFingerprint: data.captureFingerprint ?? null,
           createdAt: now,
           description: data.description ?? null,
           expiresAt: data.expiresAt ?? null,
@@ -180,10 +165,20 @@ const makeSecretRouteApp = () => {
         stored = { ...stored, ...data, updatedAt: new Date('2026-08-31T12:01:00.000Z') }
         return stored
       },
-    },
+  }
+  const transactionClient = {
+    $executeRaw: async () => 0,
+    auditLog: { create: async () => ({}), findFirst: async () => null },
+    secret,
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (tx: typeof transactionClient) => Promise<T>) =>
+      callback(transactionClient),
+    secret,
   } as unknown as PrismaClient
   const app = Fastify({ logger: false })
   registerSecretRoutes(app, {
+    authSecret: 'infisical-route-test-secret',
     prisma,
     requireActorContext: () => actorContext,
   } as unknown as Parameters<typeof registerSecretRoutes>[1])
@@ -487,9 +482,14 @@ test('a retried capture id returns the first secret without writing the vault tw
         }
         const first = await app.inject(request)
         const retry = await app.inject(request)
+        const conflict = await app.inject({
+          ...request, payload: { ...request.payload, value: 'changed-secret-value' },
+        })
 
         assert.equal(first.statusCode, 201, first.body)
         assert.equal(retry.statusCode, 200, retry.body)
+        assert.equal(conflict.statusCode, 409, conflict.body)
+        assert.equal(conflict.json().error.code, 'IDEMPOTENCY_CONFLICT')
         assert.equal(first.json().data.reference, retry.json().data.reference)
         assert.equal(requests.filter((entry) => entry.path.startsWith('/api/v4/secrets/')).length, 1)
       })

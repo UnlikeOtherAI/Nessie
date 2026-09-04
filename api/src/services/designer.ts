@@ -232,6 +232,22 @@ const streamModelTurn = async (
     number,
     { argsBuffer: string; id: string; name: string }
   >()
+  const finalize = (): Array<{ argsBuffer: string; id: string; name: string }> => {
+    const reasoningTail = reasoningStream.finish()
+    const textTail = textStream.finish()
+    if (reasoningTail) writeSseEvent(reply, 'reasoning.delta', { content: reasoningTail })
+    if (textTail) writeSseEvent(reply, 'text.delta', { content: textTail })
+    for (const [, toolCall] of toolCalls) {
+      const safeArguments = safeDesignerToolArguments(toolCall.argsBuffer)
+      toolCall.argsBuffer = safeArguments.serialized
+      writeSseEvent(reply, 'tool_call.done', {
+        id: toolCall.id,
+        name: toolCall.name,
+        args: safeArguments.args,
+      })
+    }
+    return Array.from(toolCalls.values())
+  }
 
   try {
     while (true) {
@@ -246,21 +262,7 @@ const streamModelTurn = async (
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
         if (data === '[DONE]') {
-          const reasoningTail = reasoningStream.finish()
-          const textTail = textStream.finish()
-          if (reasoningTail) writeSseEvent(reply, 'reasoning.delta', { content: reasoningTail })
-          if (textTail) writeSseEvent(reply, 'text.delta', { content: textTail })
-          // Finalize open tool calls
-          for (const [, tc] of toolCalls) {
-            const safeArguments = safeDesignerToolArguments(tc.argsBuffer)
-            tc.argsBuffer = safeArguments.serialized
-            writeSseEvent(reply, 'tool_call.done', {
-              id: tc.id,
-              name: tc.name,
-              args: safeArguments.args,
-            })
-          }
-          return Array.from(toolCalls.values())
+          return finalize()
         }
 
         try {
@@ -337,7 +339,10 @@ const streamModelTurn = async (
     reader.releaseLock()
   }
 
-  return Array.from(toolCalls.values())
+  // Some OpenAI-compatible providers end the body without a `[DONE]` sentinel.
+  // Treat EOF as the same boundary so buffered text and tool arguments cannot
+  // bypass the final sanitizer.
+  return finalize()
 }
 
 export const streamDesignerChat = async (

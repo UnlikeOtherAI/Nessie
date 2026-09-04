@@ -94,10 +94,30 @@ test('new conversations and message edits use the protected capture flow', () =>
 test('settings and agent-card credential writes never retain variables in mutation caches', () => {
   const settings = readSource('../src/pages/settings/SecretsPage.tsx')
   const cardHooks = readSource('../src/facades/agent-cards/hooks.ts')
+  const messageHooks = readSource('../src/facades/messages/hooks.ts')
+  const uploadHook = messageHooks.slice(
+    messageHooks.indexOf('export const useUploadAttachment'),
+    messageHooks.indexOf('export const useDiscardAttachment'),
+  )
 
   assert.match(settings, /useTransientSecretSave/)
   assert.doesNotMatch(settings, /useCreateSecret/)
   assert.doesNotMatch(cardHooks, /useMutation/)
+  assert.match(uploadHook, /useCallback\(async/)
+  assert.doesNotMatch(uploadHook, /useMutation/)
+})
+
+test('editing a failed secret form rotates its idempotency key', () => {
+  const captureDialog = readSource(
+    '../src/components/features/channels/SecretCaptureDialog.tsx',
+  )
+  const settingsDialog = readSource(
+    '../src/components/features/settings/CreateSecretDialog.tsx',
+  )
+
+  assert.match(captureDialog, /const updateName = .*newCaptureRequestId\(\)/s)
+  assert.match(captureDialog, /const updateScopeType = .*newCaptureRequestId\(\)/s)
+  assert.match(settingsDialog, /const changed = .*newCaptureId\(\)/s)
 })
 
 test('failed protected sends remain open and retry without saving the value twice', () => {

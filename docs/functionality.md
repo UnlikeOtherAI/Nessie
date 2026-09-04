@@ -1355,6 +1355,12 @@ type ControlCommandDefinition = {
   - the capture POST bypasses the shared mutation cache; primary agents,
     inline delegates and spawned subtasks share one compact prompt instruction,
     while model streams and tool boundaries redact independently.
+  - agent configuration is refused before its shared create/update service can
+    persist a detected credential; legacy prompt fields are redacted at model
+    sinks. Live voice redacts transcript UI/storage and rejects raw transcript
+    persistence, but direct device-to-Gemini audio cannot be pre-scanned.
+  - capture retries are serialized by idempotency identity and validate a keyed
+    value fingerprint; editing a failed form rotates that identity.
   - a successful save posts only a masked replacement turn; raw secret text is
     never the message later deleted or rewritten.
   - broader scope selection (`global`, `team`, `channel`, `agent`, `thread`,

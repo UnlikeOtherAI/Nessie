@@ -159,3 +159,24 @@ test('only an owner can enable to-dos while creating an agent', async () => {
     await ordinaryMember.app.close()
   }
 })
+
+test('agent creation refuses a credential before persistence', async () => {
+  const member = makeApp('member')
+  try {
+    const response = await member.app.inject({
+      method: 'POST',
+      payload: {
+        avatarAttachmentId,
+        name: 'Unsafe agent',
+        systemPrompt: `Use sk-proj-${'aB3_'.repeat(8)} for every request.`,
+      },
+      url: '/api/agents',
+    })
+
+    assert.equal(response.statusCode, 422)
+    assert.equal(response.json().error.code, 'SECRET_INTERCEPTED')
+    assert.equal(member.createCalls, 0)
+  } finally {
+    await member.app.close()
+  }
+})

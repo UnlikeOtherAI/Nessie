@@ -10,9 +10,12 @@ import {
 } from '../services/infisical-vault.js'
 import {
   secretMetadataIsUnsafe,
-  secretMatchesCaptureRequest,
   secretReferenceForCapture,
 } from './secret-capture-idempotency.js'
+import {
+  createSecretCapture,
+  SecretCaptureIdempotencyConflict,
+} from './secret-capture-create.js'
 import type { RouteDeps } from './types.js'
 const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 
@@ -228,74 +231,34 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       idempotencyKey,
       organizationId: actorContext.tenant.organizationId,
     })
-    if (idempotencyKey) {
-      const existing = await prisma.secret.findUnique({ where: { reference } })
-      if (existing) {
-        if (!secretMatchesCaptureRequest(existing, body, {
-          actorId: actorContext.actor.actorId,
-          organizationId: actorContext.tenant.organizationId,
-          scopeId: scope.scopeId,
-        })) {
-          return sendApiError(
-            reply,
-            409,
-            'IDEMPOTENCY_CONFLICT',
-            'That idempotency key was already used for a different secret capture.',
-          )
-        }
-        return reply.code(200).send(createApiResponse(publicSecret(existing)))
-      }
-    }
-    const namespace: InfisicalSecretNamespace = {
-      organizationId: actorContext.tenant.organizationId,
-      scopeId: scope.scopeId,
-      scopeType: body.scopeType,
-    }
-    let vault: InfisicalVault
-    let vaultReference: string
+    let capture
     try {
-      vault = new InfisicalVault()
-      vaultReference = await vault.put({
-        description: body.description,
-        name: vaultName(reference),
-        namespace,
-        value: body.value,
+      capture = await createSecretCapture({
+        actorId: actorContext.actor.actorId,
+        authSecret: deps.authSecret,
+        body,
+        idempotencyKey,
+        organizationId: actorContext.tenant.organizationId,
+        prisma,
+        reference,
+        scopeId: scope.scopeId,
       })
     } catch (error) {
+      if (error instanceof SecretCaptureIdempotencyConflict) {
+        return sendApiError(
+          reply,
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'That idempotency key was already used for a different secret capture.',
+        )
+      }
       if (sendVaultError(reply, error)) return reply
       throw error
     }
-    let secret
-    try {
-      secret = await prisma.secret.create({
-        data: {
-          createdById: actorContext.actor.actorId,
-          description: body.description,
-          expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
-          name: body.name,
-          organizationId: actorContext.tenant.organizationId,
-          provider: body.provider,
-          reference,
-          scopeId: scope.scopeId,
-          scopeType: body.scopeType,
-          vaultReference,
-        },
-      })
-    } catch (error) {
-      if (idempotencyKey) {
-        const existing = await prisma.secret.findUnique({ where: { reference } })
-        if (existing && secretMatchesCaptureRequest(existing, body, {
-          actorId: actorContext.actor.actorId,
-          organizationId: actorContext.tenant.organizationId,
-          scopeId: scope.scopeId,
-        })) {
-          return reply.code(200).send(createApiResponse(publicSecret(existing)))
-        }
-      }
-      // Never retain a usable vault value when its Nessie metadata row failed.
-      await vault.remove({ name: vaultName(reference), namespace }).catch(() => undefined)
-      throw error
+    if (capture.mode === 'replayed') {
+      return reply.code(200).send(createApiResponse(publicSecret(capture.secret)))
     }
+    const secret = capture.secret
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'secret.created' as Parameters<typeof emitAuditEvent>[1]['action'],

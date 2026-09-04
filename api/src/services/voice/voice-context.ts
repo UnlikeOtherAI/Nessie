@@ -108,9 +108,15 @@ export const buildVoiceSystemInstruction = (input: {
     lines.push('', speakingStyle)
   }
   if (input.agentSystemPrompt && input.agentSystemPrompt.trim().length > 0) {
-    lines.push('', 'Your standing instructions:', input.agentSystemPrompt.trim())
+    lines.push(
+      '',
+      'Your standing instructions:',
+      redactDetectedSecrets(input.agentSystemPrompt.trim()),
+    )
   }
-  return lines.join('\n')
+  // Lower-bound guard for legacy agent configuration that predates the route
+  // refusal. No stored prompt or speaking style reaches Gemini verbatim.
+  return redactDetectedSecrets(lines.join('\n'))
 }
 
 /**

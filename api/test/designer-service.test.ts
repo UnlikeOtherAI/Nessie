@@ -56,7 +56,7 @@ const fakeDoneResponse = (): Response => {
   return { body: { getReader: () => reader } } as unknown as Response
 }
 
-const fakeStreamResponse = (lines: string[]): Response => {
+const fakeStreamResponse = (lines: string[], includeDone = true): Response => {
   const encoder = new TextEncoder()
   let sent = false
   const reader = {
@@ -65,7 +65,9 @@ const fakeStreamResponse = (lines: string[]): Response => {
       sent = true
       return {
         done: false,
-        value: encoder.encode(`${lines.map((entry) => `data: ${entry}\n\n`).join('')}data: [DONE]\n\n`),
+        value: encoder.encode(
+          `${lines.map((entry) => `data: ${entry}\n\n`).join('')}${includeDone ? 'data: [DONE]\n\n' : ''}`,
+        ),
       }
     },
     releaseLock: () => {},
@@ -167,6 +169,25 @@ test('Designer output streams and tool arguments never expose model-produced sec
 
   assert.doesNotMatch(streamed, /hunter2/u)
   assert.match(streamed, /•{12}/u)
+})
+
+test('Designer sanitizes open tool arguments when a provider ends at EOF', async () => {
+  const secret = 'password="hunter2"'
+  const response = fakeStreamResponse([JSON.stringify({
+    choices: [{
+      delta: {
+        tool_calls: [{
+          function: { arguments: JSON.stringify({ content: secret }), name: 'set_system_prompt' },
+          id: 'call-secret-eof',
+          index: 0,
+        }],
+      },
+    }],
+  })], false)
+  const { chunks } = await runDesignerChat({ messages: [], formState: baseFormState }, response)
+
+  assert.doesNotMatch(chunks.join(''), /hunter2/u)
+  assert.match(chunks.join(''), /•{12}/u)
 })
 
 test('streamDesignerChat forwards the supplied page context into the system prompt', async () => {

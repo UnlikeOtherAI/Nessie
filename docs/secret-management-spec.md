@@ -115,7 +115,8 @@ them and saves each value separately. After the vault accepts every secret,
 the composer sends a new replacement turn:
 the person's original text with every detected value reduced to its safe
 prefix and bullet mask, plus the approved secret name. That replacement is the
-only version which reaches PostgreSQL, realtime, memory, indexing, or a model.
+only typed-message version which reaches PostgreSQL, realtime, memory, indexing,
+or a model.
 Discard sends no turn. This implements the requested replace semantics without
 ever persisting a raw message that would later need deletion. The server scan
 still repeats before message persistence and returns `SECRET_INTERCEPTED` to a
@@ -123,9 +124,20 @@ client which bypasses the composer. The same pre-persistence refusal covers
 direct executor launches, ordinary agent-card response fields, and product-
 integration handoffs, because each can create a user-authored message without
 passing through the ordinary chat route. Direct memory capture, owner mailbox
-messages, Agent Designer requests and handoffs, and voice-call transcripts are
-refused at their own pre-storage boundaries as well; legacy mailbox rows are
+messages and Agent Designer requests and handoffs are refused at their own
+pre-storage boundaries as well. Agent configuration fields are refused through
+the shared create/update service before persistence, while legacy values are
+redacted before avatar generation, typed prompts, or voice context. Voice-call
+transcript fragments are redacted in the client before display or local storage,
+and the server refuses an unsanitized direct transcript payload before creating
+its chat record or attachment. Legacy mailbox rows are
 redacted again at delivery before chat, realtime, task, queue, or model sinks.
+
+Live voice audio is a distinct boundary: the architecture intentionally sends
+microphone frames device-to-Gemini, so Nessie cannot inspect or replace spoken
+secret material before Gemini receives it. The compact instruction tells the
+assistant not to request or repeat secrets, and downstream transcript/state is
+sanitized, but this is not the typed-chat pre-model interception guarantee.
 
 Every primary, inline delegate, and spawned subtask receives the same compact
 system-prompt rule: do not ask for, repeat, or place secrets in chat or
@@ -151,13 +163,18 @@ It does **not** write GitHub Actions repository or environment secrets: that
 would require a separately authorised GitHub destination and GitHub's encrypted
 secret-write API, which this flow must not pretend to provide.
 
-Capture writes use a client-stable idempotency key. A response-loss retry
-returns the original metadata row without writing the vault twice, while
+Capture writes use a client-stable idempotency key. Requests with the same
+identity are serialized under a transaction-scoped advisory lock before the
+vault write. The metadata row stores a keyed HMAC of the submitted value so a
+reused key with different bytes is refused without storing recoverable secret
+material. A response-loss retry returns the original metadata row without
+writing the vault twice, while
 protected message retries reuse the same message identity and any completed
 oversize upload. Both the capture form and ordinary Secrets settings form use
-direct transient requests rather than retaining raw values in TanStack's
-application-wide mutation cache; credential-bearing agent-card presses use the
-same non-cached discipline.
+direct transient requests rather than retaining raw values or rejected upload
+objects in TanStack's application-wide mutation cache; editing a failed form
+rotates its idempotency key. Credential-bearing agent-card presses use the same
+non-cached discipline.
 
 Structured secret mentions and a temporary-vault interception flow remain
 Phase 1 follow-ups. Text pasted through the oversize-file escape hatch,

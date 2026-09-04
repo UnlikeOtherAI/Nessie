@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { channelKeys, threadKeys } from '../../lib/query-keys'
@@ -138,9 +139,18 @@ export const useMessageSearch = (channelId: string | undefined, query: string) =
 // raw fetch helper because the JSON ApiClient cannot send FormData bodies.
 export const useUploadAttachment = () => {
   const { token } = useAuthSession()
-  return useMutation({
-    mutationFn: (file: File): Promise<AttachmentRecord> => uploadAttachment(file, token),
-  })
+  const [pendingCount, setPendingCount] = useState(0)
+  const mutateAsync = useCallback(async (file: File): Promise<AttachmentRecord> => {
+    setPendingCount((current) => current + 1)
+    try {
+      return await uploadAttachment(file, token)
+    } finally {
+      setPendingCount((current) => Math.max(0, current - 1))
+    }
+  }, [token])
+  // A rejected credential-bearing File must not survive in TanStack's global
+  // mutation cache. Keep it only as this awaited call's local argument.
+  return { isPending: pendingCount > 0, mutateAsync }
 }
 
 // Discard an upload that was staged in the composer and then removed before the

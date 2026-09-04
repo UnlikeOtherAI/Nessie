@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream'
 
 import type { ModelConfig } from '@nessie/config'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { redactDetectedSecrets, type AuthorizedActionContext } from '@nessie/schemas'
 import {
   attributionFromActorContext,
   completeLedgerAttribution,
@@ -55,9 +55,9 @@ const avatarPromptMessages = (
   // A regeneration note augments the agent's own purpose; it is never a new
   // source of truth that replaces the context the avatar represents.
   const agentPurpose = [
-    agent.systemPrompt?.slice(0, 6_000) ?? '',
+    redactDetectedSecrets(agent.systemPrompt?.slice(0, 6_000) ?? ''),
     additionalGuidance
-      ? `Additional avatar guidance:\n${additionalGuidance.slice(0, 1_000)}`
+      ? `Additional avatar guidance:\n${redactDetectedSecrets(additionalGuidance.slice(0, 1_000))}`
       : '',
   ]
     .filter(Boolean)

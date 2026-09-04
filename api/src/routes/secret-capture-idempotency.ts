@@ -1,15 +1,17 @@
 import crypto from 'node:crypto'
 import { detectSecrets } from '@nessie/schemas'
 
-type SecretCaptureMetadata = {
+export type SecretCaptureMetadata = {
   description?: string
   expiresAt?: string
   name: string
   provider?: string
   scopeType: string
+  value: string
 }
 
 type StoredSecretCapture = {
+  captureFingerprint: string | null
   createdById: string
   description: string | null
   expiresAt: Date | null
@@ -36,7 +38,7 @@ export const secretReferenceForCapture = (input: {
 export const secretMatchesCaptureRequest = (
   secret: StoredSecretCapture,
   body: SecretCaptureMetadata,
-  input: { actorId: string; organizationId: string; scopeId: string },
+  input: { actorId: string; authSecret: string; organizationId: string; scopeId: string },
 ): boolean => secret.createdById === input.actorId
   && secret.organizationId === input.organizationId
   && secret.name === body.name
@@ -44,7 +46,17 @@ export const secretMatchesCaptureRequest = (
   && secret.provider === (body.provider ?? null)
   && secret.scopeType === body.scopeType
   && secret.scopeId === input.scopeId
-  && (secret.expiresAt?.toISOString() ?? null) === (body.expiresAt ?? null)
+  && (secret.expiresAt?.toISOString() ?? null)
+    === (body.expiresAt ? new Date(body.expiresAt).toISOString() : null)
+  && secret.captureFingerprint === captureFingerprintForValue(input.authSecret, body.value)
+
+const CAPTURE_FINGERPRINT_DOMAIN = 'nessie.secret-capture.value.v1\0'
+
+export const captureFingerprintForValue = (authSecret: string, value: string): string =>
+  crypto.createHmac('sha256', authSecret)
+    .update(CAPTURE_FINGERPRINT_DOMAIN)
+    .update(value)
+    .digest('base64url')
 
 export const secretMetadataIsUnsafe = (
   fields: string[],

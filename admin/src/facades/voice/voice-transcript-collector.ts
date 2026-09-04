@@ -1,4 +1,4 @@
-import type { VoiceTranscriptLine } from '@nessie/schemas'
+import { redactDetectedSecrets, type VoiceTranscriptLine } from '@nessie/schemas'
 
 /**
  * Assembles the call transcript from streamed fragments.
@@ -32,7 +32,7 @@ export const collectTranscript = (startedAtMs = Date.now()): TranscriptCollector
   let assistantStartedAt: number | null = null
 
   const push = (speaker: 'user' | 'assistant', text: string, startedAt: number | null): void => {
-    const trimmed = text.trim()
+    const trimmed = redactDetectedSecrets(text).trim()
     if (trimmed.length === 0) return
     finalised.push({
       speaker,
@@ -60,8 +60,8 @@ export const collectTranscript = (startedAtMs = Date.now()): TranscriptCollector
       userStartedAt = null
       assistantStartedAt = null
     },
-    liveUserText: () => userBuffer.trim(),
-    liveAssistantText: () => assistantBuffer.trim(),
+    liveUserText: () => redactDetectedSecrets(userBuffer).trim(),
+    liveAssistantText: () => redactDetectedSecrets(assistantBuffer).trim(),
     lines: () => [...finalised],
   }
 }

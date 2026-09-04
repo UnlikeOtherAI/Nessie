@@ -71,6 +71,11 @@ export const CreateSecretDialog = ({
   const [formError, setFormError] = useState<string | null>(null)
   const requestIdRef = useRef(newCaptureId())
 
+  const changed = (apply: () => void) => {
+    requestIdRef.current = newCaptureId()
+    apply()
+  }
+
   const resetForm = () => {
     setName('')
     setValue('')
@@ -124,7 +129,8 @@ export const CreateSecretDialog = ({
         <FormField help="Use uppercase letters, numbers, and underscores." label="Secret key">
           <Input
             autoComplete="off"
-            onChange={(event) => setName(event.target.value.toUpperCase())}
+            disabled={pending}
+            onChange={(event) => changed(() => setName(event.target.value.toUpperCase()))}
             placeholder="STRIPE_API_KEY"
             ref={nameRef}
             value={name}
@@ -134,7 +140,8 @@ export const CreateSecretDialog = ({
         <FormField label="Value">
           <Input
             autoComplete="off"
-            onChange={(event) => setValue(event.target.value)}
+            disabled={pending}
+            onChange={(event) => changed(() => setValue(event.target.value))}
             type="password"
             value={value}
           />
@@ -142,7 +149,10 @@ export const CreateSecretDialog = ({
 
         <FormField label="Scope">
           <Select
-            onChange={(event) => setScopeType(event.target.value as SecretCreationScope)}
+            disabled={pending}
+            onChange={(event) => changed(() => {
+              setScopeType(event.target.value as SecretCreationScope)
+            })}
             value={scopeType}
           >
             <option value="personal">Personal</option>
@@ -153,7 +163,8 @@ export const CreateSecretDialog = ({
         {scopeType === 'project' ? (
           <FormField label="Project" required>
             <Select
-              onChange={(event) => setScopeId(event.target.value)}
+              disabled={pending}
+              onChange={(event) => changed(() => setScopeId(event.target.value))}
               required
               value={scopeId}
             >

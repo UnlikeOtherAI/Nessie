@@ -28,6 +28,7 @@ import {
   mergeGenericAgentToolPolicy,
 } from './agent-tool-policy-core.js'
 import { AGENT_OWNER_MEMBERSHIP_SELECT, mapAgentRecord } from './agent-record.js'
+import { assertAgentSecretFreeInput } from './agent-secret-input.js'
 
 /**
  * Rewriting an agent, under the acting person's live authority.
@@ -87,8 +88,9 @@ export const updateAgentRecord = async (
   agentId: string,
   actor: AgentEditActor,
   input: UpdateAgentRecordInput,
-): Promise<AgentRecord | null> =>
-  prisma.$transaction(async (tx) => {
+): Promise<AgentRecord | null> => {
+  assertAgentSecretFreeInput(input)
+  return prisma.$transaction(async (tx) => {
     await acquireAgentToolPolicyLock(tx, agentId)
     const existing = await tx.agent.findFirst({
       where: {
@@ -254,6 +256,7 @@ export const updateAgentRecord = async (
 
     return mapAgentRecord(agent)
   })
+}
 
 /**
  * An agent's portrait follows the same edit authority as the rest of its

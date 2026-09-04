@@ -19,6 +19,7 @@ const teamId = '00000000-0000-4000-8000-000000000011'
 test('spawned child strips every explicit grant while preserving ordinary policy', async () => {
   let createdToolPolicy: unknown
   let childSystemPrompt = ''
+  const legacySecret = `sk-proj-${'aB3_'.repeat(8)}`
   const parentToolPolicy = {
     ordinary_allow: true,
     ordinary_deny: false,
@@ -52,7 +53,7 @@ test('spawned child strips every explicit grant while preserving ordinary policy
         model: 'model',
         name: 'Parent',
         provider: 'provider',
-        systemPrompt: 'Prompt',
+        systemPrompt: `Prompt ${legacySecret}`,
         toolPolicy: parentToolPolicy,
       }),
     },
@@ -93,6 +94,8 @@ test('spawned child strips every explicit grant while preserving ordinary policy
   // Prompt assembly supplies the one global safety instruction to every run;
   // storing another copy on each ephemeral child would pay for it twice.
   assert.doesNotMatch(childSystemPrompt, /secure form before you see it/)
+  assert.equal(childSystemPrompt.includes(legacySecret), false)
+  assert.match(childSystemPrompt, /sk-proj-•{12}/u)
 })
 
 test('spawn_subtask refuses credential-bearing tasks before durable writes', async () => {

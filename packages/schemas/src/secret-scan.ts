@@ -36,20 +36,23 @@ export const AGENT_SECRET_SAFETY_INSTRUCTION =
   + 'secure capture masks detected values before you see them.'
 
 const ASSIGNMENT_KEY = [
-  'api[_-]?key',
-  'access[_-]?token',
-  'auth[_-]?token',
+  'api[\\s_-]?key',
+  'access[\\s_-]?token',
+  'auth[\\s_-]?token',
   'authorization',
-  'aws[_-]?secret[_-]?access[_-]?key',
-  'client[_-]?secret',
+  'aws[\\s_-]?secret[\\s_-]?access[\\s_-]?key',
+  'client[\\s_-]?secret',
   'credential',
+  'pass',
+  'passwd',
   'password',
-  'private[_-]?key',
-  'refresh[_-]?token',
-  'session[_-]?token',
-  'secret[_-]?access[_-]?key',
-  'secret[_-]?key',
-  'signing[_-]?secret',
+  'pwd',
+  'private[\\s_-]?key',
+  'refresh[\\s_-]?token',
+  'session[\\s_-]?token',
+  'secret[\\s_-]?access[\\s_-]?key',
+  'secret[\\s_-]?key',
+  'signing[\\s_-]?secret',
   'passphrase',
   'secret',
   'token',
@@ -60,9 +63,21 @@ const ASSIGNMENT_SEPARATOR = String.raw`(?:\s*(?:=|:)\s*${AUTH_SCHEME}\s+|\s*(?:
 
 const assignmentExpression = (value: string): RegExp =>
   new RegExp(
-    String.raw`\b(?:[a-z0-9]+[_-])*[a-z0-9]*(?:${ASSIGNMENT_KEY})(?:["'\x60])?${ASSIGNMENT_SEPARATOR}(?:\[\s*)?${value}`,
+    String.raw`\b(?:[a-z0-9]+[_-])*[a-z0-9]*(?:${ASSIGNMENT_KEY})(?:\\?["'\x60])?${ASSIGNMENT_SEPARATOR}(?:\[\s*)?${value}`,
     'gi',
   )
+
+const LABELED_WHITESPACE_KEY = [
+  'api[\\s_-]?key',
+  'access[\\s_-]?token',
+  'auth[\\s_-]?token',
+  'client[\\s_-]?secret',
+  'pass',
+  'passwd',
+  'password',
+  'pwd',
+  'secret[\\s_-]?key',
+].join('|')
 
 const PRIVATE_KEY_BLOCK = new RegExp(
   '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----'
@@ -96,7 +111,8 @@ const SAFE_REDACTION_MARKERS = new Set(['[MaxDepth]', '[REDACTED]', '[REDACTED_S
 const maskedPrivateKeyHasRawTail = (content: string, beginEnd: number): boolean => {
   if (!content.startsWith(SECRET_MASK, beginEnd)) return false
   const tail = content.slice(beginEnd + SECRET_MASK.length)
-  return /^[^\s]/u.test(tail) || /^\r?\n[A-Za-z0-9+/=]{16,}/u.test(tail)
+  return /^[^\s]/u.test(tail)
+    || /^(?:[A-Za-z0-9+/]{16,}={0,2})\r?$/mu.test(tail)
 }
 
 const DATABASE_URL = new RegExp(
@@ -111,6 +127,17 @@ const PATTERNS: SecretPattern[] = [
     // directly onto it is new material, never part of the placeholder.
     type: 'token_assignment',
     expression: new RegExp(`${SECRET_MASK}([^\\s•,;.)\\]}"'\\x60]+)`, 'g'),
+    valueGroup: 1,
+  },
+  {
+    // A fixed mask followed by another credential-looking token is not a safe
+    // placeholder. Requiring both letters and digits avoids treating ordinary
+    // prose following a protected value as another secret.
+    type: 'token_assignment',
+    expression: new RegExp(
+      `${SECRET_MASK}[ \\t]+((?=[^\\s,;.)\\]}"'\\x60]*[A-Za-z])(?=[^\\s,;.)\\]}"'\\x60]*\\d)[^\\s•,;.)\\]}"'\\x60]{6,})`,
+      'g',
+    ),
     valueGroup: 1,
   },
   {
@@ -135,6 +162,27 @@ const PATTERNS: SecretPattern[] = [
   { type: 'database_url', expression: DATABASE_URL },
   { type: 'jwt', expression: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
   {
+    // Shell snippets and chat frequently omit `=`. Requiring a strong label
+    // plus a mixed alphanumeric token avoids turning ordinary "token budget"
+    // prose into a credential match.
+    type: 'token_assignment',
+    expression: new RegExp(
+      String.raw`\b(?:${LABELED_WHITESPACE_KEY})\s+((?=[A-Za-z0-9_./+=-]*[A-Za-z])(?=[A-Za-z0-9_./+=-]*\d)[A-Za-z0-9_./+=-]{6,})`,
+      'gi',
+    ),
+    valueGroup: 1,
+  },
+  {
+    type: 'token_assignment',
+    expression: assignmentExpression(String.raw`\\"([^"\\\r\n]+)\\"`),
+    valueGroup: 1,
+  },
+  {
+    type: 'token_assignment',
+    expression: assignmentExpression(String.raw`\\'([^'\\\r\n]+)\\'`),
+    valueGroup: 1,
+  },
+  {
     type: 'token_assignment',
     expression: assignmentExpression(String.raw`\$?"((?:\\.|[^"\r\n])+)"`),
     valueGroup: 1,
@@ -157,7 +205,7 @@ const PATTERNS: SecretPattern[] = [
   {
     type: 'token_assignment',
     expression: assignmentExpression(
-      String.raw`(?:\(|\[|\{)?([^\s$"'\x60([{]+)`,
+      String.raw`(?:\(|\[|\{)?([^\\\s$"'\x60([{]+)`,
     ),
     stripTrailingPunctuation: true,
     valueGroup: 1,
@@ -364,13 +412,11 @@ export const createSecretRedactingStream = (): {
       if (begin.index >= cut) break
       const beginEnd = begin.index + begin[0].length
       if (buffer.startsWith(SECRET_MASK, beginEnd)) {
-        const firstNewline = buffer.indexOf('\n', beginEnd + SECRET_MASK.length)
-        const secondNewline = firstNewline < 0 ? -1 : buffer.indexOf('\n', firstNewline + 1)
-        if (maskedPrivateKeyHasRawTail(buffer, beginEnd) || secondNewline < 0) {
-          cut = begin.index
-          break
-        }
-        continue
+        // A later chunk can append blank lines, comments, PEM metadata, then
+        // key bytes. Once a masked armor header appears, retain its tail until
+        // finalization can scan the complete response.
+        cut = begin.index
+        break
       }
       const completeEnd = completeKeys.get(begin.index)
       if (completeEnd === undefined || completeEnd > cut) {

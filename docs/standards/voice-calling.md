@@ -22,6 +22,13 @@ glyph. Spec and phasing:
   never leaves the server; the ephemeral credential is the only one a client
   holds. Ledger requires signed UOA subject/org/team on a product-bound token,
   so on a signing deployment a caller with no linked UOA identity fails closed.
+- **Spoken audio cannot have typed-chat interception semantics.** Microphone
+  frames already reach Gemini over that direct socket before Nessie has text to
+  scan. The shared compact prompt tells the assistant not to request or repeat
+  credentials; once transcript fragments exist, the client redacts them before
+  live rendering or local persistence, and the API refuses an unsanitized
+  transcript before writing its message or attachment. Never describe this as
+  preventing a spoken credential from reaching Gemini.
 - **`voice_installations` are server-minted.** Ledger reserves daily budget per
   device slot, so a client-chosen device id would let one account multiply
   those reservations; ids come from the row and per-user caps

@@ -319,7 +319,7 @@ dbTest('someone else’s call is not a thread you may write to', async () => {
   }
 })
 
-dbTest('a credential spoken aloud is refused, exactly as a typed one is', async () => {
+dbTest('a credential in a submitted voice transcript is refused before persistence', async () => {
   const seeded = await seed('voice-pa-send-secret')
   const app = await appFor(seeded)
   try {

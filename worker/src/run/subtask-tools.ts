@@ -112,8 +112,10 @@ export const runSpawnSubtaskTool = async (
         surfacePolicy: 'shared',
         systemManaged: false,
         systemPrompt: buildSubtaskSystemPrompt({
-          parentName: parentAgent.name,
-          parentSystemPrompt: parentAgent.systemPrompt,
+          parentName: redactDetectedSecrets(parentAgent.name),
+          parentSystemPrompt: parentAgent.systemPrompt
+            ? redactDetectedSecrets(parentAgent.systemPrompt)
+            : null,
           role,
         }),
         toolPolicy: childToolPolicy as Prisma.InputJsonValue | undefined,

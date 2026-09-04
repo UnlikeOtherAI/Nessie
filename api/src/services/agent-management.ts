@@ -5,6 +5,7 @@ import {
   AgentEditAuthorityError,
   AgentManagementError,
   agentRecordInclude,
+  assertAgentSecretFreeInput,
   assertAgentFieldAuthority,
   assertAgentOwnerIsActiveMember,
   canEditAgent,
@@ -85,6 +86,7 @@ export const cloneAgentRecord = async (
     },
   })
   if (!source || isSystemManagedAgent(source)) return null
+  assertAgentSecretFreeInput(source)
 
   // A clone belongs to whoever cloned it, and a personal subscription is not
   // transferable: the copy would otherwise spend the ORIGINAL owner's plan.

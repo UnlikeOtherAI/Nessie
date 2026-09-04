@@ -75,6 +75,13 @@ test('detectSecrets covers quoted assignments, bearer headers, and common secret
     '{"client_secret":"abc\\\"defghijklmnopqrstuvwxyz123456"}',
     'password="hunter2"',
     'token=abc123',
+    'pass=abc123',
+    'passwd=abc123',
+    'pwd=abc123',
+    'secret key: abc123',
+    'apikey hunter2',
+    'password hunter2',
+    '{\\"api_key\\":\\"hunter2\\"}',
   ]
   for (const value of cases) assert.equal(detectSecrets(value).length, 1, value)
 })
@@ -93,17 +100,24 @@ test('detectSecrets covers Slack app tokens and truncated private-key pastes', (
 
 test('a masked private-key prefix cannot conceal newly appended raw material', () => {
   const masked = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
+  const uppercaseBody = 'QUJDREVGR0JS1TVVWVYW1234QUJDREVGR0JS1TVVWVYW1234'
   assert.equal(detectSecrets(`${masked}raw-key-tail`).length, 1)
   assert.equal(
     detectSecrets(`${masked}\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=`).length,
     1,
   )
+  assert.equal(detectSecrets(`${masked}\n\n${uppercaseBody}`).length, 1)
   assert.equal(detectSecrets(`${masked}\nordinary prose`).length, 0)
 })
 
 test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
   const mask = '•'.repeat(12)
-  for (const value of [`api_key=${mask}hunter2`, `sk-proj-${mask}raw-tail`]) {
+  for (const value of [
+    `api_key=${mask}hunter2`,
+    `sk-proj-${mask}raw-tail`,
+    `api_key=${mask} hunter2`,
+    `Authorization: ${mask} hunter2`,
+  ]) {
     const redacted = redactDetectedSecrets(value)
     assert.equal(detectSecrets(value).length, 1)
     assert.doesNotMatch(redacted, /hunter2|raw-tail/u)
@@ -213,10 +227,16 @@ test('stream redaction holds partial lines and private keys until they are safe'
 
   const maskedPemStream = createSecretRedactingStream()
   const maskedPem = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
-  assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), `${maskedPem}\nafter\n`)
-  assert.equal(maskedPemStream.finish(), '')
+  assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), '')
+  assert.equal(maskedPemStream.finish(), `${maskedPem}\nafter\n`)
 
   const appendedPemStream = createSecretRedactingStream()
   assert.equal(appendedPemStream.push(`${maskedPem}\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\n`), '')
   assert.equal(appendedPemStream.finish(), maskedPem)
+
+  const blankSeparatedPemStream = createSecretRedactingStream()
+  const uppercaseBody = 'QUJDREVGR0JS1TVVWVYW1234QUJDREVGR0JS1TVVWVYW1234'
+  assert.equal(blankSeparatedPemStream.push(`${maskedPem}\n\n`), '')
+  assert.equal(blankSeparatedPemStream.push(`${uppercaseBody}\n`), '')
+  assert.equal(blankSeparatedPemStream.finish(), maskedPem)
 })

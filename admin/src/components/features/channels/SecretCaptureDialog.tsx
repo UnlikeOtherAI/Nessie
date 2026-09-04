@@ -70,6 +70,16 @@ export const SecretCaptureDialog = ({
   const pendingRef = useRef(false)
   const saveRequestIdRef = useRef(newCaptureRequestId())
 
+  const updateName = (nextName: string) => {
+    saveRequestIdRef.current = newCaptureRequestId()
+    setName(nextName.toUpperCase())
+  }
+
+  const updateScopeType = (nextScopeType: SecretScopeType) => {
+    saveRequestIdRef.current = newCaptureRequestId()
+    setScopeType(nextScopeType)
+  }
+
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (pendingRef.current) return
@@ -126,8 +136,8 @@ export const SecretCaptureDialog = ({
         <FormField label="Secret key">
           <Input
             autoComplete="off"
-            disabled={savedSecret !== null}
-            onChange={(event) => setName(event.target.value.toUpperCase())}
+            disabled={isPending || savedSecret !== null}
+            onChange={(event) => updateName(event.target.value)}
             ref={nameRef}
             value={name}
           />
@@ -142,8 +152,8 @@ export const SecretCaptureDialog = ({
         </FormField>
         <FormField label="Scope">
           <Select
-            disabled={savedSecret !== null}
-            onChange={(event) => setScopeType(event.target.value as SecretScopeType)}
+            disabled={isPending || savedSecret !== null}
+            onChange={(event) => updateScopeType(event.target.value as SecretScopeType)}
             value={scopeType}
           >
             <option value="personal">Personal</option>

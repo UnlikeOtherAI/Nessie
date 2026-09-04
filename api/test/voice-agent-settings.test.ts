@@ -61,3 +61,17 @@ test('a blank speaking style adds nothing at all', () => {
   })
   assert.doesNotMatch(instruction, /How to talk to this person/u)
 })
+
+test('legacy agent instructions are masked before Gemini setup', () => {
+  const secret = `sk-proj-${'aB3_'.repeat(8)}`
+  const instruction = buildVoiceSystemInstruction({
+    agentName: 'Ada',
+    agentSpeakingStyle: null,
+    agentSystemPrompt: `Use ${secret} for every request.`,
+    toolNames: ['pa_send'],
+    userDisplayName: null,
+  })
+
+  assert.equal(instruction.includes(secret), false)
+  assert.match(instruction, /sk-proj-•{12}/u)
+})

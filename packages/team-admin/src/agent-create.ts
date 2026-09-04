@@ -12,6 +12,7 @@ import {
 
 import { assertGenericAgentToolPolicyInput } from './agent-tool-policy-core.js'
 import { AGENT_OWNER_MEMBERSHIP_SELECT, mapAgentRecord } from './agent-record.js'
+import { assertAgentSecretFreeInput } from './agent-secret-input.js'
 import { ensurePrivateAgentHome } from './private-agent-home.js'
 
 // `Agent.runLimits` write value. `undefined` leaves the stored limits alone
@@ -208,6 +209,8 @@ export const createAgentRecord = async (
   prisma: PrismaClient,
   input: CreateAgentRecordInput,
 ): Promise<AgentRecord> => {
+  assertAgentSecretFreeInput(input)
+
   if (
     input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
     || input.systemManaged === true
