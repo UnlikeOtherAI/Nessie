@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { TeamInvitationRecord, TeamMemberRecord } from '@nessie/schemas'
 
@@ -105,19 +105,34 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
   const [revokeError, setRevokeError] = useState<string | null>(null)
   const requestedTab = searchParams.get('membersTab')
-  const tab: RosterTab = requestedTab === 'pending' || requestedTab === 'deactivated' || requestedTab === 'automatic'
+  const requestedRosterTab: RosterTab = requestedTab === 'pending' || requestedTab === 'deactivated' || requestedTab === 'automatic'
     ? requestedTab
     : 'active'
   const roster = useMemberRoster(
     scope,
-    tab === 'deactivated' ? 'DEACTIVATED' : 'ACTIVE',
-    tab !== 'pending' && tab !== 'automatic',
+    requestedRosterTab === 'deactivated' ? 'DEACTIVATED' : 'ACTIVE',
+    requestedRosterTab !== 'pending',
   )
-  const invitations = useMemberInvitations(scope, tab === 'pending')
+  const invitations = useMemberInvitations(scope, requestedRosterTab === 'pending')
   const revokeInvitation = useRevokeMemberInvitation(scope)
-  const current = tab === 'pending' ? invitations : roster
+  const current = requestedRosterTab === 'pending' ? invitations : roster
   const permissions = current.query.data?.data.permissions
   const canInvite = permissions?.addMember === true
+  // The UOA roster capability is only a doorway hint. The automatic-membership
+  // routes independently re-check the exact organisation or team entitlement.
+  const automaticTabVisible = roster.query.isLoading || canInvite
+  const tab: RosterTab = requestedRosterTab === 'automatic' && !automaticTabVisible
+    ? 'active'
+    : requestedRosterTab
+
+  useEffect(() => {
+    if (requestedRosterTab !== 'automatic' || !roster.query.isSuccess || canInvite) return
+    setSearchParams((currentParams) => {
+      const updated = new URLSearchParams(currentParams)
+      updated.set('membersTab', 'active')
+      return updated
+    }, { replace: true })
+  }, [canInvite, requestedRosterTab, roster.query.isSuccess, setSearchParams])
 
   const setTab = (next: RosterTab) => {
     setSearchParams((currentParams) => {
@@ -171,7 +186,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
         <TabBar
           ariaLabel="Member status"
           idPrefix={`members-${scope}`}
-          items={rosterTabs}
+          items={rosterTabs.filter((item) => item.value !== 'automatic' || automaticTabVisible)}
           onChange={setTab}
           value={tab}
         />
