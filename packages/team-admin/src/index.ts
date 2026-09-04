@@ -115,6 +115,7 @@ export {
   undoHeldSend,
   discardDraftForUser,
   attachDraftMessage,
+  claimJudgedGmailDraft,
   fingerprintDraft,
   type GmailDraftActionRecord,
   type GmailDraftDeps,

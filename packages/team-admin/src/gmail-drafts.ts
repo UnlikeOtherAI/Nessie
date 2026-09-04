@@ -17,6 +17,8 @@ import {
   type GmailDraftActionRecord,
   type GmailDraftDeps,
 } from './gmail-draft-core.js'
+import { claimJudgedGmailDraft } from './gmail-draft-judged-claim.js'
+import type { JudgedGmailDraftAuthorization } from './send-authorization.js'
 
 export {
   GmailDraftError,
@@ -25,6 +27,7 @@ export {
   type GmailDraftDeps,
   type GmailDraftErrorCode,
 } from './gmail-draft-core.js'
+export { claimJudgedGmailDraft } from './gmail-draft-judged-claim.js'
 
 /**
  * The one place a Gmail draft is written, read, or sent.
@@ -202,6 +205,11 @@ export type SendDraftInput = {
   expectedFingerprint?: string
   /** Hold the dispatch this long so the card can offer Undo. */
   holdMs?: number
+  /**
+   * A server-minted judgement. Unlike ordinary approval and `always` consent,
+   * this must remain live in the same statement that claims the draft.
+   */
+  judgedAuthorization?: JudgedGmailDraftAuthorization
 }
 
 export type SendDraftResult =
@@ -260,18 +268,29 @@ export const sendDraftForUser = async (
     throw new GmailDraftError('DRAFT_CHANGED')
   }
 
-  // One winner: whoever flips draft → sending owns the dispatch.
-  const claimed = await prisma.gmailDraftAction.updateMany({
-    where: { id: existing.id, state: 'draft' },
-    data: {
-      state: 'sending',
+  // One winner: whoever flips draft → sending owns the dispatch. Judged
+  // consent uses a stricter claim that locks and verifies the exact grant and
+  // connection in the same SQL transition; a re-read would leave revoke races.
+  if (input.judgedAuthorization) {
+    const claimed = await claimJudgedGmailDraft(prisma, {
+      authorization: input.judgedAuthorization,
       contentFingerprint: live,
-      sendAfter: input.holdMs && input.holdMs > 0
-        ? new Date(now.getTime() + input.holdMs)
-        : null,
-    },
-  })
-  if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
+      draftActionId: existing.id,
+    })
+    if (!claimed) throw new GmailDraftError('JUDGED_AUTHORIZATION_INVALID')
+  } else {
+    const claimed = await prisma.gmailDraftAction.updateMany({
+      where: { id: existing.id, state: 'draft' },
+      data: {
+        state: 'sending',
+        contentFingerprint: live,
+        sendAfter: input.holdMs && input.holdMs > 0
+          ? new Date(now.getTime() + input.holdMs)
+          : null,
+      },
+    })
+    if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
+  }
 
   if (input.holdMs && input.holdMs > 0) {
     const held = await prisma.gmailDraftAction.findUniqueOrThrow({

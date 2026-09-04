@@ -140,9 +140,11 @@ Plan and as-built deltas:
   already-claimed proof therefore denies the action rather than inviting a
   model to compose a near-match. A judged Gmail standing boundary is a separate
   server-minted fact, bound to the exact live grant, connection, agent, owner,
-  draft, fingerprint, and boundary hash; the handler revalidates it immediately before the draft
-  claim, so a concurrent revoke, expiry, identity change, or boundary edit also
-  denies.
+  draft, fingerprint, and boundary hash; the handler passes it only to the
+  draft claim, whose one locked database transition revalidates the grant and
+  connection while it flips the exact fingerprinted draft to `sending`. A
+  concurrent revoke, expiry, identity change, or boundary edit therefore
+  denies before Gmail can receive a send.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,
