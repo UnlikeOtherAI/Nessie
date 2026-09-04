@@ -600,11 +600,11 @@ test('a UOA session uploads and clears through the org-scoped route', async () =
   })
 })
 
-test('a UOA session uses the org relay for another entitled team', async () => {
+test('a UOA session still takes the domain relay for another team', async () => {
   await withUoaEnv(async () => {
-    // The picker may read another team in the same organisation. The session
-    // assertion proves the person and organisation; UOA authorizes the exact
-    // target team named by the route against their live membership.
+    // The picker reads teams the session is not standing in. UOA pins an
+    // assertion to the asserted team, so a foreign team id can never ride
+    // one — the read has to fall back to the domain-scoped route.
     const app = await makeApp(actorContextFor(['owner'], { teamId: otherTeamId, uoa: true }))
     const calls: StubCall[] = []
     const originalFetch = globalThis.fetch
@@ -620,11 +620,8 @@ test('a UOA session uses the org relay for another entitled team', async () => {
       })
 
       assert.equal(response.statusCode, 200)
-      assert.equal(
-        new URL(calls[0]?.url ?? '').pathname,
-        `/org/organisations/${externalOrgId}/teams/${otherExternalTeamId}/avatar`,
-      )
-      assert.ok(calls[0]?.subjectAssertion, 'the entitled person is asserted')
+      assert.equal(new URL(calls[0]?.url ?? '').pathname, `/domain/teams/${otherExternalTeamId}/avatar`)
+      assert.equal(calls[0]?.subjectAssertion, undefined)
     } finally {
       globalThis.fetch = originalFetch
       await app.close()

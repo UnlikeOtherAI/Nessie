@@ -21,8 +21,7 @@ import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from '
  *
  * - `/domain/*`, the domain-hash bearer alone. It is the only path for a call
  *   with no acting person (a user avatar read, a team the caller is not
- *   entitled to access without an assertable organisation session), and it is
- *   scoped to organisations that were
+ *   currently standing in), and it is scoped to organisations that were
  *   **created on** this product's domain. An organisation founded on another
  *   UOA-integrated domain answers the generic `404` here for every method —
  *   which is why the team avatar looked empty in settings, and why an
@@ -33,8 +32,8 @@ import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from '
  *   that person's live membership and their `teams.manage` capability, and the
  *   organisation's origin domain is deliberately not a predicate — "one
  *   organisation is usable from every UOA-integrated product". This is the path
- *   for teams in the asserted organisation: UOA re-resolves whether that
- *   person may access the exact team named in the route.
+ *   for the current team, and the assertion pins it there: UOA requires the
+ *   asserted team to equal the one named in the route.
  *
  * The domain hash is a server-side secret, so the browser can never call UOA
  * directly — the API relays the bytes (`routes/users.ts`,
