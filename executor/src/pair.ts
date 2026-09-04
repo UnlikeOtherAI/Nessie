@@ -1,10 +1,19 @@
-import { createHash, generateKeyPairSync, type KeyObject, sign } from 'node:crypto'
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  sign,
+} from 'node:crypto'
 
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
   EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
+  ExecutorEnrollmentRequestSchema,
   ImplementedExecutorOperationKeySchema,
+  type ExecutorEnrollmentRequest,
   type ExecutorSignedDescriptor,
 } from '@nessie/schemas'
 
@@ -16,10 +25,14 @@ import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
 import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
 import { verifyNativeHelperPath } from './native-helper.js'
 import {
+  clearExecutorPreparedPairing,
+  loadExecutorPreparedPairing,
+  saveExecutorPreparedPairing,
   saveExecutorState,
   type ExecutorBrowserSandboxConfig,
   type ExecutorCodexSandboxConfig,
   type ExecutorLocalState,
+  type ExecutorPreparedPairing,
 } from './state-store.js'
 import { configureWorkspaceRoot } from './workspace.js'
 
@@ -294,8 +307,29 @@ export const configureExecutorCodexSandbox = async (
   return next
 }
 
-export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerprint: string }> => {
-  const workspaceRoot = await configureWorkspaceRoot(input.workspaceRoot)
+type PairExecutorDependencies = {
+  clearPrepared: (stateDir: string) => Promise<void>
+  loadPrepared: (stateDir: string) => Promise<ExecutorPreparedPairing | null>
+  savePrepared: (stateDir: string, prepared: ExecutorPreparedPairing) => Promise<void>
+  saveState: (stateDir: string, state: ExecutorLocalState) => Promise<void>
+  submitEnrollment: (
+    baseUrl: string,
+    request: ExecutorEnrollmentRequest,
+  ) => Promise<{ executorId: string; fingerprint: string }>
+}
+
+const pairExecutorDependencies: PairExecutorDependencies = {
+  clearPrepared: clearExecutorPreparedPairing,
+  loadPrepared: loadExecutorPreparedPairing,
+  savePrepared: saveExecutorPreparedPairing,
+  saveState: saveExecutorState,
+  submitEnrollment: executorApi.submitEnrollment,
+}
+
+const preparePairing = (
+  input: PairExecutorInput,
+  workspaceRoot: string,
+): ExecutorPreparedPairing => {
   const keys = generateKeyPairSync('ed25519')
   const machinePublicKey = rawEd25519PublicKey(keys.publicKey)
   const descriptor = buildSignedDescriptor(
@@ -305,32 +339,90 @@ export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerpr
   const digest = `sha256:${createHash('sha256')
     .update(canonicalExecutorJson(descriptor.descriptor))
     .digest('hex')}`
-  const proof = sign(
-    null,
-    Buffer.from(canonicalExecutorPayload('nessie.executor.enrollment.v1', {
-      challenge: input.challenge,
-      descriptorDigest: digest,
-      enrollmentId: input.enrollmentId,
-      machinePublicKey,
-    })),
-    keys.privateKey,
-  ).toString('base64url')
-  const pending = await executorApi.submitEnrollment(input.apiBaseUrl, {
+  const request = ExecutorEnrollmentRequestSchema.parse({
     challenge: input.challenge,
     descriptor,
     enrollmentId: input.enrollmentId,
     machinePublicKey,
-    proof,
+    proof: sign(
+      null,
+      Buffer.from(canonicalExecutorPayload('nessie.executor.enrollment.v1', {
+        challenge: input.challenge,
+        descriptorDigest: digest,
+        enrollmentId: input.enrollmentId,
+        machinePublicKey,
+      })),
+      keys.privateKey,
+    ).toString('base64url'),
   })
-  const state: ExecutorLocalState = {
+  return {
     apiBaseUrl: input.apiBaseUrl,
-    descriptor: initialLocalPolicy,
-    executorId: pending.executorId,
-    machinePrivateKey: keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url'),
-    machinePublicKey,
+    enrollmentId: input.enrollmentId,
+    machinePrivateKey: keys.privateKey.export({
+      format: 'der',
+      type: 'pkcs8',
+    }).toString('base64url'),
+    request,
     workspaceRoot,
   }
-  await saveExecutorState(input.stateDir, state)
+}
+
+const assertPreparedPairingMatches = (
+  input: PairExecutorInput,
+  workspaceRoot: string,
+  prepared: ExecutorPreparedPairing,
+): void => {
+  let storedPublicKey: string
+  try {
+    const privateKey = createPrivateKey({
+      format: 'der',
+      key: Buffer.from(prepared.machinePrivateKey, 'base64url'),
+      type: 'pkcs8',
+    })
+    storedPublicKey = rawEd25519PublicKey(createPublicKey(privateKey))
+  } catch {
+    throw new Error('Executor pairing state contains an invalid private key.')
+  }
+  if (
+    prepared.apiBaseUrl !== input.apiBaseUrl
+    || prepared.enrollmentId !== input.enrollmentId
+    || prepared.request.enrollmentId !== prepared.enrollmentId
+    || prepared.request.challenge !== input.challenge
+    || prepared.request.machinePublicKey !== storedPublicKey
+    || prepared.workspaceRoot !== workspaceRoot
+  ) {
+    throw new Error(
+      'This executor state directory contains a different unfinished pairing. '
+      + 'Complete that pairing before starting another.',
+    )
+  }
+}
+
+export const pairExecutor = async (
+  input: PairExecutorInput,
+  dependencies: PairExecutorDependencies = pairExecutorDependencies,
+): Promise<{ fingerprint: string }> => {
+  const workspaceRoot = await configureWorkspaceRoot(input.workspaceRoot)
+  let prepared = await dependencies.loadPrepared(input.stateDir)
+  if (prepared) {
+    assertPreparedPairingMatches(input, workspaceRoot, prepared)
+  } else {
+    prepared = preparePairing(input, workspaceRoot)
+    // No enrollment request may leave the host until its exact key and proof
+    // can survive a lost response or process restart.
+    await dependencies.savePrepared(input.stateDir, prepared)
+  }
+  const pending = await dependencies.submitEnrollment(prepared.apiBaseUrl, prepared.request)
+  const state: ExecutorLocalState = {
+    apiBaseUrl: prepared.apiBaseUrl,
+    descriptor: initialLocalPolicy,
+    executorId: pending.executorId,
+    machinePrivateKey: prepared.machinePrivateKey,
+    machinePublicKey: prepared.request.machinePublicKey,
+    workspaceRoot: prepared.workspaceRoot,
+  }
+  await dependencies.saveState(input.stateDir, state)
+  await dependencies.clearPrepared(input.stateDir)
   return { fingerprint: pending.fingerprint }
 }
 

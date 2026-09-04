@@ -33,6 +33,10 @@ import {
   createExecutorCommandSessionManager,
   type ExecutorCommandSessionManager,
 } from './command-session-manager.js'
+import {
+  createExecutorCommandRecoveryStore,
+  recoverOrPollExecutorCommand,
+} from './command-recovery.js'
 import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
 import { acquireExecutorDaemonLease } from './daemon-lease.js'
@@ -310,23 +314,32 @@ const pollAndExecuteCommand = async (
   commandSessions: ExecutorCommandSessionManager,
   codingSessions: ExecutorCodingSessionManager,
 ): Promise<void> => {
-  if (!state.connectionEpoch) return
-  const observedAt = new Date().toISOString()
-  const payload = { connectionEpoch: state.connectionEpoch, executorId: state.executorId, observedAt }
-  const response = await executorApi.pollCommand(state.apiBaseUrl, {
-    ...payload,
-    signature: signDaemonPayload(state.machinePrivateKey, 'poll', payload),
+  const connectionEpoch = state.connectionEpoch
+  if (!connectionEpoch) return
+  await recoverOrPollExecutorCommand({
+    execute: (command) => executeExecutorCommand(stateDir, state, command, {
+      browserSessions,
+      codingSessions,
+      commandSessions,
+    }),
+    store: createExecutorCommandRecoveryStore(stateDir),
+    transport: {
+      poll: async () => {
+        const observedAt = new Date().toISOString()
+        const payload = {
+          connectionEpoch,
+          executorId: state.executorId,
+          observedAt,
+        }
+        const response = await executorApi.pollCommand(state.apiBaseUrl, {
+          ...payload,
+          signature: signDaemonPayload(state.machinePrivateKey, 'poll', payload),
+        })
+        return response.command
+      },
+      receipt: (input) => receipt(state, input),
+    },
   })
-  const command = response.command
-  if (!command) return
-  await receipt(state, { commandId: command.commandId, state: 'accepted' })
-  await receipt(state, { commandId: command.commandId, state: 'started' })
-  const result = await executeExecutorCommand(stateDir, state, command, {
-    browserSessions,
-    codingSessions,
-    commandSessions,
-  })
-  await receipt(state, { commandId: command.commandId, result, state: 'result_acknowledged' })
 }
 
 export const waitForExecutorDaemonShutdown = async (
@@ -350,6 +363,23 @@ export const waitForExecutorDaemonShutdown = async (
   }
 })
 
+export const createNonOverlappingExecutorTask = (
+  task: () => Promise<void>,
+): { current: () => Promise<void> | null; run: () => Promise<void> } => {
+  let current: Promise<void> | null = null
+  return {
+    current: () => current,
+    run: () => {
+      if (current) return current
+      const started = task().finally(() => {
+        if (current === started) current = null
+      })
+      current = started
+      return started
+    },
+  }
+}
+
 export const serveExecutor = async (
   stateDir: string,
   state: ExecutorLocalState,
@@ -361,35 +391,33 @@ export const serveExecutor = async (
     const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
     const commandSessions = createExecutorCommandSessionManager(stateDir, live)
     const codingSessions = createExecutorCodingSessionManager(stateDir, live)
-    let commandPollInFlight = false
-    const commandInterval = setInterval(() => {
-      if (commandPollInFlight) return
-      commandPollInFlight = true
-      void pollAndExecuteCommand(stateDir, live, browserSessions, commandSessions, codingSessions)
-        .catch(async (error) => {
-          // A lost or fenced control plane may mean that a human revoked an
-          // operation. Preserve fail-closed egress by ending any live browser
-          // before this daemon attempts another poll or reconnect.
-          await browserSessions.stopAll()
-          await commandSessions.stopAll()
-          await codingSessions.stopAll()
-          console.error(
-            '[nessie-executor] command poll failed:',
-            error instanceof Error ? error.message : String(error),
-          )
-        })
-        .finally(() => {
-          commandPollInFlight = false
-        })
-    }, 1_000)
-    const interval = setInterval(() => {
-      void (async () => {
-        try {
-          await heartbeatExecutor(live)
-        } catch (error) {
-          await browserSessions.stopAll()
-          await commandSessions.stopAll()
-          await codingSessions.stopAll()
+    let shuttingDown = false
+    const commandPoll = createNonOverlappingExecutorTask(() => pollAndExecuteCommand(
+      stateDir,
+      live,
+      browserSessions,
+      commandSessions,
+      codingSessions,
+    ).catch(async (error) => {
+      // A lost or fenced control plane may mean that a human revoked an
+      // operation. Preserve fail-closed egress by ending any live browser
+      // before this daemon attempts another poll or reconnect.
+      await browserSessions.stopAll()
+      await commandSessions.stopAll()
+      await codingSessions.stopAll()
+      console.error(
+        '[nessie-executor] command poll failed:',
+        error instanceof Error ? error.message : String(error),
+      )
+    }))
+    const heartbeat = createNonOverlappingExecutorTask(async () => {
+      try {
+        await heartbeatExecutor(live)
+      } catch (error) {
+        await browserSessions.stopAll()
+        await commandSessions.stopAll()
+        await codingSessions.stopAll()
+        if (!shuttingDown) {
           try {
             live = await claimExecutor(stateDir, live)
           } catch (claimError) {
@@ -398,18 +426,30 @@ export const serveExecutor = async (
               claimError instanceof Error ? claimError.message : String(claimError),
             )
           }
-          console.error(
-            '[nessie-executor] heartbeat failed:',
-            error instanceof Error ? error.message : String(error),
-          )
         }
-      })()
+        console.error(
+          '[nessie-executor] heartbeat failed:',
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    })
+    const commandInterval = setInterval(() => {
+      void commandPoll.run()
+    }, 1_000)
+    const interval = setInterval(() => {
+      void heartbeat.run()
     }, 20_000)
     try {
       await waitForExecutorDaemonShutdown(options.parentLiveness)
     } finally {
+      shuttingDown = true
       clearInterval(interval)
       clearInterval(commandInterval)
+      executorApi.cancelPending()
+      await Promise.allSettled([
+        ...(commandPoll.current() ? [commandPoll.current()] : []),
+        ...(heartbeat.current() ? [heartbeat.current()] : []),
+      ])
       await Promise.allSettled([
         browserSessions.stopAll(),
         commandSessions.stopAll(),

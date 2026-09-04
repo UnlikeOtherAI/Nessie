@@ -101,13 +101,20 @@ executor ID. Consuming a handle creates the binding transactionally.
 2. The server creates `ExecutorEnrollment` with a 256-bit random challenge,
    stores only its SHA-256 verifier, and expires it in ten minutes. Its single
    use is linearized under an enrollment advisory lock.
-3. The daemon generates its signing key, displays its fingerprint and proposed
-   local policy, then submits `{ enrollmentId, challenge, publicKey,
+3. The daemon generates its signing key and signed request, then atomically
+   stores that exact material with the canonical workspace in its owner-only
+   state directory before making a network request. A retry after response loss
+   must reuse this prepared key; different pairing input is refused.
+4. The daemon submits `{ enrollmentId, challenge, publicKey,
    descriptorDigest, proof }`. `proof` signs the canonical enrollment object
-   with `nessie.executor.enrollment.v1` domain separation.
-4. The server consumes the verifier once, records the pending key/fingerprint,
-   and presents the exact fingerprint and data boundary to the human.
-5. The human confirms in web or companion UI. The executor remains offline
+   with `nessie.executor.enrollment.v1` domain separation. An exact replay of
+   the same pending request returns the existing fingerprint; a changed key,
+   descriptor, or proof is rejected.
+5. The server consumes the verifier once, records the pending key/fingerprint,
+   and presents the exact fingerprint and data boundary to the human. Only
+   after the complete paired state is durable does the daemon remove its local
+   preparation record.
+6. The human confirms in web or companion UI. The executor remains offline
    until its daemon proves possession of the paired key; pairing may never
    complete from chat text or a terminal transcript.
 
@@ -130,7 +137,10 @@ Every heartbeat signs its executor ID, epoch, and timestamp under
 `nessie.executor.daemon.heartbeat.v1`; timestamps outside one minute are
 rejected and a stale epoch cannot update liveness. Replaying an old heartbeat
 therefore cannot extend its last-seen time. This channel reports availability
-only: it cannot lease or execute a command.
+only: it cannot lease or execute a command. Every HTTP control request has a
+15-second client deadline and is cancelled during daemon shutdown. A heartbeat
+still in flight suppresses the next interval, so network delay cannot accumulate
+overlapping liveness or reconnect requests.
 
 While it owns the current connection epoch, a daemon may submit a higher
 descriptor revision. The descriptor's own `nessie.executor.descriptor.v1`
@@ -167,8 +177,8 @@ The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
 owner-only local state directory. The sole exception is the desktop-packaged
 debug build, which injects an internal opt-in for exactly
 `http://127.0.0.1:5454`; no user-provided flag enables a non-TLS production
-origin. It generates and stores the machine key
-locally, submits the signed enrollment proof, and after the human confirms the
+origin. It prepares and stores the machine key and exact signed enrollment
+request locally before submission, and after the human confirms the
 fingerprint, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW team operations:
 `file.list`, `file.read`, `file.write`, `team.review`, and
@@ -339,6 +349,15 @@ structured results are AES-256-GCM encrypted under the deployment secret while
 at rest; the database retains only bounded ciphertext and canonical digests.
 The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
+Before sending `accepted`, the daemon atomically records the delivered command
+in an owner-only local recovery journal. It durably advances that journal before
+starting local execution and persists the bounded structured result before the
+terminal receipt. A lost HTTP response therefore replays the same monotonic
+transition under the current connection epoch. A restart replays a saved
+accepted, started, or terminal transition; it never polls past pending local
+recovery. If the process died after local execution began but before its result
+was durable, the replacement daemon returns
+`EXECUTOR_COMMAND_UNKNOWN_OUTCOME` and does not run the side effect again.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored
