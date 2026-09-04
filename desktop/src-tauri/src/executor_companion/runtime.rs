@@ -92,26 +92,19 @@ pub(super) fn local_policy_summary(state_dir: &Path) -> Result<(String, Vec<Stri
 }
 
 pub(super) fn forget_local_pairing(state_dir: &Path) -> Result<(), String> {
-    let runtime_directory = state_dir.join("runtime");
-    if let Ok(metadata) = fs::symlink_metadata(&runtime_directory) {
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err("Nessie Desktop executor runtime state must be an ordinary directory.".to_owned());
-        }
-        if fs::read_dir(&runtime_directory)
-            .map_err(|_| "Nessie Desktop could not inspect local executor drafts.".to_owned())?
-            .next()
-            .is_some()
-        {
-            return Err("Remove every local draft and stop every sandbox before forgetting this pairing.".to_owned());
-        }
-        fs::remove_dir(&runtime_directory)
-            .map_err(|_| "Nessie Desktop could not remove empty executor runtime state.".to_owned())?;
-    }
     let state_file = state_dir.join(EXECUTOR_STATE_FILE);
     let metadata = fs::symlink_metadata(&state_file)
         .map_err(|_| "This executor has not been paired on this Nessie Desktop device.".to_owned())?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("Nessie Desktop executor state must be an ordinary file.".to_owned());
+    }
+    let runtime_directory = state_dir.join("runtime");
+    if let Ok(metadata) = fs::symlink_metadata(&runtime_directory) {
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err("Nessie Desktop executor runtime state must be an ordinary directory.".to_owned());
+        }
+        fs::remove_dir_all(&runtime_directory)
+            .map_err(|_| "Nessie Desktop could not remove local executor drafts.".to_owned())?;
     }
     fs::remove_file(state_file)
         .map_err(|_| "Nessie Desktop could not forget the local executor pairing.".to_owned())?;

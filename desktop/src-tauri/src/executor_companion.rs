@@ -6,9 +6,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 mod runtime;
 
 use runtime::{
-    claim_connection, companion_availability, companion_root, daemon_status, executor_state_dir,
-    forget_local_pairing, has_executor_state, local_policy_summary, run_configure_workspace,
-    run_pair, start_daemon, stop_daemon,
+    companion_availability, companion_root, daemon_status, executor_state_dir, forget_local_pairing,
+    has_executor_state, local_policy_summary, run_configure_workspace, run_pair, start_daemon,
+    stop_daemon,
 };
 
 #[cfg(not(debug_assertions))]
@@ -287,7 +287,7 @@ pub async fn executor_companion_configure_workspace(
     if !confirm(
         app.clone(), "Update local executor policy",
         format!(
-            "Allow these workspace operations locally: {}. Nessie will receive only a pending signed policy revision; it cannot take effect until a person reviews it in Nessie.",
+            "Allow these workspace operations locally: {}. This saves a signed policy revision. A running daemon submits it to Nessie now; a stopped daemon submits it when you next start it. It cannot take effect until a person reviews it in Nessie.",
             operation_keys.join(", "),
         ),
         "Save policy",
@@ -316,7 +316,6 @@ pub async fn executor_companion_configure_workspace(
     let daemon_status = if was_running {
         start_daemon(&app, &state, &executor_id)?
     } else {
-        claim_connection(&app, &state_dir)?;
         "stopped"
     };
     let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
@@ -345,7 +344,7 @@ pub async fn executor_companion_change_workspace(
     if !confirm(
         app.clone(), "Change executor workspace",
         format!(
-            "Use {workspace_label} as this executor's one local workspace folder. The full path stays on this computer. Requested file content and bounded output are sent to Nessie and the configured model provider only when an allowed operation runs. This creates a new signed descriptor revision for human review.",
+            "Use {workspace_label} as this executor's one local workspace folder. The full path stays on this computer. Requested file content and bounded output are sent to Nessie and the configured model provider only when an allowed operation runs. A running daemon submits the new signed revision now; a stopped daemon submits it when you next start it.",
         ),
         "Change workspace",
     ).await? {
@@ -364,7 +363,6 @@ pub async fn executor_companion_change_workspace(
     let daemon_status = if was_running {
         start_daemon(&app, &state, &executor_id)?
     } else {
-        claim_connection(&app, &state_dir)?;
         "stopped"
     };
     let (workspace_label, operation_keys) = local_policy_summary(&state_dir)?;
@@ -386,7 +384,7 @@ pub async fn executor_companion_forget(
     }
     if !confirm(
         app, "Forget local executor pairing",
-        "Remove this computer's machine key and local workspace selection. This does not delete the executor or its audit history in Nessie; its owner must separately revoke any remaining access there.".to_owned(),
+        "Remove this computer's machine key and workspace selection, and permanently delete its local draft copies. This does not delete the executor or its audit history in Nessie; its owner must separately revoke any remaining access there.".to_owned(),
         "Forget pairing",
     ).await? {
         return Err("Forgetting the local executor pairing was cancelled.".to_owned());

@@ -267,12 +267,15 @@ selected folder's basename so a person can recognize the active boundary, but
 the full path never leaves the companion. Nessie uses one canonical workspace
 root per local pairing. **Change folder** opens the native picker and
 confirmation, refuses while any local draft or sandbox remains, and submits a
-new signed descriptor revision for review; it never broadens several folders
-to a common parent. The operation checkboxes are populated from that executor's
+new signed descriptor revision for review when the daemon is running. If it is
+stopped, the revision remains local until the next Start; the stopped executor
+is never briefly advertised as online. It never broadens several folders to a
+common parent. The operation checkboxes are populated from that executor's
 stored local descriptor rather than optimistic defaults. **Forget pairing on
-this computer** stops the locally supervised daemon and removes the machine key
-and folder selection; the server-side executor and audit history remain for an
-owner to retain or revoke.
+this computer** stops the locally supervised daemon, removes the machine key
+and folder selection, and permanently deletes its local COW draft copies after
+one explicit native confirmation; the server-side executor and audit history
+remain for an owner to retain or revoke.
 
 Every native confirmation states the data boundary accurately: the full local
 path and pairing secret stay on the machine, while requested file content and

@@ -238,8 +238,12 @@ export const ExecutorDesktopCompanionPanel = ({
                 onClick={() => void run('policy', () => configureExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
                 type="button"
               >
-                {busy === 'policy' ? 'Saving policy…' : 'Save local policy for review'}
+                {busy === 'policy' ? 'Saving policy…' : 'Save local policy'}
               </button>
+              <p className="text-xs text-[color:var(--tx3)]">
+                A running daemon submits the signed revision for review now. If stopped, it is
+                submitted the next time you start this executor.
+              </p>
             </fieldset>
             <div className="grid gap-1 border-t border-[color:var(--sep)] pt-3">
               <button
@@ -251,8 +255,9 @@ export const ExecutorDesktopCompanionPanel = ({
                 {busy === 'forget' ? 'Forgetting…' : 'Forget pairing on this computer'}
               </button>
               <p className="text-xs text-[color:var(--tx3)]">
-                Removes the local machine key and folder selection. The executor and its audit
-                history remain in Nessie for its owner to revoke or retain.
+                Removes the local machine key and folder selection and permanently deletes local
+                draft copies. The executor and its audit history remain in Nessie for its owner
+                to revoke or retain.
               </p>
             </div>
           </div>
