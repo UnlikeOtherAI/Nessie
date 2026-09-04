@@ -38,6 +38,31 @@ const liveDraft = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
+const liveDraftWithAttachment = (attachmentId: string) => liveDraft({
+  message: {
+    id: 'msg-1',
+    threadId: 'thread-1',
+    payload: {
+      headers: [
+        { name: 'To', value: 'jana@example.com' },
+        { name: 'Subject', value: 'Quarterly update' },
+      ],
+      mimeType: 'multipart/mixed',
+      parts: [
+        {
+          mimeType: 'text/plain',
+          body: { data: Buffer.from('Here it is.', 'utf8').toString('base64url') },
+        },
+        {
+          mimeType: 'application/pdf',
+          filename: 'report.pdf',
+          body: { attachmentId, size: 1_024 },
+        },
+      ],
+    },
+  },
+})
+
 type Row = {
   id: string
   organizationId: string
@@ -56,7 +81,18 @@ const baseFingerprint = fingerprintDraft({
   to: ['jana@example.com'],
   subject: 'Quarterly update',
   body: 'Here it is.',
-  attachmentIds: [],
+})
+
+const attachmentFingerprint = (attachmentId: string) => fingerprintDraft({
+  to: ['jana@example.com'],
+  subject: 'Quarterly update',
+  body: 'Here it is.',
+  attachmentIdentities: [{
+    attachmentId,
+    filename: 'report.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 1_024,
+  }],
 })
 
 const makePrisma = (row: Row) => {
@@ -191,6 +227,24 @@ test('refuses to send when the live draft no longer matches what was approved', 
       error instanceof GmailDraftError && error.code === 'DRAFT_CHANGED',
   )
   assert.equal(sendCalls, 0, 'no message may leave when the content changed')
+})
+
+test('refuses a same-name, same-size attachment replacement after approval', async () => {
+  const { prisma } = makePrisma(row({
+    contentFingerprint: attachmentFingerprint('approved-attachment'),
+  }))
+  let sendCalls = 0
+
+  await assert.rejects(
+    sendDraftForUser(
+      prisma,
+      { organizationId: ORG, userId: USER, draftActionId: ACTION },
+      deps(routes(liveDraftWithAttachment('replacement-attachment'), () => { sendCalls += 1 })),
+    ),
+    (error: unknown) =>
+      error instanceof GmailDraftError && error.code === 'DRAFT_CHANGED',
+  )
+  assert.equal(sendCalls, 0, 'the replacement may not reach Gmail')
 })
 
 test('a refused send leaves the draft sendable, not stuck in sending', async () => {
