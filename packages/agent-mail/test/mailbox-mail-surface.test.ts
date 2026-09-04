@@ -5,7 +5,9 @@ import { mailboxThreadToken } from '../src/mailbox-client.js'
 import { parseMailboxThreadToken } from '../src/mailbox-thread-token.js'
 import {
   mailboxHeaderWindow,
+  boundedThreadDetailUids,
   nativeThreadHeaderUids,
+  nativeThreadSeedUids,
   validateMailboxThreadMembers,
 } from '../src/mailbox-mail-surface.js'
 import { parseThreadReferenceSets } from '../src/imap.js'
@@ -22,39 +24,37 @@ const parse = (value: string) => parseMailboxThreadToken(value, {
   accountId: ACCOUNT_ID, folder: FOLDER, secret: SECRET,
 })
 
-test('signed IMAP thread tokens bind their account, folder, and listed members', () => {
+test('signed IMAP thread tokens bind their account, folder, UIDVALIDITY, root, and stable seed', () => {
   const value = token({
-    memberUids: [13, 11, 12], messageCount: 3, rootMessageId: 'root@example.test', uid: 13, uidValidity: 10,
+    rootMessageId: 'root@example.test', uid: 11, uidValidity: 10,
   })
   assert.deepEqual(parse(value), {
-    accountId: ACCOUNT_ID, folder: FOLDER, memberUids: [13, 12, 11], messageCount: 3,
-    rootDigest: parse(value)?.rootDigest, seedUid: 13, uidValidity: 10,
+    accountId: ACCOUNT_ID, folder: FOLDER,
+    rootDigest: parse(value)?.rootDigest, seedUid: 11, uidValidity: 10,
   })
   assert.equal(parseMailboxThreadToken(value, {
     accountId: 'another-account', folder: FOLDER, secret: SECRET,
   }), null)
 })
 
-test('IMAP thread tokens stay under the public parameter limit for bounded large groups', () => {
+test('IMAP thread tokens stay under the public parameter limit without group membership', () => {
   const value = token({
-    memberUids: Array.from({ length: 50 }, (_, index) => 4_294_967_295 - index * 80_000_000),
-    messageCount: 500, rootMessageId: 'root@example.test', uid: 4_294_967_295, uidValidity: 4_294_967_295,
+    rootMessageId: 'root@example.test', uid: 4_294_967_295, uidValidity: 4_294_967_295,
   })
   assert.ok(value.length <= 500, value)
-  assert.equal(parse(value)?.memberUids.length, 50)
 })
 
 test('IMAP thread tokens reject tampering and unthreaded roots do not collide', () => {
-  const first = token({ memberUids: [8], messageCount: 1, rootMessageId: null, uid: 8, uidValidity: 10 })
-  const second = token({ memberUids: [9], messageCount: 1, rootMessageId: null, uid: 9, uidValidity: 10 })
+  const first = token({ rootMessageId: null, uid: 8, uidValidity: 10 })
+  const second = token({ rootMessageId: null, uid: 9, uidValidity: 10 })
   assert.notEqual(first, second)
   const tampered = `${first.slice(0, -1)}${first.endsWith('A') ? 'B' : 'A'}`
   assert.equal(parse(tampered), null)
 })
 
-test('a thread token cannot add unrelated mailbox UIDs after its headers are validated', () => {
+test('a thread token authenticates the re-derived group and excludes unrelated mailbox UIDs', () => {
   const parsed = parse(token({
-    memberUids: [8, 7, 99], messageCount: 3, rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
+    rootMessageId: 'root@example.test', uid: 7, uidValidity: 10,
   }))
   assert.ok(parsed)
   const members = validateMailboxThreadMembers(parsed, [
@@ -76,10 +76,27 @@ test('a thread token cannot add unrelated mailbox UIDs after its headers are val
 
 test('thread-token validation refuses a missing seed group', () => {
   const parsed = parse(token({
-    memberUids: [8], messageCount: 1, rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
+    rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
   }))
   assert.ok(parsed)
   assert.equal(validateMailboxThreadMembers(parsed, [], SECRET), null)
+})
+
+test('a logical thread keeps its public id after a new reply arrives', () => {
+  const beforeReply = token({ rootMessageId: 'root@example.test', uid: 7, uidValidity: 10 })
+  const parsed = parse(beforeReply)
+  assert.ok(parsed)
+  const root = {
+    date: null, from: null, fromName: null, hasAttachments: false, inReplyTo: null,
+    messageId: 'root@example.test', references: [], snippet: '', subject: 'Root', to: [], uid: 7, unread: false,
+  }
+  const reply = {
+    ...root, inReplyTo: 'root@example.test', messageId: 'reply@example.test',
+    references: ['root@example.test'], subject: 'Reply', uid: 8,
+  }
+  assert.deepEqual(validateMailboxThreadMembers(parsed, [root], SECRET)?.map((member) => member.uid), [7])
+  assert.deepEqual(validateMailboxThreadMembers(parsed, [root, reply], SECRET)?.map((member) => member.uid), [8, 7])
+  assert.equal(beforeReply, token({ rootMessageId: 'root@example.test', uid: 7, uidValidity: 10 }))
 })
 
 test('THREAD=REFERENCES parser emits only flattened top-level groups', () => {
@@ -98,6 +115,13 @@ test('native THREAD paging reserves one newest header for every group', () => {
   assert.deepEqual(uids, groups.map((group) => group[1]))
 })
 
+test('100 native groups retain their complete bounded detail independently of summary headers', () => {
+  const groups = Array.from({ length: 100 }, (_, index) => [index * 2 + 1, index * 2 + 2])
+  assert.deepEqual(nativeThreadSeedUids(groups), groups.map((group) => group[0]))
+  assert.equal(nativeThreadHeaderUids(groups).length, 100)
+  assert.deepEqual(boundedThreadDetailUids(groups[42] ?? [], groups[42]?.[0] ?? 0), [86, 85])
+})
+
 test('list attachment markers use BODYSTRUCTURE metadata, not attachment payloads', () => {
   const parts = parseImapBodyStructure(
     '* 1 FETCH (UID 1 BODYSTRUCTURE (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 4 1 NIL NIL NIL)("APPLICATION" "ZIP" ("NAME" "archive.zip") NIL NIL "BASE64" 50000000 NIL ("ATTACHMENT" ("FILENAME" "archive.zip")) NIL NIL) "MIXED"))',
@@ -113,4 +137,12 @@ test('a top-level text message uses the RFC 3501 TEXT section', () => {
   assert.deepEqual(parseImapBodyStructure(
     '* 1 FETCH (UID 1 BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 4 1 NIL NIL NIL))',
   ).map((part) => part.section), ['TEXT'])
+})
+
+test('BODYSTRUCTURE rejects excessive nesting and part counts', () => {
+  const leaf = '("TEXT" "PLAIN" NIL NIL NIL "7BIT" 1 1 NIL NIL NIL)'
+  const nested = Array.from({ length: 33 }).reduce((value) => `(${value} "MIXED")`, leaf)
+  const many = `(${Array.from({ length: 101 }, () => leaf).join(' ')} "MIXED")`
+  assert.deepEqual(parseImapBodyStructure(`* 1 FETCH (UID 1 BODYSTRUCTURE ${nested})`), [])
+  assert.deepEqual(parseImapBodyStructure(`* 1 FETCH (UID 1 BODYSTRUCTURE ${many})`), [])
 })

@@ -14,6 +14,10 @@ export type ImapBodyPart = {
 
 type ImapValue = string | null | ImapValue[]
 
+/** A hostile server must not turn MIME metadata into an unbounded parser walk. */
+const MAX_BODYSTRUCTURE_DEPTH = 32
+const MAX_BODYSTRUCTURE_PARTS = 100
+
 const atom = (value: ImapValue | undefined): string | null =>
   typeof value === 'string' ? value : null
 
@@ -33,7 +37,8 @@ const parameters = (value: ImapValue | undefined): Map<string, string> => {
 const tokenize = (input: string): ImapValue | null => {
   let index = 0
   const whitespace = (): void => { while (/\s/.test(input[index] ?? '')) index += 1 }
-  const value = (): { valid: boolean; value: ImapValue } => {
+  const value = (depth: number): { valid: boolean; value: ImapValue } => {
+    if (depth > MAX_BODYSTRUCTURE_DEPTH) return { valid: false, value: null }
     whitespace()
     if (input[index] === '(') {
       index += 1
@@ -42,7 +47,7 @@ const tokenize = (input: string): ImapValue | null => {
         whitespace()
         if (input[index] === ')') { index += 1; return { valid: true, value: values } }
         if (index >= input.length) return { valid: false, value: null }
-        const child = value()
+        const child = value(depth + 1)
         if (!child.valid) return child
         values.push(child.value)
       }
@@ -65,7 +70,7 @@ const tokenize = (input: string): ImapValue | null => {
     if (!output) return { valid: false, value: null }
     return { valid: true, value: output.toUpperCase() === 'NIL' ? null : output }
   }
-  const parsed = value()
+  const parsed = value(0)
   whitespace()
   return parsed.valid && index === input.length ? parsed.value : null
 }
@@ -86,7 +91,10 @@ const bodyStructureValue = (response: string): ImapValue | null => {
       continue
     }
     if (char === '"') { quoted = true; continue }
-    if (char === '(') depth += 1
+    if (char === '(') {
+      depth += 1
+      if (depth > MAX_BODYSTRUCTURE_DEPTH) return null
+    }
     if (char === ')') {
       depth -= 1
       if (depth === 0) return tokenize(response.slice(start, index + 1))
@@ -102,20 +110,21 @@ const disposition = (value: ImapValue | undefined): { filename: string | null; k
   return { filename, kind }
 }
 
-const collect = (value: ImapValue, section: string, output: ImapBodyPart[]): void => {
+const collect = (value: ImapValue, section: string, output: ImapBodyPart[], depth = 0): boolean => {
+  if (depth > MAX_BODYSTRUCTURE_DEPTH || output.length >= MAX_BODYSTRUCTURE_PARTS) return false
   const values = list(value)
-  if (values.length === 0) return
+  if (values.length === 0) return true
   if (Array.isArray(values[0])) {
     let childCount = 0
     while (Array.isArray(values[childCount])) childCount += 1
     for (let index = 0; index < childCount; index += 1) {
-      collect(values[index] as ImapValue[], `${section}${index + 1}.`, output)
+      if (!collect(values[index] as ImapValue[], `${section}${index + 1}.`, output, depth + 1)) return false
     }
-    return
+    return true
   }
   const type = atom(values[0])?.toLowerCase()
   const subtype = atom(values[1])?.toLowerCase()
-  if (!type || !subtype) return
+  if (!type || !subtype) return true
   const params = parameters(values[2])
   const encoding = atom(values[5])
   const bytes = Number(atom(values[6]))
@@ -136,6 +145,7 @@ const collect = (value: ImapValue, section: string, output: ImapBodyPart[]): voi
     section: section ? section.slice(0, -1) : 'TEXT',
     textKind,
   })
+  return output.length <= MAX_BODYSTRUCTURE_PARTS
 }
 
 /** Parse BODYSTRUCTURE from one FETCH response; malformed structures are ignored. */
@@ -143,8 +153,7 @@ export const parseImapBodyStructure = (response: string): ImapBodyPart[] => {
   const value = bodyStructureValue(response)
   if (!value) return []
   const output: ImapBodyPart[] = []
-  collect(value, '', output)
-  return output
+  return collect(value, '', output) ? output : []
 }
 
 export const imapAttachmentParts = (parts: readonly ImapBodyPart[]): ImapBodyPart[] =>
