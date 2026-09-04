@@ -32,7 +32,7 @@ export const approvalResolutionScopes = (input: {
     userId: parseUserId(input.requiredApproverUserId),
   }]
   : [
-    { kind: 'organization' as const, organizationId: input.organizationId },
+    { kind: 'organization' as const, organizationId: parseOrganizationId(input.organizationId) },
     ...(input.channelId
       ? [{ kind: 'channel' as const, channelId: parseChannelId(input.channelId) }]
       : []),
