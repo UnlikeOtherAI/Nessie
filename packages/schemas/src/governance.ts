@@ -200,6 +200,25 @@ export const AuditActionSchema = z.enum([
   'user.deleted',
   'user.role_changed',
   'organization.updated',
+
+  // Automatic team access after sign-in, by DNS-verified email domain
+  // (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
+  // The challenge is never carried in the metadata of any of these.
+  'organization.automatic_membership.domain_created',
+  'organization.automatic_membership.dns_checked',
+  'organization.automatic_membership.domain_verified',
+  'organization.automatic_membership.domain_activated',
+  'organization.automatic_membership.domain_suspended',
+  'organization.automatic_membership.domain_revoked',
+  'organization.automatic_membership.challenge_rotated',
+  'organization.automatic_membership.rule_changed',
+  'organization.automatic_membership.rule_reauthorized',
+  'organization.automatic_membership.rule_needs_reauthorization',
+  'organization.automatic_membership.grant_issued',
+  'organization.automatic_membership.provisioning_toggled',
+  'organization.automatic_membership.reconcile_started',
+  'organization.automatic_membership.reconcile_finished',
+  'organization.automatic_membership.reconcile_cancelled',
   'project.created',
   'project.updated',
   'project.deleted',

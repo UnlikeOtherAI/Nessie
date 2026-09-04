@@ -13,6 +13,9 @@ const REDACTED_FIELDS = new Set([
   'accessToken',
   'refreshToken',
   'bootstrapToken',
+  // A domain-verification challenge is published in DNS, but it is the proof
+  // an organisation controls a domain, so it never enters the audit chain.
+  'challenge',
 ])
 
 const redactMetadata = (
