@@ -21,7 +21,7 @@ import { getWorkflowRun, listWorkflowRuns, retryWorkflowRun } from '../../servic
 import { WorkflowActionError } from '../../services/workflow-validation.js'
 import { auditWorkflowMutation } from '../../services/workflow-audit.js'
 import {
-  canActorReadWorkflowInstallation,
+  canActorReadWorkflowRun,
   isWorkflowAdmin,
   workflowInstallationEntitlementFilter,
 } from '../../services/workflow-entitlement.js'
@@ -44,16 +44,12 @@ const requireWorkflowAdmin = (
 /** Read gate for a run: the actor must be entitled to the run's installation
  *  scope. Returns false (after sending 404) when not. */
 const requireWorkflowRunReadAccess = async (
-  prisma: Parameters<typeof canActorReadWorkflowInstallation>[0],
+  prisma: Parameters<typeof canActorReadWorkflowRun>[0],
   actorContext: Parameters<typeof isWorkflowAdmin>[0],
   workflowRunId: string,
   reply: Parameters<typeof sendApiError>[0],
 ): Promise<boolean> => {
-  const run = await prisma.workflowRun.findFirst({
-    where: { id: workflowRunId, organizationId: actorContext.tenant.organizationId },
-    select: { installationId: true },
-  })
-  if (!run || !(await canActorReadWorkflowInstallation(prisma, actorContext, run.installationId))) {
+  if (!(await canActorReadWorkflowRun(prisma, actorContext, workflowRunId))) {
     sendApiError(reply, 404, 'WORKFLOW_RUN_NOT_FOUND', 'Workflow run not found')
     return false
   }

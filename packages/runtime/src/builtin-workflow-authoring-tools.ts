@@ -64,6 +64,30 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'workflow_update',
+    category: 'workflows',
+    summary: 'Update a validated workflow template.',
+    label: 'Update Workflow',
+    description:
+      'Update a workflow through the same validation and optimistic version check as Admin. '
+      + 'List workflows first if you need its ID and version.',
+    parameters: {
+      type: 'object',
+      properties: {
+        workflowTemplateId: { type: 'string' },
+        expectedVersion: { type: 'integer', minimum: 1 },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        graph: WorkflowGraphParameter,
+        bindingSchema: { type: 'object' },
+        variableSchema: { type: 'object' },
+        requiredEnvironmentTemplateIds: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['workflowTemplateId', 'name', 'graph'],
+    },
+    safe: false,
+  },
+  {
     id: 'workflow_install',
     category: 'workflows',
     summary: 'Install a workflow template so it can run.',
@@ -131,5 +155,38 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['workflowTemplateId'],
     },
     safe: false,
+  },
+  {
+    id: 'workflow_run',
+    category: 'workflows',
+    summary: 'Start an installed workflow in this conversation.',
+    label: 'Run Workflow',
+    description:
+      'Start an installed workflow using the same channel entitlement and overlap policy as Run now in Admin.',
+    parameters: {
+      type: 'object',
+      properties: {
+        workflowInstallationId: { type: 'string' },
+        input: { type: 'object' },
+      },
+      required: ['workflowInstallationId'],
+    },
+    safe: false,
+  },
+  {
+    id: 'workflow_run_status',
+    category: 'workflows',
+    summary: 'Read an entitled workflow run’s status.',
+    label: 'Get Workflow Run Status',
+    description:
+      'Read a workflow run and its step statuses without exposing its inputs, outputs, or secret bindings.',
+    parameters: {
+      type: 'object',
+      properties: {
+        workflowRunId: { type: 'string' },
+      },
+      required: ['workflowRunId'],
+    },
+    safe: true,
   },
 ]

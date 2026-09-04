@@ -6,6 +6,7 @@ import {
   parseWorkflowConcurrency,
   redactWorkflowSecretValues,
   resolveInstallationPinnedGraph,
+  startWorkflowRunForActor,
   withWorkflowOverlapLock,
 } from '@nessie/team-admin'
 import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
@@ -20,8 +21,6 @@ import {
   type WorkflowListPage,
   type WorkflowRunRow,
 } from './workflow-records.js'
-import { validateWorkflowRunReferences } from './workflow-references.js'
-import { isWorkflowInstallationStartable } from './workflow-templates.js'
 import { WorkflowActionError } from './workflow-validation.js'
 
 // The workflow run record itself: the two entrypoints that create one under
@@ -45,92 +44,7 @@ export const createWorkflowRun = async (
     triggerId?: string
   },
 ): Promise<WorkflowRunRecord | null> => {
-  const result = await withWorkflowOverlapLock(prisma, installationId, async (tx) => {
-    const installation = await tx.workflowInstallation.findFirst({
-      where: {
-        id: installationId,
-        organizationId: actorContext.tenant.organizationId,
-        active: true,
-        status: {
-          in: ['active', 'draft'],
-        },
-      },
-      select: {
-        active: true,
-        concurrency: true,
-        id: true,
-        organizationId: true,
-        status: true,
-      },
-    })
-    if (installation && !isWorkflowInstallationStartable(installation)) {
-      // A contradictory legacy row (paused-but-active, disabled-but-active)
-      // fails closed rather than starting a run.
-      return null
-    }
-    if (!installation) {
-      return null
-    }
-
-    await validateWorkflowRunReferences(tx, installation.organizationId, input)
-
-    // W26: manual runs respect the same overlap policy as trigger fires —
-    // enforcing only in the trigger path would be a trivial bypass. A skipped
-    // admission throws so the route can answer 409 with the recorded reason;
-    // a withheld one returns its pending run and is released by the active
-    // run's terminal transition.
-    const admission = await admitWorkflowRunUnderOverlap(tx, {
-      concurrency: parseWorkflowConcurrency(installation.concurrency),
-      installationId: installation.id,
-    })
-    if (admission.kind === 'skip') {
-      throw new WorkflowActionError(
-        'WORKFLOW_RUN_OVERLAP_SKIPPED',
-        `Workflow run skipped: the installation's overlap policy is at capacity (${WORKFLOW_OVERLAP_SKIP_REASON})`,
-      )
-    }
-
-    const run = await tx.workflowRun.create({
-      data: {
-        installationId: installation.id,
-        organizationId: installation.organizationId,
-        // W4: freeze the graph this run executes from.
-        graphSnapshot: await resolveInstallationPinnedGraph(tx, installation.id),
-        triggerId: input.triggerId,
-        triggerDeliveryId: input.triggerDeliveryId,
-        parentRunId: input.parentRunId,
-        planId: input.planId,
-        planStepId: input.planStepId,
-        // W25: the origin is validated against the run's organization by
-        // validateWorkflowRunReferences, exactly like every other reference.
-        originChannelId: input.originChannelId,
-        originThreadId: input.originThreadId,
-        originMessageId: input.originMessageId,
-        replyRootMessageId: input.replyRootMessageId,
-        input: (input.input ?? {}) as Prisma.InputJsonValue,
-        ...(admission.kind === 'withhold'
-          ? { summary: `${WORKFLOW_OVERLAP_SKIP_REASON}:queued` }
-          : {}),
-        startedByActorType: actorContext.actor.actorType,
-        startedByActorId: actorContext.actor.actorId,
-      },
-    })
-
-    if (admission.kind === 'admit') {
-      const payload: WorkflowRunExecuteJobPayload = {
-        actorContext,
-        workflowRunId: run.id,
-      }
-      await enqueueQueueJob(tx, {
-        idempotencyKey: `workflow-run:start:${run.id}`,
-        payload,
-        topic: 'workflow.run.execute',
-      })
-    }
-
-    return run
-  })
-
+  const result = await startWorkflowRunForActor(prisma, actorContext, installationId, input)
   return result ? mapWorkflowRun(result) : null
 }
 
