@@ -46,6 +46,8 @@ export const KnowledgeDocumentPane = ({
   spaceName,
 }: KnowledgeDocumentPaneProps) => {
   const {
+    archivePage,
+    archivePending,
     browseTo,
     childrenOf,
     drillTo,
@@ -97,10 +99,12 @@ export const KnowledgeDocumentPane = ({
         />
       ) : (
         <PagePreview
+          archivePending={archivePending}
           bodyQuery={bodyQuery}
           breadcrumbPages={breadcrumbPages}
           canWrite={canWrite}
           onBack={onBack}
+          onArchive={() => archivePage(page.id)}
           onBrowseRoot={() => browseTo([])}
           onCreateChild={() => openCreate(page.id)}
           onDrill={(childPageId) => drillTo(depth, childPageId)}

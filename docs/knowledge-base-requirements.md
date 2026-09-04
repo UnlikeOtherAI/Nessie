@@ -436,7 +436,9 @@ that column):
     as the parent. The same **New page** action stays visible at the space root,
     inside folders, and on an open page; it creates at that location, so from an
     open page it preselects that page as the parent. Page previews show clickable
-    breadcrumbs from the space through every ancestor to the current page.
+    breadcrumbs from the space through every ancestor to the current page. A
+    published page shows no redundant `Published` control or status chip;
+    History and Archive page live in its always-visible three-dot action menu.
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the

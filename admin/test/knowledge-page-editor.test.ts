@@ -33,6 +33,23 @@ test('an open document exposes the New page doorway in its header and child sect
   assert.ok((preview.match(/onCreateChild/g) ?? []).length >= 4)
 })
 
+test('published pages use a three-dot actions menu instead of redundant publication UI', () => {
+  assert.match(preview, /icon: faEllipsis/)
+  assert.match(preview, /kind: 'menu'/)
+  assert.match(preview, /label: 'History'/)
+  assert.match(preview, /label: 'Archive page'/)
+  assert.match(preview, /page\.status !== 'published'/)
+  assert.doesNotMatch(preview, /<Pill[^>]*>[\s\S]*?published[\s\S]*?<\/Pill>/)
+})
+
+test('archiving a page uses the existing endpoint and returns to its parent', () => {
+  const hooks = read('../../../facades/knowledge/hooks.ts')
+  const provider = read('KnowledgeProvider.tsx')
+  assert.match(hooks, /apiClient\.delete<KnowledgePageRecord>/)
+  assert.match(provider, /const nextPath = pageIndex >= 0 \? pagePath\.slice\(0, pageIndex\) : \[\]/)
+  assert.match(provider, /setOpenPageId\(nextPath\.at\(-1\)\)/)
+})
+
 test('the document preview shows a clickable breadcrumb trail from its space', () => {
   assert.match(preview, /aria-label="Page breadcrumbs"/)
   assert.match(preview, /onClick=\{onBrowseRoot\}/)

@@ -287,6 +287,17 @@ export const usePublishKnowledgePage = () => {
   })
 }
 
+export const useArchiveKnowledgePage = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { pageId: string }) =>
+      apiClient.delete<KnowledgePageRecord>(`/api/knowledge-base/pages/${input.pageId}`),
+    onSuccess: (page) => invalidateKnowledge(queryClient, { pageId: page.id, spaceId: page.spaceId }),
+  })
+}
+
 export const useRestoreKnowledgeVersion = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
