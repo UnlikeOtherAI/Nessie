@@ -85,6 +85,18 @@ export {
   runTeamCreateTool,
 } from './pa-tools/team-structure.js'
 export {
+  runTicketArchiveDoneTool,
+  runTicketAssignTool,
+  runTicketBoardReadTool,
+  runTicketCreateTool,
+  runTicketIterationSetTool,
+  runTicketListTool,
+  runTicketMoveTool,
+  runTicketReadTool,
+  runTicketTransitionTool,
+  runTicketUpdateTool,
+} from './pa-tools/tickets.js'
+export {
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,

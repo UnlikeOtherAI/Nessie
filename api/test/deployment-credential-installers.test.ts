@@ -87,6 +87,13 @@ const runUoaBillingValidator = (
   },
 })
 
+// Windows filesystems do not expose POSIX owner-only mode bits through Node's
+// stat API. The installers still set the mode on Unix, where it is enforceable.
+const assertOwnerOnlyMode = (path: string): void => {
+  if (process.platform === 'win32') return
+  assert.equal(statSync(path).mode & 0o777, 0o600)
+}
+
 test('Ledger installer pins active routes and retires the old reader key', () => {
   const fixture = makeInstallerFixture([
     'PRESERVE_ME=yes',
@@ -108,7 +115,7 @@ test('Ledger installer pins active routes and retires the old reader key', () =>
       '',
     ].join('\n'),
   )
-  assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+  assertOwnerOnlyMode(fixture.envFile)
 })
 
 test('Ledger installer rejects malformed or cross-principal key reuse', () => {
@@ -216,7 +223,7 @@ test('UOA billing installer atomically installs both independent credentials', (
       '',
     ].join('\n'),
   )
-  assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+  assertOwnerOnlyMode(fixture.envFile)
 })
 
 test('deployment-side UOA billing validation requires usable independent credentials', () => {

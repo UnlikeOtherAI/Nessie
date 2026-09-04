@@ -69,6 +69,16 @@ import {
   runProjectListTool,
   runSendMessageTool,
   runTeamCreateTool,
+  runTicketArchiveDoneTool,
+  runTicketAssignTool,
+  runTicketBoardReadTool,
+  runTicketCreateTool,
+  runTicketIterationSetTool,
+  runTicketListTool,
+  runTicketMoveTool,
+  runTicketReadTool,
+  runTicketTransitionTool,
+  runTicketUpdateTool,
   runUpdatePreferencesTool,
   runTodoStartTool,
   runTodoStepUpdateTool,
@@ -290,6 +300,26 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runProjectCreateTool(context, args))
     case 'team_create':
       return wrapTool(inputSummary, () => runTeamCreateTool(context, args))
+    case 'ticket_list':
+      return wrapTool(inputSummary, () => runTicketListTool(context, args))
+    case 'ticket_read':
+      return wrapTool(inputSummary, () => runTicketReadTool(context, args))
+    case 'ticket_board_read':
+      return wrapTool(inputSummary, () => runTicketBoardReadTool(context, args))
+    case 'ticket_create':
+      return wrapTool(inputSummary, () => runTicketCreateTool(context, args))
+    case 'ticket_update':
+      return wrapTool(inputSummary, () => runTicketUpdateTool(context, args))
+    case 'ticket_assign':
+      return wrapTool(inputSummary, () => runTicketAssignTool(context, args))
+    case 'ticket_move':
+      return wrapTool(inputSummary, () => runTicketMoveTool(context, args))
+    case 'ticket_transition':
+      return wrapTool(inputSummary, () => runTicketTransitionTool(context, args))
+    case 'ticket_iteration_set':
+      return wrapTool(inputSummary, () => runTicketIterationSetTool(context, args))
+    case 'ticket_archive_done':
+      return wrapTool(inputSummary, () => runTicketArchiveDoneTool(context, args))
     case 'agent_list':
       return wrapTool(inputSummary, () => runAgentListTool(context, args))
     // Agent configuration: read one agent's record, rewrite it, list the tools

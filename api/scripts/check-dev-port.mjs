@@ -6,9 +6,10 @@
 // destroyed parallel dev sessions binding a different NESSIE_API_PORT.
 //
 // Port resolution (first wins):
-//   1. process.env.NESSIE_API_PORT
-//   2. NESSIE_API_PORT from a simple KEY=VALUE parse of ../.env (repo root)
-//   3. 5454 (the documented local dev default)
+//   1. an explicit positional port (for another local service)
+//   2. process.env.NESSIE_API_PORT
+//   3. NESSIE_API_PORT from a simple KEY=VALUE parse of ../.env (repo root)
+//   4. 5454 (the documented local dev default)
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -48,12 +49,12 @@ function readPortFromEnvFile(filePath) {
 }
 
 function resolvePort() {
-  const raw = process.env.NESSIE_API_PORT ?? readPortFromEnvFile(ROOT_ENV_PATH);
+  const raw = process.argv[2] ?? process.env.NESSIE_API_PORT ?? readPortFromEnvFile(ROOT_ENV_PATH);
   if (raw == null) return DEFAULT_PORT;
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     console.error(
-      `predev: NESSIE_API_PORT "${raw}" is not a valid port (1-65535); fix it before starting the dev server.`,
+      `predev: port "${raw}" is not valid (1-65535); fix it before starting the dev server.`,
     );
     process.exit(1);
   }

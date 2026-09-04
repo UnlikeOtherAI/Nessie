@@ -187,6 +187,31 @@ tool cannot answer differently. Audit events stay in the routes, which is where
 `emitAuditEvent` and the request's `actorContext` live; the tools' own record is
 the run's `ToolCall` and the rows themselves.
 
+## Project tickets from the Personal Assistant
+
+`ticket_list`, `ticket_read`, `ticket_board_read`, `ticket_create`,
+`ticket_update`, `ticket_assign`, `ticket_move`, `ticket_transition`,
+`ticket_iteration_set`, and `ticket_archive_done` are
+`personalAssistantOnly`. They mirror the project-board routes through the
+shared `@nessie/team-admin` task operations, so a ticket changed in chat has
+the same validation, lifecycle event, assignment attention, and board placement
+as one changed by clicking.
+
+Every ticket tool is project-scoped. It resolves the acting user's live project
+membership before it reads or writes; projectless and merely assigned tickets
+are deliberately outside this surface because they have no project disclosure
+scope. `ticket_list` resolves ticket IDs, and `ticket_board_read` resolves
+column IDs before `ticket_move`; neither model nor caller guesses UUIDs. Ticket
+and board reads add that project to the consumed-source basis for non-owners.
+Owners read every project through their organisation role, so their own PA does
+not acquire an unsatisfied membership-only basis.
+
+There is no hard-delete ticket API. `ticket_transition` to `cancelled` is the
+reversible board action, and a cancelled ticket can transition to `inbox` to
+restore it. `ticket_archive_done` always takes an explicit project ID and can
+archive only that project's completed work; it cannot silently archive another
+project's board.
+
 **What a created container contains is one person.** A project, a team and a
 channel created this way get exactly one membership row — the requester, as
 owner. And a `channel_create` call that names no `visibility` inside a global

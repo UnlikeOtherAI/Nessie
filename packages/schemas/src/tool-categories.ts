@@ -77,6 +77,11 @@ export const TOOL_CATEGORIES = [
     label: 'To-dos',
   },
   {
+    description: 'Creating projects and managing the tickets on their boards.',
+    id: 'projects',
+    label: 'Projects & tickets',
+  },
+  {
     description: 'Creating agents, binding them to channels, and delegating work.',
     id: 'agents',
     label: 'Agents & delegation',
