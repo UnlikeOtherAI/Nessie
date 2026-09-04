@@ -394,7 +394,7 @@ export const runExecutionAgentLoop = async (
     if (authorization.decision === 'suspend') {
       return suspensionResult(args, authorization)
     }
-    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+    return executeAuthorizedTool(toolName, authorization.executionArgs ?? args, toolCallId, authorization)
   }
 
   const executePreparedTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
@@ -410,7 +410,7 @@ export const runExecutionAgentLoop = async (
     if (authorization.decision === 'suspend') {
       throw new Error('Prepared tool authorization unexpectedly requested approval.')
     }
-    return executeAuthorizedTool(toolName, args, toolCallId, authorization)
+    return executeAuthorizedTool(toolName, authorization.executionArgs ?? args, toolCallId, authorization)
   }
 
   const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {

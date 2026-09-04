@@ -173,6 +173,34 @@ from the live no-store conversation beside the form and never enter
 - Reply context supplies the real provider thread id or `In-Reply-To` identity;
   it never infers a reply from subject text.
 
+#### Delivery and provider-draft recovery
+
+Recipient fields are parsed locally with the shared `ConnectedMailComposeInputSchema`
+before either create, update, or send mutation; the API remains the final schema
+authority. Gmail action identity is persisted before a provider request and is
+reconciled through an owner-only, content-free status read after reload. Only a
+future `sending` deadline offers Undo. Expired `sending`, `dispatching`, and
+`updating` stay locked while status is checked; `sent` confirms delivery;
+`delivery_unknown` and `update_unknown` never reopen a resend path. The latter
+offers a deliberate blank-composer escape only after the owner has checked
+Gmail, and no old content or action id is reused.
+
+Provider drafts with attachments or non-plain MIME are not flattened through a
+PATCH. The owner sees attachment metadata and an explicit Gmail doorway instead
+of a local Send control. Gmail MIME parsing has bounded headers, parts, depth,
+attachment count, filename bytes, response bytes, and decoded-body bytes.
+
+An SMTP action replay that encounters a live `dispatching` claim returns that
+content-free action state, polls it, and never dials SMTP again or terminalizes
+it early; only the two-minute stale-claim sweep may mark it
+`delivery_unknown`.
+
+`gmail_draft_send` approvals fetch the same exact frozen To/Cc/Bcc/subject/body
+preview contract as `mailbox_send`, but from a pinned owner-only route. The
+preview is read only while the approval is pending, is removed from the query
+cache on resolution, and the approved Gmail action still validates its pinned
+content fingerprint.
+
 ## Agent-driven presentation in chat
 
 Presentation is an agent capability, not a second mail implementation.

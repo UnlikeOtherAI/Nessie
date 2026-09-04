@@ -17,6 +17,7 @@ import {
 export type GmailThreadSummary = {
   threadId: string
   messageId: string
+  rfcMessageId?: string
   from: string
   to: string[]
   subject: string
@@ -28,6 +29,7 @@ export type GmailThreadSummary = {
 
 export type GmailMessageDetail = {
   messageId: string
+  rfcMessageId?: string
   threadId: string
   from: string
   to: string[]
@@ -151,7 +153,7 @@ export const searchGmailThreads = async (
       'messages.get',
       `${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}`
         + '?format=metadata&metadataHeaders=From&metadataHeaders=To'
-        + '&metadataHeaders=Subject&metadataHeaders=Date',
+        + '&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID',
       { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_METADATA_RESPONSE_BYTES },
     )
     budget.addHttp(response.responseBytes ?? 0)
@@ -170,6 +172,7 @@ export const searchGmailThreads = async (
     return {
       threadId: typeof message.threadId === 'string' ? message.threadId : message.id,
       messageId: message.id,
+      ...(headerValue(headers, 'Message-ID') ? { rfcMessageId: headerValue(headers, 'Message-ID') } : {}),
       from: headerValue(headers, 'From'),
       to: splitAddressList(headerValue(headers, 'To')),
       subject: headerValue(headers, 'Subject'),
@@ -212,6 +215,7 @@ export const getGmailMessage = async (
   walk(message.payload, collected, budget)
   return {
     messageId: message.id,
+    ...(headerValue(headers, 'Message-ID') ? { rfcMessageId: headerValue(headers, 'Message-ID') } : {}),
     threadId: typeof message.threadId === 'string' ? message.threadId : message.id,
     from: headerValue(headers, 'From'),
     to: splitAddressList(headerValue(headers, 'To')),
@@ -252,6 +256,7 @@ export const getGmailThread = async (
     walk(message.payload, collected, budget)
     return [{
       messageId: message.id,
+      ...(headerValue(headers, 'Message-ID') ? { rfcMessageId: headerValue(headers, 'Message-ID') } : {}),
       threadId: typeof message.threadId === 'string' ? message.threadId : threadId,
       from: headerValue(headers, 'From'),
       to: splitAddressList(headerValue(headers, 'To')),

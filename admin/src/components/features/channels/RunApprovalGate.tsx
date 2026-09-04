@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import {
   useApprovalRequest,
-  useMailboxSendApprovalDraft,
+  useMailSendApprovalDraft,
   useResolveApproval,
 } from '../../../facades/approvals/hooks'
 import {
@@ -69,9 +69,13 @@ export const RunApprovalGate = ({
 }) => {
   const gate = readApprovalGate(metadata)
   const approval = useApprovalRequest(gate?.approvalId)
-  const isMailboxSend = gate?.toolName === 'mailbox_send'
-  const mailboxDraft = useMailboxSendApprovalDraft(
-    isMailboxSend ? gate?.approvalId : undefined,
+  const active = gate?.status === 'pending' && approval.data?.status === 'pending'
+  const mailSendTool = gate?.toolName === 'mailbox_send' || gate?.toolName === 'gmail_draft_send'
+    ? gate.toolName : undefined
+  const isMailSend = Boolean(mailSendTool)
+  const isMailboxSend = mailSendTool === 'mailbox_send'
+  const mailDraft = useMailSendApprovalDraft(
+    mailSendTool, isMailSend ? gate?.approvalId : undefined, Boolean(active),
   )
   const resolve = useResolveApproval()
   const { pushToast } = useToasts()
@@ -88,18 +92,17 @@ export const RunApprovalGate = ({
 
   if (!gate) return null
 
-  const active = gate.status === 'pending' && approval.data?.status === 'pending'
   const copy = resolutionCopy[resolution]
   const context = approval.data?.context ?? null
   // Server-authored: a plain-language description beats the tool id, and the
   // audience line is what the person is really being asked about.
   const headline = readString(context, 'headline')
   const audience = readString(context, 'audience')
-  const details = isMailboxSend ? null : readString(context, 'inputSummary')
+  const details = isMailSend ? null : readString(context, 'inputSummary')
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
   const isCalendar = gate.toolName.startsWith('calendar_')
-  const canApprove = !isMailboxSend || Boolean(mailboxDraft.data)
+  const canApprove = !isMailSend || Boolean(mailDraft.data)
 
   const submit = () => {
     resolve.mutate(
@@ -157,13 +160,13 @@ export const RunApprovalGate = ({
           ) : null}
         </div>
       ) : null}
-      {isMailboxSend && mailboxDraft.data ? (
-        <MailboxSendApprovalPreview draft={mailboxDraft.data} />
+      {active && isMailSend && mailDraft.data ? (
+        <MailboxSendApprovalPreview draft={mailDraft.data} />
       ) : null}
-      {isMailboxSend && mailboxDraft.isLoading ? (
+      {active && isMailSend && mailDraft.isLoading ? (
         <p className="mt-2 text-xs text-[color:var(--tx3)]">Loading the full email to send…</p>
       ) : null}
-      {isMailboxSend && mailboxDraft.isError ? (
+      {active && isMailSend && mailDraft.isError ? (
         <p className="mt-2 text-xs text-[color:var(--danger-text)]">
           The complete email can no longer be read. It cannot be approved.
         </p>
@@ -216,7 +219,7 @@ export const RunApprovalGate = ({
             <select
               aria-label="How long to stop asking"
               className="rounded border border-[color:var(--sep)] bg-[color:var(--panel)] px-1.5 py-0.5 text-[11px] text-[color:var(--tx)]"
-              disabled={grant.isPending || resolve.isPending}
+              disabled={!canApprove || grant.isPending || resolve.isPending}
               onChange={(event) =>
                 setDuration(event.target.value as ApprovalDuration)
               }
@@ -231,7 +234,7 @@ export const RunApprovalGate = ({
             <button
               className="admin-button admin-button-secondary"
               data-testid="run-approval-gate-always"
-              disabled={grant.isPending || resolve.isPending}
+              disabled={!canApprove || grant.isPending || resolve.isPending}
               onClick={() => {
                 grant.mutate(
                   { approvalId: gate.approvalId, duration, mode: 'always' },

@@ -21,6 +21,8 @@ export const createMailFixtures = () => {
   let doorwayAllowed = true
   let doorwayVisible = false
   let gmailDraftState = 'draft'
+  let gmailSendAfter = null
+  let loseNextGmailSendResponse = false
   let gmailCapabilities = { canCompose: true, canRead: true, canSend: true }
 
   const accounts = () => [
@@ -135,17 +137,18 @@ export const createMailFixtures = () => {
     if (pathname.endsWith('/threads') && pathname.startsWith('/api/mail/accounts/')) return json(threads)
     if (pathname.endsWith('/threads/thread-1') && pathname.startsWith('/api/mail/accounts/')) return json(conversation)
     if (pathname.endsWith('/threads/thread-2') && pathname.startsWith('/api/mail/accounts/')) return json({ ...conversation, id: 'thread-2' })
-    if (pathname === '/api/gmail/drafts/draft-doorway') return json({
-      attachments: [], bcc: [], body: 'Prepared response', cc: [], contentFingerprint: 'fingerprint-doorway',
-      id: 'draft-doorway', revision: 1, state: 'draft', subject: 'Prepared reply', to: ['casey@acme.example'],
+    if (pathname === `/api/gmail/drafts/${gmailDraftId}/status` && method === 'GET') return json({
+      id: gmailDraftId, sendAfter: gmailSendAfter, state: gmailDraftState,
     })
     if (pathname === `/api/gmail/drafts/${gmailDraftId}` && method === 'GET') return json({
       attachments: [], bcc: [], body: 'Thanks — I will take this from here.', cc: [],
       contentFingerprint: 'fingerprint-1', id: gmailDraftId, revision: 1, state: gmailDraftState,
+      sendAfter: gmailSendAfter,
       subject: 'Re: Launch checklist', to: ['casey@acme.example'],
     })
     if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') {
       gmailDraftState = 'draft'
+      gmailSendAfter = null
       return json({ state: 'draft' })
     }
     if (pathname.endsWith('/drafts') && pathname.startsWith('/api/mail/accounts/') && method === 'POST') return json({
@@ -156,10 +159,20 @@ export const createMailFixtures = () => {
     })
     if (pathname.endsWith('/send') && pathname.startsWith('/api/mail/accounts/') && method === 'POST') {
       const gmail = pathname.includes('/gmail/')
-      if (gmail) gmailDraftState = 'sending'
+      if (gmail) {
+        gmailDraftState = 'sending'
+        gmailSendAfter = new Date(Date.now() + 15_000).toISOString()
+        if (loseNextGmailSendResponse) {
+          loseNextGmailSendResponse = false
+          return route.fulfill({
+            body: JSON.stringify({ error: { code: 'RESPONSE_LOST', message: 'response lost' } }),
+            contentType: 'application/json', status: 504,
+          })
+        }
+      }
       return json({
         id: gmail ? gmailDraftId : 'mailbox-sent',
-        sendAfter: gmail ? new Date(Date.now() + 15_000).toISOString() : undefined,
+        sendAfter: gmail ? gmailSendAfter : undefined,
         status: gmail ? 'sending' : 'sent',
       })
     }
@@ -187,9 +200,18 @@ export const createMailFixtures = () => {
     unhandled,
     respond,
     showDoorway: () => { doorway = threadDoorway; doorwayVisible = true },
-    showComposeDoorway: () => { doorway = { accountId: 'gmail-1', draftId: 'draft-doorway', mode: 'compose', source: 'gmail' } },
+    showComposeDoorway: () => {
+      gmailDraftState = 'draft'
+      gmailSendAfter = null
+      doorway = { accountId: 'gmail-1', draftId: gmailDraftId, mode: 'compose', source: 'gmail' }
+    },
     showAccountDoorway: () => { doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }; doorwayVisible = true },
     denyDoorway: () => { doorwayAllowed = false },
+    loseNextGmailSendResponse: () => { loseNextGmailSendResponse = true },
+    setGmailDraftActionStatus: (next) => {
+      gmailDraftState = next.state
+      if (Object.hasOwn(next, 'sendAfter')) gmailSendAfter = next.sendAfter
+    },
     allowDoorway: () => { doorwayAllowed = true },
     setGmailCapabilities: (next) => { gmailCapabilities = { ...gmailCapabilities, ...next } },
   }

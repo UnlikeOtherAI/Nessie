@@ -4,7 +4,6 @@ import {
   getGmailDraft,
   updateGmailDraft,
   type GmailDraftContent,
-  type OutboundMessage,
 } from '@nessie/comms-google'
 import { safeFetch } from '@nessie/runtime'
 import { getGoogleCapability, type GoogleCapabilityId } from '@nessie/schemas'
@@ -15,7 +14,13 @@ import {
 } from './comms-credential-coordinator.js'
 import { dispatchClaimedDraft } from './gmail-draft-dispatch.js'
 import { fingerprintMessage, fingerprintOf } from './gmail-draft-fingerprint.js'
-
+import {
+  toRecord,
+  type ComposeDraftInput,
+  type GmailDraftActionRecord,
+  type SendDraftInput,
+  type SendDraftResult,
+} from './gmail-draft-record.js'
 export { fingerprintDraft } from './gmail-draft-fingerprint.js'
 
 export type GmailDraftErrorCode =
@@ -29,7 +34,6 @@ export type GmailDraftErrorCode =
   | 'DRAFT_NOT_SENDABLE'
   | 'DELIVERY_UNKNOWN'
   | 'PROVIDER_FAILED'
-
 export class GmailDraftError extends Error {
   readonly code: GmailDraftErrorCode
 
@@ -39,7 +43,6 @@ export class GmailDraftError extends Error {
     this.code = code
   }
 }
-
 const mapCredentialError = (error: unknown): never => {
   if (error instanceof CommsCredentialCoordinatorError) {
     if (error.code === 'CONNECTION_NOT_FOUND' || error.code === 'CREDENTIAL_MISSING') {
@@ -49,7 +52,6 @@ const mapCredentialError = (error: unknown): never => {
   }
   throw error
 }
-
 const knownDraftReplay = (
   known: {
     connectionId: string
@@ -59,6 +61,7 @@ const knownDraftReplay = (
     providerDraftId: string | null
     providerThreadId: string | null
     revision: number
+    sendAfter: Date | null
     state: string
   },
   fingerprint: string,
@@ -67,13 +70,11 @@ const knownDraftReplay = (
   if (known.state === 'draft' && known.providerDraftId) return toRecord(known)
   throw new GmailDraftError('DELIVERY_UNKNOWN')
 }
-
 export type GmailDraftDeps = {
   encryptionSecret: string
   fetchImpl?: typeof safeFetch
   now?: () => Date
 }
-
 export const gmailFetch = (deps: GmailDraftDeps) => {
   const impl = deps.fetchImpl ?? safeFetch
   return async (
@@ -91,7 +92,6 @@ export const gmailFetch = (deps: GmailDraftDeps) => {
     }
   }
 }
-
 export const loadCredential = async (
   prisma: PrismaClient,
   input: {
@@ -115,44 +115,6 @@ export const loadCredential = async (
     return mapCredentialError(error)
   }
 }
-
-export type ComposeDraftInput = {
-  organizationId: string
-  userId: string
-  connectionId?: string
-  message: OutboundMessage
-  providerThreadId?: string
-  idempotencyKey?: string
-}
-
-export type GmailDraftActionRecord = {
-  id: string
-  providerDraftId: string | null
-  revision: number
-  state: 'creating' | 'draft' | 'updating' | 'sending' | 'dispatching' | 'delivery_unknown' | 'sent' | 'discarded'
-  contentFingerprint: string
-  connectionId: string
-  ownerUserId: string
-}
-
-export const toRecord = (row: {
-  id: string
-  providerDraftId: string | null
-  revision: number
-  state: string
-  contentFingerprint: string
-  connectionId: string
-  ownerUserId: string
-}): GmailDraftActionRecord => ({
-  id: row.id,
-  providerDraftId: row.providerDraftId,
-  revision: row.revision,
-  state: row.state as GmailDraftActionRecord['state'],
-  contentFingerprint: row.contentFingerprint,
-  connectionId: row.connectionId,
-  ownerUserId: row.ownerUserId,
-})
-
 export const composeDraftForUser = async (
   prisma: PrismaClient,
   input: ComposeDraftInput,
@@ -277,31 +239,64 @@ export const updateDraftForUser = async (
   // Claim before changing Gmail. Sending also claims `draft` first, so neither
   // operation can validate one provider version and later overwrite the
   // other's durable state.
+  const claimedAt = deps.now?.() ?? new Date()
   const claimed = await prisma.gmailDraftAction.updateMany({
     where: { id: existing.id, state: 'draft' },
-    data: { state: 'updating', claimedAt: deps.now?.() ?? new Date() },
+    data: { state: 'updating', claimedAt },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
   let ref: Awaited<ReturnType<typeof updateGmailDraft>>
+  let live: Awaited<ReturnType<typeof getGmailDraft>>
   try {
+    live = await getGmailDraft(
+      gmailFetch(deps), credential.credential.accessToken, existing.providerDraftId,
+    )
+    if (!live.editable) {
+      throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'edit this draft in Gmail')
+    }
+  } catch (error) {
+    // This was only a read/shape validation. No provider mutation has begun,
+    // so an owned claim can safely be made editable again.
+    await prisma.gmailDraftAction.updateMany({
+      where: { id: existing.id, state: 'updating', claimedAt },
+      data: { state: 'draft', claimedAt: null },
+    })
+    if (error instanceof GmailDraftError) throw error
+    throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
+  }
+  try {
+    // This is the provider mutation boundary. Do not ever recover this claim:
+    // a timed-out PUT can still have changed Gmail after this process dies.
+    const mutationClaimed = await prisma.gmailDraftAction.updateMany({
+      where: { id: existing.id, state: 'updating', claimedAt },
+      data: { state: 'update_unknown' },
+    })
+    if (mutationClaimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
     ref = await updateGmailDraft(
       gmailFetch(deps),
       credential.credential.accessToken,
       existing.providerDraftId,
-      input.message,
+      {
+        ...input.message,
+        ...(live.inReplyTo ? { inReplyTo: live.inReplyTo } : {}),
+        ...(live.references.length > 0 ? { references: live.references } : {}),
+      },
       existing.providerThreadId ?? undefined,
     )
-  } catch (error) {
-    await prisma.gmailDraftAction.updateMany({
-      where: { id: existing.id, state: 'updating' },
-      data: { state: 'draft', claimedAt: null },
-    })
-    throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
+  } catch {
+    // The provider call either began or we cannot prove it did not. Keep the
+    // row locked rather than allowing an ABA edit to overwrite unknown Gmail
+    // bytes. This is deliberately distinct from delivery_unknown.
+    throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'draft update is unconfirmed; inspect it in Gmail')
   }
   const providerThreadId = ref.threadId ?? existing.providerThreadId
-  const fingerprint = fingerprintMessage(input.message, providerThreadId ?? undefined)
+  const fingerprint = fingerprintMessage({
+    ...input.message,
+    ...(live.inReplyTo ? { inReplyTo: live.inReplyTo } : {}),
+    ...(live.references.length > 0 ? { references: live.references } : {}),
+  }, providerThreadId ?? undefined)
   const persisted = await prisma.gmailDraftAction.updateMany({
-    where: { id: existing.id, state: 'updating' },
+    where: { id: existing.id, state: 'update_unknown', claimedAt },
     data: {
       contentFingerprint: fingerprint,
       providerThreadId,
@@ -349,19 +344,6 @@ export const readDraftForUser = async (
   return { ...content, action: toRecord(existing) }
 }
 
-export type SendDraftInput = {
-  organizationId: string
-  userId: string
-  draftActionId: string
-  connectionId?: string
-  expectedFingerprint?: string
-  holdMs?: number
-}
-
-export type SendDraftResult =
-  | { status: 'held'; sendAfter: Date; action: GmailDraftActionRecord }
-  | { status: 'sent'; sentMessageId: string; action: GmailDraftActionRecord }
-
 export const sendDraftForUser = async (
   prisma: PrismaClient,
   input: SendDraftInput,
@@ -391,13 +373,17 @@ export const sendDraftForUser = async (
     where: { id: existing.id, state: 'draft' },
     data: {
       state: 'sending',
-      // Inline dispatch and the sweeper share the sending -> dispatching CAS.
-      sendAfter: input.holdMs && input.holdMs > 0
-        ? new Date(now.getTime() + input.holdMs)
-        : now,
+      // A validating send is not yet dispatchable. Recovery treats its stale
+      // claim as a draft because it has not crossed the provider send boundary.
+      sendAfter: null,
+      claimedAt: now,
     },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
+  const releaseValidation = () => prisma.gmailDraftAction.updateMany({
+    where: { id: existing.id, state: 'sending', sendAfter: null, claimedAt: now },
+    data: { state: 'draft', sendAfter: null, claimedAt: null },
+  })
 
   let credential
   try {
@@ -412,10 +398,7 @@ export const sendDraftForUser = async (
       deps,
     )
   } catch (error) {
-    await prisma.gmailDraftAction.updateMany({
-      where: { id: existing.id, state: 'sending' },
-      data: { state: 'draft', sendAfter: null, claimedAt: null },
-    })
+    await releaseValidation()
     throw error
   }
 
@@ -429,37 +412,42 @@ export const sendDraftForUser = async (
       existing.providerDraftId,
     )
   } catch (error) {
-    await prisma.gmailDraftAction.updateMany({
-      where: { id: existing.id, state: 'sending' },
-      data: { state: 'draft', sendAfter: null, claimedAt: null },
-    })
+    await releaseValidation()
     throw new GmailDraftError('PROVIDER_FAILED', (error as Error).message)
+  }
+  if (!content.editable) {
+    await releaseValidation()
+    throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'edit this unsupported draft in Gmail')
   }
   const live = fingerprintOf(content)
   if (live !== expected) {
-    await prisma.gmailDraftAction.updateMany({
-      where: { id: existing.id, state: 'sending' },
-      data: { state: 'draft', sendAfter: null, claimedAt: null },
-    })
+    await releaseValidation()
     throw new GmailDraftError('DRAFT_CHANGED')
   }
 
   if (input.holdMs && input.holdMs > 0) {
+    const sendAfter = new Date((deps.now?.() ?? new Date()).getTime() + input.holdMs)
+    const published = await prisma.gmailDraftAction.updateMany({
+      where: { id: existing.id, state: 'sending', sendAfter: null, claimedAt: now },
+      data: { sendAfter, claimedAt: null },
+    })
+    if (published.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
     const held = await prisma.gmailDraftAction.findUniqueOrThrow({
       where: { id: existing.id },
     })
     return {
       status: 'held',
-      sendAfter: held.sendAfter ?? new Date(now.getTime() + input.holdMs),
+      sendAfter: held.sendAfter ?? sendAfter,
       action: toRecord(held),
     }
   }
-  return dispatchClaimedDraft(prisma, existing.id, deps)
+  return dispatchClaimedDraft(prisma, existing.id, deps, now)
 }
 
 export {
   dispatchClaimedDraft,
   resolveStaleGmailDispatches,
+  resolveStaleGmailDraftValidations,
   resolveStaleGmailDraftUpdates,
   STALE_CLAIM_WINDOW_MS,
 } from './gmail-draft-dispatch.js'
@@ -498,3 +486,9 @@ export const attachDraftMessage = async (
 }
 
 export type { Prisma as GmailDraftPrisma }
+export type {
+  ComposeDraftInput,
+  GmailDraftActionRecord,
+  SendDraftInput,
+  SendDraftResult,
+} from './gmail-draft-record.js'

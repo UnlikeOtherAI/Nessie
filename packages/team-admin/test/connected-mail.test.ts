@@ -165,6 +165,31 @@ test('a known sent SMTP action replays before a revoked credential is loaded', a
   assert.equal(credentialReads, 0)
 })
 
+test('a live SMTP replay reports dispatching without a second dial or terminal transition', async () => {
+  let credentialReads = 0
+  const connection = {
+    id: CONNECTION_ID, organizationId: ORGANIZATION_ID, ownerUserId: USER_ID, status: 'active',
+    address: 'owner@example.test', imapHost: 'imap.example.test', imapPort: 993, imapSecurity: 'tls',
+    smtpHost: 'smtp.example.test', smtpPort: 465, smtpSecurity: 'tls', username: 'owner@example.test',
+  }
+  const prisma = {
+    mailboxConnection: { findFirst: async () => connection },
+    mailboxConnectionCredential: { findUnique: async () => { credentialReads += 1; return null } },
+    mailboxSendAction: {
+      upsert: async ({ create }: { create: Record<string, unknown> }) => ({ ...create, state: 'dispatching' }),
+      updateMany: async () => { throw new Error('a live replay must not settle the action') },
+    },
+  } as unknown as PrismaClient
+  const result = await sendConnectedMailboxMail(prisma, {
+    organizationId: ORGANIZATION_ID, userId: USER_ID,
+  }, CONNECTION_ID, {
+    body: 'Hello', idempotencyKey: '44444444-4444-4444-8444-444444444444',
+    subject: 'Status', to: ['recipient@example.test'],
+  }, { encryptionSecret: 'test-secret', sendMailbox: async () => { throw new Error('must not dial') } })
+  assert.equal(result.status, 'dispatching')
+  assert.equal(credentialReads, 0)
+})
+
 test('an SMTP action cannot be replayed by a different owner', async () => {
   let credentialReads = 0
   const connection = {

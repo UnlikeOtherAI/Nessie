@@ -61,7 +61,12 @@ const newPage = async (browser, fixture, { height, name, width }) => {
 
 const expectNoErrors = (errors, fixture) => {
   assert(fixture.unhandled.length === 0, `unexpected API calls:\n${JSON.stringify(fixture.unhandled)}`)
-  assert(errors.length === 0, `browser errors:\n${errors.join('\n')}`)
+  // These scenarios deliberately model a server that completed the Gmail
+  // action but whose response was lost. Chromium reports that expected 504 as
+  // a console error; every other browser error remains a failure.
+  const unexpectedErrors = errors.filter((error) => !error.includes('status of 504')
+    || !error.includes('/api/mail/accounts/gmail/gmail-1/send'))
+  assert(unexpectedErrors.length === 0, `browser errors:\n${unexpectedErrors.join('\n')}`)
 }
 
 const waitForThreads = (page, source, accountId, expected) => page.waitForResponse((response) => {
@@ -171,6 +176,87 @@ const desktopMail = async ({ browser, fixture }) => {
     await shot(page, 'desktop-gmail-undo-restored')
     await page.getByRole('button', { name: 'Back to mail' }).click()
     await page.waitForURL(/\/mail\/gmail\/gmail-1$/)
+
+    // A server-held send whose response dies after the action is persisted
+    // must recover as Undo on reload, never as a fresh send attempt.
+    fixture.loseNextGmailSendResponse()
+    await page.goto(`${adminUrl}/mail/gmail/gmail-1/compose`)
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    await fillCompose(page, 'Lost held-send response')
+    const lostSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await lostSend
+    const gmailSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length
+    await page.reload()
+    await page.getByTestId('connected-mail-sent').waitFor()
+    await page.getByRole('button', { name: 'Undo send' }).click()
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === gmailSendCount, 'lost held response retried a Gmail send')
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+
+    // Once dispatch has claimed the action, recovery remains an explicit,
+    // locked outcome — there is neither a second send nor an Undo promise.
+    fixture.loseNextGmailSendResponse()
+    await page.goto(`${adminUrl}/mail/gmail/gmail-1/compose?threadId=thread-1&reply=message-1`)
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    await fillCompose(page, 'Dispatching held-send response')
+    const dispatchingSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await dispatchingSend
+    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'dispatching' })
+    const dispatchingSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length
+    await page.reload()
+    await page.getByText('Your email is being delivered. It will not be sent again.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a dispatching email offered Undo')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === dispatchingSendCount, 'dispatching recovery retried a Gmail send')
+    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'delivery_unknown' })
+    await page.getByText('Delivery is unconfirmed. Check the provider’s Sent mail; this action will not be resent.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'an unconfirmed delivery offered Undo')
+    await page.getByRole('button', { name: 'I checked Sent — start a new email' }).click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1\/compose\?compose=/)
+    await page.waitForFunction(() => {
+      const field = document.querySelector('input[aria-label="To"]')
+      return field instanceof HTMLInputElement && field.value === ''
+    })
+    const freshRecipient = await page.getByRole('textbox', { name: 'To', exact: true }).inputValue()
+    assert(freshRecipient === '', `the unconfirmed action reopened its old recipient: ${freshRecipient}`)
+    await page.getByRole('textbox', { name: 'To', exact: true }).fill('fresh@acme.example')
+    await page.waitForTimeout(350)
+    await page.reload()
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'fresh@acme.example', 'a fresh-compose reload lost its new draft')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === dispatchingSendCount, 'starting a new email retried delivery')
+
+    // A provider update is likewise an incomplete action. It must stay out of
+    // the editable form, poll to draft, then reopen Send without a reload.
+    fixture.loseNextGmailSendResponse()
+    await fillCompose(page, 'Restoring Gmail draft')
+    const updatingSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await updatingSend
+    fixture.setGmailDraftActionStatus({ state: 'updating' })
+    await page.reload()
+    await page.getByText('Your draft is being restored. It will be available shortly.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a restoring draft offered Undo')
+    assert(await page.getByRole('button', { name: 'Send email' }).count() === 0, 'a restoring draft exposed Send')
+    fixture.setGmailDraftActionStatus({ state: 'draft' })
+    const restoredSend = page.getByRole('button', { name: 'Send email' })
+    await restoredSend.waitFor()
+    assert(await restoredSend.isEnabled(), 'a restored Gmail draft did not become editable without reload')
+
+    fixture.loseNextGmailSendResponse()
+    await fillCompose(page, 'Expired held-send response')
+    const expiredSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await expiredSend
+    fixture.setGmailDraftActionStatus({ sendAfter: '2020-01-01T00:00:00.000Z', state: 'sending' })
+    const expiredSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length
+    await page.reload()
+    await page.getByText('Your email is being checked before delivery. It will not be sent again.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'an expired held send offered Undo')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === expiredSendCount, 'expired held-send recovery retried delivery')
 
     await page.goto(`${adminUrl}/mail/mailbox/mailbox-1/compose`)
     await page.getByRole('heading', { name: 'Compose email' }).waitFor()
@@ -289,6 +375,25 @@ const chatDoorway = async ({ browser, fixture }) => {
     assert(await page.getByRole('textbox', { name: 'From', exact: true }).isDisabled(), 'chat draft form exposed a mutable From field')
     await page.getByRole('textbox', { name: 'Subject', exact: true }).waitFor()
     await shot(page, 'chat-doorway-compose-form')
+    await page.getByRole('textbox', { name: 'Message', exact: true }).fill('The doorway draft is ready to send.')
+    // This doorway fetched the existing draft's `draft` status before Send.
+    // The held result must atomically replace it rather than letting that
+    // stale read erase the newly persisted Undo identity.
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await page.getByText('Your email is queued to send.').waitFor()
+    await page.getByRole('button', { name: 'Close' }).click()
+
+    // This route carries the provider action id, not a local-draft key. Its
+    // reload still has to recover the held Undo doorway without sending again.
+    await page.reload()
+    await composeOpener.click()
+    await page.getByRole('button', { name: 'Undo send' }).waitFor()
+    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'dispatching' })
+    await page.getByRole('button', { name: 'Close' }).click()
+    await page.reload()
+    await composeOpener.click()
+    await page.getByText('Your email is being delivered. It will not be sent again.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a reloaded doorway dispatch offered Undo')
     await page.getByRole('button', { name: 'Close' }).click()
 
     // Account doorways carry the real, entitlement-scoped mailbox list into

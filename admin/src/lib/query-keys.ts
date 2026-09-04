@@ -120,8 +120,8 @@ export const agentCardKeys = {
 export const approvalKeys = {
   all: ['approvals'] as const,
   detail: (approvalId?: string) => ['approvals', approvalId ?? null] as const,
-  mailboxSendDraft: (approvalId?: string) =>
-    ['approvals', approvalId ?? null, 'mailbox-send-draft'] as const,
+  mailSendDraft: (toolName: 'gmail_draft_send' | 'mailbox_send', approvalId?: string) =>
+    ['approvals', approvalId ?? null, 'mail-send-draft', toolName] as const,
   pendingCount: ['approvals', 'pending-count'] as const,
 }
 

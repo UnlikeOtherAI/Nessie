@@ -25,6 +25,8 @@ const draft = (overrides: Partial<GmailDraftView> = {}): GmailDraftView => ({
   subject: 'Q3 numbers — draft for your review',
   body: 'Hi Jana,\n\nHere are the Q3 numbers.',
   attachments: [],
+  editable: true,
+  unsupportedReason: null,
   ...overrides,
 })
 

@@ -78,3 +78,38 @@ test('mailbox-send metadata contains only counts and structural pointers', async
     /private subject|private body|hidden@example|inputSummary|boundaryReason/,
   )
 })
+
+test('Gmail send approval hashes the reviewed draft without exposing it in context', async () => {
+  let created: Record<string, unknown> | null = null
+  const prisma = {
+    approvalRequest: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        created = data
+        return { id: 'approval-1' }
+      },
+      findFirst: async () => null,
+    },
+  } as unknown as PrismaClient
+  const reviewed = {
+    bcc: ['hidden@example.test'], body: 'The exact private body', cc: ['copy@example.test'],
+    subject: 'The exact private subject', to: ['recipient@example.test'],
+  }
+  await createToolApprovalRequest(prisma, {
+    actorContext: actorContext(),
+    args: {
+      connectionId: MAILBOX_ID, draftId: '99999999-9999-4999-8999-999999999999',
+      expectedFingerprint: 'f'.repeat(64), reviewed,
+    },
+    context: runContext(), contextExtra: { externalDisclosureSources: ['user:source'] },
+    interactive: true, messageId: 'message-1', toolCallId: 'call-gmail', toolName: 'gmail_draft_send',
+  })
+  const serializedContext = JSON.stringify(created?.['context'])
+  assert.doesNotMatch(serializedContext, /hidden@example|private body|private subject|inputSummary/)
+  const resumeState = created?.['resumeState']
+  assert.ok(resumeState && typeof resumeState === 'object')
+  assert.deepEqual((resumeState as { args: unknown }).args, {
+    connectionId: MAILBOX_ID, draftId: '99999999-9999-4999-8999-999999999999',
+    expectedFingerprint: 'f'.repeat(64), reviewed,
+  })
+  assert.equal(typeof created?.['argsHash'], 'string')
+})

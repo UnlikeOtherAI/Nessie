@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ConnectedMailAccountRecord, ConnectedMailMessage, ConnectedMailSource, ConnectedMailThreadSummary } from '@nessie/schemas'
 
@@ -56,6 +56,8 @@ export const ConnectedMailPage = () => {
   const filter = searchParams.get('filter') === 'unread' ? 'unread' : 'all'
   const replyThreadId = searchParams.get('threadId') ?? undefined
   const replyMessageId = searchParams.get('reply') ?? undefined
+  const composeId = searchParams.get('compose') ?? undefined
+  const newCompose = searchParams.get('new') === '1'
   const gmailDraftId = searchParams.get('draftId') ?? undefined
   const requestedPageSize = Number(searchParams.get('pageSize') ?? '25')
   const pageSize = PAGE_SIZES.includes(requestedPageSize as typeof PAGE_SIZES[number]) ? requestedPageSize : 25
@@ -75,6 +77,13 @@ export const ConnectedMailPage = () => {
       ? current
       : { identity: listIdentity, values: [] })
   }, [listIdentity])
+  const completeNewCompose = useCallback(() => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('new')
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
   const entitledAddress = account?.canRead ? address : null
   const threadQuery = useConnectedMailThreads(entitledAddress, {
     cursor, pageSize, query, unreadOnly: filter === 'unread',
@@ -115,9 +124,14 @@ export const ConnectedMailPage = () => {
       <ConnectedMailCompose
         account={account}
         address={address}
+        composeId={composeId}
         gmailDraftId={gmailDraftId}
+        newCompose={newCompose}
+        onNewComposeReady={completeNewCompose}
+        key={`${composeId ?? 'default'}:${gmailDraftId ?? replyMessageId ?? 'new'}`}
         onOpenSettings={() => navigate(connectedMailSettingsPath(account))}
         onSent={() => navigate(mailPath(address))}
+        onStartNewEmail={(id) => navigate(`${mailPath(address)}/compose?compose=${id}&new=1`)}
         replyTo={replyTo}
       />
     </div>

@@ -91,3 +91,17 @@ test('an organization owner who is not pinned cannot read the mailbox draft', as
     await app.close()
   }
 })
+
+test('private preview responses are no-store, including an absent approval', async () => {
+  const app = makeApp(PINNED_USER_ID)
+  await app.ready()
+  try {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/mailbox-connections/approvals/${APPROVAL_ID}/draft`,
+    })
+    assert.equal(response.headers['cache-control'], 'private, no-store')
+  } finally {
+    await app.close()
+  }
+})

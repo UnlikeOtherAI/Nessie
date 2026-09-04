@@ -29,10 +29,57 @@ const ResumeStateSchema = z.object({
   }),
 })
 
+const GmailResumeStateSchema = z.object({
+  args: z.object({
+    connectionId: z.string().uuid(),
+    draftId: z.string().uuid(),
+    expectedFingerprint: z.string().min(1),
+    reviewed: z.object({
+      bcc: z.array(z.string()),
+      body: z.string(),
+      cc: z.array(z.string()),
+      subject: z.string(),
+      to: z.array(z.string()),
+    }).strict(),
+  }).strict(),
+})
+
+const privateNoStore = (reply: { header: (name: string, value: string) => unknown }): void => {
+  reply.header('Cache-Control', 'private, no-store')
+}
+
+const sendDraftPreview = (
+  reply: { send: (payload: unknown) => unknown },
+  input: {
+    approvalId: string
+    bcc: string[]
+    cc: string[]
+    expiresAt: Date
+    externalDisclosureSources: string[]
+    mailboxAddress: string
+    status: string
+    subject: string
+    text: string
+    to: string[]
+  },
+) => reply.send(createApiResponse({
+  approvalId: input.approvalId,
+  bcc: input.bcc,
+  cc: input.cc,
+  expiresAt: input.expiresAt.toISOString(),
+  externalDisclosureSources: input.externalDisclosureSources,
+  mailboxAddress: input.mailboxAddress,
+  status: input.status,
+  subject: input.subject,
+  text: input.text,
+  to: input.to,
+}))
+
 export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext } = deps
 
   app.get('/api/agent-email/approvals/:approvalId/draft', async (request, reply) => {
+    privateNoStore(reply)
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { approvalId } = request.params as { approvalId: string }
@@ -49,8 +96,10 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
         toolName: true,
       },
       where: {
+        expiresAt: { gt: new Date() },
         id: approvalId,
         organizationId: actorContext.tenant.organizationId,
+        status: 'pending',
         toolName: 'email_send',
       },
     })
@@ -88,25 +137,15 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
           : null,
     })
 
-    return reply.send(
-      createApiResponse({
-        approvalId: approval.id,
-        bcc: draft.bcc,
-        cc: draft.cc,
-        expiresAt: approval.expiresAt.toISOString(),
-        externalDisclosureSources: externalSources,
-        mailboxAddress: approval.agent.mailbox?.address ?? '',
-        status: approval.status,
-        subject: draft.subject,
-        // The body IS covered by the argument hash: what is rendered here is
-        // byte-for-byte what the approved call will send.
-        text: parsed.data.args.text,
-        to: draft.to,
-      }),
-    )
+    return sendDraftPreview(reply, {
+      approvalId: approval.id, bcc: draft.bcc, cc: draft.cc, expiresAt: approval.expiresAt,
+      externalDisclosureSources: externalSources, mailboxAddress: approval.agent.mailbox?.address ?? '',
+      status: approval.status, subject: draft.subject, text: parsed.data.args.text, to: draft.to,
+    })
   })
 
   app.get('/api/mailbox-connections/approvals/:approvalId/draft', async (request, reply) => {
+    privateNoStore(reply)
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     const { approvalId } = request.params as { approvalId: string }
@@ -121,8 +160,10 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
         status: true,
       },
       where: {
+        expiresAt: { gt: new Date() },
         id: approvalId,
         organizationId: actorContext.tenant.organizationId,
+        status: 'pending',
         toolName: 'mailbox_send',
       },
     })
@@ -155,20 +196,68 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
           (source): source is string => typeof source === 'string',
         )
       : []
-    return reply.send(
-      createApiResponse({
-        approvalId: approval.id,
-        bcc: parsed.data.args.bcc ?? [],
-        cc: parsed.data.args.cc ?? [],
-        expiresAt: approval.expiresAt.toISOString(),
-        externalDisclosureSources: externalSources,
-        mailboxAddress: mailbox.address,
-        status: approval.status,
-        subject: parsed.data.args.subject ?? '',
-        text: parsed.data.args.text,
-        to: parsed.data.args.to ?? [],
-      }),
-    )
+    return sendDraftPreview(reply, {
+      approvalId: approval.id, bcc: parsed.data.args.bcc ?? [], cc: parsed.data.args.cc ?? [],
+      expiresAt: approval.expiresAt, externalDisclosureSources: externalSources,
+      mailboxAddress: mailbox.address, status: approval.status, subject: parsed.data.args.subject ?? '',
+      text: parsed.data.args.text, to: parsed.data.args.to ?? [],
+    })
+  })
+
+  app.get('/api/gmail/drafts/approvals/:approvalId/draft', async (request, reply) => {
+    privateNoStore(reply)
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { approvalId } = request.params as { approvalId: string }
+    const approval = await prisma.approvalRequest.findFirst({
+      select: {
+        context: true, expiresAt: true, id: true, requiredApproverUserId: true,
+        resumeState: true, status: true,
+      },
+      where: {
+        expiresAt: { gt: new Date() },
+        id: approvalId, organizationId: actorContext.tenant.organizationId,
+        status: 'pending',
+        toolName: 'gmail_draft_send',
+      },
+    })
+    // Gmail sends act as a person's account, so every one is pinned. Keep a
+    // guessed id indistinguishable from another member's approval.
+    if (!approval || approval.requiredApproverUserId !== actorContext.actor.actorId) {
+      return sendApiError(reply, 404, 'NOT_FOUND', 'Approval not found.')
+    }
+    const parsed = GmailResumeStateSchema.safeParse(approval.resumeState)
+    if (!parsed.success) {
+      return sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This draft can no longer be read.')
+    }
+    const action = await prisma.gmailDraftAction.findFirst({
+      select: { connection: { select: { externalUserId: true } }, id: true },
+      where: {
+        connectionId: parsed.data.args.connectionId,
+        id: parsed.data.args.draftId,
+        organizationId: actorContext.tenant.organizationId,
+        ownerUserId: actorContext.actor.actorId,
+      },
+    })
+    if (!action) return sendApiError(reply, 404, 'NOT_FOUND', 'Approval not found.')
+    const contextRecord = (approval.context ?? {}) as Record<string, unknown>
+    const externalSources = Array.isArray(contextRecord.externalDisclosureSources)
+      ? contextRecord.externalDisclosureSources.filter(
+          (source): source is string => typeof source === 'string',
+        )
+      : []
+    return sendDraftPreview(reply, {
+      approvalId: approval.id,
+      bcc: parsed.data.args.reviewed.bcc,
+      cc: parsed.data.args.reviewed.cc,
+      expiresAt: approval.expiresAt,
+      externalDisclosureSources: externalSources,
+      mailboxAddress: action.connection.externalUserId,
+      status: approval.status,
+      subject: parsed.data.args.reviewed.subject,
+      text: parsed.data.args.reviewed.body,
+      to: parsed.data.args.reviewed.to,
+    })
   })
 }
 

@@ -5,6 +5,7 @@ import {
   GmailReadBudget,
   GmailReadLimitError,
 } from './read-budget.js'
+import { GMAIL_MAX_ATTACHMENTS, GMAIL_MAX_PART_DEPTH, GMAIL_MAX_PARTS } from './part-limits.js'
 
 /**
  * Gmail draft operations.
@@ -106,6 +107,9 @@ export type GmailDraftContent = {
   bcc: string[]
   subject: string
   body: string
+  hasPlainTextBody: boolean
+  editable: boolean
+  unsupportedReason: 'attachments' | 'non_plain_content' | null
   inReplyTo?: string
   references: string[]
   attachments: { filename: string; mimeType: string; sizeBytes: number }[]
@@ -113,9 +117,9 @@ export type GmailDraftContent = {
 
 export const GMAIL_MAX_DRAFT_HEADERS = 100
 export const GMAIL_MAX_DRAFT_HEADER_BYTES = 1_000
-export const GMAIL_MAX_DRAFT_PART_DEPTH = 20
-export const GMAIL_MAX_DRAFT_PARTS = 200
-export const GMAIL_MAX_DRAFT_ATTACHMENTS = 100
+export const GMAIL_MAX_DRAFT_PART_DEPTH = GMAIL_MAX_PART_DEPTH
+export const GMAIL_MAX_DRAFT_PARTS = GMAIL_MAX_PARTS
+export const GMAIL_MAX_DRAFT_ATTACHMENTS = GMAIL_MAX_ATTACHMENTS
 export const GMAIL_MAX_DRAFT_FILENAME_BYTES = 500
 export const GMAIL_MAX_DRAFT_MIME_TYPE_BYTES = 200
 export const GMAIL_MAX_DRAFT_REFERENCES = 20
@@ -160,7 +164,12 @@ type GmailPart = {
 
 const collectBodyAndAttachments = (
   part: GmailPart | undefined,
-  into: { body: string; attachments: GmailDraftContent['attachments'] },
+  into: {
+    body: string
+    attachments: GmailDraftContent['attachments']
+    hasPlainTextBody: boolean
+    hasUnsupportedContent: boolean
+  },
   budget: GmailReadBudget,
   depth = 0,
   seen = { parts: 0 },
@@ -185,12 +194,16 @@ const collectBodyAndAttachments = (
     return
   }
   if (mimeType === 'text/plain' && typeof part.body?.data === 'string') {
+    into.hasPlainTextBody = true
     if (into.body.length === 0) {
       into.body = budget.decode(part.body.data)
     }
     return
   }
   const children = Array.isArray(part.parts) ? part.parts : []
+  if (children.length === 0 && (typeof part.body?.data === 'string' || mimeType.length > 0)) {
+    into.hasUnsupportedContent = true
+  }
   for (const child of children) {
     collectBodyAndAttachments(child, into, budget, depth + 1, seen)
   }
@@ -232,7 +245,9 @@ export const getGmailDraft = async (
     return Buffer.byteLength(name) > GMAIL_MAX_DRAFT_HEADER_BYTES
       || Buffer.byteLength(value) > GMAIL_MAX_DRAFT_HEADER_BYTES
   })) throw new GmailReadLimitError('structure')
-  const collected = { body: '', attachments: [] as GmailDraftContent['attachments'] }
+  const collected = {
+    body: '', attachments: [] as GmailDraftContent['attachments'], hasPlainTextBody: false, hasUnsupportedContent: false,
+  }
   collectBodyAndAttachments(payload, collected, budget)
   const inReplyTo = splitMessageIds(headerValue(headers, 'In-Reply-To'), 1)
   const references = splitMessageIds(headerValue(headers, 'References'), GMAIL_MAX_DRAFT_REFERENCES)
@@ -248,6 +263,11 @@ export const getGmailDraft = async (
     bcc: splitAddressList(headerValue(headers, 'Bcc')),
     subject: headerValue(headers, 'Subject'),
     body: collected.body,
+    hasPlainTextBody: collected.hasPlainTextBody,
+    editable: collected.attachments.length === 0 && collected.hasPlainTextBody && !collected.hasUnsupportedContent,
+    unsupportedReason: collected.attachments.length > 0
+      ? 'attachments'
+      : collected.hasPlainTextBody && !collected.hasUnsupportedContent ? null : 'non_plain_content',
     ...(inReplyTo[0] ? { inReplyTo: inReplyTo[0] } : {}),
     references,
     attachments: collected.attachments,

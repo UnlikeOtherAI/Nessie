@@ -51,7 +51,7 @@ test('a local compose draft retains only its durable action identifiers across a
   }), { to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello' })
 })
 
-test('a held Gmail action survives only while its Undo deadline is live', () => {
+test('a held Gmail action survives reload so the owner can reconcile its outcome', () => {
   const sendAfter = new Date(Date.now() + 15_000).toISOString()
   assert.deepEqual(reviveMailComposeDraft({
     to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
@@ -61,10 +61,12 @@ test('a held Gmail action survives only while its Undo deadline is live', () => 
     to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
     gmailHeldSend: { draftId: 'not-an-id', sendAfter },
   })?.gmailHeldSend, undefined)
-  assert.equal(reviveMailComposeDraft({
+  assert.deepEqual(reviveMailComposeDraft({
     to: 'a@example.com', cc: '', bcc: '', subject: 'Hi', body: 'Hello',
     gmailHeldSend: { draftId: '00000000-0000-4000-8000-000000000004', sendAfter: '2020-01-01T00:00:00.000Z' },
-  })?.gmailHeldSend, undefined)
+  })?.gmailHeldSend, {
+    draftId: '00000000-0000-4000-8000-000000000004', sendAfter: '2020-01-01T00:00:00.000Z',
+  })
 })
 
 test('recipient fields reuse the shared envelope schema before a send mutation', () => {
@@ -119,15 +121,29 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(compose, /mailboxSendActionId/)
   assert.match(compose, /mailbox-delivery-unknown/)
   assert.match(compose, /Check the provider’s Sent mail/)
-  assert.match(compose, /recoveredMailboxSent/)
+  assert.match(compose, /deriveMailSendOutcome/)
   assert.match(compose, /mailboxSendLocked/)
-  assert.match(compose, /state === 'dispatching'/)
+  const outcomeModel = source('../src/components/features/connected-mail/mail-send-outcome.ts')
+  const mailHooks = source('../src/facades/mail/hooks.ts')
+  assert.match(outcomeModel, /mailboxAction\?\.state === 'dispatching'/)
+  assert.match(outcomeModel, /gmailAction\?\.state === 'dispatching'/)
+  assert.match(mailHooks, /await queryClient\.cancelQueries/)
+  assert.match(mailHooks, /gmailKeys\.draftStatus\(input\.draftId\)/)
+  assert.match(mailHooks, /sendAfter: data\.sendAfter, state: 'sending'/)
   assert.doesNotMatch(compose, /mailboxAction\.refetch\(\)/)
   assert.match(compose, /gmailDraftId: providerAction\.id/)
   assert.doesNotMatch(compose, /createIdempotencyKeyRef|mailboxSendIdempotencyKeyRef/)
   assert.match(compose, /Create a new Gmail draft/)
   assert.match(compose, /undoGmailSend/)
   assert.match(compose, /gmailHeldSend/)
+  assert.match(compose, /useGmailDraftStatus/)
+  assert.match(compose, /heldGmailSend\?\.draftId \?\? activeGmailDraftId/)
+  assert.match(compose, /if \(!newCompose \|\| consumedNewComposeRef\.current\) return/)
+  assert.match(compose, /onNewComposeReady\?\.\(\)/)
+  assert.match(page, /const completeNewCompose = useCallback/)
+  assert.match(compose, /gmailActionLocked/)
+  assert.match(compose, /GmailSendOutcomePanel/)
+  assert.match(compose, /deriveMailSendOutcome/)
   assert.match(compose, /validateMailComposeRecipients/)
   assert.match(compose, /ConnectedMailComposeInputSchema\.safeParse/)
   assert.match(compose, /<MailField error=\{recipientErrors\.to\}/)
@@ -136,8 +152,13 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(compose, /if \(activeGmailDraftId\)/)
   assert.match(compose, /await providerDraft\.refetch\(\)/)
   assert.match(compose, /!account\.canSend/)
-  assert.match(compose, /Your email was sent/)
-  assert.match(compose, /Your email is queued to send/)
+  const outcome = source('../src/components/features/connected-mail/GmailSendOutcomePanel.tsx')
+  assert.match(outcome, /Your email was sent/)
+  assert.match(outcome, /Your email is queued to send/)
+  assert.match(outcome, /Your draft is being restored/)
+  assert.match(outcome, /This draft update could not be confirmed/)
+  assert.match(outcome, /outcome\.kind === 'queued'/)
+  assert.match(outcome, /I checked Sent — start a new email/)
   assert.match(page, /searchParams\.get\('draftId'\)/)
   assert.match(page, /threadId=.*reply=/)
   assert.doesNotMatch(page, /searchParams\.get\('query'\)/)

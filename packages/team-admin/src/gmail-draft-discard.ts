@@ -7,8 +7,8 @@ import {
   type GmailDraftDeps,
   gmailFetch,
   loadCredential,
-  toRecord,
 } from './gmail-drafts.js'
+import { toRecord } from './gmail-draft-record.js'
 
 /** Discard only an editable draft; held sends are cancelled through Undo. */
 export const discardDraftForUser = async (

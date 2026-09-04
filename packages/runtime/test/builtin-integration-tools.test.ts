@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION,
+  GMAIL_DRAFT_CREATE_TOOL_ID,
 } from '../src/index.js'
 
 test('Deep Water run update is grantable to any agent (not PA-only)', () => {
@@ -52,4 +53,12 @@ test('builtin registry includes the Deep Water run update tool', () => {
   assert.ok(tool)
   assert.equal(tool.label, 'Deep Water Run Update')
   assert.notEqual(tool.personalAssistantOnly, true)
+})
+
+test('Gmail replies require the provider thread and RFC Message-ID pair', () => {
+  const tool = BUILTIN_TOOL_DEFINITIONS.find(({ id }) => id === GMAIL_DRAFT_CREATE_TOOL_ID)
+  assert.ok(tool)
+  assert.match(tool.description, /both the Gmail thread id and RFC Message-ID/)
+  assert.match(tool.parameters.properties.replyToThreadId?.description ?? '', /gmail_message_read/)
+  assert.match(tool.parameters.properties.replyToMessageId?.description ?? '', /RFC Message-ID/)
 })

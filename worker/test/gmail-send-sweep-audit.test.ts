@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 import { sealSecret } from '@nessie/comms-connect'
-import { fingerprintDraft } from '@nessie/team-admin'
+import { fingerprintDraft, sendDraftForUser } from '@nessie/team-admin'
 import { sweepDueGmailSends, writeGmailDraftDispatchAudit } from '../src/control/gmail-send-sweep.js'
 
 const ACTION = '00000000-0000-4000-8000-000000000001'
@@ -12,6 +12,7 @@ const USER = '00000000-0000-4000-8000-000000000003'
 const CONNECTION = '00000000-0000-4000-8000-000000000004'
 const ENCRYPTION_SECRET = 'worker-gmail-sweep-test-secret'
 const NOW = new Date('2026-09-04T12:00:00.000Z')
+const RECOVERY_AT = new Date(NOW.getTime() + 2 * 60 * 1000 + 1)
 
 test('Gmail dispatch audits only the durable delivery state, never email content', async () => {
   const entries: Array<Record<string, unknown>> = []
@@ -63,7 +64,7 @@ test('the periodic mail-send sweep also settles stale SMTP claims', async () => 
   assert.match(JSON.stringify(updates), /delivery_unknown/)
 })
 
-test('a crashed immediate Gmail send is swept and dispatched exactly once', async () => {
+test('a stale validation returns to draft and a published hold dispatches once', async () => {
   const action = {
     id: ACTION,
     organizationId: ORGANIZATION,
@@ -76,12 +77,12 @@ test('a crashed immediate Gmail send is swept and dispatched exactly once', asyn
     }),
     revision: 1,
     state: 'sending',
-    // This is the durable state after the initial draft -> sending claim and
-    // before the inline process dies. It must be eligible for the next sweep.
-    sendAfter: NOW,
-    claimedAt: null,
+    // The durable post-claim state is not due while inline validation runs.
+    sendAfter: null,
+    claimedAt: NOW,
   }
   let sends = 0
+  let sweepNow = NOW
   const response = (body: unknown) => ({
     ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body),
   })
@@ -94,14 +95,24 @@ test('a crashed immediate Gmail send is swept and dispatched exactly once', asyn
     gmailDraftAction: {
       findMany: async ({ where }: { where: { state: string | { in: string[] } } }) => {
         if (typeof where.state !== 'string') return []
-        return action.state === 'sending' && action.sendAfter !== null && action.sendAfter <= NOW
+        return action.state === 'sending' && action.sendAfter !== null && action.sendAfter <= sweepNow
           ? [{ id: action.id, organizationId: action.organizationId }]
           : []
       },
       findUnique: async () => action,
       findUniqueOrThrow: async () => action,
-      updateMany: async ({ where, data }: { where: { state?: string }; data: Record<string, unknown> }) => {
+      findFirst: async () => action,
+      updateMany: async ({ where, data }: {
+        where: { claimedAt?: Date | { lt: Date }; sendAfter?: Date | null; state?: string }
+        data: Record<string, unknown>
+      }) => {
         if (where.state && where.state !== action.state) return { count: 0 }
+        if ('sendAfter' in where && where.sendAfter !== action.sendAfter) return { count: 0 }
+        if (where.claimedAt) {
+          if (!action.claimedAt) return { count: 0 }
+          if (where.claimedAt instanceof Date && action.claimedAt.getTime() !== where.claimedAt.getTime()) return { count: 0 }
+          if (!(where.claimedAt instanceof Date) && action.claimedAt >= where.claimedAt.lt) return { count: 0 }
+        }
         Object.assign(action, data)
         return { count: 1 }
       },
@@ -141,10 +152,20 @@ test('a crashed immediate Gmail send is swept and dispatched exactly once', asyn
     })
   }
 
-  const first = await sweepDueGmailSends(prisma, { encryptionSecret: ENCRYPTION_SECRET, now: () => NOW, fetchImpl } as never)
-  const second = await sweepDueGmailSends(prisma, { encryptionSecret: ENCRYPTION_SECRET, now: () => NOW, fetchImpl } as never)
+  const early = await sweepDueGmailSends(prisma, { encryptionSecret: ENCRYPTION_SECRET, now: () => sweepNow, fetchImpl } as never)
+  sweepNow = RECOVERY_AT
+  const recovered = await sweepDueGmailSends(prisma, { encryptionSecret: ENCRYPTION_SECRET, now: () => sweepNow, fetchImpl } as never)
+  const retry = await sendDraftForUser(prisma, {
+    organizationId: ORGANIZATION, userId: USER, draftActionId: ACTION, holdMs: 15_000,
+  }, { encryptionSecret: ENCRYPTION_SECRET, fetchImpl, now: () => sweepNow })
+  if (retry.status !== 'held') assert.fail('retry should publish a held send')
+  sweepNow = retry.sendAfter
+  const dispatched = await sweepDueGmailSends(prisma, { encryptionSecret: ENCRYPTION_SECRET, now: () => sweepNow, fetchImpl } as never)
+  const second = await sweepDueGmailSends(prisma, { encryptionSecret: ENCRYPTION_SECRET, now: () => sweepNow, fetchImpl } as never)
 
-  assert.deepEqual(first, { dispatched: 1, failed: 0, deliveryUnknown: 0 })
+  assert.deepEqual(early, { dispatched: 0, failed: 0, deliveryUnknown: 0 })
+  assert.deepEqual(recovered, { dispatched: 0, failed: 0, deliveryUnknown: 0 })
+  assert.deepEqual(dispatched, { dispatched: 1, failed: 0, deliveryUnknown: 0 })
   assert.deepEqual(second, { dispatched: 0, failed: 0, deliveryUnknown: 0 })
   assert.equal(sends, 1)
   assert.equal(action.state, 'sent')

@@ -18,8 +18,11 @@ import {
   useMailboxSendActionStatus,
   useUpdateConnectedMailDraft,
 } from '../../../facades/mail/hooks'
-import { useGmailDraft } from '../../../facades/gmail/hooks'
+import { useGmailDraft, useGmailDraftStatus } from '../../../facades/gmail/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { GmailSendOutcomePanel, type GmailSendOutcome } from './GmailSendOutcomePanel'
+import { GmailUnsupportedDraftPanel } from './GmailUnsupportedDraftPanel'
+import { deriveMailSendOutcome } from './mail-send-outcome'
 
 export type MailComposeDraft = {
   bcc: string
@@ -64,7 +67,8 @@ export const validateMailComposeRecipients = (draft: MailComposeDraft): Recipien
   }, {})
 }
 
-const isFutureDate = (value: string): boolean => Number.isFinite(Date.parse(value)) && Date.parse(value) > Date.now()
+const isValidDate = (value: string): boolean => Number.isFinite(Date.parse(value))
+const isFutureDate = (value: string): boolean => isValidDate(value) && Date.parse(value) > Date.now()
 
 /** Only editable outbound fields are serializable. Reply history deliberately
  * stays in the live conversation beside this Flow, never in localStorage. */
@@ -76,7 +80,7 @@ export const reviveMailComposeDraft = (stored: unknown): MailComposeDraft | null
   const gmailHeldSend = held && typeof held === 'object' && !Array.isArray(held)
     && isUuid((held as { draftId?: unknown }).draftId)
     && typeof (held as { sendAfter?: unknown }).sendAfter === 'string'
-    && isFutureDate((held as { sendAfter: string }).sendAfter)
+    && isValidDate((held as { sendAfter: string }).sendAfter)
     ? { draftId: (held as { draftId: string }).draftId, sendAfter: (held as { sendAfter: string }).sendAfter }
     : undefined
   return hasFields
@@ -94,22 +98,27 @@ export const reviveMailComposeDraft = (stored: unknown): MailComposeDraft | null
 type ConnectedMailComposeProps = {
   account: ConnectedMailAccountRecord
   address: MailAddress
+  composeId?: string
+  newCompose?: boolean
+  onNewComposeReady?: () => void
   onSent: () => void
+  onStartNewEmail?: (composeId: string) => void
   onOpenSettings?: () => void
   gmailDraftId?: string
   replyTo?: ConnectedMailMessage
 }
 
 export const ConnectedMailCompose = ({
-  account, address, gmailDraftId, onOpenSettings, onSent, replyTo,
+  account, address, composeId, gmailDraftId, newCompose, onNewComposeReady, onOpenSettings, onSent, onStartNewEmail,
+  replyTo,
 }: ConnectedMailComposeProps) => {
   const { me } = useAuthSession()
   const principalScope = me ? `${me.user.id}:${me.context.organizationId}` : 'unresolved-session'
   const [activeGmailDraftId, setActiveGmailDraftId] = useState<string | undefined>(gmailDraftId)
-  const identity = activeGmailDraftId ? `gmail-draft:${activeGmailDraftId}` : replyTo ? `reply:${replyTo.id}` : 'new'
-  const initial = useMemo<MailComposeDraft>(() => replyTo
+  const identity = activeGmailDraftId ? `gmail-draft:${activeGmailDraftId}` : composeId ? `new:${composeId}` : replyTo ? `reply:${replyTo.id}` : 'new:default'
+  const initial = useMemo<MailComposeDraft>(() => !composeId && replyTo
     ? { ...emptyDraft, subject: replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`, to: replyTo.from ?? '' }
-    : emptyDraft, [replyTo])
+    : emptyDraft, [composeId, replyTo])
   const providerDraft = useGmailDraft(address.source === 'gmail' && activeGmailDraftId ? activeGmailDraftId : null)
   const draft = useDraft(activeGmailDraftId ? null : draftKey('mail-compose', `${principalScope}:${address.source}:${address.accountId}:${identity}`), {
     initial,
@@ -131,12 +140,30 @@ export const ConnectedMailCompose = ({
   const [error, setError] = useState<string | null>(null)
   const [recipientErrors, setRecipientErrors] = useState<RecipientErrors>({})
   const hydratedDraftRef = useRef<string | null>(null)
+  const consumedNewComposeRef = useRef(false)
   const editedProviderDraftRef = useRef(false)
   const providerDraftRef = useRef<{ contentFingerprint: string; id: string } | null>(null)
   const existingProviderDraft = address.source === 'gmail' && Boolean(activeGmailDraftId)
+  const unsupportedProviderDraft = existingProviderDraft && providerDraft.data?.editable === false
   const [recreateGmailDraft, setRecreateGmailDraft] = useState(false)
   const heldGmailSend = address.source === 'gmail' ? draft.draft.gmailHeldSend : undefined
-  const heldGmailDraft = useGmailDraft(heldGmailSend?.draftId ?? null)
+  // A persisted create can recover an owner-only Undo doorway, never resend.
+  const recoverableGmailDraftId = address.source === 'gmail' && !activeGmailDraftId && !heldGmailSend
+    ? draft.draft.gmailDraftId
+    : undefined
+  // A chat doorway has its durable draft identity in the route rather than
+  // localStorage. It must recover the same held action after a reload too.
+  const gmailActionId = heldGmailSend?.draftId ?? activeGmailDraftId ?? recoverableGmailDraftId ?? null
+  const gmailActionStatus = useGmailDraftStatus(gmailActionId)
+
+  useEffect(() => {
+    if (!newCompose || consumedNewComposeRef.current) return
+    // The acknowledgement opens a fresh identity, then consumes its route
+    // marker. Future visits to that identity must restore its own edits.
+    consumedNewComposeRef.current = true
+    draft.clear()
+    onNewComposeReady?.()
+  }, [draft.clear, newCompose, onNewComposeReady])
 
   useEffect(() => {
     setActiveGmailDraftId(gmailDraftId)
@@ -149,33 +176,38 @@ export const ConnectedMailCompose = ({
     setRecipientErrors({})
   }, [address.accountId, address.source, gmailDraftId, replyTo?.id])
 
-  // A held action is never a resend instruction. It is only an Undo doorway,
-  // and is forgotten at the server's deadline or when Gmail reports a terminal
-  // state. The stored record contains no message content beyond the draft flow.
+  // A held action is never a resend instruction. Its timer only refreshes the
+  // content-free action state: an overdue send stays locked until the server
+  // says whether it dispatched, sent, or became delivery-unknown.
   useEffect(() => {
     if (!heldGmailSend) return
-    const clearHeldSend = () => {
-      draft.clear()
-      setSent(null)
-    }
     const delay = Date.parse(heldGmailSend.sendAfter) - Date.now()
-    if (delay <= 0) {
-      clearHeldSend()
-      return
-    }
-    const timer = window.setTimeout(clearHeldSend, delay)
+    if (delay <= 0) return
+    const timer = window.setTimeout(() => { void gmailActionStatus.refetch() }, delay)
     return () => window.clearTimeout(timer)
-  }, [draft.clear, heldGmailSend])
+  }, [gmailActionStatus.refetch, heldGmailSend])
 
   useEffect(() => {
-    if (!heldGmailSend || !heldGmailDraft.data || heldGmailDraft.data.state === 'sending') return
-    if (heldGmailDraft.data.state === 'draft') {
+    const action = gmailActionStatus.data
+    if (!action) return
+    if (action.state === 'sending' && action.sendAfter && isFutureDate(action.sendAfter) && !heldGmailSend) {
+      draft.setDraft((current) => ({
+        ...current, gmailHeldSend: { draftId: action.id, sendAfter: action.sendAfter! },
+      }))
+      return
+    }
+    if (action.state === 'draft' && heldGmailSend) {
       draft.setDraft((current) => ({ ...current, gmailHeldSend: undefined }))
-    } else {
+      return
+    }
+    if (action.state === 'sent') {
+      draft.clear()
+      setSent({ id: action.id, status: 'sent' })
+    }
+    if (action.state === 'discarded') {
       draft.clear()
     }
-    setSent(null)
-  }, [draft.clear, draft.setDraft, heldGmailDraft.data, heldGmailSend])
+  }, [draft.clear, draft.setDraft, gmailActionStatus.data, heldGmailSend])
 
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
@@ -301,6 +333,9 @@ export const ConnectedMailCompose = ({
         // reload can only offer Undo; it cannot recreate or resend this draft.
         draft.setDraft({ ...current, gmailDraftId: providerAction!.id, gmailHeldSend: heldSend, requestId })
         await draft.flush()
+      } else if (address.source === 'mailbox' && result.status === 'dispatching' && result.actionId) {
+        draft.setDraft({ ...current, mailboxSendActionId: result.actionId, requestId })
+        await draft.flush()
       } else {
         draft.clear()
       }
@@ -335,6 +370,13 @@ export const ConnectedMailCompose = ({
     }))
     setRecreateGmailDraft(false)
     setError(null)
+  }
+
+  const startNewEmailAfterUnknownDelivery = () => {
+    // This is an explicit acknowledgement, never a retry. The old action and
+    // its content are forgotten before navigation opens a blank composer.
+    draft.clear()
+    onStartNewEmail?.(crypto.randomUUID())
   }
 
   const undoGmailSend = async () => {
@@ -379,25 +421,28 @@ export const ConnectedMailCompose = ({
     setSent(null)
   }
 
-  const recoveredMailboxSent = address.source === 'mailbox' && mailboxAction.data?.state === 'sent'
-    ? { id: mailboxAction.data.id, status: 'sent' }
-    : null
-  const persistedHeldSend = heldGmailSend
-    ? { id: heldGmailSend.draftId, sendAfter: heldGmailSend.sendAfter, status: 'sending' }
-    : null
-  const sentConfirmation = sent ?? persistedHeldSend ?? recoveredMailboxSent
-  const mailboxSendLocked = address.source === 'mailbox'
-    && (mailboxAction.data?.state === 'dispatching' || mailboxAction.data?.state === 'delivery_unknown')
+  const sentConfirmation = deriveMailSendOutcome({
+    gmailAction: gmailActionStatus.data, heldSend: heldGmailSend, mailboxAction: mailboxAction.data,
+    mailboxActionId: draft.draft.mailboxSendActionId, sent, source: address.source,
+  })
+  const mailboxSendLocked = address.source === 'mailbox' && Boolean(draft.draft.mailboxSendActionId && (
+    mailboxAction.isPending || mailboxAction.isError || mailboxAction.data?.state !== 'ready'
+  ))
+  // A persisted action is ambiguous until the owner-only status endpoint says
+  // it is editable again. A network failure/404 must not reopen Send.
+  const gmailActionLocked = Boolean(gmailActionId && (
+    gmailActionStatus.isPending
+    || gmailActionStatus.isError
+    || gmailActionStatus.data?.state !== 'draft'
+  ))
 
-  if (sentConfirmation) return (
-    <section className="px-[var(--page-gutter)] py-6" data-testid="connected-mail-sent">
-      <p aria-live="polite" className="text-sm text-[color:var(--tx)]">
-        {address.source === 'gmail' ? 'Your email is queued to send.' : 'Your email was sent.'}
-      </p>
-      {address.source === 'gmail' && sentConfirmation.id ? <button className="mt-3 admin-button admin-button-secondary" disabled={undo.isPending} onClick={() => void undoGmailSend()} type="button">Undo send</button> : null}
-      <button className="ml-2 mt-3 admin-button admin-button-primary" onClick={onSent} type="button">Back to mail</button>
-    </section>
-  )
+  if (sentConfirmation) return <GmailSendOutcomePanel
+    onBackToMail={onSent}
+    onStartNewEmail={startNewEmailAfterUnknownDelivery}
+    onUndo={() => void undoGmailSend()}
+    outcome={sentConfirmation satisfies GmailSendOutcome}
+    undoPending={undo.isPending}
+  />
 
   // A provider-owned Gmail draft is never an empty editable form. Its live
   // content must arrive first, and a late refetch may not replace words the
@@ -412,6 +457,9 @@ export const ConnectedMailCompose = ({
     )
     return <p className="px-[var(--page-gutter)] py-6 text-sm text-[color:var(--tx2)]">Loading Gmail draft…</p>
   }
+  if (unsupportedProviderDraft && providerDraft.data) return <GmailUnsupportedDraftPanel
+    attachments={providerDraft.data.attachments} reason={providerDraft.data.unsupportedReason}
+  />
 
   return (
     <form className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-[var(--page-gutter)] py-4" onSubmit={(event) => { event.preventDefault(); void submit() }}>
@@ -426,11 +474,12 @@ export const ConnectedMailCompose = ({
         <textarea aria-label="Message" className="admin-input min-h-44 resize-y" onChange={(event) => updateComposeDraft((value) => ({ ...value, body: event.target.value }))} value={draft.draft.body} />
       </label>
       {replyTo ? <p className="text-xs text-[color:var(--tx3)]">Replying to {replyTo.from ?? 'this message'}. Previous messages are not saved in this draft.</p> : null}
+      {gmailActionStatus.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]" data-testid="gmail-action-status-error">We could not confirm this email’s delivery state. It will not be sent again. <button className="font-semibold text-[color:var(--accent)]" onClick={() => void gmailActionStatus.refetch()} type="button">Retry</button></p> : null}
       {mailboxAction.data?.state === 'delivery_unknown' ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]" data-testid="mailbox-delivery-unknown">Delivery is unconfirmed. Check the provider’s Sent mail before composing a new message; this action will not be resent.</p> : null}
       {error ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">{error}</p> : null}
       {recreateGmailDraft ? <button className="admin-button admin-button-secondary" onClick={startNewGmailDraft} type="button">Create a new Gmail draft</button> : null}
       {!account.canSend ? <p className="text-sm text-[color:var(--tx2)]">You can prepare this email, but this account cannot send. {onOpenSettings ? <button className="font-semibold text-[color:var(--accent)]" onClick={onOpenSettings} type="button">Open mailbox settings</button> : 'Check its connection settings.'}</p> : null}
-      <div><button className="admin-button admin-button-primary" disabled={!account.canSend || mailboxSendLocked || send.isPending || createDraft.isPending || updateDraft.isPending} type="submit">{send.isPending ? 'Sending…' : 'Send email'}</button></div>
+      <div><button className="admin-button admin-button-primary" disabled={!account.canSend || gmailActionLocked || mailboxSendLocked || send.isPending || createDraft.isPending || updateDraft.isPending} type="submit">{send.isPending ? 'Sending…' : 'Send email'}</button></div>
     </form>
   )
 }

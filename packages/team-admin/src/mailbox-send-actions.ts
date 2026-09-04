@@ -102,11 +102,17 @@ export type MailboxSendActionInput = {
   mail: ConnectedMailboxSendInput
 }
 
+export type MailboxSendActionResult = {
+  actionId: string
+  messageId: string
+  status: 'dispatching' | 'sent'
+}
+
 export const dispatchMailboxSendAction = async (
   prisma: PrismaClient,
   input: MailboxSendActionInput,
   deps: ConnectedMailDeps,
-): Promise<{ status: 'sent'; actionId: string; messageId: string }> => {
+): Promise<MailboxSendActionResult> => {
   const mail = prepareMailboxSend(input.mail)
   const fingerprint = mailboxSendFingerprint(mail)
   const id = randomUUID()
@@ -131,11 +137,10 @@ export const dispatchMailboxSendAction = async (
     throw new ConnectedMailError('DELIVERY_UNKNOWN', action.id)
   }
   if (action.state === 'dispatching') {
-    const settled = await prisma.mailboxSendAction.updateMany({
-      where: { id: action.id, state: 'dispatching' },
-      data: { state: 'delivery_unknown', claimedAt: null },
-    })
-    throw new ConnectedMailError('DELIVERY_UNKNOWN', action.id, settled.count === 1)
+    // An overlapping request sees the live claim, not a stale process. It
+    // must neither dial SMTP again nor convert a potentially successful send
+    // to unknown; the two-minute sweep owns that terminal transition.
+    return { status: 'dispatching', actionId: action.id, messageId: action.messageId }
   }
   if (action.state === 'sent') return { status: 'sent', actionId: action.id, messageId: action.messageId }
   const claimed = await prisma.mailboxSendAction.updateMany({
@@ -220,7 +225,7 @@ export const sendConnectedMailboxMail = async (
   accountId: string,
   input: ConnectedMailboxSendInput,
   deps: ConnectedMailDeps,
-): Promise<{ status: 'sent'; actionId: string; messageId: string }> => {
+): Promise<MailboxSendActionResult> => {
   const connection = await mailboxForActor(prisma, actor, accountId)
   return dispatchMailboxSendAction(prisma, {
     clientRequestId: input.idempotencyKey, connection, mail: input,

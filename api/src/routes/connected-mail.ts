@@ -187,6 +187,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
           body: body.body,
           cc: body.cc,
           inReplyTo: body.inReplyTo,
+          ...(body.inReplyTo ? { references: [body.inReplyTo] } : {}),
           subject: body.subject,
           to: body.to,
         },
@@ -223,6 +224,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
           body: body.body,
           cc: body.cc,
           inReplyTo: body.inReplyTo,
+          ...(body.inReplyTo ? { references: [body.inReplyTo] } : {}),
           subject: body.subject,
           to: body.to,
         },
@@ -271,7 +273,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
       const result = await sendConnectedMailboxMail(
         prisma, resolved.mailActor, params.accountId, body, serviceDeps,
       )
-      await emitAuditEvent(prisma, {
+      if (result.status === 'sent') await emitAuditEvent(prisma, {
         action: 'email.sent', actorContext: resolved.context, outcome: 'success',
         metadata: { source: params.source, status: 'sent' }, resourceId: params.accountId,
         resourceType: 'connected_mail_account',

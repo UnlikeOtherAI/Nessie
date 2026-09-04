@@ -111,7 +111,8 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'Compose an email as the requesting person and leave a restricted Open '
       + 'Mail doorway in the chat. The live Mail surface shows recipients, '
       + 'subject and body and can send only through its existing approval path. '
-      + 'This creates a real Gmail draft; it does NOT send.',
+      + 'This creates a real Gmail draft; it does NOT send. For a reply, pass '
+      + 'both the Gmail thread id and RFC Message-ID from a Gmail read.',
     parameters: {
       type: 'object',
       properties: {
@@ -122,7 +123,11 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         body: { type: 'string', description: 'Plain-text body of the email.' },
         replyToThreadId: {
           type: 'string',
-          description: 'Gmail thread id to reply into, when replying.',
+          description: 'Gmail thread id from gmail_search, gmail_message_read, or gmail_thread_read.',
+        },
+        replyToMessageId: {
+          type: 'string',
+          description: 'RFC Message-ID paired with replyToThreadId from a Gmail read, not Gmail messageId.',
         },
       },
       required: ['to', 'subject', 'body'],

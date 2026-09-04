@@ -52,12 +52,16 @@ const assertHeaderSafe = (label: string, value: string): void => {
 /** Emit one canonical RFC Message-ID pair, never a caller's nested brackets. */
 const formatMessageId = (label: string, value: string): string => {
   assertHeaderSafe(label, value)
-  const bare = value.trim().replace(/^<+/, '').replace(/>+$/, '')
+  const bare = canonicalMessageId(value)
   if (!bare || /[<>\s]/.test(bare)) {
     throw new MimeBuildError(`${label} contains an invalid Message-ID`)
   }
   return `<${bare}>`
 }
+
+/** Match Gmail's bracketed readback with callers' bare Message-ID input. */
+const canonicalMessageId = (value: string): string =>
+  value.trim().replace(/^<+/, '').replace(/>+$/, '')
 
 // Deliberately permissive: full RFC 5322 addressing is not worth reimplementing,
 // and Gmail rejects what it dislikes. This only rules out the shapes that would
@@ -207,8 +211,8 @@ export const canonicalDraftFingerprintInput = (message: {
     bcc: addresses(message.bcc),
     subject: message.subject.trim(),
     body: message.body,
-    inReplyTo: message.inReplyTo?.trim() ?? '',
-    references: (message.references ?? []).map((value) => value.trim()),
+    inReplyTo: message.inReplyTo ? canonicalMessageId(message.inReplyTo) : '',
+    references: (message.references ?? []).map(canonicalMessageId),
     threadId: message.threadId ?? '',
     attachmentIds: [...(message.attachmentIds ?? [])].sort(),
   })

@@ -72,13 +72,14 @@ export const makePrisma = (seed: DraftRow) => {
       findUnique: async () => state.row,
       findUniqueOrThrow: async () => state.row,
       updateMany: async (input: {
-        where: { state?: string; OR?: Array<{ state: string; claimedAt?: { lt: Date } }> }
+        where: { state?: string; claimedAt?: Date; OR?: Array<{ state: string; claimedAt?: { lt: Date } }> }
         data: Record<string, unknown>
       }) => {
         const matches = input.where.OR
           ? input.where.OR.some((condition) => condition.state === state.row.state
             && (!condition.claimedAt || (state.row.claimedAt !== null && state.row.claimedAt < condition.claimedAt.lt)))
-          : !input.where.state || input.where.state === state.row.state
+          : (!input.where.state || input.where.state === state.row.state)
+            && (!input.where.claimedAt || state.row.claimedAt?.getTime() === input.where.claimedAt.getTime())
         if (!matches) return { count: 0 }
         state.row = { ...state.row, ...input.data } as DraftRow
         return { count: 1 }

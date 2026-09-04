@@ -115,6 +115,7 @@ export {
   sendDraftForUser,
   dispatchClaimedDraft,
   resolveStaleGmailDispatches,
+  resolveStaleGmailDraftValidations,
   resolveStaleGmailDraftUpdates,
   undoHeldSend,
   discardDraftForUser,

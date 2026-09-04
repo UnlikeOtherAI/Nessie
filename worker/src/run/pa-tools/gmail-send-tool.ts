@@ -25,7 +25,11 @@ import { mailPresentationReference } from './mail-presentation-reference.js'
  * still re-reads the live draft and refuses if its recipients or body changed.
  */
 
-const SendSchema = z.object({ draftId: z.string().uuid() }).strict()
+const SendSchema = z.object({
+  connectionId: z.string().uuid().optional(),
+  draftId: z.string().uuid(),
+  expectedFingerprint: z.string().min(1).optional(),
+}).strict()
 
 /** How long a consented send is held so Mail can offer Undo. */
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
@@ -61,6 +65,12 @@ export const runGmailDraftSendTool = async (
     interactive: context.actorContext.actionContext.purpose !== 'trigger',
   })
   const approved = Boolean(context.actorContext.approval?.approvalProof)
+  if (approved && (!args.connectionId || !args.expectedFingerprint)) {
+    throw new Error('This approval is not bound to the reviewed Gmail draft.')
+  }
+  if (args.connectionId && args.connectionId !== draft.connectionId) {
+    throw new Error('This approval is not bound to this Gmail connection.')
+  }
   if (!consented && !approved) {
     throw new Error(
         'I need approval before sending that. Open the draft in Mail and use '
@@ -76,6 +86,7 @@ export const runGmailDraftSendTool = async (
         organizationId: context.channel.organizationId,
         userId,
         draftActionId: args.draftId,
+        ...(args.expectedFingerprint ? { expectedFingerprint: args.expectedFingerprint } : {}),
         // Only a consented send is held: an explicitly approved one was just
         // confirmed by a person, so making them wait again adds nothing.
         ...(consented && !approved && UNDO_WINDOW_MS > 0

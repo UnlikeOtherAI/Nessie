@@ -60,3 +60,15 @@ test('a stale Gmail edit is released for a new content check, never marked sent 
     now: () => new Date('2026-09-02T10:00:00.000Z'),
   }), 1)
 })
+
+test('an ambiguous Gmail update is never released by the stale edit sweep', async () => {
+  const prisma = {
+    gmailDraftAction: {
+      updateMany: async (input: { where: { state: string } }) => {
+        assert.equal(input.where.state, 'updating')
+        return { count: 0 }
+      },
+    },
+  } as unknown as PrismaClient
+  assert.equal(await resolveStaleGmailDraftUpdates(prisma), 0)
+})

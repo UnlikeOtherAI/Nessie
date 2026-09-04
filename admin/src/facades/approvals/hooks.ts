@@ -42,13 +42,21 @@ export const useApprovalRequest = (approvalId: string | undefined) => {
   })
 }
 
-/** The exact frozen connected-mail send, visible only to its pinned approver. */
-export const useMailboxSendApprovalDraft = (approvalId: string | undefined) => {
+type MailSendToolName = 'gmail_draft_send' | 'mailbox_send'
+
+/** The exact frozen send, visible only to its pinned approver. */
+export const useMailSendApprovalDraft = (
+  toolName: MailSendToolName | undefined,
+  approvalId: string | undefined,
+  active: boolean,
+) => {
   const apiClient = useApiClient()
   return useQuery<EmailDraftPreview>({
-    enabled: Boolean(approvalId),
-    queryKey: approvalKeys.mailboxSendDraft(approvalId),
-    queryFn: () => apiClient.get(`/api/mailbox-connections/approvals/${approvalId}/draft`),
+    enabled: Boolean(approvalId && toolName && active),
+    queryKey: approvalKeys.mailSendDraft(toolName ?? 'mailbox_send', approvalId),
+    queryFn: () => apiClient.get(toolName === 'gmail_draft_send'
+      ? `/api/gmail/drafts/approvals/${approvalId}/draft`
+      : `/api/mailbox-connections/approvals/${approvalId}/draft`),
     // A different approval can contain somebody else's complete private email.
     // Never paint the previous approval while this exact identity resolves.
     placeholderData: undefined,
@@ -71,8 +79,10 @@ export const useResolveApproval = () => {
   return useMutation({
     mutationFn: (input: { id: string; resolution: 'approved' | 'rejected' }) =>
       apiClient.post(`/api/approvals/${input.id}/resolve`, { resolution: input.resolution }),
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
       void queryClient.invalidateQueries({ queryKey: approvalKeys.all })
+      queryClient.removeQueries({ queryKey: approvalKeys.mailSendDraft('mailbox_send', input.id) })
+      queryClient.removeQueries({ queryKey: approvalKeys.mailSendDraft('gmail_draft_send', input.id) })
     },
   })
 }

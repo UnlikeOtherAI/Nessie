@@ -35,6 +35,7 @@ import {
   createToolApprovalRequest,
   postAllowedByRuleCard,
 } from './tool-approval-requests.js'
+import { approvalInputFor, resolveFrozenGmailSendApproval } from './gmail-send-approval.js'
 import type { RunContext } from './types.js'
 
 export type ToolActorContext = AuthorizedActionContext
@@ -42,6 +43,7 @@ export type ToolActorContext = AuthorizedActionContext
 export type ToolAuthorizationDecision =
   | {
       decision: 'allow'
+      executionArgs?: Record<string, unknown>
       toolActorContext: ToolActorContext
     }
   | {
@@ -250,6 +252,12 @@ export const authorizeToolExecution = async (
     }
   }
 
+  const resumedGmail = toolName === 'gmail_draft_send'
+    ? await resolveFrozenGmailSendApproval(prisma, context, toolActorContext, args)
+    : null
+  const executionArgs = resumedGmail?.executionArgs ?? args
+  if (resumedGmail) args = resumedGmail.authorizationArgs
+
   const rawPolicyDecision = await evaluateToolInvokePolicy(
     prisma,
     toolActorContext,
@@ -362,10 +370,11 @@ export const authorizeToolExecution = async (
       source: 'worker_tool_policy',
     }, policyDecision.reason)
     if (policyDecision.reason === 'approval_required' && auth.maySuspendForApproval && auth.resumeState) {
+      const frozen = await approvalInputFor(prisma, context, toolActorContext, toolName, args)
       const approval = await createToolApprovalRequest(prisma, {
         actorContext: auth.resumeState.actorContext,
         approvalActionType: policyDecision.approvalActionType,
-        args,
+        args: frozen.args,
         context,
         policyRuleId: policyDecision.policyRuleId,
         toolCallId,
@@ -373,7 +382,8 @@ export const authorizeToolExecution = async (
         interactive: auth.resumeState.interactive,
         messageId: auth.resumeState.messageId,
         ...(boundaryReason ? { boundaryReason } : {}),
-        ...(structuralContext ? { contextExtra: structuralContext } : {}),
+        ...(structuralContext || frozen.contextExtra
+          ? { contextExtra: { ...(structuralContext ?? {}), ...frozen.contextExtra } } : {}),
         ...(structuralApprover ? { requiredApproverUserId: structuralApprover } : {}),
       })
       return {
@@ -431,9 +441,10 @@ export const authorizeToolExecution = async (
       if (review.verdict === 'require_approval') {
         const notice = `Automated review asked for approval before ${toolName}: ${review.reason}`
         if (auth.maySuspendForApproval && auth.resumeState) {
+          const frozen = await approvalInputFor(prisma, context, toolActorContext, toolName, args)
           const approval = await createToolApprovalRequest(prisma, {
             actorContext: auth.resumeState.actorContext,
-            args,
+            args: frozen.args,
             context,
             interactive: auth.resumeState.interactive,
             messageId: auth.resumeState.messageId,
@@ -441,6 +452,7 @@ export const authorizeToolExecution = async (
             reason: notice,
             toolCallId,
             toolName,
+            ...(frozen.contextExtra ? { contextExtra: frozen.contextExtra } : {}),
           })
           return { decision: 'suspend', approval: { id: approval.id, notice, toolName } }
         }
@@ -457,7 +469,7 @@ export const authorizeToolExecution = async (
     }
   }
 
-  return { decision: 'allow', toolActorContext }
+  return { decision: 'allow', executionArgs, toolActorContext }
 }
 
 /**

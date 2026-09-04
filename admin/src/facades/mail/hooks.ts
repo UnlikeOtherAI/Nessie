@@ -16,6 +16,7 @@ import type {
 } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { gmailKeys, type GmailDraftActionStatus } from '../gmail/hooks'
 
 export type ConnectedMailPage<T> = {
   items: T[]
@@ -136,7 +137,34 @@ export const useConnectedMailSend = (address: MailAddress | null) => {
       if (!address) throw new Error('Choose a mailbox first.')
       return apiClient.post<ConnectedMailDraftResult>(mailMutationUrl(address, '/send'), input)
     },
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: connectedMailKeys.accounts() }) },
+    // The action identity becomes ambiguous before the request crosses the
+    // network. Seed the content-free status cache as locked, then replace it
+    // with the server-held deadline on success. A lost response stays locked
+    // and polls rather than exposing a resend doorway.
+    onMutate: async (input) => {
+      if (address?.source !== 'gmail' || !('draftId' in input)) return
+      await queryClient.cancelQueries({ queryKey: gmailKeys.draftStatus(input.draftId) })
+      queryClient.setQueryData<GmailDraftActionStatus>(gmailKeys.draftStatus(input.draftId), {
+        id: input.draftId, sendAfter: null, state: 'dispatching',
+      })
+    },
+    onSuccess: (data, input) => {
+      void queryClient.invalidateQueries({ queryKey: connectedMailKeys.accounts() })
+      if (address?.source !== 'gmail' || !('draftId' in input)) return
+      if (data.status === 'sending' && data.sendAfter) {
+        queryClient.setQueryData<GmailDraftActionStatus>(gmailKeys.draftStatus(input.draftId), {
+          id: input.draftId, sendAfter: data.sendAfter, state: 'sending',
+        })
+        return
+      }
+      if (data.status === 'sent') {
+        queryClient.setQueryData<GmailDraftActionStatus>(gmailKeys.draftStatus(input.draftId), {
+          id: input.draftId, sendAfter: null, state: 'sent',
+        })
+        return
+      }
+      void queryClient.invalidateQueries({ queryKey: gmailKeys.draftStatus(input.draftId) })
+    },
   })
 }
 

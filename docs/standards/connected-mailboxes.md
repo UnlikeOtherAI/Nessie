@@ -78,6 +78,23 @@ Plan and as-built deltas:
   is terminal rather than eligible for an automatic retry. Mail audit entries
   record only structural action ids and the distinct held, undone, sent, or
   delivery-unknown state—never recipients, subject, or body.
+- **Compose recovery fails closed.** Recipient syntax is checked against the
+  shared compose schema before a browser mutation, while the server remains
+  authoritative. A durable Gmail action is reconciled through an owner-only,
+  content-free status route: only a future held send offers Undo; `dispatching`,
+  expired `sending`, `updating`, `update_unknown`, and unknown delivery never
+  expose a resend. A live SMTP replay reports `dispatching` without another
+  dial; only its stale-claim sweep may mark it unknown. Gmail drafts containing
+  attachments or non-plain MIME remain provider-owned, show their metadata, and
+  offer Gmail rather than a lossy PATCH or local Send. Gmail MIME parsing is
+  bounded for response, headers, parts, nesting, attachments, filenames, and
+  decoded bodies.
+- **Exact mail approval is private and short-lived.** A pending
+  `gmail_draft_send` or `mailbox_send` approval may fetch one frozen full
+  envelope/body preview only for its pinned approver; public approval reads
+  never contain that content. The client drops the preview at resolution, and
+  Gmail send still checks the frozen draft fingerprint. Gmail standing-grant
+  controls require that exact preview; mailbox sends retain no standing grant.
 - **SMTP/IMAP searches are recent and explicit about their boundary.** A search
   walks at most twenty structural UID windows (the newest 2,000 UIDs), never a
   mailbox-wide `SEARCH`; when it has not filled the requested result limit by

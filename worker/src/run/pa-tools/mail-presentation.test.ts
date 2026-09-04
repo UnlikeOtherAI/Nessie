@@ -181,6 +181,7 @@ test('a Gmail draft doorway stamps its owner basis and never publishes draft cop
     ownerUserId: IDS.user,
     providerDraftId: 'google-draft',
     revision: 1,
+    sendAfter: null,
     state: 'draft',
   })
 

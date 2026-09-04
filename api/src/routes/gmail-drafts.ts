@@ -115,6 +115,34 @@ export const registerGmailDraftRoutes = (
     throw error
   }
 
+  // ── GET /api/gmail/drafts/:id/status ──────────────────────────────────────
+  // This is intentionally separate from the content-bearing draft read. It
+  // lets a reloaded composer settle an already-created action even after Gmail
+  // has deleted its source draft, without asking for recipients or body.
+  app.get('/api/gmail/drafts/:id/status', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { id } = request.params as { id: string }
+    const action = await prisma.gmailDraftAction.findFirst({
+      where: {
+        id,
+        organizationId: actorContext.tenant.organizationId,
+        ownerUserId: actorContext.actor.actorId,
+      },
+      select: { id: true, sendAfter: true, state: true },
+    })
+    if (!action) {
+      sendApiError(reply, 404, 'DRAFT_NOT_FOUND', 'Draft not found')
+      return reply
+    }
+    reply.header('Cache-Control', 'private, no-store')
+    return createApiResponse({
+      id: action.id,
+      sendAfter: action.sendAfter?.toISOString() ?? null,
+      state: action.state,
+    })
+  })
+
   // ── GET /api/gmail/drafts/:id ─────────────────────────────────────────────
   app.get('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -134,6 +162,7 @@ export const registerGmailDraftRoutes = (
       return createApiResponse({
         id: draft.action.id,
         state: draft.action.state,
+        sendAfter: draft.action.sendAfter?.toISOString() ?? null,
         revision: draft.action.revision,
         contentFingerprint: draft.action.contentFingerprint,
         to: draft.to,
@@ -142,6 +171,8 @@ export const registerGmailDraftRoutes = (
         subject: draft.subject,
         body: draft.body,
         attachments: draft.attachments,
+        editable: draft.editable,
+        unsupportedReason: draft.unsupportedReason,
       })
     } catch (error) {
       return fail(reply, error)

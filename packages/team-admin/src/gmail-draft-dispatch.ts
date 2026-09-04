@@ -7,8 +7,8 @@ import {
   type SendDraftResult,
   gmailFetch,
   loadCredential,
-  toRecord,
 } from './gmail-drafts.js'
+import { toRecord } from './gmail-draft-record.js'
 import { fingerprintOf } from './gmail-draft-fingerprint.js'
 
 /** A stalled provider request is ambiguous, never eligible for another send. */
@@ -48,7 +48,11 @@ export const resolveStaleGmailDispatches = async (
   return resolved
 }
 
-/** A stalled edit never started a send, so release it for fresh validation. */
+/**
+ * Only an edit still before Gmail's PUT boundary is recoverable. Once an edit
+ * enters `update_unknown`, Gmail may have accepted the replacement and the
+ * draft stays locked until a person resolves it in Gmail.
+ */
 export const resolveStaleGmailDraftUpdates = async (
   prisma: PrismaClient,
   deps: Pick<GmailDraftDeps, 'now'> = {},
@@ -62,6 +66,20 @@ export const resolveStaleGmailDraftUpdates = async (
   return recovered.count
 }
 
+/** A stalled validation has not started Gmail send, so release it safely. */
+export const resolveStaleGmailDraftValidations = async (
+  prisma: PrismaClient,
+  deps: Pick<GmailDraftDeps, 'now'> = {},
+): Promise<number> => {
+  const now = deps.now?.() ?? new Date()
+  const staleAt = new Date(now.getTime() - STALE_CLAIM_WINDOW_MS)
+  const recovered = await prisma.gmailDraftAction.updateMany({
+    where: { state: 'sending', sendAfter: null, claimedAt: { lt: staleAt } },
+    data: { state: 'draft', claimedAt: null },
+  })
+  return recovered.count
+}
+
 /**
  * Claim then send exactly once. Once a Gmail send request starts, any failure
  * is externally ambiguous: retaining a retryable draft could duplicate mail.
@@ -70,10 +88,15 @@ export const dispatchClaimedDraft = async (
   prisma: PrismaClient,
   draftActionId: string,
   deps: GmailDraftDeps,
+  validationClaimedAt?: Date,
 ): Promise<SendDraftResult> => {
   const now = deps.now?.() ?? new Date()
   const claimed = await prisma.gmailDraftAction.updateMany({
-    where: { id: draftActionId, state: 'sending' },
+    where: {
+      id: draftActionId,
+      state: 'sending',
+      ...(validationClaimedAt ? { claimedAt: validationClaimedAt, sendAfter: null } : {}),
+    },
     data: { state: 'dispatching', claimedAt: now },
   })
   if (claimed.count !== 1) throw new GmailDraftError('DRAFT_NOT_SENDABLE')
@@ -105,11 +128,11 @@ export const dispatchClaimedDraft = async (
   let captured: Awaited<ReturnType<typeof getGmailDraft>>
   try {
     captured = await getGmailDraft(fetchImpl, credential.credential.accessToken, row.providerDraftId)
+    if (!captured.editable) {
+      throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'edit this unsupported draft in Gmail')
+    }
     if (fingerprintOf(captured) !== row.contentFingerprint) {
       throw new GmailDraftError('DRAFT_CHANGED')
-    }
-    if (captured.attachments.length > 0) {
-      throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'draft attachments cannot be sent without durable content')
     }
   } catch (error) {
     // A failed validation/read never started a send. Returning to draft is

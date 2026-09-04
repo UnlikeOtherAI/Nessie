@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
 import {
   dispatchClaimedDraft,
+  resolveStaleGmailDraftValidations,
   resolveStaleGmailDraftUpdates,
   resolveStaleGmailDispatches,
 } from '@nessie/team-admin'
@@ -56,6 +57,7 @@ export const sweepDueGmailSends = async (
 ): Promise<{ dispatched: number; failed: number; deliveryUnknown: number }> => {
   const now = deps.now?.() ?? new Date()
   await resolveStaleGmailDraftUpdates(prisma, { now: () => now })
+  await resolveStaleGmailDraftValidations(prisma, { now: () => now })
   const staleDeliveryUnknown = await resolveStaleGmailDispatches(prisma, { now: () => now })
   for (const row of staleDeliveryUnknown) {
     await writeGmailDraftDispatchAudit(prisma, {

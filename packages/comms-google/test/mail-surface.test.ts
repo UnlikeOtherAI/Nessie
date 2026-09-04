@@ -124,3 +124,40 @@ test('Gmail rejects a thread whose decoded bodies exceed the aggregate budget', 
     GmailReadLimitError,
   )
 })
+
+test('Gmail mail surface rejects deep and wide MIME trees before traversal', async () => {
+  const deep: { mimeType: string; parts?: unknown[] } = { mimeType: 'multipart/mixed' }
+  let cursor = deep
+  for (let index = 0; index <= 20; index += 1) {
+    const child = { mimeType: 'multipart/mixed' }
+    cursor.parts = [child]
+    cursor = child
+  }
+  const wide = {
+    mimeType: 'multipart/mixed',
+    parts: Array.from({ length: 201 }, () => ({ mimeType: 'text/plain', body: { data: b64('x') } })),
+  }
+  for (const payload of [deep, wide]) {
+    await assert.rejects(
+      readGmailMailThread(async () => response({ messages: [{
+        id: 'message-1', payload, threadId: 'thread-1',
+      }] }), 'token', 'thread-1'),
+      GmailReadLimitError,
+    )
+  }
+})
+
+test('Gmail mail surface bounds messages before MIME traversal but preserves truncation', async () => {
+  const messages = Array.from({ length: 201 }, (_, index) => ({
+    id: `message-${index}`, internalDate: String(index), payload: {
+      mimeType: 'text/plain', body: { data: b64('ok') },
+    }, threadId: 'thread-1',
+  }))
+  const conversation = await readGmailMailThread(
+    async () => response({ messages }), 'token', 'thread-1',
+  )
+  assert.equal(conversation.earlierMessagesMayExist, true)
+  assert.equal(conversation.messageCount, 201)
+  assert.equal(conversation.messages.length, 200)
+  assert.equal(conversation.messages[0]?.id, 'message-1')
+})

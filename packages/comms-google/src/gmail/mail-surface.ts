@@ -5,10 +5,11 @@ import {
   GMAIL_MAX_METADATA_RESPONSE_BYTES,
   GMAIL_MAX_READ_RESPONSE_BYTES,
   GmailReadBudget,
+  GmailReadLimitError,
 } from './read-budget.js'
+import { GMAIL_MAX_ATTACHMENTS, GMAIL_MAX_PART_DEPTH, GMAIL_MAX_PARTS } from './part-limits.js'
 
 const MAX_BODY_CHARS = 100_000
-const MAX_ATTACHMENTS = 100
 const MAX_ADDRESS_CHARS = 1_000
 const MAX_ATTACH_NAME_CHARS = 500
 const MAX_CONTENT_TYPE_CHARS = 200
@@ -111,11 +112,12 @@ const collect = (part: Part | undefined, into: {
   text: string
   html: string
   attachments: GmailMailConversation['messages'][number]['attachments']
-}, budget: GmailReadBudget): void => {
+}, budget: GmailReadBudget, depth = 0, seen = { parts: 0 }): void => {
   if (!part) return
+  if (depth > GMAIL_MAX_PART_DEPTH || ++seen.parts > GMAIL_MAX_PARTS) throw new GmailReadLimitError('structure')
   const filename = typeof part.filename === 'string' ? part.filename : ''
   if (filename && (typeof part.body?.attachmentId === 'string' || typeof part.body?.data === 'string')
-    && into.attachments.length < MAX_ATTACHMENTS) {
+    && into.attachments.length < GMAIL_MAX_ATTACHMENTS) {
     into.attachments.push({
       contentType: bounded(
         typeof part.mimeType === 'string' && part.mimeType ? part.mimeType : 'application/octet-stream',
@@ -128,7 +130,7 @@ const collect = (part: Part | undefined, into: {
   }
   if (part.mimeType === 'text/plain' && !into.text) into.text = budget.decode(part.body?.data)
   if (part.mimeType === 'text/html' && !into.html) into.html = budget.decode(part.body?.data)
-  for (const child of part.parts ?? []) collect(child, into, budget)
+  for (const child of part.parts ?? []) collect(child, into, budget, depth + 1, seen)
 }
 
 const toMessage = (
@@ -175,10 +177,12 @@ const metadataThreadUrl = (threadId: string): string => {
   return `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}?format=metadata&${headers}`
 }
 
-const hasAttachmentMetadata = (part: Part | undefined): boolean => Boolean(
-  part && (typeof part.filename === 'string' && part.filename.length > 0
-    || (part.parts ?? []).some((child) => hasAttachmentMetadata(child))),
-)
+const hasAttachmentMetadata = (part: Part | undefined, depth = 0, seen = { parts: 0 }): boolean => {
+  if (!part) return false
+  if (depth > GMAIL_MAX_PART_DEPTH || ++seen.parts > GMAIL_MAX_PARTS) throw new GmailReadLimitError('structure')
+  return (typeof part.filename === 'string' && part.filename.length > 0)
+    || (part.parts ?? []).some((child) => hasAttachmentMetadata(child, depth + 1, seen))
+}
 
 const metadataSummary = (
   threadId: string,
@@ -286,13 +290,13 @@ export const readGmailMailThread = async (
   )
   budget.addHttp(response.responseBytes ?? 0)
   const { body } = response
-  const normalized = ((body as { messages?: unknown[] }).messages ?? [])
+  const rawMessages = (body as { messages?: unknown[] }).messages ?? []
+  const earlierMessagesMayExist = rawMessages.length > MAX_MESSAGES
+  const normalized = rawMessages.slice(-MAX_MESSAGES)
     .flatMap((message) => {
       const normalized = toMessage(message, threadId, budget)
       return normalized ? [normalized] : []
     })
     .sort((left, right) => (left.receivedAt ?? '').localeCompare(right.receivedAt ?? ''))
-  const earlierMessagesMayExist = normalized.length > MAX_MESSAGES
-  const messages = normalized.slice(-MAX_MESSAGES)
-  return { earlierMessagesMayExist, id: threadId, messageCount: normalized.length, messages }
+  return { earlierMessagesMayExist, id: threadId, messageCount: rawMessages.length, messages: normalized }
 }

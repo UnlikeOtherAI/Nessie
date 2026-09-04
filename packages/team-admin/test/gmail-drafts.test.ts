@@ -26,8 +26,12 @@ import {
 
 // The load-bearing guard: an approval or a rendered card binds to CONTENT, and
 // the draft is mutable through Gmail, the card's Edit button, and other runs.
-test('refuses to send when the live draft no longer matches what was approved', async () => {
-  const { prisma } = makePrisma(row())
+test('a resumed frozen approval refuses an externally edited Gmail draft before provider send', async () => {
+  const frozenFingerprint = fingerprintDraft({
+    attachmentIds: [], body: 'Here it is.', subject: 'Quarterly update', threadId: 'thread-1',
+    to: ['jana@example.com'],
+  })
+  const { prisma } = makePrisma(row({ contentFingerprint: frozenFingerprint }))
   let sendCalls = 0
   const tampered = liveDraft({
     message: {
@@ -46,7 +50,10 @@ test('refuses to send when the live draft no longer matches what was approved', 
   await assert.rejects(
     sendDraftForUser(
       prisma,
-      { organizationId: ORG, userId: USER, draftActionId: ACTION },
+      {
+        organizationId: ORG, userId: USER, draftActionId: ACTION,
+        expectedFingerprint: frozenFingerprint,
+      },
       deps(routes(tampered, () => { sendCalls += 1 })),
     ),
     (error: unknown) =>
@@ -73,17 +80,65 @@ test('a refused send leaves the draft sendable, not stuck in sending', async () 
   assert.equal(state.row.state, 'draft')
 })
 
-test('sends when the fingerprint matches', async () => {
-  const { prisma, state } = makePrisma(row())
+test('a resumed frozen approval sends once when the provider draft is unchanged', async () => {
+  const frozenFingerprint = fingerprintDraft({
+    attachmentIds: [], body: 'Here it is.', subject: 'Quarterly update', threadId: 'thread-1',
+    to: ['jana@example.com'],
+  })
+  const { prisma, state } = makePrisma(row({ contentFingerprint: frozenFingerprint }))
   let sendCalls = 0
   const result = await sendDraftForUser(
     prisma,
-    { organizationId: ORG, userId: USER, draftActionId: ACTION },
+    {
+      organizationId: ORG, userId: USER, draftActionId: ACTION,
+      expectedFingerprint: frozenFingerprint,
+    },
     deps(routes(liveDraft(), () => { sendCalls += 1 })),
   )
   assert.equal(result.status, 'sent')
   assert.equal(sendCalls, 1)
   assert.equal(state.row.state, 'sent')
+})
+
+test('normalizes bare reply Message-IDs against Gmail bracketed readback', async () => {
+  const { prisma, state } = makePrisma(row({
+    contentFingerprint: fingerprintDraft({
+      to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.',
+      inReplyTo: 'parent@example.com', references: ['root@example.com', 'parent@example.com'],
+      threadId: 'thread-1', attachmentIds: [],
+    }),
+  }))
+  const provider = liveDraft({
+    message: {
+      id: 'msg-1', threadId: 'thread-1', payload: {
+        headers: [
+          { name: 'To', value: 'jana@example.com' }, { name: 'Subject', value: 'Quarterly update' },
+          { name: 'In-Reply-To', value: '<parent@example.com>' },
+          { name: 'References', value: '<root@example.com> <parent@example.com>' },
+        ], mimeType: 'text/plain', body: { data: Buffer.from('Here it is.').toString('base64url') },
+      },
+    },
+  })
+  const result = await sendDraftForUser(
+    prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, deps(routes(provider)),
+  )
+  assert.equal(result.status, 'sent')
+  assert.equal(state.row.state, 'sent')
+})
+
+test('immediate send remains in validation until it claims dispatch', async () => {
+  const { prisma, state } = makePrisma(row())
+  let validating: { claimedAt: Date | null; sendAfter: Date | null; state: string } | null = null
+  await sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, {
+    ...deps(routes(liveDraft())),
+    fetchImpl: (async (url: string, init?: { method?: string }) => {
+      if (!validating && url.includes('/drafts/') && (init?.method ?? 'GET') === 'GET') validating = { ...state.row }
+      return deps(routes(liveDraft())).fetchImpl(url, init)
+    }) as never,
+  })
+  assert.equal(validating?.state, 'sending')
+  assert.equal(validating?.sendAfter, null)
+  assert.deepEqual(validating?.claimedAt, new Date('2026-09-02T10:00:00.000Z'))
 })
 
 test('a second send finds the draft already claimed', async () => {
@@ -342,7 +397,7 @@ test('an update cannot overwrite a send claim after Gmail content was checked', 
     message: { to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.' },
   }, gatedDeps)
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(state.row.state, 'updating')
+  assert.equal(state.row.state, 'update_unknown')
   await assert.rejects(
     sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, gatedDeps),
     (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',

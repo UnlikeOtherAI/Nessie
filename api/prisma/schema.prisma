@@ -5590,6 +5590,10 @@ enum GmailDraftActionState {
   /// An edit owns the provider draft while its new content is being written.
   /// A stale edit is released back to draft; it never authorizes a send.
   updating
+  /// Gmail may have accepted an edit whose response was lost. Unlike a send
+  /// this is not delivery ambiguity, but Nessie must not overwrite it or let
+  /// a later edit race the unresolved provider mutation.
+  update_unknown
   /// Held for the undo window, ready for the send sweep to claim.
   sending
   /// Atomically claimed by a dispatcher (the API's immediate send or the

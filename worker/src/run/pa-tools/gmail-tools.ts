@@ -65,18 +65,35 @@ const SearchSchema = z.object({
 const ThreadSchema = z.object({ threadId: z.string().min(1) }).strict()
 const MessageSchema = z.object({ messageId: z.string().min(1) }).strict()
 
-const DraftSchema = z.object({
+const GmailDraftCreateBaseSchema = z.object({
   to: z.array(z.string()).min(1).max(50),
   cc: z.array(z.string()).max(50).optional(),
   bcc: z.array(z.string()).max(50).optional(),
   subject: z.string().max(500),
   body: z.string().max(100_000),
   replyToThreadId: z.string().optional(),
+  replyToMessageId: z.string().min(1).max(1_000).optional(),
 }).strict()
 
-const DraftUpdateSchema = DraftSchema.omit({ replyToThreadId: true }).extend({
+export const GmailDraftCreateSchema = GmailDraftCreateBaseSchema.refine(
+  (input) => Boolean(input.replyToThreadId) === Boolean(input.replyToMessageId),
+  'A Gmail reply needs both its thread and RFC Message-ID.',
+)
+
+const DraftUpdateSchema = GmailDraftCreateBaseSchema.omit({ replyToMessageId: true, replyToThreadId: true }).extend({
   draftId: z.string().uuid(),
 }).strict()
+
+export const gmailReplyMessage = (args: z.infer<typeof GmailDraftCreateSchema>) => ({
+  to: args.to,
+  ...(args.cc ? { cc: args.cc } : {}),
+  ...(args.bcc ? { bcc: args.bcc } : {}),
+  subject: args.subject,
+  body: args.body,
+  ...(args.replyToMessageId
+    ? { inReplyTo: args.replyToMessageId, references: [args.replyToMessageId] }
+    : {}),
+})
 
 /**
  * A provider draft is an external side effect. Replaying a durable run must
@@ -267,7 +284,7 @@ export const runGmailDraftCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = DraftSchema.parse(input)
+  const args = GmailDraftCreateSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
   try {
     const action = await composeDraftForUser(
@@ -276,13 +293,7 @@ export const runGmailDraftCreateTool = async (
         organizationId: context.channel.organizationId,
         idempotencyKey: gmailDraftCreateIdempotencyKey(context, args),
         userId,
-        message: {
-          to: args.to,
-          ...(args.cc ? { cc: args.cc } : {}),
-          ...(args.bcc ? { bcc: args.bcc } : {}),
-          subject: args.subject,
-          body: args.body,
-        },
+        message: gmailReplyMessage(args),
         ...(args.replyToThreadId ? { providerThreadId: args.replyToThreadId } : {}),
       },
       { encryptionSecret: encryptionSecret() },

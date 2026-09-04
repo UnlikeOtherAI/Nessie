@@ -130,7 +130,20 @@ export const createToolApprovalRequest = async (
           ? { mailboxConnectionId: input.contextExtra.mailboxConnectionId }
           : {}),
       }
-    : {
+    : input.toolName === 'gmail_draft_send'
+      ? {
+          audience: 'The recipients will receive it',
+          externalDisclosureSources: Array.isArray(input.contextExtra?.externalDisclosureSources)
+            ? input.contextExtra.externalDisclosureSources.filter(
+                (source): source is string => typeof source === 'string',
+              )
+            : [],
+          headline: 'Send an email as you',
+          // The exact words, addresses and blind copies are intentionally
+          // absent here. Approval rows are otherwise visible to organization
+          // owners; the pinned preview endpoint reads the frozen resume args.
+        }
+      : {
         approvalActionType: input.approvalActionType ?? null,
         boundaryReason: input.boundaryReason ?? null,
         inputSummary: summarizeToolInput(input.args),
