@@ -47,6 +47,25 @@ const readString = (
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
+const STANDING_CONSENT_TOOL_NAMES = new Set([
+  'gmail_draft_send',
+  'calendar_event_create',
+  'calendar_event_update',
+  'calendar_event_cancel',
+])
+
+/**
+ * The API grants standing consent only when authorization froze a supported
+ * Google action's exact connection. Connected-mailbox sends and account
+ * lifecycle approvals remain one-time decisions.
+ */
+export const canCreateStandingConsentFromApproval = (
+  toolName: string,
+  context: Record<string, unknown> | null | undefined,
+): boolean =>
+  STANDING_CONSENT_TOOL_NAMES.has(toolName)
+  && typeof context?.approvedGoogleConnectionId === 'string'
+
 /**
  * The in-thread doorway for a suspended tool gate. Approval data is never
  * copied into message metadata: this resolves the opaque id through the same
@@ -91,6 +110,7 @@ export const RunApprovalGate = ({
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
   const isCalendar = gate.toolName.startsWith('calendar_')
+  const canCreateStandingConsent = canCreateStandingConsentFromApproval(gate.toolName, context)
 
   const submit = () => {
     resolve.mutate(
@@ -186,7 +206,7 @@ export const RunApprovalGate = ({
       {/* Stopping the asking belongs here, not on a separate settings trip:
           somebody who wants their assistant running their diary should not
           confirm every entry. It never applies to a schedule or an automation. */}
-      {active ? (
+      {active && canCreateStandingConsent ? (
         <div className="mt-3 border-t border-[color:var(--warning-border)] pt-2">
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--tx3)]">
             <span>

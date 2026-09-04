@@ -218,6 +218,15 @@ test('a send with no draft id grants nothing', async () => {
   assert.equal((await resolve('gmail_draft_send', {})).outcome, 'ask')
 })
 
+test('an approval to ask freezes the one Google connection it resolved', async () => {
+  const decision = await resolve(
+    'gmail_draft_send',
+    { draftId: 'd1' },
+    prismaWith({ grant: null }),
+  )
+  assert.deepEqual(decision, { connectionId: CONN, outcome: 'ask' })
+})
+
 // A judged grant is consent to DECIDE, not consent to send: the caller must
 // still run the boundary judge before anything leaves.
 test('a judged grant returns the boundary to judge, never a bare proceed', async () => {

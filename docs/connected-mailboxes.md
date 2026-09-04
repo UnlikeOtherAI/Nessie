@@ -128,9 +128,12 @@ back.
 **Every message is shown to a person before it goes out.** The request lands on
 the approvals surface and, in chat, as a notice on the run — and it is *pinned*
 to one person: the mailbox's owner for a personal one, or whoever connected a
-shared one. It says which address the mail would leave from, and if the agent
-built the message out of something the recipient has no claim to — a private
-document, another person's mail — the approval names that too.
+shared one. The durable approval states whether it is a personal or shared
+mailbox without storing its address, and if the agent built the message out of
+something the recipient has no claim to — a private document, another person's
+mail — the approval names that too. If the shared mailbox's installer has left,
+the send remains blocked; an owner or admin reconnects it under the person who
+should approve future sends.
 
 There is no "let it send without asking" for connected mailboxes yet. The Google
 lane offers standing consent because a grant there is one person's to give about

@@ -260,7 +260,12 @@ export const listSendAuthorizations = async (
  */
 export type StandingConsentDecision =
   | { outcome: 'proceed'; grantId?: string }
-  | { outcome: 'ask' }
+  /**
+   * The exact Google connection the person is being asked about. Persisting it
+   * on the approval prevents a later "don't ask again" click from guessing a
+   * different account after the person's connections have changed.
+   */
+  | { outcome: 'ask'; connectionId?: string }
   /** A `judged` grant applies: the caller must run the boundary judge. */
   | { outcome: 'judge'; grantId: string; boundary: string; connectionId: string }
 
@@ -311,7 +316,7 @@ export const resolveStandingConsentForToolCall = async (
     requestingUserId: input.requestingUserId,
     interactive: input.interactive,
   })
-  if (!grant) return { outcome: 'ask' }
+  if (!grant) return { outcome: 'ask', connectionId }
   if (grant.mode === 'always') return { outcome: 'proceed', grantId: grant.id }
   if (!grant.boundary || grant.boundary.trim().length === 0) {
     // A judged grant with no boundary has nothing to judge against, so it asks

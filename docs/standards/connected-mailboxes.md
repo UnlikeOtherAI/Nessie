@@ -19,7 +19,9 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   guessed**, since sending from the wrong address cannot be taken back; and
   **every send is approved and pinned** to the personal owner or the shared
   mailbox's installer, live-checked, with any source the recipient cannot reach
-  named on the request. Standing send grants are deliberately absent: a grant is
+  named on the request. An inactive shared-mailbox installer never falls back
+  to another member: an owner or admin reconnects the mailbox under an active
+  approver before it can send. Standing send grants are deliberately absent: a grant is
   the mailbox owner's to give about their own account, and a shared mailbox has
   no such owner. The reads feed the disclosure sink with the connection's scope
   in the same call that puts mail in the window — user scope for a personal
