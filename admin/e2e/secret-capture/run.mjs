@@ -231,7 +231,7 @@ const runBrowserCase = async () => {
       { cause: error },
     )
   }
-  await page.getByRole('tab', { name: 'Agents' }).click()
+  await page.getByLabel('Direct message recipient type').getByRole('tab', { name: 'Agents' }).click()
   await page.getByPlaceholder('Type an agent name').fill('Ada')
   await page.getByRole('button', { name: /Ada Agent/ }).click()
   const editor = page.getByRole('textbox').last()
@@ -264,7 +264,7 @@ const runBrowserCase = async () => {
   assert.match(sentMessages[0].content, /OPENAI_API_KEY, SENDGRID_API_KEY/)
 
   await page.goto(`${ADMIN_URL}/channels/new`)
-  await page.getByRole('tab', { name: 'Agents' }).click()
+  await page.getByLabel('Direct message recipient type').getByRole('tab', { name: 'Agents' }).click()
   await page.getByPlaceholder('Type an agent name').fill('Ada')
   await page.getByRole('button', { name: /Ada Agent/ }).click()
   const oversizedEditor = page.getByRole('textbox').last()
