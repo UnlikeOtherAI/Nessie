@@ -127,6 +127,13 @@ export {
 } from './pa-tools/people.js'
 export { runWorkflowTransformPreviewTool } from './pa-tools/workflow-transform.js'
 export {
+  runWorkflowCreateTool,
+  runWorkflowInstallTool,
+  runWorkflowListTool,
+  runWorkflowPreviewTool,
+  runWorkflowTriggerCreateTool,
+} from './pa-tools/workflow-authoring.js'
+export {
   runEmailListTool,
   runEmailReadTool,
   runEmailSendTool,

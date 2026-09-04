@@ -13,7 +13,7 @@ import {
 } from '../../lib/workflow-designer/constants'
 import {
   clamp,
-  getConnectionGeometry,
+  getWorkflowConnectionLayouts,
   getDraftConnectionCandidate,
   getNodeInputAnchor,
   getNodeOutputAnchor,
@@ -56,29 +56,10 @@ export const useWorkflowCanvasInteractions = ({
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
   const [isDraggingNode, setIsDraggingNode] = useState(false)
 
-  const connectionLayouts = useMemo<WorkflowConnectionLayout[]>(() => {
-    return connections.flatMap((connection) => {
-      const sourceNode = nodes.find((node) => node.id === connection.fromNodeId)
-      const targetNode = nodes.find((node) => node.id === connection.toNodeId)
-
-      if (!sourceNode || !targetNode) {
-        return []
-      }
-
-      const sourceAnchor = getNodeOutputAnchor(sourceNode)
-      const targetAnchor = getNodeInputAnchor(targetNode)
-      const geometry = getConnectionGeometry(sourceAnchor, targetAnchor)
-
-      return [
-        {
-          color: nodeThemes[sourceNode.type].border,
-          id: connection.id,
-          midpoint: geometry.midpoint,
-          path: geometry.path,
-        },
-      ]
-    })
-  }, [connections, nodes])
+  const connectionLayouts = useMemo<WorkflowConnectionLayout[]>(
+    () => getWorkflowConnectionLayouts(nodes, connections),
+    [connections, nodes],
+  )
 
   const invalidDraftTarget = useMemo(() => {
     if (!draftConnection || !hoveredHandle) {

@@ -14,6 +14,8 @@ after every platform has passed its release gate.
 - `Nessie-Linux.AppImage` and `Nessie-Linux.deb` — Linux desktop packages.
 - `Nessie-Android.apk` — signed Android internal-distribution build.
 - `SHA256SUMS` — SHA-256 digests for every downloadable asset.
+- `latest.json` — signed release metadata for desktop update checks and the
+  direct Android APK handoff.
 
 The stable asset names deliberately power the homepage URLs under
 `/releases/latest/download/`; a new published release automatically becomes
@@ -23,6 +25,29 @@ Node executor runtime must match the processor architecture.
 The landing page opens a Mac download menu at a reliably detected Apple Silicon
 or Intel choice, while still exposing both installers. It deliberately shows
 both Mac downloads when browser signals are inconclusive.
+
+## Automatic updates
+
+Only direct downloads participate in this mechanism. The direct macOS DMGs,
+Windows **NSIS** installer, and Linux **AppImage** compile Tauri's updater with
+an immutable GitHub Release endpoint and a compiled public signing key. At
+startup, Nessie offers **Update now**, **Skip this version**, or **Remind me
+tomorrow**. A skipped or deferred version never suppresses a newer version.
+The updater verifies Tauri's detached signature before it installs anything;
+the hosted admin cannot select an update URL.
+
+The Windows MSI and Debian package deliberately remain installer/package-manager
+managed, rather than attempting to update an installation they do not own.
+
+The direct Android APK follows the equivalent safe native flow: on startup it
+checks `latest.json` by Android `versionCode`, then offers the same three
+choices. **Update** opens the official signed APK in Android's package installer,
+where Android asks the person to confirm the replacement. It never silently
+installs a package. The `device` and `preview` EAS profiles set
+`EXPO_PUBLIC_RELEASE_CHANNEL=direct`; the `production` store profile explicitly
+sets it to `store`, so Google Play and the App Store alone handle their updates.
+The Mac App Store build also omits the `direct-updater` Cargo feature and its
+native commands, not merely the popup.
 
 ## Required GitHub configuration
 
@@ -40,6 +65,8 @@ needs:
 | `MACOS_NOTARY_API_KEY_ID` | variable | App Store Connect API key ID |
 | `MACOS_NOTARY_API_ISSUER_ID` | variable | App Store Connect API issuer ID |
 | `EXPO_TOKEN` | secret | Expo token for the linked `unlikeotherai/nessie` EAS project |
+| `TAURI_SIGNING_PRIVATE_KEY` | repository secret | Persistent key for signing direct desktop update artifacts |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
 
 The Windows reusable workflow reads its signing configuration from repository
 secrets: `WINDOWS_SIGN_COMMAND`, `WINDOWS_SIGNER_THUMBPRINT`,
@@ -52,6 +79,13 @@ the intended 40-character SHA-1 certificate thumbprint.
 The release caller marks signing mandatory, so missing Windows configuration
 fails the build instead of publishing the workflow's normal unsigned
 development artifact.
+
+The Tauri updater key is independent of both Developer ID and Authenticode
+credentials. Its public key is checked into
+`desktop/src-tauri/tauri.direct-updater.conf.json`; the private key and password
+are repository secrets because the reusable Windows workflow needs them. Keep a
+recoverable owner-controlled backup of that key: losing it prevents every
+already-installed direct desktop client from accepting future releases.
 
 The existing Mac App Store certificate is intentionally not accepted here. A
 GitHub download requires a **Developer ID Application** signature, hardened
@@ -68,8 +102,11 @@ installing over prior Android builds.
 `v0.0.1` is the first public GitHub direct-download release identifier. The
 desktop and Android applications already have independent internal version
 tracks; the workflow records those exact values in its release notes rather
-than mislabelling either binary. Future app-version changes must stay explicit,
-and Android `versionCode` must increase for every installable update.
+than mislabelling either binary. Future app-version changes must stay explicit:
+the direct desktop version must be valid SemVer and strictly greater than the
+version in the latest published `latest.json`, while Android `versionCode` must
+increase for every installable update. The release metadata check rejects a
+desktop downgrade or repeat before a platform build begins.
 
 ## Before tagging
 

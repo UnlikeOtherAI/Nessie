@@ -117,10 +117,15 @@ test('a deep-linked space outside the scoped list uses its detail write verdict'
     if (path.includes('/pages')) return [] as TData
     throw new Error(`Unexpected GET ${path}`)
   }
+  const getPage: ApiClient['getPage'] = async <TData,>(path: string) => ({
+    data: await get<TData>(path),
+    meta: { hasMore: false, nextCursor: null, prevCursor: null, total: 1 },
+  })
   const unavailable = async () => { throw new Error('Unexpected mutation') }
   const apiClient = {
     delete: unavailable,
     get,
+    getPage,
     patch: unavailable,
     post: unavailable,
     put: unavailable,

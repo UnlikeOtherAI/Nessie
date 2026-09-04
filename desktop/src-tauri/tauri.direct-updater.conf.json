@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUxMTJFNzE1QTI1RTIwODUKUldTRklGNmlGZWNTNFY1T3RtSnNTeEQvTnZiK2ZxVGFlNytvb09TODlESkJPU1FtS2VpTW1EdDkK",
+      "endpoints": [
+        "https://github.com/UnlikeOtherAI/Nessie/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

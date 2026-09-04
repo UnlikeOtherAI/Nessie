@@ -187,6 +187,8 @@ export const KnowledgeRecentPageRecordSchema = z.object({
 
 export const KnowledgeListQuerySchema = z.object({
   cursor: z.string().optional(),
+  direction: z.enum(['forward', 'backward']).optional(),
+  includePersonal: z.enum(['true', 'false']).optional(),
   includeArchived: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().positive().max(200).optional(),
   projectId: UuidSchema.optional(),

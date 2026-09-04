@@ -103,8 +103,16 @@ export const registerKnowledgeTaskRoutes = (
       sendApiError(reply, 404, 'TASK_NOT_FOUND', 'Task not found')
       return null
     }
-    const projectId = requireProjectId(actorContext, task.projectId ?? undefined, reply)
-    if (!projectId) return null
+    if (!task.projectId) {
+      sendApiError(
+        reply,
+        409,
+        'TASK_PROJECT_REQUIRED',
+        'Assign this ticket to a project before using its documents',
+      )
+      return null
+    }
+    const projectId = task.projectId
 
     const viewer = await buildViewer(actorContext)
     // Prove entitlement before either provisioner writes. Otherwise a caller

@@ -142,11 +142,19 @@ export type KnowledgePageCursorPage<T> = {
   meta: {
     cursor: string | null
     hasMore: boolean
+    // Present for list APIs that support a reverse keyset fetch. Older search
+    // implementations remain forward-only and omit it.
+    previousCursor?: string | null
+    total?: number
   }
 }
 
 export type ListSpacesInput = {
   cursor?: string
+  direction?: 'forward' | 'backward'
+  // Personal spaces have their own stable doorway (My Docs) and are omitted
+  // from general/project navigation unless a picker explicitly asks for them.
+  includePersonal?: boolean
   limit?: number
   organizationId: string
   projectId?: string

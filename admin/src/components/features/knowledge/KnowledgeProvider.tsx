@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { reportPushSurface } from '../../../lib/push-surface'
 import {
+  useArchiveKnowledgePage,
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
   useEnsureMyDocsSpace,
@@ -47,13 +48,23 @@ type KnowledgeContextValue = {
   // rendering a redundant "Open agent" doorway while it is already there.
   scopeAgentId?: string
   spaces: KnowledgeSpaceRecord[]
+  spacePagination?: {
+    canNext: boolean
+    canPrevious: boolean
+    label: string
+    onPageChange: (page: number) => void
+    onPageSizeChange: (pageSize: number) => void
+    page: number
+    pageCount: number
+    pageSize: number
+  }
   // A document-attention read is only safe after the scoped space list has
   // resolved; loading an empty placeholder must not clear unseen documents.
   spacesLoaded: boolean
   spacesLoadFailed: boolean
-  // The caller's personal "My Docs" space, provisioned once per session via
-  // the idempotent ensure endpoint. Undefined until that call resolves.
-  myDocsSpaceId?: string
+  // The caller's personal "My Docs" space, read separately from the paged
+  // shared-space list so its pinned doorway never vanishes on another page.
+  myDocsSpace?: KnowledgeSpaceRecord | null
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
@@ -107,6 +118,8 @@ type KnowledgeContextValue = {
   closeHistory: () => void
   publishPage: (pageId: string) => void
   publishPending: boolean
+  archivePage: (pageId: string) => Promise<void>
+  archivePending: boolean
   restoreVersion: (input: { pageId: string; versionId: string }) => void
   restorePending: boolean
 }
@@ -156,18 +169,13 @@ export const KnowledgeProvider = ({
   const spacesQuery = useKnowledgeSpaces(projectId, !spaceId)
   const spaceQuery = useKnowledgeSpace(spaceId)
   const myDocsQuery = useEnsureMyDocsSpace(!projectId && !spaceId)
+  const myDocsSpaceQuery = useKnowledgeSpace(myDocsQuery.data?.spaceId)
   const spaces = useMemo(() => {
     const all = spaceId
       ? spaceQuery.data ? [spaceQuery.data] : []
-      : spacesQuery.data ?? []
-    // A personal "My Docs" space is filed under whichever project provisioned
-    // it, so a project-scoped list would otherwise show someone's private
-    // notebook as project documentation. The global surface still pins it.
-    const scoped = projectId
-      ? all.filter((space) => (space.metadata as { personal?: boolean } | null)?.personal !== true)
-      : all
-    return [...scoped].sort((left, right) => left.name.localeCompare(right.name))
-  }, [projectId, spaceId, spaceQuery.data, spacesQuery.data])
+      : spacesQuery.items
+    return [...all].sort((left, right) => left.name.localeCompare(right.name))
+  }, [spaceId, spaceQuery.data, spacesQuery.items])
 
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>(spaceId)
   const [pagePath, setPagePath] = useState<string[]>([])
@@ -186,6 +194,7 @@ export const KnowledgeProvider = ({
   const createPageMutation = useCreateKnowledgePage(selectedSpaceId)
   const updatePageMutation = useUpdateKnowledgePage()
   const publishPageMutation = usePublishKnowledgePage()
+  const archivePageMutation = useArchiveKnowledgePage()
   const restoreVersionMutation = useRestoreKnowledgeVersion()
   const seedMutation = useSeedKnowledgeBase()
 
@@ -202,7 +211,7 @@ export const KnowledgeProvider = ({
   // First visit with no spaces: seed a "General" space + one example page.
   const seededRef = useRef(false)
   useEffect(() => {
-    if (projectId || spaceId || seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
+    if (projectId || spaceId || seededRef.current || !spacesQuery.query.isSuccess || spacesQuery.total !== 0) return
     // Seed at most once per mount — never reset the guard on error, so a
     // persistent failure can't spin into a retry loop of failed POSTs.
     seededRef.current = true
@@ -218,7 +227,7 @@ export const KnowledgeProvider = ({
         onSuccess: (space) => setSelectedSpaceId(space.id),
       },
     )
-  }, [projectId, spaceId, spacesQuery.isSuccess, spaces.length, me, seedMutation])
+  }, [projectId, spaceId, spacesQuery.query.isSuccess, spacesQuery.total, me, seedMutation])
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()
@@ -416,6 +425,16 @@ export const KnowledgeProvider = ({
     void publishPageMutation.mutateAsync({ pageId })
   }
 
+  const archivePage = async (pageId: string) => {
+    await archivePageMutation.mutateAsync({ pageId })
+    const pageIndex = pagePath.indexOf(pageId)
+    const nextPath = pageIndex >= 0 ? pagePath.slice(0, pageIndex) : []
+    setPagePath(nextPath)
+    setOpenPageId(nextPath.at(-1))
+    setEditor(null)
+    setHistoryPageId(undefined)
+  }
+
   const restoreVersion = (input: { pageId: string; versionId: string }) => {
     void restoreVersionMutation.mutateAsync({
       ...input,
@@ -427,9 +446,21 @@ export const KnowledgeProvider = ({
     scopeAgentId: agentId,
     scopeProjectId: projectId,
     spaces,
-    spacesLoaded: spaceId ? spaceQuery.isSuccess : spacesQuery.isSuccess,
-    spacesLoadFailed: spaceId ? spaceQuery.isError : spacesQuery.isError,
-    myDocsSpaceId: myDocsQuery.data?.spaceId,
+    spacePagination: spaceId
+      ? undefined
+      : {
+          canNext: spacesQuery.canNext,
+          canPrevious: spacesQuery.canPrevious,
+          label: spacesQuery.label,
+          onPageChange: spacesQuery.onPageChange,
+          onPageSizeChange: spacesQuery.onPageSizeChange,
+          page: spacesQuery.page,
+          pageCount: spacesQuery.pageCount,
+          pageSize: spacesQuery.pageSize,
+        },
+    spacesLoaded: spaceId ? spaceQuery.isSuccess : spacesQuery.query.isSuccess,
+    spacesLoadFailed: spaceId ? spaceQuery.isError : spacesQuery.query.isError,
+    myDocsSpace: myDocsSpaceQuery.data ?? null,
     selectedSpaceId,
     selectedSpace,
     selectSpace,
@@ -470,6 +501,8 @@ export const KnowledgeProvider = ({
     closeHistory,
     publishPage,
     publishPending: publishPageMutation.isPending,
+    archivePage,
+    archivePending: archivePageMutation.isPending,
     restoreVersion,
     restorePending: restoreVersionMutation.isPending,
   }

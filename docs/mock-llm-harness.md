@@ -27,6 +27,9 @@ load runs.
     enqueues real `run.execute` jobs, and runs the real `executeRunJob` handler
     through `PgQueueProvider` subscribers (one per "worker replica").
   - `smoke.ts` — the CI smoke run (below).
+  - `trigger-smoke.ts` — creates every non-workflow trigger through the
+    Personal Assistant tool path, then proves manual, webhook, event, cron and
+    interval dispatch reach the real agent loop (below).
   - `load.ts` — the load mode (below).
 
 ## Scenario files
@@ -97,6 +100,20 @@ It drives one full scenario — message → `run.execute` enqueue → agentic lo
 - the `run.timing` `TaskEvent` (`outcome`, `inferenceCount=2`, `toolCount=1`),
 - two `token_ledger_events` rows with the run's attribution and token usage,
 - agent back to `idle`, task `done`.
+
+## Agent trigger smoke test
+
+```
+pnpm --filter @nessie/worker test:triggers
+```
+
+Set `DATABASE_URL` to a dedicated, freshly migrated test database first. This
+smoke drives the global scheduler, so it intentionally refuses to run against
+an unspecified or shared developer database. It creates `manual`, `scheduled`,
+`interval`, `webhook`, and `event` triggers via `agent_trigger_create`, fires
+each real non-workflow dispatch path, and checks that every delivery preserves
+its payload while the agent reaches `completed`. Workflow triggers are
+deliberately outside this proof.
 
 ## Load mode
 
