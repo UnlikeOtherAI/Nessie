@@ -106,16 +106,21 @@ executor ID. Consuming a handle creates the binding transactionally.
 2. The server creates `ExecutorEnrollment` with a 256-bit random challenge,
    stores only its SHA-256 verifier, and expires it in ten minutes. Its single
    use is linearized under an enrollment advisory lock.
-3. The daemon generates its signing key, displays its fingerprint and proposed
-   local policy, then submits `{ enrollmentId, challenge, publicKey,
+3. The daemon generates its signing key and signed request, then atomically
+   stores that exact material with the canonical workspace in its owner-only
+   state directory before making a network request. A retry after response loss
+   must reuse this prepared key; different pairing input is refused.
+4. The daemon submits `{ enrollmentId, challenge, publicKey,
    descriptorDigest, proof }`. `proof` signs the canonical enrollment object
-   with `nessie.executor.enrollment.v1` domain separation.
-   If the response is lost, an exact retry with the same challenge, key, and
-   descriptor returns the existing pending result without creating another
-   capability revision; any differing retry remains rejected as used.
-4. The server consumes the verifier once, records the pending key/fingerprint,
-   and presents the exact fingerprint and data boundary to the human.
-5. The human confirms in web or companion UI. The executor remains offline
+    with `nessie.executor.enrollment.v1` domain separation. An exact replay of
+    the same pending request returns the existing fingerprint; a changed key,
+    descriptor, or proof is rejected.
+5. The server consumes the verifier once, records the pending key/fingerprint,
+    and presents the exact fingerprint and data boundary to the human. The
+    replay returns that pending result without creating another capability
+    revision. Only after the complete paired state is durable does the daemon
+    remove its local preparation record.
+6. The human confirms in web or companion UI. The executor remains offline
    until its daemon proves possession of the paired key; pairing may never
    complete from chat text or a terminal transcript.
 
@@ -143,7 +148,10 @@ therefore cannot extend its last-seen time. Sixty seconds is also the sole
 server-side liveness threshold: once the last authenticated daemon activity is
 older, an online executor is durably marked offline before it can be listed,
 selected, or dispatched. This channel reports availability only: it cannot
-lease or execute a command.
+lease or execute a command. Every HTTP control request has a 15-second client
+deadline and is cancelled during daemon shutdown. A heartbeat still in flight
+suppresses the next interval, so network delay cannot accumulate overlapping
+liveness or reconnect requests.
 
 While it owns the current connection epoch, a daemon may submit a higher
 descriptor revision. The descriptor's own `nessie.executor.descriptor.v1`
@@ -180,8 +188,8 @@ The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
 owner-only local state directory. The sole exception is the desktop-packaged
 debug build, which injects an internal opt-in for exactly
 `http://127.0.0.1:5454`; no user-provided flag enables a non-TLS production
-origin. It generates and stores the machine key
-locally, submits the signed enrollment proof, and after the human confirms the
+origin. It prepares and stores the machine key and exact signed enrollment
+request locally before submission, and after the human confirms the
 fingerprint, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW team operations:
 `file.list`, `file.read`, `file.write`, `team.review`, and
@@ -372,6 +380,15 @@ At the wait deadline, the worker takes the receipt lock once and either reads
 the already committed terminal result or marks the command `unknown_outcome`.
 A terminal receipt that wins that ordering is returned, never misreported as
 unknown; a later matching result may still resolve a genuinely unknown outcome.
+Before sending `accepted`, the daemon atomically records the delivered command
+in an owner-only local recovery journal. It durably advances that journal before
+starting local execution and persists the bounded structured result before the
+terminal receipt. A lost HTTP response therefore replays the same monotonic
+transition under the current connection epoch. A restart replays a saved
+accepted, started, or terminal transition; it never polls past pending local
+recovery. If the process died after local execution began but before its result
+was durable, the replacement daemon returns
+`EXECUTOR_COMMAND_UNKNOWN_OUTCOME` and does not run the side effect again.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored
