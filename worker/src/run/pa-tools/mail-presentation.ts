@@ -12,18 +12,27 @@ import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
 import { publishMessageCreated } from '../execute/realtime.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveEffectiveUserId } from './access.js'
-import { reviewUrlForMailPresentation } from './mail-presentation-reference.js'
+import {
+  mailPresentationReference,
+  reviewUrlForMailPresentation,
+} from './mail-presentation-reference.js'
 
 const MailboxComposeSchema = z.object({ connectionId: z.string().uuid().optional() }).strict()
 
 const accessFor = async (
   context: BuiltinToolRuntimeContext,
-  input: { accountId?: string; draftId?: string; source: 'gmail' | 'mailbox' },
+  input: {
+    accountId?: string
+    draftId?: string
+    mode: 'account' | 'thread' | 'compose'
+    source: 'gmail' | 'mailbox'
+  },
 ) => resolveConnectedMailPresentationAccess(context.prisma, {
   accountId: input.accountId,
   draftId: input.draftId,
   agentId: context.agentId,
   effectiveUserId: resolveEffectiveUserId(context),
+  mode: input.mode,
   organizationId: context.channel.organizationId,
   source: input.source,
 })
@@ -93,6 +102,7 @@ export const runMailboxComposeTool = async (
   const args = MailboxComposeSchema.parse(input)
   const access = await accessFor(context, {
     accountId: args.connectionId,
+    mode: 'compose',
     source: 'mailbox',
   })
   context.consumedSources?.add(access.basis)
@@ -107,7 +117,14 @@ export const runMailboxComposeTool = async (
       { type: 'input', key: 'cc', label: 'Cc', input: 'text' },
       { type: 'input', key: 'bcc', label: 'Bcc', input: 'text' },
       { type: 'input', key: 'subject', label: 'Subject', input: 'text', required: true },
-      { type: 'input', key: 'body', label: 'Message', input: 'textarea', required: true },
+      {
+        type: 'input',
+        key: 'body',
+        label: 'Message',
+        input: 'textarea',
+        maxLength: 100_000,
+        required: true,
+      },
     ],
     schemaVersion: 1,
     service: { key: 'mail', label: 'Mail' },
@@ -118,6 +135,11 @@ export const runMailboxComposeTool = async (
     outputPreview: JSON.stringify({
       card,
       connectionId: access.accountId,
+      mailPresentation: mailPresentationReference({
+        accountId: access.accountId,
+        mode: 'compose',
+        source: 'mailbox',
+      }),
       instruction:
         'Post this with card_post. A Send press is only a response; use mailbox_send afterwards so approval is still required.',
     }),

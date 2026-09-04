@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
+import { getGoogleCapability } from '@nessie/schemas'
 
 import {
   ConnectedMailPresentationError,
@@ -22,6 +23,13 @@ const sharedConnection = {
   ownerUserId: null,
   teamId: IDS.team,
 }
+
+const gmailConnection = (capability: 'gmail.read' | 'gmail.compose') => ({
+  disabledCapabilities: [],
+  grantedScopes: [...getGoogleCapability(capability).scopes],
+  id: IDS.account,
+  ownerUserId: IDS.user,
+})
 
 const mailboxPrisma = (options: {
   access?: boolean
@@ -52,6 +60,7 @@ test('mail presentation refuses a shared mailbox without a live team entitlement
       accountId: IDS.account,
       agentId: IDS.agent,
       effectiveUserId: IDS.user,
+      mode: 'account',
       organizationId: IDS.organization,
       source: 'mailbox',
     }),
@@ -65,6 +74,7 @@ test('mail presentation does not let an organization admin bypass live team memb
       accountId: IDS.account,
       agentId: IDS.agent,
       effectiveUserId: IDS.user,
+      mode: 'account',
       organizationId: IDS.organization,
       source: 'mailbox',
     }),
@@ -78,6 +88,7 @@ test('mail presentation still requires the per-connection access row', async () 
       accountId: IDS.account,
       agentId: IDS.agent,
       effectiveUserId: IDS.user,
+      mode: 'account',
       organizationId: IDS.organization,
       source: 'mailbox',
     }),
@@ -96,6 +107,7 @@ test('mail presentation ambiguity does not disclose inaccessible shared mailboxe
     }), {
       agentId: IDS.agent,
       effectiveUserId: IDS.user,
+      mode: 'account',
       organizationId: IDS.organization,
       source: 'mailbox',
     }),
@@ -126,6 +138,7 @@ test('mail presentation refuses a personal mailbox after its owner loses live me
       accountId: IDS.account,
       agentId: IDS.agent,
       effectiveUserId: IDS.user,
+      mode: 'account',
       organizationId: IDS.organization,
       source: 'mailbox',
     }),
@@ -136,7 +149,7 @@ test('mail presentation refuses a personal mailbox after its owner loses live me
 test('mail presentation proves that the current user owns the Google connection', async () => {
   const prisma = {
     commsConnection: {
-      findFirst: async () => ({ id: IDS.account, ownerUserId: IDS.user }),
+      findFirst: async () => gmailConnection('gmail.read'),
     },
     organizationMember: {
       findUnique: async () => ({ deactivatedAt: null, role: 'member' }),
@@ -146,6 +159,7 @@ test('mail presentation proves that the current user owns the Google connection'
     accountId: IDS.account,
     agentId: IDS.agent,
     effectiveUserId: IDS.user,
+    mode: 'account',
     organizationId: IDS.organization,
     source: 'gmail',
   })
@@ -155,7 +169,7 @@ test('mail presentation proves that the current user owns the Google connection'
 test('mail presentation binds a Gmail compose doorway to the current owner draft', async () => {
   const calls: unknown[] = []
   const prisma = {
-    commsConnection: { findFirst: async () => ({ id: IDS.account, ownerUserId: IDS.user }) },
+    commsConnection: { findFirst: async () => gmailConnection('gmail.compose') },
     gmailDraftAction: { findFirst: async (args: unknown) => { calls.push(args); return null } },
     organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
   } as unknown as PrismaClient
@@ -164,7 +178,8 @@ test('mail presentation binds a Gmail compose doorway to the current owner draft
       accountId: IDS.account,
       agentId: IDS.agent,
       draftId: '00000000-0000-4000-8000-000000000006',
-      effectiveUserId: IDS.user,
+    effectiveUserId: IDS.user,
+      mode: 'compose',
       organizationId: IDS.organization,
       source: 'gmail',
     }),
@@ -172,4 +187,45 @@ test('mail presentation binds a Gmail compose doorway to the current owner draft
   )
   assert.match(JSON.stringify(calls[0]), new RegExp(`"connectionId":"${IDS.account}"`))
   assert.match(JSON.stringify(calls[0]), new RegExp(`"ownerUserId":"${IDS.user}"`))
+})
+
+test('a Gmail account or thread doorway requires the Gmail read capability', async () => {
+  const prisma = {
+    commsConnection: { findFirst: async () => gmailConnection('gmail.compose') },
+    organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
+  } as unknown as PrismaClient
+  await assert.rejects(
+    resolveConnectedMailPresentationAccess(prisma, {
+      accountId: IDS.account,
+      agentId: IDS.agent,
+      effectiveUserId: IDS.user,
+      mode: 'thread',
+      organizationId: IDS.organization,
+      source: 'gmail',
+    }),
+    (error: unknown) => error instanceof ConnectedMailPresentationError,
+  )
+})
+
+test('a Gmail compose doorway requires an enabled Gmail compose capability', async () => {
+  const prisma = {
+    commsConnection: {
+      findFirst: async () => ({
+        ...gmailConnection('gmail.compose'),
+        disabledCapabilities: ['gmail.compose'],
+      }),
+    },
+    organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
+  } as unknown as PrismaClient
+  await assert.rejects(
+    resolveConnectedMailPresentationAccess(prisma, {
+      accountId: IDS.account,
+      agentId: IDS.agent,
+      effectiveUserId: IDS.user,
+      mode: 'compose',
+      organizationId: IDS.organization,
+      source: 'gmail',
+    }),
+    (error: unknown) => error instanceof ConnectedMailPresentationError,
+  )
 })

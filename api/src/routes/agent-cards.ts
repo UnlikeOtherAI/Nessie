@@ -10,6 +10,7 @@ import {
   parseUserId,
 } from '@nessie/schemas'
 import { applyReplyBookkeeping } from '@nessie/runtime'
+import { inheritAgentCardResponseBasis } from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -155,6 +156,7 @@ export const registerAgentCardRoutes = (
 
     let outcome: {
       responseMessageId: string
+      responseRestricted: boolean
       resumedRunId: string | null
       rootMessageId: string | null
       replyMetadata: Awaited<ReturnType<typeof applyReplyBookkeeping>> | null
@@ -213,6 +215,11 @@ export const registerAgentCardRoutes = (
           },
           select: { createdAt: true, id: true },
         })
+        await inheritAgentCardResponseBasis(tx, {
+          organizationId,
+          responseMessageId: responseMessage.id,
+          sourceBasis: card.message.basisScopes,
+        })
         const replyMetadata = await applyReplyBookkeeping(tx, {
           authorId: userId,
           replyCreatedAt: responseMessage.createdAt,
@@ -251,6 +258,7 @@ export const registerAgentCardRoutes = (
             return {
               replyMetadata,
               responseMessageId: responseMessage.id,
+              responseRestricted: card.message.basisScopes.length > 0,
               resumedRunId: resumed.runId,
               rootMessageId,
             }
@@ -279,6 +287,7 @@ export const registerAgentCardRoutes = (
         return {
           replyMetadata,
           responseMessageId: responseMessage.id,
+          responseRestricted: card.message.basisScopes.length > 0,
           resumedRunId: null,
           rootMessageId,
         }
@@ -330,7 +339,9 @@ export const registerAgentCardRoutes = (
       data: {
         authorUserId: parseUserId(userId),
         channelId: parseChannelId(card.channelId),
-        contentPreview: content.slice(0, 200),
+        ...(outcome.responseRestricted
+          ? { restricted: true }
+          : { contentPreview: content.slice(0, 200) }),
         messageId: outcome.responseMessageId,
         role: 'user' as const,
         rootMessageId: outcome.rootMessageId ?? undefined,
