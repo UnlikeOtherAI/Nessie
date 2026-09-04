@@ -12,28 +12,9 @@ import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
 import { publishMessageCreated } from '../execute/realtime.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveEffectiveUserId } from './access.js'
+import { reviewUrlForMailPresentation } from './mail-presentation-reference.js'
 
 const MailboxComposeSchema = z.object({ connectionId: z.string().uuid().optional() }).strict()
-
-const reviewUrlFor = (input: {
-  source: 'gmail' | 'mailbox'
-  accountId: string
-  mode: 'account' | 'thread' | 'compose'
-  threadId?: string
-  draftId?: string
-}): string => {
-  const account = encodeURIComponent(input.accountId)
-  const base = `/mail/${input.source}/${account}`
-  if (input.mode === 'account') return base
-  if (input.mode === 'thread' && input.threadId) {
-    return `${base}/threads/${encodeURIComponent(input.threadId)}`
-  }
-  const query = new URLSearchParams()
-  if (input.threadId) query.set('threadId', input.threadId)
-  if (input.draftId) query.set('draftId', input.draftId)
-  const suffix = query.size > 0 ? `?${query.toString()}` : ''
-  return `${base}/compose${suffix}`
-}
 
 const accessFor = async (
   context: BuiltinToolRuntimeContext,
@@ -90,7 +71,7 @@ export const runMailPresentTool = async (
 
   const output = MailPresentToolOutputSchema.parse({
     messageId: created.id,
-    reviewUrl: reviewUrlFor(args),
+    reviewUrl: reviewUrlForMailPresentation(args),
   })
   return {
     inputSummary: `source=${args.source}; mode=${args.mode}; account=${args.accountId}`,

@@ -4,7 +4,12 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 
 import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
+import { postGmailDraftDoorway } from './gmail-tools.js'
 import { runMailPresentTool, runMailboxComposeTool } from './mail-presentation.js'
+import {
+  appendMailPresentationReferences,
+  mailPresentationReference,
+} from './mail-presentation-reference.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 const IDS = {
@@ -26,6 +31,7 @@ const makeContext = (
   options: { access?: boolean; effectiveUser?: string | null; actorType?: 'agent' | 'user' } = {},
 ) => {
   const messageCreates: CapturedCreate[] = []
+  const draftMessageUpdates: Array<{ where: { id: string }; data: { messageId: string } }> = []
   const events: Array<{ event: string; data: Record<string, unknown> }> = []
   const prisma = {
     mailboxConnection: {
@@ -37,6 +43,11 @@ const makeContext = (
         ownerUserId: IDS.user,
         teamId: null,
       }],
+    },
+    gmailDraftAction: {
+      update: async (input: { where: { id: string }; data: { messageId: string } }) => {
+        draftMessageUpdates.push(input)
+      },
     },
     message: {
       create: async (input: CapturedCreate) => {
@@ -93,7 +104,7 @@ const makeContext = (
     },
     toolCallId: null,
   } as unknown as BuiltinToolRuntimeContext
-  return { context, events, messageCreates }
+  return { context, draftMessageUpdates, events, messageCreates }
 }
 
 test('mail_present stamps disclosure and publishes only the restricted message signal', async () => {
@@ -154,4 +165,68 @@ test('mailbox_compose returns the universal card template and does not send', as
   assert.deepEqual(output.card.actions.map((action) => action.key), ['send', 'dismiss'])
   assert.equal(messageCreates.length, 0)
   assert.equal(events.length, 0)
+})
+
+test('a Gmail draft doorway stamps its owner basis and never publishes draft copy', async () => {
+  const { context, draftMessageUpdates, events, messageCreates } = makeContext()
+  const draftId = '00000000-0000-4000-8000-000000000011'
+
+  await postGmailDraftDoorway(context, {
+    connectionId: IDS.account,
+    contentFingerprint: 'fingerprint',
+    id: draftId,
+    ownerUserId: IDS.user,
+    providerDraftId: 'google-draft',
+    revision: 1,
+    state: 'draft',
+  })
+
+  assert.deepEqual(context.consumedSources?.list(), [{ scopeId: IDS.user, scopeType: 'user' }])
+  assert.equal(messageCreates[0]?.data.content, 'Draft ready. Open Mail to review and send it.')
+  assert.deepEqual(messageCreates[0]?.data.metadata, {
+    mailSurfaceDoorway: {
+      accountId: IDS.account,
+      draftId,
+      mode: 'compose',
+      source: 'gmail',
+    },
+  })
+  assert.deepEqual(draftMessageUpdates, [{
+    data: { messageId: IDS.message },
+    where: { id: draftId },
+  }])
+  assert.equal(events[0]?.data.restricted, true)
+  assert.equal('contentPreview' in (events[0]?.data ?? {}), false)
+})
+
+test('mail presentation references carry canonical URLs but no mail copy', () => {
+  const gmailRef = mailPresentationReference({
+    accountId: IDS.account,
+    mode: 'thread',
+    source: 'gmail',
+    threadId: 'gmail-thread',
+  })
+  const mailboxRef = mailPresentationReference({
+    accountId: IDS.account,
+    mode: 'account',
+    source: 'mailbox',
+  })
+  const output = appendMailPresentationReferences('provider result', [gmailRef, mailboxRef])
+
+  assert.deepEqual(JSON.parse(output.split('\n\n')[1] ?? '{}'), {
+    mailPresentation: [{
+      accountId: IDS.account,
+      mode: 'thread',
+      reviewUrl: `/mail/gmail/${IDS.account}/threads/gmail-thread`,
+      source: 'gmail',
+      threadId: 'gmail-thread',
+    }, {
+      accountId: IDS.account,
+      mode: 'account',
+      reviewUrl: `/mail/mailbox/${IDS.account}`,
+      source: 'mailbox',
+    }],
+  })
+  assert.equal(output.includes('subject'), false)
+  assert.equal(output.includes('recipient'), false)
 })
