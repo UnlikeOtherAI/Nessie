@@ -147,7 +147,7 @@ export const DesktopWindowFrame = ({
 
   // The frame's geometry has to reach `html`/`body`: on Linux the window itself
   // is transparent, so the body background must stop painting the gutter, and
-  // every full-height rule resolves `--app-vh` against the inset frame instead
+  // every full-height rule resolves `--app-live-height` against the inset frame instead
   // of the raw viewport.
   useEffect(() => {
     if (typeof document === 'undefined') return

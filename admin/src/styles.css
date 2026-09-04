@@ -75,7 +75,7 @@
      gutter (see `.desktop-frame`); every full-height root resolves this token
      rather than restating `100dvh`, so the frame shrinks the app instead of
      letting it overflow behind the rounded corners. */
-  --app-vh: 100dvh;
+  --app-live-height: 100dvh;
   --desktop-frame-gutter: 12px;
   --desktop-frame-radius: 12px;
   --desktop-frame-controls-w: 138px;
@@ -275,7 +275,7 @@
 html,
 body,
 #root {
-  height: var(--app-vh);
+  height: var(--app-live-height);
 }
 
 body {
@@ -357,7 +357,7 @@ a {
 .admin-frame {
   display: flex;
   flex-direction: column;
-  height: var(--app-vh);
+  height: var(--app-live-height);
   background: var(--rail);
   color: var(--tx);
 }
@@ -871,7 +871,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 }
 
 .admin-frame.has-mobile-tabbar {
-  height: calc(var(--app-vh) - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
+  height: calc(var(--app-live-height) - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
 }
 
 /* Browser counterpart to the installed phone shell's team bar. It only
@@ -965,7 +965,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 }
 
 :root[data-desktop-frame='linux'][data-desktop-frame-flush='false'] {
-  --app-vh: calc(100dvh - (2 * var(--desktop-frame-gutter)));
+  --app-live-height: calc(100dvh - (2 * var(--desktop-frame-gutter)));
 }
 
 /* The drag strip sits above the chromeless routes (sign-in, bootstrap, the
