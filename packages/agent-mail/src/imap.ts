@@ -240,19 +240,17 @@ export class ImapSession {
     return uids.sort((a, b) => b - a)
   }
 
-  /**
-   * Fetch whole messages by UID. `BODY.PEEK[]` rather than `BODY[]`: reading a
-   * mailbox must not mark somebody's mail as read behind their back.
-   */
+  /** Resolve a structural Message-ID with a literal, never a quoted header value. */
+  async searchMessageIdUids(messageId: string): Promise<number[]> {
+    return this.searchUids(['HEADER MESSAGE-ID ', { literal: messageId }])
+  }
+
+  /** Fetch headers and MIME metadata only; message bodies use bounded sections. */
   async fetchMessages(
     uids: number[],
-    what: 'full' | 'headers',
   ): Promise<{ uid: number; raw: Buffer; flags: string[]; bodyStructure: ImapBodyPart[] }[]> {
     if (uids.length === 0) return []
-    const item =
-      what === 'full'
-        ? 'BODY.PEEK[]'
-        : 'BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] BODYSTRUCTURE'
+    const item = 'BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] BODYSTRUCTURE'
     // UIDs are integers we produced from SEARCH output, never model text.
     const set = uids.join(',')
     const result = await this.run([`UID FETCH ${set} (UID FLAGS ${item})`])
@@ -266,7 +264,7 @@ export class ImapSession {
       const flags = /\bFLAGS\s*\(([^)]*)\)/i.exec(response.text)?.[1]
         ?.split(/\s+/).filter(Boolean) ?? []
       messages.push({
-        bodyStructure: what === 'headers' ? parseImapBodyStructure(response.text) : [],
+        bodyStructure: parseImapBodyStructure(response.text),
         flags,
         raw,
         uid: Number(uidMatch[1]),

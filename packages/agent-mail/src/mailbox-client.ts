@@ -1,5 +1,7 @@
 import { ImapSession, type ImapPart } from './imap.js'
+import { imapAttachmentParts, imapTextParts } from './imap-bodystructure.js'
 import { buildOutboundMime, parseInboundEmail, type OutboundEmail } from './mime.js'
+import { htmlToText } from './sanitize-html.js'
 import { closeSmtpSession, openSmtpSession, sendOverSmtp } from './smtp.js'
 import type { DialOptions, MailEndpoint } from './dial.js'
 
@@ -85,9 +87,10 @@ export const MAX_CONTENT_TYPE_CHARS = 200
 export const MAX_FILENAME_CHARS = 500
 export const MAX_CONVERSATION_MESSAGES = 200
 export const MAX_CONVERSATION_BODY_CHARS = 100_000
-// IMAP lacks a portable partial-message primitive in this client. Restrict each
-// literal and the aggregate conversation response until BODYSTRUCTURE support.
+// Header literals and individual text sections stay bounded even when a remote
+// message contains a huge attachment.
 const MAX_CONNECTED_IMAP_LITERAL_BYTES = 1_000_000
+const MAX_IMAP_TEXT_SECTION_BYTES = 256 * 1024
 export const MAX_CONVERSATION_RESPONSE_BYTES = 2_000_000
 
 export const bounded = (value: string, max: number): string => value.slice(0, max)
@@ -167,7 +170,7 @@ export const searchMailbox = async (
 ): Promise<MailboxSummary[]> => withImap(endpoints, options, async (session) => {
   await session.selectFolder(query.folder?.trim() || DEFAULT_FOLDER)
   const uids = (await session.searchUids(buildCriteria(query))).slice(0, query.limit)
-  const fetched = await session.fetchMessages(uids, 'headers')
+  const fetched = await session.fetchMessages(uids)
   const summaries = await Promise.all(fetched.map(async (message) =>
     summarize(message.uid, await parseInboundEmail(message.raw))))
   const rank = new Map(uids.map((uid, index) => [uid, index]))
@@ -180,22 +183,55 @@ export const readMailboxMessage = async (
   options: MailboxClientOptions,
 ): Promise<MailboxMessage | null> => withImap(endpoints, options, async (session) => {
   await session.selectFolder(input.folder?.trim() || DEFAULT_FOLDER)
-  const [fetched] = await session.fetchMessages([input.uid], 'full')
+  const [fetched] = await session.fetchMessages([input.uid])
   if (!fetched) return null
   const parsed = await parseInboundEmail(fetched.raw)
-  const truncated = parsed.textBody.length > MAX_BODY_CHARS
+  const textPart = imapTextParts(fetched.bodyStructure).find((part) => part.textKind === 'plain')
+    ?? imapTextParts(fetched.bodyStructure).find((part) => part.textKind === 'html')
+  const payload = textPart
+    ? await session.fetchBodySection(fetched.uid, textPart.section, MAX_IMAP_TEXT_SECTION_BYTES)
+    : null
+  const decoded = payload && textPart ? decodeImapTextPart(payload, textPart.encoding) : Buffer.alloc(0)
+  const text = textPart?.textKind === 'html'
+    ? htmlToText(decodeImapText(decoded, textPart.charset))
+    : decodeImapText(decoded, textPart?.charset ?? null)
+  const truncated = text.length > MAX_BODY_CHARS
+    || payload?.byteLength === MAX_IMAP_TEXT_SECTION_BYTES
   return {
     ...summarize(fetched.uid, parsed),
-    attachments: parsed.attachments.map((attachment) => ({
-      bytes: attachment.content.byteLength,
+    attachments: imapAttachmentParts(fetched.bodyStructure).map((attachment) => ({
+      bytes: attachment.bytes,
       contentType: attachment.contentType,
-      filename: attachment.filename,
+      filename: attachment.filename ?? 'attachment',
     })),
     cc: parsed.ccAddresses,
-    text: truncated ? parsed.textBody.slice(0, MAX_BODY_CHARS) : parsed.textBody,
+    text: text.slice(0, MAX_BODY_CHARS),
     truncated,
   }
 })
+
+const decodeImapTextPart = (input: Buffer, encoding: string | null): Buffer => {
+  const normalized = encoding?.toUpperCase()
+  if (normalized === 'BASE64') return Buffer.from(input.toString('ascii').replace(/\s/g, ''), 'base64')
+  if (normalized !== 'QUOTED-PRINTABLE') return input
+  const value = input.toString('latin1').replace(/=\r?\n/g, '')
+  const bytes: number[] = []
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === '=' && /^[0-9a-f]{2}$/i.test(value.slice(index + 1, index + 3))) {
+      bytes.push(Number.parseInt(value.slice(index + 1, index + 3), 16))
+      index += 2
+    } else bytes.push(value.charCodeAt(index))
+  }
+  return Buffer.from(bytes)
+}
+
+const decodeImapText = (input: Buffer, charset: string | null): string => {
+  try {
+    return new TextDecoder(charset?.trim() || 'utf-8', { fatal: false }).decode(input)
+  } catch {
+    return input.toString('utf8')
+  }
+}
 
 export const sendFromMailbox = async (
   endpoints: MailboxEndpoints,

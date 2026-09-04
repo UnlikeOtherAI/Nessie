@@ -230,6 +230,14 @@ describe('IMAP client', () => {
           }
           if (/UID FETCH/i.test(line)) {
             const structure = '(("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "QUOTED-PRINTABLE" 12 1 NIL NIL NIL)("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 9000000 NIL ("ATTACHMENT" ("FILENAME" "invoice.pdf")) NIL NIL) "MIXED")'
+            if (/BODY\.PEEK\[TEXT\]</i.test(line)) {
+              const body = 'Body with )\r\nand more\r\n'
+              socket.write(
+                `* 1 FETCH (UID 13 BODY[TEXT]<0> {${Buffer.byteLength(body)}}\r\n${body})\r\n`
+                + `${tag} OK FETCH completed\r\n`,
+              )
+              continue
+            }
             if (/BODY\.PEEK\[1\]</i.test(line)) {
               const body = 'Hello=20world'
               socket.write(
@@ -298,7 +306,7 @@ describe('IMAP client', () => {
     )
   })
 
-  test('reads a literal body containing the characters that end a response', async () => {
+  test('reads a bounded text literal containing the characters that end a response', async () => {
     const { port } = await imapServer()
     const session = await ImapSession.handshake(
       await openSocket(port),
@@ -310,14 +318,12 @@ describe('IMAP client', () => {
     const uids = await session.searchUids(['ALL'])
     assert.deepEqual(uids, [13, 12, 11], 'search results come back newest first')
 
-    const messages = await session.fetchMessages([13], 'full')
+    const body = await session.fetchBodySection(13, 'TEXT', 256 * 1024)
     session.close()
-    assert.equal(messages.length, 1)
-    assert.equal(messages[0]?.uid, 13)
     // The body contains ")" and CRLF, which would have ended the response had
     // the reader been line-based rather than length-prefixed.
-    assert.ok(messages[0]?.raw.toString('utf8').includes('Body with )'))
-    assert.ok(messages[0]?.raw.toString('utf8').includes('and more'))
+    assert.ok(body?.toString('utf8').includes('Body with )'))
+    assert.ok(body?.toString('utf8').includes('and more'))
   })
 
   test('uses BODYSTRUCTURE and a bounded selected section without reading an attachment', async () => {
@@ -325,7 +331,7 @@ describe('IMAP client', () => {
     const session = await ImapSession.handshake(
       await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
     )
-    const [header] = await session.fetchMessages([13], 'headers')
+    const [header] = await session.fetchMessages([13])
     const text = await session.fetchBodySection(13, '1', 262_144)
     session.close()
 

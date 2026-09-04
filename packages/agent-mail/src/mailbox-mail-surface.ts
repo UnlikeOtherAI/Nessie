@@ -6,6 +6,7 @@ import { parseInboundEmail } from './mime.js'
 import { sanitizeEmailHtml } from './sanitize-html.js'
 import {
   mailboxThreadToken,
+  mailboxThreadRootDigest,
   parseMailboxThreadToken,
   type ParsedMailboxThreadToken,
 } from './mailbox-thread-token.js'
@@ -32,6 +33,8 @@ import {
 
 const HEADER_WINDOW_LIMIT = 100
 const MAX_TEXT_SECTION_BYTES = 256 * 1024
+/** The open reader never asks IMAP to identify or fetch an unbounded thread. */
+const MAX_THREAD_DETAIL_UIDS = 500
 
 export const mailboxHeaderWindow = (uids: number[], windowOffset: number): number[] =>
   uids.slice(windowOffset, windowOffset + HEADER_WINDOW_LIMIT)
@@ -43,6 +46,21 @@ export const nativeThreadHeaderUids = (groups: number[][]): number[] => {
   const remaining = groups.flat().filter((uid) => !selected.has(uid))
     .sort((left, right) => right - left)
   return [...newest, ...remaining].slice(0, HEADER_WINDOW_LIMIT)
+}
+
+/** The first UID in an RFC 5256 group is its stable root/seed. */
+export const nativeThreadSeedUids = (groups: number[][]): number[] =>
+  groups.flatMap((group) => group[0] === undefined ? [] : [group[0]])
+    .filter((uid): uid is number => Number.isSafeInteger(uid) && uid > 0)
+
+/** Keep a stable seed available for authentication without widening the detail read. */
+export const boundedThreadDetailUids = (uids: number[], seedUid: number): number[] => {
+  const newest = [...new Set(uids)].sort((left, right) => right - left)
+  const bounded = newest.slice(0, MAX_THREAD_DETAIL_UIDS)
+  if (!bounded.includes(seedUid) && Number.isSafeInteger(seedUid) && seedUid > 0) {
+    bounded[MAX_THREAD_DETAIL_UIDS - 1] = seedUid
+  }
+  return [...new Set(bounded)]
 }
 
 export type MailboxThreadHeader = MailboxSummary & {
@@ -79,7 +97,7 @@ const fetchThreadHeaders = async (session: ImapSession, uids: number[]): Promise
   // A FETCH command retains each response until its tagged completion. Keep the
   // header window in small batches so a hostile header cannot multiply memory.
   for (let start = 0; start < uids.length; start += 20) {
-    const batch = await session.fetchMessages(uids.slice(start, start + 20), 'headers')
+    const batch = await session.fetchMessages(uids.slice(start, start + 20))
     for (const message of batch) {
       headers.push(await summarizeThreadHeader(
         message.uid, message.raw, message.flags, message.bodyStructure,
@@ -123,14 +141,31 @@ const threadHeaders = (
   }
   return [...groups.values()].map((group) => {
     const members = group.members.sort((left, right) => right.uid - left.uid)
+    const seed = members.find((member) => member.messageId === group.root)
+      ?? [...members].sort((left, right) => left.uid - right.uid)[0]
     return {
       id: mailboxThreadToken({
-        accountId, folder, memberUids: members.map((member) => member.uid), messageCount: members.length,
-        rootMessageId: group.root, uid: members[0]?.uid ?? 0, uidValidity,
+        accountId, folder, rootMessageId: group.root, uid: seed?.uid ?? 0, uidValidity,
       }, tokenSecret),
       members,
+      root: group.root,
     }
   })
+}
+
+const stableFallbackSeed = async (
+  session: ImapSession,
+  group: { members: MailboxThreadHeader[]; root: string | null },
+): Promise<MailboxThreadHeader | null> => {
+  const presentRoot = group.members.find((member) => member.messageId === group.root)
+  if (presentRoot) return presentRoot
+  if (!group.root) return [...group.members].sort((left, right) => left.uid - right.uid)[0] ?? null
+  // A root can sit outside the list's newest-header allocation. Locate it by
+  // its structural Message-ID, not a subject convention, and verify the live
+  // header before using its immutable UID as a public token seed.
+  const candidates = await session.searchMessageIdUids(group.root)
+  const headers = await fetchThreadHeaders(session, candidates.slice(-1))
+  return headers.find((header) => header.messageId === group.root) ?? null
 }
 
 export const validateMailboxThreadMembers = (
@@ -146,7 +181,9 @@ export const validateMailboxThreadMembers = (
     folder: token.folder,
     secret: tokenSecret,
   })
-  return canonical?.rootDigest === token.rootDigest ? seededGroup.members : null
+  return canonical?.rootDigest === token.rootDigest && canonical.seedUid === token.seedUid
+    ? seededGroup.members
+    : null
 }
 
 const decodeCursor = (
@@ -222,15 +259,32 @@ export const listMailboxMailThreads = async (
   const initialHeaders = orderedNativeGroups ? [] : await fetchThreadHeaders(
     session, [...new Set(fallbackUids)].sort((left, right) => right - left),
   )
-  const fallbackGroups = orderedNativeGroups
+  const unseededFallbackGroups = orderedNativeGroups
     ? []
     : threadHeaders(initialHeaders, input.accountId, folder, selected.uidValidity, tokenSecret)
       .sort((left, right) => Math.max(...right.members.map((member) => member.uid))
         - Math.max(...left.members.map((member) => member.uid)))
+  const fallbackGroups = orderedNativeGroups ? [] : unseededFallbackGroups
   const pageUnits = orderedNativeGroups
     ? orderedNativeGroups.slice(cursor.offset, cursor.offset + input.pageSize)
     : fallbackGroups.slice(cursor.offset, cursor.offset + input.pageSize)
       .map((group) => group.members.map((member) => member.uid))
+  const resolvedFallbackPageGroups = orderedNativeGroups
+    ? []
+    : await Promise.all(fallbackGroups.slice(cursor.offset, cursor.offset + input.pageSize).map(async (group) => {
+      const seed = await stableFallbackSeed(session, group)
+      if (!seed) return group
+      return {
+        ...group,
+        id: mailboxThreadToken({
+          accountId: input.accountId,
+          folder,
+          rootMessageId: group.root,
+          uid: seed.uid,
+          uidValidity: selected.uidValidity,
+        }, tokenSecret),
+      }
+    }))
   const pageUids = orderedNativeGroups
     ? nativeThreadHeaderUids(pageUnits)
     : [...new Set(pageUnits.flat())]
@@ -239,27 +293,34 @@ export const listMailboxMailThreads = async (
   const headers = orderedNativeGroups
     ? await fetchThreadHeaders(session, pageUids)
     : initialHeaders.filter((header) => pageUids.includes(header.uid))
+  // Summary allocation deliberately reserves one newest header per visible
+  // group.  Roots are fetched separately solely to mint a stable token; they
+  // never decide which members an open reader is allowed to recover.
+  const seedHeaders = orderedNativeGroups
+    ? await fetchThreadHeaders(session, nativeThreadSeedUids(pageUnits))
+    : []
+  const seedHeaderByUid = new Map(seedHeaders.map((header) => [header.uid, header]))
   const groups: Array<{ id?: string; members: MailboxThreadHeader[]; messageCount: number }> = orderedNativeGroups
     ? pageUnits.map((memberUids) => ({
         members: headers.filter((header) => memberUids.includes(header.uid)),
         messageCount: memberUids.length,
       }))
-    : fallbackGroups.slice(cursor.offset, cursor.offset + input.pageSize).map((group) => ({
+    : resolvedFallbackPageGroups.map((group) => ({
         ...group,
         members: group.members.filter((member) => pageUids.includes(member.uid)),
         messageCount: group.members.length,
       }))
-  const rows = groups.map(({ id, members, messageCount }) => {
+  const rows = groups.map(({ id, members, messageCount }, index) => {
     const fallback = members[0]
-    const threadId = id ?? (fallback
+    const seedUid = orderedNativeGroups ? pageUnits[index]?.[0] : undefined
+    const seed = seedUid ? seedHeaderByUid.get(seedUid) : undefined
+    const threadId = id ?? (fallback && seed
       ? mailboxThreadToken({
           accountId: input.accountId,
           folder,
-          memberUids: members.map((member) => member.uid),
-          messageCount,
-          rootMessageId: fallback.references[0] ?? fallback.inReplyTo ?? fallback.messageId,
-        uid: fallback.uid,
-        uidValidity: selected.uidValidity,
+          rootMessageId: seed.messageId ?? seed.references[0] ?? seed.inReplyTo,
+          uid: seed.uid,
+          uidValidity: selected.uidValidity,
         }, tokenSecret)
       : null)
     const newest = [...members].sort((left, right) => right.uid - left.uid)[0]
@@ -278,7 +339,7 @@ export const listMailboxMailThreads = async (
   const nextOffset = cursor.offset + pageUnits.length
   const totalUnits = orderedNativeGroups?.length ?? fallbackGroups.length
   const nextCursor = nextOffset < totalUnits
-    ? encodeCursor({ ...cursor, offset: nextOffset })
+    ? encodeCursor({ ...cursor, offset: nextOffset, uidValidity: selected.uidValidity })
     : !orderedNativeGroups && cursor.windowOffset + HEADER_WINDOW_LIMIT < uids.length
       ? encodeCursor({
           offset: 0,
@@ -340,9 +401,32 @@ export const readMailboxMailConversation = async (
     folder,
     secret: options.threadTokenSecret ?? '',
   })
-  if (!token || token.uidValidity !== selected.uidValidity || !token.memberUids.includes(token.seedUid)) return null
-  const headers = await fetchThreadHeaders(session, token.memberUids)
-  const validatedMembers = validateMailboxThreadMembers(token, headers, options.threadTokenSecret ?? '')
+  if (!token || token.uidValidity !== selected.uidValidity) return null
+  const capabilities = await session.capabilities()
+  let validatedMembers: MailboxThreadHeader[] | null = null
+  let currentGroupMessageCount = 0
+  if (capabilities.has('THREAD=REFERENCES')) {
+    const group = (await session.threadReferencesUids(['ALL']))
+      .find((candidate) => candidate.includes(token.seedUid))
+    if (!group) return null
+    const headers = await fetchThreadHeaders(session, boundedThreadDetailUids(group, token.seedUid))
+    const seed = headers.find((header) => header.uid === token.seedUid)
+    const digest = seed && mailboxThreadRootDigest({
+      rootMessageId: seed.messageId ?? seed.references[0] ?? seed.inReplyTo,
+      uid: token.seedUid,
+      uidValidity: selected.uidValidity,
+    })
+    if (digest !== token.rootDigest) return null
+    validatedMembers = headers.filter((header) => group.includes(header.uid))
+    currentGroupMessageCount = group.length
+  } else {
+    // Without RFC 5256 support, derive only a bounded structural window.  The
+    // stable seed is kept even after newer mail pushes it out of that window.
+    const candidateUids = boundedThreadDetailUids(await session.searchUids(['ALL']), token.seedUid)
+    const headers = await fetchThreadHeaders(session, candidateUids)
+    validatedMembers = validateMailboxThreadMembers(token, headers, options.threadTokenSecret ?? '')
+    currentGroupMessageCount = validatedMembers?.length ?? 0
+  }
   if (!validatedMembers) return null
   const messages: MailboxMailConversation['messages'] = []
   let remainingBody = MAX_CONVERSATION_BODY_CHARS
@@ -387,7 +471,7 @@ export const readMailboxMailConversation = async (
     })
   }
   return {
-    earlierMessagesMayExist: token.messageCount > messages.length || remainingBody === 0 || responseBounded,
+    earlierMessagesMayExist: currentGroupMessageCount > messages.length || remainingBody === 0 || responseBounded,
     id: input.threadId,
     messages: messages.sort((left, right) => (left.receivedAt ?? '').localeCompare(right.receivedAt ?? '')),
   }

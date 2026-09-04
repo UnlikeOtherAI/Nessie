@@ -109,13 +109,16 @@ UI says **Earlier messages** rather than claiming that every provider has
 returned an exhaustive thread.
 
 An IMAP thread token is a compact, signed, list-issued capability bound to the
-account and folder. It carries the structural root digest plus at most the
-newest fifty listed UIDs; its signature means a caller cannot add other UIDs
-from an otherwise entitled mailbox. On read, the server revalidates the root
-and the listed structural group before fetching bodies. An unthreaded message
-with no usable `Message-ID` incorporates `UIDVALIDITY` and UID in its digest,
-so empty header values cannot collide and folder reset semantics are explicit.
-The bounded member slice can mean earlier messages exist. `All` uses
+account, folder, selected `UIDVALIDITY`, structural root digest, and stable
+root UID seed. It deliberately carries neither a membership list nor a count:
+both change when a new reply arrives. On read, the server re-derives a bounded
+current group through `THREAD=REFERENCES` where available (or structural
+headers otherwise), then authenticates its root and seed before fetching
+bodies. An unthreaded message with no usable `Message-ID` incorporates
+`UIDVALIDITY` and UID in its digest, so empty header values cannot collide and
+folder reset semantics are explicit. Every emitted IMAP cursor carries the
+selected `UIDVALIDITY`; a reset is rejected rather than continuing a stale
+page. The bounded member slice can mean earlier messages exist. `All` uses
 provider-native search; `Unread` adds Gmail `is:unread` or IMAP `SEARCH
 UNSEEN`. A page load uses one provider dial at a time per account, bounded
 header and body fetches, and no polling refetch; refresh is a person's explicit
