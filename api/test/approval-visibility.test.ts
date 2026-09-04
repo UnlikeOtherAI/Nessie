@@ -232,6 +232,7 @@ test('a mail proposal never reaches approval list or detail presentation', async
   const body = 'This body belongs only to the mailbox approver.'
   const prisma = makePrisma([
     makeRow({
+      reason: 'Send the private renewal to recipient@example.com: this body must not be shown.',
       context: {
         headline: 'Send “Private subject” from a connected mailbox',
         inputSummary: JSON.stringify({ subject: 'Private subject', text: body, to: [recipient] }),
@@ -249,7 +250,11 @@ test('a mail proposal never reaches approval list or detail presentation', async
     toolName: 'mailbox_send',
   })
   assert.deepEqual(detail?.context, listed.data[0]?.context)
-  assert.doesNotMatch(JSON.stringify({ detail, listed }), new RegExp(`${recipient}|${body}|Private subject`))
+  assert.doesNotMatch(
+    JSON.stringify({ detail, listed }),
+    new RegExp(`${recipient}|${body}|Private subject|private renewal`),
+  )
+  assert.equal(detail?.reason, 'Review the email before deciding whether to send it.')
   // The privacy projection does not fork the exact-approver list/count rule.
   assert.equal(await getPendingApprovalCount(prisma, actorCtx(memberId)), 1)
 })

@@ -295,7 +295,9 @@ export const createToolApprovalRequest = async (
     channelId: input.context.channel.id,
     context: {
       approvalActionType: input.approvalActionType ?? null,
-      boundaryReason: input.boundaryReason ?? null,
+      boundaryReason: hasPrivateEmailProposal(input.toolName)
+        ? null
+        : input.boundaryReason ?? null,
       policyRuleId: input.policyRuleId ?? null,
       toolName: input.toolName,
       ...describeGatedAction(input.toolName, input.args),
@@ -308,7 +310,9 @@ export const createToolApprovalRequest = async (
     expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),
     organizationId: input.context.channel.organizationId,
     projectId: input.context.channel.projectId,
-    reason: input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
+    reason: hasPrivateEmailProposal(input.toolName)
+      ? 'Review the email before deciding whether to send it.'
+      : input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
     requesterId: input.context.agent.id,
     requiredApproverUserId: STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
       ? input.requiredApproverUserId
