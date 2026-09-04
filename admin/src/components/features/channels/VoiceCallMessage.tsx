@@ -1,4 +1,10 @@
 import { useState } from 'react'
+import { faDownload } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { downloadAuthedPath, type AttachmentRecord } from '../../../lib/uploads'
+import { formatBytes } from '../../../lib/upload-xhr'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { HoverHint } from '../../primitives/HoverHint'
 import { MessageMarkdown } from './MessageMarkdown'
 import { VoiceTranscriptDialog } from './VoiceTranscriptDialog'
 
@@ -120,12 +126,39 @@ export type VoiceCallMessageProps = {
   content: string
   /** Null for a call too short to store one; then there is nothing to open. */
   transcriptAttachmentId: string | null
+  /** Metadata is loaded with the message's other attachments, never inferred. */
+  transcriptAttachment?: AttachmentRecord
+}
+
+const TranscriptDownload = ({ attachment }: { attachment: AttachmentRecord }) => {
+  const { token } = useAuthSession()
+  const [downloading, setDownloading] = useState(false)
+  const size = formatBytes(Number(attachment.sizeBytes))
+
+  const download = () => {
+    setDownloading(true)
+    downloadAuthedPath(`/api/attachments/${attachment.id}`, attachment.filename, token)
+      .catch(() => undefined)
+      .finally(() => setDownloading(false))
+  }
+
+  return (
+    <HoverHint
+      className="h-6 w-6 rounded text-xs text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]"
+      description={size}
+      label="Download transcript"
+      onClick={download}
+    >
+      <FontAwesomeIcon icon={faDownload} spin={downloading} />
+    </HoverHint>
+  )
 }
 
 export const VoiceCallMessage = ({
   compacted,
   content,
   transcriptAttachmentId,
+  transcriptAttachment,
 }: VoiceCallMessageProps) => {
   const [transcriptOpen, setTranscriptOpen] = useState(false)
 
@@ -154,14 +187,17 @@ export const VoiceCallMessage = ({
 
       {transcriptAttachmentId ? (
         <>
-          <button
-            className="justify-self-start text-sm"
-            onClick={() => setTranscriptOpen(true)}
-            style={{ color: 'var(--accent)' }}
-            type="button"
-          >
-            Full transcript
-          </button>
+          <div className="flex w-fit items-center gap-1">
+            <button
+              className="text-sm"
+              onClick={() => setTranscriptOpen(true)}
+              style={{ color: 'var(--accent)' }}
+              type="button"
+            >
+              Full transcript
+            </button>
+            {transcriptAttachment ? <TranscriptDownload attachment={transcriptAttachment} /> : null}
+          </div>
           <VoiceTranscriptDialog
             attachmentId={transcriptAttachmentId}
             onClose={() => setTranscriptOpen(false)}

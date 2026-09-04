@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useState, type MouseEventHandler, type ReactNode } from 'react'
 
 type HoverHintProps = {
   /** The visible mark this hint explains — an icon, a dot, a count. */
@@ -9,6 +9,8 @@ type HoverHintProps = {
   description: string
   /** The hint's title, and the accessible name's first half. */
   label: string
+  /** The mark may also perform one direct action, such as a download. */
+  onClick?: MouseEventHandler<HTMLButtonElement>
   testId?: string
 }
 
@@ -31,6 +33,7 @@ export const HoverHint = ({
   className = '',
   description,
   label,
+  onClick,
   testId,
 }: HoverHintProps) => {
   const [open, setOpen] = useState(false)
@@ -50,7 +53,10 @@ export const HoverHint = ({
       ].join(' ')}
       data-testid={testId}
       onBlur={() => setOpen(false)}
-      onClick={() => setOpen((current) => !current)}
+      onClick={(event) => {
+        setOpen((current) => !current)
+        onClick?.(event)
+      }}
       // Tabbing to the mark opens it, so a keyboard user reads the explanation
       // by arriving rather than by pressing a button whose only effect is this
       // panel. The version this was extracted from closed on blur but never

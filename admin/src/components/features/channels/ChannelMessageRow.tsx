@@ -8,7 +8,7 @@ import type { PresenceView } from '../../../providers/PresenceProvider'
 import { useAgentIdentityLookup } from '../../../providers/AgentIdentityProvider'
 import type { AvatarSources } from '../../primitives/UserAvatar'
 import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
-import { MessageAttachments } from '../../shared/MessageAttachments'
+import { MessageAttachments, useMessageAttachments } from '../../shared/MessageAttachments'
 import type { AttachmentRecord } from '../../../lib/uploads'
 import { MessageAuthorAvatar } from './MessageAuthorAvatar'
 import { ChannelMessageActions } from './ChannelMessageActions'
@@ -191,6 +191,12 @@ export const ChannelMessageRow = ({
   // than a reading of the text.
   const voiceCall = readVoiceCallRecord(message.metadata)
   const carriesVoiceCall = voiceCall !== null
+  // The transcript lives on this message with any ordinary files. Fetch once,
+  // then let the voice-call card own its particular attachment.
+  const attachments = useMessageAttachments((message.attachmentCount ?? 1) > 0 ? message.id : null)
+  const transcriptAttachment = voiceCall?.transcriptAttachmentId
+    ? attachments.find((attachment) => attachment.id === voiceCall.transcriptAttachmentId)
+    : undefined
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
   const threadRootMessageId = message.rootMessageId ?? message.id
@@ -402,6 +408,7 @@ export const ChannelMessageRow = ({
                   compacted={voiceCall.compacted}
                   content={message.content}
                   transcriptAttachmentId={voiceCall.transcriptAttachmentId}
+                  transcriptAttachment={transcriptAttachment}
                 />
               ) : null}
               {message.restrictedSources && shareRestrictedMessage ? (
@@ -474,7 +481,11 @@ export const ChannelMessageRow = ({
               realtime-seeded row) we still mount, so a real attachment is
               never hidden by a missing count. */}
           {(message.attachmentCount ?? 1) > 0 ? (
-            <MessageAttachments messageId={message.id} onOpenAttachment={onOpenAttachment} />
+            <MessageAttachments
+              attachments={attachments}
+              omitAttachmentId={voiceCall?.transcriptAttachmentId}
+              onOpenAttachment={onOpenAttachment}
+            />
           ) : null}
           {broadcastRootId && onOpenThread ? (
             <button
