@@ -848,9 +848,18 @@ importers:
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      disposable-email-domains:
+        specifier: 1.0.62
+        version: 1.0.62
+      free-email-domains:
+        specifier: 1.11.4
+        version: 1.11.4
       jmespath:
         specifier: ^0.16.0
         version: 0.16.0
+      tldts:
+        specifier: 7.0.19
+        version: 7.0.19
       zod:
         specifier: ^3.25.76
         version: 3.25.76

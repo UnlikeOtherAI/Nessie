@@ -300,6 +300,8 @@ export const registerUoaAutomaticMembershipControlRoutes = (app: FastifyInstance
         // active UOA organisation owner/admin. Team operations pass exactly the
         // UOA team selected in the signed request.
         externalTeamIds: body.data.scope === 'team' ? [body.data.external_team_id!] : [],
+        ...(body.data.scope === 'team' ? { externalTeamId: body.data.external_team_id! } : {}),
+        scope: membershipScope(body.data.scope),
         uoaSub: body.data.uoa_actor_sub,
       })
     } catch {

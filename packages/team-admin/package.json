@@ -25,7 +25,10 @@
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1",
+    "disposable-email-domains": "1.0.62",
+    "free-email-domains": "1.11.4",
     "jmespath": "^0.16.0",
+    "tldts": "7.0.19",
     "zod": "^3.25.76"
   },
   "devDependencies": {

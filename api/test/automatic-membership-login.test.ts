@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
-import type { UoaAutomaticMembershipAdapter } from '../src/services/uoa-automatic-membership.js'
+import type { UoaAutomaticMembershipAdapter } from '@nessie/team-admin'
 import { provisionAutomaticMembershipWithAdapter } from '../src/services/automatic-membership-login.js'
 
-const activeClaim = { domain: 'example.test', id: 'claim-1' }
 const activeRule = {
+  claim: { domain: 'example.test' },
   generation: 1,
   id: 'rule-1',
   organization: { externalOrgId: 'uoa-org-1' },
   organizationId: 'org-1',
   targets: [{ team: { externalTeamId: 'uoa-team-1' }, teamId: 'team-1' }],
   uoaFenceToken: 'fence-1',
+  updatedAt: new Date(),
 }
 
 const adapter = (overrides: Partial<UoaAutomaticMembershipAdapter> = {}): UoaAutomaticMembershipAdapter => ({
@@ -32,7 +33,7 @@ const adapter = (overrides: Partial<UoaAutomaticMembershipAdapter> = {}): UoaAut
 
 test('login provisioning is bounded and turns a UOA attestation outage into no automatic grant', async () => {
   const prisma = {
-    automaticMembershipDomainClaim: { findMany: async () => [activeClaim] },
+    automaticMembershipRule: { findMany: async () => [activeRule] },
   } as unknown as PrismaClient
 
   const grants = await provisionAutomaticMembershipWithAdapter(prisma, 'subject-1', adapter({
@@ -48,7 +49,6 @@ test('login provisioning passes a member-only deterministic UOA grant key withou
     $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({
       automaticMembershipGrant: { update: async () => undefined },
     }),
-    automaticMembershipDomainClaim: { findMany: async () => [activeClaim] },
     automaticMembershipGrant: {
       upsert: async () => ({ id: 'grant-1', outcome: 'pending' }),
     },
@@ -70,6 +70,7 @@ test('login provisioning passes a member-only deterministic UOA grant key withou
     externalTeamId: 'uoa-team-1',
     fenceToken: 'fence-1',
     idempotencyKey: 'automatic-membership:login:rule-1:team-1:subject-1:1',
+    lifecycleRevision: 1,
     ruleGeneration: 1,
     ruleId: 'rule-1',
     uoaSub: 'subject-1',
