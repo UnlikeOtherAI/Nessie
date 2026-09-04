@@ -114,7 +114,7 @@ export const SURFACES: Surface[] = [
   {
     depth: 1,
     identityOf: (match) => `mail:${match[1]}:${match[2]}`,
-    intent: { state: ['filter', 'pageSize', 'query'] },
+    intent: { state: ['filter', 'pageSize'] },
     keyScope: () => 'mail-account',
     parentOf: toMail,
     pattern: /^\/mail\/([^/]+)\/([^/]+)$/,

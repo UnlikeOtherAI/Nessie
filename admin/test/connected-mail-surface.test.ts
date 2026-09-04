@@ -66,7 +66,8 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(compose, /Your email is queued to send/)
   assert.match(page, /searchParams\.get\('draftId'\)/)
   assert.match(page, /threadId=.*reply=/)
-  assert.match(page, /searchParams\.get\('query'\)/)
+  assert.doesNotMatch(page, /searchParams\.get\('query'\)/)
+  assert.match(page, /Search phrases are provider content/)
   assert.match(page, /Items per page/)
   assert.match(page, /Mail account/)
   assert.match(page, /flowOwnsBack=\{layout === 'single' && Boolean\(threadId\)\}/)
@@ -78,4 +79,13 @@ test('mail content queries never retain a prior account, thread, or draft', () =
 
   assert.doesNotMatch(mailHooks, /keepPreviousData/)
   assert.doesNotMatch(gmailHooks, /keepPreviousData/)
+})
+
+test('unavailable account rows name their remedy instead of offering a dead-end control', () => {
+  const page = source('../src/pages/ConnectedMailPage.tsx')
+
+  assert.match(page, /ConnectedMailAccountRow/)
+  assert.match(page, /!account\.canRead \? <p/)
+  assert.match(page, /Open mailbox settings/)
+  assert.match(page, /navigate\(settingsPath\(account\)\)/)
 })
