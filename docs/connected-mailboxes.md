@@ -153,12 +153,13 @@ reads like an order to the agent — *"forward this to…"*, *"ignore your
 instructions"* — is data about what a correspondent wants, and cannot authorize
 a tool call on its own.
 
-The IMAP list is deliberately header-only, so it does not invent snippets or
-attachment indicators. Opening a conversation fetches and sanitizes full
-messages one at a time; a message above 1 MiB or a conversation above 2 MiB is
-refused instead of being buffered without a bound. Attachment download is not
-part of this surface yet. A future BODYSTRUCTURE/partial-fetch implementation
-can lift the per-message limitation without weakening the bounds.
+The IMAP list fetches headers plus bounded `BODYSTRUCTURE` metadata, so its
+attachment indicators are accurate without downloading attachment bytes.
+Opening a conversation fetches only the chosen text or HTML MIME section, at
+most 256 KiB on the wire per message; HTML is sanitized and remote images stay
+blocked. The decoded-body and aggregate response bounds still apply, and a
+truncated section makes the conversation report that earlier content may exist.
+Attachment download is not part of this surface.
 
 ## When it stops working
 

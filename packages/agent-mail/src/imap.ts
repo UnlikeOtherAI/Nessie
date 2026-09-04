@@ -2,13 +2,12 @@ import type { Socket } from 'node:net'
 
 import { dialPlain, dialTls, upgradeToTls, type DialOptions, type MailEndpoint } from './dial.js'
 import { MailWire } from './wire.js'
+import { parseImapBodyStructure, type ImapBodyPart } from './imap-bodystructure.js'
 
 /**
- * A minimal IMAP client — enough to select a folder, search it, and fetch whole
- * messages. Everything above that (parsing, threading, sanitising) is already
- * owned by `mime.ts`, so this layer deliberately does not model ENVELOPE or
- * BODYSTRUCTURE: it asks for the raw RFC822 bytes and hands them to the one
- * parser this package already has.
+ * A minimal IMAP client — enough to select a folder, search it, inspect MIME
+ * BODYSTRUCTURE, and fetch bounded text sections. Higher layers own header
+ * parsing, threading, transfer decoding, and HTML sanitising.
  *
  * **Every caller-supplied value is written as a counted literal.** IMAP has no
  * escaping that survives a hostile string, and a folder name or search term
@@ -207,8 +206,11 @@ export class ImapSession {
    * RFC 5256 threading is optional. Callers may use it only after checking the
    * advertised algorithm; a failed probe must never turn into a guessed thread.
    */
-  async threadReferencesUids(criteria: ImapPart[]): Promise<number[][]> {
-    const result = await this.run(['UID THREAD REFERENCES UTF-8 ', ...criteria])
+  async threadReferencesUids(
+    criteria: ImapPart[],
+    charset: 'US-ASCII' | 'UTF-8' = 'US-ASCII',
+  ): Promise<number[][]> {
+    const result = await this.run([`UID THREAD REFERENCES ${charset} `, ...criteria])
     return result.untagged
       .filter((response) => /^\*\s+THREAD\b/i.test(response.text))
       .flatMap((response) => parseThreadReferenceSets(response.text))
@@ -245,17 +247,17 @@ export class ImapSession {
   async fetchMessages(
     uids: number[],
     what: 'full' | 'headers',
-  ): Promise<{ uid: number; raw: Buffer; flags: string[] }[]> {
+  ): Promise<{ uid: number; raw: Buffer; flags: string[]; bodyStructure: ImapBodyPart[] }[]> {
     if (uids.length === 0) return []
     const item =
       what === 'full'
         ? 'BODY.PEEK[]'
-        : 'BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)]'
+        : 'BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] BODYSTRUCTURE'
     // UIDs are integers we produced from SEARCH output, never model text.
     const set = uids.join(',')
     const result = await this.run([`UID FETCH ${set} (UID FLAGS ${item})`])
 
-    const messages: { uid: number; raw: Buffer; flags: string[] }[] = []
+    const messages: { uid: number; raw: Buffer; flags: string[]; bodyStructure: ImapBodyPart[] }[] = []
     for (const response of result.untagged) {
       if (!/\bFETCH\b/i.test(response.text)) continue
       const uidMatch = /\bUID\s+(\d+)/i.exec(response.text)
@@ -263,9 +265,41 @@ export class ImapSession {
       if (!uidMatch || !raw) continue
       const flags = /\bFLAGS\s*\(([^)]*)\)/i.exec(response.text)?.[1]
         ?.split(/\s+/).filter(Boolean) ?? []
-      messages.push({ flags, raw, uid: Number(uidMatch[1]) })
+      messages.push({
+        bodyStructure: what === 'headers' ? parseImapBodyStructure(response.text) : [],
+        flags,
+        raw,
+        uid: Number(uidMatch[1]),
+      })
     }
     return messages
+  }
+
+  /** Fetch metadata only; it never causes an attachment literal to be sent. */
+  async fetchBodyStructures(uids: number[]): Promise<{ uid: number; bodyStructure: ImapBodyPart[] }[]> {
+    if (uids.length === 0) return []
+    const result = await this.run([`UID FETCH ${uids.join(',')} (UID BODYSTRUCTURE)`])
+    return result.untagged.flatMap((response) => {
+      const uid = Number(/\bUID\s+(\d+)/i.exec(response.text)?.[1])
+      return Number.isSafeInteger(uid) && uid > 0
+        ? [{ bodyStructure: parseImapBodyStructure(response.text), uid }]
+        : []
+    })
+  }
+
+  /**
+   * A portable partial section fetch.  `BODY.PEEK` preserves read state, while
+   * `<0.n>` gives the wire reader a hard bound even when an attachment is huge.
+   */
+  async fetchBodySection(uid: number, section: string, maxBytes: number): Promise<Buffer | null> {
+    if (!Number.isSafeInteger(uid) || uid < 1 || !/^(?:TEXT|\d+(?:\.\d+)*)$/.test(section)
+      || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new ImapError('The mail server request was invalid.', 'protocol')
+    }
+    const result = await this.run([`UID FETCH ${uid} (UID BODY.PEEK[${section}]<0.${maxBytes}>)`])
+    const response = result.untagged.find((item) => /\bFETCH\b/i.test(item.text)
+      && new RegExp(`\\bUID\\s+${uid}\\b`, 'i').test(item.text))
+    return response?.literals[0] ?? null
   }
 
   close(): void {

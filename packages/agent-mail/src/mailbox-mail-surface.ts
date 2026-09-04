@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 
 import { ImapError, type ImapSession } from './imap.js'
+import { imapAttachmentParts, imapTextParts, type ImapBodyPart } from './imap-bodystructure.js'
 import { parseInboundEmail } from './mime.js'
+import { sanitizeEmailHtml } from './sanitize-html.js'
 import {
   mailboxThreadToken,
   parseMailboxThreadToken,
@@ -18,7 +20,6 @@ import {
   MAX_CONVERSATION_RESPONSE_BYTES,
   MAX_FILENAME_CHARS,
   bounded,
-  boundedOptional,
   buildCriteria,
   summarize,
   withImap,
@@ -30,6 +31,7 @@ import {
 } from './mailbox-client.js'
 
 const HEADER_WINDOW_LIMIT = 100
+const MAX_TEXT_SECTION_BYTES = 256 * 1024
 
 export const mailboxHeaderWindow = (uids: number[], windowOffset: number): number[] =>
   uids.slice(windowOffset, windowOffset + HEADER_WINDOW_LIMIT)
@@ -44,6 +46,8 @@ export const nativeThreadHeaderUids = (groups: number[][]): number[] => {
 }
 
 export type MailboxThreadHeader = MailboxSummary & {
+  bodyStructure?: ImapBodyPart[]
+  cc: string[]
   inReplyTo: string | null
   references: string[]
   snippet: string
@@ -55,11 +59,14 @@ const summarizeThreadHeader = async (
   uid: number,
   raw: Buffer,
   flags: readonly string[],
+  bodyStructure: ImapBodyPart[],
 ): Promise<MailboxThreadHeader> => {
   const parsed = await parseInboundEmail(raw)
   return {
     ...summarize(uid, parsed),
-    hasAttachments: parsed.attachments.length > 0,
+    bodyStructure,
+    cc: parsed.ccAddresses.map((address) => bounded(address, MAX_ADDRESS_CHARS)).slice(0, 100),
+    hasAttachments: imapAttachmentParts(bodyStructure).length > 0,
     inReplyTo: parsed.inReplyTo,
     references: parsed.references,
     snippet: bounded(parsed.snippet, MAX_ADDRESS_CHARS),
@@ -74,7 +81,9 @@ const fetchThreadHeaders = async (session: ImapSession, uids: number[]): Promise
   for (let start = 0; start < uids.length; start += 20) {
     const batch = await session.fetchMessages(uids.slice(start, start + 20), 'headers')
     for (const message of batch) {
-      headers.push(await summarizeThreadHeader(message.uid, message.raw, message.flags))
+      headers.push(await summarizeThreadHeader(
+        message.uid, message.raw, message.flags, message.bodyStructure,
+      ))
     }
   }
   return headers
@@ -194,8 +203,14 @@ export const listMailboxMailThreads = async (
     unseenOnly: input.unreadOnly,
   })
   const capabilities = await session.capabilities()
+  const threadNeedsUtf8 = criteria.some(
+    (part) => typeof part !== 'string' && /[^\x00-\x7F]/.test(part.literal),
+  )
+  // A server advertises its UTF-8 threading support explicitly. ASCII criteria
+  // use the baseline charset and remain available on older RFC 5256 servers.
   const nativeGroups = capabilities.has('THREAD=REFERENCES')
-    ? await session.threadReferencesUids(criteria)
+    && (!threadNeedsUtf8 || capabilities.has('UTF8=ACCEPT') || capabilities.has('UTF8=ONLY'))
+    ? await session.threadReferencesUids(criteria, threadNeedsUtf8 ? 'UTF-8' : 'US-ASCII')
     : null
   const uids = nativeGroups ? nativeGroups.flat() : await session.searchUids(criteria)
   const orderedNativeGroups = nativeGroups?.sort(
@@ -277,6 +292,42 @@ export const listMailboxMailThreads = async (
   }
 })
 
+const decodedPart = (input: Buffer, encoding: string | null): Buffer => {
+  const normalized = encoding?.toUpperCase()
+  if (normalized === 'BASE64') return Buffer.from(input.toString('ascii').replace(/\s/g, ''), 'base64')
+  if (normalized !== 'QUOTED-PRINTABLE') return input
+  const value = input.toString('latin1').replace(/=\r?\n/g, '')
+  const bytes: number[] = []
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === '=' && /^[0-9a-f]{2}$/i.test(value.slice(index + 1, index + 3))) {
+      bytes.push(Number.parseInt(value.slice(index + 1, index + 3), 16))
+      index += 2
+    } else bytes.push(value.charCodeAt(index))
+  }
+  return Buffer.from(bytes)
+}
+
+const textFromPart = (input: Buffer, charset: string | null): string => {
+  try {
+    return new TextDecoder(charset?.trim() || 'utf-8', { fatal: false }).decode(input)
+  } catch {
+    return input.toString('utf8')
+  }
+}
+
+const messageAttachments = (parts: readonly ImapBodyPart[]) => imapAttachmentParts(parts)
+  .slice(0, MAX_ATTACHMENTS)
+  .map((part) => ({
+    contentType: bounded(part.contentType || 'application/octet-stream', MAX_CONTENT_TYPE_CHARS),
+    filename: bounded(part.filename || 'attachment', MAX_FILENAME_CHARS),
+    sizeBytes: part.bytes,
+  }))
+
+const preferredTextPart = (parts: readonly ImapBodyPart[]): ImapBodyPart | null =>
+  imapTextParts(parts).find((part) => part.textKind === 'html')
+  ?? imapTextParts(parts).find((part) => part.textKind === 'plain')
+  ?? null
+
 export const readMailboxMailConversation = async (
   endpoints: MailboxEndpoints,
   input: { accountId: string; folder?: string; threadId: string },
@@ -299,35 +350,40 @@ export const readMailboxMailConversation = async (
   let responseBounded = false
   for (const member of validatedMembers.sort((left, right) => right.uid - left.uid)
     .slice(0, MAX_CONVERSATION_MESSAGES)) {
-    const [fetched] = await session.fetchMessages([member.uid], 'full')
-    if (!fetched) continue
-    if (fetched.raw.byteLength > remainingResponse) {
+    const bodyStructure = member.bodyStructure?.length
+      ? member.bodyStructure
+      : (await session.fetchBodyStructures([member.uid]))[0]?.bodyStructure ?? []
+    const textPart = preferredTextPart(bodyStructure)
+    if (!textPart) continue
+    const requestedBytes = Math.min(MAX_TEXT_SECTION_BYTES, Math.max(1, remainingResponse))
+    const payload = await session.fetchBodySection(member.uid, textPart.section, requestedBytes)
+    if (!payload) continue
+    const decoded = decodedPart(payload, textPart.encoding)
+    if (decoded.byteLength > remainingResponse) {
       responseBounded = true
       break
     }
-    remainingResponse -= fetched.raw.byteLength
-    const parsed = await parseInboundEmail(fetched.raw)
-    const body = parsed.htmlBody ?? parsed.textBody
+    remainingResponse -= decoded.byteLength
+    if (payload.byteLength === requestedBytes) responseBounded = true
+    const decodedText = textFromPart(decoded, textPart.charset)
+    const sanitized = textPart.textKind === 'html' ? sanitizeEmailHtml(decodedText) : null
+    const body = sanitized?.html ?? decodedText
     const boundedBody = body.slice(0, Math.min(MAX_BODY_CHARS, remainingBody))
     remainingBody -= boundedBody.length
     messages.push({
-      attachments: parsed.attachments.slice(0, MAX_ATTACHMENTS).map((attachment) => ({
-        contentType: bounded(attachment.contentType || 'application/octet-stream', MAX_CONTENT_TYPE_CHARS),
-        filename: bounded(attachment.filename || 'attachment', MAX_FILENAME_CHARS),
-        sizeBytes: attachment.content.byteLength,
-      })),
-      blockedRemoteContent: parsed.blockedRemoteContent,
+      attachments: messageAttachments(bodyStructure),
+      blockedRemoteContent: sanitized?.blockedRemoteContent ?? false,
       body: boundedBody,
-      bodyFormat: parsed.htmlBody ? 'html' : 'text',
-      cc: parsed.ccAddresses.map((address) => bounded(address, MAX_ADDRESS_CHARS)).slice(0, 100),
-      from: boundedOptional(parsed.fromAddress, MAX_ADDRESS_CHARS),
-      id: String(fetched.uid),
-      inReplyTo: boundedOptional(parsed.inReplyTo, MAX_ADDRESS_CHARS),
-      messageId: boundedOptional(parsed.rfcMessageId, MAX_ADDRESS_CHARS),
-      receivedAt: parsed.date?.toISOString() ?? null,
-      subject: bounded(parsed.subject, MAX_ADDRESS_CHARS),
+      bodyFormat: textPart.textKind === 'html' ? 'html' : 'text',
+      cc: member.cc,
+      from: member.from,
+      id: String(member.uid),
+      inReplyTo: member.inReplyTo,
+      messageId: member.messageId,
+      receivedAt: member.date,
+      subject: member.subject,
       threadId: input.threadId,
-      to: parsed.toAddresses.map((address) => bounded(address, MAX_ADDRESS_CHARS)).slice(0, 100),
+      to: member.to,
     })
   }
   return {
