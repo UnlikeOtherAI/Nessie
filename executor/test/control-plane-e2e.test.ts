@@ -25,6 +25,8 @@ const BINDING_ID = '00000000-0000-4000-8000-000000000603'
 const RUN_ID = '00000000-0000-4000-8000-000000000604'
 const CHALLENGE = 'control-plane-e2e-challenge-0000000000000000'
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
+const windowsDevelopmentRun = process.platform === 'win32'
+  && process.env.NESSIE_EXECUTOR_PACKAGED_CLI !== '1'
 
 const sha256 = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`
@@ -82,7 +84,11 @@ const assertSignature = (
   ), true)
 }
 
-test('pairing, signed control traffic, and selected-folder enforcement work end to end', async () => {
+test('pairing, signed control traffic, and selected-folder enforcement work end to end', {
+  skip: windowsDevelopmentRun
+    ? 'Windows folder ACL verification runs through the packaged runtime in desktop-windows.yml.'
+    : false,
+}, async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'nessie-e2e-workspace-'))
   const outside = await mkdtemp(join(tmpdir(), 'nessie-e2e-outside-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-e2e-state-'))
