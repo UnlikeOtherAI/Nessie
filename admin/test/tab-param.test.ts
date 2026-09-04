@@ -316,6 +316,7 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/pages/settings/UserSettingsPage.tsx', 'tab'],
     ['../src/pages/settings/TeamSettingsPage.tsx', 'tab'],
     ['../src/pages/settings/OrganizationSettingsPage.tsx', 'tab'],
+    ['../src/pages/AgentDesignerPage.tsx', 'designerMode'],
     ['../src/pages/triggers/useTriggersPageState.ts', 'status'],
     ['../src/components/features/agents/AgentDetailTabs.tsx', 'agentTab'],
     ['../src/components/features/agents/AgentsList.tsx', 'scope'],
