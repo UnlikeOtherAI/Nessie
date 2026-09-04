@@ -132,11 +132,11 @@ test('mail_present stamps disclosure and publishes only the restricted message s
   assert.match(result.outputPreview, /\/mail\/mailbox\//)
 })
 
-test('mail_present refuses a missing access row before creating or publishing a doorway', async () => {
+test('mail_present refuses a missing access row without revealing why it is unavailable', async () => {
   const { context, events, messageCreates } = makeContext({ access: false })
   await assert.rejects(
     runMailPresentTool(context, { accountId: IDS.account, mode: 'account', source: 'mailbox' }),
-    /not been given access/,
+    /mail account is not available to you/,
   )
   assert.equal(messageCreates.length, 0)
   assert.equal(events.length, 0)
