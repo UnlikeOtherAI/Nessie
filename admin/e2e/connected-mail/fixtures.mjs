@@ -41,7 +41,7 @@ export const createMailFixtures = () => {
         attachments: [], blockedRemoteContent: true,
         body: '<p>Hello from <strong>Acme</strong>.</p><img alt="remote logo" data-blocked-src="https://tracker.example/pixel.png">',
         bodyFormat: 'html', cc: [], from: 'Casey <casey@acme.example>',
-        id: 'message-1', inReplyTo: null, receivedAt: now, subject: 'Launch checklist',
+        id: 'message-1', inReplyTo: null, messageId: null, receivedAt: now, subject: 'Launch checklist',
         threadId: 'thread-1', to: ['alex@example.com'],
       },
     ],
@@ -171,6 +171,7 @@ export const createMailFixtures = () => {
     respond,
     showDoorway: () => { doorwayVisible = true },
     showComposeDoorway: () => { doorway = { accountId: 'gmail-1', draftId: 'draft-doorway', mode: 'compose', source: 'gmail' } },
+    showAccountDoorway: () => { doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }; doorwayVisible = true },
     denyDoorway: () => { doorwayAllowed = false },
     allowDoorway: () => { doorwayAllowed = true },
   }
