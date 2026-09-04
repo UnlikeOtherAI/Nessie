@@ -66,28 +66,16 @@ jobs:
     environment: direct-download-release
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
-      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-      MACOS_NOTARY_API_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_P8_BASE64 }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}
-      MACOS_NOTARY_API_KEY_ID: ${{ vars.MACOS_NOTARY_API_KEY_ID }}
-      MACOS_NOTARY_API_ISSUER_ID: ${{ vars.MACOS_NOTARY_API_ISSUER_ID }}
     steps:
       - name: Require direct-distribution credentials
         run: |
           set -euo pipefail
           required=(
             EXPO_TOKEN
-            MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64
-            MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
-            MACOS_NOTARY_API_KEY_P8_BASE64
             TAURI_SIGNING_PRIVATE_KEY
             TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-            MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY
-            MACOS_NOTARY_API_KEY_ID
-            MACOS_NOTARY_API_ISSUER_ID
           )
           missing=()
           for name in "${required[@]}"; do
@@ -101,18 +89,6 @@ jobs:
             printf '\n' >&2
             exit 1
           fi
-          case "$MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY" in
-            'Developer ID Application: '*) ;;
-            *) echo 'The macOS identity must be a Developer ID Application certificate.' >&2; exit 1 ;;
-          esac
-          certificate="$RUNNER_TEMP/nessie-developer-id.p12"
-          notary_key="$RUNNER_TEMP/nessie-notary-key.p8"
-          printf '%s' "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" | base64 --decode >"$certificate"
-          printf '%s' "$MACOS_NOTARY_API_KEY_P8_BASE64" | base64 --decode >"$notary_key"
-          openssl pkcs12 -in "$certificate" \
-            -passin "pass:$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
-            -nokeys -noout
-          openssl pkey -in "$notary_key" -noout
 
   macos:
     name: macOS ${{ matrix.name }}
@@ -134,15 +110,8 @@ jobs:
             asset: Nessie-macOS-Intel.dmg
             artifact: release-macos-intel
     env:
-      APPLE_API_KEY: ${{ vars.MACOS_NOTARY_API_KEY_ID }}
-      APPLE_API_ISSUER: ${{ vars.MACOS_NOTARY_API_ISSUER_ID }}
-      APPLE_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}
-      MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
-      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-      MACOS_NOTARY_API_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_P8_BASE64 }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      NESSIE_DESKTOP_SIGNING_TEAM_ID: 59S95D279D
     steps:
       - name: Checkout the tagged source
         uses: actions/checkout@v4
@@ -156,36 +125,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install the Developer ID identity and notary key
+      - name: Declare the ad-hoc, non-notarized macOS build
         run: |
           set -euo pipefail
-          for value in \
-            "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" \
-            "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
-            "$MACOS_NOTARY_API_KEY_P8_BASE64" \
-            "$APPLE_API_KEY" \
-            "$APPLE_API_ISSUER" \
-            "$APPLE_SIGNING_IDENTITY"; do
-            test -n "$value"
-          done
-
-          certificate="$RUNNER_TEMP/nessie-developer-id.p12"
-          keychain="$RUNNER_TEMP/nessie-direct-download.keychain-db"
-          keychain_password="$(openssl rand -base64 32)"
-          notary_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
-
-          printf %s "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
-          printf %s "$MACOS_NOTARY_API_KEY_P8_BASE64" | base64 --decode > "$notary_key"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$certificate" -P "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
-          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
-          security list-keychain -d user -s "$keychain" login.keychain-db
-          security default-keychain -d user -s "$keychain"
-          security find-identity -v -p codesigning "$keychain"
-          security find-identity -v -p codesigning "$keychain" | grep -F "Developer ID Application:"
-          printf 'APPLE_API_KEY_PATH=%s\n' "$notary_key" >> "$GITHUB_ENV"
+          node -e 'const config = require("./desktop/src-tauri/tauri.adhoc-macos.conf.json"); if (config.bundle?.macOS?.signingIdentity !== "-") process.exit(1)'
+          echo '::warning::The macOS DMG is ad-hoc signed and not notarized. People must use the documented Gatekeeper bypass.'
 
       - name: Install dependencies and build executor inputs
         run: |
@@ -196,13 +140,14 @@ jobs:
           pnpm exec turbo run build --filter=@nessie/executor...
           pnpm --dir desktop run prepare:executor-runtime
 
-      - name: Build the signed, notarized, and update-ready DMG
+      - name: Build the ad-hoc, update-ready DMG
         run: >-
           pnpm --dir desktop exec tauri build --target "${{ matrix.target }}"
           --features direct-updater --bundles dmg
           --config src-tauri/tauri.direct-updater.conf.json
+          --config src-tauri/tauri.adhoc-macos.conf.json
 
-      - name: Verify code signature and notarization
+      - name: Verify the ad-hoc bundle and updater artifact
         run: |
           set -euo pipefail
           app="desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Nessie.app"
@@ -213,19 +158,17 @@ jobs:
           test -s "$updater.sig"
           codesign --verify --deep --strict "$app"
           codesign -dvv "$app" 2>&1 | tee signing.txt
-          grep -F 'Authority=Developer ID Application:' signing.txt
-          grep -F "TeamIdentifier=$NESSIE_DESKTOP_SIGNING_TEAM_ID" signing.txt
-          grep -F 'Runtime Version' signing.txt
-          xcrun stapler validate "$app"
-          xcrun stapler validate "$dmg"
-          spctl --assess --type open --context context:primary-signature -vv "$dmg" 2>&1 | tee gatekeeper.txt
-          grep -F 'source=Notarized Developer ID' gatekeeper.txt
+          grep -F 'Signature=adhoc' signing.txt
+          if spctl --assess --type open --context context:primary-signature -vv "$dmg"; then
+            echo 'The intentionally non-notarized DMG unexpectedly passed Gatekeeper assessment.' >&2
+            exit 1
+          fi
           mkdir archived-update
           tar -xzf "$updater" -C archived-update
           archived_app="$(find archived-update -type d -name 'Nessie.app' -print -quit)"
           test -n "$archived_app"
           codesign --verify --deep --strict "$archived_app"
-          xcrun stapler validate "$archived_app"
+          codesign -dvv "$archived_app" 2>&1 | grep -F 'Signature=adhoc'
           mkdir release
           cp "$dmg" "release/${{ matrix.asset }}"
           updater_asset="${{ matrix.asset }}"
@@ -499,7 +442,7 @@ jobs:
           cat > release-notes.md <<EOF
           ## Direct downloads
 
-          - **macOS:** Apple Silicon and Intel DMGs are notarized Developer ID builds.
+          - **macOS:** Apple Silicon and Intel DMGs are ad-hoc signed, not notarized, and require a Gatekeeper bypass to open.
           - **Windows:** NSIS and MSI installers are unsigned direct-download builds and may show a SmartScreen warning.
           - **Linux:** AppImage and Debian packages are included with SHA-256 checksums.
           - **Android:** a signed, installable APK is included. Direct APK installs can open a newer signed APK in Android's package installer; Play Store builds leave updates to Google Play.
