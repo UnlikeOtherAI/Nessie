@@ -201,10 +201,10 @@ jobs:
             throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
           }
 
-      # Signing is a deployment fact. With the identity configured every artifact
-      # is signed and its signature is a release gate; without it this is a
-      # development build and says so, and the desktop and service both refuse
-      # executor controls because no publisher is pinned into them.
+      # Signing is a deployment fact. A tag release and a manual verification
+      # of the exact main branch both require the configured identity. A source
+      # override remains an unsigned development build, so repository code from
+      # another ref can never receive signing credentials.
       - name: Resolve signing configuration
         id: signing
         shell: pwsh
@@ -217,26 +217,31 @@ jobs:
           # The `secrets` context is not usable in a step's `if`, so every later
           # step branches on these outputs rather than on the secrets directly.
           $release = $env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -like 'desktop-v*'
+          $trustedMainVerification = `
+            $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and `
+            $env:GITHUB_REF -eq 'refs/heads/main' -and `
+            -not '${{ inputs.source_ref }}'
           if ($release -and '${{ inputs.source_ref }}') {
             throw 'A signed desktop release must build the tagged source; source_ref is for unsigned development builds only.'
           }
           $configured = [bool]($env:WINDOWS_SIGN_COMMAND -and $env:WINDOWS_SIGNER_THUMBPRINT -and $env:WINDOWS_SIGNER_SUBJECT)
-          if ($release -and -not $configured) {
-            throw 'A desktop-v* release requires the Windows signing command, signer thumbprint, and signer subject.'
+          $signingRequired = $release -or $trustedMainVerification
+          if ($signingRequired -and -not $configured) {
+            throw 'A desktop-v* release or trusted main verification requires the Windows signing command, signer thumbprint, and signer subject.'
           }
-          $signed = [bool]($release -and $configured)
+          $signed = [bool]($signingRequired -and $configured)
           "signed=$($signed.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           $installs = [bool]($signed -and $env:WINDOWS_SIGN_TOOL_INSTALL)
           "install_tool=$($installs.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           if ($signed) {
-            Write-Host 'Signing with the configured Windows publisher.'
+            Write-Host 'Signing the trusted source with the configured Windows publisher.'
             # The publisher compiled into the release is what the desktop
             # companion and the executor service pin at runtime; without it a
             # release build refuses executor controls by design.
             "NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT=$env:WINDOWS_SIGNER_THUMBPRINT" |
               Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
-            Write-Host '::warning::Manual and non-tag builds are unsigned development builds, not releases.'
+            Write-Host '::warning::Source-ref and non-main manual builds are unsigned development builds, not releases.'
           }
 
       # Azure Artifact Signing is the recommended configuration: no private key

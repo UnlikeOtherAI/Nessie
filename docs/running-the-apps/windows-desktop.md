@@ -95,9 +95,11 @@ rest are `null`) and the workflow overrides them:
 A `desktop-v*` tag is a release boundary: the workflow fails immediately when
 any signing setting is absent, and every Nessie executable and installer must
 have a valid signature whose subject and exact certificate thumbprint match the
-pinned publisher. Manual and non-tag builds never receive signing credentials
-and remain unsigned development evidence only; a `source_ref` override cannot
-be used for a signed release.
+pinned publisher. A manual run of the exact `main` branch with `source_ref`
+empty is also a signed verification boundary and fails closed when the signer
+is absent. This produces an installable security-test artifact without minting
+a release tag. Manual source overrides and non-main runs never receive signing
+credentials and remain unsigned development evidence only.
 
 | Secret | What it holds |
 | --- | --- |
