@@ -30,7 +30,13 @@ import {
 
 const packaging = dirname(fileURLToPath(import.meta.url))
 const authoring = await readFile(join(packaging, 'nessie-executor.wxs'), 'utf8')
+const buildScript = await readFile(join(packaging, 'build-msi.mjs'), 'utf8')
 const script = async (name) => readFile(join(packaging, 'scripts', name), 'utf8')
+
+test('the tray build uses the supported no-installer option', () => {
+  assert.ok(buildScript.includes("'tauri', 'build', '--no-bundle'"))
+  assert.equal(buildScript.includes("'--bundles', 'none'"), false)
+})
 
 test('a Hyper-V socket GUID is the guest port in the VSOCK template', () => {
   // Microsoft's own worked example: port 2761 is 0x00000ac9.

@@ -58,11 +58,11 @@ const cargoRelease = async (manifestDirectory) => {
 
 /**
  * The tray is a Tauri application, so its executable is produced by the Tauri
- * CLI rather than by cargo directly: `--bundles none` builds and signs nothing,
+ * CLI rather than by cargo directly: `--no-bundle` builds and signs nothing,
  * leaving the binary for the MSI to carry.
  */
 const buildTray = async () => {
-  await run('pnpm', ['exec', 'tauri', 'build', '--bundles', 'none'], {
+  await run('pnpm', ['exec', 'tauri', 'build', '--no-bundle'], {
     cwd: join(executorDirectory, 'tray-windows'),
     shell: true,
   })
