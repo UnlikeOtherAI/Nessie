@@ -104,7 +104,6 @@ test('no new navigation-motion keyframes or transitions on a stack layer', () =>
 // replaced.
 const BESPOKE_DIALOG_ALLOWLIST = [
   'admin/src/components/features/channels/ChannelMessageActions.tsx',
-  'admin/src/components/features/channels/SecretCaptureDialog.tsx',
   'admin/src/components/features/knowledge/comments/CommentActions.tsx',
   'admin/src/layouts/admin-shell/NativeSearchOverlay.tsx',
 ]

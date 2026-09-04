@@ -5,7 +5,7 @@ import {
   WITHHELD_MESSAGE_PLACEHOLDER,
   type DisclosureViewer,
 } from '@nessie/runtime'
-import { buildSpeakingStyleBlock } from '@nessie/schemas'
+import { buildSpeakingStyleBlock, redactDetectedSecrets } from '@nessie/schemas'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
 import {
   describeAttachments,
@@ -33,6 +33,12 @@ import {
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 import type { RunContext, StoredConversationMessage } from './types.js'
+
+export const AGENT_SECRET_SAFETY_INSTRUCTION = [
+  'Never ask for, repeat, or put a secret in chat or model-visible tool arguments.',
+  'Secret-looking text is replaced by a secure form before you see it; masked text is only',
+  'notice that the secret was protected.',
+].join(' ')
 
 // A turn's text as the model sees it: what was written, plus the inventory of
 // any files that came with it. The note is what makes an image-only message a
@@ -138,6 +144,7 @@ export const buildModelPrompt = (
     buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
+    AGENT_SECRET_SAFETY_INSTRUCTION,
     'When you need an id for a channel, person, or thread you only know by name, '
       + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
       + 'never ask the user to paste an id.',
@@ -271,7 +278,14 @@ export const buildModelPrompt = (
     messages.push({ content: prompt.trim(), role: 'user' })
   }
 
-  return messages
+  // The API and composer intercept credentials before persistence. This final
+  // provider boundary is defence in depth for non-chat injections (email,
+  // checkpoints, memory, tool-fed prompts): even a bypassed value is replaced
+  // before any inference provider receives it.
+  return messages.map((message) => {
+    if (typeof message.content !== 'string') return message
+    return { ...message, content: redactDetectedSecrets(message.content) } as ProviderMessage
+  })
 }
 
 export const loadConversation = async (

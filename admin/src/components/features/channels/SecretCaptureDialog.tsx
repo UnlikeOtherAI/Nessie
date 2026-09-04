@@ -1,9 +1,18 @@
-import { useState } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
+import { maskSecretValue } from '@nessie/schemas'
 
-import { useCreateSecret, type SecretScopeType } from '../../../facades/secrets/hooks'
+import {
+  useCreateSecret,
+  type SecretRecord,
+  type SecretScopeType,
+} from '../../../facades/secrets/hooks'
 import type { SecretCapture } from './useChannelComposer'
+import { Dialog } from '../../shared/Dialog'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { FormField } from '../../shared/FormField'
+import { Input, Select } from '../../shared/FormControls'
 
-const suggestedName = (type: SecretCapture['detected']['type']): string => {
+export const suggestedSecretName = (type: SecretCapture['detected']['type']): string => {
   switch (type) {
     case 'stripe_api_key': return 'STRIPE_API_KEY'
     case 'github_token': return 'GITHUB_TOKEN'
@@ -18,62 +27,77 @@ const suggestedName = (type: SecretCapture['detected']['type']): string => {
 export const SecretCaptureDialog = ({
   capture,
   onClose,
+  onSaved,
 }: {
   capture: SecretCapture
   onClose: () => void
+  onSaved: (secret: SecretRecord) => Promise<void>
 }) => {
   const createSecret = useCreateSecret()
-  const [name, setName] = useState(() => suggestedName(capture.detected.type))
+  const [name, setName] = useState(() => suggestedSecretName(capture.detected.type))
   const [scopeType, setScopeType] = useState<SecretScopeType>(capture.scopeType)
   const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
 
-  const save = async () => {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     setError(null)
     try {
-      await createSecret.mutateAsync({
+      const secret = await createSecret.mutateAsync({
         name,
         value: capture.value,
         scopeType,
         ...(scopeType === 'project' && capture.scopeId ? { scopeId: capture.scopeId } : {}),
       })
-      onClose()
+      await onSaved(secret)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save this secret.')
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" role="presentation">
-      <section aria-labelledby="secret-capture-title" className="admin-card w-full max-w-md p-5" role="dialog" aria-modal="true">
-        <h2 className="text-lg font-semibold text-[color:var(--tx)]" id="secret-capture-title">
-          Nessie detected a credential
-        </h2>
-        <p className="mt-2 text-sm text-[color:var(--tx2)]">
-          It was not sent to chat. Save it to the vault instead; agents will never receive its value.
-        </p>
-        <label className="mt-4 grid gap-1 text-sm text-[color:var(--tx2)]">
-          Value
-          <input className="admin-input" readOnly type="password" value={capture.value} />
-        </label>
-        <label className="mt-3 grid gap-1 text-sm text-[color:var(--tx2)]">
-          Name
-          <input className="admin-input" onChange={(event) => setName(event.target.value.toUpperCase())} value={name} />
-        </label>
-        <label className="mt-3 grid gap-1 text-sm text-[color:var(--tx2)]">
-          Scope
-          <select className="admin-input" onChange={(event) => setScopeType(event.target.value as SecretScopeType)} value={scopeType}>
+    <Dialog
+      description="The raw value was stopped before chat, storage, or an agent could receive it. Saving sends only the obscured replacement."
+      dismissDisabled={createSecret.isPending}
+      initialFocusRef={nameRef}
+      onClose={onClose}
+      open
+      title="Nessie detected a credential"
+    >
+      <form className="grid gap-4" onSubmit={(event) => void save(event)}>
+        <FormField label="Secret key">
+          <Input
+            autoComplete="off"
+            onChange={(event) => setName(event.target.value.toUpperCase())}
+            ref={nameRef}
+            value={name}
+          />
+        </FormField>
+        <FormField help="Only the credential type stays visible; secret bytes are bullets." label="Value">
+          <Input
+            autoComplete="off"
+            mono
+            readOnly
+            value={maskSecretValue(capture.value, capture.detected.type)}
+          />
+        </FormField>
+        <FormField label="Scope">
+          <Select
+            onChange={(event) => setScopeType(event.target.value as SecretScopeType)}
+            value={scopeType}
+          >
             <option value="personal">Personal</option>
             {capture.scopeId ? <option value="project">This project</option> : null}
-          </select>
-        </label>
-        {error ? <p className="mt-3 text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
-        <div className="mt-5 flex justify-end gap-2">
+          </Select>
+        </FormField>
+        <FormError>{error}</FormError>
+        <FormActions>
           <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Discard</button>
-          <button className="admin-button admin-button-primary" disabled={createSecret.isPending || !/^[A-Z][A-Z0-9_]*$/.test(name)} onClick={() => void save()} type="button">
+          <button className="admin-button admin-button-primary" disabled={createSecret.isPending || !/^[A-Z][A-Z0-9_]*$/.test(name)} type="submit">
             {createSecret.isPending ? 'Saving…' : 'Save securely'}
           </button>
-        </div>
-      </section>
-    </div>
+        </FormActions>
+      </form>
+    </Dialog>
   )
 }

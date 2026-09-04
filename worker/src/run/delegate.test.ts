@@ -99,15 +99,17 @@ const inferenceResult = (
 
 test('a delegate sub-agent is never shown the delegate tool itself', async () => {
   const advertised: string[][] = []
+  const prompts: ProviderMessage[][] = []
   const result = await runDelegate(
     { task: 'Find the current pricing page.' },
     {
       mcpToolset: emptyMcpToolset(),
       mcpView: emptyMcpView(),
       runInference: async (
-        _messages: ProviderMessage[],
+        messages: ProviderMessage[],
         tools: ToolSchemaDescriptor[],
       ) => {
+        prompts.push(messages)
         advertised.push(tools.map((tool) => tool.toolName))
         return inferenceResult({ outputText: 'Pricing starts at $10/month.' })
       },
@@ -126,6 +128,10 @@ test('a delegate sub-agent is never shown the delegate tool itself', async () =>
   for (const names of advertised) {
     assert.deepEqual(names, ['web_search'])
   }
+  assert.match(
+    String(prompts[0]?.find((message) => message.role === 'system')?.content),
+    /replaced by a secure form before you see it/,
+  )
 })
 
 test('a sub-agent that calls delegate anyway is refused, not recursed', async () => {

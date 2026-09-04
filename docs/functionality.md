@@ -1316,10 +1316,12 @@ type ControlCommandDefinition = {
 
 ## 13.6) Secret storage and retrieval (encrypted, scoped, policy-gated)
 
-- Contract status: target-state design, not currently implemented.
+- Contract status: first-class Infisical-backed metadata, personal/project
+  capture, rotation, revocation, grants, and scanner interception are
+  implemented; the broader scope and broker model below remains target state.
 - Secrets must never be stored in chat, model context, or visible tool call payloads.
 - Secret writes happen through secure REST endpoints and return only a `secretRef` in runtime-facing payloads.
-- Current implementation has no vault service; these are behavior targets only.
+- The current vault service is Infisical; saving is refused when it is not configured.
 - Supported scopes:
   - `global`, `project`, `team`, `channel`, `agent`, `thread`, `user`, `service`.
 - Scope is explicit:
@@ -1343,7 +1345,13 @@ type ControlCommandDefinition = {
   - `POST /secrets/{secretRef}/revoke`,
   - `DELETE /secrets/{secretRef}` (removal/purge policy aware).
 - UI requirement:
-  - pop-up for secret value capture and scope selection (`global`, `project`, `team`, `channel`, `agent`, `thread`, `user`, `service`).
+  - every channel composer intercepts structural credentials before send and
+    opens the shared capture form with prefilled key, Personal/Project scope,
+    and a provider-prefix-plus-bullets value display.
+  - a successful save posts only a masked replacement turn; raw secret text is
+    never the message later deleted or rewritten.
+  - broader scope selection (`global`, `team`, `channel`, `agent`, `thread`,
+    `service`) remains target state.
   - capture popup supports out-of-band submission and copy-only `secretRef`.
   - UI must show last-used + last-rotated warning state; stale secrets must be blocked until explicit override.
 - Cross-link:
