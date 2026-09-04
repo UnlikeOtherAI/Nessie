@@ -141,6 +141,7 @@ const listPrisma = (platformFacts: unknown) => ({
       statusDetail: null,
       updatedAt: new Date('2026-09-01T00:00:00.000Z'),
     }],
+    updateMany: async () => ({ count: 0 }),
   },
   organizationMember: {
     findUnique: async () => ({ deactivatedAt: null, role: 'owner' }),

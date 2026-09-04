@@ -105,6 +105,9 @@ executor ID. Consuming a handle creates the binding transactionally.
    local policy, then submits `{ enrollmentId, challenge, publicKey,
    descriptorDigest, proof }`. `proof` signs the canonical enrollment object
    with `nessie.executor.enrollment.v1` domain separation.
+   If the response is lost, an exact retry with the same challenge, key, and
+   descriptor returns the existing pending result without creating another
+   capability revision; any differing retry remains rejected as used.
 4. The server consumes the verifier once, records the pending key/fingerprint,
    and presents the exact fingerprint and data boundary to the human.
 5. The human confirms in web or companion UI. The executor remains offline
@@ -125,12 +128,17 @@ that exact value using
 SHA-256 digest and atomically consumes it with the successful claim, so a
 captured challenge cannot reconnect or advance a fence twice. A successful
 claim advances the durable connection epoch under the executor advisory lock
-and fences prior daemons.
+and fences prior daemons. Claiming proves presence but does not override a
+human lifecycle decision: a draining, paused, or error executor keeps that
+state instead of being reopened as online.
 Every heartbeat signs its executor ID, epoch, and timestamp under
 `nessie.executor.daemon.heartbeat.v1`; timestamps outside one minute are
 rejected and a stale epoch cannot update liveness. Replaying an old heartbeat
-therefore cannot extend its last-seen time. This channel reports availability
-only: it cannot lease or execute a command.
+therefore cannot extend its last-seen time. Sixty seconds is also the sole
+server-side liveness threshold: once the last authenticated daemon activity is
+older, an online executor is durably marked offline before it can be listed,
+selected, or dispatched. This channel reports availability only: it cannot
+lease or execute a command.
 
 While it owns the current connection epoch, a daemon may submit a higher
 descriptor revision. The descriptor's own `nessie.executor.descriptor.v1`
@@ -334,11 +342,21 @@ completed command with another digest. It emits structured results only.
 The daemon polls `/api/executor-daemon/commands/poll` with a fresh signed
 `poll` payload; this signature domain is separate from claim, heartbeat, and
 receipt. A command is released only while its existing queue job is processing.
+Signature, liveness, connection epoch, and binding-fence checks are linearized
+in the same executor-locked transaction as command selection. Duplicate polls
+for a still-leased command recover the same idempotency-keyed envelope; they
+cannot skip to different work. Receipt signature and epoch authorization are
+likewise in the same transaction as the command receipt transition, so a new
+claim or lifecycle fence cannot interleave between authorization and mutation.
 The queue payload contains only the command id. Raw arguments and terminal
 structured results are AES-256-GCM encrypted under the deployment secret while
 at rest; the database retains only bounded ciphertext and canonical digests.
 The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
+At the wait deadline, the worker takes the receipt lock once and either reads
+the already committed terminal result or marks the command `unknown_outcome`.
+A terminal receipt that wins that ordering is returned, never misreported as
+unknown; a later matching result may still resolve a genuinely unknown outcome.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored

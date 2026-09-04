@@ -98,6 +98,8 @@ test('descriptor signatures bind the complete advertised local policy', () => {
 
 const claimPrisma = (machinePublicKey: string, challengeMatches: number) => {
   const updateManyCalls: Array<Record<string, unknown>> = []
+  const executorUpdates: Array<Record<string, unknown>> = []
+  let status: 'draining' | 'offline' | 'online' = 'offline'
   const client = {
     $transaction: async (callback: (tx: unknown) => unknown) => callback({
       $executeRaw: async () => undefined,
@@ -107,9 +109,13 @@ const claimPrisma = (machinePublicKey: string, challengeMatches: number) => {
           id: 'executor-1',
           lastSeenAt: null,
           machinePublicKey,
-          status: 'offline',
+          status,
         }),
-        update: async () => ({ activeConnectionEpoch: 5n, status: 'online' }),
+        update: async ({ data }: { data: { status?: 'draining' | 'online' } }) => {
+          executorUpdates.push(data)
+          status = data.status ?? status
+          return { activeConnectionEpoch: 5n, status }
+        },
       },
       executorDaemonChallenge: {
         updateMany: async (input: Record<string, unknown>) => {
@@ -119,7 +125,12 @@ const claimPrisma = (machinePublicKey: string, challengeMatches: number) => {
       },
     }),
   } as unknown as PrismaClient
-  return { client, updateManyCalls }
+  return {
+    client,
+    executorUpdates,
+    setStatus: (next: 'draining' | 'offline') => { status = next },
+    updateManyCalls,
+  }
 }
 
 test('daemon claim consumes exactly one stored challenge before advancing its fence', async () => {
@@ -159,4 +170,25 @@ test('a previously consumed daemon challenge cannot advance the connection fence
     (error: unknown) => error instanceof ExecutorError
       && error.code === 'EXECUTOR_DAEMON_CHALLENGE_INVALID',
   )
+})
+
+test('a daemon claim preserves draining instead of reopening command acceptance', async () => {
+  const keys = keyPair()
+  const { client, executorUpdates, setStatus } = claimPrisma(keys.publicKey, 1)
+  setStatus('draining')
+  const challenge = 'server-challenge'
+  const signature = sign(
+    null,
+    Buffer.from(canonicalExecutorPayload(
+      'nessie.executor.daemon.claim.v1',
+      { challenge, executorId: 'executor-1' },
+    )),
+    keys.privateKey,
+  ).toString('base64url')
+
+  assert.deepEqual(
+    await claimExecutorConnection(client, { challenge, executorId: 'executor-1', signature }),
+    { connectionEpoch: '5', status: 'draining' },
+  )
+  assert.equal(executorUpdates[0]?.status, 'draining')
 })

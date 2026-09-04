@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import test from 'node:test'
+import type { PrismaClient } from '@prisma/client'
 
 import { ExecutorEnrollmentRequestSchema } from '@nessie/schemas'
 
 import {
   assertValidExecutorEnrollmentProof,
   ExecutorError,
+  submitExecutorEnrollment,
 } from '../src/index.js'
 import { canonicalExecutorJson, canonicalExecutorPayload } from '../src/executor-canonical-json.js'
 
@@ -73,5 +75,67 @@ test('enrollment requires signatures over the exact descriptor and enrollment fa
   assert.throws(
     () => assertValidExecutorEnrollmentProof(tampered),
     (error: unknown) => error instanceof ExecutorError && error.code === 'ENROLLMENT_PROOF_INVALID',
+  )
+})
+
+const enrollmentPrisma = (request: ReturnType<typeof enrollmentRequest>) => {
+  const state: Record<string, unknown> = {
+    challengeVerifier: digest(request.challenge),
+    consumedAt: null,
+    descriptorDigest: null,
+    executor: {
+      id: '00000000-0000-4000-8000-000000000009',
+      status: 'pending_pairing',
+    },
+    executorId: '00000000-0000-4000-8000-000000000009',
+    expiresAt: new Date('2026-08-12T12:10:00.000Z'),
+    id: request.enrollmentId,
+    pendingFingerprint: null,
+    pendingPublicKey: null,
+  }
+  let capabilityCreates = 0
+  const prisma = {
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
+    $executeRaw: async () => undefined,
+    executorEnrollment: {
+      findUnique: async ({ include }: { include?: { executor: true } }) => include
+        ? state
+        : { executorId: state.executorId },
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        Object.assign(state, data)
+        return state
+      },
+    },
+    executorCapabilityRevision: {
+      create: async () => {
+        capabilityCreates += 1
+        return {}
+      },
+    },
+  } as unknown as PrismaClient
+  return { capabilityCreates: () => capabilityCreates, prisma, state }
+}
+
+test('an exact enrollment submit replay returns the original pending result once', async () => {
+  const request = enrollmentRequest()
+  const { capabilityCreates, prisma } = enrollmentPrisma(request)
+  const now = new Date('2026-08-12T12:00:00.000Z')
+
+  const first = await submitExecutorEnrollment(prisma, request, now)
+  const replay = await submitExecutorEnrollment(prisma, request, now)
+
+  assert.deepEqual(replay, first)
+  assert.equal(capabilityCreates(), 1)
+})
+
+test('an enrollment submit replay with a different machine key remains rejected', async () => {
+  const firstRequest = enrollmentRequest()
+  const { prisma } = enrollmentPrisma(firstRequest)
+  const now = new Date('2026-08-12T12:00:00.000Z')
+  await submitExecutorEnrollment(prisma, firstRequest, now)
+
+  await assert.rejects(
+    submitExecutorEnrollment(prisma, enrollmentRequest(), now),
+    (error: unknown) => error instanceof ExecutorError && error.code === 'ENROLLMENT_USED',
   )
 })

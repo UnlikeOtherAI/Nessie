@@ -22,6 +22,7 @@ import {
   type ExecutorHumanAccess,
 } from './executor-access.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 
 const PAIRING_TTL_MS = 10 * 60 * 1_000
 
@@ -305,6 +306,7 @@ export const createExecutor = async (
 export const listVisibleExecutors = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
+  now = new Date(),
 ): Promise<ExecutorRecord[]> => {
   const userId = requireHumanActor(actorContext)
   if (!userId) return []
@@ -320,6 +322,7 @@ export const listVisibleExecutors = async (
     }),
   ])
   if (!membership || membership.deactivatedAt) return []
+  await expireStaleExecutorHeartbeats(prisma, { organizationId }, now)
   const visibleSharedScope = isOrganizationManager(membership.role)
   const projectIds = projectMemberships.map((entry) => entry.projectId)
   const rows = await prisma.executor.findMany({

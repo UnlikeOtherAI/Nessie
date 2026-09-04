@@ -6,7 +6,8 @@ import { type AuthorizedActionContext } from '@nessie/schemas'
 import { requireHumanActor } from './executor-access.js'
 import { lockExecutorMutation } from './executor-access-mutations.js'
 import { bindExecutorCandidateInTransaction } from './executor-binding.js'
-import { createExecutorCommand, readExecutorCommandResult } from './executor-commands.js'
+import { readExecutorCommandResult } from './executor-command-results.js'
+import { createExecutorCommand } from './executor-commands.js'
 import {
   EXECUTOR_CONTINUATION_TTL_MS,
   executorContinuationSubjectDigest,

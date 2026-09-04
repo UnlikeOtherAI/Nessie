@@ -11,6 +11,7 @@ import {
   pollExecutorCommand,
   readExecutorCommandResult,
   recordExecutorCommandReceipt,
+  waitForExecutorCommandResult,
 } from '../src/index.js'
 
 const commandId = '00000000-0000-4000-8000-000000000001'
@@ -73,6 +74,7 @@ test('command payload and terminal result are encrypted at rest and receipt tran
       }),
     },
     executor: {
+      updateMany: async () => ({ count: 0 }),
       findUnique: async () => ({
         authorizationRevision: 3,
         capabilityRevisions: [{ id: capabilityRevisionId }],
@@ -86,6 +88,7 @@ test('command payload and terminal result are encrypted at rest and receipt tran
         projectId: null,
         scopeKind: 'private',
         status: 'online',
+        lastSeenAt: new Date(),
       }),
     },
     executorCapabilityRevision: {
@@ -212,6 +215,76 @@ test('a late terminal receipt can resolve an unknown outcome without changing it
   assert.equal(state.resultDigest, digest(result))
 })
 
+test('a terminal receipt that wins the timeout lock is returned instead of unknown', async () => {
+  const result = { success: true }
+  const state: Record<string, unknown> = {
+    binding: { executorId, operationKey: 'sandbox.stop', sessionId: null },
+    state: 'started',
+  }
+  let releaseLock: (() => void) | undefined
+  let queuedLock = Promise.resolve()
+  let releaseUpdate!: () => void
+  const updateReleased = new Promise<void>((resolve) => { releaseUpdate = resolve })
+  let updateEntered!: () => void
+  const updateStarted = new Promise<void>((resolve) => { updateEntered = resolve })
+  const prisma = {
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => {
+      let transactionRelease: (() => void) | undefined
+      const tx = {
+        $executeRaw: async () => {
+          if (transactionRelease) return 1
+          const prior = queuedLock
+          const held = new Promise<void>((resolve) => { releaseLock = resolve })
+          queuedLock = prior.then(() => held)
+          await prior
+          transactionRelease = releaseLock
+          return 1
+        },
+        executorCommand: {
+          findUnique: async () => state,
+          update: async ({ data }: { data: Record<string, unknown> }) => {
+            updateEntered()
+            await updateReleased
+            Object.assign(state, data)
+            return state
+          },
+          updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+            if (['leased', 'accepted', 'started'].includes(String(state.state))) {
+              Object.assign(state, data)
+              return { count: 1 }
+            }
+            return { count: 0 }
+          },
+        },
+      }
+      try {
+        return await callback(tx)
+      } finally {
+        transactionRelease?.()
+      }
+    },
+  } as unknown as PrismaClient
+
+  const receipt = recordExecutorCommandReceipt(prisma, secret, executorId, {
+    commandId,
+    occurredAt: '2026-08-12T12:00:01.000Z',
+    resultDigest: digest(result),
+    state: 'result_acknowledged',
+  }, result)
+  await updateStarted
+  const wait = waitForExecutorCommandResult(
+    prisma,
+    secret,
+    commandId,
+    new Date('2000-01-01T00:00:00.000Z'),
+  )
+
+  releaseUpdate()
+  await receipt
+  assert.deepEqual(await wait, result)
+  assert.equal(state.state, 'result_acknowledged')
+})
+
 test('a failed browser receipt terminalizes only its exact active session', async () => {
   const sessionId = '00000000-0000-4000-8000-000000000009'
   const state = {
@@ -323,6 +396,7 @@ const currentBindingPrisma = (
       findFirst: async () => ({ toolPolicy: { [`executor.${operationKey}`]: true } }),
     },
     executor: {
+      updateMany: async () => ({ count: 0 }),
       findUnique: async () => ({
         authorizationRevision: 3,
         capabilityRevisions: [{ id: capabilityRevisionId }],
@@ -338,6 +412,7 @@ const currentBindingPrisma = (
         projectId: null,
         scopeKind: 'private',
         status: 'online',
+        lastSeenAt: new Date(),
       }),
     },
     executorAvailabilityCandidate: { findUnique: async () => candidate },
