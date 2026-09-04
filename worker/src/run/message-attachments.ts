@@ -18,7 +18,7 @@ import type { PrismaClient } from '@prisma/client'
  * run its picture, never the run.
  */
 
-// Inlined directly. Every OpenAI-compatible vision endpoint takes these four.
+// Inlined directly. OpenAI-compatible and Codex vision endpoints take these four.
 const INLINE_IMAGE_MIMES = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp'])
 
 // Above this an original is not worth base64-ing into every loop iteration —

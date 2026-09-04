@@ -20,9 +20,28 @@ import {
 } from './tool-message-basis.js'
 import { truncate } from './tool-output.js'
 
+const MESSAGE_ATTACHMENT_LIMIT = 10
+
+const attachmentIdsForMessage = (value: unknown): string[] => {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length === 0 || value.length > MESSAGE_ATTACHMENT_LIMIT) {
+    throw new Error(`attachmentIds must contain between 1 and ${MESSAGE_ATTACHMENT_LIMIT} IDs.`)
+  }
+  if (!value.every((id) => typeof id === 'string' && id.trim().length > 0)) {
+    throw new Error('attachmentIds must contain only non-empty IDs.')
+  }
+
+  const ids = value.map((id) => id.trim())
+  if (new Set(ids).size !== ids.length) {
+    throw new Error('attachmentIds must not contain duplicates.')
+  }
+  return ids
+}
+
 export const runSendMessageTool = async (
   context: BuiltinToolRuntimeContext,
   input: {
+    attachmentIds?: unknown
     channelId?: string
     content: string
     targetUserId?: string
@@ -31,6 +50,7 @@ export const runSendMessageTool = async (
 ): Promise<ToolExecutionResult> => {
   const userId = requireActingUserId(context)
   const content = input.content.trim()
+  const attachmentIds = attachmentIdsForMessage(input.attachmentIds)
   if (!content) {
     throw new Error('content is required.')
   }
@@ -71,6 +91,26 @@ export const runSendMessageTool = async (
         threadId: true,
       },
     })
+    if (attachmentIds.length > 0) {
+      // Match the REST send boundary: an assistant acts as its effective user,
+      // never as the agent row, and can only publish that user's own pending
+      // uploads. Rejecting a partial claim keeps the model from reporting an
+      // image as sent when a guessed, linked, or foreign attachment was not.
+      const linked = await tx.attachment.updateMany({
+        where: {
+          id: { in: attachmentIds },
+          messageId: null,
+          organizationId: context.channel.organizationId,
+          uploaderId: userId,
+        },
+        data: { messageId: created.id },
+      })
+      if (linked.count !== attachmentIds.length) {
+        throw new Error(
+          'Each attachment must be one of your own still-unlinked uploads in this organization.',
+        )
+      }
+    }
     await insertMessageBasis(tx, {
       basis: destinationBasis,
       messageId: created.id,
@@ -199,6 +239,7 @@ export const runSendMessageTool = async (
       `channelId=${destination.channelId} | channel="${destination.channelLabel}" | scope="${destination.channelScope}"`,
       `threadId=${destination.threadId}${destination.threadLabel ? ` | thread="${destination.threadLabel}"` : ''}`,
       `messageId=${message.id}`,
+      `attachmentsLinked=${attachmentIds.length}`,
       `agentsNotified=${queuedReplyCount}`,
     ].join('\n'),
     toolName: 'send_message',
