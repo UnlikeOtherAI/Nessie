@@ -30,7 +30,7 @@ const DashboardWidgetSlot = ({
     <div className="relative h-full">
       {editable ? (
         <div
-          className="dashboard-widget-handle absolute inset-x-0 top-0 z-10 h-6 cursor-move"
+          className="dashboard-widget-handle absolute inset-x-0 top-0 z-[var(--layer-stack)] h-6 cursor-move"
           title="Drag to move"
         />
       ) : null}
