@@ -314,6 +314,12 @@ is gone.
 - **Continue in chat** (`POST /api/designer/continue-in-chat`) hands the open
   draft to the person's own Designer DM through `deliverGlobalAgentBrief`, so it
   is the same hidden server-authored briefing a handoff writes.
+- New-agent creation presents this same assistant and the existing settings form
+  as the **Create** and **Configure** tabs. Create is the default, prompt-first
+  route; Configure exposes every setting. Both tabs stay mounted over one typed
+  draft, so switching modes never discards the conversation or produces a
+  second creation path. Editing an existing agent continues to open directly on
+  its settings because there is no creation-method decision to make.
 
 ## The detail surface: the ordinary one, disabled
 
