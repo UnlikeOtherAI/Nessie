@@ -111,6 +111,24 @@ const SECRET_KEY_PATTERN =
 
 const REDACTED = '[REDACTED]'
 
+/**
+ * Mail-send payloads contain the very correspondence a person is being asked
+ * to authorize. Tool input summaries are copied into approvals, run history,
+ * thinking, realtime status, and opt-in demonstrations, so redacting just
+ * secret-shaped keys is insufficient for these two action tools.
+ *
+ * The exact arguments remain available only in ApprovalRequest.resumeState and
+ * its hash, which are the execution proof. Every other durable/operational
+ * caller must use these helpers when it knows the tool name.
+ */
+export const isProtectedMailSendTool = (toolName: string): boolean =>
+  toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
+
+const protectedMailSendSummary = (toolName: string): string =>
+  toolName === 'gmail_draft_send'
+    ? 'Send an approved Gmail draft.'
+    : 'Send from a connected mailbox.'
+
 export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
   if (depth > 8) return '[MaxDepth]'
   if (value === null || typeof value !== 'object') return value
@@ -134,6 +152,40 @@ export const summarizeToolInput = (value: unknown, maxLength = 200): string => {
     return '[Unserializable tool input]'
   }
 }
+
+/**
+ * Summary safe for durable operational surfaces. Never use the generic JSON
+ * summary for a mail-send invocation: recipients, addresses, subject and body
+ * are all content, even though none look like a password.
+ */
+export const summarizeToolInputForTool = (
+  toolName: string,
+  value: unknown,
+  maxLength = 200,
+): string =>
+  isProtectedMailSendTool(toolName)
+    ? protectedMailSendSummary(toolName)
+    : summarizeToolInput(value, maxLength)
+
+/**
+ * Demonstration steps are a durable operational recording, not a resumable
+ * approval. Mail sends therefore keep no arguments there at all.
+ */
+export const redactToolInputForPersistence = (
+  toolName: string,
+  value: unknown,
+): unknown =>
+  isProtectedMailSendTool(toolName) ? {} : redactToolInputValue(value)
+
+/** A tool history entry may name a mail-send outcome but never its contents. */
+export const sanitizeToolOutputForPersistence = (
+  toolName: string,
+  success: boolean,
+  output: string,
+): string =>
+  isProtectedMailSendTool(toolName)
+    ? (success ? 'Email send completed.' : 'Email send did not complete.')
+    : output
 
 export const stableJsonStringify = (value: unknown): string => {
   if (value === null || typeof value !== 'object') {
