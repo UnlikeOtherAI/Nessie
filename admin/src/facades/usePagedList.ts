@@ -30,11 +30,13 @@ import { useApiClient } from '../providers/ApiClientProvider'
  * `meta`, and a list that lost them rendered empty with no next page.
  */
 type PagedResponse<T> = {
-  data: T[]
+  data: T
   meta?: PaginationMeta
 }
 
-type UsePagedListOptions = {
+type UsePagedListOptions<TData, TItem> = {
+  /** Extract rows from an otherwise paged response. Arrays need no extractor. */
+  items?: (data: TData) => TItem[]
   /**
    * Skips the fetch entirely, mirroring `useQuery`'s own option. An
    * owner-gated page renders its refusal without asking the server a question
@@ -50,6 +52,12 @@ type UsePagedListOptions = {
    */
   params?: Record<string, string | undefined>
   /**
+   * UOA's opaque previous cursor is only valid with `direction=backward`.
+   * Most local cursor APIs encode the direction in the cursor and retain the
+   * existing default, so this opt-in keeps one pagination surface.
+   */
+  usesDirectionalCursors?: boolean
+  /**
    * Distinguishes this list's URL parameters when a page shows two paged
    * lists. Defaults to unprefixed, which is what a page with one list wants.
    */
@@ -60,7 +68,7 @@ type UsePagedListOptions = {
   queryKey: readonly unknown[]
 }
 
-export type PagedList<T> = {
+export type PagedList<T, TData = T[]> = {
   canNext: boolean
   canPrevious: boolean
   items: T[]
@@ -69,7 +77,7 @@ export type PagedList<T> = {
   meta: PaginationMeta | undefined
   onPageChange: (page: number) => void
   page: number
-  query: UseQueryResult<PagedResponse<T>>
+  query: UseQueryResult<PagedResponse<TData>>
   /** The server's count of matching records, for a `ListToolbar`. */
   total: number | undefined
 }
@@ -88,20 +96,26 @@ const buildSearch = (
   return `?${search.toString()}`
 }
 
-export const usePagedList = <T>({
+export const usePagedList = <TItem, TData = TItem[]>({
   enabled = true,
+  items: selectItems,
   limit = DEFAULT_PAGE_LIMIT,
   params = {},
   paramPrefix = '',
   path,
   queryKey,
-}: UsePagedListOptions): PagedList<T> => {
+  usesDirectionalCursors = false,
+}: UsePagedListOptions<TData, TItem>): PagedList<TItem, TData> => {
   const api = useApiClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const cursorKey = `${paramPrefix}cursor`
   const pageKey = `${paramPrefix}page`
+  const directionKey = `${paramPrefix}direction`
   const cursor = searchParams.get(cursorKey) ?? undefined
+  const direction = usesDirectionalCursors
+    ? searchParams.get(directionKey) ?? undefined
+    : undefined
   const page = Number(searchParams.get(pageKey) ?? '0') || 0
 
   // Serialised so the query key and the reset check both compare by value; two
@@ -110,8 +124,8 @@ export const usePagedList = <T>({
 
   const query = useQuery({
     enabled,
-    queryFn: () => api.getPage<T[]>(`${path}${buildSearch(params, cursor, limit)}`),
-    queryKey: [...queryKey, paramsKey, cursor ?? null, limit],
+    queryFn: () => api.getPage<TData>(`${path}${buildSearch({ ...params, direction }, cursor, limit)}`),
+    queryKey: [...queryKey, paramsKey, cursor ?? null, direction ?? null, limit],
   })
 
   const meta = query.data?.meta
@@ -131,15 +145,30 @@ export const usePagedList = <T>({
           const updated = new URLSearchParams(current)
           updated.set(cursorKey, target)
           updated.set(pageKey, String(Math.max(next, 0)))
+          if (usesDirectionalCursors) {
+            updated.set(directionKey, forward ? 'forward' : 'backward')
+          }
           return updated
         },
         { replace: true },
       )
     },
-    [cursorKey, meta?.nextCursor, meta?.prevCursor, page, pageKey, setSearchParams],
+    [
+      cursorKey,
+      directionKey,
+      meta?.nextCursor,
+      meta?.prevCursor,
+      page,
+      pageKey,
+      setSearchParams,
+      usesDirectionalCursors,
+    ],
   )
 
-  const items = useMemo(() => query.data?.data ?? [], [query.data])
+  const items = useMemo(
+    () => (query.data ? selectItems?.(query.data.data) ?? (query.data.data as unknown as TItem[]) : []),
+    [query.data, selectItems],
+  )
 
   return {
     canNext: Boolean(meta?.hasMore),
@@ -170,6 +199,7 @@ export const usePagedListReset = (paramPrefix = ''): (() => void) => {
       (current) => {
         const updated = new URLSearchParams(current)
         updated.delete(`${paramPrefix}cursor`)
+        updated.delete(`${paramPrefix}direction`)
         updated.delete(`${paramPrefix}page`)
         return updated
       },

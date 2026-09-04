@@ -144,16 +144,29 @@ const makeApp = async (
 
 const orgMembers = {
   data: [
-    { userId: 'usr_ada', email: 'ada@acme.test', name: 'Ada Lovelace', role: 'owner', status: 'ACTIVE' },
     {
-      userId: 'usr_grace',
-      email: 'grace@acme.test',
-      name: 'Grace Hopper',
+      subject: 'usr_ada',
+      identity: { displayName: 'Ada Lovelace', email: 'ada@acme.test' },
+      role: 'owner',
+      status: 'ACTIVE',
+    },
+    {
+      subject: 'usr_grace',
+      identity: { displayName: 'Grace Hopper', email: 'grace@acme.test' },
       role: 'member',
       status: 'DEACTIVATED',
     },
   ],
-  next_cursor: null,
+  total: 2,
+  meta: { hasMore: false, nextCursor: null, prevCursor: null },
+  permissions: {
+    addMember: true,
+    changeMemberRole: true,
+    removeMember: true,
+    deactivateMember: true,
+    reactivateMember: true,
+    viewMemberEmail: true,
+  },
 }
 
 const base = `https://uoa.test/org/organisations/${externalOrgId}`
@@ -168,10 +181,13 @@ test('GET /api/organization/members returns the org-wide roster with org roles',
     )
 
     try {
-      const response = await app.inject({ method: 'GET', url: '/api/organization/members' })
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/organization/members?status=all&limit=25',
+      })
 
       assert.equal(response.statusCode, 200)
-      assert.deepEqual(response.json().data.members, [
+      assert.deepEqual(response.json().data.items, [
         {
           uoaSub: 'usr_ada',
           displayName: 'Ada Lovelace',
@@ -187,16 +203,68 @@ test('GET /api/organization/members returns the org-wide roster with org roles',
           status: 'DEACTIVATED',
         },
       ])
+      assert.deepEqual(response.json().meta, {
+        hasMore: false,
+        nextCursor: null,
+        prevCursor: null,
+        total: 2,
+      })
 
       // One upstream read, on the ORG members path — never a team path.
       assert.deepEqual(
         calls.map((call) => `${call.method} ${call.url}`),
-        [`GET ${base}/members${query}&status=all`],
+        [`GET ${base}/members${query}&status=all&limit=25`],
       )
       for (const call of calls) {
         assert.equal(call.hasAccessToken, false, 'UOA access tokens are never persisted or forwarded')
         assert.ok(call.subjectAssertion, 'the current UOA subject must be asserted upstream')
       }
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+test('the org invite dialog receives only UOA-authorized targets and sends to its explicit team', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, (call) =>
+        call.method === 'GET'
+          ? json({
+              data: [{ id: 'team_product', name: 'Product' }],
+              total: 1,
+              meta: { hasMore: false, nextCursor: null, prevCursor: null },
+              permissions: { createInvitation: true },
+            })
+          : json({ status: 'ok' })),
+    )
+
+    try {
+      const targets = await app.inject({
+        method: 'GET',
+        url: '/api/organization/member-invitation-targets?limit=25',
+      })
+      assert.equal(targets.statusCode, 200)
+      assert.deepEqual(targets.json().data.items, [{ id: 'team_product', name: 'Product' }])
+
+      const invitation = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations',
+        payload: { email: 'new@acme.test', teamId: 'team_product' },
+      })
+      assert.equal(invitation.statusCode, 200)
+      assert.equal(
+        calls[0]?.url,
+        `${base}/member-invitation-targets${query}&limit=25`,
+      )
+      assert.equal(
+        calls[1]?.url,
+        `${base}/teams/team_product/invitations${query}`,
+      )
+      assert.equal(calls[1]?.body, JSON.stringify({ email: 'new@acme.test' }))
+      assert.ok(calls[1]?.subjectAssertion)
     } finally {
       await app.close()
     }
@@ -239,42 +307,34 @@ test('the roster read is open to any member of the organization', async () => {
     try {
       const response = await app.inject({ method: 'GET', url: '/api/organization/members' })
       assert.equal(response.statusCode, 200)
-      assert.equal(response.json().data.members.length, 2)
+      assert.equal(response.json().data.items.length, 2)
     } finally {
       await app.close()
     }
   })
 })
 
-test('every mutation refuses a non-admin before any relay', async () => {
-  for (const role of ['member', 'viewer']) {
-    await withUoaEnv(async () => {
-      const app = await makeApp(
-        actorContextFor([role]),
-        forbidUpstream(`a ${role} must never reach the full-trust domain-hash relay`),
-      )
+test('the API relays UOA organization membership decisions instead of local roles', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, () => json({ ok: true })),
+    )
 
-      const requests = [
-        {
-          method: 'PUT' as const,
-          url: '/api/organization/members/usr_ada/role',
-          payload: { role: 'admin' },
-        },
-        { method: 'POST' as const, url: '/api/organization/members/usr_ada/deactivate' },
-        { method: 'POST' as const, url: '/api/organization/members/usr_ada/reactivate' },
-      ]
-
-      try {
-        for (const request of requests) {
-          const response = await app.inject(request)
-          assert.equal(response.statusCode, 403, `${role} ${request.method} ${request.url}`)
-          assert.equal(response.json().error.code, 'FORBIDDEN')
-        }
-      } finally {
-        await app.close()
-      }
-    })
-  }
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/organization/members/usr_ada/role',
+        payload: { role: 'admin' },
+      })
+      assert.equal(response.statusCode, 200)
+      assert.equal(calls.length, 1)
+      assert.ok(calls[0]?.subjectAssertion)
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 test('owners and admins drive the org-role and activation mutations', async () => {

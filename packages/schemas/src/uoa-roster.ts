@@ -32,6 +32,41 @@ export type TeamMemberRecord = {
   orgRole?: string
   /** UOA membership lifecycle: ACTIVE | DEACTIVATED | REMOVED. */
   status?: string
+  avatarImageUrl?: string
+}
+
+/** The live UOA verdict for the actions a roster surface may offer. */
+export type MemberRosterPermissions = {
+  addMember: boolean
+  changeMemberRole: boolean
+  removeMember: boolean
+  deactivateMember?: boolean
+  reactivateMember?: boolean
+  viewMemberEmail: boolean
+  searchMemberCandidates?: boolean
+}
+
+/** A stateless UOA list response, retaining its keyset pagination contract. */
+export type MemberRosterPage<T> = {
+  items: T[]
+  permissions: MemberRosterPermissions
+}
+
+/** An eligible, already-active organisation member for a team add. */
+export type TeamMemberCandidate = {
+  uoaSub: string
+  displayName?: string
+  email?: string
+  avatarImageUrl?: string
+  orgRole?: string
+}
+
+/** A team the current UOA caller may explicitly choose for an org invitation. */
+export type MemberInvitationTarget = {
+  id: string
+  name: string
+  slug?: string
+  avatarImageUrl?: string
 }
 
 export type TeamInvitationRecord = {
@@ -46,6 +81,7 @@ export type TeamInvitationRecord = {
   invitedByName?: string
   lastSentAt?: string
   expiresAt?: string
+  team?: MemberInvitationTarget
 }
 
 /** Per-email outcome of a bulk invite: invited | resent_existing | already_member | … */
@@ -62,10 +98,28 @@ export type TeamInvitationsResponse = {
   invitations: TeamInvitationRecord[]
 }
 
+export type MemberInvitationPage = {
+  items: TeamInvitationRecord[]
+  permissions: Pick<MemberRosterPermissions, 'addMember'> & {
+    viewPendingInvitations: boolean
+  }
+}
+
+export type MemberInvitationTargetPage = {
+  items: MemberInvitationTarget[]
+  permissions: { createInvitation: boolean }
+}
+
 export type CreateTeamInvitationsRequest = {
   invites: { email: string; name?: string; teamRole?: string }[]
 }
 
 export type CreateTeamInvitationsResponse = {
   results: TeamInviteResult[]
+}
+
+export type CreateMemberInvitationRequest = {
+  email: string
+  name?: string
+  teamRole?: string
 }

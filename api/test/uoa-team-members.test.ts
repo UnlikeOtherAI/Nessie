@@ -177,29 +177,26 @@ const makeApp = async (
   return app
 }
 
-const teamDetail = {
-  id: externalTeamId,
-  name: 'Design',
-  members: [
-    { userId: 'usr_ada', teamRole: 'owner' },
-    { userId: 'usr_grace', teamRole: 'member' },
+const teamRoster = {
+  data: [
+    {
+      subject: 'usr_ada',
+      identity: { displayName: 'Ada Lovelace', email: 'ada@acme.test' },
+      teamRole: 'owner',
+      status: 'ACTIVE',
+    },
+    {
+      subject: 'usr_grace',
+      identity: { displayName: 'Grace Hopper', email: 'grace@acme.test' },
+      teamRole: 'member',
+      status: 'DEACTIVATED',
+    },
     // A row with no subject is not a member — it must not become one.
     { teamRole: 'member' },
   ],
-}
-
-const orgMembers = {
-  data: [
-    { userId: 'usr_ada', email: 'ada@acme.test', name: 'Ada Lovelace', role: 'owner', status: 'ACTIVE' },
-    {
-      userId: 'usr_grace',
-      email: 'grace@acme.test',
-      name: 'Grace Hopper',
-      role: 'member',
-      status: 'DEACTIVATED',
-    },
-  ],
-  next_cursor: null,
+  total: 2,
+  meta: { hasMore: false, nextCursor: null, prevCursor: null },
+  permissions: { addMember: true, viewMemberEmail: true },
 }
 
 test('the config JWT opts this domain into UOA backend org management', async () => {
@@ -245,25 +242,26 @@ test('resolveUoaRosterTeam maps the session team to its UOA org + team', async (
   })
 })
 
-test('GET /api/team/members joins the UOA team and organisation reads', async () => {
+test('GET /api/team/members relays one paged UOA team roster', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
       actorContextFor(['member']),
-      rosterDeps(calls, (call) =>
-        json(call.url.includes('/teams/') ? teamDetail : orgMembers)),
+      rosterDeps(calls, () => json(teamRoster)),
     )
 
     try {
-      const response = await app.inject({ method: 'GET', url: '/api/team/members' })
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/team/members?status=all&limit=25',
+      })
 
       assert.equal(response.statusCode, 200)
-      assert.deepEqual(response.json().data.members, [
+      assert.deepEqual(response.json().data.items, [
         {
           uoaSub: 'usr_ada',
           displayName: 'Ada Lovelace',
           email: 'ada@acme.test',
-          orgRole: 'owner',
           status: 'ACTIVE',
           teamRole: 'owner',
         },
@@ -271,19 +269,23 @@ test('GET /api/team/members joins the UOA team and organisation reads', async ()
           uoaSub: 'usr_grace',
           displayName: 'Grace Hopper',
           email: 'grace@acme.test',
-          orgRole: 'member',
           status: 'DEACTIVATED',
           teamRole: 'member',
         },
       ])
+      assert.deepEqual(response.json().meta, {
+        hasMore: false,
+        nextCursor: null,
+        prevCursor: null,
+        total: 2,
+      })
 
-      const urls = calls.map((call) => call.url).sort()
-      assert.deepEqual(urls, [
-        `https://uoa.test/org/organisations/${externalOrgId}/members`
-        + `?domain=nessie.test&config_url=${encodeURIComponent(uoaEnv.UOA_CONFIG_URL)}&status=all`,
-        `https://uoa.test/org/organisations/${externalOrgId}/teams/${externalTeamId}`
-        + `?domain=nessie.test&config_url=${encodeURIComponent(uoaEnv.UOA_CONFIG_URL)}`,
-      ])
+      assert.equal(calls.length, 1)
+      assert.equal(
+        calls[0]?.url,
+        `https://uoa.test/org/organisations/${externalOrgId}/teams/${externalTeamId}/members`
+        + `?domain=nessie.test&config_url=${encodeURIComponent(uoaEnv.UOA_CONFIG_URL)}&status=all&limit=25`,
+      )
       for (const call of calls) {
         assert.match(call.authorization ?? '', /^Bearer [0-9a-f]{64}$/)
         assert.equal(call.hasAccessToken, false, 'UOA access tokens are never persisted or forwarded')
@@ -325,7 +327,7 @@ test('the roster tolerates an unusable upstream shape without inventing members'
     try {
       const response = await app.inject({ method: 'GET', url: '/api/team/members' })
       assert.equal(response.statusCode, 200)
-      assert.deepEqual(response.json().data.members, [])
+      assert.deepEqual(response.json().data.items, [])
     } finally {
       await app.close()
     }
@@ -427,70 +429,56 @@ test('the roster read is open to any member of the team', async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
       actorContextFor(['viewer']),
-      rosterDeps(calls, (call) =>
-        json(call.url.includes('/teams/') ? teamDetail : orgMembers)),
+      rosterDeps(calls, () => json(teamRoster)),
     )
 
     try {
       const response = await app.inject({ method: 'GET', url: '/api/team/members' })
       assert.equal(response.statusCode, 200)
-      assert.equal(response.json().data.members.length, 2)
+      assert.equal(response.json().data.items.length, 2)
     } finally {
       await app.close()
     }
   })
 })
 
-test('every mutation and the invitation list refuse a non-admin before any relay', async () => {
-  for (const role of ['member', 'viewer']) {
-    await withUoaEnv(async () => {
-      const app = await makeApp(
-        actorContextFor([role]),
-        forbidUpstream(`a ${role} must never reach the full-trust domain-hash relay`),
-      )
+test('the API relays UOA membership decisions instead of applying local roles', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, (call) =>
+        call.method === 'GET'
+          ? json({
+              data: [],
+              total: 0,
+              meta: { hasMore: false, nextCursor: null, prevCursor: null },
+              permissions: { createInvitation: false, viewPendingInvitations: false },
+            })
+          : json({ ok: true })),
+    )
 
-      const requests = [
-        { method: 'GET' as const, url: '/api/team/invitations' },
-        {
-          method: 'POST' as const,
-          url: '/api/team/invitations',
-          payload: { invites: [{ email: 'new@acme.test' }] },
-        },
-        // Authorization is decided before the body is read, so a non-admin
-        // learns "no", never "your payload is malformed".
-        {
-          method: 'POST' as const,
-          url: '/api/team/invitations',
-          payload: { invites: [{ email: 'not-an-email' }] },
-        },
-        { method: 'POST' as const, url: '/api/team/invitations/inv_1/resend' },
-        { method: 'POST' as const, url: '/api/team/invitations/inv_1/revoke' },
-        { method: 'POST' as const, url: '/api/team/invitations/inv_1/approve' },
-        { method: 'POST' as const, url: '/api/team/invitations/inv_1/deny' },
-        {
-          method: 'PUT' as const,
-          url: '/api/team/members/usr_ada/role',
-          payload: { role: 'admin' },
-        },
-        { method: 'DELETE' as const, url: '/api/team/members/usr_ada' },
-        { method: 'POST' as const, url: '/api/team/members/usr_ada/deactivate' },
-        { method: 'POST' as const, url: '/api/team/members/usr_ada/reactivate' },
-      ]
+    try {
+      const invitations = await app.inject({ method: 'GET', url: '/api/team/invitations' })
+      assert.equal(invitations.statusCode, 200)
+      assert.equal(invitations.json().data.permissions.addMember, false)
 
-      try {
-        for (const request of requests) {
-          const response = await app.inject(request)
-          assert.equal(response.statusCode, 403, `${role} ${request.method} ${request.url}`)
-          assert.equal(response.json().error.code, 'FORBIDDEN')
-        }
-      } finally {
-        await app.close()
-      }
-    })
-  }
+      const addMember = await app.inject({
+        method: 'POST',
+        url: '/api/team/members',
+        payload: { uoaSub: 'usr_grace' },
+      })
+      assert.equal(addMember.statusCode, 200)
+      assert.equal(calls.length, 2)
+      assert.equal(calls[1]?.method, 'POST')
+      assert.ok(calls[1]?.subjectAssertion)
+    } finally {
+      await app.close()
+    }
+  })
 })
 
-test('owners and admins drive the member and invitation mutations', async () => {
+test('UOA-authorized users drive the member and invitation mutations', async () => {
   for (const role of ['owner', 'admin']) {
     await withUoaEnv(async () => {
       const calls: StubCall[] = []
@@ -498,7 +486,12 @@ test('owners and admins drive the member and invitation mutations', async () => 
         actorContextFor([role]),
         rosterDeps(calls, (call) => {
           if (call.method === 'GET') {
-            return json({ data: [{ inviteId: 'inv_1', email: 'new@acme.test', status: 'pending' }] })
+            return json({
+              data: [{ inviteId: 'inv_1', email: 'new@acme.test', status: 'pending' }],
+              total: 1,
+              meta: { hasMore: false, nextCursor: null, prevCursor: null },
+              permissions: { createInvitation: true, viewPendingInvitations: true },
+            })
           }
           // UOA's revoke answers the agreed `{ ok: true }`; the member DELETE
           // ignores its body, so one shape serves both.
@@ -515,20 +508,32 @@ test('owners and admins drive the member and invitation mutations', async () => 
       }[] = [
         {
           request: { method: 'GET', url: '/api/team/invitations' },
-          upstream: { method: 'GET', url: `${base}/teams/${externalTeamId}/invitations${query}` },
+          upstream: { method: 'GET', url: `${base}/teams/${externalTeamId}/member-invitations${query}` },
         },
         {
           request: {
             method: 'POST',
             url: '/api/team/invitations',
-            payload: { invites: [{ email: ' new@acme.test ', teamRole: 'member' }] },
+            payload: { email: ' new@acme.test ', teamRole: 'member' },
           },
           upstream: {
             method: 'POST',
             url: `${base}/teams/${externalTeamId}/invitations${query}`,
             body: JSON.stringify({
-              invites: [{ email: 'new@acme.test', teamRole: 'member' }],
+              email: 'new@acme.test', teamRole: 'member',
             }),
+          },
+        },
+        {
+          request: {
+            method: 'POST',
+            url: '/api/team/members',
+            payload: { uoaSub: 'usr_grace', teamRole: 'member' },
+          },
+          upstream: {
+            method: 'POST',
+            url: `${base}/teams/${externalTeamId}/members${query}`,
+            body: JSON.stringify({ user_id: 'usr_grace', team_role: 'member' }),
           },
         },
         {
@@ -596,8 +601,8 @@ test('owners and admins drive the member and invitation mutations', async () => 
         }
         assert.deepEqual(calls.length, expected.length)
         assert.deepEqual(
-          (await app.inject(expected[1].request)).json().data.results,
-          [{ email: 'new@acme.test', status: 'invited' }],
+          (await app.inject(expected[1].request)).json().data,
+          { ok: true },
         )
       } finally {
         await app.close()

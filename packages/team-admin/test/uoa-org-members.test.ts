@@ -45,7 +45,7 @@ const externalOrgId = 'org_acme'
 
 const query = `?domain=nessie.test&config_url=${encodeURIComponent(uoaEnv.UOA_CONFIG_URL)}`
 
-const membersUrl = `https://uoa.test/org/organisations/${externalOrgId}/members${query}&status=all`
+const membersUrl = `https://uoa.test/org/organisations/${externalOrgId}/members${query}&status=all&limit=25`
 
 // The caller passes the already-encoded segment (the source escapes it).
 const memberUrl = (encodedSub: string): string =>
@@ -94,41 +94,62 @@ const json = (payload: unknown, status = 200): Response =>
 
 const orgMembers = {
   data: [
-    { userId: 'usr_ada', email: 'ada@acme.test', name: 'Ada Lovelace', role: 'owner', status: 'ACTIVE' },
     {
-      userId: 'usr_grace',
-      email: 'grace@acme.test',
-      name: 'Grace Hopper',
+      subject: 'usr_ada',
+      identity: { displayName: 'Ada Lovelace', email: 'ada@acme.test' },
+      role: 'owner',
+      status: 'ACTIVE',
+    },
+    {
+      subject: 'usr_grace',
+      identity: { displayName: 'Grace Hopper', email: 'grace@acme.test' },
       role: 'member',
       status: 'DEACTIVATED',
     },
     // A row with no subject is not a member — it must not become one.
     { role: 'member' },
   ],
-  next_cursor: null,
+  total: 2,
+  meta: { hasMore: false, nextCursor: null, prevCursor: null },
+  permissions: {
+    addMember: true,
+    changeMemberRole: true,
+    removeMember: true,
+    deactivateMember: true,
+    reactivateMember: true,
+    viewMemberEmail: true,
+  },
 }
 
 test('listOrganisationMembers reads the whole org roster with no team in the path', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
-    const members = await listOrganisationMembers(externalOrgId, deps(calls, () => json(orgMembers)))
+    const members = await listOrganisationMembers(
+      externalOrgId,
+      { limit: 25, status: 'all' },
+      deps(calls, () => json(orgMembers)),
+    )
 
-    assert.deepEqual(members, [
-      {
-        uoaSub: 'usr_ada',
-        displayName: 'Ada Lovelace',
-        email: 'ada@acme.test',
-        orgRole: 'owner',
-        status: 'ACTIVE',
-      },
-      {
-        uoaSub: 'usr_grace',
-        displayName: 'Grace Hopper',
-        email: 'grace@acme.test',
-        orgRole: 'member',
-        status: 'DEACTIVATED',
-      },
-    ])
+    assert.deepEqual(members, {
+      items: [
+        {
+          uoaSub: 'usr_ada',
+          displayName: 'Ada Lovelace',
+          email: 'ada@acme.test',
+          orgRole: 'owner',
+          status: 'ACTIVE',
+        },
+        {
+          uoaSub: 'usr_grace',
+          displayName: 'Grace Hopper',
+          email: 'grace@acme.test',
+          orgRole: 'member',
+          status: 'DEACTIVATED',
+        },
+      ],
+      meta: { hasMore: false, nextCursor: null, prevCursor: null, total: 2 },
+      permissions: orgMembers.permissions,
+    })
 
     assert.equal(calls.length, 1)
     assert.equal(calls[0]?.method, 'GET')

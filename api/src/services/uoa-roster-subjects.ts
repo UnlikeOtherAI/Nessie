@@ -42,8 +42,8 @@ const readSubjects = async (
   team: UoaRosterTeam,
   deps: UoaRosterDeps,
 ): Promise<Set<string>> => {
-  const members = await listTeamMembers(team, deps)
-  return new Set(members.map((member) => member.uoaSub))
+  const page = await listTeamMembers(team, { limit: 100, status: 'ACTIVE' }, deps)
+  return new Set(page.items.map((member) => member.uoaSub))
 }
 
 /** Drop the oldest insertion once the map is over its bound (Map keeps order). */
