@@ -19,11 +19,12 @@ export const createMailFixtures = () => {
   const unhandled = []
   let doorwayAllowed = true
   let doorwayVisible = false
+  let gmailCapabilities = { canCompose: true, canRead: true, canSend: true }
 
   const accounts = () => [
     {
-      address: 'alex@example.com', canCompose: true, canRead: true,
-      canSend: true, id: 'gmail-1', label: 'Alex work', scope: 'personal',
+      address: 'alex@example.com', ...gmailCapabilities,
+      id: 'gmail-1', label: 'Alex work', scope: 'personal',
       source: 'gmail', status: 'active',
     },
     {
@@ -82,7 +83,8 @@ export const createMailFixtures = () => {
     updatedAt: now, visibility: 'private',
   }
 
-  let doorway = { accountId: 'gmail-1', mode: 'thread', source: 'gmail', threadId: 'thread-1' }
+  const threadDoorway = { accountId: 'gmail-1', mode: 'thread', source: 'gmail', threadId: 'thread-1' }
+  let doorway = threadDoorway
   const doorwayMessage = {
     content: 'I found an email that needs your review.', createdAt: now,
     id: '88888888-8888-4888-8888-888888888888', role: 'assistant', threadId: ids.thread,
@@ -169,10 +171,11 @@ export const createMailFixtures = () => {
     ids,
     unhandled,
     respond,
-    showDoorway: () => { doorwayVisible = true },
+    showDoorway: () => { doorway = threadDoorway; doorwayVisible = true },
     showComposeDoorway: () => { doorway = { accountId: 'gmail-1', draftId: 'draft-doorway', mode: 'compose', source: 'gmail' } },
     showAccountDoorway: () => { doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }; doorwayVisible = true },
     denyDoorway: () => { doorwayAllowed = false },
     allowDoorway: () => { doorwayAllowed = true },
+    setGmailCapabilities: (next) => { gmailCapabilities = { ...gmailCapabilities, ...next } },
   }
 }

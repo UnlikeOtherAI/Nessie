@@ -13,6 +13,8 @@ import { ConnectedMailCompose } from '../connected-mail/ConnectedMailCompose'
 import { ConnectedMailConversationView } from '../connected-mail/ConnectedMailConversation'
 import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../mailbox/MailboxWorkspace'
 import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../../../facades/mail/hooks'
+import { connectedMailSettingsPath } from '../../../facades/mail/settings-path'
+import { useNavigationLayout } from '../../../lib/mobile-shell'
 
 export type MailSurfaceDoorway = MailSurfaceDoorwayMetadata
 
@@ -31,9 +33,12 @@ const doorwayPath = (doorway: MailSurfaceDoorway): string => {
   return `${root}/compose${params.size ? `?${params}` : ''}`
 }
 
+const canOpen = (account: ConnectedMailAccountRecord, doorway: MailSurfaceDoorway): boolean =>
+  doorway.mode === 'compose' ? account.canCompose : account.canRead
+
 const findAccount = (accounts: ConnectedMailAccountRecord[] | undefined, doorway: MailSurfaceDoorway) =>
   accounts?.find((account) =>
-    account.id === doorway.accountId && account.source === doorway.source && account.canRead,
+    account.id === doorway.accountId && account.source === doorway.source && canOpen(account, doorway),
   ) ?? null
 
 const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSummary => ({
@@ -83,6 +88,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
 }) => {
   const doorway = readMailSurfaceDoorway(metadata)
   const navigate = useNavigate()
+  const layout = useNavigationLayout()
   const accounts = useConnectedMailAccounts()
   const [open, setOpen] = useState(false)
   const [account, setAccount] = useState<ConnectedMailAccountRecord | null>(null)
@@ -101,7 +107,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     try {
       const refreshed = await accounts.refetch({ throwOnError: true })
       const next = findAccount(refreshed.data, doorway)
-      if (!next) { setAccessError('This email is no longer available to you.'); return null }
+      if (!next) { setAccessError('This email is no longer available to you. Check mailbox settings.'); return null }
       setAccount(next)
       setOpen(true)
       return next
@@ -131,6 +137,9 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   }, [doorway, messageId, storageKey])
 
   if (!doorway) return null
+  const matchingAccount = accounts.data?.find((candidate) =>
+    candidate.id === doorway.accountId && candidate.source === doorway.source,
+  )
   const title = doorway.mode === 'compose' ? 'Email draft ready' : doorway.mode === 'thread' ? 'Email ready to review' : 'Mail ready to review'
   const close = () => {
     try { window.sessionStorage.removeItem('mail-doorway-overlay-open') } catch { /* no-op */ }
@@ -147,10 +156,11 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
       <span className="text-xs text-[color:var(--tx2)]">{title}</span>
       <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">Open mail</button>
       {accessError ? <span aria-live="polite" className="text-xs text-[color:var(--danger)]">{accessError}</span> : null}
-      <Dialog description="Mail access is checked when this opens." onClose={close} open={open} size="xl" title={title}>
+      {accessError && matchingAccount ? <button className="text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(matchingAccount))} type="button">Open mailbox settings</button> : null}
+      <Dialog description="Mail access is checked when this opens." onClose={close} open={open} size={layout === 'single' ? 'full' : 'xl'} title={title}>
         <div className="min-h-0 p-4">
           {doorway.mode === 'thread' && conversation.data ? <ConnectedMailConversationView conversation={conversation.data} onReply={(message) => { close(); navigate(`${mailPath({ accountId: doorway.accountId, source: doorway.source })}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`) }} /> : null}
-          {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} onSent={close} /> : null}
+          {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} onOpenSettings={() => navigate(connectedMailSettingsPath(account))} onSent={close} /> : null}
           {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} /> : null}
           {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
           <button className="mt-3 admin-button admin-button-primary" onClick={() => void openMail()} type="button">Open full mail</button>

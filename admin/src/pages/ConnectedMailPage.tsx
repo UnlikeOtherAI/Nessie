@@ -10,7 +10,7 @@ import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { mailPath, type MailAddress, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../facades/mail/hooks'
-import { connectionAnchorId } from '../lib/connection-anchor'
+import { connectedMailSettingsPath } from '../facades/mail/settings-path'
 import { useNavigationLayout } from '../lib/mobile-shell'
 
 const PAGE_SIZES = [10, 25, 50, 100] as const
@@ -33,11 +33,6 @@ const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSumma
 
 const accountAddress = (source: ConnectedMailSource | null, accountId: string | undefined): MailAddress | null =>
   source && accountId ? { accountId, source } : null
-
-const settingsPath = (account: { id: string; scope: 'personal' | 'shared'; source: ConnectedMailSource }): string => {
-  const sharedMailbox = account.source === 'mailbox' && account.scope === 'shared'
-  return `${sharedMailbox ? '/settings/organization?tab=agents' : '/settings/connections'}#${connectionAnchorId(account.id)}`
-}
 
 const errorCopy = (status: string | undefined): string => {
   if (status === 'needs_reauthorization') return 'This account needs reconnecting before mail can be read.'
@@ -108,6 +103,12 @@ export const ConnectedMailPage = () => {
   })
 
   if (!address) return <ConnectedMailAccounts />
+  if (isCompose && account && !account.canCompose) return (
+    <div className="flex h-full flex-col">
+      <ScreenHeader backLabel="Back to mail" flowOwnsBack onBack={() => navigate(mailPath(address))} title="Compose email" />
+      <MailUnavailable account={account} message="Drafting email is not available for this account." />
+    </div>
+  )
   if (isCompose && account) return (
     <div className="flex h-full flex-col">
       <ScreenHeader backLabel="Back to mail" flowOwnsBack onBack={() => navigate(mailPath(address))} title="Compose email" />
@@ -115,6 +116,7 @@ export const ConnectedMailPage = () => {
         account={account}
         address={address}
         gmailDraftId={gmailDraftId}
+        onOpenSettings={() => navigate(connectedMailSettingsPath(account))}
         onSent={() => navigate(mailPath(address))}
         replyTo={replyTo}
       />
@@ -157,7 +159,7 @@ export const ConnectedMailPage = () => {
       <QueryState emptyLabel="No matching conversations." errorLabel="Could not load this mailbox. Check its settings, then refresh." isEmpty={threads.length === 0} loadingLabel="Loading mail…" query={threadQuery}>
         {() => <MailboxThreadList ariaLabel="Mail conversations" onSelect={openThread} selectedId={threadId} threads={threads.map(asMailboxThread)} />}
       </QueryState>
-      {threadQuery.isError && account ? <button className="self-start text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(settingsPath(account))} type="button">Check mailbox settings</button> : null}
+      {threadQuery.isError && account ? <button className="self-start text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(account))} type="button">Check mailbox settings</button> : null}
       <MailPaging
         canPrevious={cursors.length > 0}
         next={() => {
@@ -189,9 +191,12 @@ export const ConnectedMailPage = () => {
   )
 }
 
-const MailUnavailable = ({ account }: { account: { id: string; scope: 'personal' | 'shared'; source: ConnectedMailSource; status: string } }) => {
+const MailUnavailable = ({ account, message }: {
+  account: { id: string; scope: 'personal' | 'shared'; source: ConnectedMailSource; status: string }
+  message?: string
+}) => {
   const navigate = useNavigate()
-  return <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">{errorCopy(account.status)}</p><button className="mt-3 admin-button admin-button-secondary" onClick={() => navigate(settingsPath(account))} type="button">Open mailbox settings</button></section>
+  return <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">{message ?? errorCopy(account.status)}</p><button className="mt-3 admin-button admin-button-secondary" onClick={() => navigate(connectedMailSettingsPath(account))} type="button">Open mailbox settings</button></section>
 }
 
 const ConnectedMailAccounts = () => {
@@ -211,7 +216,7 @@ const ConnectedMailAccountRow = ({ account }: { account: ConnectedMailAccountRec
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div><p className="font-medium text-[color:var(--tx)]">{account.label}</p><p className="text-sm text-[color:var(--tx2)]">{account.address} · {account.scope} · {account.status}</p>{!account.canRead ? <p className="mt-1 text-sm text-[color:var(--tx2)]">{errorCopy(account.status)}</p> : null}</div>
-      {account.canRead ? <button className="admin-button admin-button-secondary" onClick={() => navigate(mailPath({ accountId: account.id, source: account.source }))} type="button">Open mail</button> : <button className="admin-button admin-button-secondary" onClick={() => navigate(settingsPath(account))} type="button">Open mailbox settings</button>}
+      {account.canRead ? <button className="admin-button admin-button-secondary" onClick={() => navigate(mailPath({ accountId: account.id, source: account.source }))} type="button">Open mail</button> : <button className="admin-button admin-button-secondary" onClick={() => navigate(connectedMailSettingsPath(account))} type="button">Open mailbox settings</button>}
     </li>
   )
 }
