@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ConnectedMailMessage, ConnectedMailSource, ConnectedMailThreadSummary } from '@nessie/schemas'
 
@@ -10,7 +10,10 @@ import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { mailPath, type MailAddress, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../facades/mail/hooks'
+import { connectionAnchorId } from '../lib/connection-anchor'
 import { useNavigationLayout } from '../lib/mobile-shell'
+
+const PAGE_SIZES = [10, 25, 50, 100] as const
 
 const sourceOf = (value: string | undefined): ConnectedMailSource | null =>
   value === 'gmail' || value === 'mailbox' ? value : null
@@ -31,6 +34,17 @@ const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSumma
 const accountAddress = (source: ConnectedMailSource | null, accountId: string | undefined): MailAddress | null =>
   source && accountId ? { accountId, source } : null
 
+const settingsPath = (account: { id: string; scope: 'personal' | 'shared'; source: ConnectedMailSource }): string => {
+  const sharedMailbox = account.source === 'mailbox' && account.scope === 'shared'
+  return `${sharedMailbox ? '/settings/organization?tab=agents' : '/settings/connections'}#${connectionAnchorId(account.id)}`
+}
+
+const errorCopy = (status: string | undefined): string => {
+  if (status === 'needs_reauthorization') return 'This account needs reconnecting before mail can be read.'
+  if (status === 'disabled') return 'Mail access is switched off for this account.'
+  return 'This mailbox is unavailable. Check its connection and permissions.'
+}
+
 export const ConnectedMailPage = () => {
   const { accountId, source: rawSource, threadId } = useParams<{
     accountId: string; source: string; threadId: string
@@ -45,21 +59,40 @@ export const ConnectedMailPage = () => {
   const account = accounts.data?.find((item) => item.source === source && item.id === accountId)
   const isCompose = Boolean(address && routeLocation.pathname.endsWith('/compose'))
   const filter = searchParams.get('filter') === 'unread' ? 'unread' : 'all'
+  const query = searchParams.get('query') ?? ''
   const replyThreadId = searchParams.get('threadId') ?? undefined
   const replyMessageId = searchParams.get('reply') ?? undefined
   const gmailDraftId = searchParams.get('draftId') ?? undefined
-  const pageSize = Number(searchParams.get('pageSize') ?? '25')
-  const [searchDraft, setSearchDraft] = useState('')
-  const [query, setQuery] = useState('')
-  const [cursors, setCursors] = useState<string[]>([])
+  const requestedPageSize = Number(searchParams.get('pageSize') ?? '25')
+  const pageSize = PAGE_SIZES.includes(requestedPageSize as typeof PAGE_SIZES[number]) ? requestedPageSize : 25
+  const listIdentity = `${source ?? ''}:${accountId ?? ''}:${filter}:${query}:${pageSize}`
+  const [searchDraft, setSearchDraft] = useState(query)
+  const [cursorState, setCursorState] = useState<{ identity: string; values: string[] }>({ identity: '', values: [] })
+  const cursors = cursorState.identity === listIdentity ? cursorState.values : []
   const cursor = cursors.at(-1)
-  const threadQuery = useConnectedMailThreads(address, {
-    cursor, pageSize: [10, 25, 50, 100].includes(pageSize) ? pageSize : 25,
-    query, unreadOnly: filter === 'unread',
+  useEffect(() => { setSearchDraft(query) }, [query])
+  useEffect(() => {
+    setCursorState((current) => current.identity === listIdentity
+      ? current
+      : { identity: listIdentity, values: [] })
+  }, [listIdentity])
+  const entitledAddress = account?.canRead ? address : null
+  const threadQuery = useConnectedMailThreads(entitledAddress, {
+    cursor, pageSize, query, unreadOnly: filter === 'unread',
   })
-  const conversation = useConnectedMailConversation(address, threadId ?? replyThreadId)
+  const conversation = useConnectedMailConversation(entitledAddress, threadId ?? replyThreadId)
   const threads = threadQuery.data?.items ?? []
   const replyTo = conversation.data?.messages.find((message) => message.id === replyMessageId)
+
+  const setState = (next: Record<string, string | null>) => setSearchParams((current) => {
+    const updated = new URLSearchParams(current)
+    for (const [key, value] of Object.entries(next)) value ? updated.set(key, value) : updated.delete(key)
+    return updated
+  }, { replace: true })
+  const setCursors = (update: (current: string[]) => string[]) => setCursorState((current) => ({
+    identity: listIdentity,
+    values: update(current.identity === listIdentity ? current.values : []),
+  }))
 
   if (!address) return <ConnectedMailAccounts />
   if (isCompose && account) return (
@@ -75,26 +108,43 @@ export const ConnectedMailPage = () => {
     </div>
   )
 
-  const setState = (next: Record<string, string | null>) => setSearchParams((current) => {
-    const updated = new URLSearchParams(current)
-    for (const [key, value] of Object.entries(next)) value ? updated.set(key, value) : updated.delete(key)
-    return updated
-  }, { replace: true })
-  const headerActions: PageHeaderAction[] = account?.canCompose ? [{ id: 'new-email', label: 'New email', onSelect: () => navigate(`${mailPath(address)}/compose`), primary: true, priority: 1 }] : []
+  const unavailable = account && !account.canRead
+  const headerActions: PageHeaderAction[] = [
+    ...(account?.canCompose ? [{ id: 'new-email', label: 'New email', onSelect: () => navigate(`${mailPath(address)}/compose`), primary: true, priority: 1 }] : []),
+    { id: 'refresh-mail', label: 'Refresh', onSelect: () => { void accounts.refetch(); void threadQuery.refetch() }, priority: 2 },
+  ]
   const openThread = (id: string) => navigate(`${mailPath(address)}/threads/${encodeURIComponent(id)}${routeLocation.search}`)
   const reply = (message: ConnectedMailMessage) => navigate(
     `${mailPath(address)}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`,
   )
+  const selectAccount = (value: string) => {
+    const next = accounts.data?.find((item) => `${item.source}:${item.id}` === value)
+    if (!next) return
+    navigate({ pathname: mailPath({ accountId: next.id, source: next.source }), search: searchParams.toString() })
+  }
   const list = (
-    <aside className="flex min-h-0 flex-col gap-3 overflow-hidden">
-      <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); setQuery(searchDraft); setCursors([]) }}>
+    <aside className="flex min-h-0 flex-col gap-3 overflow-hidden" data-testid="connected-mail-thread-list">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="grid min-w-48 flex-1 gap-1 text-xs text-[color:var(--tx2)]">Account
+          <select aria-label="Mail account" className="admin-input" onChange={(event) => selectAccount(event.target.value)} value={`${source}:${accountId}`}>
+            {(accounts.data ?? []).filter((item) => item.canRead).map((item) => <option key={`${item.source}:${item.id}`} value={`${item.source}:${item.id}`}>{item.label} · {item.address}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs text-[color:var(--tx2)]">Items per page
+          <select aria-label="Items per page" className="admin-input" onChange={(event) => setState({ pageSize: event.target.value === '25' ? null : event.target.value })} value={String(pageSize)}>
+            {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </label>
+      </div>
+      <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); setState({ query: searchDraft || null }) }}>
         <input aria-label="Search mail" className="admin-input min-w-0 flex-1" onChange={(event) => setSearchDraft(event.target.value)} placeholder="Search mail" value={searchDraft} />
         <button className="admin-button admin-button-secondary" type="submit">Search</button>
       </form>
       <TabBar ariaLabel="Mail filter" fullWidth items={[{ label: 'All', value: 'all' }, { label: 'Unread', value: 'unread' }]} onChange={(value) => setState({ filter: value === 'unread' ? 'unread' : null })} role="radiogroup" size="sm" value={filter} />
-      <QueryState emptyLabel="No matching conversations." errorLabel="Could not load this mailbox." isEmpty={threads.length === 0} loadingLabel="Loading mail…" query={threadQuery}>
+      <QueryState emptyLabel="No matching conversations." errorLabel="Could not load this mailbox. Check its settings, then refresh." isEmpty={threads.length === 0} loadingLabel="Loading mail…" query={threadQuery}>
         {() => <MailboxThreadList ariaLabel="Mail conversations" onSelect={openThread} selectedId={threadId} threads={threads.map(asMailboxThread)} />}
       </QueryState>
+      {threadQuery.isError && account ? <button className="self-start text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(settingsPath(account))} type="button">Check mailbox settings</button> : null}
       <MailPaging
         canPrevious={cursors.length > 0}
         next={() => {
@@ -106,7 +156,6 @@ export const ConnectedMailPage = () => {
       />
     </aside>
   )
-
   const reader = (
     <QueryState emptyLabel="Select a conversation to read it." errorLabel="Could not load this conversation." isEmpty={!threadId || !conversation.data} loadingLabel="Loading conversation…" query={conversation}>
       {() => <ConnectedMailConversationView conversation={conversation.data!} onReply={reply} />}
@@ -114,10 +163,22 @@ export const ConnectedMailPage = () => {
   )
   return (
     <div className="flex h-full flex-col">
-      <ScreenHeader actions={headerActions} subtitle={account ? `${account.label} · ${account.address}` : 'Loading account…'} title="Mail" />
-      {layout === 'single' && threadId ? reader : <MailboxWorkspace conversation={reader} conversationList={list} layout={layout} />}
+      <ScreenHeader
+        actions={headerActions}
+        backLabel="Back to mail"
+        flowOwnsBack={layout === 'single' && Boolean(threadId)}
+        onBack={layout === 'single' && threadId ? () => navigate(`${mailPath(address)}${routeLocation.search}`) : undefined}
+        subtitle={account ? `${account.label} · ${account.address}` : 'Loading account…'}
+        title="Mail"
+      />
+      {unavailable ? <MailUnavailable account={account} /> : layout === 'single' && threadId ? reader : <MailboxWorkspace conversation={reader} conversationList={list} layout={layout} />}
     </div>
   )
+}
+
+const MailUnavailable = ({ account }: { account: { id: string; scope: 'personal' | 'shared'; source: ConnectedMailSource; status: string } }) => {
+  const navigate = useNavigate()
+  return <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">{errorCopy(account.status)}</p><button className="mt-3 admin-button admin-button-secondary" onClick={() => navigate(settingsPath(account))} type="button">Open mailbox settings</button></section>
 }
 
 const ConnectedMailAccounts = () => {

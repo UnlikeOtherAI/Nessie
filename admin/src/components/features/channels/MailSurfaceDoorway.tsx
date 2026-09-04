@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   MailSurfaceDoorwayMetadataSchema,
   type ConnectedMailAccountRecord,
+  type ConnectedMailThreadSummary,
   type MailSurfaceDoorwayMetadata,
 } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
 
 import { Dialog } from '../../shared/Dialog'
+import { QueryState } from '../../shared/QueryState'
 import { ConnectedMailCompose } from '../connected-mail/ConnectedMailCompose'
 import { ConnectedMailConversationView } from '../connected-mail/ConnectedMailConversation'
-import { mailPath, useConnectedMailAccounts, useConnectedMailConversation } from '../../../facades/mail/hooks'
+import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../mailbox/MailboxWorkspace'
+import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../../../facades/mail/hooks'
 
 export type MailSurfaceDoorway = MailSurfaceDoorwayMetadata
 
@@ -32,6 +35,45 @@ const findAccount = (accounts: ConnectedMailAccountRecord[] | undefined, doorway
   accounts?.find((account) =>
     account.id === doorway.accountId && account.source === doorway.source && account.canRead,
   ) ?? null
+
+const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSummary => ({
+  awaitingApproval: false,
+  hasAttachments: thread.hasAttachments,
+  hasBounce: false,
+  id: thread.id,
+  lastMessageAt: thread.receivedAt ?? new Date(0).toISOString(),
+  messageCount: thread.messageCount,
+  participants: thread.from ? [thread.from] : [],
+  snippet: thread.snippet,
+  subject: thread.subject,
+  unread: thread.unread,
+})
+
+/** The account handoff is the shared mailbox vocabulary, not prose that makes
+ * a person leave chat merely to see which conversations need their attention. */
+const MailSurfaceAccountPreview = ({
+  account,
+  onSelect,
+}: {
+  account: ConnectedMailAccountRecord
+  onSelect: (threadId: string) => void
+}) => {
+  const threads = useConnectedMailThreads({ accountId: account.id, source: account.source }, {
+    pageSize: 10, query: '', unreadOnly: false,
+  })
+  const items = threads.data?.items ?? []
+  return (
+    <MailboxWorkspace
+      conversation={<p className="p-3 text-sm text-[color:var(--tx2)]">Choose a conversation to open it in Mail.</p>}
+      conversationList={(
+        <QueryState emptyLabel="No conversations are available." errorLabel="Could not load this mailbox." isEmpty={items.length === 0} loadingLabel="Loading mail…" query={threads}>
+          {() => <MailboxThreadList ariaLabel="Mail conversations" onSelect={onSelect} threads={items.map(asMailboxThread)} />}
+        </QueryState>
+      )}
+      layout="single"
+    />
+  )
+}
 
 /** A message-local, content-free pointer. It rechecks entitlement before an
  * offer and disables the live body query until the shared overlay is visible. */
@@ -109,7 +151,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
         <div className="min-h-0 p-4">
           {doorway.mode === 'thread' && conversation.data ? <ConnectedMailConversationView conversation={conversation.data} onReply={(message) => { close(); navigate(`${mailPath({ accountId: doorway.accountId, source: doorway.source })}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`) }} /> : null}
           {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} onSent={close} /> : null}
-          {doorway.mode === 'account' ? <p className="text-sm text-[color:var(--tx2)]">Open the live mail workspace to review this account.</p> : null}
+          {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} /> : null}
           {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
           <button className="mt-3 admin-button admin-button-primary" onClick={() => void openMail()} type="button">Open full mail</button>
         </div>
