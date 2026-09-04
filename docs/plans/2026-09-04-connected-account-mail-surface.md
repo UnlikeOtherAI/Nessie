@@ -1,11 +1,12 @@
 # Connected-account mail surface
 
-Status: implementation plan (2026-09-04)
+Status: implemented; final verification in progress (2026-09-04)
 
-Implementation note (2026-09-04): the live provider, entitlement, and REST
-foundation is in place for Gmail and SMTP/IMAP. It keeps provider mail live and
-no-store; the owning `/mail` surface and agent-presentation work remain separate
-implementation slices.
+Implementation note (2026-09-04): the live provider, entitlement, REST,
+`/mail`, and agent-presentation slices are implemented for Gmail and
+SMTP/IMAP. Provider mail remains live and no-store. The chat integration can
+present an account, thread, or compose doorway; render a bounded mail preview;
+and collect a compose form without giving a card press send authority.
 
 ## Outcome
 
@@ -273,7 +274,7 @@ drafts return an **Open mail** doorway. `card_post` remains the single
 renderer for an agent-curated email preview or compose form — a dedicated
 `email_card` kind is forbidden.
 
-### Implemented presentation foundation
+### Implemented presentation
 
 The worker foundation now provides strict, content-free `mailSurfaceDoorway`
 metadata and the provider-neutral `mail_present` builtin. Its mailbox branch
@@ -285,10 +286,13 @@ scope before writing the ordinary agent message and publish only the normal
 restricted-aware message event. The tool accepts no mail content and has no
 send path.
 
-`mailbox_compose` currently returns a `card_post`-compatible universal form
+`mailbox_compose` returns a `card_post`-compatible universal form
 template. A card response is only a normal user turn; a later `mailbox_send`
-call still takes the existing pinned approval path. API provider routes and the
-admin Mail surface remain later slices.
+call still takes the existing pinned approval path. Gmail tool results carry a
+content-free presentation reference and canonical review URL, while connected
+mailbox search/read results carry an account doorway instead of pretending an
+IMAP message id is a portable thread id. The client resolves every doorway
+through the live entitlement-gated API before it renders mail content.
 
 ## Reuse and component shape
 
@@ -355,6 +359,13 @@ colour is expressed through existing tokens in `styles.css`.
 
 ## Verification
 
+Verification is recorded against the merged implementation, not inferred from
+the individual slices. The deterministic browser harness owns the full Mail and
+chat-doorway flows; package suites own the provider, entitlement, disclosure,
+and route contracts. Database-backed suites must run against an explicitly
+exported, isolated `DATABASE_URL`; a run whose database tests skipped is
+reported as such rather than counted as database coverage.
+
 - Package tests run through Turbo, with `DATABASE_URL` exported when present.
 - Root lint, typecheck, and lint-gated build pass.
 - API tests prove personal-owner, shared-team-member, manager, cross-org, stale
@@ -389,3 +400,11 @@ colour is expressed through existing tokens in `styles.css`.
 - SMTP/IMAP folder mutation, archive, delete, or mark-read;
 - Microsoft mail before that connector exposes a mail capability;
 - a new email-specific chat-card renderer or an agent bypass of send approval.
+
+The first IMAP implementation also has explicit bounded-reader limits. It does
+not yet request `BODYSTRUCTURE` or portable partial body sections, so list rows
+do not claim snippets or attachment presence from header-only results. A full
+message literal is refused above 1 MiB, a returned conversation is refused
+above 2 MiB, and attachment download remains out of scope. Those refusals are
+preferable to unbounded buffering but are not a substitute for a future
+BODYSTRUCTURE/partial-fetch implementation.

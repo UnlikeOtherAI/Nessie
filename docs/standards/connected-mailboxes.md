@@ -58,6 +58,17 @@ Plan and as-built deltas:
   native connector, while a reviewed IMAP/SMTP route keeps its server details
   hidden until the person chooses Advanced settings. A team shared mailbox stays
   Model A-only and never starts a personal OAuth connection.
+- **One live review surface, several content-free doorways.** `/mail` owns the
+  connected-account list, structural thread view, bounded conversation reader,
+  and human compose/reply flow for Gmail and SMTP/IMAP. The provider remains the
+  source of truth and every read is private and no-store. `mail_present` may
+  leave an account, thread, or compose pointer in a disclosure-scoped agent
+  message, but the pointer contains no query, sender, recipient, subject,
+  snippet, or body and the client repeats live viewer authorization before it
+  opens. Search/read and Gmail-draft tools return the same canonical review
+  references. `mailbox_compose` uses the universal AgentCard form; its press is
+  a user response, never send authority, so the later send still crosses the
+  existing approval gate.
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP
