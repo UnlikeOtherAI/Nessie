@@ -35,11 +35,6 @@ const dateLabel = (value: string | undefined) => {
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleDateString()
 }
 
-const toAvatarSources = (member: TeamMemberRecord) => ({
-  avatarUrl: member.avatarImageUrl,
-  ...(member.userId ? { userId: member.userId } : { uoaSub: member.uoaSub }),
-})
-
 const memberColumns = (
   scope: MemberRosterScope,
   token: string | null,
@@ -53,7 +48,9 @@ const memberColumns = (
           displayName={member.displayName ?? member.email ?? 'Member'}
           size={32}
           token={token}
-          {...toAvatarSources(member)}
+          avatarUrl={member.avatarImageUrl}
+          uoaSub={scope === 'team' ? member.uoaSub : undefined}
+          userId={member.userId}
         />
         <span className="min-w-0">
           <span className="block truncate font-medium">{member.displayName ?? 'Unnamed member'}</span>

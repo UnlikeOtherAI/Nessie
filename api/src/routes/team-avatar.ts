@@ -80,7 +80,12 @@ const relayCredentials = (
   team: UoaTeam,
   deps: UoaAvatarDeps,
 ): UoaAvatarDeps => {
-  if (!team.externalOrgId) return deps
+  // UOA pins an assertion to the session's active team. A picker row for a
+  // different team must stay on the membership-scoped `/domain/*` read.
+  if (
+    !team.externalOrgId
+    || actorContext.actionContext.uoaIdentity?.teamId !== team.externalTeamId
+  ) return deps
   try {
     return withUoaRosterSubjectAssertion(
       {

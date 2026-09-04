@@ -24,8 +24,8 @@ const pathFor = (scope: MemberRosterScope, resource: 'members' | 'invitations') 
 
 const keyFor = (scope: MemberRosterScope, resource: 'members' | 'invitations') =>
   scope === 'organization'
-    ? [...organizationKeys.members, resource] as const
-    : [...teamKeys.members, resource] as const
+    ? organizationKeys.memberRoster(resource)
+    : teamKeys.memberRoster(resource)
 
 export const useMemberRoster = (
   scope: MemberRosterScope,
