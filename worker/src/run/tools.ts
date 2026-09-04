@@ -16,6 +16,7 @@ import {
   runMailboxSearchTool,
   runMailboxSendTool,
 } from './pa-tools/mailbox-tools.js'
+import { runMailboxComposeTool, runMailPresentTool } from './pa-tools/mail-presentation.js'
 import {
   runGmailLabelsListTool,
   runGmailOrganiseTool,
@@ -508,8 +509,12 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runMailboxSearchTool(context, args))
     case 'mailbox_read':
       return wrapTool(inputSummary, () => runMailboxReadTool(context, args))
+    case 'mailbox_compose':
+      return wrapTool(inputSummary, () => runMailboxComposeTool(context, args))
     case 'mailbox_send':
       return wrapTool(inputSummary, () => runMailboxSendTool(context, args))
+    case 'mail_present':
+      return wrapTool(inputSummary, () => runMailPresentTool(context, args))
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }
