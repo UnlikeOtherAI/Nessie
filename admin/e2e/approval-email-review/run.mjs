@@ -5,6 +5,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 
 import { PrismaClient } from '@prisma/client'
 
@@ -22,6 +23,56 @@ import { startAdmin, startApi, stopProcess } from '../navigation/lib/servers.mjs
 const SCREENSHOT_ROOT = resolve(REPO_ROOT, 'e2e', 'screenshots', 'approval-email-review')
 
 const fail = (message) => { throw new Error(`approval email review e2e: ${message}`) }
+
+const isolatedDatabaseName = () => `e2e_email_approval_${randomUUID().replaceAll('-', '')}`
+
+const withDatabase = (url, database) => {
+  const parsed = new URL(url)
+  parsed.pathname = `/${database}`
+  parsed.searchParams.set('schema', 'public')
+  return parsed.toString()
+}
+
+const runMigration = async (database) => new Promise((done, failMigration) => {
+  const command = resolve(REPO_ROOT, 'node_modules', '.bin', 'prisma')
+  const child = spawn(command, ['migrate', 'deploy', '--schema', 'api/prisma/schema.prisma'], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, DATABASE_URL: database },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const output = []
+  child.stdout.on('data', (chunk) => { output.push(String(chunk)) })
+  child.stderr.on('data', (chunk) => { output.push(String(chunk)) })
+  child.on('error', failMigration)
+  child.on('exit', (code) => {
+    if (code === 0) done()
+    else failMigration(new Error(`migration exited ${code}: ${output.join('').slice(-2000)}`))
+  })
+})
+
+const createIsolatedDatabase = async (baseDatabase) => {
+  const databaseName = isolatedDatabaseName()
+  const prisma = new PrismaClient({ datasources: { db: { url: baseDatabase } } })
+  try {
+    // A schema cannot see the pgvector type already installed in `public`;
+    // an otherwise empty database can. This is an exclusive test database, so
+    // dev-login's oldest-user rule and worker queues cannot race shared data.
+    await prisma.$executeRawUnsafe(`CREATE DATABASE "${databaseName}" TEMPLATE template0`)
+    const database = withDatabase(baseDatabase, databaseName)
+    await runMigration(database)
+    return { database, databaseName, prisma }
+  } catch (error) {
+    await prisma.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${databaseName}"`).catch(() => {})
+    await prisma.$disconnect()
+    throw error
+  }
+}
+
+const dropIsolatedDatabase = async (fixture) => {
+  if (!fixture) return
+  await fixture.prisma.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${fixture.databaseName}"`)
+  await fixture.prisma.$disconnect()
+}
 
 const apiGet = async (path, token) => {
   const response = await fetch(`${API_URL}${path}`, {
@@ -149,7 +200,11 @@ const main = async () => {
   let admin = null
   let browser = null
   let fixture = null
+  let isolated = null
+  const baseDatabase = databaseUrl()
   try {
+    isolated = await createIsolatedDatabase(baseDatabase)
+    process.env.DATABASE_URL = isolated.database
     api = await startApi()
     admin = await startAdmin()
     const seed = await seedTeam(api)
@@ -169,6 +224,8 @@ const main = async () => {
       await stopProcess(admin)
       await stopProcess(api)
     }
+    await dropIsolatedDatabase(isolated)
+    process.env.DATABASE_URL = baseDatabase
   }
 }
 
