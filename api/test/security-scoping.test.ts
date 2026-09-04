@@ -77,6 +77,39 @@ test('channel-scoped websocket events do not deliver to unrelated subscriptions'
   )
 })
 
+test('dashboard websocket events need matching subscription interest and live access', async () => {
+  const dashboardId = '00000000-0000-4000-8000-000000000006'
+  const scopes: WsScope[] = [{ kind: 'dashboard', dashboardId }]
+
+  assert.equal(
+    await shouldDeliverWsNotification({
+      connectionScopes: scopes,
+      notificationScopes: scopes,
+      canAccessChannel: async () => true,
+      canAccessDashboard: async () => false,
+    }),
+    false,
+  )
+  assert.equal(
+    await shouldDeliverWsNotification({
+      connectionScopes: scopes,
+      notificationScopes: scopes,
+      canAccessChannel: async () => true,
+      canAccessDashboard: async () => true,
+    }),
+    true,
+  )
+  assert.equal(
+    await shouldDeliverWsNotification({
+      connectionScopes: [{ kind: 'organization', organizationId }],
+      notificationScopes: scopes,
+      canAccessChannel: async () => true,
+      canAccessDashboard: async () => true,
+    }),
+    false,
+  )
+})
+
 test('multi-channel websocket events require access to every channel scope', async () => {
   assert.equal(
     await shouldDeliverWsNotification({

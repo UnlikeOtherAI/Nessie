@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type {
   AgentRecord,
@@ -20,6 +21,7 @@ import {
 import VoiceCallDialog from '../../components/features/channels/VoiceCallDialog'
 import type { VoiceCallState } from '../../facades/voice/voice-call-client'
 import { AgentScreenPanel } from '../../components/features/browser-cloud/AgentScreenPanel'
+import { DashboardWorkspacePanel } from '../../components/features/dashboards/DashboardWorkspacePanel'
 
 /** What the page hands the overlay layer to render a live voice call. */
 type VoiceCallOverlay = {
@@ -154,7 +156,20 @@ export const ChannelOverlays = ({
   onOpenAgentActivity,
   onSelectAgent,
   onSendAsFile,
-}: ChannelOverlaysProps) => (
+}: ChannelOverlaysProps) => {
+  const { dashboardId, threadId } = useParams()
+  const navigate = useNavigate()
+  const closeDashboard = () => {
+    if (activeChannel) {
+      void navigate(
+        threadId
+          ? `/channels/${activeChannel.id}/threads/${threadId}`
+          : `/channels/${activeChannel.id}`,
+      )
+    }
+  }
+
+  return (
   <>
     {replyThread.openRootMessageId && activeChannel ? (
       <ThreadReplyPanel
@@ -178,7 +193,11 @@ export const ChannelOverlays = ({
       />
     ) : null}
 
-    {browserSessionId && !replyThread.openRootMessageId ? (
+    {dashboardId && activeChannel ? (
+      <DashboardWorkspacePanel dashboardId={dashboardId} onClose={closeDashboard} />
+    ) : null}
+
+    {browserSessionId && !replyThread.openRootMessageId && !dashboardId ? (
       <AgentScreenPanel onClose={onCloseBrowserSession} sessionId={browserSessionId} />
     ) : null}
 
@@ -268,4 +287,5 @@ export const ChannelOverlays = ({
       onOpenActivity={onOpenAgentActivity}
     />
   </>
-)
+  )
+}

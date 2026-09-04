@@ -11,6 +11,7 @@
 import type { Prisma } from '@prisma/client'
 import {
   DashboardDatasetSchema,
+  DashboardPresentationSchema,
   DASHBOARD_MAX_COMPACT_ROWS,
   WidgetDefinitionSchema,
   assertWidgetBinding,
@@ -215,6 +216,25 @@ export type ProjectionOptions = {
 
 type DatasetLoader = (attachmentId: string) => Promise<unknown>
 
+const applyPresentationFilters = (
+  dataset: import('@nessie/schemas').DashboardDataset,
+  sourceId: string,
+  presentation: unknown,
+) => {
+  const parsed = DashboardPresentationSchema.safeParse(presentation)
+  if (!parsed.success) return dataset
+  const filters = parsed.data.filters.filter((filter) => filter.sourceId === sourceId)
+  if (filters.length === 0) return dataset
+  // Values are scalar cells validated in the delta. Exact comparison avoids
+  // implicit parsing ("01" never becomes 1) and makes a filter auditable.
+  return {
+    ...dataset,
+    rows: dataset.rows.filter((row) => filters.every((filter) =>
+      filter.values.some((value) => Object.is(row[filter.column], value)),
+    )),
+  }
+}
+
 /**
  * Builds what the browser renders.
  *
@@ -234,6 +254,7 @@ export const buildWidgetProjection = async (
     }
     source: {
       outputColumns: unknown
+      kind: string
       latestDatasetId: string | null
       lastValidatedAt: Date | null
       lastErrorCode: string | null
@@ -242,6 +263,7 @@ export const buildWidgetProjection = async (
       authorityLabel?: string | null
     }
     dataset?: { attachmentId: string; fetchedAt: Date } | null
+    dashboardPresentation?: unknown
     loadDataset?: DatasetLoader
   },
   options: ProjectionOptions = {},
@@ -285,18 +307,26 @@ export const buildWidgetProjection = async (
     return { ...base, definition, state: 'error', errorCode: 'DATASET_UNREADABLE' }
   }
 
+  dataset = applyPresentationFilters(dataset, definition.sourceId, input.dashboardPresentation)
+
   if (options.compact && dataset.rows.length > DASHBOARD_MAX_COMPACT_ROWS) {
     dataset = { ...dataset, rows: dataset.rows.slice(0, DASHBOARD_MAX_COMPACT_ROWS) }
   }
 
-  const stale = isStale({
+  const stale = input.source.kind === 'static' ? false : isStale({
     lastValidatedAt: input.source.lastValidatedAt,
     refreshMode: input.source.refreshMode,
     intervalMinutes: input.source.intervalMinutes,
     ...(options.now ? { now: options.now } : {}),
   })
 
-  const state = dataset.rows.length === 0 ? 'empty' : stale ? 'stale' : 'fresh'
+  const state = input.source.lastErrorCode
+    ? 'error'
+    : dataset.rows.length === 0
+      ? 'empty'
+      : stale
+        ? 'stale'
+        : 'fresh'
 
   return {
     ...base,
@@ -325,7 +355,7 @@ export const loadWidgetProjection = async (
 
   const widget = await context.prisma.dashboardWidget.findFirst({
     where: { id: input.widgetId, organizationId: context.actor.organizationId },
-    include: { source: true },
+    include: { source: true, dashboard: { select: { presentation: true } } },
   })
   if (!widget) {
     throw new DashboardServiceError(404, 'DASHBOARD_WIDGET_NOT_FOUND', 'widget not found')
@@ -342,7 +372,13 @@ export const loadWidgetProjection = async (
     : null
 
   return buildWidgetProjection(
-    { widget, source: widget.source, dataset, loadDataset: input.loadDataset },
+    {
+      widget,
+      source: widget.source,
+      dataset,
+      loadDataset: input.loadDataset,
+      dashboardPresentation: widget.dashboard.presentation,
+    },
     options,
   )
 }

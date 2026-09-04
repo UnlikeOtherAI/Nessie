@@ -428,6 +428,80 @@ export const DashboardLayoutSchema = z.object({
 }).strict()
 export type DashboardLayout = z.infer<typeof DashboardLayoutSchema>
 
+// ---------------------------------------------------------------------------
+// Dashboard-level presentation — editable content, never renderer code.
+// ---------------------------------------------------------------------------
+
+/** A declared filter is intentionally data-only. The projection service applies
+ * it to matching source rows; it never accepts an expression or callback. */
+export const DashboardFilterSchema = z.object({
+  id: z.string().uuid(),
+  sourceId: z.string().uuid(),
+  column: ColumnKeySchema,
+  label: textSlot(80),
+  values: z.array(DashboardCellSchema).min(1).max(50),
+}).strict()
+export type DashboardFilter = z.infer<typeof DashboardFilterSchema>
+
+/** Human-readable executive context, rendered as plain text beside the grid. */
+export const DashboardInsightSchema = z.object({
+  id: z.string().uuid(),
+  text: textSlot(500),
+  tone: DashboardToneSchema.default('neutral'),
+}).strict()
+export type DashboardInsight = z.infer<typeof DashboardInsightSchema>
+
+/** Presentation may name a source, but cannot alter immutable source evidence. */
+export const DashboardAttributionSchema = z.object({
+  sourceId: z.string().uuid(),
+  label: textSlot(120).optional(),
+  visible: z.boolean().default(true),
+}).strict()
+export type DashboardAttribution = z.infer<typeof DashboardAttributionSchema>
+
+export const DashboardPresentationSchema = z.object({
+  filters: z.array(DashboardFilterSchema).max(20).default([]),
+  insights: z.array(DashboardInsightSchema).max(12).default([]),
+  attributions: z.array(DashboardAttributionSchema).max(50).default([]),
+  style: z.enum(['standard', 'executive']).default('standard'),
+}).strict()
+export type DashboardPresentation = z.infer<typeof DashboardPresentationSchema>
+
+// ---------------------------------------------------------------------------
+// Persistent dashboard deltas
+// ---------------------------------------------------------------------------
+
+/** A dashboard edit is a closed, replayable set of operations — never a free-form patch. */
+export const DashboardDeltaOperationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('add_widget'),
+    widgetId: z.string().uuid(),
+    definition: WidgetDefinitionSchema,
+  }).strict(),
+  z.object({
+    type: z.literal('update_widget'),
+    widgetId: z.string().uuid(),
+    definition: WidgetDefinitionSchema,
+  }).strict(),
+  z.object({ type: z.literal('remove_widget'), widgetId: z.string().uuid() }).strict(),
+  z.object({ type: z.literal('set_widget_lock'), widgetId: z.string().uuid(), locked: z.boolean() }).strict(),
+  z.object({ type: z.literal('set_layout'), layout: DashboardLayoutSchema }).strict(),
+  z.object({ type: z.literal('set_presentation'), presentation: DashboardPresentationSchema }).strict(),
+])
+export type DashboardDeltaOperation = z.infer<typeof DashboardDeltaOperationSchema>
+
+/**
+ * Every writer supplies the version it saw and a stable mutation id. This lets
+ * a reconnect retry safely while an out-of-order writer is rejected cleanly.
+ */
+export const DashboardDeltaSchema = z.object({
+  schemaVersion: z.literal(1),
+  mutationId: z.string().uuid(),
+  baseRevision: z.number().int().positive(),
+  operations: z.array(DashboardDeltaOperationSchema).min(1).max(50),
+}).strict()
+export type DashboardDelta = z.infer<typeof DashboardDeltaSchema>
+
 /** Minimum and maximum grid footprint per kind, enforced on every layout write. */
 export const DASHBOARD_WIDGET_SIZES: Record<
   DashboardWidgetKind,
@@ -440,5 +514,5 @@ export const DASHBOARD_WIDGET_SIZES: Record<
   donut: { minW: 4, minH: 5, maxW: 8, maxH: 16 },
   gauge: { minW: 3, minH: 4, maxW: 6, maxH: 12 },
   scatter: { minW: 4, minH: 5, maxW: 12, maxH: 20 },
-  table: { minW: 6, minH: 5, maxW: 12, maxH: 30 },
+  table: { minW: 4, minH: 5, maxW: 12, maxH: 30 },
 }

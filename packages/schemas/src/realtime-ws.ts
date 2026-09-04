@@ -188,6 +188,8 @@ export type WsEventMap = {
     meetingUri: string | null
     revision: number
   }
+  /** Content-free revision invalidation; the entitled REST read remains authoritative. */
+  'dashboard.updated': { dashboardId: string; revision: number }
 }
 
 export const AgentStatusEventSchema = z.object({
@@ -378,6 +380,12 @@ export const CallUpdatedEventSchema = z.object({
 })
 export type CallUpdatedEvent = z.infer<typeof CallUpdatedEventSchema>
 
+export const DashboardUpdatedEventSchema = z.object({
+  dashboardId: z.string().uuid(),
+  revision: z.number().int().positive(),
+})
+export type DashboardUpdatedEvent = z.infer<typeof DashboardUpdatedEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -403,6 +411,7 @@ export const WsEventNameSchema = z.enum([
   'call.incoming',
   'call.invite.updated',
   'call.updated',
+  'dashboard.updated',
 ])
 
 export const WsScopeSchema = z.union([
@@ -422,6 +431,10 @@ export const WsScopeSchema = z.union([
     kind: z.literal('user'),
     organizationId: OrganizationIdSchema,
     userId: UserIdSchema,
+  }),
+  z.object({
+    kind: z.literal('dashboard'),
+    dashboardId: z.string().uuid(),
   }),
 ])
 export type WsScope = z.infer<typeof WsScopeSchema>
@@ -623,6 +636,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('call.updated'),
     data: CallUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('dashboard.updated'),
+    data: DashboardUpdatedEventSchema,
     ts: TimestampSchema,
   }),
 ])

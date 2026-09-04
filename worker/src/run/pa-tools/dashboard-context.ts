@@ -10,10 +10,11 @@
 
 import type { PrismaClient } from '@prisma/client'
 import {
-  addWidget,
+  applyDashboardDelta,
   createDashboard,
   createDashboardMembership,
   createDashboardSource,
+  importStaticDashboardSource,
   createEmbedPlacement,
   freezeWidgetSnapshot,
   getDashboardWithWidgets,
@@ -21,20 +22,16 @@ import {
   listDashboardsForActor,
   loadWidgetProjection,
   probeSource,
-  recordDashboardVersion,
-  removeWidget,
   resolveDashboardActor,
   setSourceCredential,
-  summarizeChange,
-  updateWidget,
-  validateLayout,
   type CredentialStore,
   type DashboardContext,
   type DashboardEgressPolicy,
 } from '@nessie/dashboard'
-import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
+import type { DashboardLayout, DashboardDeltaOperation } from '@nessie/schemas'
 import type { FileService } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { randomUUID } from 'node:crypto'
 
 export type DashboardToolServices = {
   prisma: PrismaClient
@@ -45,13 +42,24 @@ export type DashboardToolServices = {
   getDashboardWithWidgets: typeof getDashboardWithWidgets
   listDashboardSources: typeof listDashboardSources
   createDashboardSource: typeof createDashboardSource
+  importStaticSource: (
+    context: DashboardContext,
+    input: Parameters<typeof importStaticDashboardSource>[1],
+  ) => ReturnType<typeof importStaticDashboardSource>
   freezeWidgetSnapshot: typeof freezeWidgetSnapshot
   createEmbedPlacement: typeof createEmbedPlacement
   probeSource: typeof probeSource
   setSourceCredential: typeof setSourceCredential
-  addWidget: typeof addWidget
-  updateWidget: typeof updateWidget
-  removeWidget: typeof removeWidget
+  applyDelta: (
+    context: DashboardContext,
+    input: {
+      dashboardId: string
+      baseRevision: number
+      mutationId?: string
+      operations: DashboardDeltaOperation[]
+      runId: string
+    },
+  ) => ReturnType<typeof applyDashboardDelta>
   loadWidgetProjection: (
     context: DashboardContext,
     widgetId: string,
@@ -110,43 +118,19 @@ export const dashboardEgressPolicyFromEnv = (): DashboardEgressPolicy => ({
 })
 
 /**
- * Saves a layout the way the route does: validate against the grid and each
- * kind's size limits, then append a version. An agent's move is therefore
- * recorded and reversible exactly like a drag.
+ * Saves through the one versioned delta path used by the route. An agent's
+ * move therefore participates in the same conflict and replay guarantees.
  */
-export const buildSaveLayout = (
-  prisma: PrismaClient,
-): DashboardToolServices['saveLayout'] =>
+export const buildSaveLayout = (): DashboardToolServices['saveLayout'] =>
   async (context, input) => {
-    const kinds = new Map<string, DashboardWidgetKind>(
-      input.dashboard.widgets.map((widget) => [widget.id, widget.kind as DashboardWidgetKind]),
-    )
-    validateLayout(input.layout, kinds)
-
-    const before = {
-      widgets: input.dashboard.widgets.map((widget) => ({ id: widget.id, kind: widget.kind })),
-      layout: input.dashboard.layout as unknown as DashboardLayout,
-    }
-    const after = { widgets: before.widgets, layout: input.layout }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.dashboard.update({
-        where: { id: input.dashboardId },
-        data: { layout: input.layout as never, revision: { increment: 1 } },
-      })
-      await recordDashboardVersion(tx, {
-        organizationId: context.actor.organizationId,
-        dashboardId: input.dashboardId,
-        layout: input.layout,
-        widgets: input.dashboard.widgets.map((widget) => ({
-          id: widget.id,
-          kind: widget.kind,
-          spec: widget.spec,
-        })),
-        authorType: 'agent',
-        authorId: context.actor.userId,
-        summary: summarizeChange(before, after),
-      })
+    await applyDashboardDelta(context, {
+      dashboardId: input.dashboardId,
+      schemaVersion: 1,
+      mutationId: randomUUID(),
+      baseRevision: input.dashboard.revision,
+      operations: [{ type: 'set_layout', layout: input.layout }],
+    }, {
+      authorType: 'agent',
     })
   }
 
@@ -164,19 +148,25 @@ export const createDashboardToolServices = (input: {
   getDashboardWithWidgets,
   listDashboardSources,
   createDashboardSource,
+  importStaticSource: (context, staticInput) =>
+    importStaticDashboardSource(context, staticInput, input.fileService),
   freezeWidgetSnapshot,
   createEmbedPlacement,
   probeSource,
   setSourceCredential,
-  addWidget,
-  updateWidget,
-  removeWidget,
+  applyDelta: (context, delta) => applyDashboardDelta(context, {
+    dashboardId: delta.dashboardId,
+    schemaVersion: 1,
+    mutationId: delta.mutationId ?? randomUUID(),
+    baseRevision: delta.baseRevision,
+    operations: delta.operations,
+  }, { authorType: 'agent', runId: delta.runId }),
   loadWidgetProjection: (context, widgetId) =>
     loadWidgetProjection(context, {
       widgetId,
       loadDataset: input.loadDataset(context.actor.organizationId),
     }),
-  saveLayout: buildSaveLayout(input.prisma),
+  saveLayout: buildSaveLayout(),
 })
 
 /**

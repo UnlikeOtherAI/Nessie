@@ -4,18 +4,20 @@
  * This is not an iframe: the conversation and the dashboard both use the
  * authenticated API client, so a preview continues to enforce the viewer's
  * ordinary dashboard entitlement. The compact view literally transforms the
- * same DashboardCanvas that the full-screen dialog renders at normal scale.
+ * same DashboardCanvas that the right-hand workspace panel renders at normal
+ * scale. The URL owns which panel is open, so Back and a cold deep link work.
  */
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   DashboardPresentationMessageMetadataSchema,
   type DashboardWidgetKind,
 } from '@nessie/schemas'
 import { useDashboard, type DashboardDetailRecord } from '../../../facades/dashboards/hooks'
-import { Dialog } from '../../shared/Dialog'
 import { SkeletonBlock } from '../../primitives/Skeleton'
 import { DashboardCanvas } from './DashboardCanvas'
+import { useDashboardRealtime } from './DashboardRealtimeProvider'
 
 const PREVIEW_CANVAS_WIDTH = 1120
 const PREVIEW_MAX_HEIGHT = 380
@@ -68,24 +70,15 @@ const ScaledDashboardCanvas = ({
 
   return (
     <div
-      aria-label={`Open ${dashboard.title} full screen`}
-      className="cursor-zoom-in overflow-hidden rounded-[var(--radius-lg)] border border-[color:var(--line)] bg-[color:var(--panel-soft)]"
+      className="relative overflow-hidden rounded-[var(--radius-lg)] border border-[color:var(--line)] bg-[color:var(--panel-soft)]"
       data-testid="dashboard-presentation-preview"
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onOpen()
-        }
-      }}
       ref={frameRef}
-      role="button"
       style={{ height }}
-      tabIndex={0}
     >
       <div
         aria-hidden="true"
         className="pointer-events-none"
+        inert
         ref={canvasRef}
         style={{
           transform: `scale(${scale})`,
@@ -94,48 +87,47 @@ const ScaledDashboardCanvas = ({
         }}
       >
         <DashboardCanvas
+          compact
           dashboard={dashboard}
           layout={dashboard.layout}
           widgetKinds={widgetKinds}
         />
       </div>
+      <button
+        aria-label={`Open ${dashboard.title} in workspace`}
+        className="absolute inset-0 cursor-zoom-in rounded-[var(--radius-lg)] border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[color:var(--accent)]"
+        onClick={onOpen}
+        type="button"
+      />
     </div>
   )
 }
 
-const PresentedDashboard = ({ dashboard }: { dashboard: DashboardDetailRecord }) => {
-  const [open, setOpen] = useState(false)
-  const widgetKinds = useMemo(() => widgetKindsOf(dashboard), [dashboard])
+const PresentedDashboard = ({ dashboard, threadId }: { dashboard: DashboardDetailRecord; threadId: string }) => {
+  const navigate = useNavigate()
+  const { channelId } = useParams()
+  const open = useCallback(() => {
+    if (!channelId) return
+    void navigate(`/channels/${channelId}/threads/${threadId}/dashboards/${dashboard.id}`)
+  }, [channelId, dashboard.id, navigate, threadId])
 
   return (
     <div className="mt-2">
-      <ScaledDashboardCanvas dashboard={dashboard} onOpen={() => setOpen(true)} />
-      <Dialog
-        description="Review the dashboard at its normal size."
-        onClose={() => setOpen(false)}
-        open={open}
-        size="full"
-        title={dashboard.title}
-      >
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          <DashboardCanvas
-            dashboard={dashboard}
-            layout={dashboard.layout}
-            widgetKinds={widgetKinds}
-          />
-        </div>
-      </Dialog>
+      <ScaledDashboardCanvas dashboard={dashboard} onOpen={open} />
     </div>
   )
 }
 
 export const DashboardPresentation = ({
   metadata,
+  threadId,
 }: {
   metadata: Record<string, unknown> | undefined
+  threadId: string
 }) => {
   const parsed = DashboardPresentationMessageMetadataSchema.safeParse(metadata)
   const dashboardId = parsed.success ? parsed.data.dashboardPresentation.dashboardId : undefined
+  const realtime = useDashboardRealtime(dashboardId)
   const dashboardQuery = useDashboard(dashboardId)
 
   if (!dashboardId) return null
@@ -150,5 +142,9 @@ export const DashboardPresentation = ({
     )
   }
 
-  return <PresentedDashboard dashboard={dashboardQuery.data} />
+  return (
+    <div data-dashboard-realtime={realtime}>
+      <PresentedDashboard dashboard={dashboardQuery.data} threadId={threadId} />
+    </div>
+  )
 }

@@ -10,6 +10,7 @@ import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
 
 import {
   useWidgetData,
+  useRefreshWidgetData,
   type DashboardDetailRecord,
   type DashboardWidgetRecord,
 } from '../../../facades/dashboards/hooks'
@@ -19,13 +20,23 @@ import { DashboardGrid } from './DashboardGrid'
 import { DashboardWidgetCard } from './DashboardWidgetCard'
 
 const DashboardWidgetSlot = ({
+  compact = false,
   editable,
   widget,
 }: {
+  compact?: boolean
   editable: boolean
   widget: DashboardWidgetRecord
 }) => {
-  const { data: projection, refetch } = useWidgetData(widget.id)
+  const { data: projection, refetch } = useWidgetData(widget.id, { compact })
+  const refreshWidget = useRefreshWidgetData()
+  const retry = () => {
+    if (compact) {
+      void refetch()
+      return
+    }
+    refreshWidget.mutate(widget.id)
+  }
 
   return (
     <div className="relative h-full">
@@ -37,7 +48,11 @@ const DashboardWidgetSlot = ({
         />
       ) : null}
       {projection ? (
-        <DashboardWidgetCard onRetry={() => void refetch()} projection={projection} />
+        <DashboardWidgetCard
+          {...(!compact ? { onRetry: retry } : {})}
+          projection={projection}
+          surface={compact ? 'message' : 'dashboard'}
+        />
       ) : (
         <SkeletonBlock className="h-full rounded-lg" />
       )}
@@ -82,12 +97,15 @@ export const completeDashboardLayout = (
 }
 
 export const DashboardCanvas = ({
+  compact = false,
   dashboard,
   editable = false,
   layout,
   onLayoutChange,
   widgetKinds,
 }: {
+  /** Conversation cards load bounded projections; the workspace stays full fidelity. */
+  compact?: boolean
   dashboard: DashboardDetailRecord
   editable?: boolean
   layout: DashboardLayout
@@ -95,19 +113,39 @@ export const DashboardCanvas = ({
   widgetKinds: Map<string, DashboardWidgetKind>
 }) => {
   const completeLayout = completeDashboardLayout(layout, dashboard.widgets, widgetKinds)
+  const insights = dashboard.presentation.insights
 
   return (
-    <DashboardGrid
-      editable={editable}
-      layout={completeLayout}
-      onLayoutChange={onLayoutChange}
-      widgetKinds={widgetKinds}
-    >
-      {dashboard.widgets.map((widget) => (
-        <div key={widget.id}>
-          <DashboardWidgetSlot editable={editable} widget={widget} />
-        </div>
-      ))}
-    </DashboardGrid>
+    <div className={dashboard.presentation.style === 'executive' ? 'space-y-3' : undefined}>
+      {insights.length > 0 ? (
+        <section aria-label="Dashboard insights" className="grid gap-2 sm:grid-cols-2">
+          {insights.map((insight) => (
+            <p
+              className="rounded-md border border-[color:var(--sep)] bg-[color:var(--panel-soft)] px-3 py-2 text-xs text-[color:var(--tx2)]"
+              key={insight.id}
+            >
+              {insight.text}
+            </p>
+          ))}
+        </section>
+      ) : null}
+      {dashboard.presentation.filters.length > 0 ? (
+        <p className="text-xs text-[color:var(--tx3)]" data-testid="dashboard-active-filters">
+          Filtered: {dashboard.presentation.filters.map((filter) => filter.label).join(', ')}
+        </p>
+      ) : null}
+      <DashboardGrid
+        editable={editable}
+        layout={completeLayout}
+        onLayoutChange={onLayoutChange}
+        widgetKinds={widgetKinds}
+      >
+        {dashboard.widgets.map((widget) => (
+          <div key={widget.id}>
+            <DashboardWidgetSlot compact={compact} editable={editable} widget={widget} />
+          </div>
+        ))}
+      </DashboardGrid>
+    </div>
   )
 }

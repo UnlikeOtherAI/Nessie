@@ -189,8 +189,11 @@ export const dashboardKeys = {
   // took one free segment under the root, so `list('')` and a disabled
   // `detail(undefined)` used to be the same cache entry with two response types.
   list: (querySuffix: string) => ['dashboards', 'list', querySuffix] as const,
+  sourceNotes: (dashboardId?: string) =>
+    [...dashboardKeys.detail(dashboardId), 'source-notes'] as const,
   sources: ['dashboard-sources'] as const,
   versions: (dashboardId: string) => ['dashboards', dashboardId, 'versions'] as const,
+  widgetDataAll: ['dashboards', 'widget-data'] as const,
   widgetData: dashboardWidgetDataKey,
   widgetDataView: (widgetId: string, querySuffix: string) =>
     [...dashboardWidgetDataKey(widgetId), querySuffix] as const,

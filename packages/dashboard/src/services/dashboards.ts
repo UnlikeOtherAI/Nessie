@@ -13,6 +13,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   DashboardLayoutSchema,
+  DashboardPresentationSchema,
   DASHBOARD_GRID_COLUMNS,
   DASHBOARD_WIDGET_SIZES,
   isAdminRole,
@@ -49,6 +50,7 @@ export type DashboardContext = {
 }
 
 const EMPTY_LAYOUT: DashboardLayout = { lg: [], md: [], sm: [] }
+const EMPTY_PRESENTATION = DashboardPresentationSchema.parse({})
 
 /**
  * The scope column that must accompany each home. Mirrors the database CHECK
@@ -207,6 +209,7 @@ export const createDashboard = async (
       title: input.title,
       description: input.description ?? null,
       layout: EMPTY_LAYOUT as unknown as Prisma.InputJsonValue,
+      presentation: EMPTY_PRESENTATION as unknown as Prisma.InputJsonValue,
       createdByType: input.createdByType ?? 'user',
       createdBy: actor.userId,
       ...scope,

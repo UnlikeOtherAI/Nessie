@@ -25,7 +25,7 @@ const request = async (path, { body, method = 'GET', token } = {}) => {
   return payload
 }
 
-const call = async (path, options) => (await request(path, options))?.data
+export const call = async (path, options) => (await request(path, options))?.data
 
 // Two ways in, both already in the product: the one-time owner bootstrap on
 // a fresh database, and the localhost-only dev-login on a database that
@@ -215,6 +215,58 @@ export const seedTeam = async (apiServer) => {
     project: { id: project.id, name: project.name },
     token: session.token,
   }
+}
+
+/**
+ * Seed through the public dashboard routes, then add the one agent-authored
+ * message pointer that production creates through `dashboard_present`. The
+ * pointer itself is intentionally not a public user-message field, so direct
+ * insertion is test-only; all source, dashboard, widget, delta and realtime
+ * behaviour below still crosses the real HTTP surface.
+ */
+export const seedDashboardWorkspace = async (input) => {
+  const runId = Date.now().toString(36)
+  const title = `Quarterly revenue ${runId}`
+  const source = await call('/api/dashboard-sources/import', {
+    body: {
+      content: 'quarter,revenue\nQ1,12\nQ2,28\nQ3,19\n',
+      format: 'csv',
+      name: `Dashboard workspace CSV ${runId}`,
+    },
+    method: 'POST',
+    token: input.token,
+  })
+  const dashboard = await call('/api/dashboards', {
+    body: { home: 'personal', title },
+    method: 'POST',
+    token: input.token,
+  })
+  await call(`/api/dashboards/${dashboard.id}/widgets`, {
+    body: {
+      binding: { category: 'quarter', series: [{ key: 'revenue', label: 'Revenue' }] },
+      kind: 'bar',
+      presentation: { title: 'Revenue by quarter' },
+      schemaVersion: 1,
+      sourceId: source.id,
+    },
+    method: 'POST',
+    token: input.token,
+  })
+  const current = await call(`/api/dashboards/${dashboard.id}`, { token: input.token })
+  const prisma = new PrismaClient()
+  try {
+    await prisma.message.create({
+      data: {
+        content: `Dashboard ready: ${title}`,
+        metadata: { dashboardPresentation: { dashboardId: dashboard.id, schemaVersion: 1 } },
+        role: 'assistant',
+        threadId: input.channel.defaultThreadId,
+      },
+    })
+  } finally {
+    await prisma.$disconnect()
+  }
+  return { dashboard: current, source, title }
 }
 
 /** Ensure one real chat crosses the API's first 50-row history boundary. */

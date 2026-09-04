@@ -7,6 +7,8 @@
  */
 
 import { DashboardPresentationMessageMetadataSchema } from '@nessie/schemas'
+import { assertDashboardAudienceForChannel } from '@nessie/dashboard'
+import { isGlobalAgentHomeSurface } from '../delegated-identity.js'
 
 import { createAgentMessage } from '../execute/agent-message.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
@@ -37,6 +39,19 @@ export const runDashboardPresentTool = async (
     // acting person can already reach the dashboard before a message references
     // it, and it returns the stable title for the message copy.
     const dashboard = await services.getDashboardWithWidgets(dashboardContext, dashboardId)
+    await assertDashboardAudienceForChannel(dashboardContext, {
+      dashboardId: dashboard.id,
+      channelId: context.channel.id,
+      allowOwnerPersonalDm: context.runContext
+        ? isGlobalAgentHomeSurface({
+          agentKind: context.runContext.agent.agentKind,
+          dmKey: context.runContext.channel.dmKey,
+          organizationId: context.runContext.channel.organizationId,
+          systemChannelType: context.runContext.channel.systemChannelType,
+          systemSlug: context.runContext.agent.systemSlug,
+        })
+        : false,
+    })
     const content = dashboardPresentationContent(dashboard.title)
     const message = await createAgentMessage(context.prisma, context.runContext, {
       agentId: context.agentId,
@@ -65,7 +80,7 @@ export const runDashboardPresentTool = async (
       inputSummary: `dashboardId=${dashboard.id}`,
       outputPreview:
         `Presented "${dashboard.title}" in this conversation. The preview stays access-controlled `
-        + 'and opens full screen when selected.',
+        + 'and opens in the conversation workspace when selected.',
       toolName: 'dashboard_present',
     }
   } catch (error) {

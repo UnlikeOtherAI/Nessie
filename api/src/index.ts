@@ -74,6 +74,7 @@ const {
   requireOwner,
   requireSuperAdmin,
   canAccessChannelRealtimeEvent,
+  canAccessDashboardRealtimeEvent,
   checkRateLimit,
   rateLimiter,
   disconnectPrismaClient,
@@ -176,6 +177,7 @@ export const buildApp = async () => {
 
   const realtimeHub = await createRealtimeHub({
     canAccessChannelEvent: canAccessChannelRealtimeEvent,
+    canAccessDashboardEvent: canAccessDashboardRealtimeEvent,
     databaseUrl,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,

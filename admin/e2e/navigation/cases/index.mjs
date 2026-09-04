@@ -9,6 +9,7 @@ import { phoneIntentStrip } from './phone-intent-strip.mjs'
 import { desktopChatHistory } from './desktop-chat-history.mjs'
 import { desktopDashboardExit } from './desktop-dashboard-exit.mjs'
 import { desktopKnowledgeCrossNavigation } from './desktop-knowledge-cross-navigation.mjs'
+import { desktopDashboardLiveWorkspace } from './desktop-dashboard-live-workspace.mjs'
 
 export const CASES = [
   phonePush,
@@ -24,4 +25,5 @@ export const CASES = [
   desktopChatHistory,
   desktopDashboardExit,
   desktopKnowledgeCrossNavigation,
+  desktopDashboardLiveWorkspace,
 ]

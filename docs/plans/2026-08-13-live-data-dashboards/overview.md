@@ -34,6 +34,25 @@ one cache. Access is resolved live at every read by one function; embedding
 grants nothing. Versions are append-only, attribute agent edits to the run that
 made them, and restore by appending.
 
+### 2026-09 static workspace extension
+
+Static material adds JSON, CSV, XLSX, document-text, and article-text imports
+without creating a live connection. Each import normalizes into the same bounded
+dataset envelope and stores immutable parser, digest, source-reference,
+canonical-URL, access-basis, and normalization-loss metadata. A referenced
+conversation attachment is live-authorized and copied as retained raw material;
+its extraction is a separate normalized representation, never its claimed
+original. Spreadsheet formulas are refused rather than evaluated.
+
+Dashboard edits use a closed versioned delta log: a mutation id makes retries
+idempotent, a conditional revision claim rejects concurrent stale writes before
+children change, and a version snapshot is written in the same transaction.
+`dashboard.updated` is content-free and scope-authorized at both subscription
+and delivery. Conversation presentation uses the shared compact canvas and the
+URL-owned right workspace panel; one shared client subscription aggregates every
+mounted dashboard id, and the two views refetch the same entitled state after an
+update or reconnect.
+
 ---
 
 ## 1. Why this section exists, and where the line is

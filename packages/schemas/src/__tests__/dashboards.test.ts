@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   DASHBOARD_WIDGET_SCHEMA_VERSION,
+  DashboardDeltaSchema,
   WidgetDefinitionSchema,
   validateWidgetBinding,
   type DashboardOutputColumn,
@@ -247,4 +248,59 @@ test('a table cannot sort by a column it does not display', () => {
 test('a valid binding produces no issues', () => {
   const parsed = WidgetDefinitionSchema.parse(timeseries)
   assert.deepEqual(validateWidgetBinding(parsed, columns), [])
+})
+
+test('dashboard delta is a closed versioned operation contract', () => {
+  const parsed = DashboardDeltaSchema.safeParse({
+    schemaVersion: 1,
+    mutationId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a6',
+    baseRevision: 4,
+    operations: [{
+      type: 'set_layout',
+      layout: { lg: [], md: [], sm: [] },
+    }],
+  })
+  assert.equal(parsed.success, true)
+})
+
+test('dashboard delta rejects unvalidated patch extensions', () => {
+  const parsed = DashboardDeltaSchema.safeParse({
+    schemaVersion: 1,
+    mutationId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a6',
+    baseRevision: 4,
+    operations: [{ type: 'set_layout', layout: { lg: [], md: [], sm: [] }, arbitraryPatch: true }],
+  })
+  assert.equal(parsed.success, false)
+})
+
+test('dashboard delta supports bounded filters, insights, and source-note display', () => {
+  const parsed = DashboardDeltaSchema.safeParse({
+    schemaVersion: 1,
+    mutationId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a6',
+    baseRevision: 4,
+    operations: [{
+      type: 'set_presentation',
+      presentation: {
+        style: 'executive',
+        filters: [{
+          id: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a7',
+          sourceId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a8',
+          column: 'quarter',
+          label: 'Q2 only',
+          values: ['Q2'],
+        }],
+        insights: [{
+          id: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a9',
+          text: 'Revenue is concentrated in two regions.',
+          tone: 'info',
+        }],
+        attributions: [{
+          sourceId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a8',
+          label: 'Q2 finance upload',
+          visible: true,
+        }],
+      },
+    }],
+  })
+  assert.equal(parsed.success, true)
 })
