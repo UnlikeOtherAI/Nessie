@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { ExternalAuthRouterBridge } from '../providers/ExternalAuthRouterBridge';
+import { DirectDesktopUpdatePrompt } from '../providers/DirectDesktopUpdatePrompt';
 import { IncomingCallProvider } from '../providers/IncomingCallProvider';
 import { NativeShellBridge } from '../providers/NativeShellBridge';
 import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
@@ -12,6 +13,7 @@ export const RootLayout = () => (
     <IncomingCallProvider>
       <NativeShellBridge />
       <ExternalAuthRouterBridge />
+      <DirectDesktopUpdatePrompt />
       <Outlet />
     </IncomingCallProvider>
   </ShakeFeedbackProvider>

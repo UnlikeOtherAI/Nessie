@@ -41,7 +41,10 @@ pub fn desktop_platform() -> &'static str {
 pub fn desktop_init_script(platform: &str) -> String {
     let literal = serde_json::to_string(platform)
         .expect("a platform literal must serialize as a JSON string");
-    format!("window.__nessieDesktopPlatform = {literal};\n{DESKTOP_INIT_SCRIPT}")
+    format!(
+        "window.__nessieDesktopPlatform = {literal};\nwindow.__nessieDirectUpdater = {};\n{DESKTOP_INIT_SCRIPT}",
+        cfg!(feature = "direct-updater"),
+    )
 }
 
 /// An AppImage registers `nessie://` against the absolute path it was launched
@@ -118,6 +121,15 @@ mod tests {
         assert!(published < notifications);
         assert!(script.contains("\n;\n"));
         assert!(script.contains("__nessieBuildFreshnessInstalled"));
+    }
+
+    #[test]
+    fn publishes_direct_update_availability_before_the_admin_loads() {
+        let script = desktop_init_script("linux");
+        assert!(script.contains(&format!(
+            "window.__nessieDirectUpdater = {};",
+            cfg!(feature = "direct-updater")
+        )));
     }
 
     // Tauri merges a platform config over the base one with RFC 7396 JSON Merge
