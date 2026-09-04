@@ -42,6 +42,7 @@ import {
 } from './builtin-tools-sandboxed.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 import { buildWorkflowToolDefinitions } from './workflow-tools.js'
+import { WORKFLOW_AUTHORING_TOOL_DEFINITIONS } from './builtin-workflow-authoring-tools.js'
 
 export { CARD_POST_TOOL_ID, CARD_POST_TOOL_DEFINITION } from './builtin-card-tools.js'
 export {
@@ -347,6 +348,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   SCHEDULE_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  ...WORKFLOW_AUTHORING_TOOL_DEFINITIONS,
   // sp-messaging slice: full-text search + agent-authored message lifecycle
   {
     id: 'message_search',

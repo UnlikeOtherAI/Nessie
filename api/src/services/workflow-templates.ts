@@ -1,5 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { isWorkflowConcurrencyConfig } from '@nessie/team-admin'
+import {
+  createWorkflowTemplateForActor,
+  installWorkflowTemplateForActor,
+  isWorkflowConcurrencyConfig,
+  listWorkflowTemplatesForOrganization,
+  WorkflowInstallationLifecycleError,
+  WorkflowTemplateAdoptionRequiredError,
+} from '@nessie/team-admin'
 import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
@@ -33,76 +40,10 @@ export const listWorkflowTemplates = async (
   organizationId: string,
   input: WorkflowListInput = {},
 ): Promise<WorkflowListPage<WorkflowTemplateRecord>> => {
-  // The select includes `graphJson` deliberately: WorkflowGraphSchema
-  // requires at least one step, so substituting an empty graph made this
-  // endpoint 500 as soon as any template existed — and the admin list
-  // renders step counts.
-  const limit = resolvePageLimit(input.limit)
-  const where: Prisma.WorkflowTemplateWhereInput = { organizationId }
-  const total = await prisma.workflowTemplate.count({ where })
-
-  const parsed = decodeKeysetCursor(input.cursor)
-  const backwards = input.direction === 'backward'
-  if (parsed) {
-    where.OR = [
-      { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
-      { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
-    ]
-  }
-
-  const templates = await prisma.workflowTemplate.findMany({
-    where,
-    orderBy: backwards
-      ? [{ createdAt: 'asc' }, { id: 'asc' }]
-      : [{ createdAt: 'desc' }, { id: 'desc' }],
-    take: limit + 1,
-    select: {
-      id: true,
-      organizationId: true,
-      name: true,
-      description: true,
-      version: true,
-      graphJson: true,
-      triggersJson: true,
-      variableSchema: true,
-      bindingSchema: true,
-      requiredEnvironmentTemplateIds: true,
-      source: true,
-      demonstrationId: true,
-      adoptedAt: true,
-      createdByActorType: true,
-      createdByActorId: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  })
-
-  const page = buildPage({ direction: input.direction, hasCursor: Boolean(parsed), limit, rows: templates, total })
-
-  // One grouped aggregate for exactly the templates on this page, rather than
-  // a second unbounded list the client would have to group itself. Bounded by
-  // the page size, and counted in the database so the numbers describe the
-  // template rather than whatever rows the browser happens to hold.
-  const templateIds = page.data.map((template) => template.id)
-  const installationCounts = templateIds.length === 0
-    ? []
-    : await prisma.workflowInstallation.groupBy({
-      by: ['workflowTemplateId', 'status'],
-      where: { organizationId, workflowTemplateId: { in: templateIds } },
-      _count: { _all: true },
-    })
-
-  const summaries = new Map<string, { active: number; total: number }>()
-  for (const row of installationCounts) {
-    const summary = summaries.get(row.workflowTemplateId) ?? { active: 0, total: 0 }
-    summary.total += row._count._all
-    if (row.status === 'active') summary.active += row._count._all
-    summaries.set(row.workflowTemplateId, summary)
-  }
-
+  const page = await listWorkflowTemplatesForOrganization(prisma, organizationId, input)
   return {
-    data: page.data.map((template) =>
-      mapWorkflowTemplate(template, summaries.get(template.id) ?? { active: 0, total: 0 })),
+    data: page.data.map(({ installationSummary, template }) =>
+      mapWorkflowTemplate(template, installationSummary)),
     meta: page.meta,
   }
 }
@@ -120,35 +61,7 @@ export const createWorkflowTemplate = async (
     variableSchema?: unknown
   },
 ): Promise<WorkflowTemplateRecord> => {
-  await validateWorkflowGraphSteps(
-    prisma,
-    actorContext,
-    input.graph,
-  )
-  await validateRequiredEnvironmentTemplateIds(
-    prisma,
-    actorContext.tenant.organizationId,
-    input.requiredEnvironmentTemplateIds ?? [],
-  )
-
-  const template = await prisma.workflowTemplate.create({
-    data: {
-      organizationId: actorContext.tenant.organizationId,
-      name: input.name,
-      description: input.description,
-      graphJson: input.graph as unknown as Prisma.InputJsonValue,
-      triggersJson: (input.triggers ?? {}) as Prisma.InputJsonValue,
-      variableSchema: (input.variableSchema ?? {}) as Prisma.InputJsonValue,
-      bindingSchema: (input.bindingSchema ?? {}) as Prisma.InputJsonValue,
-      requiredEnvironmentTemplateIds:
-        (input.requiredEnvironmentTemplateIds ?? []) as unknown as Prisma.InputJsonValue,
-      source: 'authored',
-      createdByActorType: actorContext.actor.actorType,
-      createdByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapWorkflowTemplate(template)
+  return mapWorkflowTemplate(await createWorkflowTemplateForActor(prisma, actorContext, input))
 }
 
 export const getWorkflowTemplate = async (
@@ -267,19 +180,7 @@ const resolveWorkflowInstallationLifecycle = (input: {
   return { active, status }
 }
 
-export class WorkflowInstallationLifecycleError extends Error {
-  constructor() {
-    super('WORKFLOW_INSTALLATION_STATUS_CONFLICT')
-    this.name = 'WorkflowInstallationLifecycleError'
-  }
-}
-
-export class WorkflowTemplateAdoptionRequiredError extends Error {
-  constructor() {
-    super('WORKFLOW_TEMPLATE_ADOPTION_REQUIRED')
-    this.name = 'WorkflowTemplateAdoptionRequiredError'
-  }
-}
+export { WorkflowInstallationLifecycleError, WorkflowTemplateAdoptionRequiredError }
 
 export const isWorkflowInstallationRunnable = (installation: {
   active: boolean
@@ -305,90 +206,12 @@ export const installWorkflowTemplate = async (
     status?: WorkflowInstallationRecord['status']
   },
 ): Promise<WorkflowInstallationRecord | null> => {
-  const lifecycle = resolveWorkflowInstallationLifecycle({
-    active: input.active,
-    status: input.status,
-  })
-  if (!lifecycle) {
-    throw new WorkflowInstallationLifecycleError()
-  }
-  if (input.concurrency !== undefined && !isWorkflowConcurrencyConfig(input.concurrency)) {
-    throw new WorkflowActionError(
-      'WORKFLOW_CONCURRENCY_INVALID',
-      'concurrency must be { limit?: integer >= 1, onOverlap?: skip | queue | parallel }',
-    )
-  }
-
-  await validateWorkflowInstallationChannel(
+  const result = await installWorkflowTemplateForActor(
     prisma,
-    actorContext.tenant.organizationId,
-    input.channelId,
+    actorContext,
+    workflowTemplateId,
+    input,
   )
-
-  const result = await prisma.$transaction(async (tx) => {
-    const template = await tx.workflowTemplate.findFirst({
-      where: {
-        id: workflowTemplateId,
-        organizationId: actorContext.tenant.organizationId,
-      },
-      select: {
-        id: true,
-        graphJson: true,
-        version: true,
-        bindingSchema: true,
-        source: true,
-        adoptedAt: true,
-      },
-    })
-    if (!template) {
-      return null
-    }
-
-    // A human-created learned draft is marked adopted when it is generated.
-    // An agent-proposed one reaches this point only after the approval effect
-    // writes its durable adoptedAt decision; a raw trace is never runnable.
-    if (template.source === 'demonstration' && !template.adoptedAt) {
-      throw new WorkflowTemplateAdoptionRequiredError()
-    }
-
-    // W13: no trigger materialisation from triggersJson. Template
-    // `triggersJson` is canvas position/authoring metadata only; a real
-    // schedule is an AgentTrigger created through `createWorkflowTrigger`
-    // from the installation's Triggers surface — one code path.
-    // W0: validate against the template's bindingSchema before any write —
-    // a plaintext value for a reference binding or a caller-chosen `secret_*`
-    // ref anywhere else is rejected, mirroring the MCP credential-ref rule.
-    assertWorkflowSecretWrite({
-      bindingSchema: template.bindingSchema,
-      config: input.config,
-      resolvedBindings: input.resolvedBindings,
-    })
-
-    const installation = await tx.workflowInstallation.create({
-      data: {
-        workflowTemplateId: template.id,
-        workflowTemplateVersion: template.version,
-        // W4: pin the installed graph so a NEW run is reproducible from what
-        // was installed, not from whatever the template says later.
-        pinnedGraphJson: template.graphJson as Prisma.InputJsonValue,
-        organizationId: actorContext.tenant.organizationId,
-        projectId: actorContext.tenant.projectId,
-        teamId: actorContext.tenant.teamId,
-        channelId: input.channelId,
-        status: lifecycle.status,
-        active: lifecycle.active,
-        resolvedBindings: (input.resolvedBindings ?? {}) as Prisma.InputJsonValue,
-        config: (input.config ?? {}) as Prisma.InputJsonValue,
-        ...(input.concurrency !== undefined
-          ? { concurrency: input.concurrency as Prisma.InputJsonValue }
-          : {}),
-        createdByActorType: actorContext.actor.actorType,
-        createdByActorId: actorContext.actor.actorId,
-      },
-    })
-
-    return { bindingSchema: template.bindingSchema, installation }
-  })
 
   return result
     ? mapWorkflowInstallation({
