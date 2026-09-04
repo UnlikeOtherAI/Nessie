@@ -29,8 +29,10 @@ file is the rule**.
   the gate is code rather than data.** Hashing a Gmail draft's *id* authorises
   nothing useful: the draft stays mutable through the chat card, through Gmail,
   and through another run, so an approved send could deliver text nobody
-  approved. `GmailDraftAction.contentFingerprint` is re-read and compared on
-  every send path, and the same row carries the conditional
+  approved. The authorization chokepoint reads the server-owned
+  `GmailDraftAction.contentFingerprint` into the canonical proof arguments
+  (never from model input), and `sendDraftForUser` re-reads and compares it on
+  every send path; the same row carries the conditional
   `draft → sending → sent` claim that makes a double send impossible. The
   approval requirement itself is declared on the tool definition and enforced at
   the tool chokepoint, because `evaluateToolInvokePolicy` defaults to `allow`
@@ -44,4 +46,3 @@ file is the rule**.
   `sendDraftForUser` serves the human button and the agent tool; api services
   are unreachable from the worker, so a second copy forks the state claim and
   the audit trail on day one. Details: `CLAUDE.md` → the Google bullets.
-

@@ -10,6 +10,15 @@ export const GmailDraftSendToolInputSchema = z.object({
   draftId: z.string().uuid(),
 }).strict()
 
+/**
+ * Server-authored extension of GmailDraftSendToolInputSchema. It never appears
+ * in the model-facing definition: authorization reads the current projection
+ * and attaches it before hashing an approval or dispatching the handler.
+ */
+export const AuthorizedGmailDraftSendToolInputSchema = GmailDraftSendToolInputSchema.extend({
+  approvalFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict()
+
 export const CalendarEventCreateToolInputSchema = z.object({
   addMeet: z.boolean().optional(),
   attendees: z.array(z.string()).max(100).optional(),
