@@ -112,6 +112,14 @@ bar with traffic lights and the OS's own rounded corners; it is unchanged.
   explicit retry state instead of leaving sign-in at an indefinite loading
   message. Snap and Flatpak would additionally need D-Bus `own-name` /
   `talk-name` permissions; they are not targets of this plan.
+- **WSLg reuses an existing Windows session.** A Windows browser resolves
+  `nessie://` through the installed Windows handler, not the Linux process
+  whose window WSLg displays. The Linux login screen therefore exposes **Use
+  Windows session**. It accepts Session debug JSON copied from **Account →
+  Debug** in the signed-in Windows app, imports only the short-lived access
+  token after checking it against the same API, and never imports cookies,
+  identity claims, storage, or refresh credentials. Native Linux browsers keep
+  using the ordinary deep-link path.
 
 ### Notifications and the badge
 

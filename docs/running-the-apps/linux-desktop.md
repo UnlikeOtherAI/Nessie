@@ -27,6 +27,14 @@ executable at runtime. Launch an AppImage once after moving it so the callback
 returns to its new location, and a callback launch is forwarded into the
 existing process rather than being lost when the second process exits.
 
+WSLg is the development exception: its Linux window is displayed by Windows,
+so a Windows browser sends `nessie://` to the installed Windows app. Use the
+Linux login screen's **Use Windows session** doorway, copy Session debug from
+**Account → Debug** in the signed-in Windows app, and paste it there. Only the
+same-server short-lived access token is imported; cookies, identity claims,
+storage, and refresh credentials are ignored. Repeat the transfer after that
+token expires. A normal Linux desktop browser does not need this bridge.
+
 ### The standalone executor daemon
 
 `nessie-executor` turns a Linux computer with no desktop app into an executor:

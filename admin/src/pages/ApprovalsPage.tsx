@@ -74,6 +74,7 @@ export const ApprovalsPage = () => {
   const pending = usePagedList<ApprovalRequest>({
     enabled: Boolean(me),
     params: { status: 'pending' },
+    paramPrefix: 'pending-',
     path: '/api/approvals',
     queryKey: pendingCacheKey,
   })
@@ -82,6 +83,7 @@ export const ApprovalsPage = () => {
   // shown in its own section above, so this only ever de-duplicates.
   const history = usePagedList<ApprovalRequest>({
     enabled: Boolean(me),
+    paramPrefix: 'history-',
     path: '/api/approvals',
     queryKey: historyCacheKey,
   })
@@ -192,7 +194,10 @@ export const ApprovalsPage = () => {
                   hideWhenSinglePage
                   label={pending.label}
                   onPageChange={pending.onPageChange}
+                  onPageSizeChange={pending.onPageSizeChange}
                   page={pending.page}
+                  pageCount={pending.pageCount}
+                  pageSize={pending.pageSize}
                 />
               </>
             )}
@@ -253,7 +258,10 @@ export const ApprovalsPage = () => {
                   hideWhenSinglePage
                   label={history.label}
                   onPageChange={history.onPageChange}
+                  onPageSizeChange={history.onPageSizeChange}
                   page={history.page}
+                  pageCount={history.pageCount}
+                  pageSize={history.pageSize}
                 />
               </>
             )}

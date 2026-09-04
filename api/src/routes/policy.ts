@@ -60,6 +60,7 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
           ? R
           : never,
       cursor: query['cursor'],
+      direction: query['direction'] === 'backward' ? 'backward' : 'forward',
       limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
     })
 

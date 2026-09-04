@@ -37,7 +37,6 @@ export const useMemberRoster = (
     params: { status },
     path: pathFor(scope, 'members'),
     queryKey: keyFor(scope, 'members'),
-    usesDirectionalCursors: true,
   })
 
 type InvitationPermissions = Pick<MemberRosterPermissions, 'addMember'> & {
@@ -50,7 +49,6 @@ export const useMemberInvitations = (scope: MemberRosterScope, enabled = true) =
     items: (response) => response.items,
     path: pathFor(scope, 'invitations'),
     queryKey: keyFor(scope, 'invitations'),
-    usesDirectionalCursors: true,
   })
 
 export const useInvitationTargets = (enabled: boolean) =>
@@ -59,8 +57,7 @@ export const useInvitationTargets = (enabled: boolean) =>
     items: (response) => response.items,
     paramPrefix: 'invite-',
     path: '/api/organization/member-invitation-targets',
-    queryKey: [...organizationKeys.members, 'invitation-targets'],
-    usesDirectionalCursors: true,
+    queryKey: organizationKeys.invitationTargets,
   })
 
 type CandidateEnvelope = PagedRoster<TeamMemberCandidate, {
@@ -74,7 +71,7 @@ export const useTeamMemberCandidates = (query: string, enabled: boolean) => {
   return useQuery({
     enabled: enabled && search.length > 0,
     queryFn: () => api.getPage<CandidateEnvelope>(`/api/team/members/candidates?q=${encodeURIComponent(search)}&limit=20`),
-    queryKey: [...teamKeys.members, 'candidates', search],
+    queryKey: teamKeys.memberCandidates(search),
   })
 }
 

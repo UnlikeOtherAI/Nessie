@@ -37,6 +37,8 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const [candidateQuery, setCandidateQuery] = useState('')
   const [debouncedCandidateQuery, setDebouncedCandidateQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // This chooses a branch of one transient form, not an addressable settings
+  // view. A URL param would outlive the dialog and collide with the page below.
   const [mode, setMode] = useState<InviteMode>('existing')
   const emailRef = useRef<HTMLInputElement | null>(null)
   const targets = useInvitationTargets(open && scope === 'organization')
@@ -180,7 +182,10 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                   hideWhenSinglePage
                   label={targets.label}
                   onPageChange={targets.onPageChange}
+                  onPageSizeChange={targets.onPageSizeChange}
                   page={targets.page}
+                  pageCount={targets.pageCount}
+                  pageSize={targets.pageSize}
                 />
               </div>
             ) : null}

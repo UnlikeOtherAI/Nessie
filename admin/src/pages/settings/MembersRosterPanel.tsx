@@ -44,9 +44,8 @@ const memberColumns = (
           displayName={member.displayName ?? member.email ?? 'Member'}
           size={32}
           token={token}
-          {...(member.userId
-            ? { userId: member.userId }
-            : scope === 'team' ? { uoaSub: member.uoaSub } : {})}
+          uoaSub={member.uoaSub}
+          {...(member.userId ? { userId: member.userId } : {})}
         />
         <span className="min-w-0">
           <span className="block truncate font-medium">{member.displayName ?? 'Unnamed member'}</span>
@@ -177,7 +176,10 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             hideWhenSinglePage
             label={current.label}
             onPageChange={current.onPageChange}
+            onPageSizeChange={current.onPageSizeChange}
             page={current.page}
+            pageCount={current.pageCount}
+            pageSize={current.pageSize}
           />
         </section>
       </div>

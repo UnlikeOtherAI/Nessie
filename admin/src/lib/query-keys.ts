@@ -359,6 +359,7 @@ export const opsTelemetryKeys = {
 
 export const organizationKeys = {
   current: ['organization', 'current'] as const,
+  invitationTargets: ['organization', 'members', 'invitation-targets'] as const,
   members: ['organization', 'members'] as const,
 }
 
@@ -444,6 +445,7 @@ export const teamKeys = {
   // fetches it, so it never refetches or resets on its own.
   avatarRevision: ['teams', 'avatar', 'revision'] as const,
   invitations: ['teams', 'invitations'] as const,
+  memberCandidates: (search: string) => ['teams', 'members', 'candidates', search] as const,
   members: ['teams', 'members'] as const,
 }
 

@@ -58,6 +58,7 @@ export const WorkflowInstallationDetail = ({
 }: WorkflowInstallationDetailProps) => {
   const runsList = usePagedList<WorkflowRunRecord>({
     path: `/api/workflow-installations/${installation.id}/runs`,
+    paramPrefix: 'runs-',
     queryKey: workflowKeys.installationRuns(installation.id),
   })
   const runs = runsList.items
@@ -244,9 +245,12 @@ export const WorkflowInstallationDetail = ({
                 canPrevious={runsList.canPrevious}
                 className="mt-3"
                 hideWhenSinglePage
-                label={runsList.label}
-                onPageChange={runsList.onPageChange}
-                page={runsList.page}
+              label={runsList.label}
+              onPageChange={runsList.onPageChange}
+              onPageSizeChange={runsList.onPageSizeChange}
+              page={runsList.page}
+              pageCount={runsList.pageCount}
+              pageSize={runsList.pageSize}
               />
             </>
           )}

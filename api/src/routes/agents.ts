@@ -10,7 +10,7 @@ import {
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
-import { parseAgentId } from '@nessie/schemas'
+import { AgentMessagePageSchema, parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
@@ -797,7 +797,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     const { agentId } = request.params as { agentId: string }
     const query = request.query as { limit?: string; offset?: string }
-    const limit = Math.min(Math.max(Number(query.limit ?? '5'), 1), 50)
+    const limit = Math.min(Math.max(Number(query.limit ?? '25'), 1), 100)
     const offset = Math.max(Number(query.offset ?? '0'), 0)
     const visibility = createAgentVisibilityScope(actorContext)
     if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
@@ -805,7 +805,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, offset, { visibility }))
+    return createApiResponse(
+      AgentMessagePageSchema.parse(await loadAgentMessages(prisma, agentId, limit, offset, { visibility })),
+    )
   })
 
   app.get('/api/agents/:agentId/children', async (request, reply) => {

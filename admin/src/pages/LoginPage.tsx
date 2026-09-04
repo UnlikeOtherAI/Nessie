@@ -16,7 +16,7 @@ import { LoginSessionImportButton } from '../components/shared/LoginSessionImpor
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { startExternalSignIn } from '../lib/external-auth'
-import { isDesktopApp } from '../lib/desktop'
+import { desktopPlatform, isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
@@ -189,7 +189,9 @@ export const LoginPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [sessionImportOpen, setSessionImportOpen] = useState(false)
-  const showSessionImport = sessionState === 'unauthenticated' && isReactNativeWebView()
+  const showMobileSessionImport = sessionState === 'unauthenticated' && isReactNativeWebView()
+  const showWindowsSessionImport = sessionState === 'unauthenticated'
+    && desktopPlatform() === 'linux'
 
   // The API only advertises a `local-bootstrap` provider when running in local
   // mode. Internal email/password + dev login are therefore local-only; in
@@ -413,6 +415,19 @@ export const LoginPage = () => {
                 Cancel sign-in
               </button>
             ) : null}
+            {showWindowsSessionImport ? (
+              <div className="mt-2 grid gap-3 border-t border-[var(--line)] pt-5">
+                <p className="text-sm leading-6 text-[var(--muted)]">
+                  Already signed in to Nessie on Windows? Copy Session debug there,
+                  then bring that session into this Linux app.
+                </p>
+                <LoginSessionImportButton
+                  label="Use Windows session"
+                  onOpenChange={setSessionImportOpen}
+                  variant="inline"
+                />
+              </div>
+            ) : null}
           </div>
 
           {localModeEnabled ? (
@@ -468,7 +483,7 @@ export const LoginPage = () => {
 
       <div
         className="mx-auto mt-auto flex w-full max-w-6xl items-center justify-end gap-3 pt-8"
-        style={showSessionImport ? {
+        style={showMobileSessionImport ? {
           paddingRight: 'calc(3.5rem + env(safe-area-inset-right, 0px))',
         } : undefined}
       >
@@ -478,7 +493,7 @@ export const LoginPage = () => {
         <LoginThemeSelector />
       </div>
 
-      {showSessionImport ? (
+      {showMobileSessionImport ? (
         <LoginSessionImportButton onOpenChange={setSessionImportOpen} />
       ) : null}
     </main>

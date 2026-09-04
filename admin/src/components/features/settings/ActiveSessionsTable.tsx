@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import type { SessionSummary } from '@nessie/schemas'
+import { DEFAULT_PAGE_LIMIT, type SessionSummary } from '@nessie/schemas'
 import { useRevokeSession } from '../../../facades/auth/hooks'
 import { describeSessionDevice } from '../../../pages/settings/session-device'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
@@ -15,19 +15,18 @@ type ActiveSessionsTableProps = {
   sessions: SessionSummary[]
 }
 
-const PAGE_SIZE = 6
-
 const formatWhen = (iso: string): string => new Date(iso).toLocaleString()
 
 /** A screen-bounded session list: paging keeps every revoke decision in view. */
 export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTableProps) => {
   const revokeSession = useRevokeSession()
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT)
   const [error, setError] = useState<string | null>(null)
   const [pendingRevoke, setPendingRevoke] = useState<SessionSummary | null>(null)
-  const totalPages = Math.max(1, Math.ceil(sessions.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(sessions.length / pageSize))
   const visiblePage = Math.min(page, totalPages - 1)
-  const pageSessions = sessions.slice(visiblePage * PAGE_SIZE, (visiblePage + 1) * PAGE_SIZE)
+  const pageSessions = sessions.slice(visiblePage * pageSize, (visiblePage + 1) * pageSize)
 
   useEffect(() => {
     setPage((current) => Math.min(current, totalPages - 1))
@@ -43,8 +42,8 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
     }
   }
 
-  const rangeStart = sessions.length === 0 ? 0 : visiblePage * PAGE_SIZE + 1
-  const rangeEnd = Math.min((visiblePage + 1) * PAGE_SIZE, sessions.length)
+  const rangeStart = sessions.length === 0 ? 0 : visiblePage * pageSize + 1
+  const rangeEnd = Math.min((visiblePage + 1) * pageSize, sessions.length)
 
   const columns: DataTableColumn<SessionSummary>[] = [
     {
@@ -108,7 +107,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
         loading={isLoading}
         rowKey={(session) => session.sessionId}
         rows={pageSessions}
-        skeletonRows={PAGE_SIZE}
+        skeletonRows={pageSize}
       />
       <FormError className="mt-2">{error}</FormError>
       {!isLoading && sessions.length > 0 ? (
@@ -116,9 +115,15 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
           canNext={visiblePage < totalPages - 1}
           canPrevious={visiblePage > 0}
           className="mt-2 border-t-0 px-0 py-0"
-          label={`${rangeStart}–${rangeEnd} of ${sessions.length} · Page ${visiblePage + 1} of ${totalPages}`}
+          label={`${rangeStart}–${rangeEnd} of ${sessions.length}`}
           onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize)
+            setPage(0)
+          }}
           page={visiblePage}
+          pageCount={totalPages}
+          pageSize={pageSize}
         />
       ) : null}
 

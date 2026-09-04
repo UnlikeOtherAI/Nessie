@@ -7,7 +7,7 @@ import type {
   PolicyResourceType,
   PolicyScope,
 } from '@nessie/schemas'
-import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
+import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 import {
   buildScopeChain,
   loadRulesForChecks,
@@ -109,6 +109,7 @@ export const listPolicyRules = async (
     scopeId?: string
     resourceType?: PolicyResourceType
     cursor?: string
+    direction?: PaginationDirection
     limit?: number
   },
 ) => {
@@ -124,21 +125,25 @@ export const listPolicyRules = async (
   const total = await prisma.policyRule.count({ where: where as Prisma.PolicyRuleWhereInput })
 
   const parsed = decodeKeysetCursor(filters?.cursor)
+  const backwards = filters?.direction === 'backward'
   if (parsed) {
     where['OR'] = [
-      { createdAt: { gt: parsed.createdAt } },
-      { createdAt: parsed.createdAt, id: { gt: parsed.id } },
+      { createdAt: { [backwards ? 'lt' : 'gt']: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { [backwards ? 'lt' : 'gt']: parsed.id } },
     ]
   }
 
   const rules = await prisma.policyRule.findMany({
     where: where as Prisma.PolicyRuleWhereInput,
     include: { bindings: true },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'desc' }, { id: 'desc' }]
+      : [{ createdAt: 'asc' }, { id: 'asc' }],
     take: limit + 1,
   })
 
   const page = buildPage({
+    direction: filters?.direction,
     hasCursor: Boolean(parsed),
     limit,
     rows: rules,

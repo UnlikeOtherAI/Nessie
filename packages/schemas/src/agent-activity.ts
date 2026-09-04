@@ -69,6 +69,13 @@ export const AgentMessageSchema = z.object({
 })
 export type AgentMessage = z.infer<typeof AgentMessageSchema>
 
+/** The bounded message activity slice plus the count used by its pager. */
+export const AgentMessagePageSchema = z.object({
+  items: z.array(AgentMessageSchema),
+  total: z.number().int().nonnegative(),
+})
+export type AgentMessagePage = z.infer<typeof AgentMessagePageSchema>
+
 export const AgentChildSchema = z.object({
   agentId: AgentIdSchema,
   name: NonEmptyStringSchema,

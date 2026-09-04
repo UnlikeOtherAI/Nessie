@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
-import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
+import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { runApprovalEffect } from './approval-effects.js'
 import { terminalizeExpiredToolApproval, terminalizeRejectedToolApproval } from './approval-resume.js'
@@ -92,6 +92,7 @@ export const listApprovalRequests = async (
     agentId?: string
     channelId?: string
     cursor?: string
+    direction?: PaginationDirection
     limit?: number
   },
 ) => {
@@ -110,20 +111,24 @@ export const listApprovalRequests = async (
   const total = await prisma.approvalRequest.count({ where: where as Prisma.ApprovalRequestWhereInput })
 
   const parsed = decodeKeysetCursor(filters?.cursor)
+  const backwards = filters?.direction === 'backward'
   if (parsed) {
     where['OR'] = [
-      { createdAt: { lt: parsed.createdAt } },
-      { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+      { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
     ]
   }
 
   const approvals = await prisma.approvalRequest.findMany({
     where: where as Prisma.ApprovalRequestWhereInput,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
   })
 
   const page = buildPage({
+    direction: filters?.direction,
     hasCursor: Boolean(parsed),
     limit,
     rows: approvals,

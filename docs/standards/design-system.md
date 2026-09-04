@@ -33,9 +33,11 @@ summary and points here; **this file is the rule**.
   one contract from the API to the pixel.** List endpoints paginate through
   `@nessie/schemas` `PaginationParamsSchema`/`PaginationMetaSchema` (cursor
   keyset, `limit` ≤ 100, `total` required on admin lists) and the admin
-  consumes them through one facade and `PaginationFooter`; a route that pages,
-  sorts or reports validation errors differently is refactored onto the
-  contract, never accommodated by a second mode in the component.
+  consumes them through one facade and `PaginationFooter`. The footer always
+  names **Page X of Y**, its result range, and exposes the shared 10/25/50/100
+  **Items per page** picker; a route that pages, sorts or reports validation
+  errors differently is refactored onto the contract, never accommodated by a
+  second mode in the component.
 - **Fullscreen inspection is an explicit surface decision.** `ExpandableTable`
   and `DataTable` require an `expandable` choice at the call site; a CSS class
   or the current URL never decides it. Tables in Admin use `false`; tables

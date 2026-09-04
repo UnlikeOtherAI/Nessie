@@ -1,4 +1,12 @@
-import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, type PaginationMeta } from './api.js'
+import {
+  DEFAULT_PAGE_LIMIT,
+  MAX_PAGE_LIMIT,
+  PAGE_SIZE_OPTIONS,
+  type PaginationDirection,
+  type PaginationMeta,
+} from './api.js'
+
+export { PAGE_SIZE_OPTIONS }
 
 /**
  * Keyset cursors, in one place.
@@ -36,15 +44,31 @@ export const decodeKeysetCursor = (cursor: string | undefined): KeysetCursor | n
   return { createdAt, id }
 }
 
-/** Clamps a caller-supplied limit into the one page size the admin uses. */
+/** Clamps a caller-supplied limit to the API's supported range. */
 export const resolvePageLimit = (limit: number | undefined): number => {
   if (!limit || !Number.isFinite(limit)) return DEFAULT_PAGE_LIMIT
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_PAGE_LIMIT)
 }
 
+/**
+ * The only page sizes an admin person can choose. Unknown URL values resolve
+ * to the default rather than producing a pager whose selected value is absent
+ * from its control.
+ */
+export const resolvePageSize = (limit: number | undefined): number =>
+  PAGE_SIZE_OPTIONS.includes(limit as typeof PAGE_SIZE_OPTIONS[number])
+    ? limit ?? DEFAULT_PAGE_LIMIT
+    : DEFAULT_PAGE_LIMIT
+
 type BuildPageInput<T extends KeysetCursor> = {
   /** True when the caller supplied a cursor, i.e. this is not the first page. */
   hasCursor: boolean
+  /**
+   * A backward fetch reverses the database order to find the preceding page.
+   * `buildPage` restores the canonical order and returns cursors that still
+   * mean Previous and Next in that order.
+   */
+  direction?: PaginationDirection
   limit: number
   /** Exactly `limit + 1` rows when more exist — that extra row is how `hasMore` is known. */
   rows: T[]
@@ -63,11 +87,34 @@ type BuildPageInput<T extends KeysetCursor> = {
  * how the Previous control knows to disable itself.
  */
 export const buildPage = <T extends KeysetCursor>({
+  direction = 'forward',
   hasCursor,
   limit,
   rows,
   total,
 }: BuildPageInput<T>): { data: T[]; meta: PaginationMeta } => {
+  if (direction === 'backward') {
+    const hasPrevious = rows.length > limit
+    // The query is in reverse canonical order, so the first `limit` rows are
+    // the preceding page and the extra row tells us whether it has a previous
+    // neighbour. Reverse only after removing that over-fetched row.
+    const data = rows.slice(0, limit).reverse()
+    const first = data.at(0)
+    const last = data.at(-1)
+
+    return {
+      data,
+      meta: {
+        // A backward request had to name the page it came from, so there is a
+        // canonical next page whenever this result has rows.
+        hasMore: Boolean(hasCursor && last),
+        nextCursor: hasCursor && last ? encodeKeysetCursor(last) : null,
+        prevCursor: hasPrevious && first ? encodeKeysetCursor(first) : null,
+        ...(total === undefined ? {} : { total }),
+      },
+    }
+  }
+
   const hasMore = rows.length > limit
   const data = hasMore ? rows.slice(0, limit) : rows
   const first = data.at(0)
