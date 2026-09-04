@@ -14,6 +14,7 @@ import {
   mailboxDialOptions,
   type MailboxConnectionRow,
 } from './mailbox-connection-endpoints.js'
+import { canReconnectMailboxConnection } from './mailbox-connection-approver.js'
 
 /**
  * Move a mailbox into the explicit-recovery state and write its durable alert
@@ -147,13 +148,29 @@ export const persistMailboxReconnection = async (
 ): Promise<MailboxConnectionRecord> => {
   const updated = await prisma.$transaction(async (tx) => {
     const current = await tx.mailboxConnection.findUnique({
-      select: { ownerUserId: true, teamId: true },
+      select: {
+        createdByUserId: true,
+        organizationId: true,
+        ownerUserId: true,
+        teamId: true,
+      },
       where: { id: input.connectionId },
     })
     if (!current) {
       throw new MailboxConnectionError('connection_not_found', 'That mailbox connection is gone.')
     }
+    // The provider test happens before this transaction and can take seconds.
+    // Re-read both the exact connection scope and live membership here, where
+    // the credential write, activation, approver transfer, and alert cleanup
+    // are still one all-or-nothing action.
+    if (!await canReconnectMailboxConnection(tx, current, input.actorUserId)) {
+      throw new MailboxConnectionError(
+        'not_permitted',
+        'You no longer have permission to reconnect this mailbox.',
+      )
+    }
     const isShared = current.ownerUserId === null && current.teamId !== null
+    const approverTransferred = isShared && current.createdByUserId !== input.actorUserId
     const connection = await tx.mailboxConnection.update({
       data: {
         ...(isShared ? { createdByUserId: input.actorUserId } : {}),
@@ -182,6 +199,36 @@ export const persistMailboxReconnection = async (
       },
       where: { connectionId: connection.id },
     })
+    if (approverTransferred) {
+      // A former shared-mailbox approver must never retain a pending decision
+      // or an approved continuation after a manager takes responsibility. The
+      // connection id is structural context added by the mailbox gate; the
+      // resume-state clause protects rows created before that context existed.
+      await tx.approvalRequest.updateMany({
+        data: {
+          proofConsumedAt: new Date(),
+          resolution: 'rejected',
+          resolutionNote: 'Mailbox approver changed; propose the email again.',
+          resolvedAt: new Date(),
+          status: 'rejected',
+        },
+        where: {
+          action: 'tool.invoke',
+          organizationId: current.organizationId,
+          OR: [
+            { status: 'pending' },
+            { proofConsumedAt: null, status: 'approved' },
+          ],
+          toolName: 'mailbox_send',
+          AND: [{
+            OR: [
+              { context: { equals: input.connectionId, path: ['mailboxConnectionId'] } },
+              { resumeState: { equals: input.connectionId, path: ['args', 'connectionId'] } },
+            ],
+          }],
+        },
+      })
+    }
     await resolveMailboxConnectionHealthAlerts(tx, connection.id)
     return connection
   })

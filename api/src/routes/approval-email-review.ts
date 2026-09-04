@@ -4,7 +4,12 @@ import {
   MailboxSendToolInputSchema,
   SealedEmailSendToolInputSchema,
 } from '@nessie/runtime'
-import { fingerprintDraft, GmailDraftError, readDraftForUser } from '@nessie/team-admin'
+import {
+  currentMailboxConnectionApprover,
+  fingerprintDraft,
+  GmailDraftError,
+  readDraftForUser,
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
@@ -128,13 +133,26 @@ export const registerApprovalEmailReviewRoutes = (
       const args = MailboxSendToolInputSchema.safeParse(resumeState.data.args)
       if (!args.success) return unavailable(reply)
       const mailbox = await prisma.mailboxConnection.findFirst({
-        select: { address: true, label: true },
+        select: {
+          address: true,
+          createdByUserId: true,
+          label: true,
+          organizationId: true,
+          ownerUserId: true,
+          teamId: true,
+        },
         where: {
           id: args.data.connectionId,
           organizationId: actorContext.tenant.organizationId,
         },
       })
       if (!mailbox) return unavailable(reply)
+      // A reconnect can transfer a shared mailbox to a new accountable
+      // manager. The old pin must not continue to materialize correspondence
+      // while the transaction invalidates its stale approval.
+      if (await currentMailboxConnectionApprover(prisma, mailbox) !== actorContext.actor.actorId) {
+        return unavailable(reply)
+      }
 
       return createApiResponse({
         approvalId: approval.id,

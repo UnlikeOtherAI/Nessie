@@ -66,7 +66,10 @@ const makePrisma = (
 ): PrismaClient =>
   ({
     mailboxConnection: { findMany: async () => connections },
-    organizationMember: { count: async () => (options.liveApprover === false ? 0 : 1) },
+    organizationMember: {
+      findFirst: async ({ where }: { where: { userId?: string } }) =>
+        options.liveApprover === false ? null : { userId: where.userId },
+    },
   }) as unknown as PrismaClient
 
 const makeContext = (): RunContext =>

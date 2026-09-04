@@ -257,7 +257,7 @@ export type ToolApprovalProofInput = {
 export const verifyToolApprovalProof = async (
   prisma: PrismaClient,
   input: ToolApprovalProofInput,
-): Promise<{ id: string } | null> => {
+): Promise<{ id: string; requiredApproverUserId: string | null } | null> => {
   if (!input.approvalId || !input.proof) return null
   const approval = await prisma.approvalRequest.findFirst({
     where: {
@@ -270,14 +270,16 @@ export const verifyToolApprovalProof = async (
       status: 'approved',
       toolName: input.toolName,
     },
-    select: { id: true, runId: true },
+    select: { id: true, requiredApproverUserId: true, runId: true },
   })
   if (!approval?.runId) return null
   const run = await prisma.run.findUnique({
     where: { id: input.continuationRunId },
     select: { continuationOfRunId: true },
   })
-  return run?.continuationOfRunId === approval.runId ? { id: approval.id } : null
+  return run?.continuationOfRunId === approval.runId
+    ? { id: approval.id, requiredApproverUserId: approval.requiredApproverUserId }
+    : null
 }
 
 /** Claim an already verified proof at the exact dispatch point; false means a race consumed it. */

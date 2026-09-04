@@ -64,6 +64,7 @@ const pendingAgentApproval = {
 
 const makeApp = (input: {
   actorId: string
+  currentMailboxApproverId?: string
   kind?: 'agent' | 'mailbox'
   status?: 'approved' | 'pending'
 }) => {
@@ -98,10 +99,23 @@ const makeApp = (input: {
     mailboxConnection: {
       findFirst: async () => {
         mailboxReads += 1
-        return { address: 'support@example.com', label: 'Customer support' }
+        return {
+          address: 'support@example.com',
+          createdByUserId: input.currentMailboxApproverId ?? ids.approver,
+          label: 'Customer support',
+          organizationId: ids.organization,
+          ownerUserId: null,
+          teamId: ids.channel,
+        }
       },
     },
-    organizationMember: { count: async () => 1 },
+    organizationMember: {
+      count: async () => 1,
+      findFirst: async ({ where }: { where: { userId?: string } }) =>
+        where.userId === (input.currentMailboxApproverId ?? ids.approver)
+          ? { userId: where.userId }
+          : null,
+    },
   }
 
   const deps = {
@@ -140,6 +154,21 @@ test('only the exact approver can materialize a pending mailbox email proposal',
   assert.equal(denied.headers['cache-control'], 'private, no-store')
   assert.equal(outsider.mailboxReads(), 0)
   await outsider.app.close()
+})
+
+test('a former shared-mailbox approver cannot materialize correspondence after ownership transfers', async () => {
+  const transferred = makeApp({
+    actorId: ids.approver,
+    currentMailboxApproverId: ids.outsider,
+  })
+  const response = await transferred.app.inject({
+    method: 'GET',
+    url: `/api/approvals/${ids.approval}/email-review`,
+  })
+  assert.equal(response.statusCode, 409)
+  assert.equal(response.headers['cache-control'], 'private, no-store')
+  assert.equal(transferred.mailboxReads(), 1)
+  await transferred.app.close()
 })
 
 test('only the exact active approver can materialize a pending hosted-mail proposal', async () => {

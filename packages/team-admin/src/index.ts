@@ -175,6 +175,12 @@ export {
 } from './mailbox-connection-recovery.js'
 
 export {
+  canReconnectMailboxConnection,
+  currentMailboxConnectionApprover,
+  type MailboxConnectionApprover,
+} from './mailbox-connection-approver.js'
+
+export {
   MailboxCredentialMissingError,
   mailboxDialOptions,
   mailboxEndpointsFor,

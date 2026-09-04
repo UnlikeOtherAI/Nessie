@@ -52,7 +52,7 @@ export const claimVerifiedToolApprovalProof = async (input: {
   emitAudit: ToolApprovalAuditEmitter
   prisma: PrismaClient
   toolName: string
-  verifiedApproval: { id: string } | null
+  verifiedApproval: { id: string; requiredApproverUserId: string | null } | null
 }): Promise<boolean> => {
   const { actorContext, approval, args, context, emitAudit, prisma, toolName, verifiedApproval } = input
   if (

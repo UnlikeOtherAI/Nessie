@@ -1,8 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
 import { MAILBOX_SEND_TOOL_ID } from '@nessie/runtime'
-import { listReachableMailboxes, type ReachableMailbox } from '@nessie/team-admin'
-
-import { liveApproverOrNull } from './approver.js'
+import {
+  currentMailboxConnectionApprover,
+  listReachableMailboxes,
+  type ReachableMailbox,
+} from '@nessie/team-admin'
 import { subtractImpliedScopes } from './disclosure-basis.js'
 import type { RunContext } from './types.js'
 
@@ -85,33 +87,21 @@ export const evaluateMailboxSendGate = async (
     ...context.boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
   ]).map((scope) => `${scope.scopeType}:${scope.scopeId}`)
 
-  const accountableUserId = mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId
-  if (!accountableUserId) {
-    return {
-      message:
-        'This shared mailbox has no assigned approver. An owner or admin must reconnect '
-        + 'it under an active approver before it can send.',
-      outcome: 'deny',
-      reason: 'mailbox_approver_unavailable',
-    }
-  }
-  const liveApprover = await liveApproverOrNull(prisma, {
-    organizationId: context.channel.organizationId,
-    userId: accountableUserId,
-  })
-
+  const liveApprover = await currentMailboxConnectionApprover(prisma, mailbox.connection)
   if (!liveApprover) {
     return {
       message: mailbox.scope === 'team'
-        ? 'The person assigned to approve shared mailbox sends is no longer active. '
-          + 'An owner or admin must reconnect it under an active approver before it can send.'
+        ? (mailbox.connection.createdByUserId
+          ? 'The person assigned to approve shared mailbox sends is no longer active. '
+            + 'An owner or admin must reconnect it under an active approver before it can send.'
+          : 'This shared mailbox has no assigned approver. An owner or admin must reconnect '
+            + 'it under an active approver before it can send.')
         : 'The personal mailbox owner is no longer active. Reactivate its owner or '
           + 'reconnect the mailbox under an active owner before it can send.',
       outcome: 'deny',
       reason: 'mailbox_approver_unavailable',
     }
   }
-
   return {
     outcome: 'approval',
     reason: describe(mailbox, externalSources),

@@ -2,6 +2,7 @@ import {
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_START_FAILURE_DETAIL,
   GMAIL_DRAFT_SEND_TOOL_ID,
+  MAILBOX_SEND_TOOL_ID,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '@nessie/runtime'
 import {
@@ -173,6 +174,7 @@ export const authorizeToolExecution = async (
     }
     if (
       rawPolicyDecision.approvalProofVerified
+      && toolName !== MAILBOX_SEND_TOOL_ID
       && (!auth.revalidateApprovalBoundary || toolName === GMAIL_DRAFT_SEND_TOOL_ID)
     ) {
       if (
@@ -217,6 +219,23 @@ export const authorizeToolExecution = async (
         }
       }
       if (rawPolicyDecision.approvalProofVerified) {
+        if (
+          toolName === MAILBOX_SEND_TOOL_ID
+          && rawPolicyDecision.approvalProofVerified.requiredApproverUserId
+            !== familyDecision.requiredApproverUserId
+        ) {
+          structuralState.denial = {
+            message: 'The mailbox approver changed. Please propose the email again.',
+            reason: 'approval_required',
+          }
+          return {
+            ...rawPolicyDecision,
+            allowed: false as const,
+            approvalActionType: undefined as string | undefined,
+            policyRuleId: undefined as string | undefined,
+            reason: 'approval_required' as const,
+          }
+        }
         structuralApprovalProofUsed = true
         return rawPolicyDecision
       }
