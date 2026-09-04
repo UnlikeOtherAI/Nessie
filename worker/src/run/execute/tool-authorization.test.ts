@@ -323,6 +323,7 @@ export const runLoop = async (input: {
       stubbedBuiltinToolIds: new Set(),
       thinkingRecorder: {
         appendReasoning: async () => undefined,
+        appendWithheldMailReasoning: async () => undefined,
         appendToolLine: async () => undefined,
         close: async () => undefined,
       },

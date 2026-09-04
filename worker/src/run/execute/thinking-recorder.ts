@@ -8,10 +8,14 @@ import type { PgRealtimeTransport } from '@nessie/runtime'
 // been waiting long enough for the bubble to look live.
 export const REASONING_FLUSH_BYTES = 2048
 export const REASONING_FLUSH_MS = 250
+/** A server-authored marker used when an inference saw protected mail context. */
+export const WITHHELD_MAIL_REASONING = '[Reasoning withheld while working with protected email data.]'
 
 export type ThinkingRecorder = {
   /** Buffer a visible-reasoning delta; flushed on size or age. */
   appendReasoning: (delta: string) => Promise<void>
+  /** Record a safe marker instead of model-authored mail reasoning. */
+  appendWithheldMailReasoning: () => Promise<void>
   /** Flush pending reasoning, then record one tool line immediately. */
   appendToolLine: (toolName: string, inputSummary: string) => Promise<void>
   /** Final flush. Idempotent, and safe to call from a `finally`. */
@@ -119,6 +123,15 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
         return
       }
       scheduleFlush()
+    },
+    appendWithheldMailReasoning: async () => {
+      if (closed) return
+      await enqueue(async () => {
+        // `run-inference` holds an entire inference before selecting this path,
+        // so this can never flush a model-authored protected delta first.
+        await flushReasoning()
+        await write('reasoning', WITHHELD_MAIL_REASONING)
+      })
     },
     appendToolLine: async (toolName, inputSummary) => {
       if (closed) return

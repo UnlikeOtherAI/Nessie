@@ -14,6 +14,10 @@ import {
   parseCheckpointNote,
 } from './checkpoint-note.js'
 import { generateCheckpointNote } from './run-stop.js'
+import {
+  EMAIL_ACCOUNT_TOOL_IDS,
+  PROTECTED_MAIL_TOOL_SUMMARIES,
+} from '../tool-util.js'
 
 type UpdateManyArg = { where: Record<string, unknown>; data: Record<string, unknown> }
 
@@ -226,9 +230,33 @@ test('checkpoint generation projects correspondence results and keeps its fallba
     assert.doesNotMatch(utilityPrompt, new RegExp(token))
     assert.doesNotMatch(note.note, new RegExp(token))
   }
-  assert.match(utilityPrompt, /Connected mailbox correspondence withheld from utility transcript/)
+  assert.match(utilityPrompt, /Protected email operation withheld from utility transcript/)
   assert.match(utilityPrompt, /ordinary search result stays in the note prompt/)
   assert.match(note.note, /ordinary research only/)
+})
+
+test('checkpoint utility prompt excludes every protected mail tool result', () => {
+  const privateTokens = 'recipient@private.example body-private 00000000-0000-0000-0000-0000000000ee'
+  const protectedToolNames = [
+    ...Object.keys(PROTECTED_MAIL_TOOL_SUMMARIES),
+    ...EMAIL_ACCOUNT_TOOL_IDS,
+  ]
+  for (const toolName of protectedToolNames) {
+    const messages: ProviderMessage[] = [
+      {
+        content: null,
+        role: 'assistant',
+        toolCalls: [{ arguments: {}, toolCallId: 'mail', toolName }],
+      },
+      { content: privateTokens, role: 'tool', toolCallId: 'mail' },
+    ]
+    const prompt = buildCheckpointNotePrompt({ goal: 'Continue safely.', messages })
+    assert.doesNotMatch(
+      prompt,
+      /recipient@private\.example|body-private|00000000-0000-0000-0000-0000000000ee/,
+    )
+    assert.match(prompt, /withheld from utility transcript/)
+  }
 })
 
 test('a failed note call degrades to a mechanical note instead of losing the work', () => {

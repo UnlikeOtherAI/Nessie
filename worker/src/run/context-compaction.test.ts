@@ -9,6 +9,10 @@ import {
   selectCompactionSlice,
 } from './context-compaction.js'
 import { contextWindowForModel, buildContextPlan } from './context-window.js'
+import {
+  EMAIL_ACCOUNT_TOOL_IDS,
+  PROTECTED_MAIL_TOOL_SUMMARIES,
+} from './tool-util.js'
 
 const toolGroup = (id: string, size: number): ProviderMessage[] => [
   {
@@ -94,8 +98,28 @@ test('compaction projects correspondence results before the utility model sees t
   })
 
   for (const token of privateTokens) assert.doesNotMatch(prompt, new RegExp(token))
-  assert.match(prompt, /Google mailbox correspondence withheld from utility transcript/)
+  assert.match(prompt, /Protected email operation withheld from utility transcript/)
   assert.match(prompt, /ordinary search result stays in the note prompt/)
+})
+
+test('compaction excludes every protected mail tool result from its utility prompt', () => {
+  const privateTokens = 'recipient@private.example body-private 00000000-0000-0000-0000-0000000000ee'
+  const protectedToolNames = [
+    ...Object.keys(PROTECTED_MAIL_TOOL_SUMMARIES),
+    ...EMAIL_ACCOUNT_TOOL_IDS,
+  ]
+  const elder: ProviderMessage[] = protectedToolNames.flatMap((toolName, index) => [
+    {
+      content: null,
+      role: 'assistant' as const,
+      toolCalls: [{ arguments: {}, toolCallId: `mail-${index}`, toolName }],
+    },
+    { content: privateTokens, role: 'tool' as const, toolCallId: `mail-${index}` },
+  ])
+
+  const prompt = buildCompactionPrompt({ elder, previousNote: null })
+  assert.doesNotMatch(prompt, /recipient@private\.example|body-private|00000000-0000-0000-0000-0000000000ee/)
+  assert.equal((prompt.match(/withheld from utility transcript/g) ?? []).length, protectedToolNames.length)
 })
 
 test('a previous note is folded into the next compaction instead of being dropped', async () => {

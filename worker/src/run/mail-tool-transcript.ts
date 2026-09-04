@@ -1,62 +1,23 @@
+import type { ProviderMessage } from '@nessie/runtime'
 import {
-  CONTACTS_SEARCH_TOOL_ID,
-  EMAIL_LIST_TOOL_ID,
-  EMAIL_READ_TOOL_ID,
-  EMAIL_SEND_TOOL_ID,
-  GMAIL_ATTACHMENT_READ_TOOL_ID,
-  GMAIL_DRAFT_CREATE_TOOL_ID,
-  GMAIL_DRAFT_SEND_TOOL_ID,
-  GMAIL_DRAFT_UPDATE_TOOL_ID,
-  GMAIL_MESSAGE_READ_TOOL_ID,
-  GMAIL_SEARCH_TOOL_ID,
-  GMAIL_THREAD_READ_TOOL_ID,
-  MAILBOX_READ_TOOL_ID,
-  MAILBOX_SEARCH_TOOL_ID,
-  MAILBOX_SEND_TOOL_ID,
-  type ProviderMessage,
-} from '@nessie/runtime'
+  isProtectedMailOperationalTool,
+  protectedMailUtilityTranscriptSummary,
+} from './tool-util.js'
 
 // Utility-model calls are intentionally outside the main agent's authorized
 // correspondence context. Compaction and checkpoint writers need the shape of
 // a mail action, but never its recipients, subject, body, address, or provider
 // response. These summaries are server-authored and contain no tool output.
-const HOSTED_MAIL_TOOLS = new Set([
-  EMAIL_LIST_TOOL_ID,
-  EMAIL_READ_TOOL_ID,
-  EMAIL_SEND_TOOL_ID,
-])
-
-const CONNECTED_MAIL_TOOLS = new Set([
-  MAILBOX_SEARCH_TOOL_ID,
-  MAILBOX_READ_TOOL_ID,
-  MAILBOX_SEND_TOOL_ID,
-])
-
-const GMAIL_CORRESPONDENCE_TOOLS = new Set([
-  GMAIL_SEARCH_TOOL_ID,
-  GMAIL_THREAD_READ_TOOL_ID,
-  GMAIL_MESSAGE_READ_TOOL_ID,
-  GMAIL_ATTACHMENT_READ_TOOL_ID,
-  GMAIL_DRAFT_CREATE_TOOL_ID,
-  GMAIL_DRAFT_UPDATE_TOOL_ID,
-  GMAIL_DRAFT_SEND_TOOL_ID,
-])
-
-const summaryForMailTool = (toolName: string): string | null => {
-  if (HOSTED_MAIL_TOOLS.has(toolName)) {
-    return '[Hosted mailbox correspondence withheld from utility transcript.]'
-  }
-  if (CONNECTED_MAIL_TOOLS.has(toolName)) {
-    return '[Connected mailbox correspondence withheld from utility transcript.]'
-  }
-  if (GMAIL_CORRESPONDENCE_TOOLS.has(toolName)) {
-    return '[Google mailbox correspondence withheld from utility transcript.]'
-  }
-  if (toolName === CONTACTS_SEARCH_TOOL_ID) {
-    return '[Email contact result withheld from utility transcript.]'
-  }
-  return null
-}
+/**
+ * A protected tool call itself is context-sensitive: its arguments may name
+ * recipients or an account even before a result is appended. Treat it as a
+ * boundary so callers can fail closed while model-visible reasoning streams.
+ */
+export const hasProtectedMailContext = (messages: readonly ProviderMessage[]): boolean =>
+  messages.some((message) =>
+    message.role === 'assistant'
+    && (message.toolCalls ?? []).some((toolCall) => isProtectedMailOperationalTool(toolCall.toolName)),
+  )
 
 /**
  * Project a main-run transcript into the bounded utility-model view.
@@ -81,7 +42,7 @@ export const projectMailToolResultsForUtilityTranscript = (
     if (message.role !== 'tool') return message
 
     const toolName = toolNameByCallId.get(message.toolCallId)
-    const summary = toolName ? summaryForMailTool(toolName) : null
+    const summary = toolName ? protectedMailUtilityTranscriptSummary(toolName) : null
     return summary ? { ...message, content: summary } : message
   })
 }
