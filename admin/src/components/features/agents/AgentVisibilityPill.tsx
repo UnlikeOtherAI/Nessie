@@ -8,8 +8,8 @@ type Props = {
   visibility: AgentVisibility
 }
 
-export const agentVisibilityLabel = (visibility: AgentVisibility): 'Private' | 'Team' =>
-  visibility === 'private' ? 'Private' : 'Team'
+export const agentVisibilityLabel = (visibility: AgentVisibility): 'Private' | 'Public' =>
+  visibility === 'private' ? 'Private' : 'Public'
 
 /** Text fallback for native selects, which cannot render the shared pill. */
 export const agentSelectionLabel = (name: string, visibility: AgentVisibility): string =>
