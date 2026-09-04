@@ -20,13 +20,15 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SettingsPanel } from './settings-shared'
 import { MemberInvitationDialog } from './MemberInvitationDialog'
 import { MemberDetailsDialog } from './MemberDetailsDialog'
+import { AutomaticMembershipRulesPanel } from './AutomaticMembershipRulesPanel'
 
-type RosterTab = 'active' | 'pending' | 'deactivated'
+type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 
 const rosterTabs = [
   { label: 'Active users', value: 'active' },
   { label: 'Pending invitations', value: 'pending' },
   { label: 'Deactivated users', value: 'deactivated' },
+  { label: 'Automatic logins', value: 'automatic' },
 ] as const
 
 const dateLabel = (value: string | undefined) => {
@@ -103,13 +105,13 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
   const [revokeError, setRevokeError] = useState<string | null>(null)
   const requestedTab = searchParams.get('membersTab')
-  const tab: RosterTab = requestedTab === 'pending' || requestedTab === 'deactivated'
+  const tab: RosterTab = requestedTab === 'pending' || requestedTab === 'deactivated' || requestedTab === 'automatic'
     ? requestedTab
     : 'active'
   const roster = useMemberRoster(
     scope,
     tab === 'deactivated' ? 'DEACTIVATED' : 'ACTIVE',
-    tab !== 'pending',
+    tab !== 'pending' && tab !== 'automatic',
   )
   const invitations = useMemberInvitations(scope, tab === 'pending')
   const revokeInvitation = useRevokeMemberInvitation(scope)
@@ -155,7 +157,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
 
   return (
     <SettingsPanel
-      actions={canInvite ? [{
+      actions={canInvite && tab !== 'automatic' ? [{
         id: 'invite-member',
         label: 'Send invitation',
         onSelect: () => setInviteOpen(true),
@@ -174,7 +176,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
           value={tab}
         />
         <section aria-labelledby={`members-${scope}-tab-${tab}`} id={tabPanelId} role="tabpanel">
-          <QueryState
+          {tab === 'automatic' ? <AutomaticMembershipRulesPanel scope={scope} /> : <QueryState
             errorLabel="Members could not be loaded."
             loadingLabel="Loading members…"
             query={current.query}
@@ -205,8 +207,8 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 rows={members}
               />
             )}
-          </QueryState>
-          <PaginationFooter
+          </QueryState>}
+          {tab !== 'automatic' ? <PaginationFooter
             canNext={current.canNext}
             canPrevious={current.canPrevious}
             className="mt-4"
@@ -217,7 +219,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             page={current.page}
             pageCount={current.pageCount}
             pageSize={current.pageSize}
-          />
+          /> : null}
         </section>
       </div>
       <MemberInvitationDialog onClose={() => setInviteOpen(false)} open={inviteOpen} scope={scope} />

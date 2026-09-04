@@ -320,6 +320,17 @@ export const AuditActionSchema = z.enum([
   'mailbox.connection.deleted',
   'mailbox.access.granted',
   'mailbox.access.revoked',
+  'automatic_membership.claim_created',
+  'automatic_membership.dns_checked',
+  'automatic_membership.verified',
+  'automatic_membership.rotated',
+  'automatic_membership.contact_changed',
+  'automatic_membership.activated',
+  'automatic_membership.suspended',
+  'automatic_membership.revoked',
+  'automatic_membership.backfill_started',
+  'automatic_membership.backfill_updated',
+  'automatic_membership.granted',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

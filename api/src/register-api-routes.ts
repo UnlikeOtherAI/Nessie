@@ -81,6 +81,7 @@ import { registerTeamAvatarRoutes } from './routes/team-avatar.js'
 import { registerTeamInvitationAcceptanceRoute } from './routes/team-invitations.js'
 import { registerTeamMembersRoutes } from './routes/team-members.js'
 import { registerTeamProvisioningRoutes } from './routes/team-provisioning.js'
+import { registerAutomaticMembershipRoutes } from './routes/automatic-membership.js'
 import {
   buildDashboardEgressPolicy,
   createDashboardCredentialStore,
@@ -143,6 +144,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerProfileAvatarRoutes(app, deps)
   registerTeamMembersRoutes(app, deps)
   registerTeamProvisioningRoutes(app, deps)
+  registerAutomaticMembershipRoutes(app, deps)
   registerTeamInvitationAcceptanceRoute(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
