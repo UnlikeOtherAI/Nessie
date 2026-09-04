@@ -503,7 +503,44 @@ jobs:
 
           $stateRoot = Join-Path $env:ProgramData 'Nessie Executor'
           if (-not (Test-Path $stateRoot)) { throw 'the state root was not created' }
-          (Get-Acl $stateRoot).Access | Format-Table IdentityReference, FileSystemRights, IsInherited
+          $stateAcl = Get-Acl $stateRoot
+          $stateAcl.Access | Format-Table IdentityReference, FileSystemRights, IsInherited
+          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+            $serviceAccount = New-Object System.Security.Principal.NTAccount('NT SERVICE', 'NessieExecutor')
+            $serviceSid = $serviceAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+            $systemSid = 'S-1-5-18'
+            $ownerSid = (New-Object System.Security.Principal.NTAccount($stateAcl.Owner)).Translate(
+              [System.Security.Principal.SecurityIdentifier]
+            ).Value
+            if ($ownerSid -ne $serviceSid) {
+              throw "the state root owner is $ownerSid instead of the executor service"
+            }
+            if ($stateAcl.AreAccessRulesProtected -ne $true) {
+              throw 'the state root inherits access rules from ProgramData'
+            }
+            $stateRules = @($stateAcl.Access)
+            if ($stateRules.Count -ne 2) {
+              throw "the state root has $($stateRules.Count) access rules instead of two"
+            }
+            foreach ($rule in $stateRules) {
+              $ruleSid = $rule.IdentityReference.Translate(
+                [System.Security.Principal.SecurityIdentifier]
+              ).Value
+              if ($ruleSid -notin @($serviceSid, $systemSid)) {
+                throw "the state root grants access to unexpected identity $ruleSid"
+              }
+              if ($rule.IsInherited) {
+                throw "the state root has an inherited rule for $ruleSid"
+              }
+              if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+                throw "the state root has a deny rule for $ruleSid"
+              }
+              $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+              if (($rule.FileSystemRights -band $fullControl) -ne $fullControl) {
+                throw "the state root does not grant full control to $ruleSid"
+              }
+            }
+          }
 
           # The Run entry starts the tray at the installing user's next logon;
           # there is no logon here, so the tray is started directly and must
