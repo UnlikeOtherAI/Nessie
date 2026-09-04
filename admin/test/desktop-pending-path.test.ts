@@ -59,7 +59,7 @@ test('the green traffic light owns the shared window-layout popover and inactive
   assert.match(controls, /<WindowLayoutPopover/)
   assert.match(layouts, /from '..\/..\/components\/overlays\/Popover'/)
   assert.match(layouts, /className="desktop-window-layout-popover"/)
-  assert.match(layouts, /style={{ marginLeft: -27, marginTop: 20 }}/)
+  assert.match(layouts, /style={{ marginLeft: -27, marginTop: 36 }}/)
   assert.match(styles, /width: 14\.4px/)
   assert.match(styles, /height: 14\.4px/)
   assert.match(styles, /--desktop-window-layout-scale: 0\.5/)
