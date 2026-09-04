@@ -4,7 +4,7 @@
 //! and no rights anywhere a person keeps their work, so before it can read the
 //! chosen workspace somebody with administrative rights has to say so. That is
 //! what the UAC prompt during pairing is for, and it is worth saying plainly in
-//! the dialog: the tray is granting a service account Modify on one directory
+//! the dialog: the tray is granting a service account read access to one directory
 //! the person just chose.
 //!
 //! The same elevated run records the person's own SID under the service root.
@@ -37,9 +37,7 @@ mod imp {
         GetTokenInformation, TokenUser, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
         SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
     };
-    use windows_sys::Win32::Storage::FileSystem::{
-        DELETE, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
-    };
+    use windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_READ;
     use windows_sys::Win32::System::Threading::{
         GetCurrentProcess, OpenProcessToken, WaitForSingleObject, INFINITE,
     };
@@ -51,10 +49,11 @@ mod imp {
     use super::GRANT_SWITCH;
     use crate::service_identity::service_root;
 
-    /// Windows' "Modify": read, write, execute and delete, but not the right to
-    /// re-grant. The service must be able to work in the workspace; it must not
-    /// be able to hand it to anyone else.
-    const MODIFY: u32 = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+    /// The service copies the selected root into a private COW workspace. It
+    /// never promotes from this standalone surface, so Windows grants only the
+    /// read rights that operation needs — not write, delete, execute, or the
+    /// right to re-grant.
+    const WORKSPACE_READ: u32 = FILE_GENERIC_READ;
 
     fn wide(value: &str) -> Vec<u16> {
         std::ffi::OsStr::new(value).encode_wide().chain(std::iter::once(0)).collect()
@@ -118,7 +117,7 @@ mod imp {
         }
         let mut account = wide(SERVICE_ACCOUNT);
         let entry = EXPLICIT_ACCESS_W {
-            grfAccessPermissions: MODIFY,
+            grfAccessPermissions: WORKSPACE_READ,
             grfAccessMode: SET_ACCESS,
             grfInheritance: SUB_CONTAINERS_AND_OBJECTS_INHERIT,
             Trustee: TRUSTEE_W {

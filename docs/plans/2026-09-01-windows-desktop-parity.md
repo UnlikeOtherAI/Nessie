@@ -178,14 +178,16 @@ artifacts, and two Nessie binaries:
   rounded status window in the same custom chrome with the same information
   and buttons. Every mutation repeats in a native confirmation dialog, as the
   desktop companion does; **Pair** prompts for elevation because it grants the
-  service account Modify on the chosen workspace root through its ACL, and it
+  service account read access on the chosen workspace root through its ACL, and it
   hands the challenge to the service over the pipe, never through a command
   line. The tray shows executor ids and states only.
 
 How a person uses it: install the MSI (one UAC prompt), the tray icon
 appears; in Nessie, **Pair executor** produces an invitation; in the tray,
 **Pair a new executor…** → paste the invitation link → choose the workspace →
-confirm → confirm the fingerprint in Nessie → the icon turns green. Reboot:
+  confirm → confirm the fingerprint in Nessie → the icon turns green. The
+  service receives read access only; all draft writes stay in its private COW
+  state. Reboot:
 the executor is online before anyone logs in.
 
 ### Sandbox backend on Windows
@@ -299,7 +301,7 @@ disk is which — are stated with their remedies in
    tests that gate the coding and command profiles on macOS pass on it.
 6. **Service and tray.** `nessie-executor-service.exe`, the named-pipe
    control protocol, `nessie-executor-tray.exe`, the MSI with account,
-   Hyper-V group, GUID registration, DACLs, and login start.
+   Hyper-V group, GUID registration, read-only workspace DACLs, and login start.
 7. **Release acceptance on a real Windows 11 Pro desktop:**
    1. Install the app; Start shows Nessie; one frameless window with Nessie's
       controls, no console — rounded with a shadow on Windows 11, square with

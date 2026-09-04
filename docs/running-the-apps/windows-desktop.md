@@ -231,7 +231,8 @@ in.
 That administrator prompt is the only one, and it is worth knowing what it is
 for: the daemon runs as a service account with no rights anywhere a person
 keeps their work, so somebody with administrative rights has to grant
-`NT SERVICE\NessieExecutor` **Modify** on the workspace root. The elevated step
+`NT SERVICE\NessieExecutor` **Read** on the workspace root. Draft changes are
+written only to the service's private COW state. The elevated step
 merges that one entry into the directory's existing permissions — it never
 replaces them — and records the pairing account's SID under the service root.
 That recorded SID is what admits the person's ordinary, unelevated tray to the
