@@ -131,7 +131,11 @@ export const summarize = (uid: number, parsed: Awaited<ReturnType<typeof parseIn
   uid,
 })
 
-export type MailboxClientOptions = DialOptions & { maxBufferBytes?: number }
+export type MailboxClientOptions = DialOptions & {
+  maxBufferBytes?: number
+  /** Server secret used to authenticate opaque list-issued thread tokens. */
+  threadTokenSecret?: string
+}
 
 export const withImap = async <T>(
   endpoints: MailboxEndpoints,

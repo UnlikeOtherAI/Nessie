@@ -32,8 +32,12 @@ test('Gmail mail paging preserves the provider cursor and estimate', async () =>
   assert.equal(page.nextCursor, 'google-next-token')
   assert.equal(page.estimate, 4242)
   assert.equal(page.items[0]?.unread, true)
+  assert.equal(page.items[0]?.messageCount, 1)
+  assert.equal(page.items[0]?.subject, 'Hello')
   assert.ok(calls[0]?.includes('pageToken=old-token'))
   assert.ok(calls[0]?.includes('is%3Aunread'))
+  assert.ok(calls[1]?.includes('format=metadata'))
+  assert.equal(calls.some((url) => url.includes('format=full')), false)
 })
 
 test('Gmail conversation sanitizes provider HTML before returning it', async () => {

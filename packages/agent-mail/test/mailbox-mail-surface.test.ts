@@ -10,47 +10,51 @@ import {
 } from '../src/mailbox-mail-surface.js'
 import { parseThreadReferenceSets } from '../src/imap.js'
 
-test('structural IMAP thread token is stable across refetches and processes', () => {
-  const first = mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', rootMessageId: 'root@example.test', uid: 4, uidValidity: 10,
-  })
-  const refetched = mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', rootMessageId: 'root@example.test', uid: 99, uidValidity: 11,
-  })
-  assert.equal(first, refetched)
+const ACCOUNT_ID = 'account-1'
+const FOLDER = 'INBOX'
+const SECRET = 'mail-thread-token-secret'
+
+const token = (input: Omit<Parameters<typeof mailboxThreadToken>[0], 'accountId' | 'folder'>): string =>
+  mailboxThreadToken({ ...input, accountId: ACCOUNT_ID, folder: FOLDER }, SECRET)
+
+const parse = (value: string) => parseMailboxThreadToken(value, {
+  accountId: ACCOUNT_ID, folder: FOLDER, secret: SECRET,
 })
 
-test('unthreaded IMAP token changes when UIDVALIDITY changes', () => {
-  const beforeReset = mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', rootMessageId: null, uid: 4, uidValidity: 10,
+test('signed IMAP thread tokens bind their account, folder, and listed members', () => {
+  const value = token({
+    memberUids: [13, 11, 12], messageCount: 3, rootMessageId: 'root@example.test', uid: 13, uidValidity: 10,
   })
-  const afterReset = mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', rootMessageId: null, uid: 4, uidValidity: 11,
+  assert.deepEqual(parse(value), {
+    accountId: ACCOUNT_ID, folder: FOLDER, memberUids: [13, 12, 11], messageCount: 3,
+    rootDigest: parse(value)?.rootDigest, seedUid: 13, uidValidity: 10,
   })
-  assert.notEqual(beforeReset, afterReset)
+  assert.equal(parseMailboxThreadToken(value, {
+    accountId: 'another-account', folder: FOLDER, secret: SECRET,
+  }), null)
 })
 
-test('listed IMAP tokens carry a bounded UIDVALIDITY-validated seed', () => {
-  const token = mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', memberUids: [13, 11, 12], messageCount: 3,
-    rootMessageId: 'root@example.test', uid: 13, uidValidity: 10,
+test('IMAP thread tokens stay under the public parameter limit for bounded large groups', () => {
+  const value = token({
+    memberUids: Array.from({ length: 50 }, (_, index) => 4_294_967_295 - index * 80_000_000),
+    messageCount: 500, rootMessageId: 'root@example.test', uid: 4_294_967_295, uidValidity: 4_294_967_295,
   })
-  assert.deepEqual(parseMailboxThreadToken(token), {
-    accountId: 'account-1', folder: 'INBOX', memberUids: [13, 12, 11], messageCount: 3,
-    rootDigest: parseMailboxThreadToken(token)?.rootDigest,
-    seedUid: 13, uidValidity: 10,
-  })
-  assert.equal(parseMailboxThreadToken(mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', rootMessageId: null, uid: 13, uidValidity: 10,
-  })), null)
+  assert.ok(value.length <= 500, value)
+  assert.equal(parse(value)?.memberUids.length, 50)
+})
+
+test('IMAP thread tokens reject tampering and unthreaded roots do not collide', () => {
+  const first = token({ memberUids: [8], messageCount: 1, rootMessageId: null, uid: 8, uidValidity: 10 })
+  const second = token({ memberUids: [9], messageCount: 1, rootMessageId: null, uid: 9, uidValidity: 10 })
+  assert.notEqual(first, second)
+  const tampered = `${first.slice(0, -1)}${first.endsWith('A') ? 'B' : 'A'}`
+  assert.equal(parse(tampered), null)
 })
 
 test('a thread token cannot add unrelated mailbox UIDs after its headers are validated', () => {
-  const token = mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', memberUids: [8, 7, 99], messageCount: 3,
-    rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
-  })
-  const parsed = parseMailboxThreadToken(token)
+  const parsed = parse(token({
+    memberUids: [8, 7, 99], messageCount: 3, rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
+  }))
   assert.ok(parsed)
   const members = validateMailboxThreadMembers(parsed, [
     {
@@ -65,31 +69,20 @@ test('a thread token cannot add unrelated mailbox UIDs after its headers are val
       date: null, from: null, fromName: null, hasAttachments: false, inReplyTo: null,
       messageId: 'unrelated@example.test', references: [], snippet: '', subject: 'Other', to: [], uid: 99, unread: false,
     },
-  ])
+  ], SECRET)
   assert.deepEqual(members?.map((member) => member.uid), [8, 7])
-  const wrongRoot = Buffer.from(JSON.stringify({
-    ...JSON.parse(Buffer.from(token, 'base64url').toString('utf8')),
-    r: 'not-the-structural-root',
-  })).toString('base64url')
-  const wrongRootToken = parseMailboxThreadToken(wrongRoot)
-  assert.ok(wrongRootToken)
-  assert.equal(validateMailboxThreadMembers(wrongRootToken, []), null)
 })
 
 test('thread-token validation refuses a missing seed group', () => {
-  const token = parseMailboxThreadToken(mailboxThreadToken({
-    accountId: 'account-1', folder: 'INBOX', memberUids: [8], messageCount: 1,
-    rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
+  const parsed = parse(token({
+    memberUids: [8], messageCount: 1, rootMessageId: 'root@example.test', uid: 8, uidValidity: 10,
   }))
-  assert.ok(token)
-  assert.equal(validateMailboxThreadMembers(token, []), null)
+  assert.ok(parsed)
+  assert.equal(validateMailboxThreadMembers(parsed, [], SECRET), null)
 })
 
 test('THREAD=REFERENCES parser emits only flattened top-level groups', () => {
-  assert.deepEqual(parseThreadReferenceSets('* THREAD (1 2 (3 4))(5 (6))'), [
-    [1, 2, 3, 4],
-    [5, 6],
-  ])
+  assert.deepEqual(parseThreadReferenceSets('* THREAD (1 2 (3 4))(5 (6))'), [[1, 2, 3, 4], [5, 6]])
 })
 
 test('fallback paging advances to a bounded older UID header window', () => {

@@ -82,6 +82,7 @@ const fetchThreadHeaders = async (session: ImapSession, uids: number[]): Promise
 
 const threadHeaders = (
   headers: MailboxThreadHeader[], accountId: string, folder: string, uidValidity: number | null,
+  tokenSecret: string,
 ) => {
   const parent = new Map<string, string>()
   const byMessageId = new Map(headers.flatMap((header) =>
@@ -117,7 +118,7 @@ const threadHeaders = (
       id: mailboxThreadToken({
         accountId, folder, memberUids: members.map((member) => member.uid), messageCount: members.length,
         rootMessageId: group.root, uid: members[0]?.uid ?? 0, uidValidity,
-      }),
+      }, tokenSecret),
       members,
     }
   })
@@ -126,11 +127,16 @@ const threadHeaders = (
 export const validateMailboxThreadMembers = (
   token: ParsedMailboxThreadToken,
   headers: MailboxThreadHeader[],
+  tokenSecret: string,
 ): MailboxThreadHeader[] | null => {
-  const seededGroup = threadHeaders(headers, token.accountId, token.folder, token.uidValidity)
+  const seededGroup = threadHeaders(headers, token.accountId, token.folder, token.uidValidity, tokenSecret)
     .find((group) => group.members.some((member) => member.uid === token.seedUid))
   if (!seededGroup) return null
-  const canonical = parseMailboxThreadToken(seededGroup.id)
+  const canonical = parseMailboxThreadToken(seededGroup.id, {
+    accountId: token.accountId,
+    folder: token.folder,
+    secret: tokenSecret,
+  })
   return canonical?.rootDigest === token.rootDigest ? seededGroup.members : null
 }
 
@@ -171,6 +177,8 @@ export const listMailboxMailThreads = async (
   },
   options: MailboxClientOptions,
 ): Promise<MailboxMailThreadPage> => withImap(endpoints, options, async (session) => {
+  const tokenSecret = options.threadTokenSecret
+  if (!tokenSecret) throw new ImapError('Mailbox thread tokens are not configured.', 'protocol')
   const folder = input.folder?.trim() || DEFAULT_FOLDER
   const selected = await session.selectFolder(folder)
   const cursor = decodeCursor(input.cursor)
@@ -201,7 +209,7 @@ export const listMailboxMailThreads = async (
   )
   const fallbackGroups = orderedNativeGroups
     ? []
-    : threadHeaders(initialHeaders, input.accountId, folder, selected.uidValidity)
+    : threadHeaders(initialHeaders, input.accountId, folder, selected.uidValidity, tokenSecret)
       .sort((left, right) => Math.max(...right.members.map((member) => member.uid))
         - Math.max(...left.members.map((member) => member.uid)))
   const pageUnits = orderedNativeGroups
@@ -235,9 +243,9 @@ export const listMailboxMailThreads = async (
           memberUids: members.map((member) => member.uid),
           messageCount,
           rootMessageId: fallback.references[0] ?? fallback.inReplyTo ?? fallback.messageId,
-          uid: fallback.uid,
-          uidValidity: selected.uidValidity,
-        })
+        uid: fallback.uid,
+        uidValidity: selected.uidValidity,
+        }, tokenSecret)
       : null)
     const newest = [...members].sort((left, right) => right.uid - left.uid)[0]
     return newest && threadId ? {
@@ -276,11 +284,14 @@ export const readMailboxMailConversation = async (
 ): Promise<MailboxMailConversation | null> => withImap(endpoints, options, async (session) => {
   const folder = input.folder?.trim() || DEFAULT_FOLDER
   const selected = await session.selectFolder(folder)
-  const token = parseMailboxThreadToken(input.threadId)
-  if (!token || token.accountId !== input.accountId || token.folder !== folder
-    || token.uidValidity !== selected.uidValidity || !token.memberUids.includes(token.seedUid)) return null
+  const token = parseMailboxThreadToken(input.threadId, {
+    accountId: input.accountId,
+    folder,
+    secret: options.threadTokenSecret ?? '',
+  })
+  if (!token || token.uidValidity !== selected.uidValidity || !token.memberUids.includes(token.seedUid)) return null
   const headers = await fetchThreadHeaders(session, token.memberUids)
-  const validatedMembers = validateMailboxThreadMembers(token, headers)
+  const validatedMembers = validateMailboxThreadMembers(token, headers, options.threadTokenSecret ?? '')
   if (!validatedMembers) return null
   const messages: MailboxMailConversation['messages'] = []
   let remainingBody = MAX_CONVERSATION_BODY_CHARS
