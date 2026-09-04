@@ -129,7 +129,13 @@ const REDACTED = '[REDACTED]'
 export const isProtectedMailSendTool = (toolName: string): boolean =>
   toolName === 'email_send' || toolName === 'gmail_draft_send' || toolName === 'mailbox_send'
 
-const PROTECTED_MAIL_TOOL_SUMMARIES: Record<string, string> = {
+/**
+ * One registry for every mail surface that must not receive correspondence or
+ * account metadata. Consumers must use this rather than maintaining subsets:
+ * a new protected tool is safe in thinking, utility transcripts, checkpoints,
+ * and operational history the moment it is added here.
+ */
+export const PROTECTED_MAIL_TOOL_SUMMARIES: Readonly<Record<string, string>> = {
   contacts_search: 'Search contacts for an email action.',
   email_list: 'List the agent mailbox.',
   email_read: 'Read an agent mailbox conversation.',
@@ -148,7 +154,7 @@ const PROTECTED_MAIL_TOOL_SUMMARIES: Record<string, string> = {
   mailbox_send: 'Send from a connected mailbox.',
 }
 
-const EMAIL_ACCOUNT_TOOL_IDS = new Set([
+export const EMAIL_ACCOUNT_TOOL_IDS: ReadonlySet<string> = new Set([
   'email_account_list',
   'email_account_connect',
   'email_account_check',
@@ -163,6 +169,17 @@ export const isEmailAccountLifecycleTool = (toolName: string): boolean =>
 export const isProtectedMailOperationalTool = (toolName: string): boolean =>
   Object.hasOwn(PROTECTED_MAIL_TOOL_SUMMARIES, toolName)
   || isEmailAccountLifecycleTool(toolName)
+
+/** Server-authored placeholder for model-utility transcripts. */
+export const protectedMailUtilityTranscriptSummary = (toolName: string): string | null => {
+  if (Object.hasOwn(PROTECTED_MAIL_TOOL_SUMMARIES, toolName)) {
+    return '[Protected email operation withheld from utility transcript.]'
+  }
+  if (isEmailAccountLifecycleTool(toolName)) {
+    return '[Protected email account operation withheld from utility transcript.]'
+  }
+  return null
+}
 
 export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
   if (depth > 8) return '[MaxDepth]'

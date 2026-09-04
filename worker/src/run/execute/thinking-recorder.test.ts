@@ -8,6 +8,7 @@ import {
   createThinkingRecorder,
   REASONING_FLUSH_BYTES,
   REASONING_FLUSH_MS,
+  WITHHELD_MAIL_REASONING,
 } from './thinking-recorder.js'
 
 const RUN_ID = '00000000-0000-0000-0000-0000000000d1'
@@ -128,6 +129,27 @@ test('a tool line with no input summary records just the tool name', async () =>
 
   await recorder.appendToolLine('channel_list', '')
   assert.deepEqual(written, [{ content: 'channel_list', kind: 'tool' }])
+})
+
+test('protected-mail reasoning is replaced before durable or SSE sinks', async () => {
+  const { published, recorder, written } = makeHarness()
+  const privateReasoning =
+    'Send body-private to recipient@private.example for 00000000-0000-0000-0000-0000000000ee.'
+
+  // `run-inference` holds the raw provider delta until it can select this
+  // server-authored path. The recorder never receives the raw mail content.
+  await recorder.appendWithheldMailReasoning()
+  await recorder.close()
+
+  assert.deepEqual(written, [{ content: WITHHELD_MAIL_REASONING, kind: 'reasoning' }])
+  assert.equal(published.length, 1)
+  const persistedAndStreamed = `${written[0]!.content}\n${String(published[0]!.data.content)}`
+  assert.doesNotMatch(
+    persistedAndStreamed,
+    /recipient@private\.example|body-private|00000000-0000-0000-0000-0000000000ee/,
+  )
+  assert.doesNotMatch(persistedAndStreamed, new RegExp(privateReasoning.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.equal(published[0]!.event, 'stream.reasoning')
 })
 
 test('close is idempotent and stops later appends', async () => {

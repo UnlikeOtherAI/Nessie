@@ -59,6 +59,13 @@ Facts not restated there:
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, and an
   admitted checkpoint — and a checkpoint on resume is a read path too.
+- Protected mail is additionally a content boundary for model-visible reasoning:
+  each main inference holds provider reasoning in memory until its tool calls
+  are known. An inference with protected mail context or a protected mail tool
+  call writes and streams only a server-authored withheld marker, never a model
+  summary of correspondence. Utility transcripts and checkpoint prompts use
+  the same protected-tool registry, so they withhold lifecycle and mailbox
+  operations as well as message reads and sends.
 - A withheld row carries no metadata, reactions, or reply participants; the
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`

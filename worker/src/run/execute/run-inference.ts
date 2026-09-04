@@ -4,6 +4,7 @@ import {
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
+  type ProviderToolCall,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import {
@@ -18,6 +19,8 @@ import {
   startCancellationPoll,
 } from './document-cancel-poll.js'
 import { createProviderRequestHeadersResolver } from '../inference-identity.js'
+import { hasProtectedMailContext } from '../mail-tool-transcript.js'
+import { isProtectedMailOperationalTool } from '../tool-util.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { UtilityModel } from './utility-model.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
@@ -28,6 +31,29 @@ const runtimeModelConfig = loadConfig().model
 
 export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
   tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
+
+/**
+ * Decide a main-inference's reasoning sink only after the provider has finished
+ * emitting tool calls. Until then, visible reasoning stays in memory.
+ */
+export const recordVisibleReasoning = async (input: {
+  chunks: readonly string[]
+  protectedContext: boolean
+  thinkingRecorder: ThinkingRecorder
+  toolCalls: readonly ProviderToolCall[]
+}): Promise<void> => {
+  if (input.chunks.length === 0) return
+  if (
+    input.protectedContext
+    || input.toolCalls.some((toolCall) => isProtectedMailOperationalTool(toolCall.toolName))
+  ) {
+    await input.thinkingRecorder.appendWithheldMailReasoning()
+    return
+  }
+  for (const chunk of input.chunks) {
+    await input.thinkingRecorder.appendReasoning(chunk)
+  }
+}
 
 /**
  * How this run calls the model. One construction point for every inference the
@@ -110,6 +136,11 @@ export const createRunInference = (
         runId: context.run.id,
       })
       : null
+    // Provider reasoning arrives before we know whether this completion will
+    // invoke a protected mail tool. Hold it for the whole inference instead of
+    // publishing a potentially sensitive prefix and trying to redact later.
+    const visibleReasoning: string[] = []
+    const protectedContext = hasProtectedMailContext(messages)
 
     try {
       const mpr = await runInferenceGraph(deps.prisma, {
@@ -140,7 +171,7 @@ export const createRunInference = (
         },
         onVisibleReasoningDelta: async (chunk) => {
           if (!streaming) return
-          await options.thinkingRecorder.appendReasoning(chunk)
+          visibleReasoning.push(chunk)
         },
         onVisibleTextDelta: async (chunk) => {
           if (!streaming) return
@@ -169,6 +200,14 @@ export const createRunInference = (
         || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
       ) {
         throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
+      }
+      if (streaming) {
+        await recordVisibleReasoning({
+          chunks: visibleReasoning,
+          protectedContext,
+          thinkingRecorder: options.thinkingRecorder,
+          toolCalls: mpr.toolCalls,
+        })
       }
       return {
         correlationId: mpr.correlationId,
