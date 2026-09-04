@@ -9,6 +9,24 @@ const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
 const attachmentId = () => randomUUID()
 
+const multipartBody = (
+  filename: string,
+  mime: string,
+  content: string,
+): { body: Buffer; boundary: string } => {
+  const boundary = `----nessie-${randomUUID()}`
+  return {
+    boundary,
+    body: Buffer.from([
+      `--${boundary}\r\n`,
+      `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n`,
+      `Content-Type: ${mime}\r\n\r\n`,
+      content,
+      `\r\n--${boundary}--\r\n`,
+    ].join('')),
+  }
+}
+
 // ─── Body contract: attachment-only posts, and the linked-id cap ────────────
 
 test('message body accepts attachments without any text', () => {
@@ -73,6 +91,47 @@ runDatabaseTest('a message with neither text nor attachments is rejected', async
       })
 
       assert.equal(response.statusCode, 400)
+    },
+  )
+})
+
+runDatabaseTest('credential-bearing message text is rejected before persistence', async () => {
+  await withHarness(
+    (seed) => seed.senderId,
+    async ({ app, prisma, seed }) => {
+      const before = await prisma.message.count({ where: { threadId: seed.threadId } })
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/threads/${seed.threadId}/messages`,
+        payload: { content: 'client_secret="abcdefghijklmnopqrstuv"' },
+      })
+
+      assert.equal(response.statusCode, 422)
+      assert.equal(response.json().error.code, 'SECRET_INTERCEPTED')
+      assert.equal(await prisma.message.count({ where: { threadId: seed.threadId } }), before)
+    },
+  )
+})
+
+runDatabaseTest('credential-bearing filenames are rejected before object storage', async () => {
+  await withHarness(
+    (seed) => seed.senderId,
+    async ({ app, prisma, seed }) => {
+      const token = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')
+      const multipart = multipartBody(`${token}.txt`, 'text/plain', 'ordinary content')
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/uploads',
+        headers: { 'content-type': `multipart/form-data; boundary=${multipart.boundary}` },
+        payload: multipart.body,
+      })
+
+      assert.equal(response.statusCode, 422)
+      assert.equal(response.json().error.code, 'SECRET_INTERCEPTED')
+      assert.equal(
+        await prisma.attachment.count({ where: { organizationId: seed.organizationId } }),
+        0,
+      )
     },
   )
 })

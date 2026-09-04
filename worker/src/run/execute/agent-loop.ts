@@ -522,7 +522,7 @@ export const runExecutionAgentLoop = async (
           argumentsValue,
           durationMs,
           inputSummary,
-          outputPreview: result.slice(0, 1200),
+          outputPreview: result,
           startedAt,
           success,
           toolName,

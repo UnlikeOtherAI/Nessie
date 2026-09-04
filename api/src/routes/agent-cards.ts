@@ -4,6 +4,7 @@ import type { CredentialStore } from '@nessie/dashboard'
 import {
   AgentCardRespondBodySchema,
   AgentCardSpecSchema,
+  detectSecrets,
   parseChannelId,
   parseOrganizationId,
   parseThreadId,
@@ -125,6 +126,16 @@ export const registerAgentCardRoutes = (
         return reply
       }
       throw error
+    }
+
+    if (detectSecrets(JSON.stringify(submission.values)).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted in a regular response field. Use a credential field instead.',
+      )
+      return reply
     }
 
     // Destination access is re-checked before the conditional claim. A card

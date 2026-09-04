@@ -60,6 +60,9 @@ export const reviveComposerDraft = (stored: unknown): ComposerDraft | null => {
     return null
   }
   const text = typeof stored.text === 'string' ? stored.text : ''
+  if (detectSecrets(text).length > 0) {
+    return null
+  }
   const attachments = Array.isArray(stored.attachments)
     ? stored.attachments.flatMap((entry): StagedAttachment[] => {
       if (!isRecord(entry)) {

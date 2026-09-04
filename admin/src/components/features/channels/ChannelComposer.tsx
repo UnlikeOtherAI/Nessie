@@ -14,7 +14,7 @@ import { toolbarButtonClass } from './channel-helpers'
 import { ComposerAttachments } from './ComposerAttachments'
 import { ComposerEmojiButton } from './ComposerEmojiButton'
 import { SecretCaptureDialog } from './SecretCaptureDialog'
-import type { SecretCapture } from './useChannelComposer'
+import type { SecretCapture } from './secret-capture'
 import type { ComposerAttachments as ComposerAttachmentsState } from './useComposerAttachments'
 import { VoiceDictationControl } from './VoiceDictationControl'
 import { type VoiceDictationState, voiceDictationBlocksSubmit } from './voice-dictation-state'
@@ -40,7 +40,10 @@ interface ChannelComposerProps {
   onInvitePendingAgent: (agentId: string) => void
   onDismissPendingAgent: (agentId: string) => void
   secretCapture: SecretCapture | null
-  onConfirmSecretCapture: (secret: SecretRecord) => Promise<void>
+  onConfirmSecretCapture: (
+    secret: SecretRecord,
+    identity: { captureId: string; currentIndex: number },
+  ) => Promise<void>
   onDismissSecretCapture: () => void
   onOpenDeepWaterResearch?: () => void
   onOpenExecutorRun?: () => void
@@ -301,6 +304,7 @@ export const ChannelComposer = ({
       {secretCapture ? (
         <SecretCaptureDialog
           capture={secretCapture}
+          key={`${secretCapture.captureId}:${secretCapture.currentIndex}`}
           onClose={onDismissSecretCapture}
           onSaved={onConfirmSecretCapture}
         />

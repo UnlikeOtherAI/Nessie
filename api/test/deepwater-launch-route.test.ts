@@ -40,6 +40,36 @@ const actorContext: AuthorizedActionContext = {
   tenant: { organizationId, projectId, teamId },
 }
 
+test('research-launch rejects a credential before creating a run or handoff message', async () => {
+  let transactionCalls = 0
+  const prisma = {
+    $transaction: async () => {
+      transactionCalls += 1
+      throw new Error('must not create durable state')
+    },
+  } as unknown as PrismaClient
+  const app = Fastify({ logger: false })
+  registerIntegrationHandoffRoutes(app, {
+    prisma,
+    requireActorContext: () => actorContext,
+    requireUserActor: () => true,
+  } as unknown as Parameters<typeof registerIntegrationHandoffRoutes>[1])
+
+  try {
+    const response = await app.inject({
+      method: 'POST',
+      payload: { query: `Research sk-proj-${'aB3_'.repeat(8)}` },
+      url: '/api/integrations/products/deep-water/research-launch',
+    })
+
+    assert.equal(response.statusCode, 422)
+    assert.equal(response.json().error.code, 'SECRET_INTERCEPTED')
+    assert.equal(transactionCalls, 0)
+  } finally {
+    await app.close()
+  }
+})
+
 test('research-launch route returns 409 before run creation when PA has 5-of-6', async () => {
   let runCreateCalls = 0
   const policy = Object.fromEntries([

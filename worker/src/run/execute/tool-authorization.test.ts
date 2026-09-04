@@ -636,7 +636,7 @@ test('main executor: command run audits only the argv program, never its argumen
         toolCallRecordId: 'tool-call-2',
       },
     },
-    toolArgs: { args: ['--token=not-for-audit'], program: 'tool' },
+    toolArgs: { args: ['--option=not-for-audit'], program: 'tool' },
     toolName: 'executor.command.run',
   })
 

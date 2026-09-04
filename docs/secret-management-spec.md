@@ -98,41 +98,60 @@ structural credential syntax (known provider formats, PEM blocks, JWTs,
 credential-bearing connection URLs, and explicit token assignments); it does
 not use an LLM or infer intent from prose.
 
-The composer scan happens before a chat request, optimistic message, or draft
-write can survive. Every channel composer opens the same protected capture
-form with a suggested key name and scope. Its value control contains only the
-provider's structural prefix (for example `sk_live_`) plus twelve bullet
-circles; the raw value remains transient React state and is posted only to
-`POST /api/secrets`. An explicit assignment such as `API_KEY=…` stores only
-the right-hand credential bytes, not the assignment syntax.
+The composer scan happens before a chat request, optimistic message, oversize
+paste state, or durable draft can survive. It covers channel posts, thread and
+drawer replies, new conversations, and message edits. Every doorway opens the
+same protected capture form with a suggested key name and scope. Its value
+control contains only the provider's structural prefix (for example
+`sk_live_`) plus twelve bullet circles; opaque high-entropy values expose no
+real prefix bytes. The raw value remains transient component state and is
+posted only to `POST /api/secrets` through a direct request that is never
+retained in the application-wide mutation cache. An explicit assignment such
+as `API_KEY=…` stores only the right-hand credential bytes, not the assignment
+syntax.
 
-After the vault accepts the secret, the composer sends a new replacement turn:
+When one turn contains several credentials, the form advances through all of
+them and saves each value separately. After the vault accepts every secret,
+the composer sends a new replacement turn:
 the person's original text with every detected value reduced to its safe
 prefix and bullet mask, plus the approved secret name. That replacement is the
 only version which reaches PostgreSQL, realtime, memory, indexing, or a model.
 Discard sends no turn. This implements the requested replace semantics without
 ever persisting a raw message that would later need deletion. The server scan
 still repeats before message persistence and returns `SECRET_INTERCEPTED` to a
-client which bypasses the composer.
+client which bypasses the composer. The same pre-persistence refusal covers
+direct executor launches, ordinary agent-card response fields, and product-
+integration handoffs, because each can create a user-authored message without
+passing through the ordinary chat route.
 
-Every primary and delegated agent receives one compact system-prompt rule: do
-not ask for, repeat, or place secrets in chat or model-visible tool arguments;
-the secure form owns capture, and masked text is only a protection notice. A
+Every primary, inline delegate, and spawned subtask receives the same compact
+system-prompt rule: do not ask for, repeat, or place secrets in chat or
+model-visible tool arguments; the secure form owns capture, and masked text is
+only a protection notice. Keeping this as one shared short constant makes its
+prompt-context cost fixed and prevents agent-specific copies from drifting. A
 final provider-bound scan covers conversation history, memory, checkpoints,
-and upstream stage text. The agent loop also masks initial context and model
-output, while the shared tool boundary masks textual tool inputs, results, and
-durable `ToolCall` previews. These are defence in depth; they do not make a raw
-secret available to an agent.
+and upstream stage text. Streaming text and reasoning hold an incomplete line
+until it can be scanned, and streamed tool arguments are withheld until the
+complete JSON can be sanitized. The agent loop masks initial context, compacted
+context, and model output. Any tool call whose completed arguments contain a
+possible credential is sanitized and refused before authorization, approval,
+demonstration capture, delegation, or dispatch. Shared tool-result and durable
+preview sinks redact before truncating so a boundary cut cannot reveal a
+partial token. These are defence in depth; they do not make a raw secret
+available to an agent.
 
 Nessie's first-class Secrets surface writes to its configured Infisical vault.
 It does **not** write GitHub Actions repository or environment secrets: that
 would require a separately authorised GitHub destination and GitHub's encrypted
 secret-write API, which this flow must not pretend to provide.
 
-Binary attachment content scanning, structured secret mentions, and a
-temporary-vault interception flow remain Phase 1 follow-ups. Text pasted
-through the oversize-file escape hatch and textual tool results use the shared
-scanner today; arbitrary uploaded binary files are not yet secret-safe inputs.
+Structured secret mentions and a temporary-vault interception flow remain
+Phase 1 follow-ups. Text pasted through the oversize-file escape hatch,
+attachment filenames, raw upload bytes, and textual tool results use the
+shared scanner today. The raw-byte pass catches embedded ASCII/UTF-8 credential
+syntax but does not semantically extract arbitrary compressed, encrypted,
+image, or proprietary binary document formats; those inputs are not yet a
+complete secret-safe ingestion path.
 
 ## Deployment
 
@@ -163,9 +182,16 @@ that metadata to select a declaratively bound tool. They never disclose its
 value, vault path, token, or permission-management controls. `MANAGE` grants
 authorize rotation and revocation; `DELEGATE` grants authorize access changes.
 
-The scanner blocks structural credential formats, common provider prefixes,
-and high-entropy token candidates on user message creation, message edits, and
-chat uploads before any durable write. It is deliberately a conservative first
+The scanner blocks structural credential formats (including JSON, quoted and
+unquoted assignments, `Authorization: Bearer …`, common cloud/service keys,
+database URLs, complete or truncated private-key blocks, and JWTs), provider prefixes, and
+high-entropy token candidates on user message creation, message edits, and
+chat uploads before any durable write. Previously stored drafts are scanned
+again while hydrating and rejected rather than repainted into an editor. Secret
+metadata is also refused when it contains detectable credential material or a
+copy of the submitted raw value. Its masked output is idempotent: bullet
+placeholders do not reopen the capture form or trigger the API boundary. It is
+deliberately a conservative first
 boundary, not a replacement for the pending-secret temporary-vault flow,
 content extraction from every binary document format, and interception of
 integration/webhook or knowledge-base ingestion. Those are required before

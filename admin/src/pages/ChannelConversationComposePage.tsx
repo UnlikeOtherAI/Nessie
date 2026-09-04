@@ -3,8 +3,6 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
-import { useStartChannelConversation } from '../facades/channels/hooks'
-import { useSendMessageToThread } from '../facades/messages/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
@@ -29,17 +27,17 @@ import { UserAvatar } from '../components/primitives/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
 import {
   MentionInput,
-  type AgentMention,
   type MentionEntity,
-  type MentionInputHandle,
 } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
+import { SecretCaptureDialog } from '../components/features/channels/SecretCaptureDialog'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { VoiceDictationControl } from '../components/features/channels/VoiceDictationControl'
 import { type VoiceDictationState, voiceDictationBlocksSubmit } from '../components/features/channels/voice-dictation-state'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { useTabParam } from '../navigation/useTabParam'
+import { useNewChannelConversationSend } from './channels/useNewChannelConversationSend'
 
 const optionKey = recipientKey
 
@@ -65,9 +63,6 @@ export const ChannelConversationComposePage = () => {
   // default list excludes every `systemManaged` agent, which is why no global
   // agent and no Personal Assistant could ever appear in this address book.
   const { data: allAgents = [] } = useAgents({ scope: 'all' })
-  const startConversation = useStartChannelConversation()
-  const sendMessage = useSendMessageToThread()
-  const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
 
   const [target, setTarget] = useTabParam(
@@ -80,11 +75,23 @@ export const ChannelConversationComposePage = () => {
   const [query, setQuery] = useState('')
   const [addressFocused, setAddressFocused] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [oversizePaste, setOversizePaste] = useState<string | null>(null)
   const [leavingForDesigner, setLeavingForDesigner] = useState(false)
   const [voiceState, setVoiceState] = useState<VoiceDictationState>('idle')
+  const {
+    captureOversizePaste,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    error,
+    isPending,
+    mentionRef,
+    message,
+    oversizePaste,
+    secretCapture,
+    sendAsFile,
+    setMessage,
+    setOversizePaste,
+    submit,
+  } = useNewChannelConversationSend(recipients)
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -181,43 +188,6 @@ export const ChannelConversationComposePage = () => {
     }, 0)
   }, [navigate, newAgentVisibility, returnTo])
 
-  const submit = useCallback(
-    async (rawText: string, agentMentions: AgentMention[] = []) => {
-      const content = rawText.trim()
-      if (!content) {
-        return
-      }
-      if (recipients.length === 0) {
-        setError('Choose at least one recipient.')
-        addressInputRef.current?.focus()
-        return
-      }
-
-      setError(null)
-      try {
-        const channel = await startConversation.mutateAsync({
-          agentIds: recipients
-            .filter((recipient) => recipient.kind === 'agent')
-            .map((recipient) => recipient.id),
-          userIds: recipients
-            .filter((recipient) => recipient.kind === 'user')
-            .map((recipient) => recipient.id),
-        })
-        await sendMessage.mutateAsync({
-          ...(agentMentions.length > 0 ? { agentMentions } : {}),
-          content,
-          threadId: channel.defaultThreadId,
-        })
-        mentionRef.current?.clear()
-        setMessage('')
-        void navigate(`/channels/${channel.id}`, { replace: true })
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not start chat.')
-      }
-    },
-    [navigate, recipients, sendMessage, startConversation],
-  )
-
   const hasSelectableOptions = options.length > 0
 
   const onAddressKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -249,7 +219,6 @@ export const ChannelConversationComposePage = () => {
     }
   }
 
-  const isPending = startConversation.isPending || sendMessage.isPending
   const showOptions = addressFocused && hasSelectableOptions
 
   if (!me) {
@@ -447,7 +416,7 @@ export const ChannelConversationComposePage = () => {
               entities={mentionEntities}
               maxLength={CHAT_MESSAGE_MAX_CHARS}
               onChange={setMessage}
-              onOversizePaste={setOversizePaste}
+              onOversizePaste={captureOversizePaste}
               onSubmit={(text, agentMentions) => void submit(text, agentMentions)}
               placeholder="Message"
               submitDisabled={voiceDictationBlocksSubmit(voiceState)}
@@ -502,9 +471,18 @@ export const ChannelConversationComposePage = () => {
             setOversizePaste(null)
             mentionRef.current?.insertText(trimmed)
           }}
+          onSendAsFile={sendAsFile}
           open={oversizePaste !== null}
           pastedText={oversizePaste ?? ''}
         />
+        {secretCapture ? (
+          <SecretCaptureDialog
+            capture={secretCapture}
+            key={`${secretCapture.captureId}:${secretCapture.currentIndex}`}
+            onClose={dismissSecretCapture}
+            onSaved={confirmSecretCapture}
+          />
+        ) : null}
         </div>
       </div>
     </OverlayPortal>

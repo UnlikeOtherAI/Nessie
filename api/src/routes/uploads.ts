@@ -183,6 +183,23 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const filename = file.filename || 'upload.bin'
     const organizationId = actorContext.tenant.organizationId
 
+    // Filenames are durable attachment metadata and later enter model-visible
+    // attachment descriptions, so they share the same pre-storage boundary as
+    // file bytes.
+    if (detectSecrets(filename).length > 0) {
+      // The multipart parser already handed us a live stream. Drain it even on
+      // metadata rejection so the connection does not retain unread request
+      // bytes while the client receives the refusal.
+      file.file.resume()
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted in this filename. Rename the file and save the value through Secrets instead.',
+      )
+      return reply
+    }
+
     // Inspect the bytes before object storage. UTF-8 conversion is deliberate:
     // it catches every textual format (including a pasted .txt file) without
     // trusting the caller-provided MIME type. Binary formats get their raw

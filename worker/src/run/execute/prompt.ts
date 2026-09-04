@@ -126,6 +126,7 @@ export const buildModelPrompt = (
     now?: Date
   } = {},
 ): ProviderMessage[] => {
+  const agentSystemPrompt = context.agent.systemPrompt?.trim() ?? ''
   const systemParts = [
     `You are ${context.agent.name}.`,
     // Unconditional on purpose: this anchor must stay byte-identical across
@@ -138,13 +139,15 @@ export const buildModelPrompt = (
       'earlier replies appear with no prefix. Never attribute another agent\'s',
       'message to yourself, and do not add a name prefix to your own reply.',
     ].join(' '),
-    context.agent.systemPrompt?.trim() ?? '',
+    agentSystemPrompt,
     // The person's own words for how this agent should talk, rendered by the
     // one shared builder the voice call uses too.
     buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
-    AGENT_SECRET_SAFETY_INSTRUCTION,
+    agentSystemPrompt.includes(AGENT_SECRET_SAFETY_INSTRUCTION)
+      ? ''
+      : AGENT_SECRET_SAFETY_INSTRUCTION,
     'When you need an id for a channel, person, or thread you only know by name, '
       + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
       + 'never ask the user to paste an id.',

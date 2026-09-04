@@ -182,7 +182,7 @@ export const LoginPage = () => {
     error: providersError,
     isPending: providersPending,
     refetch: refetchProviders,
-  } = useAuthProviders()
+  } = useAuthProviders(sessionState === 'unauthenticated')
   // Pre-filled dev credentials for convenience (local mode only).
   const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
@@ -400,7 +400,7 @@ export const LoginPage = () => {
               </div>
             ) : (
               <div className="text-sm text-[var(--muted)]">
-                {providersPending
+                {sessionState === 'loading' || providersPending
                   ? 'Loading providers...'
                   : 'No sign-in providers are configured.'}
               </div>

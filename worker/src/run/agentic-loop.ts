@@ -31,7 +31,11 @@ import {
   type ContextPlan,
 } from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
-import { truncateToolResult } from './tool-util.js'
+import {
+  sanitizeProviderToolCalls,
+  summarizeToolInput,
+  truncateToolResult,
+} from './tool-util.js'
 import {
   executeToolBatch,
   type ExecuteToolFn,
@@ -44,9 +48,14 @@ import {
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
-const redactMessageContent = (message: ProviderMessage): ProviderMessage => {
-  if (typeof message.content !== 'string') return message
-  return { ...message, content: redactDetectedSecrets(message.content) } as ProviderMessage
+const redactProviderMessage = (message: ProviderMessage): ProviderMessage => {
+  const content = typeof message.content === 'string'
+    ? redactDetectedSecrets(message.content)
+    : message.content
+  if (message.role === 'assistant' && message.toolCalls) {
+    return { ...message, content, toolCalls: sanitizeProviderToolCalls(message.toolCalls) }
+  }
+  return { ...message, content } as ProviderMessage
 }
 
 export type LoopCallbacks = ToolBatchCallbacks & {
@@ -159,7 +168,7 @@ export const runAgenticLoop = async (input: {
   // Covers every caller, including delegated agents whose initial prompt does
   // not pass through buildModelPrompt. Raw values never remain in the loop's
   // retained context or its eventual checkpoint input.
-  const messages: ProviderMessage[] = initialMessages.map(redactMessageContent)
+  const messages: ProviderMessage[] = initialMessages.map(redactProviderMessage)
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   const signatureCounts = new Map<string, number>()
   const retryBudget = createRetryBudget(6)
@@ -239,7 +248,7 @@ export const runAgenticLoop = async (input: {
       : null
     const rebuilt = compacted ?? trimConversationToFit(messages, contextPlan.targetTokens)
     messages.length = 0
-    messages.push(...rebuilt)
+    messages.push(...rebuilt.map(redactProviderMessage))
   }
 
   while (true) {
@@ -309,19 +318,43 @@ export const runAgenticLoop = async (input: {
       return finish(null, safeOutputText)
     }
 
+    const safeToolCalls = sanitizeProviderToolCalls(result.toolCalls)
+    const blockedToolCallIds = new Set(
+      safeToolCalls
+        .filter((toolCall) => toolCall.secretArgumentBlocked)
+        .map((toolCall) => toolCall.toolCallId),
+    )
+
     messages.push({
       content: safeOutputText || null,
       role: 'assistant',
-      toolCalls: result.toolCalls,
+      toolCalls: safeToolCalls,
     })
 
     const batch = await executeToolBatch({
       callbacks,
       circuitBreaker,
       executeTool,
-      prepareTool,
+      prepareTool: async (toolName, args, toolCallId) => {
+        if (blockedToolCallIds.has(toolCallId)) {
+          return {
+            kind: 'execute' as const,
+            execute: async () => ({
+              inputSummary: summarizeToolInput(args),
+              output: 'Tool call blocked because its arguments contained a possible credential. Ask the user to save it through the secure form and retry with a secret reference.',
+              success: false,
+            }),
+          }
+        }
+        return prepareTool
+          ? prepareTool(toolName, args, toolCallId)
+          : {
+            kind: 'execute' as const,
+            execute: () => executeTool(toolName, args, toolCallId),
+          }
+      },
       signatureCounts,
-      toolCalls: result.toolCalls,
+      toolCalls: safeToolCalls,
       toolTimeoutError: input.toolTimeoutError,
       toolTimeoutMs: budget.toolTimeoutMs,
     })

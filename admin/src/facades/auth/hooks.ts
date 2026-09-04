@@ -20,10 +20,11 @@ const bumpMyAvatarRevision = (queryClient: QueryClient): void => {
 
 export type { SessionSummary } from '@nessie/schemas'
 
-export const useAuthProviders = () => {
+export const useAuthProviders = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<AuthProviderDescriptor[]>({
+    enabled,
     queryKey: authKeys.providers,
     queryFn: () => apiClient.get('/api/auth/providers'),
     staleTime: 60_000,

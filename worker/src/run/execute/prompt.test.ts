@@ -6,7 +6,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { buildModelPrompt } from './prompt.js'
+import { AGENT_SECRET_SAFETY_INSTRUCTION, buildModelPrompt } from './prompt.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 
@@ -81,6 +81,20 @@ test('every agent receives the compact secret-form instruction', () => {
   const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
   assert.match(system, /Never ask for, repeat, or put a secret in chat/)
   assert.match(system, /replaced by a secure form before you see it/)
+})
+
+test('a legacy subtask prompt that already has the safety rule does not pay for it twice', () => {
+  const context = makeContext('Aria')
+  const withEmbeddedRule: RunContext = {
+    ...context,
+    agent: {
+      ...context.agent,
+      systemPrompt: `Delegated worker.\n${AGENT_SECRET_SAFETY_INSTRUCTION}`,
+    },
+  }
+  const system = systemContent(buildModelPrompt([], withEmbeddedRule, 'hi', null))
+
+  assert.equal(system.split(AGENT_SECRET_SAFETY_INSTRUCTION).length - 1, 1)
 })
 
 test('the provider boundary replaces bypassed secrets with a safe prefix and bullets', () => {

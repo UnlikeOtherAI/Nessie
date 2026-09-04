@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 
 import type { FastifyInstance } from 'fastify'
+import { detectSecrets } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -189,6 +190,18 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     const body = parseInput(CreateSecretBodySchema, request.body, reply)
     if (!body) return reply
+    const metadataFields = [body.name, body.description ?? '', body.provider ?? '']
+    if (metadataFields.some(
+      (field) => field.includes(body.value) || detectSecrets(field).length > 0,
+    )) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_METADATA_REJECTED',
+        'Secret metadata cannot contain credential material.',
+      )
+      return reply
+    }
     const scope = await canManageScope({
       actorId: actorContext.actor.actorId,
       deps,

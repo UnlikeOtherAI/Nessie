@@ -43,7 +43,9 @@ export const recordToolEnd = async (
 ): Promise<void> => {
   const endedAt = new Date()
   const inputSummary = redactDetectedSecrets(input.inputSummary)
-  const outputPreview = redactDetectedSecrets(input.outputPreview)
+  // Redact before enforcing the durable preview bound. Cutting first can
+  // split a token below the scanner's minimum length and persist real bytes.
+  const outputPreview = redactDetectedSecrets(input.outputPreview).slice(0, 1200)
 
   if (input.toolCallRecordId) {
     const updated = await deps.prisma.toolCall.updateMany({

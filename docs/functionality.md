@@ -1349,6 +1349,12 @@ type ControlCommandDefinition = {
   - every channel composer intercepts structural credentials before send and
     opens the shared capture form with prefilled key, Personal/Project scope,
     and a provider-prefix-plus-bullets value display.
+  - the same interception covers new conversations, message edits, oversize
+    pastes, attachment filenames and textual upload bytes; multiple detected
+    values are saved one at a time before one protected replacement is sent.
+  - the capture POST bypasses the shared mutation cache; primary agents,
+    inline delegates and spawned subtasks share one compact prompt instruction,
+    while model streams and tool boundaries redact independently.
   - a successful save posts only a masked replacement turn; raw secret text is
     never the message later deleted or rewritten.
   - broader scope selection (`global`, `team`, `channel`, `agent`, `thread`,

@@ -269,12 +269,13 @@ export const ChannelsPage = () => {
     changeEditingContent,
     confirmDelete,
     deleteConfirm,
+    secretCaptureDialog,
     editingContent,
     editingMessageId,
     startEdit,
     submitEdit,
     updatePending,
-  } = useChannelMessageActions(activeChannel?.defaultThreadId)
+  } = useChannelMessageActions(activeChannel?.defaultThreadId, activeChannel?.projectId)
   // Answering the acknowledgement card on a reply that used restricted sources.
   const shareRestricted = useShareRestrictedMessage(activeChannel?.defaultThreadId)
   const {
@@ -475,6 +476,7 @@ export const ChannelsPage = () => {
           changeEditingContent,
           confirmDelete,
           deleteConfirm,
+          secretCaptureDialog,
           editingContent,
           editingMessageId,
           startEdit,

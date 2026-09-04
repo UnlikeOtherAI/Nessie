@@ -329,6 +329,30 @@ test('POST /api/secrets translates an Infisical constructor error into SECRETS_N
   }
 })
 
+test('POST /api/secrets refuses to duplicate the raw value into durable metadata', async () => {
+  const { app, stored } = makeSecretRouteApp()
+  try {
+    const secretValue = 'opaque-credential-value'
+    const response = await app.inject({
+      method: 'POST',
+      payload: {
+        description: `Copied value: ${secretValue}`,
+        name: 'API_TOKEN',
+        scopeType: 'personal',
+        value: secretValue,
+      },
+      url: '/api/secrets',
+    })
+
+    assert.equal(response.statusCode, 422, response.body)
+    assert.equal(response.json().error.code, 'SECRET_METADATA_REJECTED')
+    assert.equal(response.body.includes(secretValue), false)
+    assert.equal(stored(), null)
+  } finally {
+    await app.close()
+  }
+})
+
 test('POST /api/secrets translates a vault transport failure without exposing its secret', async () => {
   const { app } = makeSecretRouteApp()
   try {
