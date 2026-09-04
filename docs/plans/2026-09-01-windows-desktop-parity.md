@@ -1,6 +1,6 @@
 # Windows desktop parity
 
-**Status:** active  
+**Status:** active — shared shell and SSO reliability implemented; signed release acceptance remains
 **Owner:** Desktop  
 **Target:** signed Windows x86_64 Tauri release.
 
@@ -35,6 +35,12 @@ installer/release pipeline.
 ## Delivery phases
 
 ### 1. Reliable Windows development and shell validation
+
+The Windows and Linux shells now use one route-independent frame for their
+traffic-light controls, layout chooser, drag surface, and resize edges, so the
+window remains operable before and during sign-in. Second-launch arguments are
+forwarded into the deep-link listener, minimized windows are restored before
+focus, and provider discovery has an explicit retry state.
 
 - Make the desktop runtime-preparation path work with a normal Windows Node
   installation and retain the exact Node licence and hash in the package.

@@ -1,3 +1,5 @@
+#[cfg(any(target_os = "linux", test))]
+use std::ffi::OsStr;
 use std::io::{Error, ErrorKind};
 use tauri::utils::config::WebviewUrl;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -30,6 +32,15 @@ const DESKTOP_PLATFORM: &str = if cfg!(target_os = "linux") {
     "unknown"
 };
 
+#[cfg(any(target_os = "linux", test))]
+fn should_register_linux_deep_links(
+    target_os: &str,
+    appimage: Option<&OsStr>,
+    debug_build: bool,
+) -> bool {
+    target_os == "linux" && (debug_build || appimage.is_some())
+}
+
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
 // api.nessie.works are third-party in macOS WebKit, which blocks the HttpOnly
 // refresh cookie that keeps a short-lived access JWT renewable. A normal
@@ -58,6 +69,8 @@ pub fn run() {
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }));
@@ -78,9 +91,15 @@ pub fn run() {
         ])
         .setup(|app| {
             #[cfg(target_os = "linux")]
-            app.deep_link()
-                .register_all()
-                .map_err(|error| Error::new(ErrorKind::Other, error))?;
+            if should_register_linux_deep_links(
+                std::env::consts::OS,
+                std::env::var_os("APPIMAGE").as_deref(),
+                cfg!(debug_assertions),
+            ) {
+                app.deep_link()
+                    .register_all()
+                    .map_err(|error| Error::new(ErrorKind::Other, error))?;
+            }
 
             let main_window = app
                 .config()
@@ -111,7 +130,10 @@ pub fn run() {
         .expect("error while building Nessie Desktop")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
-                executor_companion::shutdown(app.state::<executor_companion::ExecutorCompanionState>().inner());
+                executor_companion::shutdown(
+                    app.state::<executor_companion::ExecutorCompanionState>()
+                        .inner(),
+                );
             }
         });
 }
@@ -119,9 +141,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_webview_url, DEFAULT_DESKTOP_CAPABILITIES, DESKTOP_INIT_SCRIPT,
-        DEVELOPMENT_DESKTOP_CAPABILITIES, PRODUCTION_ADMIN_URL,
+        desktop_webview_url, should_register_linux_deep_links, DEFAULT_DESKTOP_CAPABILITIES,
+        DESKTOP_INIT_SCRIPT, DEVELOPMENT_DESKTOP_CAPABILITIES, PRODUCTION_ADMIN_URL,
     };
+    use std::ffi::OsStr;
     use tauri::utils::config::WebviewUrl;
 
     #[test]
@@ -156,11 +179,41 @@ mod tests {
             "core:window:allow-is-fullscreen",
             "core:window:allow-set-fullscreen",
         ];
-        for capabilities in [DEFAULT_DESKTOP_CAPABILITIES, DEVELOPMENT_DESKTOP_CAPABILITIES] {
+        for capabilities in [
+            DEFAULT_DESKTOP_CAPABILITIES,
+            DEVELOPMENT_DESKTOP_CAPABILITIES,
+        ] {
             for action in actions {
-                assert!(capabilities.contains(action), "missing native window permission: {action}");
+                assert!(
+                    capabilities.contains(action),
+                    "missing native window permission: {action}"
+                );
             }
         }
+    }
+
+    #[test]
+    fn second_launches_forward_deep_links_to_the_running_app() {
+        let cargo_manifest = include_str!("../Cargo.toml");
+        assert!(cargo_manifest.contains(
+            "tauri-plugin-single-instance = { version = \"2.4.2\", features = [\"deep-link\"] }"
+        ));
+    }
+
+    #[test]
+    fn linux_registers_runtime_handlers_only_when_the_package_does_not_own_one() {
+        assert!(should_register_linux_deep_links("linux", None, true));
+        assert!(should_register_linux_deep_links(
+            "linux",
+            Some(OsStr::new("/tmp/Nessie.AppImage")),
+            false,
+        ));
+        assert!(!should_register_linux_deep_links("linux", None, false));
+        assert!(!should_register_linux_deep_links(
+            "windows",
+            Some(OsStr::new("Nessie.exe")),
+            true,
+        ));
     }
 
     #[test]

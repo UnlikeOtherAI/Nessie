@@ -937,6 +937,80 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   padding-left: 12px;
 }
 
+/* Windows and Linux share this one undecorated frame. Keeping it above the
+   router makes the same drag area, controls, and resize edges reachable on the
+   sign-in screen as well as the authenticated shell. */
+.desktop-window-frame {
+  position: relative;
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.desktop-window-frame-drag {
+  position: absolute;
+  z-index: var(--layer-stack);
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--topbar-h);
+}
+
+.desktop-window-frame-controls {
+  position: absolute;
+  z-index: var(--layer-card);
+  top: 0;
+  left: 12px;
+  display: flex;
+  height: var(--topbar-h);
+  align-items: center;
+}
+
+/* This preserves the authenticated Windows layout byte-for-byte after the
+   controls move from the top-bar flow into the route-independent frame. */
+.desktop-window-frame .admin-topbar--desktop {
+  position: relative;
+  z-index: 2;
+  padding-left: calc(12px + 76.8px + 8px);
+}
+
+.desktop-window-frame-resize {
+  position: fixed;
+  z-index: var(--layer-card);
+}
+
+.desktop-window-frame-resize--n,
+.desktop-window-frame-resize--s {
+  right: 0;
+  left: 0;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+.desktop-window-frame-resize--e,
+.desktop-window-frame-resize--w {
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+
+.desktop-window-frame-resize--ne,
+.desktop-window-frame-resize--nw,
+.desktop-window-frame-resize--se,
+.desktop-window-frame-resize--sw {
+  width: 9px;
+  height: 9px;
+}
+
+.desktop-window-frame-resize--n { top: 0; }
+.desktop-window-frame-resize--s { bottom: 0; }
+.desktop-window-frame-resize--w { left: 0; }
+.desktop-window-frame-resize--e { right: 0; }
+.desktop-window-frame-resize--nw { top: 0; left: 0; cursor: nwse-resize; }
+.desktop-window-frame-resize--ne { top: 0; right: 0; cursor: nesw-resize; }
+.desktop-window-frame-resize--sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.desktop-window-frame-resize--se { right: 0; bottom: 0; cursor: nwse-resize; }
+
 .admin-topbar-drag-zone {
   align-self: stretch;
   flex: 1 1 0;

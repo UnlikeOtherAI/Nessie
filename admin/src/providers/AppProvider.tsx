@@ -1,4 +1,5 @@
 import { RouterProvider } from 'react-router-dom'
+import { DesktopWindowFrame } from '../components/desktop/DesktopWindowFrame'
 import { router } from '../router'
 import { ApiClientProvider } from './ApiClientProvider'
 import { AuthSessionProvider } from './AuthSessionProvider'
@@ -16,7 +17,9 @@ export const AppProvider = () => (
           <ThemeProvider>
             <FontScaleProvider>
               <FocusModeProvider>
-                <RouterProvider router={router} />
+                <DesktopWindowFrame>
+                  <RouterProvider router={router} />
+                </DesktopWindowFrame>
               </FocusModeProvider>
             </FontScaleProvider>
           </ThemeProvider>
