@@ -7,7 +7,10 @@ import {
   buildAuthorizeUrl,
   getCommsOAuthConfig,
 } from '../src/routes/comms/oauth-config.js'
-import { callbackErrorCode } from '../src/routes/comms/oauth-routes.js'
+import {
+  callbackErrorCode,
+  callbackQueryErrorCode,
+} from '../src/routes/comms/oauth-routes.js'
 
 test('Microsoft start uses PKCE, nonce and least-privilege Graph mail scopes', () => {
   const config = getCommsOAuthConfig('microsoft')
@@ -46,4 +49,8 @@ test('callback exposes only structural provider error states', () => {
   assert.equal(callbackErrorCode({ authorizationBlocked: true }), 'provider_access_blocked')
   assert.equal(callbackErrorCode({ needsReauthorization: true }), 'reauthorization_required')
   assert.equal(callbackErrorCode({ message: 'arbitrary provider body' }), 'connect_failed')
+  assert.equal(callbackQueryErrorCode('admin_consent_required'), 'provider_access_blocked')
+  assert.equal(callbackQueryErrorCode('consent_required'), 'provider_access_blocked')
+  assert.equal(callbackQueryErrorCode('access_denied'), 'access_denied')
+  assert.equal(callbackQueryErrorCode('arbitrary_provider_error'), 'access_denied')
 })

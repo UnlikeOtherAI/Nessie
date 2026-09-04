@@ -347,3 +347,46 @@ test('an incremental job with its own empty checkpoint establishes a delta basel
   assert.equal(result.events[0]?.messageId, 'baseline-message')
   assert.equal(decodeMicrosoftDeltaCursor(result.checkpoint.cursor)?.kind, 'incremental')
 })
+
+test('an incremental bootstrap advances initial cursors across delta pages and folders', async () => {
+  const inboxNext = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$skiptoken=inbox'
+  const inboxDelta = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=inbox'
+  const archiveDelta = 'https://graph.microsoft.com/v1.0/me/mailFolders/archive/messages/delta?$deltatoken=archive'
+  let deltaCalls = 0
+  const connector = createMicrosoftConnector(deps(makeFetch((url) => {
+    if (url.includes('/mailFolders?')) {
+      return {
+        status: 200,
+        body: {
+          value: [
+            { id: 'inbox', wellKnownName: 'inbox' },
+            { id: 'archive', wellKnownName: 'archive' },
+          ],
+        },
+      }
+    }
+    deltaCalls += 1
+    if (deltaCalls === 1) {
+      return { status: 200, body: { value: [], '@odata.nextLink': inboxNext } }
+    }
+    if (deltaCalls === 2) {
+      assert.equal(url, inboxNext)
+      return { status: 200, body: { value: [], '@odata.deltaLink': inboxDelta } }
+    }
+    assert.match(url, /mailFolders\/archive\/messages\/delta/)
+    return { status: 200, body: { value: [], '@odata.deltaLink': archiveDelta } }
+  })))
+
+  const first = await connector.runIncrementalSync(connection(), {})
+  assert.equal(first.hasMore, true)
+  assert.equal(decodeMicrosoftDeltaCursor(first.checkpoint.cursor)?.kind, 'initial')
+
+  const second = await connector.runIncrementalSync(connection(), first.checkpoint)
+  assert.equal(second.hasMore, true)
+  assert.equal(decodeMicrosoftDeltaCursor(second.checkpoint.cursor)?.folderIndex, 1)
+
+  const final = await connector.runIncrementalSync(connection(), second.checkpoint)
+  assert.equal(final.hasMore, false)
+  assert.equal(decodeMicrosoftDeltaCursor(final.checkpoint.cursor)?.kind, 'incremental')
+  assert.equal(deltaCalls, 3)
+})
