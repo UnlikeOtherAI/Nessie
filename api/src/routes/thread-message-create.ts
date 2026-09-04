@@ -115,7 +115,9 @@ export const registerCreateThreadMessageRoute = (
       alsoSendToChannel: body.alsoSendToChannel,
       agentMentions: body.agentMentions?.map((mention) => ({
         agentId: parseAgentId(mention.agentId),
-        principalUserId: parseUserId(mention.principalUserId),
+        ...(mention.principalUserId
+          ? { principalUserId: parseUserId(mention.principalUserId) }
+          : {}),
         type: mention.type,
       })),
     })
@@ -151,7 +153,7 @@ export const registerCreateThreadMessageRoute = (
         reply,
         400,
         'INVALID_AGENT_MENTION',
-        'That Personal Assistant is no longer present in this channel',
+        'That agent is not available in this channel',
       )
       return reply
     }

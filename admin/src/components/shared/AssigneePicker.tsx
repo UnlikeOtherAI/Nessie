@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faChevronDown, faRobot, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { AgentVisibility } from '@nessie/schemas'
 import { Popover } from '../overlays/Popover'
+import { AgentVisibilityPill } from '../features/agents/AgentVisibilityPill'
 
 export type AssigneeKind = 'user' | 'agent'
-export type AssigneeOption = { id: string; name: string; kind: AssigneeKind }
+export type AssigneeOption = {
+  agentVisibility?: AgentVisibility
+  id: string
+  name: string
+  kind: AssigneeKind
+}
 export type AssigneeValue = { id: string; kind: AssigneeKind } | null
 
 type AssigneePickerProps = {
@@ -78,8 +85,13 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
         ref={triggerRef}
         type="button"
       >
-        <span className={selected ? 'truncate text-[color:var(--tx)]' : 'truncate text-[color:var(--tx3)]'}>
-          {selected ? selected.name : placeholder ?? 'Unassigned'}
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className={selected ? 'truncate text-[color:var(--tx)]' : 'truncate text-[color:var(--tx3)]'}>
+            {selected ? selected.name : placeholder ?? 'Unassigned'}
+          </span>
+          {selected?.kind === 'agent' && selected.agentVisibility ? (
+            <AgentVisibilityPill visibility={selected.agentVisibility} />
+          ) : null}
         </span>
         <FontAwesomeIcon className="shrink-0 text-[10px] text-[color:var(--tx3)]" icon={faChevronDown} />
       </button>
@@ -133,6 +145,11 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
                     <span className="w-3 shrink-0" />
                   )}
                   <span className="truncate">{option.name}</span>
+                  {option.kind === 'agent' && option.agentVisibility ? (
+                    <span className="ml-auto flex-shrink-0">
+                      <AgentVisibilityPill visibility={option.agentVisibility} />
+                    </span>
+                  ) : null}
                 </button>
               </li>
             )

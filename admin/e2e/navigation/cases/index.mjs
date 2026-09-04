@@ -7,6 +7,7 @@ import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
 import { phoneColdStart } from './phone-cold-start.mjs'
 import { phoneIntentStrip } from './phone-intent-strip.mjs'
 import { desktopChatHistory } from './desktop-chat-history.mjs'
+import { desktopDashboardExit } from './desktop-dashboard-exit.mjs'
 
 export const CASES = [
   phonePush,
@@ -20,4 +21,5 @@ export const CASES = [
   phoneColdStart,
   phoneIntentStrip,
   desktopChatHistory,
+  desktopDashboardExit,
 ]

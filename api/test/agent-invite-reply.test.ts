@@ -75,10 +75,45 @@ test('replays the exact pending mention after its agent is invited', async () =>
     role: 'monitor',
     systemPrompt: 'Report hardware status.',
   }])
+  assert.deepEqual(queued?.agentMentions, [{ agentId, type: 'agent' }])
   assert.equal(queued?.content, '@Hardware Watch\u00a0all good?')
   assert.equal(queued?.messageId, messageId)
   assert.equal(queued?.threadId, threadId)
   assert.equal(idempotencyKey, `orchestrate:invite:${messageId}:${agentId}`)
+})
+
+test('does not replay a different same-named agent when structured metadata names another id', async () => {
+  let enqueueCalls = 0
+  const prisma = {
+    message: {
+      findFirst: async () => ({
+        content: '@Hardware Watch all good?',
+        id: messageId,
+        metadata: {
+          mentions: {
+            agentMentions: [{
+              agentId: '00000000-0000-4000-8000-000000000099',
+              type: 'agent',
+            }],
+          },
+        },
+        role: 'user',
+        threadId,
+      }),
+    },
+  } as unknown as Pick<PrismaClient, '$executeRaw' | 'message'>
+
+  const queuedResult = await enqueueInvitedAgentMentionReplay(
+    prisma,
+    input,
+    async () => {
+      enqueueCalls += 1
+      return true
+    },
+  )
+
+  assert.equal(queuedResult, false)
+  assert.equal(enqueueCalls, 0)
 })
 
 test('refuses to replay an arbitrary message after an invitation', async () => {

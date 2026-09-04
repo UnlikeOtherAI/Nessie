@@ -9,8 +9,8 @@ after every platform has passed its release gate.
 
 - `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — notarized
   direct-download macOS installers.
-- `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — signed Windows desktop
-  installers.
+- `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — unsigned Windows
+  desktop installers.
 - `Nessie-Linux.AppImage` and `Nessie-Linux.deb` — Linux desktop packages.
 - `Nessie-Android.apk` — signed Android internal-distribution build.
 - `SHA256SUMS` — SHA-256 digests for every downloadable asset.
@@ -70,17 +70,14 @@ needs:
 | `TAURI_SIGNING_PRIVATE_KEY` | repository secret | Persistent key for signing direct desktop update artifacts |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
 
-The Windows reusable workflow reads its signing configuration from repository
-secrets: `WINDOWS_SIGN_COMMAND`, `WINDOWS_SIGNER_THUMBPRINT`,
-`WINDOWS_SIGNER_SUBJECT`, plus `WINDOWS_SIGN_TOOL_INSTALL` and the Azure
-credentials when the configured signing command uses Azure Artifact Signing.
-Those three mandatory values must remain repository secrets: reusable workflows
-do not inherit the caller environment's secrets. `WINDOWS_SIGN_COMMAND` must
-use the `%1` placeholder for the artifact path and the thumbprint must identify
-the intended 40-character SHA-1 certificate thumbprint.
-The release caller marks signing mandatory, so missing Windows configuration
-fails the build instead of publishing the workflow's normal unsigned
-development artifact.
+Windows Authenticode signing is intentionally optional. Until a Windows
+publisher is configured, the release publishes an unsigned NSIS installer and
+MSI; Windows may show a SmartScreen warning before installation. The NSIS
+installer still has the separate Tauri updater signature, so direct in-app
+updates remain verified. When a publisher is available, configure the
+repository-level `WINDOWS_SIGN_COMMAND`, `WINDOWS_SIGNER_THUMBPRINT`, and
+`WINDOWS_SIGNER_SUBJECT` (plus `WINDOWS_SIGN_TOOL_INSTALL` and Azure
+credentials when applicable), then make `require_signed_release` true again.
 
 The Tauri updater key is independent of both Developer ID and Authenticode
 credentials. Its public key is checked into
@@ -113,10 +110,9 @@ desktop downgrade or repeat before a platform build begins.
 ## Before tagging
 
 1. Merge the release commit into `main` and ensure its normal CI is green.
-2. Confirm the `direct-download-release` secrets above and the Windows signing
-   secrets are configured. The protected **Direct-distribution credential gate**
-   and repository-scoped **Windows-signing credential gate** list every missing
-   name before any platform build begins.
+2. Confirm the `direct-download-release` secrets above are configured. The
+   protected **Direct-distribution credential gate** lists every missing name
+   before any platform build begins.
 3. Create and push the annotated tag, for example `git tag -a v0.0.1 -m
    "Nessie v0.0.1"` followed by `git push origin v0.0.1`.
 4. Approve the protected environment if configured. The release becomes public

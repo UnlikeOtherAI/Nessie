@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { AgentRecord } from '../../../lib/api-client'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
 
 /**
  * The agents one person stewards, rendered under their roster row — the
@@ -38,6 +39,7 @@ export const PersonAgents = ({
             <span className="min-w-0 truncate text-xs text-[color:var(--tx2)]">
               {agent.name}
             </span>
+            <AgentVisibilityPill visibility={agent.visibility} />
             <span className="min-w-0 truncate text-[11px] text-[color:var(--tx3)]">
               {agent.role}
             </span>
@@ -87,6 +89,7 @@ export const UnassignedAgents = ({
               <span className="min-w-0 truncate text-xs text-[color:var(--tx2)]">
                 {agent.name}
               </span>
+              <AgentVisibilityPill visibility={agent.visibility} />
             </Link>
           </li>
         ))}

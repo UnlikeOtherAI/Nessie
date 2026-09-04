@@ -8,10 +8,13 @@ test('agents are offered the complete workflow authoring lifecycle', () => {
 
   for (const id of [
     'workflow_create',
+    'workflow_update',
     'workflow_install',
     'workflow_list',
     'workflow_trigger_create',
     'workflow_preview',
+    'workflow_run',
+    'workflow_run_status',
   ]) {
     assert.ok(definitions.has(id), `${id} must be discoverable to an agent`)
   }

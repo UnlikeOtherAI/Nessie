@@ -1,5 +1,6 @@
 import {
   AgentIdSchema,
+  AgentMentionSchema,
   ChannelIdSchema,
   CHAT_MESSAGE_MAX_CHARS,
   MESSAGE_ATTACHMENT_LIMIT,
@@ -8,7 +9,6 @@ import {
   RunIdSchema,
   RunStatusSchema,
   ThreadIdSchema,
-  UserIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -77,18 +77,6 @@ export const ThreadMessageRecordSchema = z.object({
   canShareStanding: z.boolean().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
-
-// Presence mentions are the PA-only structural counterpart to ordinary
-// name-based agent mentions. The discriminator remains in durable metadata so
-// the record cannot be mistaken for an unscoped agent id.
-export const PersonalAssistantPresenceMentionSchema = z.object({
-  type: z.literal('agent'),
-  agentId: AgentIdSchema,
-  principalUserId: UserIdSchema,
-})
-export type PersonalAssistantPresenceMention = z.infer<
-  typeof PersonalAssistantPresenceMentionSchema
->
 
 export const ThreadRecordSchema = z.object({
   id: ThreadIdSchema,
@@ -245,9 +233,9 @@ export const CreateThreadMessageBodySchema = z
     // Slack-parity "Also send to #channel": posts an additional top-level copy
     // referencing the reply thread.
     alsoSendToChannel: z.boolean().optional(),
-    // PA presences are addressed through this id-keyed entity, never by a
-    // display-name match against content. Ordinary agents keep their path.
-    agentMentions: PersonalAssistantPresenceMentionSchema.array().optional(),
+    // Every composer-selected agent is addressed through this id-keyed entity,
+    // never by a display-name match against content.
+    agentMentions: AgentMentionSchema.array().optional(),
     // Idempotency key minted by the client for one unsent draft. A retried send
     // carrying the same key resolves to the message the first attempt created
     // rather than posting a second copy. Also accepted as an `Idempotency-Key`

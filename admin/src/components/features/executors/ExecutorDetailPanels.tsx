@@ -16,6 +16,7 @@ import { FormError } from '../../shared/FormActions'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar } from '../../primitives/TabBar'
+import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
 
 const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'attention'] as const
 
@@ -290,7 +291,12 @@ export const ExecutorDetailPanels = ({
               <p className="text-xs font-semibold text-[color:var(--tx)]">Prepare paired agent-operation grant</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 <select className="admin-input" onChange={(event) => setGrantAgentId(event.target.value)} value={grantAgentId}>
-                  <option value="">Choose agent</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  <option value="">Choose agent</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agentSelectionLabel(agent.name, agent.visibility)}
+                    </option>
+                  ))}
                 </select>
                 <select className="admin-input" onChange={(event) => setGrantOperation(event.target.value as typeof grantOperation)} value={grantOperation}>
                   {operationKeys.map((operation) => <option key={operation} value={operation}>{operation}</option>)}

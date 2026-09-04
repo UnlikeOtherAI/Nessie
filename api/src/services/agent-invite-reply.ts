@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { mentionedAgentIdsFromContent } from '@nessie/runtime'
 import {
+  AgentMentionSchema,
   parseChannelId,
   parseThreadId,
   type AgentRecord,
@@ -50,9 +51,27 @@ export const enqueueInvitedAgentMentionReplay = async (
       },
       userId: input.actorContext.actor.actorId,
     },
-    select: { content: true, id: true, role: true, threadId: true },
+    select: { content: true, id: true, metadata: true, role: true, threadId: true },
   })
-  if (!message || !mentionedAgentIdsFromContent(message.content, [input.agent]).includes(input.agent.id)) {
+  if (!message) {
+    return false
+  }
+  const metadata = message.metadata
+  const mentions = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? (metadata as { mentions?: unknown }).mentions
+    : undefined
+  const mentionRecord = mentions && typeof mentions === 'object' && !Array.isArray(mentions)
+    ? mentions as { agentMentions?: unknown }
+    : undefined
+  const parsedMentions = AgentMentionSchema.array().safeParse(mentionRecord?.agentMentions)
+  const hasStructuredMentionField = mentionRecord !== undefined
+    && Object.hasOwn(mentionRecord, 'agentMentions')
+  const mentionsInvitedAgent = hasStructuredMentionField
+    ? parsedMentions.success && parsedMentions.data.some(
+        (mention) => mention.agentId === input.agent.id && !mention.principalUserId,
+      )
+    : mentionedAgentIdsFromContent(message.content, [input.agent]).includes(input.agent.id)
+  if (!mentionsInvitedAgent) {
     return false
   }
 
@@ -60,6 +79,7 @@ export const enqueueInvitedAgentMentionReplay = async (
     prisma,
     {
       actorContext: input.actorContext,
+      agentMentions: [{ agentId: input.agent.id, type: 'agent' }],
       channelAgents: [{
         id: input.agent.id,
         name: input.agent.name,

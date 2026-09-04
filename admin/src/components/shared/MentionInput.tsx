@@ -7,16 +7,16 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { AgentMention, AgentVisibility } from '@nessie/schemas'
+
 import {
   decorateMarkdownEditor,
   extractEditorText,
   insertMarkdownEditorText,
 } from '../../lib/markdown-editor'
 import { useConcealedFenceInput } from '../../hooks/useConcealedFenceInput'
-import {
-  readPersonalAssistantMentions,
-  type PersonalAssistantMention,
-} from './mention-input-personal-assistant'
+import { readAgentMentions } from './mention-input-agents'
+import { AgentVisibilityPill } from '../features/agents/AgentVisibilityPill'
 import { IdentityTile } from '../primitives/IdentityTile'
 import { UserAvatar } from '../primitives/UserAvatar'
 import { AgentAvatar } from './AgentAvatar'
@@ -27,6 +27,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 /* ------------------------------------------------------------------ */
 
 export type MentionEntity = {
+  agentVisibility?: AgentVisibility
   detail?: string
   glyph?: string
   id: string
@@ -41,12 +42,12 @@ export type MentionEntity = {
   type: 'user' | 'agent' | 'channel'
 }
 
-export type { PersonalAssistantMention } from './mention-input-personal-assistant'
+export type { AgentMention } from '@nessie/schemas'
 
 export type MentionInputHandle = {
   clear: () => void
   focus: () => void
-  getAgentMentions: () => PersonalAssistantMention[]
+  getAgentMentions: () => AgentMention[]
   getText: () => string
   insertAtSign: () => void
   insertHashSign: () => void
@@ -65,7 +66,7 @@ type Props = {
   maxLength?: number
   onChange?: (text: string) => void
   onOversizePaste?: (paste: string) => void
-  onSubmit: (text: string, agentMentions: PersonalAssistantMention[]) => void
+  onSubmit: (text: string, agentMentions: AgentMention[]) => void
   placeholder: string
 }
 
@@ -357,7 +358,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         return editorRef.current ? extractEditorText(editorRef.current) : ''
       },
       getAgentMentions() {
-        return readPersonalAssistantMentions(editorRef.current)
+        return readAgentMentions(editorRef.current)
       },
       insertAtSign() {
         insertTrigger('@')
@@ -422,8 +423,12 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
                     <span className="truncate text-xs opacity-60">{entity.detail}</span>
                   ) : null}
                 </span>
-                <span className="ml-auto flex-shrink-0 text-xs opacity-50">
-                  {entity.type}
+                <span className="ml-auto flex-shrink-0">
+                  {entity.type === 'agent' && entity.agentVisibility ? (
+                    <AgentVisibilityPill visibility={entity.agentVisibility} />
+                  ) : (
+                    <span className="text-xs opacity-50">{entity.type}</span>
+                  )}
                 </span>
               </button>
             ))}
@@ -501,7 +506,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               if (!editor) return
               const text = extractEditorText(editor).trim()
               if (!text) return
-              const agentMentions = readPersonalAssistantMentions(editor)
+              const agentMentions = readAgentMentions(editor)
               // Clear synchronously BEFORE notifying the caller so a second
               // Enter keystroke can't re-read the same text.
               clearChildren(editor)

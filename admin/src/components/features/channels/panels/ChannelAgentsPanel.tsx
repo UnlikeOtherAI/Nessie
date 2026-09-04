@@ -10,6 +10,7 @@ import { AgentStatusDot } from '../../agents/AgentStatusDot'
 import { EmptyState } from '../../../shared/EmptyState'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { ChannelPersonalAssistantPresences } from './ChannelPersonalAssistantPresences'
+import { AgentVisibilityPill } from '../../agents/AgentVisibilityPill'
 
 /**
  * The Agents section of a *channel*: who works in this room, and the way
@@ -39,6 +40,7 @@ const AgentRow = ({ agent, onOpen }: { agent: AgentRecord; onOpen: () => void })
           {agent.role}
         </span>
       </span>
+      <AgentVisibilityPill visibility={agent.visibility} />
       <svg
         aria-hidden="true"
         className="h-5 w-5 flex-shrink-0 text-[color:var(--tx3)]"

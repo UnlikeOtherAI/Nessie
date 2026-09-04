@@ -131,7 +131,10 @@ export {
   runWorkflowInstallTool,
   runWorkflowListTool,
   runWorkflowPreviewTool,
+  runWorkflowRunStatusTool,
+  runWorkflowRunTool,
   runWorkflowTriggerCreateTool,
+  runWorkflowUpdateTool,
 } from './pa-tools/workflow-authoring.js'
 export {
   runEmailListTool,

@@ -8,9 +8,9 @@ import {
   resolveMessageMentions,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
+import type { AgentMention } from '@nessie/schemas'
 import { buildAgentVisibilityWhere } from '@nessie/team-admin'
 
-import type { PersonalAssistantPresenceMention } from '../contracts/messaging.js'
 import { messageInclude, type MessageWithReactions } from './messages.js'
 
 // ─── Message creation (top-level posts + reply-thread replies) ─────────────
@@ -64,8 +64,8 @@ export type CreateThreadMessageResult =
       // Agents @mentioned in the message that are not members of the channel.
       // They are NOT dispatched; the client offers to invite them.
       pendingAgentInvites: { id: string; name: string }[]
-      // Structured PA-presence mentions retained from the validated message.
-      agentMentions?: PersonalAssistantPresenceMention[]
+      // Structured agent mentions retained from the validated message.
+      agentMentions?: AgentMention[]
       // Set when the message is a reply: the root id plus its post-bookkeeping
       // metadata, so the route can publish `message.reply.meta` without a
       // re-read.
@@ -81,8 +81,8 @@ export type CreateThreadMessageResult =
       kind: 'invalid_root'
     }
   | {
-      // A PA mention was not the exact presence currently bound to this
-      // channel. Never treat client-provided ids as an authority.
+      // A mention was not an agent identity the sender may address here.
+      // Never treat client-provided ids as an authority.
       kind: 'invalid_agent_mention'
     }
 
@@ -94,7 +94,7 @@ export const createThreadMessage = async (
     userId: string
     rootMessageId?: string
     alsoSendToChannel?: boolean
-    agentMentions?: PersonalAssistantPresenceMention[]
+    agentMentions?: AgentMention[]
     clientMessageId?: string
   },
 ): Promise<CreateThreadMessageResult> => {
@@ -149,12 +149,14 @@ export const createThreadMessage = async (
     return { kind: 'thread_not_found' }
   }
 
-  // Structured PA mentions are valid only for the exact binding that is live
-  // in this channel right now. This is deliberately before the message write:
-  // a forged/stale presence must neither persist nor enter orchestration.
+  // Structured mentions are identities, not hints. Validate every one before
+  // the message write: a forged/stale id must neither persist nor enter
+  // orchestration. An ordinary bound agent is already proven by the channel;
+  // an unbound agent must pass the same visibility gate as the invite
+  // flow. PA presences additionally require their exact live owner binding.
   const agentMentions = [...new Map(
     (input.agentMentions ?? []).map((mention) => [
-      `${mention.agentId}:${mention.principalUserId}`,
+      `${mention.agentId}:${mention.principalUserId ?? ''}`,
       mention,
     ]),
   ).values()]
@@ -164,11 +166,51 @@ export const createThreadMessage = async (
         ? [`${binding.agent.id}:${binding.principalUserId}`]
         : []),
   )
-  if (agentMentions.some(
+  const presenceMentions = agentMentions.filter(
+    (mention): mention is AgentMention & { principalUserId: string } =>
+      mention.principalUserId !== undefined,
+  )
+  if (presenceMentions.some(
     (mention) => !validPresenceMentionKeys.has(`${mention.agentId}:${mention.principalUserId}`),
   )) {
     return { kind: 'invalid_agent_mention' }
   }
+  const ordinaryMentionIds = [...new Set(
+    agentMentions
+      .filter((mention) => mention.principalUserId === undefined)
+      .map((mention) => mention.agentId),
+  )]
+  const boundOrdinaryAgents = thread.channel.agentBindings.flatMap((binding) =>
+    !binding.principalUserId && binding.agent.agentKind !== 'personal_assistant'
+      ? [{ id: binding.agent.id, name: binding.agent.name }]
+      : [],
+  )
+  const boundOrdinaryIds = new Set(boundOrdinaryAgents.map((agent) => agent.id))
+  const unboundMentionIds = ordinaryMentionIds.filter((id) => !boundOrdinaryIds.has(id))
+  if (thread.channel.systemChannelType && unboundMentionIds.length > 0) {
+    return { kind: 'invalid_agent_mention' }
+  }
+  const unboundMentionAgents = unboundMentionIds.length > 0
+    ? await prisma.agent.findMany({
+        where: {
+          AND: [buildAgentVisibilityWhere({
+            organizationId: thread.channel.organizationId,
+            userId: input.userId,
+          })],
+          agentKind: 'shared',
+          executionMode: { not: 'external_mcp' },
+          id: { in: unboundMentionIds },
+          organizationId: thread.channel.organizationId,
+        },
+        select: { id: true, name: true },
+      })
+    : []
+  if (unboundMentionAgents.length !== unboundMentionIds.length) {
+    return { kind: 'invalid_agent_mention' }
+  }
+  const structuredOrdinaryAgents = new Map(
+    [...boundOrdinaryAgents, ...unboundMentionAgents].map((agent) => [agent.id, agent]),
+  )
 
   // Resolve human + broadcast mentions on the inbound content. Agent mentions
   // are resolved below for engagement; here we record every mention class on
@@ -318,7 +360,13 @@ export const createThreadMessage = async (
   // contain spaces, so we match each candidate name against the content with the
   // same escape rule the orchestrator uses rather than splitting on whitespace.
   const pendingAgentInvites: { id: string; name: string }[] = []
-  if (input.content.includes('@')) {
+  if (agentMentions.length > 0) {
+    for (const agentId of ordinaryMentionIds) {
+      if (boundOrdinaryIds.has(agentId)) continue
+      const agent = structuredOrdinaryAgents.get(agentId)
+      if (agent) pendingAgentInvites.push(agent)
+    }
+  } else if (input.content.includes('@')) {
     const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
     const candidates = await prisma.agent.findMany({
       where: {
@@ -352,10 +400,9 @@ export const createThreadMessage = async (
   // Record which agents the message @mentioned (bound or freshly resolved).
   // Only persist a metadata update when there are agent mentions to add —
   // human/broadcast mentions were already written at create time.
-  const mentionedAgentIds = mentionedAgentIdsFromContent(
-    input.content,
-    ordinaryChannelAgents,
-  )
+  const mentionedAgentIds = agentMentions.length > 0
+    ? ordinaryMentionIds
+    : mentionedAgentIdsFromContent(input.content, ordinaryChannelAgents)
   let persistedMessage = message
   const mergedMentions = {
     ...mentions,

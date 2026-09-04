@@ -454,7 +454,11 @@ When a message arrives in a channel, the channel orchestrator decides which agen
 **Implementation**: the decision is pure (`decideAgentEngagement`, `packages/runtime/src/orchestrator.ts`) and is invoked from the worker's `orchestrate.decide` job (`worker/src/run/orchestrate.ts`), which the API enqueues from the message-create route (`api/src/routes/thread-message-create.ts`) — **only for human-authored messages** in a channel that has bound agents.
 
 1. **Human-only gate**: the orchestrator engages agents ONLY in response to a human message (`triggerIsHuman`). An agent's own reply — and an agent @mentioning another agent — never triggers a decision. This is the hard anti-loop guard.
-2. **Fast path**: explicit `@AgentName` mention → route directly to that agent (each mentioned agent replies).
+2. **Fast path**: a composer-selected agent mention carries its `agentId` and
+   routes directly to that exact agent (each selected agent replies). Display
+   names may be duplicated and never identify the target. Legacy/plain-text API
+   messages with no structured mention metadata retain the old `@AgentName`
+   compatibility path.
 3. **Silent path**: `@mention` exists but matches no bound agent → nobody responds.
 4. **LLM decision**: an invisible orchestrator (cheap model, temperature 0.1) evaluates the message against all bound agents and returns one of:
    - `{ action: "reply", agentId }` — agent should respond

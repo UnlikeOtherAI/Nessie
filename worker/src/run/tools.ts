@@ -89,7 +89,10 @@ import {
   runWorkflowInstallTool,
   runWorkflowListTool,
   runWorkflowPreviewTool,
+  runWorkflowRunStatusTool,
+  runWorkflowRunTool,
   runWorkflowTriggerCreateTool,
+  runWorkflowUpdateTool,
   runTeamSearchTool,
   runEmailListTool,
   runEmailReadTool,
@@ -252,12 +255,18 @@ const executeBuiltinToolUncorrected = async (
       )
     case 'workflow_create':
       return wrapTool(inputSummary, () => runWorkflowCreateTool(context, args))
+    case 'workflow_update':
+      return wrapTool(inputSummary, () => runWorkflowUpdateTool(context, args))
     case 'workflow_list':
       return wrapTool(inputSummary, () => runWorkflowListTool(context, args))
     case 'workflow_install':
       return wrapTool(inputSummary, () => runWorkflowInstallTool(context, args))
     case 'workflow_preview':
       return wrapTool(inputSummary, () => runWorkflowPreviewTool(context, args))
+    case 'workflow_run':
+      return wrapTool(inputSummary, () => runWorkflowRunTool(context, args))
+    case 'workflow_run_status':
+      return wrapTool(inputSummary, () => runWorkflowRunStatusTool(context, args))
     case 'workflow_trigger_create':
       return wrapTool(inputSummary, () => runWorkflowTriggerCreateTool(context, args))
     case 'update_preferences':

@@ -6,7 +6,7 @@ import {
   redactDetectedSecrets,
   type DetectedSecret,
 } from '@nessie/schemas'
-import type { MentionInputHandle, PersonalAssistantMention } from '../../shared/MentionInput'
+import type { AgentMention, MentionInputHandle } from '../../shared/MentionInput'
 import {
   useSendMessage,
   useUploadAttachment,
@@ -53,7 +53,7 @@ interface UseChannelComposerResult {
   // Files staged for the next send (paperclip + drag-and-drop).
   attachments: ComposerAttachments
   insertEmoji: (emoji: string) => void
-  sendText: (rawText: string, agentMentions?: PersonalAssistantMention[]) => Promise<void>
+  sendText: (rawText: string, agentMentions?: AgentMention[]) => Promise<void>
   sendMessageSubmit: (event?: FormEvent<HTMLFormElement>) => Promise<void>
   sendAsFile: (rawText: string) => Promise<void>
   pendingAgentInvites: PendingAgentInvite[]
@@ -72,7 +72,7 @@ const newClientMessageId = (): string =>
     : `${Date.now()}-${Math.random()}`
 
 export type SecretCapture = {
-  agentMentions: PersonalAssistantMention[]
+  agentMentions: AgentMention[]
   detected: DetectedSecret
   replacementContent: string
   replacementMode: 'file' | 'message'
@@ -182,7 +182,7 @@ export const useChannelComposer = ({
   }, [activeChannel?.id])
 
   const sendText = useCallback(
-    async (rawText: string, agentMentions: PersonalAssistantMention[] = []) => {
+    async (rawText: string, agentMentions: AgentMention[] = []) => {
       const text = rawText.trim()
       const attachmentIds = attachments.attachmentIds
       // A post needs text or at least one uploaded file (attachment-only send).

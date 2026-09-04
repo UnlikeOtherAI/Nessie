@@ -10,6 +10,7 @@ import { FormError } from '../../shared/FormActions'
 import { Row, RowList } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
+import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
 
 /**
  * Per-agent access list for one tool. Each row flips an `allowed` grant on/off
@@ -86,7 +87,12 @@ const AgentAccessRow = ({ agent, baseline, tool }: AgentAccessRowProps) => {
   return (
     <Row
       subtitle={agent.role}
-      title={agent.name}
+      title={(
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{agent.name}</span>
+          <AgentVisibilityPill visibility={agent.visibility} />
+        </span>
+      )}
       trailing={
         baseline.denied ? (
           <Pill height="control" tone="danger">denied</Pill>

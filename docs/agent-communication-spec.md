@@ -143,6 +143,11 @@ Multiple explicit mentions:
 - `@agent1 @agent2 ...` means explicit multi-agent selection.
 - default outcome is only those tagged agents + organizer synthesis of their responses.
 - untagged agents are not considered in this explicit mode unless fallback routing triggers.
+- An agent selected from composer typeahead is stored as a structured
+  `{ type: "agent", agentId, principalUserId? }` address. The visible name is
+  presentation only and may be duplicated; dispatch and invitation replay use
+  the selected identity. Name matching remains only for legacy/plain-text API
+  messages that carry no structured agent mentions.
 
 Membership is required to participate (as-of-2026-07-02):
 - Only agents that are **members of the channel** (an `AgentBinding` exists) are
@@ -157,7 +162,7 @@ Membership is required to participate (as-of-2026-07-02):
   bound, the agent also participates on subsequent mentions like any other
   member.
 - This is enforced in both the API (`createThreadMessage`,
-  `api/src/services/messages.ts`) and the worker's `send_message` destination
+  `api/src/services/message-create.ts`) and the worker's `send_message` destination
   resolver (`resolveChannelAgents`, `worker/src/run/pa-tools/message-destination.ts`),
   so an agent cannot be invoked into a channel it is not a member of from either
   the human or agent-authored path.

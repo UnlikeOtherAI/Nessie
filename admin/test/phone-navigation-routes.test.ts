@@ -8,6 +8,7 @@ import {
   isPhoneTabRoot,
   phoneRouteHasBackDepth,
   phoneTabRootHasContextualList,
+  resolveKnowledgeSidebarSelectionPath,
   resolvePhoneNavigationBackAction,
 } from '../src/layouts/admin-shell/phone-navigation'
 
@@ -48,6 +49,37 @@ test('Knowledge routes: root depth0, spaces and views depth1', () => {
     label: 'Back to Knowledge',
     pathname: '/knowledge-base',
   })
+})
+
+test('Knowledge sidebar selections leave Dashboard routes on split layouts', () => {
+  assert.equal(
+    resolveKnowledgeSidebarSelectionPath('/dashboards', false, {
+      id: 'my docs/one',
+      type: 'space',
+    }),
+    '/knowledge-base/spaces/my%20docs%2Fone',
+  )
+  assert.equal(
+    resolveKnowledgeSidebarSelectionPath('/dashboards/dash_a', false, {
+      id: 'research',
+      type: 'view',
+    }),
+    '/knowledge-base/views/research',
+  )
+  assert.equal(
+    resolveKnowledgeSidebarSelectionPath('/knowledge-base', false, {
+      id: 'space_a',
+      type: 'space',
+    }),
+    null,
+  )
+  assert.equal(
+    resolveKnowledgeSidebarSelectionPath('/knowledge-base', true, {
+      id: 'space_a',
+      type: 'space',
+    }),
+    '/knowledge-base/spaces/space_a',
+  )
 })
 
 test('Dashboards are Knowledge-section pages: root depth1, dashboard depth2', () => {

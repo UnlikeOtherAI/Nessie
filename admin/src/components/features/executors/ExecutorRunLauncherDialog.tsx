@@ -12,6 +12,7 @@ import {
 } from '../../../facades/executors/hooks'
 import { Dialog } from '../../shared/Dialog'
 import { FormError } from '../../shared/FormActions'
+import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]
@@ -201,7 +202,9 @@ export const ExecutorRunLauncherDialog = ({
             value={agentId}
           >
             {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>{agent.name}</option>
+              <option key={agent.id} value={agent.id}>
+                {agentSelectionLabel(agent.name, agent.visibility)}
+              </option>
             ))}
           </select>
         </label>
