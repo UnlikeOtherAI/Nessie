@@ -63,15 +63,14 @@ Plan and as-built deltas:
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP
-  mailbox they may administer: the caller's personal mailboxes, plus shared
+  mailbox they may administer — personal mailboxes for their owner, plus shared
   mailboxes only for an organisation owner or admin. It deliberately does not
   reuse the broader member-visibility list, because a visible shared mailbox is
-  not necessarily mutable. Every lifecycle action that reads an
-  account — list, check, disconnect, or an agent-access change — stamps the
-  acting person's user disclosure basis before its model-visible result, and
-  emits only fixed structural connection-state remedies. Untrusted provider
-  error text is neither persisted nor presented, and a migration sanitises
-  legacy rows. `email_account_connect` posts a doorway into the
+  not necessarily mutable. Every lifecycle action that reads an account — list,
+  check, disconnect, or an agent-access change — stamps the acting person's user
+  disclosure basis before its model-visible result and emits only structural
+  connection-state remedies, never provider/server diagnostics. `email_account_connect`
+  posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
   OAuth-code argument, and refuses a team-scope doorway for a non-manager before
   it posts anything. `email_account_check` invokes the same provider resync or
