@@ -1,5 +1,30 @@
 # Design system + color theming
 
+## Space White product theme (2026-09-04)
+
+Space White is the first complete product theme rather than a palette-only
+variant. It is based on the supplied workspace, chat, admin, kanban, and docs
+specimens and is now the default for new and logged-out sessions. Existing
+stored choices remain respected.
+
+- Color: white work surfaces, cool-gray navigation and controls, black primary
+  actions, and semantic color only where status or risk requires it.
+- Type: bundled Geist Variable for UI/body copy and the supplied licensed
+  Starleague Regular for page and document display titles.
+- Scale: 4/8px spacing rhythm; 36px compact and 44px default controls; 7px
+  action, 14px field, 20px card, and 28px dialog radii.
+- Shared surfaces: `ResponsivePageHeader`, `TabBar`, `.admin-button`,
+  `.admin-input`, `.admin-card`, chat rows/composer, tables, menus, dialogs,
+  navigation rail/sidebar, and knowledge prose are styled centrally in
+  `admin/src/styles.css`. Route-local visual forks are not introduced.
+- Hosted sign-in and first paint use the matching monochrome palette, so the
+  theme does not flash or change visual language at the authentication edge.
+
+Space White's geometry and typography selectors are scoped under
+`[data-theme='space-white']`. This deliberately extends the original
+palette-only architecture while keeping the same invariant: a route never
+guesses or reimplements the active theme.
+
 Status: **in progress** (2026-06-10). Goal: make the admin UI fully
 theme-able by color alone — a new theme is just a list of color values. Today
 `admin/src/styles.css` has a centralized `:root` token palette (~24 CSS custom

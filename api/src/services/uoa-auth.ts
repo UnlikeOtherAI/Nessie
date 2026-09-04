@@ -56,12 +56,25 @@ type UoaSignInThemeColors = {
   text: string
 }
 
-const DEFAULT_SSO_THEME = 'sandstone' satisfies SsoTheme
+const DEFAULT_SSO_THEME = 'space-white' satisfies SsoTheme
 
 // Mirrors the admin theme tokens for the hosted-login surface. UOA cannot read
 // Nessie's CSS variables, so the selected palette is passed through the config
 // JWT as concrete color values.
 export const UOA_SIGN_IN_THEMES = {
+  'space-white': {
+    colors: {
+      primary: '#000000',
+      bg: '#f8f8f8',
+      surface: '#ffffff',
+      text: '#0a0a0a',
+      primary_text: '#ffffff',
+      muted: '#8a8a8a',
+      border: '#e3e6ea',
+      danger: '#d63b3b',
+      danger_text: '#c23232',
+    },
+  },
   nebula: {
     colors: {
       primary: '#7c3aed',

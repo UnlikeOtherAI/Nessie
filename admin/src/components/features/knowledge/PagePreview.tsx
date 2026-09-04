@@ -157,7 +157,7 @@ export const PagePreview = ({
       title={page.title}
     >
       <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
-        <nav aria-label="Page breadcrumbs" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[color:var(--tx3)]">
+        <nav aria-label="Page breadcrumbs" className="admin-breadcrumbs mb-5 flex flex-wrap items-center gap-1 text-[13px] text-[color:var(--tx3)]">
           <button className="hover:text-[color:var(--tx)]" onClick={onBrowseRoot} type="button">
             {spaceName}
           </button>
@@ -184,7 +184,7 @@ export const PagePreview = ({
           ) : null}
           {isAgentDraft(page) ? <AgentDraftBadge /> : null}
         </div>
-        <h1 className="mt-3 text-3xl font-semibold text-[var(--tx)]">{page.title}</h1>
+        <h1 className="admin-document-title mt-3 text-[40px] font-normal leading-[1.15] text-[var(--tx)]">{page.title}</h1>
         <ReviewPanel
           canWrite={canWrite}
           onPublish={onPublish}

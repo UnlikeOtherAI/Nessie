@@ -94,6 +94,7 @@ export const UserPreferencesSchema = z.object({
   // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.
   pushQuietHours: PushQuietHoursSchema.nullish(),
   theme: z.enum([
+    'space-white',
     'nebula',
     'midnight',
     'daylight',
