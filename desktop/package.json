@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm prepare:executor-runtime && tauri dev --config src-tauri/tauri.dev.conf.json",
+    "icons:generate": "tauri icon ../assets/icon-1024.png --output src-tauri/icons",
     "prepare:executor-runtime": "node scripts/prepare-executor-runtime.mjs",
     "tauri:build": "pnpm prepare:executor-runtime && tauri build",
     "tauri:build:embedded": "pnpm exec turbo run build --filter=@nessie/runtime && pnpm prepare:executor-runtime && node scripts/build-embedded-shell.mjs",
