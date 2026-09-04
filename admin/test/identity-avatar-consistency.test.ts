@@ -76,7 +76,7 @@ test('the identity palette has exactly one source', () => {
     /import\s[^\n]*AGENT_AVATAR_BACKGROUND_COLORS/.test(readFileSync(path, 'utf8')),
   )
   assert.deepEqual(
-    importers.map((path) => path.slice(SRC.length + 1)),
+    importers.map((path) => path.slice(SRC.length + 1).replaceAll('\\', '/')),
     ['components/shared/AgentAvatar.tsx'],
   )
 })

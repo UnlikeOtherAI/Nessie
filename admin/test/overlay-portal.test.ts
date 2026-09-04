@@ -38,7 +38,7 @@ for (const path of walk(SRC).filter((file) => file.endsWith('.tsx'))) {
   const source = readFileSync(path, 'utf8')
   if (!/\buseOverlay\(/.test(source)) continue
   consumers.push({
-    path: `src/${relative(SRC, path)}`,
+    path: `src/${relative(SRC, path).replaceAll('\\', '/')}`,
     portals: /<OverlayPortal[\s/>]/.test(source),
   })
 }

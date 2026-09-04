@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -113,7 +113,10 @@ const SANCTIONED_OVERLAY_USAGE = /<Dialog|<ConfirmDialog|<Sheet|<Popover|useOver
 
 test('every role="dialog" surface composes the shared overlay primitives', () => {
   const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
-  const tracked = execSync("git ls-files 'admin/src/*.tsx'", { cwd: repoRoot, encoding: 'utf8' })
+  const tracked = execFileSync('git', ['ls-files', 'admin/src/*.tsx'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)

@@ -4,7 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const readSource = (relativePath: string): string =>
-  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8').replaceAll('\r\n', '\n')
 
 test('the direct-messages plus opens the recipient-addressed conversation composer', () => {
   const source = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
