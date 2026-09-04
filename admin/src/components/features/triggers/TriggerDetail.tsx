@@ -20,6 +20,7 @@ import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import {
   TRIGGER_TYPE_ICONS,
+  formatTriggerDeliveryPayload,
   formatRelativeTime,
   formatTimestamp,
   formatTriggerTarget,
@@ -322,6 +323,14 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
                     {delivery.errorMessage}
                   </div>
                 ) : null}
+                <details className="mt-2">
+                  <summary className="cursor-pointer select-none text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:text-[color:var(--tx2)]">
+                    Payload
+                  </summary>
+                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-[color:var(--tx2)]">
+                    {formatTriggerDeliveryPayload(delivery.payload)}
+                  </pre>
+                </details>
               </Row>
             ))}
           </RowList>

@@ -32,6 +32,20 @@ export type TriggerRegistryMaps = {
 export const formatTimestamp = (value?: string) =>
   value ? new Date(value).toLocaleString() : '—'
 
+/**
+ * A delivery payload is the audit record for an external webhook or internal
+ * event fire. It is JSON from the API, but keeping the formatter defensive
+ * means an unexpected future contract value is still inspectable rather than
+ * disappearing from the owner's only delivery trail.
+ */
+export const formatTriggerDeliveryPayload = (payload: unknown): string => {
+  try {
+    return JSON.stringify(payload, null, 2) ?? 'undefined'
+  } catch {
+    return String(payload)
+  }
+}
+
 export const formatRelativeTime = (value?: string): string | undefined => {
   if (!value) return undefined
 

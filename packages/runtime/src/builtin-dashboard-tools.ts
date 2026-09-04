@@ -310,6 +310,27 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: true,
   },
+  {
+    id: 'dashboard_present',
+    category: 'dashboards',
+    summary: 'Show a complete dashboard as a compact preview in this conversation.',
+    label: 'Present A Dashboard',
+    description:
+      'Post a complete dashboard into this conversation after you create or edit it. '
+      + 'The preview is a literal scaled-down dashboard canvas; the person can tap it '
+      + 'to inspect the same dashboard full screen. It is only a reference: every '
+      + 'viewer still needs normal dashboard access, so presenting one never shares '
+      + 'or widens its audience. Use this instead of describing a finished dashboard '
+      + 'in prose when the person needs to review the actual arrangement.',
+    parameters: {
+      type: 'object',
+      properties: {
+        dashboardId: { type: 'string', description: 'The dashboard to present.' },
+      },
+      required: ['dashboardId'],
+    },
+    safe: false,
+  },
 ]
 
 /**

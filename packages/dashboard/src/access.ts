@@ -22,7 +22,7 @@
  * at the share step, not here (plan §9.1).
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { isAdminRole } from '@nessie/schemas'
 
 export type DashboardActor = {
@@ -65,7 +65,7 @@ export type DashboardMembership = {
 }
 
 export type ResolveDashboardAccessInput = {
-  prisma: PrismaClient
+  prisma: PrismaClient | Prisma.TransactionClient
   membership: DashboardMembership
   actor: DashboardActor
   resource: DashboardResourceRef
@@ -95,7 +95,7 @@ type DashboardRow = {
  * from a missing one — never a bare findUnique on a caller-supplied id.
  */
 const loadDashboardFor = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
   resource: DashboardResourceRef,
 ): Promise<DashboardRow | null> => {
@@ -151,7 +151,7 @@ const homeGrantsView = async (
 }
 
 const activeGrantLevel = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   membership: DashboardMembership,
   actor: DashboardActor,
   resource: DashboardResourceRef,

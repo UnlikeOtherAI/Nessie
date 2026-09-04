@@ -131,6 +131,41 @@ test('system turns become instructions and tool results their own item', () => {
   ])
 })
 
+test('a vision-capable Codex request carries an attached image as an input_image part', () => {
+  const { input } = mapMessagesToCodex(
+    [{
+      content: 'Evaluate this chart.',
+      images: [{ dataBase64: 'AAECAw==', mime: 'image/png' }],
+      role: 'user',
+    }],
+    { vision: true },
+  )
+
+  assert.deepEqual(input, [{
+    content: [
+      { text: 'Evaluate this chart.', type: 'input_text' },
+      { image_url: 'data:image/png;base64,AAECAw==', type: 'input_image' },
+    ],
+    role: 'user',
+  }])
+})
+
+test('a non-vision Codex request omits image bytes', () => {
+  const { input } = mapMessagesToCodex(
+    [{
+      content: 'Evaluate this chart.',
+      images: [{ dataBase64: 'AAECAw==', mime: 'image/png' }],
+      role: 'user',
+    }],
+    { vision: false },
+  )
+
+  assert.deepEqual(input, [{
+    content: [{ text: 'Evaluate this chart.', type: 'input_text' }],
+    role: 'user',
+  }])
+})
+
 test('tools are flat in the Responses shape, not nested under a function key', () => {
   const tools = mapToolsToCodex([
     { description: 'Search', inputSchema: { type: 'object' }, toolName: 'search' },

@@ -9,6 +9,10 @@ import {
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentAvatarDraftPanel } from '../components/features/agents/AgentAvatarDraftPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
+import {
+  AgentCreationModeTabs,
+  CREATION_MODE_VALUES,
+} from '../components/features/agents/designer/AgentCreationModeTabs'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useDesignerAssistantPanel } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { revealDesignerToolCall } from '../components/features/agents/designer/reveal-control'
@@ -33,6 +37,7 @@ import { useDesignerChat } from '../facades/designer/hooks'
 import { useContinueDesignInChat } from '../facades/designer/agent-designer-identity'
 import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
 import type { AgentRecord } from '../lib/api-client'
+import { useTabParam } from '../navigation/useTabParam'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
@@ -109,6 +114,12 @@ export const AgentDesignerContent = ({
   const parentId = searchParams.get('parentId') ?? undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
   const isEditMode = Boolean(editingAgent)
+  const showCreationModes = !isEditMode && !embedded && !readOnly
+  const [creationMode, setCreationMode] = useTabParam(
+    'designerMode',
+    CREATION_MODE_VALUES,
+    'create',
+  )
   const assistantPanel = useDesignerAssistantPanel()
   const assistantCanEditForm = !assistantPanel || assistantPanel.pageContext.title === 'Edit agent'
   const handleAssistantToolCall = useCallback((name: string, args: Record<string, unknown>) => {
@@ -356,12 +367,31 @@ export const AgentDesignerContent = ({
         </div>
       ) : null}
 
+      {showCreationModes ? (
+        <AgentCreationModeTabs onChange={setCreationMode} value={creationMode} />
+      ) : null}
+
       {/* The standalone designer owns its panel. When embedded in agent detail,
           the same panel is portalled into the persistent right rail so it stays
           available as the person moves between the agent's tabs. */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div
+        className={showCreationModes
+          ? 'min-h-0 flex-1'
+          : 'flex min-h-0 flex-1 flex-col lg:flex-row'}
+      >
         {/* Form panel */}
-        <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] px-[var(--page-gutter)] py-5 lg:flex-[7] lg:border-b-0 lg:border-r">
+        <div
+          aria-labelledby={showCreationModes ? 'agent-creation-mode-tab-configure' : undefined}
+          className={showCreationModes
+            ? 'h-full overflow-y-auto px-[var(--page-gutter)] py-5'
+            : [
+                'min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)]',
+                'px-[var(--page-gutter)] py-5 lg:flex-[7] lg:border-b-0 lg:border-r',
+              ].join(' ')}
+          hidden={showCreationModes && creationMode !== 'configure'}
+          id={showCreationModes ? 'agent-creation-mode-tabpanel-configure' : undefined}
+          role={showCreationModes ? 'tabpanel' : undefined}
+        >
           <div className="grid gap-5">
             {editingAgent ? (
               <section className="admin-card flex items-center gap-4 p-4">
@@ -434,10 +464,19 @@ export const AgentDesignerContent = ({
               assistantPanel.panelOutlet,
             )
           : !assistantPanel ? (
-              <div className="h-[360px] min-h-[320px] lg:h-auto lg:flex-[3] lg:min-w-[280px]">
+              <div
+                aria-labelledby={showCreationModes ? 'agent-creation-mode-tab-create' : undefined}
+                className={showCreationModes
+                  ? 'h-full min-h-0'
+                  : 'h-[360px] min-h-[320px] lg:h-auto lg:flex-[3] lg:min-w-[280px]'}
+                hidden={showCreationModes && creationMode !== 'create'}
+                id={showCreationModes ? 'agent-creation-mode-tabpanel-create' : undefined}
+                role={showCreationModes ? 'tabpanel' : undefined}
+              >
                 <DesignerChat
                   continuingInChat={continueInChat.isPending}
                   error={chat.error}
+                  guidedCreation={showCreationModes}
                   messages={chat.messages}
                   onContinueInChat={handleContinueInChat}
                   onSend={chat.send}

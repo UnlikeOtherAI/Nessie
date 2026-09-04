@@ -25,6 +25,7 @@ import {
   EmbeddedWidget,
   readMessageEmbedIds,
 } from '../dashboards/EmbeddedWidget'
+import { DashboardPresentation } from '../dashboards/DashboardPresentation'
 import { CommsConnectCard } from './CommsConnectCard'
 import { EmailAccountConnectCard } from './EmailAccountConnectCard'
 import { GmailDraftCard } from './GmailDraftCard'
@@ -442,6 +443,7 @@ export const ChannelMessageRow = ({
               </div>
             ))
             : null}
+          {!isEditingMessage ? <DashboardPresentation metadata={message.metadata} /> : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
           ) : null}

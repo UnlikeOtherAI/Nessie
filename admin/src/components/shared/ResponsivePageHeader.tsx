@@ -346,7 +346,9 @@ export const ResponsivePageHeader = ({
       >
         {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
         {action.compact ? null : <span>{action.label}</span>}
-        {isMenu ? <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} /> : null}
+        {isMenu && !action.compact ? (
+          <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} />
+        ) : null}
       </button>
     )
   }

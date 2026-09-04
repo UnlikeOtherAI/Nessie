@@ -1,14 +1,32 @@
-# Global agents — the Agent Designer's mechanics
+# Global agents — the Designer agents' mechanics
 
 The invariants live in [standards/global-agents.md](standards/global-agents.md),
 and the map entry in `CLAUDE.md` → "Global agents". This file holds the
-mechanics beyond both: what the Agent Designer's tools stand on, how its
+mechanics beyond both: what the Designer agents' tools stand on, how a
 capability catalogue is generated, how `agent_handoff` delivers a briefing, and
-how the Agent Designer page's sidebar became the same agent rather than a second
-one.
+how a specialist's owning surface becomes a doorway to its one home DM rather
+than a second implementation of that specialist.
 
 Spec and full history:
 [plans/2026-09-02-agent-designer-global-agent.md](plans/2026-09-02-agent-designer-global-agent.md).
+
+## Dashboard Designer
+
+`dashboard-designer` is a per-organisation, per-user-DM global agent. Its home
+is reached from the Dashboards screen's **Ask Dashboard Designer** doorway,
+which opens the ordinary system-agent conversation before navigating there; the
+empty dashboard state offers the same doorway. The agent can create and change
+dashboards, discover a JSON API source, probe its declared table shape, and
+present a completed dashboard back into the conversation.
+
+An API token never goes through ordinary chat. After the agent has created the
+source, it posts a custom card whose secret destination is that source. Pressing
+the card uses the same write-only `setSourceCredential` operation as the normal
+source credential route. The resulting chat message holds only a dashboard id;
+each viewer fetches the normal entitlement-checked dashboard route, so a
+preview is not a grant. The compact preview is the real dashboard canvas under
+a CSS scale transform — not an iframe or a third-party page — and selecting it
+opens that same canvas in the standard full-screen dialog.
 
 ## Where a global agent can be, and what it can do there
 
@@ -339,6 +357,12 @@ is gone.
 - **Continue in chat** (`POST /api/designer/continue-in-chat`) hands the open
   draft to the person's own Designer DM through `deliverGlobalAgentBrief`, so it
   is the same hidden server-authored briefing a handoff writes.
+- New-agent creation presents this same assistant and the existing settings form
+  as the **Create** and **Configure** tabs. Create is the default, prompt-first
+  route; Configure exposes every setting. Both tabs stay mounted over one typed
+  draft, so switching modes never discards the conversation or produces a
+  second creation path. Editing an existing agent continues to open directly on
+  its settings because there is no creation-method decision to make.
 
 ## The detail surface: the ordinary one, disabled
 

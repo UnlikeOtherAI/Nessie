@@ -93,8 +93,6 @@ and `17-aspect-ratio-portrait.png`.
 
 ## Follow-ups (deliberately not built)
 
-- Agent visibility of attachments (`loadConversation` ignores them;
-  `send_message` has no `attachmentIds` despite tool docs claiming it).
 - The per-message `GET /api/messages/:id/attachments` N+1 (embed attachments in
   message records / realtime payloads instead).
 - Thumbnails, `Range`/`ETag` on downloads, paste-to-upload, upload rate

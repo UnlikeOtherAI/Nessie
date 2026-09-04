@@ -388,9 +388,12 @@ On `/knowledge-base` the shell swaps the channels/DMs second column for a
 dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
 that column):
 
-- The second column is **only the Spaces list** — styled like the channels list
+- The second column starts with the Spaces list — styled like the channels list
   (a collapsible "Spaces" header with a `+` that opens a centered
-  `CreateSpaceDialog` modal). No pages live here.
+  `CreateSpaceDialog` modal). The selected space expands in place into its
+  page/sub-page tree; the current page is highlighted and its ancestor branch
+  remains visible, so the sidebar and the page breadcrumbs name the same
+  location.
 - The main area uses `KnowledgePane` with the shared `ResponsivePageHeader`: a
   50px leading title/back region and a declarative, right-aligned action list.
   It measures the actual action widths with `ResizeObserver`, keeps the primary
@@ -420,13 +423,22 @@ that column):
     cookie.
   - **Tree** shows an expandable/collapsible hierarchy with animated branches.
   - **Page preview** (`PagePreview`) is a read-only document view (status, title,
-    summary, labels, rendered body, and a Sub-pages section) rendered on a
+    labels, rendered body, and a Sub-pages section) rendered on a
     centered white "sheet" (`.kb-reader`) so content reads like paper — the sheet
     stays white with dark text under **any** theme. Selecting a document from any
     browsing view opens this document state; **Back** pops to the parent document
     or browser root.
-  - **Editor** (`PageEditor`) and **version History** are full-width (the editor
-    fills the whole main area), each with a Back button.
+  - **Editor** (`PageEditor`) and **version History** are full-width. The editor
+    fills the whole main area as a borderless writing canvas: the title and body
+    are edited in place with descriptive placeholders, labels and the optional
+    change comment sit below the body, and there is no separate Summary field.
+    On creation its Location picker chooses the space root or any existing page
+    as the parent. The same **New page** action stays visible at the space root,
+    inside folders, and on an open page; it creates at that location, so from an
+    open page it preselects that page as the parent. Page previews show clickable
+    breadcrumbs from the space through every ancestor to the current page. A
+    published page shows no redundant `Published` control or status chip;
+    History and Archive page live in its always-visible three-dot action menu.
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the

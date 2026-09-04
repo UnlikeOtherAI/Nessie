@@ -7,6 +7,7 @@ import {
   AGENT_CARD_MAX_EXPIRY_SECONDS,
   isAgentCardResponseMessage,
 } from '../agent-card.js'
+import { DashboardPresentationMessageMetadataSchema } from '../dashboard-presentation.js'
 
 const baseSpec = {
   actions: [{ key: 'ok', label: 'OK', style: 'primary' as const, submits: true }],
@@ -17,6 +18,56 @@ const baseSpec = {
 
 test('a minimal card is valid', () => {
   assert.equal(AgentCardSpecSchema.safeParse(baseSpec).success, true)
+})
+
+test('a dashboard-source secret is a closed credential destination', () => {
+  const destination = {
+    kind: 'dashboard_source_credential',
+    mode: 'header',
+    headerName: 'X-API-Key',
+    sourceId: '22222222-2222-4222-8222-222222222222',
+  }
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{ destination, key: 'api_key', label: 'API key', type: 'secret' }],
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        destination: { ...destination, headerName: undefined },
+        key: 'api_key',
+        label: 'API key',
+        type: 'secret',
+      }],
+    }).success,
+    false,
+  )
+})
+
+test('a dashboard presentation message contains only its stable pointer', () => {
+  assert.equal(
+    DashboardPresentationMessageMetadataSchema.safeParse({
+      dashboardPresentation: {
+        dashboardId: '33333333-3333-4333-8333-333333333333',
+        schemaVersion: 1,
+      },
+    }).success,
+    true,
+  )
+  assert.equal(
+    DashboardPresentationMessageMetadataSchema.safeParse({
+      dashboardPresentation: {
+        dashboardId: '33333333-3333-4333-8333-333333333333',
+        rows: [{ secret: 'never' }],
+        schemaVersion: 1,
+      },
+    }).success,
+    false,
+  )
 })
 
 test('field keys must be unique across inputs and secrets', () => {

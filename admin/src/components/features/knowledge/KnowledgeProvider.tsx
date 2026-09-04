@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { reportPushSurface } from '../../../lib/push-surface'
 import {
+  useArchiveKnowledgePage,
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
   useEnsureMyDocsSpace,
@@ -107,6 +108,8 @@ type KnowledgeContextValue = {
   closeHistory: () => void
   publishPage: (pageId: string) => void
   publishPending: boolean
+  archivePage: (pageId: string) => Promise<void>
+  archivePending: boolean
   restoreVersion: (input: { pageId: string; versionId: string }) => void
   restorePending: boolean
 }
@@ -186,6 +189,7 @@ export const KnowledgeProvider = ({
   const createPageMutation = useCreateKnowledgePage(selectedSpaceId)
   const updatePageMutation = useUpdateKnowledgePage()
   const publishPageMutation = usePublishKnowledgePage()
+  const archivePageMutation = useArchiveKnowledgePage()
   const restoreVersionMutation = useRestoreKnowledgeVersion()
   const seedMutation = useSeedKnowledgeBase()
 
@@ -383,12 +387,18 @@ export const KnowledgeProvider = ({
       return
     }
 
-    const parentPageId = editor?.mode === 'create' ? editor.parentPageId : null
     const created = await createPageMutation.mutateAsync(input)
+    const parentPageId = input.parentPageId ?? null
     if (parentPageId) {
-      const depth = pagePath.indexOf(parentPageId)
-      const nextPath = depth >= 0 ? [...pagePath.slice(0, depth + 1), created.id] : [created.id]
-      setPagePath(nextPath)
+      const parentPath: string[] = []
+      const visited = new Set<string>()
+      let current = pagesById.get(parentPageId)
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id)
+        parentPath.unshift(current.id)
+        current = current.parentPageId ? pagesById.get(current.parentPageId) : undefined
+      }
+      setPagePath([...parentPath, created.id])
     } else {
       setPagePath([created.id])
     }
@@ -408,6 +418,16 @@ export const KnowledgeProvider = ({
 
   const publishPage = (pageId: string) => {
     void publishPageMutation.mutateAsync({ pageId })
+  }
+
+  const archivePage = async (pageId: string) => {
+    await archivePageMutation.mutateAsync({ pageId })
+    const pageIndex = pagePath.indexOf(pageId)
+    const nextPath = pageIndex >= 0 ? pagePath.slice(0, pageIndex) : []
+    setPagePath(nextPath)
+    setOpenPageId(nextPath.at(-1))
+    setEditor(null)
+    setHistoryPageId(undefined)
   }
 
   const restoreVersion = (input: { pageId: string; versionId: string }) => {
@@ -464,6 +484,8 @@ export const KnowledgeProvider = ({
     closeHistory,
     publishPage,
     publishPending: publishPageMutation.isPending,
+    archivePage,
+    archivePending: archivePageMutation.isPending,
     restoreVersion,
     restorePending: restoreVersionMutation.isPending,
   }
