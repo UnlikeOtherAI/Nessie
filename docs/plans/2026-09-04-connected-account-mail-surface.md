@@ -140,8 +140,10 @@ accounts.
 One compose Flow serves new messages, replies, human drafts, and an agent's
 existing Gmail draft. It contains From, To, Cc/Bcc, Subject, and Body; recipient
 syntax and required fields are validated in place. `useDraft` owns unsent local
-state under `draft:mail-compose:<source>:<accountId>:<identity>` so Back never
-loses work and one account's draft cannot appear in another.
+state under
+`draft:mail-compose:<userId>:<organizationId>:<source>:<accountId>:<identity>`
+so Back never loses work, one account's draft cannot appear in another, and a
+shared browser cannot restore one signed-in person's words for the next.
 
 From is display-only and is pinned again on the server to the connected address
 or to an already-verified alias selected from a closed list. The client cannot
@@ -155,7 +157,9 @@ from the live no-store conversation beside the form and never enter
   hold to send. Create requests carry a stable client idempotency key and are
   persisted before Gmail is called. A lost create/send response becomes the
   human-visible, non-retryable `delivery_unknown` state; no worker reclaims or
-  repeats an externally ambiguous Gmail request.
+  repeats an externally ambiguous Gmail request. Agent-created drafts derive
+  the same action identity from the durable run and tool-call id. Undo returns
+  the same composer to that provider draft instead of stranding it.
 - SMTP/IMAP keeps unsent human text locally and sends directly only from the
   mailbox owner/team member's explicit click. An agent still uses
   `mailbox_send`, which remains pinned to a person and structurally approval
@@ -260,6 +264,12 @@ in a shared `@nessie/team-admin` mail service. Gmail reads reuse
 rejection updates the existing connection-health state, while transient network
 failure does not pretend that reauthorization is the remedy.
 
+Gmail list metadata runs with at most eight provider requests in flight. Mail
+reads stop the provider response stream at 512 KiB per request, cap aggregate
+HTTP input at 2 MiB and decoded body input at 256 KiB, then apply the normalized
+message limits. Oversized provider success and error bodies are refused before
+they can be buffered in full.
+
 ## Agent and MCP parity
 
 Do not create a fourth ambiguous email tool family. The existing families stay
@@ -345,6 +355,9 @@ colour is expressed through existing tokens in `styles.css`.
   blocked by default.
 - Human sends audit account id/source and outcome only — never recipients,
   subject, body, username, or credential material.
+- Gmail's audit trail names held, undone, sent, and ambiguous-delivery states
+  separately. A stale claim is audited only by the worker that atomically wins
+  its transition to `delivery_unknown`; a held draft is never reported as sent.
 - From is server-derived from the entitled connection or a verified alias;
   client-supplied sender text is rejected rather than trusted.
 - Agent read paths continue stamping the disclosure sink before provider I/O.

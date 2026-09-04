@@ -69,6 +69,15 @@ Plan and as-built deltas:
   references. `mailbox_compose` uses the universal AgentCard form; its press is
   a user response, never send authority, so the later send still crosses the
   existing approval gate.
+- **Provider input and external side effects are bounded and replay-safe.**
+  Gmail response streams stop at the per-request cap before JSON parsing;
+  aggregate provider and decoded-body budgets span the whole read, and metadata
+  fan-out has a fixed concurrency ceiling. Gmail draft create and SMTP send
+  actions use durable user or run/tool-call identities. Changed content cannot
+  reuse an earlier Gmail create action, and an ambiguous Gmail or SMTP outcome
+  is terminal rather than eligible for an automatic retry. Mail audit entries
+  record only structural action ids and the distinct held, undone, sent, or
+  delivery-unknown state—never recipients, subject, or body.
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP

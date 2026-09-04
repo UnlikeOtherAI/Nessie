@@ -167,6 +167,14 @@ blocked. The decoded-body and aggregate response bounds still apply, and a
 truncated section makes the conversation report that earlier content may exist.
 Attachment download is not part of this surface.
 
+Gmail reads are bounded at the transport as well: each provider response stops
+at 512 KiB, one operation may consume at most 2 MiB of provider JSON and 256 KiB
+of decoded body content, and list metadata uses at most eight concurrent
+requests. Provider-owned Gmail draft creation is keyed to the durable user or
+agent action, so a replay cannot create a second draft or silently send an older
+version after the compose form changed. Held, undone, sent, and unknown delivery
+states are distinct in the audit trail and never include message content.
+
 ## When it stops working
 
 If the provider rejects the password, the connection flips to **Needs
