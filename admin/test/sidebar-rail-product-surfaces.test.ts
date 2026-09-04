@@ -22,22 +22,45 @@ test('the left rail exposes the shared create actions immediately above the acco
   assert.ok(rail.indexOf('<CreateMenuTrigger') < rail.indexOf('<UserMenuTrigger'))
 })
 
-test('Create ends with Agent, opening the Agent Designer chat', () => {
+test('Create ends with Agent, opening the Direct messages agent tab', () => {
   const createMenu = readSource('../src/layouts/admin-shell/CreateMenuTrigger.tsx')
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const shellHook = readSource('../src/layouts/admin-shell/useAdminShell.ts')
 
   assert.match(createMenu, />Agent</)
-  assert.match(createMenu, />Design a new agent</)
+  assert.match(createMenu, />Create a private or public agent</)
   // Agent is the last row of the menu.
   assert.ok(createMenu.indexOf('>Project<') < createMenu.indexOf('>Agent<'))
-  // The desktop menu and the native phone sheet reach one handler, so no
-  // surface can drift to a different destination.
-  assert.equal(shell.split('shell.openAgentDesignerChat()').length - 1, 2)
-  // That handler opens the Designer's conversation, not the form; the form
-  // stays reachable as the fallback and from Agents -> New agent.
-  assert.match(shellHook, /openGlobalAgentHome\.mutateAsync\(AGENT_DESIGNER_SLUG\)/)
-  assert.match(shellHook, /navigate\(`\/channels\/\$\{response\.channel\.id\}`\)/)
+  // Desktop and the native phone sheet reach the same Direct-messages flow.
+  assert.equal(shell.split('onCreateAgent={shell.navigateToNewAgent}').length - 1, 2)
+  assert.match(shellHook, /'\/channels\/new\?with=agents'/)
+})
+
+test('the Direct messages composer separates people and agents and offers visibility first', () => {
+  const compose = readSource('../src/pages/ChannelConversationComposePage.tsx')
+  const targetTabs = readSource(
+    '../src/components/features/channels/DirectMessageTargetTabs.tsx',
+  )
+  const creator = readSource(
+    '../src/components/features/channels/DirectMessageAgentCreator.tsx',
+  )
+  const visibility = readSource(
+    '../src/components/features/agents/AgentVisibilityPicker.tsx',
+  )
+  const designer = readSource('../src/pages/AgentDesignerPage.tsx')
+
+  assert.match(compose, /<DirectMessageTargetTabs/)
+  assert.match(targetTabs, /label: 'People'/)
+  assert.match(targetTabs, /label: 'Agents'/)
+  assert.match(compose, /<DirectMessageAgentCreator/)
+  assert.match(creator, /Create a new agent/)
+  assert.match(creator, /Continue to Agent Designer/)
+  assert.match(visibility, /label: 'Private'/)
+  assert.match(visibility, /label: 'Public'/)
+  assert.match(visibility, /invite it to any channel/)
+  assert.match(compose, /`\/agents\/designer\?visibility=\$\{newAgentVisibility\}`/)
+  assert.match(designer, /searchParams\.get\('visibility'\) === 'private'/)
+  assert.match(designer, /if \(requestedVisibility\) setVisibility\(requestedVisibility\)/)
 })
 
 test('the Create control uses the same desktop rail tooltip as Focus', () => {

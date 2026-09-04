@@ -128,9 +128,10 @@ plus the channel the viewer is standing in, so opening a fresh conversation
 never pulls its own row out from under them
 (`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
 it resolves through the full people directory, because starring somebody *is*
-adding them. The doorways stay named: **Create → Message** (and the section's
-`+`) reaches a person, **Create → Agent** opens the Designer's **chat**, the
-form staying for field edits — the create menu's last row, and on the phone
-sheet the last row *above* its morphing Message button
-(`mobile/src/lib/native-creation-menu.ts`). One `openAgentDesignerChat` serves
-every client via `POST /api/global-agents/:slug/home`, which *ensures* that DM.
+adding them. The section's `+` owns the combined doorway: its **People** tab
+starts a human conversation, while **Agents** both addresses an existing agent
+and creates a new one after the person explicitly chooses **Private** or
+**Public**. Public means organization-visible and inviteable to any normal
+channel; Private means owner-only and DM-only. **Create → Message** and
+**Create → Agent**, including the native phone sheet, deep-link to the matching
+tab of that same flow rather than maintaining another creation path.

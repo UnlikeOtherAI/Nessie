@@ -1,11 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentAvatarDraftPanel } from '../components/features/agents/AgentAvatarDraftPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
@@ -112,6 +107,11 @@ export const AgentDesignerContent = ({
   const [searchParams] = useSearchParams()
   const isOwner = useIsOwner()
   const parentId = searchParams.get('parentId') ?? undefined
+  const requestedVisibility = !editingAgent && searchParams.get('visibility') === 'private'
+    ? 'private'
+    : !editingAgent && searchParams.get('visibility') === 'team'
+      ? 'team'
+      : undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
   const isEditMode = Boolean(editingAgent)
   const showCreationModes = !isEditMode && !embedded && !readOnly
@@ -154,7 +154,9 @@ export const AgentDesignerContent = ({
   const modelOptions = modelOptionsQuery.data ?? []
 
   const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {
-    if (!editingAgent) return undefined
+    if (!editingAgent) {
+      return requestedVisibility ? { visibility: requestedVisibility } : undefined
+    }
     return {
       effort: editingAgent.effort ?? 'medium',
       name: editingAgent.name,
@@ -169,7 +171,7 @@ export const AgentDesignerContent = ({
       visibility: editingAgent.visibility ?? 'team',
       voiceName: editingAgent.voiceName ?? '',
     }
-  }, [editingAgent])
+  }, [editingAgent, requestedVisibility])
 
   const { actions, clearDraft, state } = useAgentDesigner(initialState, modelOptions, editingAgent?.id)
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
@@ -180,12 +182,17 @@ export const AgentDesignerContent = ({
   // never touch a selection that already exists, which is also why edit mode
   // (always seeded from the stored agent) is out.
   const { setModelSelection } = actions
+  const { setVisibility } = actions
   const leadingModelOption = modelOptions[0]
   useEffect(() => {
     if (isEditMode || state.model || state.provider || !leadingModelOption) return
     setModelSelection(leadingModelOption)
   }, [isEditMode, leadingModelOption, setModelSelection, state.model, state.provider])
 
+  // An explicit doorway choice wins over a restored draft once on arrival.
+  useEffect(() => {
+    if (requestedVisibility) setVisibility(requestedVisibility)
+  }, [requestedVisibility, setVisibility])
   const chat = useDesignerChat(state, actions, modelOptions, {
     onToolCall: handleAssistantToolCall,
     onToolCallStart: handleAssistantToolCallStart,

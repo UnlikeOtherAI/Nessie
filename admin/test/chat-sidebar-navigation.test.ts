@@ -118,7 +118,7 @@ test('the new-message surface excludes the sender and keeps recipients available
   assert.match(source, /document\.activeElement !== addressInputRef\.current/)
   assert.match(source, /open: !phoneLayout,/)
   assert.match(source, /fixed inset-0 bg-\[color:var\(--main\)\]/)
-  assert.match(source, /placeholder=\{recipients\.length === 0 \? 'Type a name or email address' : ''\}/)
+  assert.match(source, /target === 'people' \? 'Type a name or email address' : 'Type an agent name'/)
   assert.match(source, /allUsers\.filter\(\(user\) => user\.id !== me\?\.user\.id\)/)
   assert.match(source, /const hasSelectableOptions = options\.length > 0/)
   assert.doesNotMatch(source, /\(you\)/)
