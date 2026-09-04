@@ -820,6 +820,16 @@ pnpm build:device:android
 
 ## Windows Desktop
 
+### Desktop application icon
+
+The Mac application's `assets/icon-1024.png` is the canonical Nessie icon for
+every Tauri desktop bundle. Regenerate the Windows `.ico`, Linux PNGs, and
+other platform exports together after changing that source asset:
+
+```sh
+pnpm --dir desktop run icons:generate
+```
+
 Build the normal Windows shell on a Windows machine. This release has no
 console subsystem, so opening Nessie from Start or from the installer does not
 leave a terminal window behind.
