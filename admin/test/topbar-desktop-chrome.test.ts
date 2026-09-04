@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { JSDOM } from 'jsdom'
@@ -50,6 +51,8 @@ const { ApiClientProvider } = await import('../src/providers/ApiClientProvider.j
 const { FocusModeProvider } = await import('../src/providers/FocusModeProvider.js')
 const { TransientMenuProvider } = await import('../src/layouts/admin-shell/TransientMenuContext.js')
 const { TopBar } = await import('../src/layouts/admin-shell/TopBar.js')
+
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 // Effects never run under renderToStaticMarkup, so the whole provider stack
 // mounts without a single network call — the markup is the first paint.
@@ -117,6 +120,13 @@ test('only macOS gets the traffic-light spacer', () => {
       `${platform ?? 'web'} draws no traffic lights`,
     )
   }
+})
+
+test('the macOS spacer reserves the native traffic-light hit area', () => {
+  const rule = styles.match(/\.admin-topbar-drag-zone--traffic\s*\{([^}]*)\}/)?.[1]
+  assert.ok(rule, 'the traffic-light spacer has a dedicated CSS rule')
+  assert.match(rule, /flex:\s*0 0 68px;/)
+  assert.match(rule, /min-width:\s*68px;/)
 })
 
 test('every desktop shell keeps its title-bar drag zones; the web build has none', () => {
