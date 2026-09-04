@@ -2,7 +2,7 @@
 // on 5455. Both are started as their own process group so a kill takes the
 // whole tree down, and both are waited on by polling a real URL rather than
 // by sleeping.
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
@@ -17,6 +17,7 @@ import {
 } from './config.mjs'
 
 const BIN = resolve(REPO_ROOT, 'node_modules', '.bin')
+const binCommand = (name) => resolve(BIN, process.platform === 'win32' ? `${name}.cmd` : name)
 
 export const waitForUrl = async (url, { label, timeoutMs = 120_000 }) => {
   const deadline = Date.now() + timeoutMs
@@ -45,6 +46,7 @@ const startProcess = ({ args, command, cwd, env, label }) => {
     cwd,
     detached: true,
     env: { ...process.env, ...env },
+    shell: process.platform === 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const log = []
@@ -82,6 +84,12 @@ const adopted = (label) => ({
 
 export const stopProcess = async (server) => {
   if (!server?.child.pid || server.child.exitCode !== null) return
+  if (process.platform === 'win32') {
+    // The .cmd shim starts a short-lived cmd.exe parent. Kill its process tree
+    // so the Vite child cannot survive a finished local browser test.
+    spawnSync('taskkill', ['/pid', String(server.child.pid), '/t', '/f'])
+    return
+  }
   try {
     process.kill(-server.child.pid, 'SIGTERM')
   } catch {
@@ -106,7 +114,7 @@ export const startApi = async () => {
   const database = databaseUrl()
   const server = startProcess({
     args: [resolve(REPO_ROOT, 'api', 'src', 'index.ts')],
-    command: resolve(BIN, 'tsx'),
+    command: binCommand('tsx'),
     cwd: resolve(REPO_ROOT, 'api'),
     env: {
       DATABASE_URL: database,
@@ -143,7 +151,7 @@ export const startAdmin = async () => {
   }
   const server = startProcess({
     args: [mode === 'preview' ? 'preview' : '', '--port', String(ADMIN_PORT), '--strictPort'].filter(Boolean),
-    command: resolve(BIN, 'vite'),
+    command: binCommand('vite'),
     cwd: ADMIN_ROOT,
     env: { NESSIE_API_PORT: String(API_PORT) },
     label: 'admin',

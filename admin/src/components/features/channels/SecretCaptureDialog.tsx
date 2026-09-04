@@ -15,6 +15,11 @@ import { FormActions, FormError } from '../../shared/FormActions'
 import { FormField } from '../../shared/FormField'
 import { Input, Select } from '../../shared/FormControls'
 
+const newCaptureRequestId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
+
 export const suggestedSecretName = (
   type: ReturnType<typeof currentSecretCaptureItem>['detected']['type'],
 ): string => {
@@ -37,7 +42,7 @@ const suggestedCaptureName = (capture: SecretCapture): string => {
   const base = suggestedSecretName(item.detected.type)
   const occurrence = capture.items
     .slice(0, capture.currentIndex + 1)
-    .filter((candidate) => candidate.detected.type === item.detected.type)
+    .filter((candidate) => suggestedSecretName(candidate.detected.type) === base)
     .length
   return occurrence > 1 ? `${base}_${occurrence}` : base
 }
@@ -63,6 +68,7 @@ export const SecretCaptureDialog = ({
   const [savedSecret, setSavedSecret] = useState<SecretRecord | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const pendingRef = useRef(false)
+  const saveRequestIdRef = useRef(newCaptureRequestId())
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -73,12 +79,15 @@ export const SecretCaptureDialog = ({
     let secret = savedSecret
     if (!secret) {
       try {
-        secret = await saveSecret({
-          name,
-          value: item.value,
-          scopeType,
-          ...(scopeType === 'project' && capture.scopeId ? { scopeId: capture.scopeId } : {}),
-        })
+        secret = await saveSecret(
+          {
+            name,
+            value: item.value,
+            scopeType,
+            ...(scopeType === 'project' && capture.scopeId ? { scopeId: capture.scopeId } : {}),
+          },
+          saveRequestIdRef.current,
+        )
         setSavedSecret(secret)
       } catch {
         setError('Could not save this secret. Check the name and vault connection, then try again.')
@@ -143,7 +152,14 @@ export const SecretCaptureDialog = ({
         </FormField>
         <FormError>{error}</FormError>
         <FormActions>
-          <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Discard</button>
+          <button
+            className="admin-button admin-button-secondary"
+            disabled={isPending}
+            onClick={onClose}
+            type="button"
+          >
+            Discard
+          </button>
           <button className="admin-button admin-button-primary" disabled={isPending || !/^[A-Z][A-Z0-9_]*$/.test(name)} type="submit">
             {isPending
               ? savedSecret ? 'Sending…' : 'Saving…'

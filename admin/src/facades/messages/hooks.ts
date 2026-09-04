@@ -54,12 +54,14 @@ export const useSendMessageToThread = () => {
     mutationFn: (input: {
       agentMentions?: AgentMention[]
       attachmentIds?: string[]
+      clientMessageId?: string
       content: string
       threadId: string
     }) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${input.threadId}/messages`, {
         agentMentions: input.agentMentions,
         attachmentIds: input.attachmentIds,
+        clientMessageId: input.clientMessageId,
         content: input.content,
       }),
     onSuccess: (_message, input) => {

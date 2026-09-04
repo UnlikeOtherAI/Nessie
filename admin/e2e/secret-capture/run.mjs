@@ -141,7 +141,12 @@ const runBrowserCase = async () => {
     const url = new URL(request.url())
     const method = request.method()
     const body = request.postData() ?? ''
-    requests.push({ body, method, path: `${url.pathname}${url.search}` })
+    requests.push({
+      body,
+      headers: request.headers(),
+      method,
+      path: `${url.pathname}${url.search}`,
+    })
 
     if (url.pathname === '/api/events/stream') {
       await route.fulfill({ body: '', contentType: 'text/event-stream', status: 200 })
@@ -226,7 +231,8 @@ const runBrowserCase = async () => {
       { cause: error },
     )
   }
-  await page.getByPlaceholder('Type a name or email address').fill('Ada')
+  await page.getByRole('tab', { name: 'Agents' }).click()
+  await page.getByPlaceholder('Type an agent name').fill('Ada')
   await page.getByRole('button', { name: /Ada Agent/ }).click()
   const editor = page.getByRole('textbox').last()
   await editor.fill(`OPENAI_API_KEY=${openAiSecret}`)
@@ -258,7 +264,8 @@ const runBrowserCase = async () => {
   assert.match(sentMessages[0].content, /OPENAI_API_KEY, SENDGRID_API_KEY/)
 
   await page.goto(`${ADMIN_URL}/channels/new`)
-  await page.getByPlaceholder('Type a name or email address').fill('Ada')
+  await page.getByRole('tab', { name: 'Agents' }).click()
+  await page.getByPlaceholder('Type an agent name').fill('Ada')
   await page.getByRole('button', { name: /Ada Agent/ }).click()
   const oversizedEditor = page.getByRole('textbox').last()
   await oversizedEditor.fill(oversizedText)
@@ -270,6 +277,12 @@ const runBrowserCase = async () => {
   assert.deepEqual(savedValues, [openAiSecret, sendGridSecret, oversizedSecret])
   assert.deepEqual(sentMessages[1].attachmentIds, ['00000000-0000-4000-8000-000000000010'])
   assert.equal(sentMessages[1].content, 'Shared file: pasted-text.txt')
+
+  const secretRequests = requests.filter((request) => request.path === '/api/secrets')
+  assert.equal(secretRequests.length, 3)
+  const captureIds = secretRequests.map((request) => request.headers['idempotency-key'])
+  assert.equal(captureIds.every((captureId) => typeof captureId === 'string'), true)
+  assert.equal(new Set(captureIds).size, 3)
 
   for (const request of requests) {
     if (request.path === '/api/secrets') continue

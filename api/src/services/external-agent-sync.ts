@@ -9,7 +9,12 @@ import {
   type DeepSignalMcpIdentityService,
   type LedgerAttribution,
 } from '@nessie/runtime'
-import type { IntegrationUiCard, McpTransportConfig } from '@nessie/schemas'
+import {
+  redactDetectedSecrets,
+  redactDetectedSecretsInValue,
+  type IntegrationUiCard,
+  type McpTransportConfig,
+} from '@nessie/schemas'
 
 import { ensureDefaultThread } from '@nessie/team-admin'
 import { callDeepSignalMcpTool } from './deepsignal-mcp-call.js'
@@ -278,13 +283,16 @@ const upsertTurns = async (
         activities: turn.activities,
         cards: turn.cards,
       })
+      const safeUiCards = redactDetectedSecretsInValue(uiCards) as IntegrationUiCard[]
       await prisma.message.create({
         data: {
           agentId: resolved.agentId,
           threadId: resolved.threadId,
           role: 'assistant',
-          content: turn.content.length > 0 ? turn.content : '(no reply)',
-          metadata: { uiCards, external } as Prisma.InputJsonValue,
+          content: turn.content.length > 0
+            ? redactDetectedSecrets(turn.content)
+            : '(no reply)',
+          metadata: { uiCards: safeUiCards, external } as Prisma.InputJsonValue,
           ...(turn.createdAt ? { createdAt: turn.createdAt } : {}),
         },
       })
@@ -294,7 +302,9 @@ const upsertTurns = async (
           userId: ctx.userId,
           threadId: resolved.threadId,
           role: 'user',
-          content: turn.content.length > 0 ? turn.content : '(no message)',
+          content: turn.content.length > 0
+            ? redactDetectedSecrets(turn.content)
+            : '(no message)',
           metadata: { external } as Prisma.InputJsonValue,
           ...(turn.createdAt ? { createdAt: turn.createdAt } : {}),
         },

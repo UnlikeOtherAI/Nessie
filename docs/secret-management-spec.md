@@ -83,12 +83,12 @@ returns a secret value.
 ## Scope
 
 A secret has exactly one home scope: `personal`, `team`, `project`, or
-`team`. A personal secret is bound to its owner. Team, team, and
+`organization`. A personal secret is bound to its owner. Team, organization, and
 project mutation is owner-gated and confirms the requested target belongs to
 the caller's organisation. Reads are entitlement-scoped: an owner sees all
 metadata; other users see their own personal secrets and explicit user grants.
 
-Phase 1 exposes Personal and Project selection in the UI. Team and Team
+Phase 1 exposes Personal and Project selection in the UI. Team and Organization
 are preserved in the metadata model and API for an owner-managed surface.
 
 ## Capture and ingestion
@@ -122,15 +122,21 @@ still repeats before message persistence and returns `SECRET_INTERCEPTED` to a
 client which bypasses the composer. The same pre-persistence refusal covers
 direct executor launches, ordinary agent-card response fields, and product-
 integration handoffs, because each can create a user-authored message without
-passing through the ordinary chat route.
+passing through the ordinary chat route. Direct memory capture, owner mailbox
+messages, Agent Designer requests and handoffs, and voice-call transcripts are
+refused at their own pre-storage boundaries as well; legacy mailbox rows are
+redacted again at delivery before chat, realtime, task, queue, or model sinks.
 
 Every primary, inline delegate, and spawned subtask receives the same compact
 system-prompt rule: do not ask for, repeat, or place secrets in chat or
 model-visible tool arguments; the secure form owns capture, and masked text is
-only a protection notice. Keeping this as one shared short constant makes its
-prompt-context cost fixed and prevents agent-specific copies from drifting. A
+only a protection notice. The live-voice Personal Assistant uses the same
+constant, redacts legacy seed turns, and refuses a credential-bearing call
+transcript before creating its chat record or transcript attachment. Keeping
+this as one shared short constant makes its prompt-context cost fixed and
+prevents agent-specific copies from drifting. A
 final provider-bound scan covers conversation history, memory, checkpoints,
-and upstream stage text. Streaming text and reasoning hold an incomplete line
+upstream stage text, and externally mirrored agent turns/cards. Streaming text and reasoning hold an incomplete line
 until it can be scanned, and streamed tool arguments are withheld until the
 complete JSON can be sanitized. The agent loop masks initial context, compacted
 context, and model output. Any tool call whose completed arguments contain a
@@ -145,11 +151,19 @@ It does **not** write GitHub Actions repository or environment secrets: that
 would require a separately authorised GitHub destination and GitHub's encrypted
 secret-write API, which this flow must not pretend to provide.
 
+Capture writes use a client-stable idempotency key. A response-loss retry
+returns the original metadata row without writing the vault twice, while
+protected message retries reuse the same message identity and any completed
+oversize upload. Both the capture form and ordinary Secrets settings form use
+direct transient requests rather than retaining raw values in TanStack's
+application-wide mutation cache; credential-bearing agent-card presses use the
+same non-cached discipline.
+
 Structured secret mentions and a temporary-vault interception flow remain
 Phase 1 follow-ups. Text pasted through the oversize-file escape hatch,
 attachment filenames, raw upload bytes, and textual tool results use the
-shared scanner today. The raw-byte pass catches embedded ASCII/UTF-8 credential
-syntax but does not semantically extract arbitrary compressed, encrypted,
+shared scanner today. The raw-byte pass decodes ASCII, UTF-8, and UTF-16
+credential syntax but does not semantically extract arbitrary compressed, encrypted,
 image, or proprietary binary document formats; those inputs are not yet a
 complete secret-safe ingestion path.
 
@@ -182,9 +196,9 @@ that metadata to select a declaratively bound tool. They never disclose its
 value, vault path, token, or permission-management controls. `MANAGE` grants
 authorize rotation and revocation; `DELEGATE` grants authorize access changes.
 
-The scanner blocks structural credential formats (including JSON, quoted and
-unquoted assignments, `Authorization: Bearer …`, common cloud/service keys,
-database URLs, complete or truncated private-key blocks, and JWTs), provider prefixes, and
+The scanner blocks structural credential formats (including nested JSON strings,
+quoted and unquoted assignments, common `Authorization` schemes, cloud/service
+keys, database URLs, complete or truncated private-key blocks, and JWTs), provider prefixes, and
 high-entropy token candidates on user message creation, message edits, and
 chat uploads before any durable write. Previously stored drafts are scanned
 again while hydrating and rejected rather than repainted into an editor. Secret

@@ -1,13 +1,14 @@
 import type { FastifyInstance, RouteShorthandOptions } from 'fastify'
 
 import {
+  detectSecrets,
   parseAgentId,
   parseChannelId,
   parseThreadId,
   SubmitVoiceTranscriptRequestSchema,
 } from '@nessie/schemas'
 
-import { createApiResponse, parseInput } from '../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { requireRecordableSession } from '../services/voice/voice-session.js'
 import {
   assertTranscriptPlausible,
@@ -42,6 +43,14 @@ export const registerVoiceCallRecordRoute = (
 
     const body = parseInput(SubmitVoiceTranscriptRequestSchema, request.body ?? {}, reply)
     if (!body) return reply
+    if (body.lines.some((line) => detectSecrets(line.text).length > 0)) {
+      return sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this transcript was stored. Save it through Secrets instead.',
+      )
+    }
 
     try {
       // Not `requireActiveSession`: a client that died mid-call submits its

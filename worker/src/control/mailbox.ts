@@ -9,6 +9,7 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
+  redactDetectedSecrets,
   type AuthorizedActionContext,
   type WsScope,
 } from '@nessie/schemas'
@@ -254,10 +255,18 @@ export const dispatchNextMailboxMessage = async (
       organizationId: thread.channel.organizationId,
     } as const)
 
+  // The API refuses new secret-bearing mailbox rows. Redact again here so a
+  // legacy row or direct database insertion cannot cross into chat, realtime,
+  // task metadata, a queue payload, or model context.
+  const safeBody = redactDetectedSecrets(message.body)
+  const safeSubject = message.subject
+    ? redactDetectedSecrets(message.subject)
+    : null
+
   const publishPayload = await prisma.$transaction(async (tx) => {
     const promptMessage = await tx.message.create({
       data: {
-        content: message.body,
+        content: safeBody,
         role: 'user',
         threadId: targetThreadId,
       },
@@ -305,7 +314,7 @@ export const dispatchNextMailboxMessage = async (
         data: {
           agentId: message.toAgentId,
           organizationId: message.organizationId,
-          purpose: (message.subject ?? message.body).slice(0, 200),
+          purpose: (safeSubject ?? safeBody).slice(0, 200),
           runId: run.id,
           status: 'inbox',
         },
@@ -330,7 +339,7 @@ export const dispatchNextMailboxMessage = async (
           parentPlanStepId: message.planStepId ?? undefined,
           parentWorkflowRunId: message.workflowRunId ?? undefined,
           parentWorkflowStepRunId: message.workflowStepRunId ?? undefined,
-          promptOverride: message.body,
+          promptOverride: safeBody,
           runId: parseRunId(run.id),
           taskId: parseTaskId(task.id),
           threadId: parseThreadId(targetThreadId),
@@ -405,7 +414,7 @@ export const dispatchNextMailboxMessage = async (
       data: {
         agentId: parseAgentId(message.toAgentId),
         channelId: parseChannelId(thread.channelId),
-        contentPreview: message.body.slice(0, 200),
+        contentPreview: safeBody.slice(0, 200),
         messageId: publishPayload.messageId,
         role: 'user',
         threadId: parseThreadId(targetThreadId),

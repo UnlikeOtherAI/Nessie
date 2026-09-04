@@ -7,9 +7,12 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import {
+  AGENT_SECRET_SAFETY_INSTRUCTION,
+  parseOrganizationId,
+} from '@nessie/schemas'
 
 import { runDelegate } from './delegate.js'
-import { parseOrganizationId } from '@nessie/schemas'
 
 import type { ToolAuthorizationDecision } from './execute/tool-authorization.js'
 import type { McpToolset } from './mcp-toolset.js'
@@ -129,9 +132,9 @@ test('a delegate sub-agent is never shown the delegate tool itself', async () =>
   for (const names of advertised) {
     assert.deepEqual(names, ['web_search'])
   }
-  assert.match(
-    String(prompts[0]?.find((message) => message.role === 'system')?.content),
-    /replaced by a secure form before you see it/,
+  assert.ok(
+    String(prompts[0]?.find((message) => message.role === 'system')?.content)
+      .includes(AGENT_SECRET_SAFETY_INSTRUCTION),
   )
 })
 

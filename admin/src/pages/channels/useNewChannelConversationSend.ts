@@ -14,6 +14,11 @@ import { useSendMessageToThread, useUploadAttachment } from '../../facades/messa
 import type { SecretRecord } from '../../facades/secrets/hooks'
 import type { Recipient } from '../../lib/channel-compose-recipients'
 
+const newClientMessageId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
+
 export const useNewChannelConversationSend = (recipients: Recipient[]) => {
   const navigate = useNavigate()
   const startConversation = useStartChannelConversation()
@@ -25,6 +30,13 @@ export const useNewChannelConversationSend = (recipients: Recipient[]) => {
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
   const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
   const secretCaptureRef = useRef<SecretCapture | null>(null)
+  const clientMessageIdRef = useRef<string | null>(null)
+  const pendingChannelRef = useRef<{
+    defaultThreadId: string
+    id: string
+    recipientsKey: string
+  } | null>(null)
+  const pendingFileRef = useRef<{ filename: string; id: string; source: string } | null>(null)
 
   const storeSecretCapture = useCallback((capture: SecretCapture | null) => {
     secretCaptureRef.current = capture
@@ -41,20 +53,39 @@ export const useNewChannelConversationSend = (recipients: Recipient[]) => {
     attachmentIds: string[] = [],
     agentMentions: AgentMention[] = [],
   ) => {
-    const channel = await startConversation.mutateAsync({
-      agentIds: recipients
-        .filter((recipient) => recipient.kind === 'agent')
-        .map((recipient) => recipient.id),
-      userIds: recipients
-        .filter((recipient) => recipient.kind === 'user')
-        .map((recipient) => recipient.id),
-    })
+    const recipientsKey = recipients
+      .map((recipient) => `${recipient.kind}:${recipient.id}`)
+      .sort()
+      .join('|')
+    let channel = pendingChannelRef.current?.recipientsKey === recipientsKey
+      ? pendingChannelRef.current
+      : null
+    if (!channel) {
+      const created = await startConversation.mutateAsync({
+        agentIds: recipients
+          .filter((recipient) => recipient.kind === 'agent')
+          .map((recipient) => recipient.id),
+        userIds: recipients
+          .filter((recipient) => recipient.kind === 'user')
+          .map((recipient) => recipient.id),
+      })
+      channel = {
+        defaultThreadId: created.defaultThreadId,
+        id: created.id,
+        recipientsKey,
+      }
+      pendingChannelRef.current = channel
+    }
+    clientMessageIdRef.current ??= newClientMessageId()
     await sendMessage.mutateAsync({
       ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
       ...(agentMentions.length > 0 ? { agentMentions } : {}),
+      clientMessageId: clientMessageIdRef.current,
       content,
       threadId: channel.defaultThreadId,
     })
+    clientMessageIdRef.current = null
+    pendingChannelRef.current = null
     clearComposer()
     void navigate(`/channels/${channel.id}`, { replace: true })
   }, [clearComposer, navigate, recipients, sendMessage, startConversation])
@@ -72,6 +103,15 @@ export const useNewChannelConversationSend = (recipients: Recipient[]) => {
     if (!requireRecipient()) {
       throw new Error('Choose at least one recipient before sending the file.')
     }
+    const accompanyingCapture = createSecretCapture({
+      content: message.trim(),
+      replacementMode: 'message',
+    })
+    if (accompanyingCapture) {
+      storeSecretCapture(accompanyingCapture)
+      clearComposer()
+      return
+    }
     const capture = createSecretCapture({ content: rawText, replacementMode: 'file' })
     if (capture) {
       setOversizePaste(null)
@@ -80,15 +120,34 @@ export const useNewChannelConversationSend = (recipients: Recipient[]) => {
     }
     setError(null)
     try {
-      const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
-      const attachment = await uploadAttachment.mutateAsync(file)
-      await postSafeText(message.trim() || `Shared file: ${attachment.filename}`, [attachment.id], agentMentions)
+      let attachment = pendingFileRef.current?.source === rawText
+        ? pendingFileRef.current
+        : null
+      if (!attachment) {
+        const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
+        const uploaded = await uploadAttachment.mutateAsync(file)
+        attachment = { filename: uploaded.filename, id: uploaded.id, source: rawText }
+        pendingFileRef.current = attachment
+      }
+      await postSafeText(
+        message.trim() || `Shared file: ${attachment.filename}`,
+        [attachment.id],
+        agentMentions,
+      )
+      pendingFileRef.current = null
       setOversizePaste(null)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not start chat.')
       throw caught
     }
-  }, [message, postSafeText, requireRecipient, storeSecretCapture, uploadAttachment])
+  }, [
+    clearComposer,
+    message,
+    postSafeText,
+    requireRecipient,
+    storeSecretCapture,
+    uploadAttachment,
+  ])
 
   const submit = useCallback(async (
     rawText: string,
@@ -155,7 +214,9 @@ export const useNewChannelConversationSend = (recipients: Recipient[]) => {
     } else {
       await postSafeText(replacement, [], capture.agentMentions)
     }
-    storeSecretCapture(null)
+    if (secretCaptureRef.current?.captureId === capture.captureId) {
+      storeSecretCapture(null)
+    }
   }, [postSafeText, sendAsFile, storeSecretCapture])
 
   return {

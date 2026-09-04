@@ -91,6 +91,15 @@ test('new conversations and message edits use the protected capture flow', () =>
   assert.doesNotMatch(transientHook, /useMutation/)
 })
 
+test('settings and agent-card credential writes never retain variables in mutation caches', () => {
+  const settings = readSource('../src/pages/settings/SecretsPage.tsx')
+  const cardHooks = readSource('../src/facades/agent-cards/hooks.ts')
+
+  assert.match(settings, /useTransientSecretSave/)
+  assert.doesNotMatch(settings, /useCreateSecret/)
+  assert.doesNotMatch(cardHooks, /useMutation/)
+})
+
 test('failed protected sends remain open and retry without saving the value twice', () => {
   const dialog = readSource('../src/components/features/channels/SecretCaptureDialog.tsx')
   const composer = readSource(
@@ -122,7 +131,7 @@ test('a detected composer secret flushes its safe replacement to draft storage i
   assert.match(composer, /void flushDraft\(\)/)
 })
 
-test('an intercepted oversize secret keeps and sends the existing safe draft', () => {
+test('an oversize file send intercepts a credential-bearing accompanying draft', () => {
   const composer = readSource(
     '../src/components/features/channels/useChannelComposer.ts',
   )
@@ -131,8 +140,9 @@ test('an intercepted oversize secret keeps and sends the existing safe draft', (
   )
 
   assert.match(composer, /clearComposer: false,[\s\S]*content: paste/)
-  assert.match(composer, /content: accompanyingText \|\| `Shared file:/)
-  assert.match(newConversationSend, /postSafeText\(message\.trim\(\) \|\| `Shared file:/)
+  assert.match(composer, /accompanyingText && captureSecretText/)
+  assert.match(newConversationSend, /const accompanyingCapture = createSecretCapture/)
+  assert.match(newConversationSend, /storeSecretCapture\(accompanyingCapture\)/)
   const capturePaste = newConversationSend.slice(
     newConversationSend.indexOf('const captureOversizePaste'),
     newConversationSend.indexOf('const confirmSecretCapture'),
@@ -143,4 +153,17 @@ test('an intercepted oversize secret keeps and sends the existing safe draft', (
 test('credential-bearing legacy composer drafts are refused during hydration', () => {
   const secret = `sk-proj-${'aB3_'.repeat(8)}`
   assert.equal(reviveComposerDraft({ attachments: [], text: secret }), null)
+})
+
+test('credential-bearing legacy attachment filenames are refused during hydration', () => {
+  const secret = `sk-proj-${'aB3_'.repeat(8)}`
+  assert.equal(reviveComposerDraft({
+    attachments: [{
+      attachmentId: 'attachment-1',
+      clientId: 'client-1',
+      filename: `notes-${secret}.txt`,
+      sizeBytes: 10,
+    }],
+    text: '',
+  }), null)
 })

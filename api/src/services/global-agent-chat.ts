@@ -8,6 +8,7 @@ import {
   parseChannelId,
   parseThreadId,
   parseUserId,
+  redactDetectedSecrets,
   withActionContext,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
@@ -149,7 +150,9 @@ export const continueDesignInChat = async (
     userId,
   })
 
-  const content = describeDraft(input.body.formState)
+  // The route refuses raw credentials. Redact again at this lower shared
+  // writer so an internal caller cannot persist one in the hidden chat brief.
+  const content = redactDetectedSecrets(describeDraft(input.body.formState))
   const destinationActorContext = withActionContext(input.actorContext, {
     agentId: parseAgentId(home.agentId),
     channelId: parseChannelId(home.channelId),

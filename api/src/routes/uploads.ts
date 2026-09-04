@@ -18,6 +18,7 @@ import { toAttachmentRecord } from '../contracts.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import { canAccessAttachment, canAccessMessageAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
+import { uploadContainsDetectedSecret } from './upload-secret-scan.js'
 
 // Chat/avatar uploads keep a 25 MB ceiling even though the global multipart
 // limit is the (much larger) configured max — large files belong in the KB.
@@ -200,16 +201,15 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    // Inspect the bytes before object storage. UTF-8 conversion is deliberate:
-    // it catches every textual format (including a pasted .txt file) without
-    // trusting the caller-provided MIME type. Binary formats get their raw
-    // byte stream checked for embedded ASCII credential syntax as a fallback.
+    // Inspect the bytes before object storage without trusting the caller's
+    // MIME type. UTF-8/ASCII and UTF-16 text are decoded explicitly; binary
+    // formats still get their raw byte stream checked for embedded ASCII.
     const upload = await readStreamCapped(file.file, MESSAGE_UPLOAD_BYTES)
     if (!upload || file.file.truncated) {
       sendApiError(reply, 413, 'FILE_TOO_LARGE', `File exceeds the ${MESSAGE_UPLOAD_BYTES} byte upload limit`)
       return reply
     }
-    if (detectSecrets(upload.toString('utf8')).length > 0) {
+    if (uploadContainsDetectedSecret(upload)) {
       sendApiError(
         reply,
         422,

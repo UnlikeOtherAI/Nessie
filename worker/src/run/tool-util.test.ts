@@ -34,10 +34,19 @@ test('provider tool calls replace secret arguments and carry a block marker', ()
 })
 
 test('provider tool calls block opaque values under common token keys', () => {
+  const tooDeep = { value: 'ordinary' } as Record<string, unknown>
+  let cursor = tooDeep
+  for (let index = 0; index < 10; index += 1) {
+    cursor['next'] = {}
+    cursor = cursor['next'] as Record<string, unknown>
+  }
   const [sanitized] = sanitizeProviderToolCalls([{
     arguments: {
       accessToken: 'opaque-access-value',
+      apitoken: 'short',
       nested: { session_token: 'opaque-session-value' },
+      password: [{ value: 'nested-short-value' }],
+      tooDeep,
       token: 'opaque-token-value',
       tokenCount: '12345678',
     },
@@ -48,6 +57,9 @@ test('provider tool calls block opaque values under common token keys', () => {
   assert.equal(sanitized?.secretArgumentBlocked, true)
   assert.equal(sanitized?.arguments.tokenCount, '12345678')
   assert.doesNotMatch(JSON.stringify(sanitized?.arguments), /opaque-/)
+  assert.doesNotMatch(JSON.stringify(sanitized?.arguments), /nested-short-value/)
+  assert.doesNotMatch(JSON.stringify(sanitized?.arguments), /short/)
+  assert.match(JSON.stringify(sanitized?.arguments), /\[MaxDepth\]/)
 })
 
 test('summarizeToolInput redacts secret-bearing fields recursively', () => {

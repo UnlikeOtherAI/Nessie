@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   BuildMeProjectHandoffRequestSchema,
-  detectSecrets,
+  containsDetectedSecret,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
 } from '@nessie/schemas'
@@ -42,7 +42,7 @@ import {
 type IntegrationHandoff = Awaited<ReturnType<typeof createPersonalAssistantIntegrationHandoff>>
 
 const rejectSecretBearingHandoff = (reply: FastifyReply, input: unknown): boolean => {
-  if (detectSecrets(JSON.stringify(input)).length === 0) return false
+  if (!containsDetectedSecret(input)) return false
   sendApiError(
     reply,
     422,

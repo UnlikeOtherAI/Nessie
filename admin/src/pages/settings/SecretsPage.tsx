@@ -6,9 +6,9 @@ import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjects } from '../../facades/projects/hooks'
 import {
-  useCreateSecret,
   useRevokeSecret,
   useSecrets,
+  useTransientSecretSave,
 } from '../../facades/secrets/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { FeedbackBanner, SettingsPanel, type SettingsFeedback } from './settings-shared'
@@ -22,9 +22,10 @@ export const SecretsPage = () => {
     teamId: me?.context.teamId ?? '',
     projectId: me?.context.projectId ?? '',
   }
-  const createSecret = useCreateSecret()
+  const saveSecret = useTransientSecretSave()
   const revokeSecret = useRevokeSecret()
   const [createOpen, setCreateOpen] = useState(false)
+  const [createPending, setCreatePending] = useState(false)
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null)
 
@@ -88,13 +89,20 @@ export const SecretsPage = () => {
       </div>
       <CreateSecretDialog
         onClose={() => setCreateOpen(false)}
-        onCreate={(input) => createSecret.mutateAsync(input)}
+        onCreate={async (input, idempotencyKey) => {
+          setCreatePending(true)
+          try {
+            await saveSecret(input, idempotencyKey)
+          } finally {
+            setCreatePending(false)
+          }
+        }}
         onSaved={() => {
           setCreateOpen(false)
           setFeedback({ kind: 'success', message: 'Saved to the vault. Nessie retained only its metadata.' })
         }}
         open={createOpen}
-        pending={createSecret.isPending}
+        pending={createPending}
         projects={projects}
       />
       <ConfirmDialog

@@ -52,7 +52,12 @@ const identityService = (
   },
 })
 
-type StoredMessage = { threadId: string; role: string; metadata: Record<string, unknown> }
+type StoredMessage = {
+  content: string
+  metadata: Record<string, unknown>
+  role: string
+  threadId: string
+}
 
 const makeFake = (
   initialThreadMetadata: Record<string, unknown> = {},
@@ -243,6 +248,33 @@ test('hydration is idempotent on turnId across repeated syncs', async () => {
   const user = fake.messages.find((m) => m.role === 'user')
   assert.equal((colleague?.metadata.external as { turnId: string }).turnId, 't2')
   assert.equal((user?.metadata.external as { turnId: string }).turnId, 't1')
+})
+
+test('hydration redacts secrets from external user and colleague turns', async () => {
+  const fake = makeFake({ deepsignal: { conversationId: 'conv-x' } })
+  const secret = `sk-proj-${'aB3_'.repeat(8)}`
+  const callTool = async (): Promise<McpToolResult> => toolResult({
+    turns: [
+      { id: 't1', role: 'user', input: secret },
+      { id: 't2', role: 'colleague', reply: secret, cards: [], activities: [] },
+    ],
+  })
+
+  await syncExternalAgentChannel(
+    asPrisma(fake),
+    CHANNEL,
+    {
+      attribution,
+      callTool,
+      deepSignalIdentity: identityService(),
+      organizationId: ORG,
+      userId: USER,
+    },
+    appKeyResolver,
+  )
+
+  assert.equal(JSON.stringify(fake.messages).includes(secret), false)
+  assert.equal(fake.messages.every((message) => message.content.includes('•')), true)
 })
 
 test('hydration skips a user turn already tagged live by the worker driver', async () => {
