@@ -35,7 +35,10 @@ const PATTERNS: SecretPattern[] = [
   { type: 'token_assignment', expression: /\b(?:hf|npm)_[A-Za-z0-9_-]{20,}\b/g },
   { type: 'token_assignment', expression: /\bAIza[A-Za-z0-9_-]{30,}\b/g },
   { type: 'aws_access_key', expression: /\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g },
-  { type: 'database_url', expression: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:]+:[^\s@/]+@[^\s/]+/gi },
+  // The terminal class is `[^\s]+`, not `[^\s/]+`: stopping at the first `/`
+  // left the database name in the clear (`postgres://••••/app`). Everything
+  // after the credential belongs to the same connection string.
+  { type: 'database_url', expression: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:]+:[^\s@/]+@[^\s]+/gi },
   { type: 'jwt', expression: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
   { type: 'token_assignment', expression: /\b(?:api[_-]?key|token|password|secret|authorization)\s*(?:=|:|\s+bearer\s+)\s*[^\s"'`]{12,}/gi },
 ]
@@ -53,23 +56,31 @@ const providerPrefixForValue = (value: string): string =>
  * Keep only the provider-identifying part of a credential visible. A generic
  * first-N mask leaks real key bytes for short prefixes (`sk_live_1234…`) and
  * can expose a database username; these prefixes stop at structural syntax.
+ *
+ * Every branch returns either a *structural* match or the empty string — never
+ * `slice`d bytes of the value itself. `aws_access_key` is the one fixed-width
+ * case: `AKIA`/`ASIA`/`ABIA`/`ACCA` is the whole identifier, matched rather
+ * than cut so the intent is legible. A high-entropy token has, by definition,
+ * no structure to show, and a provider fallback that did not match has nothing
+ * to identify, so both mask completely rather than surrender four real
+ * characters of the secret to the preview and to `DetectedSecret.prefix`.
  */
 const prefixFor = (value: string, type: DetectedSecret['type']): string => {
   switch (type) {
     case 'anthropic_api_key': return value.match(/^sk-ant-/)?.[0] ?? 'sk-ant-'
-    case 'aws_access_key': return value.slice(0, 4)
+    case 'aws_access_key': return value.match(/^(?:AKIA|ASIA|ABIA|ACCA)/)?.[0] ?? ''
     case 'database_url': return value.match(/^[a-z+]+:\/\//i)?.[0] ?? ''
     case 'github_token': {
-      return value.match(/^(?:github_pat_|gh[pousr]_|glpat-)/)?.[0] ?? value.slice(0, 4)
+      return value.match(/^(?:github_pat_|gh[pousr]_|glpat-)/)?.[0] ?? ''
     }
-    case 'high_entropy_token': return value.slice(0, 4)
+    case 'high_entropy_token': return ''
     case 'jwt': return 'eyJ'
     case 'openai_api_key': return value.match(/^sk-(?:proj-)?/)?.[0] ?? 'sk-'
     case 'pem_private_key': {
       return value.match(/^-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----/)?.[0] ?? ''
     }
     case 'stripe_api_key': {
-      return value.match(/^(?:sk|rk)_(?:live|test)_/)?.[0] ?? value.slice(0, 3)
+      return value.match(/^(?:sk|rk)_(?:live|test)_/)?.[0] ?? ''
     }
     case 'token_assignment': {
       return value.match(

@@ -37,9 +37,11 @@ test('display masks retain only structural provider prefixes', () => {
     maskSecretValue('sk-proj-secretbytes', 'openai_api_key'),
     `sk-proj-${'•'.repeat(12)}`,
   )
+  // The whole DSN after the scheme, including the database name. Stopping the
+  // pattern at the first `/` used to leave `/nessie` in the clear.
   assert.equal(
     redactDetectedSecrets('postgresql://admin:really-secret@db.example/nessie'),
-    `postgresql://${'•'.repeat(12)}/nessie`,
+    `postgresql://${'•'.repeat(12)}`,
   )
   assert.equal(
     redactDetectedSecrets('api_key=abcdefghijklmnopqrstuv'),
@@ -55,4 +57,21 @@ test('explicit assignments save only the credential value', () => {
   const extracted = extractDetectedSecretValue(content, detected)
   assert.equal(extracted, value)
   assert.equal(maskSecretValue(extracted, detected.type), `sk_live_${'•'.repeat(12)}`)
+})
+
+test('a mask never contains bytes of the secret it is hiding', () => {
+  // `prefixFor` used to `slice(0, 4)` whatever it could not structure, so a
+  // high-entropy token surrendered four real characters to the preview and to
+  // the stored `DetectedSecret.prefix`. A token with no structure has nothing
+  // to identify, so it masks completely.
+  const token = 'Xz9_kLm2Pq7Rs4Tu8Vw1Yz6Ab3Cd5Ef0'
+  assert.equal(maskSecretValue(token, 'high_entropy_token'), '•'.repeat(12))
+  assert.equal(detectSecrets(token)[0]?.prefix, '')
+
+  // The same holds for a provider branch whose structural match did not fire.
+  assert.equal(maskSecretValue('notagithubtoken', 'github_token'), '•'.repeat(12))
+  assert.equal(maskSecretValue('notastripekey', 'stripe_api_key'), '•'.repeat(12))
+
+  // A fixed-width provider identifier is structure, not secret, and stays.
+  assert.equal(maskSecretValue('AKIAIOSFODNN7EXAMPLE', 'aws_access_key'), `AKIA${'•'.repeat(12)}`)
 })
