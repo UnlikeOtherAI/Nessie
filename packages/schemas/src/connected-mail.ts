@@ -68,7 +68,9 @@ export type MailPresentToolOutput = z.infer<typeof MailPresentToolOutputSchema>
 export const ConnectedMailAccountRecordSchema = z.object({
   id: z.string().min(1),
   source: ConnectedMailSourceSchema,
-  label: z.string().min(1).max(120),
+  // A Gmail account's label is its address, so it shares the address bound. At
+  // 120 a single long address failed the whole array parse and blanked /mail.
+  label: z.string().min(1).max(320),
   address: z.string().min(3).max(320),
   scope: z.enum(['personal', 'shared']),
   status: z.enum(['active', 'needs_reauthorization', 'disabled']),
@@ -145,9 +147,17 @@ export const ConnectedMailThreadsQuerySchema = z.object({
 }).strict()
 export type ConnectedMailThreadsQuery = z.infer<typeof ConnectedMailThreadsQuerySchema>
 
+/**
+ * Both connection tables key on a uuid, so anything else is structurally not an
+ * account id. Validating the shape here keeps an unknown, foreign and malformed
+ * id indistinguishable: without it a non-uuid reaches Prisma and raises P2023,
+ * which surfaces as a 500 rather than the shared NOT_FOUND.
+ */
+export const ConnectedMailAccountIdSchema = z.string().uuid()
+
 export const ConnectedMailConversationParamsSchema = z.object({
   source: ConnectedMailSourceSchema,
-  accountId: z.string().min(1).max(200),
+  accountId: ConnectedMailAccountIdSchema,
   threadId: z.string().min(1).max(500),
 }).strict()
 export type ConnectedMailConversationParams = z.infer<typeof ConnectedMailConversationParamsSchema>

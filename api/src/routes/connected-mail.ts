@@ -1,4 +1,5 @@
 import {
+  ConnectedMailAccountIdSchema,
   ConnectedMailComposeInputSchema,
   ConnectedMailDraftCreateInputSchema,
   ConnectedMailConversationParamsSchema,
@@ -28,7 +29,7 @@ import { emitAuditEvent } from '../services/audit.js'
 import type { RouteDeps } from './types.js'
 
 const AccountParamsSchema = z.object({
-  accountId: z.string().min(1).max(200),
+  accountId: ConnectedMailAccountIdSchema,
   source: ConnectedMailSourceSchema,
 }).strict()
 
@@ -46,7 +47,10 @@ const connectedMailStatus = (error: ConnectedMailError): number => {
   if (error.code === 'INVALID_RECIPIENT') return 400
   if (error.code === 'DELIVERY_REJECTED') return 422
   if (error.code === 'DELIVERY_UNKNOWN') return 409
-  if (error.code === 'NEEDS_REAUTHORIZATION') return 401
+  // Not 401: the shared client treats every 401 as an expired session, rotates
+  // the single-use refresh cookie and replays the request once — which would
+  // re-issue a send. 401 stays reserved for session authentication.
+  if (error.code === 'NEEDS_REAUTHORIZATION') return 409
   return 502
 }
 

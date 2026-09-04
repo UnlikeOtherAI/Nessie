@@ -29,6 +29,8 @@ import type { RouteDeps } from './types.js'
 
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
 
+const DraftStatusParamsSchema = z.object({ id: z.string().uuid() }).strict()
+
 const DraftUpdateSchema = z.object({
   to: z.array(z.string()).min(1).max(50),
   cc: z.array(z.string()).max(50).optional(),
@@ -134,7 +136,12 @@ export const registerGmailDraftRoutes = (
   app.get('/api/gmail/drafts/:id/status', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    // A non-uuid id would reach Prisma and raise P2023, answering 500 where an
+    // unknown draft answers 404 — enough to distinguish "malformed" from
+    // "not yours". Validate the shape so both collapse to DRAFT_NOT_FOUND.
+    const params = parseInput(DraftStatusParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const action = await prisma.gmailDraftAction.findFirst({
       where: {
         id,

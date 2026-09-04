@@ -95,7 +95,13 @@ export const dispatchClaimedDraft = async (
     where: {
       id: draftActionId,
       state: 'sending',
-      ...(validationClaimedAt ? { claimedAt: validationClaimedAt, sendAfter: null } : {}),
+      // A validating owner send claims its own `sendAfter: null` row. The sweep
+      // (no `validationClaimedAt`) must claim only a hold whose window has
+      // actually elapsed: without this, an undo followed by a fresh send lets
+      // the sweep seize the re-armed validating row and dispatch with no hold.
+      ...(validationClaimedAt
+        ? { claimedAt: validationClaimedAt, sendAfter: null }
+        : { sendAfter: { lte: now, not: null } }),
     },
     data: { state: 'dispatching', claimedAt: now },
   })
@@ -118,9 +124,11 @@ export const dispatchClaimedDraft = async (
     }, deps)
   } catch (error) {
     // No provider request has started, so returning to draft cannot duplicate.
+    // Clear the hold too: a `draft` row carrying a stale `sendAfter` misreports
+    // its own status read.
     await prisma.gmailDraftAction.updateMany({
       where: { id: row.id, state: 'dispatching' },
-      data: { state: 'draft', claimedAt: null },
+      data: { state: 'draft', claimedAt: null, sendAfter: null },
     })
     throw error
   }

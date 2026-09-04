@@ -80,16 +80,29 @@ const MailSurfaceAccountPreview = ({
   )
 }
 
+/**
+ * Which doorway currently owns the auto-opened overlay, so two chips scrolling
+ * into view together cannot both seize focus.
+ *
+ * Deliberately module state rather than sessionStorage: a reload does not run
+ * effect cleanup, so a stored marker survived it and silently disabled
+ * auto-open for the rest of the tab's life. The per-message "offered" record
+ * stays in sessionStorage — that one is meant to outlive a reload.
+ */
+let openDoorwayMessageId: string | null = null
+
 /** A message-local, content-free pointer. It rechecks entitlement before an
  * offer and disables the live body query until the shared overlay is visible. */
 export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   messageId: string
   metadata: Record<string, unknown> | undefined
 }) => {
-  const doorway = readMailSurfaceDoorway(metadata)
+  // Parsed once: a fresh object each render restarted the observer effect and
+  // rebuilt the storage key on every parent re-render.
+  const doorway = useMemo(() => readMailSurfaceDoorway(metadata), [metadata])
   const navigate = useNavigate()
   const layout = useNavigationLayout()
-  const accounts = useConnectedMailAccounts()
+  const accounts = useConnectedMailAccounts(Boolean(doorway))
   const [open, setOpen] = useState(false)
   const [account, setAccount] = useState<ConnectedMailAccountRecord | null>(null)
   const [accessError, setAccessError] = useState<string | null>(null)
@@ -123,17 +136,13 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry?.isIntersecting) return
       try {
-        if (window.sessionStorage.getItem(storageKey) || window.sessionStorage.getItem('mail-doorway-overlay-open')) return
+        if (window.sessionStorage.getItem(storageKey) || openDoorwayMessageId) return
         window.sessionStorage.setItem(storageKey, 'offered')
-        window.sessionStorage.setItem('mail-doorway-overlay-open', messageId)
+        openDoorwayMessageId = messageId
         ownsOverlayMarkerRef.current = true
         void checkAndOpen().then((account) => {
           if (account) return
-          try {
-            if (window.sessionStorage.getItem('mail-doorway-overlay-open') === messageId) {
-              window.sessionStorage.removeItem('mail-doorway-overlay-open')
-            }
-          } catch { /* no-op */ }
+          if (openDoorwayMessageId === messageId) openDoorwayMessageId = null
           ownsOverlayMarkerRef.current = false
         })
       } catch { /* Explicit Open mail remains available when storage is disabled. */ }
@@ -148,11 +157,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   // overlay cannot be accidentally unlocked by our cleanup.
   useEffect(() => () => {
     if (!ownsOverlayMarkerRef.current) return
-    try {
-      if (window.sessionStorage.getItem('mail-doorway-overlay-open') === messageId) {
-        window.sessionStorage.removeItem('mail-doorway-overlay-open')
-      }
-    } catch { /* Explicit Open mail remains available when storage is disabled. */ }
+    if (openDoorwayMessageId === messageId) openDoorwayMessageId = null
     ownsOverlayMarkerRef.current = false
   }, [messageId])
 
@@ -163,9 +168,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const title = doorway.mode === 'compose' ? 'Email draft ready' : doorway.mode === 'thread' ? 'Email ready to review' : 'Mail ready to review'
   const close = () => {
     try {
-      if (window.sessionStorage.getItem('mail-doorway-overlay-open') === messageId) {
-        window.sessionStorage.removeItem('mail-doorway-overlay-open')
-      }
+      if (openDoorwayMessageId === messageId) openDoorwayMessageId = null
     } catch { /* no-op */ }
     ownsOverlayMarkerRef.current = false
     setOpen(false)

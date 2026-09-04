@@ -152,6 +152,20 @@ export const createToolApprovalRequest = async (
         ...(input.contextExtra ?? {}),
       }
 
+  // Fail closed. A structurally gated send is pinned to one accountable person;
+  // persisting it with a null approver would instead let anybody who can see
+  // the channel approve mail sent from somebody else's mailbox. Refusing here
+  // means a gate that could not name an approver denies the send outright
+  // rather than widening who may authorise it.
+  if (
+    STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
+    && !(input.requiredApproverUserId ?? input.actorContext.actionContext.effectiveUserId)
+  ) {
+    throw new Error(
+      'This send has no accountable approver. Reconnect the account before sending.',
+    )
+  }
+
   const data = {
     action: 'tool.invoke',
     agentId: input.context.agent.id,

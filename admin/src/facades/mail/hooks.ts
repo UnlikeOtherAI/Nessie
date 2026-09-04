@@ -42,9 +42,15 @@ export const connectedMailKeys = {
   ) => ['connected-mail', 'threads', source, accountId, input] as const,
 }
 
-export const useConnectedMailAccounts = () => {
+/**
+ * `enabled` matters here: the chat doorway chip mounts on every message row, so
+ * an ungated observer made each row refetch the account list. Entitlement is
+ * still read live — `staleTime: 0` plus the explicit refetch before any open.
+ */
+export const useConnectedMailAccounts = (enabled = true) => {
   const apiClient = useApiClient()
   return useQuery<ConnectedMailAccountRecord[]>({
+    enabled,
     queryKey: connectedMailKeys.accounts(),
     queryFn: async () => ConnectedMailAccountRecordSchema.array().parse(
       await apiClient.get('/api/mail/accounts'),

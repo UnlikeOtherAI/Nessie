@@ -16,6 +16,7 @@ import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.js'
+import { effectiveUserIdOfActor } from '../pa-tools/access.js'
 import { composeStructuralGates } from './structural-gates.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
@@ -161,7 +162,7 @@ export const runExecutionAgentLoop = async (
           buildMailboxSendApprovalHook(
             deps.prisma,
             context,
-            payload.actorContext.actionContext.effectiveUserId ?? null,
+            effectiveUserIdOfActor(payload.actorContext),
           ),
         ]),
         maySuspendForApproval: options.maySuspendForApproval ?? !input.isHandoffTurn,
