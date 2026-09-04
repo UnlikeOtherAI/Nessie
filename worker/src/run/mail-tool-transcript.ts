@@ -4,6 +4,15 @@ import {
   protectedMailUtilityTranscriptSummary,
 } from './tool-util.js'
 
+/**
+ * Utility models are not authorized correspondence readers. Once a run has
+ * used protected mail, an assistant can still describe that correspondence in
+ * a later ordinary-looking turn. Keep that prose in the main inference only;
+ * utility transcripts receive this stable server-authored marker instead.
+ */
+export const PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER =
+  '[Assistant content withheld after protected email context.]'
+
 // Utility-model calls are intentionally outside the main agent's authorized
 // correspondence context. Compaction and checkpoint writers need the shape of
 // a mail action, but never its recipients, subject, body, address, or provider
@@ -31,13 +40,19 @@ export const projectMailToolResultsForUtilityTranscript = (
   messages: readonly ProviderMessage[],
 ): ProviderMessage[] => {
   const toolNameByCallId = new Map<string, string>()
+  let protectedContextSeen = false
 
   return messages.map((message) => {
     if (message.role === 'assistant') {
+      const containsProtectedMailCall = (message.toolCalls ?? [])
+        .some((toolCall) => isProtectedMailOperationalTool(toolCall.toolName))
       for (const toolCall of message.toolCalls ?? []) {
         toolNameByCallId.set(toolCall.toolCallId, toolCall.toolName)
       }
-      return message
+      protectedContextSeen ||= containsProtectedMailCall
+      return protectedContextSeen
+        ? { ...message, content: PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER }
+        : message
     }
     if (message.role !== 'tool') return message
 

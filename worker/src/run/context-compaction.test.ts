@@ -102,6 +102,25 @@ test('compaction projects correspondence results before the utility model sees t
   assert.match(prompt, /ordinary search result stays in the note prompt/)
 })
 
+test('compaction withholds assistant content produced after protected mail context', () => {
+  const privateAssistantText = 'The email body says body-private for recipient@private.example.'
+  const prompt = buildCompactionPrompt({
+    elder: [
+      {
+        content: null,
+        role: 'assistant',
+        toolCalls: [{ arguments: {}, toolCallId: 'mail-1', toolName: 'gmail_message_read' }],
+      },
+      { content: 'provider-private-token', role: 'tool', toolCallId: 'mail-1' },
+      { content: privateAssistantText, role: 'assistant' },
+    ],
+    previousNote: null,
+  })
+
+  assert.doesNotMatch(prompt, /body-private|recipient@private\.example|provider-private-token/)
+  assert.match(prompt, /Assistant content withheld after protected email context/)
+})
+
 test('compaction excludes every protected mail tool result from its utility prompt', () => {
   const privateTokens = 'recipient@private.example body-private 00000000-0000-0000-0000-0000000000ee'
   const protectedToolNames = [

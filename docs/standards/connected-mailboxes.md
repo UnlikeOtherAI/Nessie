@@ -120,9 +120,11 @@ Plan and as-built deltas:
   context, ToolCall rows, thinking and realtime status, demonstrations,
   connector telemetry, and audit metadata carry only a fixed action/outcome
   summary. Before compaction or a checkpoint utility call sees a transcript, a
-  tool-aware server projection replaces correspondence tool results with fixed
-  content-free family summaries; the rolling and persisted notes therefore do
-  not become another mail-content store. The same boundary covers hosted agent
+  tool-aware server projection replaces correspondence tool results and every
+  later assistant turn with fixed content-free markers; the rolling and
+  persisted notes therefore do not become another mail-content store, including
+  when their utility call fails and uses its mechanical fallback. The same
+  boundary covers hosted agent
   mail, connected-mail, Gmail, contact, and
   connected-account lifecycle tools; a provider failure becomes a stable remedy
   rather than raw remote text.
