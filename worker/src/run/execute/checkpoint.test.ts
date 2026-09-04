@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
+import type { ProviderMessage } from '@nessie/runtime'
 import {
   buildCheckpointInjection,
   loadRunCheckpointForRun,
@@ -12,6 +13,7 @@ import {
   mechanicalCheckpointNote,
   parseCheckpointNote,
 } from './checkpoint-note.js'
+import { generateCheckpointNote } from './run-stop.js'
 
 type UpdateManyArg = { where: Record<string, unknown>; data: Record<string, unknown> }
 
@@ -170,6 +172,63 @@ test('the note prompt demands verbatim URLs; parsing keeps them exactly', () => 
     { url: 'https://example.com/b' },
   ])
   assert.match(parsed.note, /## State/)
+})
+
+test('checkpoint generation projects correspondence results and keeps its fallback content-free', async () => {
+  const privateTokens = [
+    'recipient-private@example.test',
+    'subject-private-token',
+    'body-private-token',
+    'provider-private-token',
+  ]
+  const messages: ProviderMessage[] = [
+    {
+      content: null,
+      role: 'assistant',
+      toolCalls: [{ arguments: {}, toolCallId: 'mail-1', toolName: 'mailbox_read' }],
+    },
+    { content: privateTokens.join(' '), role: 'tool', toolCallId: 'mail-1' },
+    {
+      content: null,
+      role: 'assistant',
+      toolCalls: [{ arguments: {}, toolCallId: 'web-1', toolName: 'web_search' }],
+    },
+    { content: 'ordinary search result stays in the note prompt', role: 'tool', toolCallId: 'web-1' },
+  ]
+  let utilityPrompt = ''
+  const note = await generateCheckpointNote(
+    {
+      consumeStreamedFlag: () => false,
+      runMain: async () => { throw new Error('not used') },
+      runUtility: async (utilityMessages) => {
+        utilityPrompt = utilityMessages[0]?.content ?? ''
+        return {
+          correlationId: 'correlation-1',
+          finishReason: 'stop',
+          invocations: [],
+          model: 'test',
+          outputText: '',
+          provider: 'openai',
+          requestId: 'request-1',
+          toolCalls: [],
+        }
+      },
+    },
+    [],
+    {
+      goal: 'Continue the ordinary research.',
+      lastAssistantText: 'The last public progress was ordinary research only.',
+      messages,
+    },
+  )
+
+  for (const token of privateTokens) {
+    assert.doesNotMatch(utilityPrompt, new RegExp(token))
+    assert.doesNotMatch(note.note, new RegExp(token))
+  }
+  assert.match(utilityPrompt, /Connected mailbox correspondence withheld from utility transcript/)
+  assert.match(utilityPrompt, /ordinary search result stays in the note prompt/)
+  assert.match(note.note, /ordinary research only/)
 })
 
 test('a failed note call degrades to a mechanical note instead of losing the work', () => {

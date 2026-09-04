@@ -68,6 +68,36 @@ test('the compaction prompt demands verbatim source URLs in their own section', 
   assert.match(prompt, /Never shorten, normalize, guess, or invent a URL/)
 })
 
+test('compaction projects correspondence results before the utility model sees them', () => {
+  const privateTokens = [
+    'recipient-private@example.test',
+    'subject-private-token',
+    'body-private-token',
+    'provider-private-token',
+  ]
+  const prompt = buildCompactionPrompt({
+    elder: [
+      {
+        content: null,
+        role: 'assistant',
+        toolCalls: [{ arguments: {}, toolCallId: 'mail-1', toolName: 'gmail_message_read' }],
+      },
+      { content: privateTokens.join(' '), role: 'tool', toolCallId: 'mail-1' },
+      {
+        content: null,
+        role: 'assistant',
+        toolCalls: [{ arguments: {}, toolCallId: 'web-1', toolName: 'web_search' }],
+      },
+      { content: 'ordinary search result stays in the note prompt', role: 'tool', toolCallId: 'web-1' },
+    ],
+    previousNote: null,
+  })
+
+  for (const token of privateTokens) assert.doesNotMatch(prompt, new RegExp(token))
+  assert.match(prompt, /Google mailbox correspondence withheld from utility transcript/)
+  assert.match(prompt, /ordinary search result stays in the note prompt/)
+})
+
 test('a previous note is folded into the next compaction instead of being dropped', async () => {
   let seenPrompt = ''
   const first = await runContextCompaction({

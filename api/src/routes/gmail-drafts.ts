@@ -121,6 +121,24 @@ const statusForDraftError = (code: GmailDraftError['code']): number => {
   return 400
 }
 
+const PROVIDER_FAILED_MESSAGE =
+  'Gmail could not complete this request. Check the connected account and try again.'
+
+/**
+ * Remote provider messages can include response bodies, credentials, and other
+ * correspondence. The route owns the browser boundary, so the stable error
+ * code remains useful support context while only fixed copy crosses it.
+ */
+export const gmailDraftErrorResponse = (error: GmailDraftError): {
+  code: GmailDraftError['code']
+  message: string
+  statusCode: number
+} => ({
+  code: error.code,
+  message: error.code === 'PROVIDER_FAILED' ? PROVIDER_FAILED_MESSAGE : error.message,
+  statusCode: statusForDraftError(error.code),
+})
+
 export const registerGmailDraftRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -130,7 +148,8 @@ export const registerGmailDraftRoutes = (
 
   const fail = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
     if (error instanceof GmailDraftError) {
-      sendApiError(reply, statusForDraftError(error.code), error.code, error.message)
+      const response = gmailDraftErrorResponse(error)
+      sendApiError(reply, response.statusCode, response.code, response.message)
       return reply
     }
     throw error
