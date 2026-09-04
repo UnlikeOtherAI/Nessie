@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import {
   MailboxAccessError,
   listMailboxConnectionsForUser,
+  listManageableMailboxConnectionsForUser,
   loadManageableMailboxConnection,
   MailboxConnectionError,
   resolveMailboxForToolCall,
@@ -325,6 +326,49 @@ runDatabaseTest('a member sees a shared mailbox only for a team they belong to',
       Object.prototype.hasOwnProperty.call(after[0] ?? {}, 'password'),
       false,
       'nothing on the presented shape carries a credential',
+    )
+  } finally {
+    await cleanup(prisma, seeded.organizationId)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('the management list never advertises a shared mailbox to a member', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const personal = await connect(prisma, {
+      ...seeded,
+      label: 'Personal',
+      ownerUserId: seeded.personId,
+    })
+    const shared = await connect(prisma, { ...seeded, label: 'Support' })
+    await prisma.teamMember.create({
+      data: { teamId: seeded.teamId, userId: seeded.personId },
+    })
+
+    const visible = await listMailboxConnectionsForUser(prisma, {
+      actor: { role: 'member', userId: seeded.personId },
+      organizationId: seeded.organizationId,
+    })
+    assert.deepEqual(
+      visible.map((row) => row.id).sort(),
+      [personal.id, shared.id].sort(),
+    )
+
+    const manageableByMember = await listManageableMailboxConnectionsForUser(prisma, {
+      actor: { role: 'member', userId: seeded.personId },
+      organizationId: seeded.organizationId,
+    })
+    assert.deepEqual(manageableByMember.map((row) => row.id), [personal.id])
+
+    const manageableByAdmin = await listManageableMailboxConnectionsForUser(prisma, {
+      actor: { role: 'admin', userId: seeded.personId },
+      organizationId: seeded.organizationId,
+    })
+    assert.deepEqual(
+      manageableByAdmin.map((row) => row.id).sort(),
+      [personal.id, shared.id].sort(),
     )
   } finally {
     await cleanup(prisma, seeded.organizationId)

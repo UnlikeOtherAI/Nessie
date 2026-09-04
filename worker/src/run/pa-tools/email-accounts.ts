@@ -3,7 +3,7 @@ import { writeAuditEntry } from '@nessie/db'
 import {
   deleteMailboxConnection,
   disconnectOwnedCommsConnection,
-  listMailboxConnectionsForUser,
+  listManageableMailboxConnectionsForUser,
   listOwnedCommsConnections,
   loadOwnedCommsConnection,
   loadManageableMailboxConnection,
@@ -102,7 +102,7 @@ export const runEmailAccountListTool = async (
       organizationId: member.organizationId,
       userId: member.userId,
     }),
-    listMailboxConnectionsForUser(context.prisma, {
+    listManageableMailboxConnectionsForUser(context.prisma, {
       actor: { role: member.role, userId: member.userId },
       organizationId: member.organizationId,
     }),

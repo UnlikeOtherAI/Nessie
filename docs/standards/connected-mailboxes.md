@@ -61,7 +61,12 @@ Plan and as-built deltas:
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP
-  mailbox they may administer. `email_account_connect` posts a doorway into the
+  mailbox they may administer: the caller's personal mailboxes, plus shared
+  mailboxes only for an organisation owner or admin. It deliberately does not
+  reuse the broader member-visibility list, because a visible shared mailbox is
+  not necessarily mutable. Connection status carries only fixed structural
+  remedies; untrusted provider error text is neither persisted nor presented,
+  and a migration sanitises legacy rows. `email_account_connect` posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
   OAuth-code argument. `email_account_check` invokes the same provider resync or
   live two-leg mailbox test as the account card, and

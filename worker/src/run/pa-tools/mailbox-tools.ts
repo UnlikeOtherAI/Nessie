@@ -1,6 +1,7 @@
 import {
   MailboxAccessError,
   markMailboxNeedsReauthorization,
+  mailboxConnectionFailureMessage,
   openMailboxEndpoints,
   resolveMailboxForToolCall,
   isCredentialRejection,
@@ -101,8 +102,8 @@ const runAgainstMailbox = async <T>(
     return await work()
   } catch (error) {
     if (isCredentialRejection(error)) {
-      const detail = error instanceof Error ? error.message : 'The mailbox rejected the password.'
-      await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id, detail)
+      const detail = mailboxConnectionFailureMessage('credential_rejected')
+      await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id)
       throw new Error(
         `${detail} The mailbox needs reconnecting from the Integrations page before I can use it.`,
       )

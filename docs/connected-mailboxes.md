@@ -76,7 +76,8 @@ somebody's task.
 
 ## Asking the Personal Assistant to manage accounts
 
-The Personal Assistant can list the email accounts you are entitled to manage,
+The Personal Assistant can list the email accounts you are entitled to manage —
+your own, plus shared mailboxes only when you are an owner or admin —
 open the same secure **Connect email** form, check one, disconnect one after an
 approval, and grant or revoke an agent's access to an IMAP/SMTP mailbox. For
 example: *“Which email accounts are connected?”*, *“Connect another email
@@ -145,7 +146,7 @@ a tool call on its own.
 ## When it stops working
 
 If the provider rejects the password, the connection flips to **Needs
-reconnecting** with the reason on its card, and agents stop reaching it rather
+reconnecting** with a fixed, actionable reason on its card, and agents stop reaching it rather
 than failing over and over. A password change, an expired app password, or a
 revoked account all land here. Reconnect it from the same card.
 
