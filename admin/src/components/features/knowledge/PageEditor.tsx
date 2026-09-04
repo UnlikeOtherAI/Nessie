@@ -204,7 +204,7 @@ export const PageEditor = ({
               aria-invalid={Boolean(titleError) || undefined}
               aria-label="Page title"
               autoFocus
-              className="w-full border-none bg-transparent text-[3.8025rem] font-bold leading-tight text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] sm:text-[5.07rem]"
+              className="admin-document-title w-full border-none bg-transparent text-[3.25rem] font-normal leading-tight text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] sm:text-[4.25rem]"
               onChange={(event) => patchDraft({ title: event.target.value })}
               placeholder="Give this page a title…"
               value={title}

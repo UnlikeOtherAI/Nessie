@@ -15,6 +15,8 @@ const DEFAULT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/default
 #[cfg(test)]
 const DEVELOPMENT_DESKTOP_CAPABILITIES: &str = include_str!("../capabilities/development.json");
 #[cfg(test)]
+const ADHOC_MACOS_CONFIG: &str = include_str!("../tauri.adhoc-macos.conf.json");
+#[cfg(test)]
 const DIRECT_UPDATER_CONFIG: &str = include_str!("../tauri.direct-updater.conf.json");
 #[cfg(test)]
 const APP_STORE_CONFIG: &str = include_str!("../tauri.appstore.conf.json");
@@ -134,7 +136,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_webview_url, APP_STORE_CONFIG, DEFAULT_DESKTOP_CAPABILITIES,
+        desktop_webview_url, ADHOC_MACOS_CONFIG, APP_STORE_CONFIG, DEFAULT_DESKTOP_CAPABILITIES,
         DEVELOPMENT_DESKTOP_CAPABILITIES, DIRECT_UPDATER_CONFIG, PRODUCTION_ADMIN_URL,
     };
     use tauri::utils::config::WebviewUrl;
@@ -193,6 +195,12 @@ mod tests {
 
         let store: serde_json::Value = serde_json::from_str(APP_STORE_CONFIG).unwrap();
         assert!(store.get("plugins").is_none());
+    }
+
+    #[test]
+    fn adhoc_macos_configuration_explicitly_selects_codesign_dash() {
+        let adhoc: serde_json::Value = serde_json::from_str(ADHOC_MACOS_CONFIG).unwrap();
+        assert_eq!(adhoc["bundle"]["macOS"]["signingIdentity"], "-");
     }
 
     #[test]

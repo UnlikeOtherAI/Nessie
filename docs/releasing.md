@@ -7,8 +7,8 @@ after every platform has passed its release gate.
 
 ## Published assets
 
-- `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — notarized
-  direct-download macOS installers.
+- `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — ad-hoc,
+  non-notarized macOS installers.
 - `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — unsigned Windows
   desktop installers.
 - `Nessie-Linux.AppImage` and `Nessie-Linux.deb` — Linux desktop packages.
@@ -60,12 +60,6 @@ needs:
 
 | Name | Type | Purpose |
 | --- | --- | --- |
-| `MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64` | secret | Developer ID Application certificate and private key, base64 encoded |
-| `MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD` | secret | Password for that `.p12` |
-| `MACOS_NOTARY_API_KEY_P8_BASE64` | secret | App Store Connect API key for notarization, base64 encoded |
-| `MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY` | variable | Exact `Developer ID Application: …` identity |
-| `MACOS_NOTARY_API_KEY_ID` | variable | App Store Connect API key ID |
-| `MACOS_NOTARY_API_ISSUER_ID` | variable | App Store Connect API issuer ID |
 | `EXPO_TOKEN` | secret | Expo token for the linked `unlikeotherai/nessie` EAS project |
 | `TAURI_SIGNING_PRIVATE_KEY` | repository secret | Persistent key for signing direct desktop update artifacts |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
@@ -86,11 +80,16 @@ are repository secrets because the reusable Windows workflow needs them. Keep a
 recoverable owner-controlled backup of that key: losing it prevents every
 already-installed direct desktop client from accepting future releases.
 
-The existing Mac App Store certificate is intentionally not accepted here. A
-GitHub download requires a **Developer ID Application** signature, hardened
-runtime, notarization, stapling, and Gatekeeper verification. The workflow
-rejects an unsigned, ad-hoc-signed, App Store-signed, or non-notarized Mac
-package.
+The current GitHub macOS download is deliberately ad-hoc signed because no
+Developer ID identity is available. It is not notarized and cannot pass
+Gatekeeper assessment. A person must open it via Finder's **Open** action (or
+remove the quarantine attribute after inspecting the download). Its Tauri
+updater artifacts remain separately signed. The release workflow applies
+`desktop/src-tauri/tauri.adhoc-macos.conf.json` after the direct-updater
+configuration so that Tauri explicitly uses `codesign -s -`. Replace this
+temporary path with Developer ID signing, hardened runtime, notarization,
+stapling, and Gatekeeper verification as soon as a suitable identity is
+available.
 
 EAS retains the Android signing keystore for the `device` profile. Keep that
 keystore under the owning Expo account; replacing it would prevent updates from
@@ -98,14 +97,17 @@ installing over prior Android builds.
 
 ## Versioning
 
-`v0.0.1` is the first public GitHub direct-download release identifier. The
-desktop and Android applications already have independent internal version
-tracks; the workflow records those exact values in its release notes rather
-than mislabelling either binary. Future app-version changes must stay explicit:
-the direct desktop version must be valid SemVer and strictly greater than the
-version in the latest published `latest.json`, while Android `versionCode` must
-increase for every installable update. The release metadata check rejects a
-desktop downgrade or repeat before a platform build begins.
+`v0.0.1` already exists as an immutable tag for source that is no longer the
+current `main` commit, so the release preflight deliberately rejects it. Use
+`v0.0.2` for the first published GitHub direct-download release instead of
+rewriting that tag. The desktop and Android applications already have
+independent internal version tracks; the workflow records those exact values in
+its release notes rather than mislabelling either binary. Future app-version
+changes must stay explicit: the direct desktop version must be valid SemVer and
+strictly greater than the version in the latest published `latest.json`, while
+Android `versionCode` must increase for every installable update. The release
+metadata check rejects a desktop downgrade or repeat before a platform build
+begins.
 
 ## Before tagging
 
@@ -113,8 +115,8 @@ desktop downgrade or repeat before a platform build begins.
 2. Confirm the `direct-download-release` secrets above are configured. The
    protected **Direct-distribution credential gate** lists every missing name
    before any platform build begins.
-3. Create and push the annotated tag, for example `git tag -a v0.0.1 -m
-   "Nessie v0.0.1"` followed by `git push origin v0.0.1`.
+3. Create and push the annotated tag, for example `git tag -a v0.0.2 -m
+   "Nessie v0.0.2"` followed by `git push origin v0.0.2`.
 4. Approve the protected environment if configured. The release becomes public
    only after the Mac, Windows, Linux, and Android gates all pass.
 

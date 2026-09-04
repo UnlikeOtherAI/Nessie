@@ -133,12 +133,12 @@ const sameIds = (left: string[], right: string[]): boolean =>
 
 const actionClassName = (action: PageHeaderAction, open: boolean): string => {
   const colour = action.primary
-    ? 'border border-transparent bg-[color:var(--accent)] text-[color:var(--on-accent)] hover:opacity-90'
+    ? 'admin-page-action-primary'
     : action.selected
-      ? 'border border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
-      : 'border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]'
+      ? 'admin-page-action-selected'
+      : 'admin-page-action-secondary'
   return [
-    'inline-flex h-8 items-center justify-center rounded-md text-xs font-semibold transition-colors',
+    'admin-page-action inline-flex h-9 items-center justify-center text-[13px] transition-colors',
     action.compact ? 'w-8 px-0' : 'gap-1.5 px-2.5',
     colour,
     action.tone === 'danger' ? 'page-header-action-danger' : '',
@@ -360,10 +360,10 @@ export const ResponsivePageHeader = ({
     // beneath it (subtitle, tab row). The border closes the whole block, so a
     // subtitle is inside the header rather than a second bar under it.
     <header
-      className="relative flex flex-shrink-0 flex-col border-b border-[color:var(--sep)]"
+      className="admin-page-header relative flex flex-shrink-0 flex-col border-b border-[color:var(--sep)]"
       ref={headerRef}
     >
-      <div className="flex h-[50px] flex-shrink-0 items-center gap-3 px-[var(--page-gutter)]">
+      <div className="admin-page-header-row flex h-[60px] flex-shrink-0 items-center gap-3 px-[var(--page-gutter)]">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {leading || onBack ? (
             <div className="flex flex-shrink-0 items-center gap-3">
@@ -375,14 +375,14 @@ export const ResponsivePageHeader = ({
           ) : null}
           <div className="min-w-0 flex-1">
             {eyebrow ? (
-              <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+              <div className="admin-page-eyebrow truncate text-[11px] font-medium text-[color:var(--tx3)]">
                 {eyebrow}
               </div>
             ) : null}
             {titleInput ? (
               <input
                 aria-label={titleInput.ariaLabel}
-                className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                className="admin-page-title-input w-full border-none bg-transparent text-[22px] font-normal text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
                 onChange={(event) => titleInput.onChange(event.target.value)}
                 placeholder={titleInput.placeholder}
                 value={titleInput.value}
@@ -392,7 +392,7 @@ export const ResponsivePageHeader = ({
                 {title}
               </SectionLabel>
             ) : (
-              <Heading className="truncate text-[17px] font-bold text-[color:var(--tx)]" id={titleId}>
+              <Heading className="admin-page-title truncate text-[22px] font-normal text-[color:var(--tx)]" id={titleId}>
                 {title}
               </Heading>
             )}

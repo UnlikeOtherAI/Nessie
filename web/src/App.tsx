@@ -238,7 +238,6 @@ export function App() {
         <a className="login-button" href={loginUrl}>
           Login
         </a>
-        <p className="hero-note">Desktop and Android downloads are available now</p>
       </header>
 
       <section aria-label="Downloads" className="downloads">
