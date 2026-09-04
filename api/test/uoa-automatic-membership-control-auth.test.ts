@@ -12,7 +12,7 @@ import {
   UoaControlPayloadSchemas,
 } from '../src/services/uoa-automatic-membership-control-contract.js'
 
-const secret = 'control-secret'
+const secret = 'YVHULBJV9k8kwivdODPyxaSNUdXJovcn'
 const timestamp = '1760000000000'
 const body = { request_id: 'e2f7e39d-0c4a-46bb-a9e0-0c953497d65b', action: 'list' }
 const signature = createHmac('sha256', secret).update(`${timestamp}.${JSON.stringify(body)}`).digest('hex')
@@ -36,6 +36,10 @@ test('UOA control HMAC accepts only the exact parsed body in the allowed clock w
   )
   assert.equal(
     verifyUoaAutomaticMembershipControlSignature(undefined, timestamp, signature, body, Number(timestamp)),
+    false,
+  )
+  assert.equal(
+    verifyUoaAutomaticMembershipControlSignature('short-control-secret', timestamp, signature, body, Number(timestamp)),
     false,
   )
 })

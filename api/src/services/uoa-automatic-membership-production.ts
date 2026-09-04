@@ -4,7 +4,10 @@ import type { UoaAutomaticMembershipAdapter, UoaAutomaticMembershipOperation, Uo
 
 const serviceKey = (): string | null => {
   const key = process.env.UOA_AUTOMATIC_MEMBERSHIP_APP_KEY?.trim()
-  return key && key.startsWith('uak_') ? key : null
+  // This is the UOA billing application-key format. Keeping the exact prefix
+  // here prevents an ordinary user/session token from accidentally enabling
+  // a background membership authority.
+  return key && key.startsWith('uoa_app_') ? key : null
 }
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 const string = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null

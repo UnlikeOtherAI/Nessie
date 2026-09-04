@@ -57,6 +57,7 @@ import { registerInferenceControlPlaneRoutes } from './routes/inference-control-
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerToolBundleRoutes } from './routes/tools-bundles.js'
+import { hasStrongUoaAutomaticMembershipControlSecret } from './services/uoa-automatic-membership-control-auth.js'
 
 export { createCorsOriginChecker } from './lib/server-context.js'
 
@@ -83,6 +84,14 @@ const apiUsageTracker = new ModelUsageTracker()
 let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
 export const buildApp = async () => {
+  const uoaControlUrl = process.env.NESSIE_UOA_AUTOMATIC_MEMBERSHIP_CONTROL_URL?.trim()
+  const uoaControlSecret = process.env.NESSIE_UOA_AUTOMATIC_MEMBERSHIP_CONTROL_SECRET?.trim()
+  if ((uoaControlUrl || uoaControlSecret)
+    && (!uoaControlUrl || !hasStrongUoaAutomaticMembershipControlSecret(uoaControlSecret))) {
+    throw new Error(
+      'UOA automatic-membership control needs both NESSIE_UOA_AUTOMATIC_MEMBERSHIP_CONTROL_URL and a random secret of at least 32 bytes.',
+    )
+  }
   let ledgerIdentity: import('@nessie/runtime').LedgerIdentityService | null = null
   const app = Fastify({
     trustProxy: createFastifyTrustProxyConfig(config.api.trustedProxyHops),
