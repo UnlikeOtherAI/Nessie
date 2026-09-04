@@ -65,7 +65,10 @@ Facts not restated there:
   call writes and streams only a server-authored withheld marker, never a model
   summary of correspondence. Utility transcripts and checkpoint prompts use
   the same protected-tool registry, so they withhold lifecycle and mailbox
-  operations as well as message reads and sends.
+  operations as well as message reads and sends. Once that context appears,
+  later assistant prose is replaced with a fixed marker for every utility
+  prompt and its mechanical checkpoint fallback; only the main inference keeps
+  the original transcript in memory.
 - A withheld row carries no metadata, reactions, or reply participants; the
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`

@@ -12,6 +12,7 @@ import {
   mechanicalCheckpointNote,
   parseCheckpointNote,
 } from './checkpoint-note.js'
+import { hasProtectedMailContext } from '../mail-tool-transcript.js'
 import { runReplyBasis } from './agent-message.js'
 import { persistRunCheckpoint } from './checkpoint.js'
 import { enqueueAutoContinuation, isInteractiveRun, shouldAutoContinue } from './continuation.js'
@@ -72,6 +73,7 @@ export const generateCheckpointNote = async (
   return mechanicalCheckpointNote({
     goal: input.goal,
     lastAssistantText: input.lastAssistantText,
+    protectedMailContext: hasProtectedMailContext(input.messages),
   })
 }
 

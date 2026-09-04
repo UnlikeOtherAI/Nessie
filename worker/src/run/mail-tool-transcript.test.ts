@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { ProviderMessage } from '@nessie/runtime'
 import {
   hasProtectedMailContext,
+  PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER,
   projectMailToolResultsForUtilityTranscript,
 } from './mail-tool-transcript.js'
 import {
@@ -67,4 +68,25 @@ test('a protected tool call makes the entire inference context mail-sensitive', 
 
   assert.equal(hasProtectedMailContext(messages), true)
   assert.equal(hasProtectedMailContext([{ content: 'ordinary', role: 'user' }]), false)
+})
+
+test('utility projection withholds assistant prose after protected mail without changing inference context', () => {
+  const privateAssistantText = 'The private message says body-private for recipient@private.example.'
+  const messages: ProviderMessage[] = [
+    { content: 'ordinary assistant state stays available', role: 'assistant' },
+    {
+      content: null,
+      role: 'assistant',
+      toolCalls: [{ arguments: {}, toolCallId: 'mail', toolName: 'gmail_message_read' }],
+    },
+    { content: 'provider-private-token', role: 'tool', toolCallId: 'mail' },
+    { content: privateAssistantText, role: 'assistant' },
+  ]
+
+  const projected = projectMailToolResultsForUtilityTranscript(messages)
+
+  assert.equal(projected[0]?.content, 'ordinary assistant state stays available')
+  assert.equal(projected[1]?.content, PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER)
+  assert.equal(projected[3]?.content, PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER)
+  assert.equal(messages[3]?.content, privateAssistantText)
 })

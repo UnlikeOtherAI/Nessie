@@ -1,5 +1,8 @@
 import type { ProviderMessage } from '@nessie/runtime'
-import { projectMailToolResultsForUtilityTranscript } from '../mail-tool-transcript.js'
+import {
+  PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER,
+  projectMailToolResultsForUtilityTranscript,
+} from '../mail-tool-transcript.js'
 import type { CheckpointSource } from './checkpoint.js'
 
 // The checkpoint note is produced by ONE bounded model call made from the
@@ -96,8 +99,11 @@ export const parseCheckpointNote = (raw: string): {
 export const mechanicalCheckpointNote = (input: {
   goal: string
   lastAssistantText: string
+  protectedMailContext: boolean
 }): { note: string; sources: CheckpointSource[] } => {
-  const body = input.lastAssistantText.trim()
+  const body = input.protectedMailContext
+    ? PROTECTED_MAIL_ASSISTANT_CONTENT_MARKER
+    : input.lastAssistantText.trim()
   return {
     note: [
       '## State',

@@ -192,6 +192,7 @@ test('checkpoint generation projects correspondence results and keeps its fallba
       toolCalls: [{ arguments: {}, toolCallId: 'mail-1', toolName: 'mailbox_read' }],
     },
     { content: privateTokens.join(' '), role: 'tool', toolCallId: 'mail-1' },
+    { content: 'The email says body-private-token for recipient-private@example.test.', role: 'assistant' },
     {
       content: null,
       role: 'assistant',
@@ -221,7 +222,7 @@ test('checkpoint generation projects correspondence results and keeps its fallba
     [],
     {
       goal: 'Continue the ordinary research.',
-      lastAssistantText: 'The last public progress was ordinary research only.',
+      lastAssistantText: 'The email says body-private-token for recipient-private@example.test.',
       messages,
     },
   )
@@ -232,7 +233,7 @@ test('checkpoint generation projects correspondence results and keeps its fallba
   }
   assert.match(utilityPrompt, /Protected email operation withheld from utility transcript/)
   assert.match(utilityPrompt, /ordinary search result stays in the note prompt/)
-  assert.match(note.note, /ordinary research only/)
+  assert.match(note.note, /Assistant content withheld after protected email context/)
 })
 
 test('checkpoint utility prompt excludes every protected mail tool result', () => {
@@ -263,6 +264,7 @@ test('a failed note call degrades to a mechanical note instead of losing the wor
   const note = mechanicalCheckpointNote({
     goal: 'research slack clones',
     lastAssistantText: 'I checked Mattermost and Rocket.Chat.',
+    protectedMailContext: false,
   })
   assert.match(note.note, /research slack clones/)
   assert.match(note.note, /Mattermost/)
