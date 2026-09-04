@@ -97,14 +97,17 @@ installing over prior Android builds.
 
 ## Versioning
 
-`v0.0.1` is the first public GitHub direct-download release identifier. The
-desktop and Android applications already have independent internal version
-tracks; the workflow records those exact values in its release notes rather
-than mislabelling either binary. Future app-version changes must stay explicit:
-the direct desktop version must be valid SemVer and strictly greater than the
-version in the latest published `latest.json`, while Android `versionCode` must
-increase for every installable update. The release metadata check rejects a
-desktop downgrade or repeat before a platform build begins.
+`v0.0.1` already exists as an immutable tag for source that is no longer the
+current `main` commit, so the release preflight deliberately rejects it. Use
+`v0.0.2` for the first published GitHub direct-download release instead of
+rewriting that tag. The desktop and Android applications already have
+independent internal version tracks; the workflow records those exact values in
+its release notes rather than mislabelling either binary. Future app-version
+changes must stay explicit: the direct desktop version must be valid SemVer and
+strictly greater than the version in the latest published `latest.json`, while
+Android `versionCode` must increase for every installable update. The release
+metadata check rejects a desktop downgrade or repeat before a platform build
+begins.
 
 ## Before tagging
 
@@ -112,8 +115,8 @@ desktop downgrade or repeat before a platform build begins.
 2. Confirm the `direct-download-release` secrets above are configured. The
    protected **Direct-distribution credential gate** lists every missing name
    before any platform build begins.
-3. Create and push the annotated tag, for example `git tag -a v0.0.1 -m
-   "Nessie v0.0.1"` followed by `git push origin v0.0.1`.
+3. Create and push the annotated tag, for example `git tag -a v0.0.2 -m
+   "Nessie v0.0.2"` followed by `git push origin v0.0.2`.
 4. Approve the protected environment if configured. The release becomes public
    only after the Mac, Windows, Linux, and Android gates all pass.
 
