@@ -14,6 +14,7 @@ const agent = (overrides: Partial<AgentRecord>): AgentRecord =>
     name: 'Agent',
     role: 'assistant',
     systemManaged: false,
+    visibility: 'team',
     ...overrides,
   }) as AgentRecord
 
@@ -95,4 +96,27 @@ test('an empty query lists everyone addressable', () => {
   )
   assert.deepEqual(listed.map((entry) => entry.kind), ['user', 'agent'])
   assert.deepEqual(listed.map((entry) => entry.detail), ['ondrej@test.local', 'agent designer'])
+  assert.deepEqual(listed.map((entry) => entry.category), ['person', 'team agent'])
+})
+
+test('same-named agents are distinguished by visibility', () => {
+  const teamAgent = agent({
+    id: 'team-summary',
+    name: 'Web summary',
+    role: 'website summarizer',
+    visibility: 'team',
+  })
+  const privateAgent = agent({
+    id: 'private-summary',
+    name: 'Web summary',
+    role: 'website summarizer',
+    visibility: 'private',
+  })
+
+  const listed = options([teamAgent, privateAgent], '')
+  assert.deepEqual(listed.map((entry) => entry.category), ['team agent', 'private agent'])
+  assert.deepEqual(
+    options([teamAgent, privateAgent], 'private').map((entry) => entry.id),
+    ['private-summary'],
+  )
 })

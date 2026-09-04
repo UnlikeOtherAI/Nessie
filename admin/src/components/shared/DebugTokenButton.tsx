@@ -129,6 +129,7 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
 
       <SessionDebugDialog
         actionLabel={copied ? 'Copied' : 'Copy to clipboard'}
+        actionMinWidth="8.5rem"
         description="Token, decoded claims, localStorage and cookies. Sensitive — only share with people you trust."
         onAction={handleCopy}
         onClose={handleClose}
