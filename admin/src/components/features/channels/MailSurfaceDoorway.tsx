@@ -94,6 +94,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const [account, setAccount] = useState<ConnectedMailAccountRecord | null>(null)
   const [accessError, setAccessError] = useState<string | null>(null)
   const targetRef = useRef<HTMLDivElement | null>(null)
+  const ownsOverlayMarkerRef = useRef(false)
   const storageKey = useMemo(() => doorway ? `mail-doorway-offered:${messageId}` : null, [doorway, messageId])
   const conversation = useConnectedMailConversation(
     doorway ? { accountId: doorway.accountId, source: doorway.source } : null,
@@ -125,9 +126,15 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
         if (window.sessionStorage.getItem(storageKey) || window.sessionStorage.getItem('mail-doorway-overlay-open')) return
         window.sessionStorage.setItem(storageKey, 'offered')
         window.sessionStorage.setItem('mail-doorway-overlay-open', messageId)
+        ownsOverlayMarkerRef.current = true
         void checkAndOpen().then((account) => {
           if (account) return
-          try { window.sessionStorage.removeItem('mail-doorway-overlay-open') } catch { /* no-op */ }
+          try {
+            if (window.sessionStorage.getItem('mail-doorway-overlay-open') === messageId) {
+              window.sessionStorage.removeItem('mail-doorway-overlay-open')
+            }
+          } catch { /* no-op */ }
+          ownsOverlayMarkerRef.current = false
         })
       } catch { /* Explicit Open mail remains available when storage is disabled. */ }
       observer.disconnect()
@@ -136,13 +143,31 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     return () => observer.disconnect()
   }, [doorway, messageId, storageKey])
 
+  // A route change can unmount an open doorway without invoking Dialog.onClose.
+  // Release only the marker this instance claimed, so a different message's
+  // overlay cannot be accidentally unlocked by our cleanup.
+  useEffect(() => () => {
+    if (!ownsOverlayMarkerRef.current) return
+    try {
+      if (window.sessionStorage.getItem('mail-doorway-overlay-open') === messageId) {
+        window.sessionStorage.removeItem('mail-doorway-overlay-open')
+      }
+    } catch { /* Explicit Open mail remains available when storage is disabled. */ }
+    ownsOverlayMarkerRef.current = false
+  }, [messageId])
+
   if (!doorway) return null
   const matchingAccount = accounts.data?.find((candidate) =>
     candidate.id === doorway.accountId && candidate.source === doorway.source,
   )
   const title = doorway.mode === 'compose' ? 'Email draft ready' : doorway.mode === 'thread' ? 'Email ready to review' : 'Mail ready to review'
   const close = () => {
-    try { window.sessionStorage.removeItem('mail-doorway-overlay-open') } catch { /* no-op */ }
+    try {
+      if (window.sessionStorage.getItem('mail-doorway-overlay-open') === messageId) {
+        window.sessionStorage.removeItem('mail-doorway-overlay-open')
+      }
+    } catch { /* no-op */ }
+    ownsOverlayMarkerRef.current = false
     setOpen(false)
     setAccount(null)
   }

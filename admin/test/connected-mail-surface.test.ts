@@ -49,6 +49,8 @@ test('the chat doorway uses session-only offer state and shared dialog navigatio
   assert.match(doorway, /open && Boolean\(account\)/)
   assert.match(doorway, /accounts\.refetch\(\{ throwOnError: true \}\)/)
   assert.match(doorway, /removeItem\('mail-doorway-overlay-open'\)/)
+  assert.match(doorway, /ownsOverlayMarkerRef/)
+  assert.match(doorway, /getItem\('mail-doorway-overlay-open'\) === messageId/)
   assert.match(doorway, /<MailboxWorkspace/)
   assert.match(doorway, /<MailboxThreadList/)
   assert.match(doorway, /doorway\.mode === 'compose' \? account\.canCompose : account\.canRead/)
