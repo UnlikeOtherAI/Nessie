@@ -26,6 +26,7 @@ import {
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { mailboxDiscoveryTelemetry } from '../services/mailbox-discovery-telemetry.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -179,10 +180,14 @@ export const registerMailboxConnectionRoutes = (
         ...(body.scope ? { scope: body.scope } : {}),
         ...(body.teamId ? { teamId: body.teamId } : {}),
       })
-      return reply.send(createApiResponse(MailboxDiscoveryResultSchema.parse({
+      const discovered = MailboxDiscoveryResultSchema.parse({
         ...result,
         ...(existingConnection ? { existingConnection } : {}),
-      })))
+      })
+      // Domain and categories only — see mailbox-discovery-telemetry.ts for why
+      // the address itself never reaches the log.
+      request.log.info(mailboxDiscoveryTelemetry(discovered), 'mailbox.discovery')
+      return reply.send(createApiResponse(discovered))
     } catch (error) {
       if (error instanceof MailboxDiscoveryAddressError) {
         return sendApiError(reply, 400, 'INVALID_EMAIL_ADDRESS', error.message, 'email')
