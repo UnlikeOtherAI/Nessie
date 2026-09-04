@@ -25,6 +25,7 @@ const callbackErrorCopy: Record<string, string> = {
   connector_unavailable: 'This email provider is not available in this deployment.',
   invalid_callback: 'Connection was not completed. Try again.',
   provider_access_blocked: 'Your organisation does not currently allow this app to access email.',
+  reauthorization_required: 'Your email provider needs you to sign in again.',
   state_invalid: 'That connection link has expired. Start again to continue.',
 }
 
@@ -93,8 +94,9 @@ export const ConnectionsPage = () => {
     <SettingsPanel eyebrow="User" title="Connected accounts">
       <div className="flex flex-col gap-6">
         <p className="text-sm text-[color:var(--tx2)]">
-          Connect Slack or email accounts for your Chief of Staff. Native Gmail and Microsoft
-          accounts sync only what you choose; other mailboxes stay live with their provider.
+          Connect Slack or email accounts for your Chief of Staff. Native Gmail and
+          Microsoft accounts keep a private sync you can limit; other mailboxes stay live
+          with their provider.
         </p>
 
         {callbackNotice ? (
@@ -137,8 +139,9 @@ export const ConnectionsPage = () => {
             <div>
               <h2 className="font-semibold text-[color:var(--tx)]">Email</h2>
               <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                Gmail and Microsoft sign in securely and sync selected email. Other providers
-                connect live with secure IMAP and SMTP settings.
+                Gmail and Microsoft sign in securely through their native APIs. Other
+                providers connect live with secure IMAP and SMTP settings; native labels and
+                folders can be limited after connecting.
               </p>
             </div>
             <MailboxConnectionForm scope="user" />

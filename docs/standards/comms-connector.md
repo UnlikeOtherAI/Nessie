@@ -6,15 +6,17 @@ session. `AGENTS.md` carries the one-line invariant and points here; **this
 file is the rule**.
 
 - The Individual Communications Connector wires per-user OAuth connections
-  (Slack + Gmail live, Microsoft planned) into a normalized `CommsEvent` store
+  (Slack, Gmail, and Microsoft Outlook mail live; Microsoft Teams planned) into
+  a normalized `CommsEvent` store
   through the provider-agnostic `@nessie/comms-connect` core and one adapter
   package per provider. Adapters register into the shared registry only via
   `@nessie/comms-providers` (`registerCommsConnectorsFromEnv`), called at API
   and worker startup from `NESSIE_COMMS_*` env; unset providers stay
   unregistered and their jobs park on `ConnectorNotRegisteredError`. Token
   bundles are encrypted in a separate table (never returned to the browser),
-  sync is resumable + checkpointed with webhook ingestion through the worker
-  queue, and the connector layer carries **no** reasoning logic (Chief-of-Staff
+  sync is resumable + checkpointed with webhook ingestion or an adapter-declared
+  bounded polling cadence through the worker queue, and the connector layer
+  carries **no** reasoning logic (Chief-of-Staff
   boundary). The sync worker and subscription-renewal sweep skip any connection
   whose owner is no longer an active org member (`deactivatedAt`), so user
   deactivation revokes comms import immediately — matching the API auth and
@@ -33,8 +35,9 @@ sync through the worker queue, owner-deactivation revocation gate, no
 reasoning logic in the connector layer): stated above.
 Additional facts:
 
-- Adapter packages: `@nessie/comms-slack`, `@nessie/comms-google` (Slack +
-  Gmail live; Microsoft/Teams planned), normalizing into the `CommsEvent`
+- Adapter packages: `@nessie/comms-slack`, `@nessie/comms-google`, and
+  `@nessie/comms-microsoft` (Slack, Gmail, and Outlook mail live; Teams
+  planned), normalizing into the `CommsEvent`
   store via the provider-agnostic `@nessie/comms-connect` core. Env names
   match the API OAuth-start source of truth
   (`api/src/routes/comms/oauth-config.ts`).
@@ -49,6 +52,12 @@ Additional facts:
   history re-sync; a rejected credential (`needsReauthorization`) fails the
   job without retry. The owner-active gate lives in
   `worker/src/control/comms-sync.ts` (`isConnectionOwnerActive`).
+- Microsoft is delegated `Mail.Read` + `User.Read` only: it proves the mailbox
+  through Graph `/me`, imports selected mail folders with folder-scoped delta
+  cursors, asks Graph for text bodies, and reconciles every five minutes. It
+  does not request send/write permissions, create Graph subscriptions, or
+  claim Teams support. Gmail uses the same adapter-declared polling path only
+  when no Pub/Sub topic is configured.
 - Chat-first: the `comms_connect_card` PA tool drives connect;
   `/settings/connections` is the secondary UI. Authoritative spec:
   [docs/plans/2026-07-21-individual-communications-connector.md](../plans/2026-07-21-individual-communications-connector.md).

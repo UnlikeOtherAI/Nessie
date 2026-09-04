@@ -58,6 +58,16 @@ Plan and as-built deltas:
   native connector, while a reviewed IMAP/SMTP route keeps its server details
   hidden until the person chooses Advanced settings. A team shared mailbox stays
   Model A-only and never starts a personal OAuth connection.
+- **Discovery has no credential capability.** The authenticated discovery route
+  accepts only an address plus explicit scope, fans out reviewed registry, MX,
+  secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,
+  and returns separate configuration confidence and credential-destination
+  trust. HTTPS uses `safeFetch` with IP pinning, same-origin redirects, a 64 KiB
+  cap, and one three-second budget; declarations/entities are refused by the
+  narrow autoconfig parser. MX and uncorroborated external SRV records may
+  classify but never produce `trustedImapSmtp`. The UI may show the password
+  screen only when that server-authored property exists; manual settings remain
+  an explicit user override and the dial path still re-vets every endpoint.
 - **Seams.** Protocol clients live in `@nessie/agent-mail` (`dial`, `wire`,
   `smtp`, `imap`, `mailbox-client`) beside the SES transport, because MIME
   building and address handling are transport-neutral and `buildOutboundMime`

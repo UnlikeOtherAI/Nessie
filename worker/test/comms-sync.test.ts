@@ -246,6 +246,37 @@ test('an ordinary error still fails the job and rethrows for queue retry', async
   assert.equal(state.connection.status, 'active')
 })
 
+test('the page safety cap retries from its checkpoint instead of completing early', async () => {
+  const state = makeState(new Date())
+  const priorSuccessfulSync = state.connection.lastSuccessfulSyncAt
+  let pages = 0
+  registerConnector('slack', () => ({
+    ...throwingConnector(new Error('unused')),
+    runIncrementalSync: async (_connection, checkpoint) => {
+      pages += 1
+      return {
+        checkpoint: { ...checkpoint, cursor: `page-${pages}` },
+        events: [],
+        hasMore: true,
+      }
+    },
+  }))
+
+  await assert.rejects(
+    executeCommsIncrementalSyncJob(
+      { prisma: makeFakePrisma(state), encryptionSecret: ENCRYPTION_SECRET },
+      { connectionId: CONNECTION_ID },
+    ),
+    /page limit reached.*retry from checkpoint/,
+  )
+
+  assert.equal(pages, 100)
+  assert.equal(state.job.cursor, 'page-100')
+  assert.equal(state.job.status, 'failed')
+  assert.equal(state.job.retryCount, 1)
+  assert.equal(state.connection.lastSuccessfulSyncAt, priorSuccessfulSync)
+})
+
 test('incremental polling selects only opted-in providers and pages past its limit', async () => {
   const ids = [
     '10000000-0000-0000-0000-000000000001',

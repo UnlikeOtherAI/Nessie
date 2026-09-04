@@ -2,8 +2,8 @@
 
 An agent can work in a mailbox that exists somewhere else: your own, or a team's
 shared `support@`. A personal Gmail or Microsoft account can use its native,
-secure sign-in and selected-mail sync; another provider, or a team's shared
-mailbox, connects over SMTP/IMAP. You then choose which agents may use the live
+secure sign-in and private sync with label/folder controls; another provider, or
+a team's shared mailbox, connects over SMTP/IMAP. You then choose which agents may use the live
 mailbox and ask them things — *"anything from the bank?"*, *"reply to Petra that
 Thursday works"*.
 
@@ -40,6 +40,15 @@ available. A shared mailbox never uses that personal OAuth route. If a provider
 requires an app-specific password, Nessie says so before showing the one password
 field. Advanced settings are the recovery path when secure settings cannot be
 confirmed or you choose to override them.
+
+Discovery and connection are separate. The discovery request contains the
+address and scope, never a password, and runs the reviewed registry plus MX,
+mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration probes within one
+short deadline. MX is only a provider clue. A same-domain or reviewed provider
+configuration can authorize the compact password screen; an external SRV
+target without corroboration, conflicting provider evidence, or an unknown
+domain cannot. JMAP may be recognised, but until its connector is installed the
+flow falls back to a trusted IMAP/SMTP configuration or Advanced settings.
 
 **Where the provider offers an app password, use one** — this credential reads
 everything in the mailbox and can send as it, so a scoped, revocable one is worth

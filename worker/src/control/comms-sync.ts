@@ -211,6 +211,7 @@ const runSyncPhase = async (
 
   try {
     let checkpoint = checkpointFromJob(job)
+    let completed = false
     for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
       const result =
         phase === 'history'
@@ -250,8 +251,15 @@ const runSyncPhase = async (
       })
 
       if (!result.hasMore) {
+        completed = true
         break
       }
+    }
+
+    if (!completed) {
+      throw new Error(
+        `[comms-sync] page limit reached for ${connection.provider}; retry from checkpoint`,
+      )
     }
 
     await prisma.commsSyncJob.update({

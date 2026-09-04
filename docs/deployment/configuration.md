@@ -49,6 +49,8 @@ production settings:
 | Comms Google client id | `NESSIE_COMMS_GOOGLE_CLIENT_ID` | optional; Google OAuth client id for the Gmail + Meet connector. Also read by the API OAuth-start |
 | Comms Google client secret | `NESSIE_COMMS_GOOGLE_CLIENT_SECRET` | optional (secret); Google OAuth client secret for the code→token exchange. Google and the `google_meet` call provider are configured only when the id + secret are both set |
 | Comms Google Pub/Sub topic | `NESSIE_COMMS_GOOGLE_PUBSUB_TOPIC` | optional; fully-qualified `projects/<p>/topics/<t>` for Gmail `users.watch` push notifications. Sync still works without it (incremental polling); only real-time watch renewal needs it |
+| Comms Microsoft client id | `NESSIE_COMMS_MICROSOFT_CLIENT_ID` | optional; Microsoft Entra OAuth application client id for personal Outlook mail. Enables Microsoft discovery and OAuth start. Register the exact callback `${NESSIE_API_PUBLIC_URL}/api/comms/connections/microsoft/callback` and allow personal or organisational accounts as required. |
+| Comms Microsoft client secret | `NESSIE_COMMS_MICROSOFT_CLIENT_SECRET` | optional (secret) for a confidential web-client registration; omit only when the Entra application is deliberately configured as a PKCE public client. API and worker must receive the same registration values. |
 | Jitsi call domain | `NESSIE_JITSI_DOMAIN` | optional; hostname (and optional port) used for server-minted Jitsi links. Defaults to `meet.jit.si`; do not include a scheme or path |
 | Call ring timeout | `NESSIE_CALL_RING_TIMEOUT_MS` | optional; delayed durable queue timeout for an unanswered call. Defaults to `45000` (45 seconds). Never implemented with an API-process timer. |
 | Active-call expiry | `NESSIE_CALL_MAX_ACTIVE_HOURS` | optional; worker sweep backstop for a call that remains active without an explicit end. Defaults to `8` hours. |
@@ -194,6 +196,18 @@ person or a team connects a mailbox that already exists, the provider keeps the
 mail, and nothing is stored here but a password sealed with `NESSIE_AUTH_SECRET`
 and an audit trail. The only setting is `NESSIE_MAILBOX_TIMEOUT_MS` (default
 `20000`), which bounds how long a mail server may take per read.
+
+The address-first discovery route uses the reviewed provider registry, MX
+fingerprints, secure mail/JMAP/Exchange-Online SRV records, and domain-owned
+HTTPS autoconfiguration. It never receives a password. Its HTTPS requests use
+the shared SSRF-safe pinned transport, same-origin redirect policy, a 64 KiB
+response cap, and a three-second shared deadline. JMAP is detected but is not a
+runtime connector yet; unknown, contradictory, or uncorroborated external SRV
+results go to Advanced settings instead of becoming a credential destination.
+Google and Microsoft discovery offer OAuth only when their connector
+registration above is present. Apple third-party authorization is not
+registered by Nessie today, so iCloud uses its reviewed app-specific-password
+IMAP/SMTP path.
 
 Worth knowing when locking a network down: the API and the worker open raw TCP
 connections to the IMAP and SMTP hosts people configure — always over TLS, and
