@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const EMAIL_ACCOUNT_LIST_TOOL_ID = 'email_account_list'
@@ -5,6 +7,51 @@ export const EMAIL_ACCOUNT_CONNECT_TOOL_ID = 'email_account_connect'
 export const EMAIL_ACCOUNT_CHECK_TOOL_ID = 'email_account_check'
 export const EMAIL_ACCOUNT_DISCONNECT_TOOL_ID = 'email_account_disconnect'
 export const EMAIL_ACCOUNT_AGENT_ACCESS_TOOL_ID = 'email_account_agent_access'
+
+const AccountKindSchema = z.enum(['provider', 'mailbox'])
+
+const EmailAccountListToolInputSchema = z.object({}).strict()
+
+const EmailAccountConnectToolInputSchema = z.object({
+  scope: z.enum(['user', 'team']).default('user'),
+}).strict()
+
+const EmailAccountReferenceToolInputSchema = z.object({
+  accountId: z.string().uuid(),
+  accountKind: AccountKindSchema,
+}).strict()
+
+const EmailAccountAgentAccessToolInputSchema = z.object({
+  accountId: z.string().uuid(),
+  agentId: z.string().uuid(),
+  allowed: z.boolean(),
+}).strict()
+
+const EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS = {
+  [EMAIL_ACCOUNT_LIST_TOOL_ID]: EmailAccountListToolInputSchema,
+  [EMAIL_ACCOUNT_CONNECT_TOOL_ID]: EmailAccountConnectToolInputSchema,
+  [EMAIL_ACCOUNT_CHECK_TOOL_ID]: EmailAccountReferenceToolInputSchema,
+  [EMAIL_ACCOUNT_DISCONNECT_TOOL_ID]: EmailAccountReferenceToolInputSchema,
+  [EMAIL_ACCOUNT_AGENT_ACCESS_TOOL_ID]: EmailAccountAgentAccessToolInputSchema,
+} as const
+
+/**
+ * The lifecycle tools are a credential boundary. Their arguments are parsed
+ * before policy, audit or approval handling so unrecognised fields (including
+ * a model-provided password or OAuth code) cannot become durable state.
+ */
+export const parseEmailAccountToolArgs = (
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> => {
+  const schema = EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS[
+    toolName as keyof typeof EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS
+  ]
+  return schema ? schema.parse(args) : args
+}
+
+export const isEmailAccountTool = (toolName: string): boolean =>
+  Object.hasOwn(EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS, toolName)
 
 const ACCOUNT_REFERENCE_PROPERTIES = {
   accountId: {
@@ -34,6 +81,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: EMAIL_ACCOUNT_LIST_TOOL_ID,
     label: 'List Email Accounts',
     parameters: { properties: {}, type: 'object' },
+    inputSchema: EmailAccountListToolInputSchema,
     personalAssistantOnly: true,
     safe: true,
     summary: 'List manageable email accounts and their connection state.',
@@ -57,6 +105,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       type: 'object',
     },
+    inputSchema: EmailAccountConnectToolInputSchema,
     personalAssistantOnly: true,
     safe: false,
     summary: 'Open the secure email-account connection flow in chat.',
@@ -74,6 +123,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['accountKind', 'accountId'],
       type: 'object',
     },
+    inputSchema: EmailAccountReferenceToolInputSchema,
     personalAssistantOnly: true,
     safe: false,
     summary: 'Check or refresh one connected email account.',
@@ -91,6 +141,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['accountKind', 'accountId'],
       type: 'object',
     },
+    inputSchema: EmailAccountReferenceToolInputSchema,
     personalAssistantOnly: true,
     requiresApproval: true,
     safe: false,
@@ -122,6 +173,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['accountId', 'agentId', 'allowed'],
       type: 'object',
     },
+    inputSchema: EmailAccountAgentAccessToolInputSchema,
     personalAssistantOnly: true,
     safe: false,
     summary: 'Grant or revoke one agent’s access to an IMAP/SMTP mailbox.',
