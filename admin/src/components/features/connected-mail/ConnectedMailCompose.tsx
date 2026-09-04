@@ -76,7 +76,12 @@ export const ConnectedMailCompose = ({
     providerDraftRef.current = null
     hydratedDraftRef.current = null
     editedProviderDraftRef.current = false
-  }, [gmailDraftId])
+    createIdempotencyKeyRef.current = null
+    mailboxSendIdempotencyKeyRef.current = null
+    setRecreateGmailDraft(false)
+    setSent(null)
+    setError(null)
+  }, [address.accountId, address.source, gmailDraftId, replyTo?.id])
 
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
@@ -150,6 +155,8 @@ export const ConnectedMailCompose = ({
           idempotencyKey: mailboxSendIdempotencyKeyRef.current ??= crypto.randomUUID(),
         })
       setSent({ ...result, id: result.id || providerAction?.id || '' })
+      createIdempotencyKeyRef.current = null
+      mailboxSendIdempotencyKeyRef.current = null
       draft.clear()
     } catch (cause) {
       if (cause instanceof ApiClientError && cause.code === 'DRAFT_CHANGED' && !providerDraftRef.current) {

@@ -228,7 +228,9 @@ export const listGmailMailThreads = async (
   input: { cursor?: string; pageSize: number; query?: string; unreadOnly?: boolean },
 ): Promise<GmailMailThreadPage> => {
   const budget = new GmailReadBudget()
-  const params: Record<string, string> = { maxResults: String(input.pageSize) }
+  const params: Record<string, string> = {
+    maxResults: String(Math.min(Math.max(input.pageSize, 1), 100)),
+  }
   const query = queryFor(input.query, input.unreadOnly)
   if (query) params.q = query
   if (input.cursor) params.pageToken = input.cursor

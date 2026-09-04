@@ -6,6 +6,7 @@ import { sealSecret } from '@nessie/comms-connect'
 
 import {
   GmailDraftError,
+  discardDraftForUser,
   dispatchClaimedDraft,
   fingerprintDraft,
   sendDraftForUser,
@@ -292,6 +293,33 @@ test('undo after the send already went out is refused', async () => {
     (error: unknown) =>
       error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
   )
+})
+
+test('discard refuses a held or actively dispatching draft', async () => {
+  for (const state of ['sending', 'dispatching']) {
+    const seeded = makePrisma(row({ state }))
+    await assert.rejects(
+      discardDraftForUser(seeded.prisma, {
+        organizationId: ORG, userId: USER, draftActionId: ACTION,
+      }, deps(routes(liveDraft()))),
+      (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+    )
+    assert.equal(seeded.state.row.state, state)
+  }
+})
+
+test('discard claims the durable draft before deleting it at Gmail', async () => {
+  const seeded = makePrisma(row())
+  let providerState: string | null = null
+  const result = await discardDraftForUser(seeded.prisma, {
+    organizationId: ORG, userId: USER, draftActionId: ACTION,
+  }, deps((_url, method) => {
+    assert.equal(method, 'DELETE')
+    providerState = seeded.state.row.state
+    return { status: 200, body: {} }
+  }))
+  assert.equal(providerState, 'discarded')
+  assert.equal(result.state, 'discarded')
 })
 
 test('a draft belonging to somebody else is not found', async () => {

@@ -50,12 +50,20 @@ const existingRow = (): Row => ({
   claimedAt: null,
 })
 
-const makePrisma = (options: { failPersistProviderDraft?: boolean; existing?: Row } = {}) => {
+const makePrisma = (options: {
+  createConflictWith?: Row
+  failPersistProviderDraft?: boolean
+  existing?: Row
+} = {}) => {
   const state: { creates: number; row: Row | null } = { creates: 0, row: options.existing ?? null }
   const prisma = {
     gmailDraftAction: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         state.creates += 1
+        if (options.createConflictWith) {
+          state.row = options.createConflictWith
+          throw Object.assign(new Error('unique action'), { code: 'P2002' })
+        }
         state.row = {
           ...existingRow(), providerDraftId: null, state: 'creating',
           contentFingerprint: String(data.contentFingerprint), claimedAt: new Date(),
@@ -124,4 +132,18 @@ test('a post-provider crash replay never creates a second Gmail draft', async ()
   await assert.rejects(composeDraftForUser(prisma, composeInput(), deps(provider)), GmailDraftError)
   assert.equal(state.creates, 1)
   assert.equal(providerCalls, 1)
+})
+
+test('a concurrent idempotency insert resolves through the durable winner', async () => {
+  const winner = existingRow()
+  const { prisma, state } = makePrisma({ createConflictWith: winner })
+  let providerCalls = 0
+  const result = await composeDraftForUser(prisma, composeInput(), deps(() => {
+    providerCalls += 1
+    return { status: 200, body: {} }
+  }))
+  assert.equal(state.creates, 1)
+  assert.equal(providerCalls, 0)
+  assert.equal(result.id, winner.id)
+  assert.equal(result.providerDraftId, winner.providerDraftId)
 })
