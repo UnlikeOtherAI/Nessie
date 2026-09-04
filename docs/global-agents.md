@@ -396,13 +396,17 @@ issued. The Tools tab is `AgentAvailableTools`, which already resolves to its
 read-only `ToolPicker` for an agent the viewer cannot edit — the same catalogue,
 the same search, the switches disabled.
 
-## Addressable, not bound — the "New message" address book
+## Addressable, not bound — the Direct messages address book
 
 The Direct-messages list shows *conversations*: a row appears once its channel
-carries a message. The address book behind **New message** answers the opposite
-question — everything you can start a conversation with — so every agent a
-person may talk to belongs in it, the Agent Designer and the Personal Assistant
-included, whether or not they have written to it yet.
+carries a message. Its `+` opens one address book with **People** and **Agents**
+tabs. People starts a human conversation. Agents answers both agent decisions in
+one place: it lists every agent a person may talk to, including the Agent
+Designer and Personal Assistant, and offers creation only after an explicit
+**Private** or **Public** choice. Public is the product label for the stored
+organization-visible `team` value and says that the agent may be invited to any
+normal channel; Private stays owner-only and DM-only. The global Create menu and
+native creation sheet enter the matching tab of this same flow.
 
 A DM-homed system agent is never *bound* into a new conversation:
 `bindAgentToChannel` refuses every `systemManaged` agent and every system

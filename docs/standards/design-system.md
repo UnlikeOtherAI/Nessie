@@ -15,8 +15,13 @@ summary and points here; **this file is the rule**.
   (`/settings/appearance`); choice persists in `localStorage["nessie.theme"]`
   for logged-out screens and on `User.preferences.theme` for signed-in users, so
   web, desktop, and mobile use the same account theme.
-- Adding a theme = add a `[data-theme]` block (redeclare every token) + register
-  the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+- Adding a color theme = add a `[data-theme]` block (redeclare every token) +
+  register the id in `ThemeProvider`. A product theme may additionally own a
+  coherent geometry and typography treatment through selectors scoped to the
+  same `[data-theme]`; those selectors still live only in `styles.css` and
+  must restyle shared primitives rather than individual routes. Space White is
+  the reference implementation. See
+  [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
   validation, feedback, loading/empty/error states, chips, key-value views and
   confirm flows were audited across every content page; the primitives mostly
@@ -44,10 +49,11 @@ summary and points here; **this file is the rule**.
   that are part of Projects, Knowledge, or Channels use `true`, so the shared
   viewport keeps its horizontal-scroll behaviour without leaking an expand
   control into operational screens.
-- **One segmented strip, everywhere.** Every compact single-select strip in
+- **One selection strip, everywhere.** Every compact single-select strip in
   the admin — detail tabs, page sections, filter segments, and inline form
-  choices — is `components/primitives/TabBar.tsx` (a single sliding pill,
-  `role="tablist"` or `role="radiogroup"`). `ChoiceGroup` delegates its inline
+  choices — is `components/primitives/TabBar.tsx` (a single sliding indicator,
+  rendered as a pill or underline by the active theme, `role="tablist"` or
+  `role="radiogroup"`). `ChoiceGroup` delegates its inline
   form variant to it; explanatory card choices remain cards. Page and filter
   state lives in a URL param written with `replace`, never a history entry;
   transient form values do not. The navigation rule against another fork lives
@@ -64,7 +70,8 @@ summary and points here; **this file is the rule**.
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
 - **One agent-visibility marker wherever identity drives an action.** Every
   agent picker and actionable agent row uses
-  `components/features/agents/AgentVisibilityPill.tsx`: `Team` for a shared
+  `components/features/agents/AgentVisibilityPill.tsx`: `Public` for an
+  organization-visible shared
   agent and a lock-bearing `Private` for a personal one. Native `<select>`
   controls use that component's text formatter because option elements cannot
   render the pill. Display names are not unique; a surface that lets a person

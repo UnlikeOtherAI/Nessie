@@ -152,19 +152,21 @@ export const phoneRouteHasBackDepth = (pathname: string): boolean =>
 export const shouldHighlightKnowledgeSidebarSelection = (
   pathname: string,
   phoneLayout: boolean,
-): boolean => !phoneLayout || normalizePathname(pathname) !== '/knowledge-base'
+): boolean => {
+  const normalized = normalizePathname(pathname)
+  if (normalized.startsWith('/dashboards')) return false
+  return !phoneLayout || normalized !== '/knowledge-base'
+}
 
-// On a phone every Knowledge selection is an addressable pushed screen. A
-// split layout normally swaps the persistent Knowledge workspace in place,
-// but Dashboard routes render a different outlet: changing provider state
-// alone cannot replace that page. In that case the sidebar doorway must also
-// navigate back into the selected Knowledge surface.
+// Every Knowledge sidebar destination is route-backed on every layout. On a
+// split layout sibling routes still swap in place (the registry gives them the
+// same screen identity), while the URL remains the source of truth. Keeping a
+// selection only in provider state lets the previous `/spaces/:id` effect
+// immediately select that old space again — most visibly when moving between
+// My Docs and a shared space.
 export const resolveKnowledgeSidebarSelectionPath = (
-  pathname: string,
-  phoneLayout: boolean,
   selection: { id: string; type: 'space' | 'view' },
-): string | null => {
-  if (!phoneLayout && !normalizePathname(pathname).startsWith('/dashboards')) return null
+): string => {
   const segment = selection.type === 'space' ? 'spaces' : 'views'
   return `/knowledge-base/${segment}/${encodeURIComponent(selection.id)}`
 }
