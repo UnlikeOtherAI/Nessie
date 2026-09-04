@@ -438,9 +438,17 @@ jobs:
           if (-not (Test-Path 'HKCU:\Software\Classes\nessie')) {
             throw 'the nessie:// scheme was not registered'
           }
-          $app = Get-ChildItem "$env:LOCALAPPDATA" -Filter 'Nessie.exe' -Recurse -ErrorAction SilentlyContinue |
+          $install = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            ForEach-Object { Get-ItemProperty $_.PSPath } |
+            Where-Object { $_.DisplayName -eq 'Nessie' } |
             Select-Object -First 1
-          if (-not $app) { throw 'the installed Nessie.exe was not found' }
+          if (-not $install) { throw 'the Nessie uninstall registration was not found' }
+          $installRoot = $install.InstallLocation.Trim('"')
+          $appPath = Join-Path $installRoot 'nessie-desktop.exe'
+          if (-not (Test-Path -LiteralPath $appPath)) {
+            throw "the installed nessie-desktop.exe was not found at $appPath"
+          }
+          $app = Get-Item -LiteralPath $appPath
 
           # No console: the PE subsystem must be GUI (2). A console subsystem
           # binary flashes a terminal at every launch, which is the defect this
@@ -448,7 +456,7 @@ jobs:
           $bytes = [System.IO.File]::ReadAllBytes($app.FullName)
           $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
           $subsystem = [BitConverter]::ToUInt16($bytes, $peOffset + 0x5C)
-          if ($subsystem -ne 2) { throw "Nessie.exe is not a GUI subsystem binary (got $subsystem)" }
+          if ($subsystem -ne 2) { throw "nessie-desktop.exe is not a GUI subsystem binary (got $subsystem)" }
 
           $process = Start-Process -FilePath $app.FullName -PassThru
           Start-Sleep -Seconds 10
@@ -460,10 +468,10 @@ jobs:
           }
           Stop-Process -Id $process.Id -Force
 
-          $uninstall = Join-Path $app.DirectoryName 'uninstall.exe'
+          $uninstall = $install.UninstallString.Trim('"')
           Start-Process -FilePath $uninstall -ArgumentList '/S' -Wait
           Start-Sleep -Seconds 5
-          if (Test-Path $app.FullName) { throw 'the desktop app was not uninstalled' }
+          if (Test-Path -LiteralPath $app.FullName) { throw 'the desktop app was not uninstalled' }
 
       - name: Executor package install, service, and uninstall
         shell: pwsh
