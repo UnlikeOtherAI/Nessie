@@ -157,7 +157,7 @@ export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDef
 }
 
 export const EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'executor.workspace_promotion_prepare',
+  id: 'executor_workspace_promotion_prepare',
   category: 'executors',
   summary: 'Prepare reviewed executor team promotion for confirmation.',
   label: 'Prepare Reviewed Team Promotion',
