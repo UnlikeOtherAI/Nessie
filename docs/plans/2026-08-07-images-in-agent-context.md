@@ -53,6 +53,7 @@ endpoint accepts:
 | Connector | Vision | Why |
 | --- | --- | --- |
 | `openai`, `openai-compatible` | yes | The chat endpoint (and Ledger's `/v1/openai` adapter in front of it) takes inline image parts. |
+| `codex-subscription` | yes | The ChatGPT Codex Responses endpoint takes inline `input_image` parts. |
 | `deepseek` | no | Its chat API is text-only and rejects the multi-part form. |
 | `kimi` | no | The coding endpoint this connector targets is text-only. |
 | `minimax` | no | The text models this connector targets take no image parts. |
@@ -142,6 +143,9 @@ structural fact about what is attached, never an interpretation of it.
 - `packages/runtime/test/openai-vision-messages.test.ts` — the mapper: image
   parts, an image-only turn with no empty text part, a text-only model keeping
   plain strings and never leaking the `images` field.
+- `packages/runtime/test/codex-responses-stream.test.ts` — the Codex Responses
+  mapper: an attached image becomes an inline `input_image` part, and a
+  non-vision mapping excludes its bytes.
 - `packages/runtime/test/connector-vision-wire.test.ts` — the per-provider gate
   checked on the request body, plus the capability snapshots.
 - `worker/src/run/message-attachments.test.ts` — the inventory line, original vs
@@ -152,6 +156,9 @@ structural fact about what is attached, never an interpretation of it.
   duplicated or empty trailing user turn.
 - `worker/src/run/execute/reply-placement.test.ts` — the reading scope split
   from the reply anchor.
+- `worker/src/run/pa-tools/message-delivery.test.ts` — an agent can attach its
+  own pending upload to a message through `send_message`; a foreign or already
+  linked attachment is rejected rather than claimed as sent.
 
 Verified end to end against a throwaway Postgres, a filesystem storage backend,
 and a capture server standing in for the provider: upload a PNG → post it with

@@ -211,6 +211,7 @@ const executeBuiltinToolUncorrected = async (
     case 'send_message':
       return wrapTool(inputSummary, () =>
         runSendMessageTool(context, {
+          attachmentIds: args.attachmentIds,
           channelId:
             typeof args.channelId === 'string' ? args.channelId : undefined,
           content: String(args.content ?? ''),
