@@ -175,7 +175,10 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             hideWhenSinglePage
             label={current.label}
             onPageChange={current.onPageChange}
+            onPageSizeChange={current.onPageSizeChange}
             page={current.page}
+            pageCount={current.pageCount}
+            pageSize={current.pageSize}
           />
         </section>
       </div>

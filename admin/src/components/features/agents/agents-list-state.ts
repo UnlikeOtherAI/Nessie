@@ -1,4 +1,5 @@
 import type { AgentScope } from './agent-scope'
+import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
 
 // The Agents page's per-tab page number is local state, which resets whenever
 // the page unmounts — and it unmounts every time the reader switches rail tabs
@@ -14,11 +15,13 @@ import type { AgentScope } from './agent-scope'
 export type AgentsListState = {
   activeScope: AgentScope
   pageByScope: Record<AgentScope, number>
+  pageSize: number
 }
 
 const createInitialState = (): AgentsListState => ({
   activeScope: 'team',
   pageByScope: { global: 0, personal: 0, team: 0 },
+  pageSize: DEFAULT_PAGE_LIMIT,
 })
 
 let saved: AgentsListState = createInitialState()
@@ -26,12 +29,14 @@ let saved: AgentsListState = createInitialState()
 export const loadAgentsListState = (): AgentsListState => ({
   activeScope: saved.activeScope,
   pageByScope: { ...saved.pageByScope },
+  pageSize: saved.pageSize,
 })
 
 export const saveAgentsListState = (state: AgentsListState): void => {
   saved = {
     activeScope: state.activeScope,
     pageByScope: { ...state.pageByScope },
+    pageSize: state.pageSize,
   }
 }
 

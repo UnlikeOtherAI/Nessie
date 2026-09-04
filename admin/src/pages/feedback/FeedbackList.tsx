@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { buildPageLabel } from '@nessie/schemas'
+import { DEFAULT_PAGE_LIMIT, buildPageLabel } from '@nessie/schemas'
 import { Card } from '../../components/shared/Card'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import { QueryState } from '../../components/shared/QueryState'
@@ -10,21 +10,23 @@ import { SectionLabel } from '../../components/primitives/SectionLabel'
 import type { FeedbackRecord } from '../../lib/api-client'
 import { feedbackStatusLabel, feedbackStatusTone } from './feedback-presentation'
 
-const FEEDBACK_PAGE_SIZE = 5
-
 const formatDate = (iso: string): string => {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
 }
 
-export const getFeedbackPage = <Item,>(items: Item[], page: number) => {
-  const totalPages = Math.max(1, Math.ceil(items.length / FEEDBACK_PAGE_SIZE))
+export const getFeedbackPage = <Item,>(
+  items: Item[],
+  page: number,
+  pageSize = DEFAULT_PAGE_LIMIT,
+) => {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
   const currentPage = Math.min(Math.max(page, 1), totalPages)
-  const firstItemIndex = (currentPage - 1) * FEEDBACK_PAGE_SIZE
+  const firstItemIndex = (currentPage - 1) * pageSize
 
   return {
     currentPage,
-    items: items.slice(firstItemIndex, firstItemIndex + FEEDBACK_PAGE_SIZE),
+    items: items.slice(firstItemIndex, firstItemIndex + pageSize),
     totalPages,
   }
 }
@@ -39,7 +41,8 @@ export const FeedbackList = ({
   query: UseQueryResult<FeedbackRecord[]>
 }) => {
   const items = query.data ?? []
-  const { currentPage, items: pageItems, totalPages } = getFeedbackPage(items, page)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT)
+  const { currentPage, items: pageItems, totalPages } = getFeedbackPage(items, page, pageSize)
 
   useEffect(() => {
     if (currentPage !== page) onPageChange(currentPage)
@@ -98,11 +101,17 @@ export const FeedbackList = ({
                 hideWhenSinglePage
                 label={buildPageLabel(
                   { total: items.length },
-                  (currentPage - 1) * FEEDBACK_PAGE_SIZE,
+                  (currentPage - 1) * pageSize,
                   pageItems.length,
                 )}
-                onPageChange={onPageChange}
-                page={currentPage}
+                onPageChange={(nextPage) => onPageChange(nextPage + 1)}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize)
+                  onPageChange(1)
+                }}
+                page={currentPage - 1}
+                pageCount={totalPages}
+                pageSize={pageSize}
               />
             </>
           )}

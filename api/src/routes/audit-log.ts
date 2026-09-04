@@ -31,6 +31,7 @@ export const registerAuditLogRoutes = (app: FastifyInstance, deps: RouteDeps): v
       from: query['from'],
       to: query['to'],
       cursor: query['cursor'],
+      direction: query['direction'] === 'backward' ? 'backward' : 'forward',
       limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
     })
 

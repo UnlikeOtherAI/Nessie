@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { visibleUserAlertWhere } from '@nessie/db'
-import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationMeta } from '@nessie/schemas'
+import {
+  buildPage,
+  decodeKeysetCursor,
+  resolvePageLimit,
+  type PaginationDirection,
+  type PaginationMeta,
+} from '@nessie/schemas'
 
 import {
   TeamInvitationAlertMetadataSchema,
@@ -62,6 +68,7 @@ export const listUserAlerts = async (
     organizationId: string
     userId: string
     cursor?: string
+    direction?: PaginationDirection
     limit?: number
     unreadOnly?: boolean
   },
@@ -86,21 +93,25 @@ export const listUserAlerts = async (
   const total = await prisma.userAlert.count({ where: { AND: conditions } })
 
   const parsed = decodeKeysetCursor(input.cursor)
+  const backwards = input.direction === 'backward'
   if (parsed) {
     conditions.push({ OR: [
-      { createdAt: { lt: parsed.createdAt } },
-      { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+      { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
     ] })
   }
 
   const rows = await prisma.userAlert.findMany({
     where: { AND: conditions },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
     include: alertInclude,
   })
 
   const page = buildPage({
+    direction: input.direction,
     hasCursor: Boolean(parsed),
     limit,
     rows,

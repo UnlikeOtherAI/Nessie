@@ -6,7 +6,7 @@ import {
   parseThreadId,
   type AgentActivityResponse,
   type AgentChild,
-  type AgentMessage,
+  type AgentMessagePage,
   type AgentStatusResponse,
   type ToolCallEntry,
   type WsScope,
@@ -245,7 +245,7 @@ export const loadAgentMessages = async (
   limit: number,
   offset = 0,
   options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
-): Promise<AgentMessage[]> => {
+): Promise<AgentMessagePage> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     select: {
@@ -254,42 +254,49 @@ export const loadAgentMessages = async (
     },
   })
 
-  if (!agent) return []
-  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return []
+  if (!agent) return { items: [], total: 0 }
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return { items: [], total: 0 }
 
   const threadVisibilityWhere = options?.visibility
     ? buildAccessibleThreadWhere(options.visibility)
     : undefined
-  const messages = await prisma.message.findMany({
-    where: {
-      OR: [
-        {
-          agentId,
-          ...(threadVisibilityWhere ? { thread: threadVisibilityWhere } : {}),
-        },
-        {
-          thread: {
-            ...(threadVisibilityWhere ?? {}),
-            runs: {
-              some: { agentId },
-            },
+  const where: Prisma.MessageWhereInput = {
+    OR: [
+      {
+        agentId,
+        ...(threadVisibilityWhere ? { thread: threadVisibilityWhere } : {}),
+      },
+      {
+        thread: {
+          ...(threadVisibilityWhere ?? {}),
+          runs: {
+            some: { agentId },
           },
         },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    skip: offset,
-  })
+      },
+    ],
+  }
+  const [messages, total] = await Promise.all([
+    prisma.message.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.message.count({ where }),
+  ])
 
-  return messages.map((message) => ({
-    messageId: message.id,
-    role: message.role,
-    contentPreview: message.content.slice(0, 500),
-    fullContent: message.content,
-    threadId: parseThreadId(message.threadId),
-    timestamp: message.createdAt.toISOString(),
-  }))
+  return {
+    items: messages.map((message) => ({
+      messageId: message.id,
+      role: message.role,
+      contentPreview: message.content.slice(0, 500),
+      fullContent: message.content,
+      threadId: parseThreadId(message.threadId),
+      timestamp: message.createdAt.toISOString(),
+    })),
+    total,
+  }
 }
 
 /**

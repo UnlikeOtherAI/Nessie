@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
 import {
   useAgentActivity,
   useAgentChildren,
@@ -67,8 +68,6 @@ const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
  * scattered across the call sites.
  */
 const SYSTEM_AGENT_TABS: ReadonlySet<Tab> = new Set<Tab>(['edit', 'tools'])
-
-const PAGE_SIZE = 10
 
 const pageContextForTab: Record<Tab, DesignerPageContext> = {
   edit: {
@@ -145,6 +144,7 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
     tabs[0]?.value ?? FIRST_DETAIL_TAB,
   )
   const [messagePage, setMessagePage] = useState(0)
+  const [messagePageSize, setMessagePageSize] = useState(DEFAULT_PAGE_LIMIT)
 
   // The operational reads are closed for a Nessie-managed agent (see
   // `SYSTEM_AGENT_TABS`), and their tabs are not rendered. Passing no id leaves
@@ -153,12 +153,13 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
   const { data: status } = useAgentStatus(operationalAgentId)
   const { data: activity } = useAgentActivity(operationalAgentId)
   const { data: childAgents = [] } = useAgentChildren(operationalAgentId)
-  // Fetch PAGE_SIZE + 1 to detect whether a next page exists
-  const { data: rawMessages = [] } = useAgentMessages(
+  const messageQuery = useAgentMessages(
     operationalAgentId,
-    PAGE_SIZE + 1,
-    messagePage * PAGE_SIZE,
+    messagePageSize,
+    messagePage * messagePageSize,
   )
+  const messageTotalPages = Math.max(1, Math.ceil((messageQuery.data?.total ?? 0) / messagePageSize))
+  const visibleMessagePage = Math.min(messagePage, messageTotalPages - 1)
 
   const toolEntries = useMemo(() => {
     if (!activity) return []
@@ -167,13 +168,16 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
       : activity.currentRun?.toolCalls ?? []
   }, [activity])
 
-  const hasNextPage = rawMessages.length > PAGE_SIZE
-  const messages = rawMessages.slice(0, PAGE_SIZE)
+  const messages = messageQuery.data?.items ?? []
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab)
     setMessagePage(0)
   }
+
+  useEffect(() => {
+    setMessagePage((current) => Math.min(current, messageTotalPages - 1))
+  }, [messageTotalPages])
 
   useEffect(() => {
     assistantPanel?.setPageContext(pageContextForTab[activeTab])
@@ -254,17 +258,22 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
             {activeTab === 'messages' && (
           <div className="grid gap-4">
             <AgentMessagePreview messages={messages} />
-            {/* No total to name: the count is never fetched, only whether one
-                more row exists. So the strip hides when neither direction
-                leads anywhere — the only "single page" this side can see. */}
             <PaginationFooter
-              canNext={hasNextPage}
-              canPrevious={messagePage > 0}
+              canNext={visibleMessagePage < messageTotalPages - 1}
+              canPrevious={visibleMessagePage > 0}
               className="pt-4"
               hideWhenSinglePage
-              label={`Page ${messagePage + 1}`}
+              label={messageQuery.data
+                ? `${visibleMessagePage * messagePageSize + 1}–${visibleMessagePage * messagePageSize + messages.length} of ${messageQuery.data.total}`
+                : 'Loading messages'}
               onPageChange={setMessagePage}
-              page={messagePage}
+              onPageSizeChange={(nextPageSize) => {
+                setMessagePageSize(nextPageSize)
+                setMessagePage(0)
+              }}
+              page={visibleMessagePage}
+              pageCount={messageTotalPages}
+              pageSize={messagePageSize}
             />
           </div>
             )}

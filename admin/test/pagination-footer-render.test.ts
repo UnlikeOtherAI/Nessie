@@ -18,37 +18,35 @@ const render = (props: Partial<Props> = {}): string =>
     createElement(PaginationFooter, {
       canNext: true,
       canPrevious: true,
-      label: 'Page 2',
+      label: '26–50 of 134',
       onPageChange: () => {},
+      onPageSizeChange: () => {},
       page: 1,
+      pageCount: 6,
+      pageSize: 25,
       ...props,
     }),
   )
 
-test('the strip is Previous, then the label, then Next — in that order', () => {
+test('the strip states the current position between Previous and Next', () => {
   const markup = render()
   const previous = markup.indexOf('Previous')
-  const label = markup.indexOf('Page 2')
+  const position = markup.indexOf('Page 2 of 6')
   const next = markup.indexOf('Next')
-  assert.ok(previous < label && label < next, markup)
+  assert.ok(previous < position && position < next, markup)
 })
 
-// Both shipping call sites draw a rule above the strip and dim the label at the
-// smaller scale; only the spacing differs, so only the spacing is a prop.
-test('the top rule and the label treatment are not negotiable', () => {
+test('the shared layout keeps its rule, range label, and responsive spacing', () => {
   const markup = render()
-  assert.match(markup, /flex items-center justify-between border-t border-\[color:var\(--sep\)\]/)
-  assert.match(markup, /<span class="text-xs text-\[color:var\(--tx3\)\]">Page 2<\/span>/)
+  assert.match(
+    markup,
+    /flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-\[color:var\(--sep\)\] py-3/,
+  )
+  assert.match(markup, /text-xs tabular-nums text-\[color:var\(--tx3\)\]">26–50 of 134<\/span>/)
+  assert.match(render({ className: 'px-6' }), /border-\[color:var\(--sep\)\] py-3 px-6"/)
 })
 
-test('className carries the caller spacing and nothing else', () => {
-  assert.match(render({ className: 'px-6 py-3' }), /border-\[color:var\(--sep\)\] px-6 py-3"/)
-  assert.match(render({ className: 'pt-4' }), /border-\[color:var\(--sep\)\] pt-4"/)
-  // No trailing separator when a call site passes no spacing at all.
-  assert.match(render(), /border-\[color:var\(--sep\)\]"/)
-})
-
-test('each button is disabled by its own direction, independently', () => {
+test('both navigation buttons retain independent disabled states', () => {
   const noPrevious = render({ canPrevious: false })
   assert.match(noPrevious, /disabled=""[^>]*>Previous/)
   assert.doesNotMatch(noPrevious, /disabled=""[^>]*>Next/)
@@ -58,41 +56,41 @@ test('each button is disabled by its own direction, independently', () => {
   assert.doesNotMatch(noNext, /disabled=""[^>]*>Previous/)
 })
 
-// `page` is handed back untouched so the strip never has to know whether the
-// caller counts from zero (AgentsList, AgentDetailTabs) or one (a 1-based
-// pager would work the same way). It only ever asks for the neighbour.
-test('the strip asks for the neighbouring page in the caller own numbering', () => {
+test('the controls use zero-based caller pages but speak one-based position', () => {
   const asked: number[] = []
-  const props: Props = {
+  const tree = PaginationFooter({
     canNext: true,
     canPrevious: true,
-    label: 'Page 1',
+    label: '1–25 of 134',
     onPageChange: (next) => asked.push(next),
+    onPageSizeChange: () => {},
     page: 0,
-  }
-  const tree = PaginationFooter(props) as React.ReactElement<{ children: React.ReactNode }>
-  const [previous, , next] = React.Children.toArray(
-    tree.props.children,
-  ) as React.ReactElement<{ onClick: () => void }>[]
+    pageCount: 6,
+    pageSize: 25,
+  }) as React.ReactElement<{ children: React.ReactNode }>
+  const [navigation] = React.Children.toArray(tree.props.children) as React.ReactElement<{
+    children: React.ReactNode
+  }>[]
+  const [previous, , next] = React.Children.toArray(navigation.props.children) as React.ReactElement<{
+    onClick: () => void
+  }>[]
 
   previous.props.onClick()
   next.props.onClick()
   assert.deepEqual(asked, [-1, 1])
 })
 
-// AgentDetailTabs shows the strip only when a neighbour exists, because it
-// pages a server window and has no total to state; AgentsList always shows it,
-// so the table above does not jump when a scope holds one page.
-test('hiding on a single page is opt-in, and needs both directions closed', () => {
-  assert.equal(render({ canNext: false, canPrevious: false, hideWhenSinglePage: true }), '')
-  assert.match(render({ canNext: false, canPrevious: false }), /Previous/)
-  assert.match(render({ canNext: true, canPrevious: false, hideWhenSinglePage: true }), /Next/)
-  assert.match(render({ canNext: false, canPrevious: true, hideWhenSinglePage: true }), /Previous/)
+test('every pager has the one accessible Items per page picker', () => {
+  const markup = render()
+  assert.match(markup, /Items per page/)
+  assert.match(markup, /aria-label="Items per page"/)
+  for (const size of [10, 25, 50, 100]) {
+    assert.match(markup, new RegExp(`<option value="${size}"`))
+  }
+  assert.match(markup, /<option value="25" selected="">25<\/option>/)
 })
 
-// The two live labels say different things because the two call sites know
-// different amounts. Neither is derivable from `page`, so neither is built here.
-test('the label is the caller sentence, verbatim', () => {
-  assert.match(render({ label: '1–10 of 34 · Page 1 of 4' }), />1–10 of 34 · Page 1 of 4</)
-  assert.match(render({ label: 'No agents' }), />No agents</)
+test('hiding on a single page is opt-in and uses the page count', () => {
+  assert.equal(render({ hideWhenSinglePage: true, pageCount: 1 }), '')
+  assert.match(render({ pageCount: 1 }), /Items per page/)
 })

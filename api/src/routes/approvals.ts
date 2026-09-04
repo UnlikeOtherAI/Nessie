@@ -23,6 +23,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
       agentId: query['agentId'],
       channelId: query['channelId'],
       cursor: query['cursor'],
+      direction: query['direction'] === 'backward' ? 'backward' : 'forward',
       limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
     })
 

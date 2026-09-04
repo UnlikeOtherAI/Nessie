@@ -72,7 +72,9 @@ return { data: page.data.map(toRecord), meta: page.meta }
 - Cursors are opaque keyset cursors. Offset paging is retired.
 - `total` is required on admin lists — it is what makes "26–50 of 134"
   possible. Omit it only where counting is meaningless (ranked search).
-- Page size is 25, capped at 100. There is no page-size control.
+- Page size defaults to 25 and is capped at 100. Every paged admin list uses
+  the same **Items per page** picker: 10, 25, 50 or 100. Its chosen value lives
+  in the URL with the cursor, and changing it returns to page one.
 
 Client:
 
@@ -83,12 +85,16 @@ const list = usePagedList<ThingRecord>({
 
 <PaginationFooter
   canNext={list.canNext} canPrevious={list.canPrevious}
-  label={list.label} onPageChange={list.onPageChange} page={list.page}
+  label={list.label} onPageChange={list.onPageChange}
+  onPageSizeChange={list.onPageSizeChange} page={list.page}
+  pageCount={list.pageCount} pageSize={list.pageSize}
 />
 ```
 
 The cursor lives in the URL, so paging survives reload and Back. Call
-`usePagedListReset()` when a filter changes.
+`usePagedListReset()` when a filter changes. `PaginationFooter` always shows
+the result range and **Page X of Y** beside Previous/Next; its page count comes
+from the required `total`, not from whichever slice the browser currently has.
 
 ## Forms
 

@@ -8,7 +8,7 @@ import {
   resolveInstallationPinnedGraph,
   withWorkflowOverlapLock,
 } from '@nessie/team-admin'
-import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
+import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { WorkflowRunExecuteJobPayload } from '@nessie/schemas'
 
@@ -139,6 +139,7 @@ export const listWorkflowRuns = async (
   organizationId: string,
   input: {
     cursor?: string
+    direction?: PaginationDirection
     installationId?: string
     // W19: entitlement fragment over the run's installation; undefined means
     // "no additional filter" (owners/admins).
@@ -160,14 +161,15 @@ export const listWorkflowRuns = async (
   const total = await prisma.workflowRun.count({ where })
 
   const parsed = decodeKeysetCursor(input.cursor)
+  const backwards = input.direction === 'backward'
   if (parsed) {
     const existingAnd = where.AND
     where.AND = [
       ...(Array.isArray(existingAnd) ? existingAnd : existingAnd ? [existingAnd] : []),
       {
         OR: [
-          { createdAt: { lt: parsed.createdAt } },
-          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+          { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
         ],
       },
     ]
@@ -175,7 +177,9 @@ export const listWorkflowRuns = async (
 
   const runs = await prisma.workflowRun.findMany({
     where,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
     select: {
       id: true,
@@ -203,7 +207,7 @@ export const listWorkflowRuns = async (
     },
   })
 
-  const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: runs, total })
+  const page = buildPage({ direction: input.direction, hasCursor: Boolean(parsed), limit, rows: runs, total })
   return {
     data: page.data.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} })),
     meta: page.meta,

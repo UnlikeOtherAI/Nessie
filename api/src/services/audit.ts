@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
-import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
+import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 import type { AuthorizedActionContext, AuditAction, AuditOutcome } from '@nessie/schemas'
 
 const REDACTED_FIELDS = new Set([
@@ -78,6 +78,7 @@ export type AuditLogQuery = {
   actorId?: string
   channelId?: string
   cursor?: string
+  direction?: PaginationDirection
   from?: string
   limit?: number
   organizationId: string
@@ -118,14 +119,15 @@ export const listAuditLogs = async (
   const total = await prisma.auditLog.count({ where: where as Prisma.AuditLogWhereInput })
 
   const parsed = decodeKeysetCursor(query.cursor)
+  const backwards = query.direction === 'backward'
   if (parsed) {
     const existingAnd = where['AND']
     where['AND'] = [
       ...(Array.isArray(existingAnd) ? existingAnd : []),
       {
         OR: [
-          { createdAt: { lt: parsed.createdAt } },
-          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+          { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
         ],
       },
     ]
@@ -133,11 +135,14 @@ export const listAuditLogs = async (
 
   const entries = await prisma.auditLog.findMany({
     where: where as Prisma.AuditLogWhereInput,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
   })
 
   const page = buildPage({
+    direction: query.direction,
     hasCursor: Boolean(parsed),
     limit,
     rows: entries,

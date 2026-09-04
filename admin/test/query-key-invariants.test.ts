@@ -193,7 +193,7 @@ const RAW_KEY_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
 const RAW_KEY_EXCEPTIONS: readonly { file: string; line: string; reason: string }[] = [
   {
     file: 'facades/usePagedList.ts',
-    line: 'queryKey: [...queryKey, paramsKey, cursor ?? null, limit],',
+    line: 'queryKey: [...queryKey, paramsKey, cursor ?? null, direction ?? null, limit],',
     reason:
       'Not a key literal: the identity is the caller\'s `queryKey`, which is a factory result '
       + 'from lib/query-keys.ts. This appends the paging state — filters, cursor, page size — '

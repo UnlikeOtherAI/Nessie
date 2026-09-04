@@ -18,8 +18,6 @@ import {
 } from './agent-scope'
 import { loadAgentsListState, saveAgentsListState } from './agents-list-state'
 
-const PAGE_SIZE = 10
-
 const emptyBuckets = (): Record<AgentScope, AgentRecord[]> => ({
   global: [],
   personal: [],
@@ -43,10 +41,11 @@ export const AgentsList = () => {
     initialState.activeScope,
   )
   const [pageByScope, setPageByScope] = useState(initialState.pageByScope)
+  const [pageSize, setPageSize] = useState(initialState.pageSize)
 
   useEffect(() => {
-    saveAgentsListState({ activeScope, pageByScope })
-  }, [activeScope, pageByScope])
+    saveAgentsListState({ activeScope, pageByScope, pageSize })
+  }, [activeScope, pageByScope, pageSize])
 
   // Only root agents are listed; sub-agents are reached from the detail page.
   const buckets = useMemo(() => {
@@ -62,18 +61,22 @@ export const AgentsList = () => {
   }, [agents])
 
   const scopeAgents = buckets[activeScope]
-  const totalPages = Math.max(1, Math.ceil(scopeAgents.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(scopeAgents.length / pageSize))
   const page = Math.min(pageByScope[activeScope], totalPages - 1)
-  const pageAgents = scopeAgents.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+  const pageAgents = scopeAgents.slice(page * pageSize, page * pageSize + pageSize)
 
   const setPage = (next: number) => {
     setPageByScope((prev) => ({ ...prev, [activeScope]: next }))
   }
+  const setPageSizeAndReset = (next: number) => {
+    setPageSize(next)
+    setPageByScope((previous) => ({ ...previous, [activeScope]: 0 }))
+  }
 
   const scroll = useScrollMemory(`agents:list:${activeScope}`)
 
-  const rangeStart = scopeAgents.length === 0 ? 0 : page * PAGE_SIZE + 1
-  const rangeEnd = Math.min((page + 1) * PAGE_SIZE, scopeAgents.length)
+  const rangeStart = scopeAgents.length === 0 ? 0 : page * pageSize + 1
+  const rangeEnd = Math.min((page + 1) * pageSize, scopeAgents.length)
 
   return (
     <div className="flex h-full flex-col">
@@ -123,8 +126,8 @@ export const AgentsList = () => {
         />
       </div>
 
-      {/* Always visible: an empty or single-page scope still shows the strip,
-          so the table above it does not grow and shrink as pages change. */}
+      {/* Always visible: an empty or single-page scope keeps its size control,
+          and the table above it does not grow and shrink as pages change. */}
       <PaginationFooter
         canNext={page < totalPages - 1}
         canPrevious={page > 0}
@@ -132,10 +135,13 @@ export const AgentsList = () => {
         label={
           scopeAgents.length === 0
             ? 'No agents'
-            : `${rangeStart}–${rangeEnd} of ${scopeAgents.length} · Page ${page + 1} of ${totalPages}`
+            : `${rangeStart}–${rangeEnd} of ${scopeAgents.length}`
         }
         onPageChange={setPage}
+        onPageSizeChange={setPageSizeAndReset}
         page={page}
+        pageCount={totalPages}
+        pageSize={pageSize}
       />
     </div>
   )
