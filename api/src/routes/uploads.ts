@@ -187,6 +187,10 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     // attachment descriptions, so they share the same pre-storage boundary as
     // file bytes.
     if (detectSecrets(filename).length > 0) {
+      // The multipart parser already handed us a live stream. Drain it even on
+      // metadata rejection so the connection does not retain unread request
+      // bytes while the client receives the refusal.
+      file.file.resume()
       sendApiError(
         reply,
         422,

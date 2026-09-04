@@ -35,6 +35,8 @@ export const useChannelMessageActions = (threadId?: string, projectId?: string |
   const editDraft = useDraft<string>(draftKey('message-edit', editingMessageId), {
     initial: editingBaseline,
     isEmpty: (value) => value === editingBaseline || detectSecrets(value).length > 0,
+    revive: (stored) =>
+      typeof stored === 'string' && detectSecrets(stored).length === 0 ? stored : null,
   })
   const editingContent = editDraft.draft
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -109,11 +111,11 @@ export const useChannelMessageActions = (threadId?: string, projectId?: string |
       storePendingSecretEdit({ ...pending, capture: next })
       return
     }
-    storePendingSecretEdit(null)
     await updateMessage({
       content: protectedReplacement(pending.capture, secret.name),
       messageId: pending.messageId,
     })
+    storePendingSecretEdit(null)
   }, [storePendingSecretEdit, updateMessage])
 
   // Asking is all this does now. `window.confirm` blocked here and returned the

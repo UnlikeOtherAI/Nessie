@@ -109,6 +109,7 @@ test('the Direct-messages Personal Assistant reuses the managed agent avatar rec
 
 test('the new-message surface excludes the sender and keeps recipients available after selection', () => {
   const source = readSource('../src/pages/ChannelConversationComposePage.tsx')
+  const sendHook = readSource('../src/pages/channels/useNewChannelConversationSend.ts')
 
   // Step 9: the flow's own 58px bar became the one `ScreenHeader`. Close is
   // a measured action on the split layout; the phone gets the flow's Back.
@@ -123,7 +124,7 @@ test('the new-message surface excludes the sender and keeps recipients available
   assert.match(source, /const hasSelectableOptions = options\.length > 0/)
   assert.doesNotMatch(source, /\(you\)/)
   assert.match(source, /admin-compose mt-auto flex-shrink-0/)
-  assert.match(source, /StartChannelConversation/)
+  assert.match(sendHook, /StartChannelConversation/)
 })
 
 test('the compose route retains the channel team and hides mobile navigation chrome', () => {

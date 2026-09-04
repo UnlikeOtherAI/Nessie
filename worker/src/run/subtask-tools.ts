@@ -13,7 +13,6 @@ import { stripProtectedExplicitToolPolicy } from '@nessie/runtime'
 import { enqueueRunExecution } from '../queue.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
-import { AGENT_SECRET_SAFETY_INSTRUCTION } from './execute/prompt.js'
 import { sanitizeToolArguments } from './tool-util.js'
 
 const normalizeSubtaskRole = (value: unknown): string => {
@@ -35,7 +34,6 @@ const buildSubtaskSystemPrompt = (input: {
     `You are a delegated ${roleLabel} sub-agent working for ${input.parentName}.`,
     'Focus only on the assigned sub-task, use the available tools when needed, and report concrete results back in this thread.',
     'Do not ask the user to restate context already present in the thread, and do not spawn further subtasks.',
-    AGENT_SECRET_SAFETY_INSTRUCTION,
   ]
 
   const parentPrompt = input.parentSystemPrompt?.trim()

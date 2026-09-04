@@ -41,6 +41,7 @@ const ASSIGNMENT_KEY = [
   'password',
   'private[_-]?key',
   'refresh[_-]?token',
+  'session[_-]?token',
   'secret[_-]?access[_-]?key',
   'signing[_-]?secret',
   'secret',
@@ -50,14 +51,26 @@ const ASSIGNMENT_KEY = [
 const ASSIGNMENT_SEPARATOR = String.raw`(?:\s*(?:=|:)\s*(?:bearer\s+)?|\s+bearer\s+)`
 
 const assignmentExpression = (value: string): RegExp =>
-  new RegExp(String.raw`\b(?:${ASSIGNMENT_KEY})${ASSIGNMENT_SEPARATOR}${value}`, 'gi')
+  new RegExp(
+    String.raw`\b(?:[a-z0-9]+[_-])*(?:${ASSIGNMENT_KEY})(?:["'\x60])?${ASSIGNMENT_SEPARATOR}${value}`,
+    'gi',
+  )
 
 const PRIVATE_KEY_BLOCK = new RegExp(
-  '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----'
+  '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----'
     + '[\\s\\S]*?'
-    + '-----END(?: (?:[A-Z0-9]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----',
+    + '-----END(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----',
   'gi',
 )
+
+const completePrivateKeyEnds = (content: string): Map<number, number> => {
+  const ends = new Map<number, number>()
+  const scan = new RegExp(PRIVATE_KEY_BLOCK.source, PRIVATE_KEY_BLOCK.flags)
+  for (let match = scan.exec(content); match; match = scan.exec(content)) {
+    ends.set(match.index, match.index + match[0].length)
+  }
+  return ends
+}
 
 const DATABASE_URL = new RegExp(
   '\\b(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis(?:s)?|sqlserver):\\/\\/'
@@ -74,7 +87,10 @@ const PATTERNS: SecretPattern[] = [
   { type: 'github_token', expression: /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/g },
   { type: 'github_token', expression: /\bglpat-[A-Za-z0-9_-]{20,}\b/g },
   { type: 'sendgrid_api_key', expression: /\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{32,}\b/g },
-  { type: 'slack_token', expression: /\bxox[a-z](?:-[A-Za-z0-9-]{20,}|\.[A-Za-z0-9.-]{20,})\b/gi },
+  {
+    type: 'slack_token',
+    expression: /\b(?:xox[a-z](?:-[A-Za-z0-9-]{20,}|\.[A-Za-z0-9.-]{20,})|xapp-[A-Za-z0-9-]{20,})\b/gi,
+  },
   { type: 'anthropic_api_key', expression: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g },
   { type: 'openai_api_key', expression: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
   { type: 'token_assignment', expression: /\b(?:hf|npm)_[A-Za-z0-9_-]{20,}\b/g },
@@ -99,7 +115,9 @@ const PATTERNS: SecretPattern[] = [
   },
   {
     type: 'token_assignment',
-    expression: assignmentExpression(String.raw`([^\s"'\x60•]{12,})`),
+    expression: assignmentExpression(
+      String.raw`(?:\(|\[|\{)?([^\s"'\x60•([{]{12,})`,
+    ),
     stripTrailingPunctuation: true,
     valueGroup: 1,
   },
@@ -108,7 +126,7 @@ const PATTERNS: SecretPattern[] = [
 const SECRET_MASK = '•'.repeat(12)
 const PROVIDER_PREFIX = new RegExp(
   '^(?:sk-(?:proj-|ant-)?|(?:sk|rk)_(?:live|test)_|github_pat_|gh[pousr]_|glpat-'
-    + '|SG\\.|xox[a-z](?:-|\\.)|hf_|npm_|AIza|AKIA|ASIA|ABIA|ACCA)',
+    + '|SG\\.|xox[a-z](?:-|\\.)|xapp-|hf_|npm_|AIza|AKIA|ASIA|ABIA|ACCA)',
   'i',
 )
 
@@ -127,10 +145,10 @@ const prefixFor = (value: string, type: DetectedSecret['type']): string => {
     case 'jwt': return 'eyJ'
     case 'openai_api_key': return value.match(/^sk-(?:proj-)?/)?.[0] ?? 'sk-'
     case 'pem_private_key': {
-      return value.match(/^-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----/i)?.[0] ?? ''
+      return value.match(/^-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----/i)?.[0] ?? ''
     }
     case 'sendgrid_api_key': return 'SG.'
-    case 'slack_token': return value.match(/^xox[a-z](?:-|\.)/i)?.[0] ?? 'xox-'
+    case 'slack_token': return value.match(/^(?:xox[a-z](?:-|\.)|xapp-)/i)?.[0] ?? 'xox-'
     case 'stripe_api_key': return value.match(/^(?:sk|rk)_(?:live|test)_/)?.[0] ?? ''
     case 'token_assignment': return providerPrefixForValue(value)
   }
@@ -203,6 +221,29 @@ export const detectSecrets = (content: string): DetectedSecret[] => {
       })
     }
   }
+  // A truncated private-key paste is still credential material. Complete
+  // blocks above win by range; an unmatched BEGIN marker fails closed through
+  // the end of the input so neither persistence nor stream finalization can
+  // expose the partial body.
+  const privateKeyBeginScan = new RegExp(PRIVATE_KEY_BEGIN.source, PRIVATE_KEY_BEGIN.flags)
+  for (
+    let begin = privateKeyBeginScan.exec(content);
+    begin;
+    begin = privateKeyBeginScan.exec(content)
+  ) {
+    if (content.startsWith(SECRET_MASK, begin.index + begin[0].length)) continue
+    const complete = candidates.some(
+      (candidate) => candidate.type === 'pem_private_key' && candidate.start === begin!.index,
+    )
+    if (!complete) {
+      candidates.push({
+        type: 'pem_private_key',
+        prefix: prefixFor(begin[0], 'pem_private_key'),
+        start: begin.index,
+        end: content.length,
+      })
+    }
+  }
   candidates.push(...highEntropyTokens(content))
 
   const nonOverlapping: DetectedSecret[] = []
@@ -229,7 +270,7 @@ export const redactDetectedSecrets = (content: string): string => {
 }
 
 const PRIVATE_KEY_BEGIN = new RegExp(
-  '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----',
+  '-----BEGIN(?: (?:[A-Z0-9]+ )?PRIVATE KEY| PGP PRIVATE KEY BLOCK)-----',
   'gi',
 )
 
@@ -247,13 +288,13 @@ export const createSecretRedactingStream = (): {
   const safeCut = (): number => {
     let cut = buffer.lastIndexOf('\n') + 1
     if (cut === 0) return 0
+    const completeKeys = completePrivateKeyEnds(buffer)
     PRIVATE_KEY_BEGIN.lastIndex = 0
     for (let begin = PRIVATE_KEY_BEGIN.exec(buffer); begin; begin = PRIVATE_KEY_BEGIN.exec(buffer)) {
       if (begin.index >= cut) break
-      const complete = detectSecrets(buffer).find(
-        (match) => match.type === 'pem_private_key' && match.start === begin.index,
-      )
-      if (!complete || complete.end > cut) {
+      if (buffer.startsWith(SECRET_MASK, begin.index + begin[0].length)) continue
+      const completeEnd = completeKeys.get(begin.index)
+      if (completeEnd === undefined || completeEnd > cut) {
         cut = begin.index
         break
       }

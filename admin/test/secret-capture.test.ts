@@ -9,6 +9,7 @@ import {
   createSecretCapture,
   protectedReplacement,
 } from '../src/components/features/channels/secret-capture.js'
+import { reviveComposerDraft } from '../src/components/features/channels/composer-draft.js'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -67,7 +68,10 @@ test('every channel composer doorway owns the same capture form', () => {
 })
 
 test('new conversations and message edits use the protected capture flow', () => {
-  const newConversation = readSource('../src/pages/ChannelConversationComposePage.tsx')
+  const newConversationPage = readSource('../src/pages/ChannelConversationComposePage.tsx')
+  const newConversationSend = readSource(
+    '../src/pages/channels/useNewChannelConversationSend.ts',
+  )
   const messageActions = readSource(
     '../src/components/features/channels/useChannelMessageActions.tsx',
   )
@@ -77,10 +81,66 @@ test('new conversations and message edits use the protected capture flow', () =>
     secretHooks.indexOf('export const useRevokeSecret'),
   )
 
-  for (const source of [newConversation, messageActions]) {
-    assert.match(source, /createSecretCapture/)
-    assert.match(source, /<SecretCaptureDialog/)
-  }
+  assert.match(newConversationPage, /<SecretCaptureDialog/)
+  assert.match(newConversationSend, /createSecretCapture/)
+  assert.match(newConversationSend, /replacementMode: content\.length .* \? 'file' : 'message'/s)
+  assert.match(newConversationSend, /useUploadAttachment/)
+  assert.match(messageActions, /createSecretCapture/)
+  assert.match(messageActions, /<SecretCaptureDialog/)
   assert.match(transientHook, /useCallback\(async/)
   assert.doesNotMatch(transientHook, /useMutation/)
+})
+
+test('failed protected sends remain open and retry without saving the value twice', () => {
+  const dialog = readSource('../src/components/features/channels/SecretCaptureDialog.tsx')
+  const composer = readSource(
+    '../src/components/features/channels/useChannelComposer.ts',
+  )
+  const messageActions = readSource(
+    '../src/components/features/channels/useChannelMessageActions.tsx',
+  )
+  const updateStart = messageActions.indexOf('await updateMessage({')
+  const closeAfterUpdate = messageActions.indexOf('storePendingSecretEdit(null)', updateStart)
+  const protectedSendStart = composer.indexOf('const confirmSecretCapture')
+  const safePost = composer.indexOf('await postSafeText(', protectedSendStart)
+  const closeAfterPost = composer.indexOf('storeSecretCapture(null)', safePost)
+
+  assert.match(dialog, /const \[savedSecret, setSavedSecret\]/)
+  assert.match(dialog, /savedSecret \? 'Retry protected message'/)
+  assert.ok(updateStart >= 0)
+  assert.ok(closeAfterUpdate > updateStart)
+  assert.ok(safePost > protectedSendStart)
+  assert.ok(closeAfterPost > safePost)
+})
+
+test('a detected composer secret flushes its safe replacement to draft storage immediately', () => {
+  const composer = readSource(
+    '../src/components/features/channels/useChannelComposer.ts',
+  )
+
+  assert.match(composer, /setDraft\(\(current\) => \(\{ \.\.\.current, text: '' \}\)\)/)
+  assert.match(composer, /void flushDraft\(\)/)
+})
+
+test('an intercepted oversize secret keeps and sends the existing safe draft', () => {
+  const composer = readSource(
+    '../src/components/features/channels/useChannelComposer.ts',
+  )
+  const newConversationSend = readSource(
+    '../src/pages/channels/useNewChannelConversationSend.ts',
+  )
+
+  assert.match(composer, /clearComposer: false,[\s\S]*content: paste/)
+  assert.match(composer, /content: accompanyingText \|\| `Shared file:/)
+  assert.match(newConversationSend, /postSafeText\(message\.trim\(\) \|\| `Shared file:/)
+  const capturePaste = newConversationSend.slice(
+    newConversationSend.indexOf('const captureOversizePaste'),
+    newConversationSend.indexOf('const confirmSecretCapture'),
+  )
+  assert.doesNotMatch(capturePaste, /clearComposer\(\)/)
+})
+
+test('credential-bearing legacy composer drafts are refused during hydration', () => {
+  const secret = `sk-proj-${'aB3_'.repeat(8)}`
+  assert.equal(reviveComposerDraft({ attachments: [], text: secret }), null)
 })

@@ -32,6 +32,16 @@ export const suggestedSecretName = (
   }
 }
 
+const suggestedCaptureName = (capture: SecretCapture): string => {
+  const item = currentSecretCaptureItem(capture)
+  const base = suggestedSecretName(item.detected.type)
+  const occurrence = capture.items
+    .slice(0, capture.currentIndex + 1)
+    .filter((candidate) => candidate.detected.type === item.detected.type)
+    .length
+  return occurrence > 1 ? `${base}_${occurrence}` : base
+}
+
 export const SecretCaptureDialog = ({
   capture,
   onClose,
@@ -46,10 +56,11 @@ export const SecretCaptureDialog = ({
 }) => {
   const saveSecret = useTransientSecretSave()
   const item = currentSecretCaptureItem(capture)
-  const [name, setName] = useState(() => suggestedSecretName(item.detected.type))
+  const [name, setName] = useState(() => suggestedCaptureName(capture))
   const [scopeType, setScopeType] = useState<SecretScopeType>(capture.scopeType)
   const [error, setError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
+  const [savedSecret, setSavedSecret] = useState<SecretRecord | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const pendingRef = useRef(false)
 
@@ -59,19 +70,22 @@ export const SecretCaptureDialog = ({
     pendingRef.current = true
     setIsPending(true)
     setError(null)
-    let secret: SecretRecord
-    try {
-      secret = await saveSecret({
-        name,
-        value: item.value,
-        scopeType,
-        ...(scopeType === 'project' && capture.scopeId ? { scopeId: capture.scopeId } : {}),
-      })
-    } catch {
-      setError('Could not save this secret. Check the vault connection and try again.')
-      pendingRef.current = false
-      setIsPending(false)
-      return
+    let secret = savedSecret
+    if (!secret) {
+      try {
+        secret = await saveSecret({
+          name,
+          value: item.value,
+          scopeType,
+          ...(scopeType === 'project' && capture.scopeId ? { scopeId: capture.scopeId } : {}),
+        })
+        setSavedSecret(secret)
+      } catch {
+        setError('Could not save this secret. Check the name and vault connection, then try again.')
+        pendingRef.current = false
+        setIsPending(false)
+        return
+      }
     }
 
     try {
@@ -103,6 +117,7 @@ export const SecretCaptureDialog = ({
         <FormField label="Secret key">
           <Input
             autoComplete="off"
+            disabled={savedSecret !== null}
             onChange={(event) => setName(event.target.value.toUpperCase())}
             ref={nameRef}
             value={name}
@@ -118,6 +133,7 @@ export const SecretCaptureDialog = ({
         </FormField>
         <FormField label="Scope">
           <Select
+            disabled={savedSecret !== null}
             onChange={(event) => setScopeType(event.target.value as SecretScopeType)}
             value={scopeType}
           >
@@ -129,7 +145,9 @@ export const SecretCaptureDialog = ({
         <FormActions>
           <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Discard</button>
           <button className="admin-button admin-button-primary" disabled={isPending || !/^[A-Z][A-Z0-9_]*$/.test(name)} type="submit">
-            {isPending ? 'Saving…' : 'Save securely'}
+            {isPending
+              ? savedSecret ? 'Sending…' : 'Saving…'
+              : savedSecret ? 'Retry protected message' : 'Save securely'}
           </button>
         </FormActions>
       </form>

@@ -23,6 +23,12 @@ test('detectSecrets catches known credential formats without interpreting prose'
 
 test('detectSecrets catches private key blocks and database URLs', () => {
   assert.equal(detectSecrets('-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----').length, 1)
+  assert.equal(
+    detectSecrets(
+      '-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----',
+    ).length,
+    1,
+  )
   assert.equal(detectSecrets('postgresql://admin:really-secret@db.example/nessie').length, 1)
 })
 
@@ -39,8 +45,24 @@ test('detectSecrets covers quoted assignments, bearer headers, and common secret
     'client_secret="abcdefghijklmnopqrstuvwxyz123456"',
     'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
     "password: 'correct-horse-battery-staple'",
+    'MY_API_KEY=abcdefghijklmnopqrstuvwxyz123456',
+    'AWS_SESSION_TOKEN=abcdefghijklmnopqrstuvwxyz123456',
+    'STRIPE_WEBHOOK_SECRET=abcdefghijklmnopqrstuvwxyz123456',
+    '{"client_secret":"abcdefghijklmnopqrstuvwxyz123456"}',
   ]
   for (const value of cases) assert.equal(detectSecrets(value).length, 1, value)
+})
+
+test('detectSecrets covers Slack app tokens and truncated private-key pastes', () => {
+  const slackAppToken = `xapp-${'a1B2-'.repeat(8)}`
+  const partialKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nabc123'
+
+  assert.equal(detectSecrets(slackAppToken)[0]?.type, 'slack_token')
+  assert.equal(detectSecrets(partialKey)[0]?.type, 'pem_private_key')
+  assert.equal(
+    redactDetectedSecrets(partialKey),
+    `-----BEGIN OPENSSH PRIVATE KEY-----${'•'.repeat(12)}`,
+  )
 })
 
 test('provider-specific dotted and anthropic credentials are classified as one value', () => {
@@ -100,6 +122,7 @@ test('redaction is idempotent and never creates another detected secret', () => 
 test('assignment extraction excludes surrounding quotes and prose punctuation', () => {
   const quoted = 'password="correct-horse-battery-staple"'
   const punctuated = 'client_secret=abcdefghijklmnopqrstuvwxyz123456,'
+  const parenthesized = 'token=(abcdefghijklmnopqrstuvwxyz123456)'
 
   assert.equal(
     extractDetectedSecretValue(quoted, detectSecrets(quoted)[0]!),
@@ -109,6 +132,11 @@ test('assignment extraction excludes surrounding quotes and prose punctuation', 
     extractDetectedSecretValue(punctuated, detectSecrets(punctuated)[0]!),
     'abcdefghijklmnopqrstuvwxyz123456',
   )
+  assert.equal(
+    extractDetectedSecretValue(parenthesized, detectSecrets(parenthesized)[0]!),
+    'abcdefghijklmnopqrstuvwxyz123456',
+  )
+  assert.equal(redactDetectedSecrets(parenthesized), `token=(${'•'.repeat(12)})`)
 })
 
 test('stream redaction holds partial lines and private keys until they are safe', () => {
@@ -123,4 +151,16 @@ test('stream redaction holds partial lines and private keys until they are safe'
     pemStream.push('-----END PRIVATE KEY-----\n'),
     `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}\n`,
   )
+
+  const partialPemStream = createSecretRedactingStream()
+  assert.equal(partialPemStream.push('-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc'), '')
+  assert.equal(
+    partialPemStream.finish(),
+    `-----BEGIN PGP PRIVATE KEY BLOCK-----${'•'.repeat(12)}`,
+  )
+
+  const maskedPemStream = createSecretRedactingStream()
+  const maskedPem = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
+  assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), `${maskedPem}\nafter\n`)
+  assert.equal(maskedPemStream.finish(), '')
 })

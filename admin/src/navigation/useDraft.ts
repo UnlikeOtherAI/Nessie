@@ -232,6 +232,9 @@ export const useDraft = <T,>(
       : reviver
         ? reviver(stored)
         : (stored as T)
+    if (stored !== null && hydrated === null && key) {
+      removeStored(key)
+    }
     const next = hydrated ?? optionsRef.current.initial
     draftRef.current = next
     storedSignatureRef.current = signatureOf(next)
@@ -255,6 +258,7 @@ export const useDraft = <T,>(
     const reviver = optionsRef.current.revive
     const hydrated = reviver ? reviver(stored) : (stored as T)
     if (hydrated === null) {
+      removeStored(key)
       return
     }
     // A draft edited before this effect ran wins over the stored one.

@@ -96,6 +96,7 @@ export const useChannelComposer = ({
   const message = draft.draft.text
   const setDraft = draft.setDraft
   const clearDraft = draft.clear
+  const flushDraft = draft.flush
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePasteState] = useState<string | null>(null)
   const [pendingAgentInvites, setPendingAgentInvites] = useState<PendingAgentInvite[]>([])
@@ -246,6 +247,7 @@ export const useChannelComposer = ({
             ? error.message
             : 'Could not send this message. Please try again.',
         )
+        throw error
       }
     },
     [activeChannel, attachments, clearDraft, sendMessage, getSendExtras],
@@ -254,25 +256,35 @@ export const useChannelComposer = ({
   const captureSecretText = useCallback((input: {
     agentMentions?: PersonalAssistantMention[]
     attachmentIds?: string[]
+    clearComposer?: boolean
     content: string
     replacementMode?: SecretCapture['replacementMode']
   }): boolean => {
+    const { clearComposer = true, ...captureInput } = input
     const capture = createSecretCapture({
-      ...input,
+      ...captureInput,
       projectId: activeChannel?.projectId,
     })
     if (!capture) return false
     storeSecretCapture(capture)
+    if (!clearComposer) return true
     // Replace the draft with attachment metadata only. The credential-aware
     // draft predicate removes any already-written text and no raw message is
     // left behind for a later restore.
     setDraft((current) => ({ ...current, text: '' }))
+    // Remove any earlier, not-yet-recognizable prefix synchronously instead of
+    // waiting for the draft debounce after a complete credential is found.
+    void flushDraft()
     mentionRef.current?.clear()
     return true
-  }, [activeChannel?.projectId, setDraft, storeSecretCapture])
+  }, [activeChannel?.projectId, flushDraft, setDraft, storeSecretCapture])
 
   const setOversizePaste = useCallback((paste: string | null) => {
-    if (paste && captureSecretText({ content: paste, replacementMode: 'file' })) {
+    if (paste && captureSecretText({
+      clearComposer: false,
+      content: paste,
+      replacementMode: 'file',
+    })) {
       setOversizePasteState(null)
       return
     }
@@ -281,18 +293,35 @@ export const useChannelComposer = ({
 
   const sendText = useCallback(
     async (rawText: string, agentMentions: PersonalAssistantMention[] = []) => {
+      if (attachments.isUploading || sendMessage.isPending) return
       const text = rawText.trim()
       const attachmentIds = attachments.attachmentIds
       if (!activeChannel || (!text && attachmentIds.length === 0)) return
 
-      if (captureSecretText({ agentMentions, attachmentIds, content: text })) return
+      if (captureSecretText({
+        agentMentions,
+        attachmentIds,
+        content: text,
+        replacementMode: text.length > CHAT_MESSAGE_MAX_CHARS ? 'file' : 'message',
+      })) return
       if (text.length > CHAT_MESSAGE_MAX_CHARS) {
         setOversizePasteState(text)
         return
       }
-      await postSafeText(text, agentMentions, attachmentIds)
+      try {
+        await postSafeText(text, agentMentions, attachmentIds)
+      } catch {
+        // postSafeText owns the visible failed bubble and error message.
+      }
     },
-    [activeChannel, attachments.attachmentIds, captureSecretText, postSafeText],
+    [
+      activeChannel,
+      attachments.attachmentIds,
+      attachments.isUploading,
+      captureSecretText,
+      postSafeText,
+      sendMessage.isPending,
+    ],
   )
 
   const insertEmoji = useCallback((emoji: string) => {
@@ -357,6 +386,7 @@ export const useChannelComposer = ({
 
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
+    if (attachments.isUploading || sendMessage.isPending) return
     const text = mentionRef.current?.getText() ?? message
     const agentMentions = mentionRef.current?.getAgentMentions() ?? []
     // Clear synchronously before awaiting the network mutation so a
@@ -373,14 +403,21 @@ export const useChannelComposer = ({
       if (!activeChannel) {
         return
       }
-      if (captureSecretText({ content: rawText, replacementMode: 'file' })) return
+      if (captureSecretText({
+        clearComposer: false,
+        content: rawText,
+        replacementMode: 'file',
+      })) return
       setSendError(null)
       try {
         const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
         const attachment = await uploadAttachment.mutateAsync(file)
+        const accompanyingText = message.trim()
+        const agentMentions = mentionRef.current?.getAgentMentions() ?? []
         await sendMessage.mutateAsync({
           attachmentIds: [attachment.id],
-          content: `Shared file: ${attachment.filename}`,
+          content: accompanyingText || `Shared file: ${attachment.filename}`,
+          ...(accompanyingText && agentMentions.length > 0 ? { agentMentions } : {}),
           // Same routing as a typed reply — without this the escape hatch posted
           // to the channel instead of into the open reply thread.
           ...getSendExtras?.(),
@@ -393,9 +430,18 @@ export const useChannelComposer = ({
             ? error.message
             : 'Could not send this message. Please try again.',
         )
+        throw error
       }
     },
-    [activeChannel, captureSecretText, clearDraft, uploadAttachment, sendMessage, getSendExtras],
+    [
+      activeChannel,
+      captureSecretText,
+      clearDraft,
+      getSendExtras,
+      message,
+      sendMessage,
+      uploadAttachment,
+    ],
   )
 
   const confirmSecretCapture = useCallback(
@@ -416,16 +462,17 @@ export const useChannelComposer = ({
         return
       }
 
-      // Drop every raw value before chat work. The follow-up contains only the
-      // scanner-produced replacement and the non-secret names the person chose.
-      storeSecretCapture(null)
+      // Chat work sees only the scanner-produced replacement and non-secret
+      // names. Keep the dialog mounted until that safe send succeeds so a
+      // failed send can retry without writing the vault value a second time.
       const replacement = protectedReplacement(capture, secret.name)
 
       if (capture.replacementMode === 'file') {
         await sendAsFile(replacement)
-        return
+      } else {
+        await postSafeText(replacement, capture.agentMentions, capture.attachmentIds)
       }
-      await postSafeText(replacement, capture.agentMentions, capture.attachmentIds)
+      storeSecretCapture(null)
     },
     [postSafeText, sendAsFile, storeSecretCapture],
   )
@@ -437,7 +484,7 @@ export const useChannelComposer = ({
     oversizePaste,
     setOversizePaste,
     mentionRef,
-    isSendPending: sendMessage.isPending,
+    isSendPending: sendMessage.isPending || attachments.isUploading,
     sendError,
     attachments,
     insertEmoji,

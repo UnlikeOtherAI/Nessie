@@ -309,7 +309,7 @@ jobs:
         run: pnpm --filter @nessie/worker test:smoke
 
   navigation-e2e:
-    name: Navigation Transitions
+    name: Browser Safety and Navigation
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
     services:
@@ -378,10 +378,21 @@ jobs:
       - name: Run navigation transition suite
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
+      - name: Run secret capture suite
+        run: pnpm --filter @nessie/admin test:e2e:secret-capture
+
       - name: Upload transition frames
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: navigation-transition-frames
           path: e2e/screenshots/navigation
+          if-no-files-found: warn
+
+      - name: Upload secret capture frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-capture-frame
+          path: e2e/screenshots/secret-capture
           if-no-files-found: warn

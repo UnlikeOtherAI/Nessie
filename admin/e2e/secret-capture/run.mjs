@@ -3,8 +3,9 @@ import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { chromium } from 'playwright-core'
+import { ADMIN_URL, keepServers } from '../navigation/lib/config.mjs'
+import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 
-const ADMIN_URL = 'http://localhost:5455'
 const SCREENSHOT = resolve('e2e/screenshots/secret-capture/new-message.png')
 const NOW = '2026-09-04T12:00:00.000Z'
 const IDS = {
@@ -116,12 +117,14 @@ const responseForGet = (path) => {
   return []
 }
 
-const run = async () => {
+const runBrowserCase = async () => {
   const openAiSecret = `sk-proj-${'aB3_'.repeat(14)}`
   const sendGridSecret = `SG.${'a'.repeat(24)}.${'b'.repeat(48)}`
+  const oversizedSecret = `sk-ant-${'cD4_'.repeat(12)}`
+  const oversizedText = `${'background '.repeat(420)}ANTHROPIC_API_KEY=${oversizedSecret}`
   const requests = []
   const savedValues = []
-  let sentMessage = null
+  const sentMessages = []
 
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({ viewport: { height: 900, width: 1440 } })
@@ -130,6 +133,8 @@ const run = async () => {
   })
   const page = await context.newPage()
   page.setDefaultTimeout(30_000)
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
 
   await page.route('**/api/**', async (route) => {
     const request = route.request()
@@ -174,8 +179,27 @@ const run = async () => {
       })
       return
     }
+    if (method === 'POST' && url.pathname === '/api/uploads') {
+      await route.fulfill({
+        body: JSON.stringify({
+          data: {
+            createdAt: NOW,
+            filename: 'pasted-text.txt',
+            id: '00000000-0000-4000-8000-000000000010',
+            kind: 'file',
+            mime: 'text/plain',
+            organizationId: IDS.organization,
+            sizeBytes: String(body.length),
+            uploaderId: IDS.user,
+          },
+        }),
+        contentType: 'application/json',
+        status: 200,
+      })
+      return
+    }
     if (method === 'POST' && url.pathname === `/api/threads/${IDS.thread}/messages`) {
-      sentMessage = JSON.parse(body)
+      sentMessages.push(JSON.parse(body))
       await route.fulfill({
         body: JSON.stringify({ data: { message: {}, pendingAgentInvites: [] } }),
         contentType: 'application/json',
@@ -192,7 +216,16 @@ const run = async () => {
   })
 
   await page.goto(`${ADMIN_URL}/channels/new`)
-  await page.getByRole('heading', { name: 'New message' }).waitFor()
+  try {
+    await page.getByRole('heading', { name: 'New message' }).waitFor()
+  } catch (error) {
+    const body = await page.locator('body').innerText().catch(() => '')
+    throw new Error(
+      `New-message page did not render at ${page.url()}: ${body.slice(0, 500)}; `
+      + `page errors: ${pageErrors.join(' | ') || 'none'}`,
+      { cause: error },
+    )
+  }
   await page.getByPlaceholder('Type a name or email address').fill('Ada')
   await page.getByRole('button', { name: /Ada Agent/ }).click()
   const editor = page.getByRole('textbox').last()
@@ -218,25 +251,49 @@ const run = async () => {
   await page.waitForURL(`**/channels/${IDS.channel}`)
 
   assert.deepEqual(savedValues, [openAiSecret, sendGridSecret])
-  assert.ok(sentMessage)
-  assert.equal(JSON.stringify(sentMessage).includes(openAiSecret), false)
-  assert.equal(JSON.stringify(sentMessage).includes(sendGridSecret), false)
-  assert.match(sentMessage.content, /sk-proj-•+/)
-  assert.match(sentMessage.content, /SG\.•+/)
-  assert.match(sentMessage.content, /OPENAI_API_KEY, SENDGRID_API_KEY/)
+  assert.equal(JSON.stringify(sentMessages[0]).includes(openAiSecret), false)
+  assert.equal(JSON.stringify(sentMessages[0]).includes(sendGridSecret), false)
+  assert.match(sentMessages[0].content, /sk-proj-•+/)
+  assert.match(sentMessages[0].content, /SG\.•+/)
+  assert.match(sentMessages[0].content, /OPENAI_API_KEY, SENDGRID_API_KEY/)
+
+  await page.goto(`${ADMIN_URL}/channels/new`)
+  await page.getByPlaceholder('Type a name or email address').fill('Ada')
+  await page.getByRole('button', { name: /Ada Agent/ }).click()
+  const oversizedEditor = page.getByRole('textbox').last()
+  await oversizedEditor.fill(oversizedText)
+  await oversizedEditor.press('Enter')
+  await page.getByRole('heading', { name: 'Nessie detected a credential' }).waitFor()
+  await page.getByRole('button', { name: 'Save securely' }).click()
+  await page.waitForURL(`**/channels/${IDS.channel}`)
+
+  assert.deepEqual(savedValues, [openAiSecret, sendGridSecret, oversizedSecret])
+  assert.deepEqual(sentMessages[1].attachmentIds, ['00000000-0000-4000-8000-000000000010'])
+  assert.equal(sentMessages[1].content, 'Shared file: pasted-text.txt')
 
   for (const request of requests) {
     if (request.path === '/api/secrets') continue
     assert.equal(request.body.includes(openAiSecret), false)
     assert.equal(request.body.includes(sendGridSecret), false)
+    assert.equal(request.body.includes(oversizedSecret), false)
   }
   const storage = await page.evaluate(() => JSON.stringify(window.localStorage))
   assert.equal(storage.includes(openAiSecret), false)
   assert.equal(storage.includes(sendGridSecret), false)
+  assert.equal(storage.includes(oversizedSecret), false)
 
   await context.close()
   await browser.close()
   process.stdout.write(`Secret capture UI verified; screenshot: ${SCREENSHOT}\n`)
+}
+
+const run = async () => {
+  const admin = await startAdmin()
+  try {
+    await runBrowserCase()
+  } finally {
+    if (!keepServers()) await stopProcess(admin)
+  }
 }
 
 await run()

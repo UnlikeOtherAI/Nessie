@@ -3,8 +3,6 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
-import { useStartChannelConversation } from '../facades/channels/hooks'
-import { useSendMessageToThread } from '../facades/messages/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
@@ -20,19 +18,13 @@ import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
-import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
+import { MentionInput, type MentionEntity } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { SecretCaptureDialog } from '../components/features/channels/SecretCaptureDialog'
-import {
-  advanceSecretCapture,
-  createSecretCapture,
-  protectedReplacement,
-  type SecretCapture,
-} from '../components/features/channels/secret-capture'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import type { SecretRecord } from '../facades/secrets/hooks'
+import { useNewChannelConversationSend } from './channels/useNewChannelConversationSend'
 
 const optionKey = recipientKey
 
@@ -58,25 +50,28 @@ export const ChannelConversationComposePage = () => {
   // default list excludes every `systemManaged` agent, which is why no global
   // agent and no Personal Assistant could ever appear in this address book.
   const { data: allAgents = [] } = useAgents({ scope: 'all' })
-  const startConversation = useStartChannelConversation()
-  const sendMessage = useSendMessageToThread()
-  const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
 
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [query, setQuery] = useState('')
   const [addressFocused, setAddressFocused] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [oversizePaste, setOversizePaste] = useState<string | null>(null)
-  const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
-  const secretCaptureRef = useRef<SecretCapture | null>(null)
-
-  const storeSecretCapture = useCallback((capture: SecretCapture | null) => {
-    secretCaptureRef.current = capture
-    setSecretCapture(capture)
-  }, [])
+  const compose = useNewChannelConversationSend(recipients)
+  const {
+    captureOversizePaste,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    error,
+    isPending,
+    mentionRef,
+    message,
+    oversizePaste,
+    secretCapture,
+    sendAsFile,
+    setMessage,
+    setOversizePaste,
+    submit,
+  } = compose
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -146,81 +141,6 @@ export const ChannelConversationComposePage = () => {
     )
   }, [])
 
-  const submit = useCallback(
-    async (rawText: string) => {
-      const content = rawText.trim()
-      if (!content) {
-        return
-      }
-      if (recipients.length === 0) {
-        setError('Choose at least one recipient.')
-        addressInputRef.current?.focus()
-        return
-      }
-
-      const capture = createSecretCapture({ content })
-      if (capture) {
-        storeSecretCapture(capture)
-        mentionRef.current?.clear()
-        setMessage('')
-        return
-      }
-
-      setError(null)
-      try {
-        const channel = await startConversation.mutateAsync({
-          agentIds: recipients
-            .filter((recipient) => recipient.kind === 'agent')
-            .map((recipient) => recipient.id),
-          userIds: recipients
-            .filter((recipient) => recipient.kind === 'user')
-            .map((recipient) => recipient.id),
-        })
-        await sendMessage.mutateAsync({
-          content,
-          threadId: channel.defaultThreadId,
-        })
-        mentionRef.current?.clear()
-        setMessage('')
-        void navigate(`/channels/${channel.id}`, { replace: true })
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not start chat.')
-      }
-    },
-    [navigate, recipients, sendMessage, startConversation, storeSecretCapture],
-  )
-
-  const captureOversizePaste = useCallback((paste: string) => {
-    const capture = createSecretCapture({ content: paste, replacementMode: 'file' })
-    if (!capture) {
-      setOversizePaste(paste)
-      return
-    }
-    setOversizePaste(null)
-    storeSecretCapture(capture)
-    mentionRef.current?.clear()
-    setMessage('')
-  }, [storeSecretCapture])
-
-  const confirmSecretCapture = useCallback(async (
-    secret: SecretRecord,
-    identity: { captureId: string; currentIndex: number },
-  ) => {
-    const capture = secretCaptureRef.current
-    if (
-      !capture
-      || capture.captureId !== identity.captureId
-      || capture.currentIndex !== identity.currentIndex
-    ) return
-    const next = advanceSecretCapture(capture, secret.name)
-    if (next) {
-      storeSecretCapture(next)
-      return
-    }
-    storeSecretCapture(null)
-    await submit(protectedReplacement(capture, secret.name))
-  }, [storeSecretCapture, submit])
-
   const hasSelectableOptions = options.length > 0
 
   const onAddressKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -252,7 +172,6 @@ export const ChannelConversationComposePage = () => {
     }
   }
 
-  const isPending = startConversation.isPending || sendMessage.isPending
   const showOptions = addressFocused && hasSelectableOptions
 
   if (!me) {
@@ -454,6 +373,7 @@ export const ChannelConversationComposePage = () => {
             setOversizePaste(null)
             mentionRef.current?.insertText(trimmed)
           }}
+          onSendAsFile={sendAsFile}
           open={oversizePaste !== null}
           pastedText={oversizePaste ?? ''}
         />
@@ -461,7 +381,7 @@ export const ChannelConversationComposePage = () => {
           <SecretCaptureDialog
             capture={secretCapture}
             key={`${secretCapture.captureId}:${secretCapture.currentIndex}`}
-            onClose={() => storeSecretCapture(null)}
+            onClose={dismissSecretCapture}
             onSaved={confirmSecretCapture}
           />
         ) : null}

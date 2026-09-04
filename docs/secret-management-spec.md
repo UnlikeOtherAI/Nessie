@@ -119,7 +119,10 @@ only version which reaches PostgreSQL, realtime, memory, indexing, or a model.
 Discard sends no turn. This implements the requested replace semantics without
 ever persisting a raw message that would later need deletion. The server scan
 still repeats before message persistence and returns `SECRET_INTERCEPTED` to a
-client which bypasses the composer.
+client which bypasses the composer. The same pre-persistence refusal covers
+direct executor launches, ordinary agent-card response fields, and product-
+integration handoffs, because each can create a user-authored message without
+passing through the ordinary chat route.
 
 Every primary, inline delegate, and spawned subtask receives the same compact
 system-prompt rule: do not ask for, repeat, or place secrets in chat or
@@ -179,11 +182,14 @@ that metadata to select a declaratively bound tool. They never disclose its
 value, vault path, token, or permission-management controls. `MANAGE` grants
 authorize rotation and revocation; `DELEGATE` grants authorize access changes.
 
-The scanner blocks structural credential formats (including quoted and
+The scanner blocks structural credential formats (including JSON, quoted and
 unquoted assignments, `Authorization: Bearer …`, common cloud/service keys,
-database URLs, private-key blocks, and JWTs), provider prefixes, and
+database URLs, complete or truncated private-key blocks, and JWTs), provider prefixes, and
 high-entropy token candidates on user message creation, message edits, and
-chat uploads before any durable write. Its masked output is idempotent: bullet
+chat uploads before any durable write. Previously stored drafts are scanned
+again while hydrating and rejected rather than repainted into an editor. Secret
+metadata is also refused when it contains detectable credential material or a
+copy of the submitted raw value. Its masked output is idempotent: bullet
 placeholders do not reopen the capture form or trigger the API boundary. It is
 deliberately a conservative first
 boundary, not a replacement for the pending-secret temporary-vault flow,

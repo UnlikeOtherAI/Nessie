@@ -24,6 +24,23 @@ test('provider tool calls replace secret arguments and carry a block marker', ()
   assert.doesNotMatch(JSON.stringify(sanitized?.arguments), /1234567890/)
 })
 
+test('provider tool calls block opaque values under common token keys', () => {
+  const [sanitized] = sanitizeProviderToolCalls([{
+    arguments: {
+      accessToken: 'opaque-access-value',
+      nested: { session_token: 'opaque-session-value' },
+      token: 'opaque-token-value',
+      tokenCount: '12345678',
+    },
+    toolCallId: 'call-opaque',
+    toolName: 'external_publish',
+  }])
+
+  assert.equal(sanitized?.secretArgumentBlocked, true)
+  assert.equal(sanitized?.arguments.tokenCount, '12345678')
+  assert.doesNotMatch(JSON.stringify(sanitized?.arguments), /opaque-/)
+})
+
 test('summarizeToolInput redacts secret-bearing fields recursively', () => {
   const summary = summarizeToolInput({
     auth: {

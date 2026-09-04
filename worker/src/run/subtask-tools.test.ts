@@ -90,7 +90,9 @@ test('spawned child strips every explicit grant while preserving ordinary policy
     ordinary_allow: true,
     ordinary_deny: false,
   })
-  assert.match(childSystemPrompt, /secure form before you see it/)
+  // Prompt assembly supplies the one global safety instruction to every run;
+  // storing another copy on each ephemeral child would pay for it twice.
+  assert.doesNotMatch(childSystemPrompt, /secure form before you see it/)
 })
 
 test('spawn_subtask refuses credential-bearing tasks before durable writes', async () => {

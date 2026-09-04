@@ -105,6 +105,25 @@ test('a present draft is restored on mount and a fresh key starts empty', async 
   }
 })
 
+test('a reviver-rejected stored draft is removed instead of reaching UI state', async () => {
+  const key = 'draft:composer:unsafe'
+  const harness = await mountDraft<{ text: string }>(
+    key,
+    {
+      initial: { text: '' },
+      revive: () => null,
+    },
+    { [key]: { text: 'unsafe persisted value' } },
+  )
+  try {
+    assert.equal(harness.current().draft.text, '')
+    assert.equal(harness.current().restored, false)
+    assert.equal(harness.storage.getItem(key), null)
+  } finally {
+    await harness.unmount()
+  }
+})
+
 test('the local lane debounces and a key change never leaks the outgoing draft', async () => {
   const harness = await mountDraft<{ text: string }>('draft:composer:channel-1', {
     initial: { text: '' },

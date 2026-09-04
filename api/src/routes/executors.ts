@@ -23,7 +23,12 @@ import {
   submitExecutorEnrollment,
 } from '@nessie/executor-manage'
 import type { FastifyInstance } from 'fastify'
-import { ImplementedExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
+import {
+  detectSecrets,
+  ImplementedExecutorOperationKeySchema,
+  parseChannelId,
+  parseUserId,
+} from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -172,6 +177,15 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!requireUserActor(actorContext, reply)) return reply
     const body = parseInput(ExecutorRunLaunchBodySchema, request.body, reply)
     if (!body) return reply
+    if (detectSecrets(body.content).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before the executor run was created. Save it through Secrets instead.',
+      )
+      return reply
+    }
     const { threadId } = request.params as { threadId: string }
     try {
       const launched = await launchExecutorRun(prisma, actorContext, { ...body, threadId })

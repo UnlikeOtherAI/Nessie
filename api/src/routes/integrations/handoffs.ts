@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   BuildMeProjectHandoffRequestSchema,
+  detectSecrets,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
 } from '@nessie/schemas'
@@ -40,6 +41,17 @@ import {
 
 type IntegrationHandoff = Awaited<ReturnType<typeof createPersonalAssistantIntegrationHandoff>>
 
+const rejectSecretBearingHandoff = (reply: FastifyReply, input: unknown): boolean => {
+  if (detectSecrets(JSON.stringify(input)).length === 0) return false
+  sendApiError(
+    reply,
+    422,
+    'SECRET_INTERCEPTED',
+    'A possible credential was intercepted before this request or chat handoff was saved. Save it through Secrets instead.',
+  )
+  return true
+}
+
 const sendHandoffResponse = (
   reply: FastifyReply,
   handoff: IntegrationHandoff,
@@ -73,6 +85,7 @@ export const registerIntegrationHandoffRoutes = (
     const parsedBody = parseInput(DeepWaterResearchLaunchRequestSchema, request.body, reply)
     if (!parsedBody) return reply
     const body = normalizeDeepWaterLaunchInput(parsedBody)
+    if (rejectSecretBearingHandoff(reply, body)) return reply
 
     const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
     if (!teamId) {
@@ -170,6 +183,7 @@ export const registerIntegrationHandoffRoutes = (
     const parsedBody = parseInput(DeepTestReviewHandoffRequestSchema, request.body, reply)
     if (!parsedBody) return reply
     const body = normalizeDeepTestReviewHandoffInput(parsedBody)
+    if (rejectSecretBearingHandoff(reply, body)) return reply
 
     const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
     if (!teamId) {
@@ -233,6 +247,7 @@ export const registerIntegrationHandoffRoutes = (
     const parsedBody = parseInput(BuildMeProjectHandoffRequestSchema, request.body, reply)
     if (!parsedBody) return reply
     const body = normalizeBuildMeProjectHandoffInput(parsedBody)
+    if (rejectSecretBearingHandoff(reply, body)) return reply
 
     const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
     if (!teamId) {

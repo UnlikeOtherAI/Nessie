@@ -121,19 +121,28 @@ export type SanitizedProviderToolCall = ProviderToolCall & {
 }
 
 const TOOL_ARGUMENT_SECRET_KEY = new RegExp(
-  [
+  `^(?:.*[_-])?(?:${[
     'api[_-]?key',
+    'access[_-]?token',
+    'auth[_-]?token',
     'authorization',
+    'bearer',
     'client[_-]?secret',
     'credential',
     'password',
     'private[_-]?key',
     'refresh[_-]?token',
+    'secret',
     'secret[_-]?access[_-]?key',
+    'session[_-]?token',
     'signing[_-]?secret',
-  ].join('|'),
+    'token',
+  ].join('|')})$`,
   'i',
 )
+
+const normalizedToolArgumentKey = (key: string): string =>
+  key.replace(/([a-z\d])([A-Z])/gu, '$1_$2').toLowerCase()
 
 export type SanitizedToolArguments = {
   detected: boolean
@@ -147,7 +156,7 @@ const redactToolArgumentSecrets = (
 ): { detected: boolean; value: unknown } => {
   if (depth > 8) return { detected: false, value: '[MaxDepth]' }
   if (typeof value === 'string') {
-    if (TOOL_ARGUMENT_SECRET_KEY.test(key) && value.length >= 8) {
+    if (TOOL_ARGUMENT_SECRET_KEY.test(normalizedToolArgumentKey(key)) && value.length >= 8) {
       return { detected: true, value: '[REDACTED_SECRET]' }
     }
     const redacted = redactDetectedSecrets(value)
