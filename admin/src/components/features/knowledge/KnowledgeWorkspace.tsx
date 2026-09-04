@@ -141,6 +141,18 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     .map((pageId) => pageById(pageId))
     .filter((page): page is NonNullable<typeof page> => Boolean(page))
   const current = openPageId ? pageById(openPageId) : undefined
+  const breadcrumbPages = (() => {
+    if (!current) return []
+    const ancestors: KnowledgePageRecord[] = []
+    const visited = new Set<string>([current.id])
+    let parent = current.parentPageId ? pageById(current.parentPageId) : undefined
+    while (parent && !visited.has(parent.id)) {
+      visited.add(parent.id)
+      ancestors.unshift(parent)
+      parent = parent.parentPageId ? pageById(parent.parentPageId) : undefined
+    }
+    return ancestors
+  })()
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const currentFolder = openPageId ? null : pathPages.at(-1)
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
@@ -331,6 +343,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const documentPane = current ? (
     <KnowledgeDocumentPane
       bodyQuery={fullPageQuery}
+      breadcrumbPages={breadcrumbPages}
       canWrite={canWrite}
       converting={canWrite && isMarkdownFileNode && !convertToDocument.isError}
       depth={depth}
@@ -338,6 +351,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       onBack={stacked ? undefined : () => popTo(depth)}
       page={current}
       selectedSpaceId={selectedSpaceId}
+      spaceName={selectedSpace?.name ?? 'Pages'}
     />
   ) : null
 
@@ -363,41 +377,42 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   // body so the editor never initialises from an empty (list-stripped) body and
   // overwrites real content on save.
   const editorPane = editor ? (
-    <KnowledgePane
-      onBack={stacked ? undefined : closeEditor}
-      title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}
-    >
-      <div className="flex h-full w-full flex-col">
-        {editor.mode === 'edit' ? (
-          <QueryState
-            className="flex h-full items-center justify-center py-0"
-            errorLabel="Couldn’t load this page."
-            loadingLabel="Loading…"
-            query={fullPageQuery}
-          >
-            {() => (
-              <PageEditor
-                mode="edit"
-                onCancel={closeEditor}
-                onSubmit={savePage}
-                page={fullPage ?? null}
-                pending={savePending}
-              />
-            )}
-          </QueryState>
-        ) : (
-          <PageEditor
-            initialTitle={editor.initialTitle}
-            mode="create"
-            onCancel={closeEditor}
-            onSubmit={savePage}
-            page={null}
-            parentPageId={editor.parentPageId}
-            pending={savePending}
-          />
-        )}
-      </div>
-    </KnowledgePane>
+    <div className="h-full w-full">
+      {editor.mode === 'edit' ? (
+        <QueryState
+          className="flex h-full items-center justify-center py-0"
+          errorLabel="Couldn’t load this page."
+          loadingLabel="Loading…"
+          query={fullPageQuery}
+        >
+          {() => (
+            <PageEditor
+              mode="edit"
+              onBack={stacked ? undefined : closeEditor}
+              onCancel={closeEditor}
+              onSubmit={savePage}
+              page={fullPage ?? null}
+              pages={pages}
+              pending={savePending}
+              spaceName={selectedSpace?.name ?? 'Pages'}
+            />
+          )}
+        </QueryState>
+      ) : (
+        <PageEditor
+          initialTitle={editor.initialTitle}
+          mode="create"
+          onBack={stacked ? undefined : closeEditor}
+          onCancel={closeEditor}
+          onSubmit={savePage}
+          page={null}
+          pages={pages}
+          parentPageId={editor.parentPageId}
+          pending={savePending}
+          spaceName={selectedSpace?.name ?? 'Pages'}
+        />
+      )}
+    </div>
   ) : null
 
   return (

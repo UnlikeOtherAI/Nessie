@@ -15,6 +15,7 @@ type KnowledgeDocumentPaneProps = {
   // The on-demand full-body fetch, handed on so the preview can render the
   // kit's loading / error / retry line for it.
   bodyQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
+  breadcrumbPages: KnowledgePageRecord[]
   canWrite: boolean
   // A markdown file node being converted into a real document: the pane says
   // so rather than briefly rendering the raw file.
@@ -27,12 +28,14 @@ type KnowledgeDocumentPaneProps = {
   onBack?: () => void
   page: KnowledgePageRecord
   selectedSpaceId?: string
+  spaceName: string
 }
 
 // The open document or file node, with everything filed against it: its
 // attachments drawer, a new file version, and drag-and-drop onto the page.
 export const KnowledgeDocumentPane = ({
   bodyQuery,
+  breadcrumbPages,
   canWrite,
   converting,
   depth,
@@ -40,13 +43,16 @@ export const KnowledgeDocumentPane = ({
   onBack,
   page,
   selectedSpaceId,
+  spaceName,
 }: KnowledgeDocumentPaneProps) => {
   const {
+    browseTo,
     childrenOf,
     drillTo,
     openCreate,
     openEdit,
     openHistory,
+    openPagePath,
     publishPage,
     publishPending,
   } = useKnowledge()
@@ -92,17 +98,24 @@ export const KnowledgeDocumentPane = ({
       ) : (
         <PagePreview
           bodyQuery={bodyQuery}
+          breadcrumbPages={breadcrumbPages}
           canWrite={canWrite}
           onBack={onBack}
+          onBrowseRoot={() => browseTo([])}
           onCreateChild={() => openCreate(page.id)}
           onDrill={(childPageId) => drillTo(depth, childPageId)}
           onEdit={() => openEdit(page)}
           onOpenHistory={() => openHistory(page.id)}
+          onOpenBreadcrumb={(pageId) => {
+            const index = breadcrumbPages.findIndex((breadcrumb) => breadcrumb.id === pageId)
+            if (index >= 0) openPagePath(breadcrumbPages.slice(0, index + 1).map((item) => item.id))
+          }}
           onPublish={() => publishPage(page.id)}
           onToggleAttachments={() => setAttachmentsOpen(true)}
           page={fullPage ?? page}
           publishPending={publishPending}
           subPages={childrenOf(page.id)}
+          spaceName={spaceName}
         />
       )}
       <DropZoneOverlay

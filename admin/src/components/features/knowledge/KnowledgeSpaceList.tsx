@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
 import { prewarmRowHandlers, usePrewarm } from '../../../navigation/prewarm'
@@ -17,6 +18,8 @@ type KnowledgeSpaceListProps = {
   // org-wide the names alone are ambiguous; in project scope they never are,
   // and the label would be the same word on every row.
   projectLabels?: Record<string, string>
+  renderAfter?: (space: KnowledgeSpaceRecord) => ReactNode
+  selectedPageId?: string
   selectedSpaceId?: string
   spaces: KnowledgeSpaceRecord[]
 }
@@ -30,6 +33,8 @@ export const KnowledgeSpaceList = ({
   isPending,
   onSelect,
   projectLabels,
+  renderAfter,
+  selectedPageId,
   selectedSpaceId,
   spaces,
 }: KnowledgeSpaceListProps) => {
@@ -45,50 +50,58 @@ export const KnowledgeSpaceList = ({
 
   return (
     <>
-      {spaces.map((space) => (
-        <button
-          aria-current={sidebarAriaCurrent(space.id === selectedSpaceId)}
-          className={['admin-sb-item', space.id === selectedSpaceId ? 'active' : ''].join(' ')}
-          key={space.id}
-          onClick={() => onSelect(space.id)}
-          type="button"
-          {...prewarmRowHandlers(prewarm, `/knowledge-base/spaces/${space.id}`)}
-        >
-          <svg
-            className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
-          >
-            <path d="M12 3l9 5-9 5-9-5 9-5z" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M3 13l9 5 9-5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="min-w-0 flex-1 truncate">{space.name}</span>
-          {projectLabels?.[space.projectId] ? (
-            <span
-              // Dim the row's own colour rather than pinning --tx3: the active
-              // row switches to --on-accent, where a fixed dim token is
-              // unreadable against the accent fill.
-              className="max-w-[45%] flex-shrink-0 truncate text-[11px] opacity-60"
-              title={projectLabels[space.projectId]}
-            >
-              {projectLabels[space.projectId]}
-            </span>
-          ) : null}
-          {space.memberAgentIds.length > 0 ? (
-            <span
+      {spaces.map((space) => {
+        const selected = space.id === selectedSpaceId
+        return (
+          <div key={space.id}>
+            <button
+              aria-current={sidebarAriaCurrent(selected && !selectedPageId)}
               className={[
-                'flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-                'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
+                'admin-sb-item',
+                selected && !selectedPageId ? 'active' : selected ? 'active-parent' : '',
               ].join(' ')}
-              title={`${space.memberAgentIds.length} agent${space.memberAgentIds.length === 1 ? '' : 's'} tagged in`}
+              onClick={() => onSelect(space.id)}
+              type="button"
+              {...prewarmRowHandlers(prewarm, `/knowledge-base/spaces/${space.id}`)}
             >
-              {space.memberAgentIds.length} agent{space.memberAgentIds.length === 1 ? '' : 's'}
-            </span>
-          ) : null}
-        </button>
-      ))}
+              <svg
+                className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 3l9 5-9 5-9-5 9-5z" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M3 13l9 5 9-5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="min-w-0 flex-1 truncate">{space.name}</span>
+              {projectLabels?.[space.projectId] ? (
+                <span
+                  // Dim the row's own colour rather than pinning --tx3: the active
+                  // row switches to --on-accent, where a fixed dim token is
+                  // unreadable against the accent fill.
+                  className="max-w-[45%] flex-shrink-0 truncate text-[11px] opacity-60"
+                  title={projectLabels[space.projectId]}
+                >
+                  {projectLabels[space.projectId]}
+                </span>
+              ) : null}
+              {space.memberAgentIds.length > 0 ? (
+                <span
+                  className={[
+                    'flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                    'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
+                  ].join(' ')}
+                  title={`${space.memberAgentIds.length} agent${space.memberAgentIds.length === 1 ? '' : 's'} tagged in`}
+                >
+                  {space.memberAgentIds.length} agent{space.memberAgentIds.length === 1 ? '' : 's'}
+                </span>
+              ) : null}
+            </button>
+            {selected ? renderAfter?.(space) : null}
+          </div>
+        )
+      })}
     </>
   )
 }
