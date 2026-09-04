@@ -16,6 +16,7 @@ export const DirectDesktopUpdatePrompt = () => {
   const [update, setUpdate] = useState<DirectDesktopUpdate | null>(null)
   const [installError, setInstallError] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [savingPreference, setSavingPreference] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -29,15 +30,20 @@ export const DirectDesktopUpdatePrompt = () => {
 
   if (!update) return null
 
-  const remindLater = (): void => {
-    remindAboutDirectDesktopUpdateLater(update.version)
-    setUpdate(null)
+  const savePreference = async (save: (version: string) => Promise<void>): Promise<void> => {
+    setSavingPreference(true)
+    try {
+      await save(update.version)
+      setUpdate(null)
+    } catch {
+      setSavingPreference(false)
+      setInstallError(true)
+    }
   }
 
-  const skip = (): void => {
-    skipDirectDesktopUpdate(update.version)
-    setUpdate(null)
-  }
+  const remindLater = (): void => void savePreference(remindAboutDirectDesktopUpdateLater)
+
+  const skip = (): void => void savePreference(skipDirectDesktopUpdate)
 
   const install = async (): Promise<void> => {
     setInstallError(false)
@@ -55,7 +61,7 @@ export const DirectDesktopUpdatePrompt = () => {
   return (
     <Dialog
       description={`Version ${update.version} is available (you have ${update.currentVersion}).`}
-      dismissDisabled={installing}
+      dismissDisabled={installing || savingPreference}
       onClose={remindLater}
       open
       title="Update Nessie?"
@@ -70,13 +76,13 @@ export const DirectDesktopUpdatePrompt = () => {
           </p>
         ) : null}
         <div className="flex flex-wrap justify-end gap-2">
-          <button className="admin-button admin-button-secondary" onClick={skip} type="button">
+          <button className="admin-button admin-button-secondary" disabled={savingPreference} onClick={skip} type="button">
             Skip this version
           </button>
-          <button className="admin-button admin-button-secondary" onClick={remindLater} type="button">
+          <button className="admin-button admin-button-secondary" disabled={savingPreference} onClick={remindLater} type="button">
             Remind me tomorrow
           </button>
-          <button className="admin-button admin-button-primary" disabled={installing} onClick={() => void install()} type="button">
+          <button className="admin-button admin-button-primary" disabled={installing || savingPreference} onClick={() => void install()} type="button">
             {installing ? 'Installing…' : 'Update now'}
           </button>
         </div>
