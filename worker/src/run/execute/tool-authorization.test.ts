@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  BUILTIN_TOOL_DEFINITIONS,
-  MAILBOX_SEND_TOOL_ID,
-  type InferenceResult,
-  type InvocationRecord,
-} from '@nessie/runtime'
+import { type InferenceResult, type InvocationRecord } from '@nessie/runtime'
 import {
   parseOrganizationId,
   parseProjectId,
@@ -21,8 +16,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 import type { ExecutorToolset } from '../executor-toolset.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { AgenticToolResult } from '../tools.js'
-import { reviewableToolSurface } from './auto-review.js'
-import { hashJsonValue } from '../tool-util.js'
+import { approvalRule, denyRule } from './tool-authorization-test-fixtures.js'
 
 /**
  * Regression coverage for the pre-dispatch authorization gate (security
@@ -37,8 +31,8 @@ const CHANNEL_ID = '22222222-2222-4222-8222-222222222222'
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333'
 const TEAM_ID = '44444444-4444-4444-8444-444444444444'
 const AGENT_ID = '55555555-5555-4555-8555-555555555555'
-const RUN_ID = '66666666-6666-4666-8666-666666666666'
-const TASK_ID = '77777777-7777-4777-8777-777777777777'
+export const RUN_ID = '66666666-6666-4666-8666-666666666666'
+export const TASK_ID = '77777777-7777-4777-8777-777777777777'
 const THREAD_ID = '88888888-8888-4888-8888-888888888888'
 const USER_ID = '99999999-9999-4999-8999-999999999999'
 
@@ -80,9 +74,7 @@ const runContext = (): RunContext => ({
 type FakePrisma = {
   approvalRequests: Array<Record<string, unknown>>
   auditLog: { createCalls: number; entries: Array<Record<string, unknown>> }
-  connectorUsageEvents: Array<Record<string, unknown>>
   taskEvents: Array<Record<string, unknown>>
-  toolCalls: Array<Record<string, unknown>>
   prisma: ExecutionDependencies['prisma']
   ruleLog: string[]
   setRules: (rules: Array<Record<string, unknown>>) => void
@@ -93,9 +85,7 @@ const fakePrisma = (): FakePrisma => {
   const state = {
     approvalRequests: [] as Array<Record<string, unknown>>,
     auditLog: { createCalls: 0, entries: [] as Array<Record<string, unknown>> },
-    connectorUsageEvents: [] as Array<Record<string, unknown>>,
     taskEvents: [] as Array<Record<string, unknown>>,
-    toolCalls: [] as Array<Record<string, unknown>>,
     ruleLog: [] as string[],
     setRules: (next: Array<Record<string, unknown>>) => {
       rules = next
@@ -114,12 +104,6 @@ const fakePrisma = (): FakePrisma => {
       },
     }),
     agent: { update: async () => ({}) },
-    connectorUsageEvent: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        state.connectorUsageEvents.push(data)
-        return {}
-      },
-    },
     approvalRequest: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const approval = { ...data, id: `approval-${state.approvalRequests.length + 1}` }
@@ -130,26 +114,8 @@ const fakePrisma = (): FakePrisma => {
         state.approvalRequests.find((approval) =>
           Object.entries(where).every(([key, value]) => approval[key] === value),
         ) ?? null,
-      updateMany: async ({ where }: { where: Record<string, unknown> }) => {
-        const approval = state.approvalRequests.find((candidate) =>
-          Object.entries(where).every(([key, value]) => candidate[key] === value),
-        )
-        if (!approval) return { count: 0 }
-        approval['proofConsumedAt'] = new Date()
-        return { count: 1 }
-      },
+      updateMany: async () => ({ count: 1 }),
     },
-    mailboxConnection: {
-      findMany: async () => [{
-        address: 'shared@example.test',
-        createdByUserId: USER_ID,
-        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        ownerUserId: null,
-        status: 'active',
-        teamId: TEAM_ID,
-      }],
-    },
-    organizationMember: { count: async () => 1 },
     policyRule: {
       findMany: async (query: { where: { scopeId: { in: string[] } } }) => {
         state.ruleLog.push(...query.where.scopeId.in)
@@ -158,7 +124,7 @@ const fakePrisma = (): FakePrisma => {
         )
       },
     },
-    run: { findUnique: async () => ({ continuationOfRunId: 'parent-run' }) },
+    run: { findUnique: async () => null },
     taskEvent: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         state.taskEvents.push(data)
@@ -166,10 +132,7 @@ const fakePrisma = (): FakePrisma => {
       },
     },
     toolCall: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        state.toolCalls.push(data)
-        return {}
-      },
+      create: async () => ({}),
       updateMany: async () => ({ count: 1 }),
     },
   }
@@ -213,7 +176,7 @@ const makeInvocation = (): InvocationRecord => ({
   usage: { totalTokens: 1 },
 })
 
-const toolCallTurn = (toolName: string, args: Record<string, unknown>): InferenceResult => ({
+export const toolCallTurn = (toolName: string, args: Record<string, unknown>): InferenceResult => ({
   finishReason: 'tool-call',
   invocations: [makeInvocation()],
   model: 'gpt-5-mini',
@@ -223,7 +186,7 @@ const toolCallTurn = (toolName: string, args: Record<string, unknown>): Inferenc
   toolCalls: [{ arguments: args, toolCallId: 'call-1', toolName }],
 })
 
-const finalTurn = (outputText = 'Done.'): InferenceResult => ({
+export const finalTurn = (outputText = 'Done.'): InferenceResult => ({
   invocations: [makeInvocation()],
   model: 'gpt-5-mini',
   outputText,
@@ -234,25 +197,18 @@ const finalTurn = (outputText = 'Done.'): InferenceResult => ({
 
 type LoopHarness = {
   dispatchedMcp: string[]
-  dispatchedMcpCalls: Array<{ args: Record<string, unknown>; toolName: string }>
   dispatchedExecutor: string[]
   fake: FakePrisma
   invocationSink: InvocationRecord[]
-  mainInferenceCalls: number
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
   subAgentToolResults: Array<{ output: string; toolName: string }>
 }
 
-const runLoop = async (input: {
+export const runLoop = async (input: {
   allowBuiltinExec?: boolean
   builtinName?: string
   mcpTools?: Record<string, AgenticToolResult>
   executorTools?: Record<string, AgenticToolResult>
-  approvedContinuation?: {
-    args: Record<string, unknown>
-    toolCallId: string
-    toolName: string
-  }
   reviewer?: 'allow' | 'deny' | 'unavailable' | 'unparseable' | 'require_approval'
   resolvedBuiltinToolIds?: Set<string>
   rules?: Array<Record<string, unknown>>
@@ -266,7 +222,6 @@ const runLoop = async (input: {
     fake.setRules(input.rules)
   }
   const dispatchedMcp: string[] = []
-  const dispatchedMcpCalls: Array<{ args: Record<string, unknown>; toolName: string }> = []
   const dispatchedExecutor: string[] = []
   const mcpEntries = input.mcpTools ?? {}
   const executorEntries = input.executorTools ?? {}
@@ -278,9 +233,8 @@ const runLoop = async (input: {
         inputSchema: { properties: {}, type: 'object' },
         toolName: name,
       })),
-      dispatch: async (name: string, args: Record<string, unknown>) => {
+      dispatch: async (name: string) => {
         dispatchedMcp.push(name)
-        dispatchedMcpCalls.push({ args, toolName: name })
         return mcpEntries[name]
       },
       handledNames: new Set(Object.keys(mcpEntries)),
@@ -298,26 +252,6 @@ const runLoop = async (input: {
   } as unknown as ExecutorToolset
 
   const builtinName = input.builtinName ?? 'kb_search'
-  if (input.approvedContinuation) {
-    fake.approvalRequests.push({
-      action: 'tool.invoke',
-      argsHash: hashJsonValue(input.approvedContinuation.args),
-      continuationToken: 'approved-proof',
-      id: 'approval-1',
-      organizationId: ORG_ID,
-      proofConsumedAt: null,
-      resumeState: {
-        actorContext: actorContext(),
-        args: input.approvedContinuation.args,
-        interactive: true,
-        messageId: 'msg-1',
-      },
-      runId: 'parent-run',
-      status: 'approved',
-      toolCallId: input.approvedContinuation.toolCallId,
-      toolName: input.approvedContinuation.toolName,
-    })
-  }
   const subAgentToolResults: Array<{ output: string; toolName: string }> = []
   const invocationSink: InvocationRecord[] = []
   let mainTurn = 0
@@ -357,12 +291,7 @@ const runLoop = async (input: {
   const result = await runExecutionAgentLoop(
     deps(fake),
     {
-      actorContext: input.approvedContinuation
-        ? {
-          ...actorContext(),
-          approval: { approvalId: 'approval-1', approvalProof: 'approved-proof' },
-        }
-        : actorContext(),
+      actorContext: actorContext(),
       messageId: 'msg-1',
     } as never,
     runContext(),
@@ -417,52 +346,14 @@ const runLoop = async (input: {
   return {
     dispatchedExecutor,
     dispatchedMcp,
-    dispatchedMcpCalls,
     fake,
     invocationSink,
-    mainInferenceCalls: mainTurn,
     result,
     subAgentToolResults,
   }
 }
 
-const denyRule = (toolId: string): Record<string, unknown> => ({
-  action: 'invoke',
-  bindings: [{ actorId: '*', actorType: 'user' }],
-  conditions: null,
-  effect: 'deny',
-  id: 'rule-deny',
-  priority: 1,
-  resourceType: 'tool',
-  scope: 'tool',
-  scopeId: toolId,
-})
-
-const approvalRule = (toolId: string): Record<string, unknown> => ({
-  action: 'invoke',
-  bindings: [{ actorId: '*', actorType: 'user' }],
-  conditions: { approvalActionType: 'tool.invoke', requiresApproval: true },
-  effect: 'allow',
-  id: 'rule-approval',
-  priority: 1,
-  resourceType: 'tool',
-  scope: 'tool',
-  scopeId: toolId,
-})
-
-const autoReviewRule = (toolId: string): Record<string, unknown> => ({
-  action: 'invoke',
-  bindings: [{ actorId: '*', actorType: 'user' }],
-  conditions: { reviewMode: 'auto' },
-  effect: 'allow',
-  id: 'rule-auto-review',
-  priority: 1,
-  resourceType: 'tool',
-  scope: 'tool',
-  scopeId: toolId,
-})
-
-const reviewerInvocations = (invocations: InvocationRecord[]) => invocations.filter((invocation) => (
+export const reviewerInvocations = (invocations: InvocationRecord[]) => invocations.filter((invocation) => (
   invocation.metadata?.utilityPurpose === 'reviewer'
 ))
 
@@ -476,7 +367,7 @@ const parseDenied = (haystack: string, toolName: string): Record<string, unknown
 }
 
 // Main paths: the denial is the tool message in the main loop transcript.
-const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<string, unknown> => {
+export const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<string, unknown> => {
   const contents = result.messages
     .map((message) => (typeof message.content === 'string' ? message.content : ''))
   const haystack = contents.find((content) => content.includes('"type":"tool_denied"'))
@@ -484,7 +375,7 @@ const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<s
   return parseDenied(haystack, toolName)
 }
 
-const suspendedApproval = (result: LoopHarness['result'], toolName: string): string => {
+export const suspendedApproval = (result: LoopHarness['result'], toolName: string): string => {
   assert.equal(result.pendingApproval?.toolName, toolName)
   assert.ok(result.pendingApproval?.approvalId)
   return result.pendingApproval.approvalId
@@ -492,7 +383,7 @@ const suspendedApproval = (result: LoopHarness['result'], toolName: string): str
 
 // Delegated paths: the denial is the nested tool's result inside the
 // sub-agent loop, captured via the DelegateRunner's out-param.
-const delegatedDeniedOutput = (harness: LoopHarness, toolName: string): Record<string, unknown> => {
+export const delegatedDeniedOutput = (harness: LoopHarness, toolName: string): Record<string, unknown> => {
   const nested = harness.subAgentToolResults.find((entry) => entry.toolName === toolName)
   assert.ok(nested, `expected a nested tool result for ${toolName}; got: ${JSON.stringify(harness.subAgentToolResults)}`)
   return parseDenied(nested.output, toolName)
@@ -523,79 +414,6 @@ test('main builtin: an approval-required allow suspends before dispatch', async 
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
 
-test('an approved mailbox continuation dispatches its frozen action before any model turn', async () => {
-  const frozenArgs = {
-    connectionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    subject: 'unique frozen subject',
-    text: 'unique frozen body',
-    to: ['unique-recipient@example.test'],
-  }
-  const harness = await runLoop({
-    approvedContinuation: {
-      args: frozenArgs,
-      toolCallId: 'frozen-mailbox-call',
-      toolName: MAILBOX_SEND_TOOL_ID,
-    },
-    builtinName: MAILBOX_SEND_TOOL_ID,
-    mcpTools: {
-      [MAILBOX_SEND_TOOL_ID]: {
-        connectorUsage: {
-          calls: 1,
-          connectorType: 'email',
-          metadata: { text: 'unique frozen body' },
-          target: 'unique-recipient@example.test',
-          unitType: 'message',
-          units: 1,
-        },
-        inputSummary: 'server-approved action',
-        output: 'sent',
-        success: true,
-      },
-    },
-    toolName: MAILBOX_SEND_TOOL_ID,
-  })
-
-  assert.equal(harness.mainInferenceCalls, 0)
-  assert.deepEqual(harness.dispatchedMcpCalls, [{ args: frozenArgs, toolName: MAILBOX_SEND_TOOL_ID }])
-  assert.equal(harness.result.finalText, 'The approved action was completed.')
-  assert.equal(harness.result.toolCallsUsed, 1)
-  assert.equal(harness.fake.approvalRequests[0]?.['proofConsumedAt'] instanceof Date, true)
-  assert.doesNotMatch(JSON.stringify(harness.result), /unique frozen (subject|body)|unique-recipient/)
-  assert.equal(harness.fake.toolCalls.length, 1)
-  assert.equal(harness.fake.toolCalls[0]?.['inputSummary'], 'Approved server-owned action')
-  assert.doesNotMatch(JSON.stringify(harness.fake.toolCalls), /unique frozen (subject|body)|unique-recipient/)
-  assert.equal(harness.fake.connectorUsageEvents.length, 1)
-  assert.equal(harness.fake.connectorUsageEvents[0]?.['target'], null)
-  assert.equal(harness.fake.connectorUsageEvents[0]?.['metadata'], undefined)
-})
-
-test('a non-email approval continuation remains on the ordinary model continuation path', async () => {
-  const harness = await runLoop({
-    approvedContinuation: {
-      args: { query: 'frozen non-email query' },
-      toolCallId: 'frozen-kb-call',
-      toolName: 'kb_search',
-    },
-    builtinName: 'kb_search',
-    mcpTools: {
-      kb_search: {
-        inputSummary: 'model action',
-        output: 'found',
-        success: true,
-      },
-    },
-    toolArgs: { query: 'frozen non-email query' },
-    toolName: 'kb_search',
-  })
-
-  assert.equal(harness.mainInferenceCalls, 2)
-  assert.deepEqual(harness.dispatchedMcpCalls, [{
-    args: { query: 'frozen non-email query' },
-    toolName: 'kb_search',
-  }])
-  assert.equal(harness.result.finalText, 'Done.')
-})
-
 test('a to-do-disabled agent is refused when it names todo_start directly', async () => {
   const harness = await runLoop({
     builtinName: 'todo_start',
@@ -607,271 +425,4 @@ test('a to-do-disabled agent is refused when it names todo_start directly', asyn
   const parsed = deniedOutput(harness.result, 'todo_start')
   assert.equal(parsed['reason'], 'tool_not_granted')
   assert.ok(harness.fake.auditLog.createCalls > 0)
-})
-
-// --- main MCP ---
-
-test('main MCP: a policy deny intercepts before dispatch and is audited', async () => {
-  const harness = await runLoop({
-    mcpTools: {
-      mcp_fetch: { inputSummary: 'fetch', output: 'fetched', success: true },
-    },
-    rules: [denyRule('mcp_fetch')],
-    toolName: 'mcp_fetch',
-  })
-  assert.deepEqual(harness.dispatchedMcp, [])
-  const parsed = deniedOutput(harness.result, 'mcp_fetch')
-  assert.equal(parsed['reason'], 'explicit_policy_deny')
-  assert.ok(harness.fake.auditLog.createCalls > 0)
-})
-
-test('main MCP: an approval-required allow suspends before dispatch', async () => {
-  const harness = await runLoop({
-    mcpTools: {
-      mcp_fetch: { inputSummary: 'fetch', output: 'fetched', success: true },
-    },
-    rules: [approvalRule('mcp_fetch')],
-    toolName: 'mcp_fetch',
-  })
-  assert.deepEqual(harness.dispatchedMcp, [])
-  assert.equal(suspendedApproval(harness.result, 'mcp_fetch'), 'approval-1')
-})
-
-test('auto-review classifies only unsafe builtins, remote MCP calls, and executor actuation', () => {
-  const mcpNames = new Set(['mcp_publish', 'mcp_find_tools', 'mcp_load_tools', 'mcp_drop_tools'])
-  const executorNames = new Set([
-    'executor.browser.act',
-    'executor.browser.observe',
-    'executor.command.run',
-    'executor.file.read',
-  ])
-
-  for (const builtin of BUILTIN_TOOL_DEFINITIONS) {
-    assert.equal(
-      reviewableToolSurface(builtin.id, { executorToolNames: executorNames, mcpToolNames: mcpNames }),
-      builtin.safe ? null : 'builtin',
-      builtin.id,
-    )
-  }
-  assert.equal(reviewableToolSurface('mcp_publish', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'mcp')
-  assert.equal(reviewableToolSurface('mcp_find_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-  assert.equal(reviewableToolSurface('mcp_load_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-  assert.equal(reviewableToolSurface('mcp_drop_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-  assert.equal(reviewableToolSurface('executor.browser.act', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
-  assert.equal(reviewableToolSurface('executor.command.run', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
-  assert.equal(reviewableToolSurface('executor.browser.observe', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-  assert.equal(reviewableToolSurface('executor.file.read', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-})
-
-test('auto-review allows a live remote MCP call once and meters one utility invocation', async () => {
-  const harness = await runLoop({
-    mcpTools: {
-      mcp_publish: { inputSummary: 'publish', output: 'published', success: true },
-    },
-    reviewer: 'allow',
-    rules: [autoReviewRule('mcp_publish')],
-    toolArgs: { content: 'pošlete to prosím, je to fakt důležitý!' },
-    toolName: 'mcp_publish',
-  })
-
-  assert.deepEqual(harness.dispatchedMcp, ['mcp_publish'])
-  assert.equal(reviewerInvocations(harness.invocationSink).length, 1)
-  assert.equal(harness.fake.approvalRequests.length, 0)
-  assert.deepEqual(harness.fake.taskEvents, [{
-    eventType: 'tool.auto_reviewed',
-    payload: { surface: 'mcp', toolName: 'mcp_publish', verdict: 'allow' },
-    taskId: TASK_ID,
-  }])
-  assert.ok(harness.fake.auditLog.entries.some((entry) => (
-    (entry['metadata'] as { autoReview?: { verdict?: string } })?.autoReview?.verdict === 'allow'
-  )))
-})
-
-test('auto-review denies a real MCP call without dispatching it', async () => {
-  const harness = await runLoop({
-    mcpTools: {
-      mcp_publish: { inputSummary: 'publish', output: 'published', success: true },
-    },
-    reviewer: 'deny',
-    rules: [autoReviewRule('mcp_publish')],
-    toolName: 'mcp_publish',
-  })
-
-  assert.deepEqual(harness.dispatchedMcp, [])
-  assert.equal(deniedOutput(harness.result, 'mcp_publish')['reason'], 'auto_review_denied')
-  assert.equal(reviewerInvocations(harness.invocationSink).length, 1)
-  assert.equal(harness.fake.approvalRequests.length, 0)
-})
-
-for (const [reviewer, expectedReason] of [
-  ['unavailable', 'The automated reviewer was unavailable, so a human must decide.'],
-  ['unparseable', 'The automated reviewer could not produce a reliable decision.'],
-] as const) {
-  test(`auto-review ${reviewer} fails closed to an approval`, async () => {
-    const harness = await runLoop({
-      mcpTools: {
-        mcp_publish: { inputSummary: 'publish', output: 'published', success: true },
-      },
-      reviewer,
-      rules: [autoReviewRule('mcp_publish')],
-      toolName: 'mcp_publish',
-    })
-
-    assert.deepEqual(harness.dispatchedMcp, [])
-    assert.equal(suspendedApproval(harness.result, 'mcp_publish'), 'approval-1')
-    assert.equal(
-      harness.fake.approvalRequests[0]?.['reason'],
-      `Automated review asked for approval before mcp_publish: ${expectedReason}`,
-    )
-  })
-}
-
-// --- main executor ---
-
-test('main executor: a policy deny intercepts before dispatch and is audited', async () => {
-  const harness = await runLoop({
-    executorTools: {
-      'executor.file.read': { inputSummary: 'read', output: 'read', success: true },
-    },
-    rules: [denyRule('executor.file.read')],
-    toolName: 'executor.file.read',
-  })
-  assert.deepEqual(harness.dispatchedExecutor, [])
-  const parsed = deniedOutput(harness.result, 'executor.file.read')
-  assert.equal(parsed['reason'], 'explicit_policy_deny')
-  assert.ok(harness.fake.auditLog.createCalls > 0)
-})
-
-test('main executor: an approval-required allow suspends before dispatch', async () => {
-  const harness = await runLoop({
-    executorTools: {
-      'executor.file.read': { inputSummary: 'read', output: 'read', success: true },
-    },
-    rules: [approvalRule('executor.file.read')],
-    toolName: 'executor.file.read',
-  })
-  assert.deepEqual(harness.dispatchedExecutor, [])
-  assert.equal(suspendedApproval(harness.result, 'executor.file.read'), 'approval-1')
-})
-
-test('main executor: browser act writes a bounded audit-chain entry after dispatch', async () => {
-  const harness = await runLoop({
-    executorTools: {
-      'executor.browser.act': {
-        inputSummary: 'click button',
-        output: '{"status":"acted"}',
-        success: true,
-        toolCallRecordId: 'tool-call-1',
-      },
-    },
-    toolArgs: { action: 'click', nodeId: 42, text: 'must not enter the audit chain' },
-    toolName: 'executor.browser.act',
-  })
-
-  assert.ok(harness.dispatchedExecutor.length > 0)
-  const entries = harness.fake.auditLog.entries.filter(
-    (entry) => entry['action'] === 'executor.browser.action.dispatched',
-  )
-  assert.ok(entries.length > 0)
-  assert.deepEqual(entries[0]?.['metadata'], {
-    action: 'click',
-    nodeId: 42,
-    runId: RUN_ID,
-    toolCallId: 'call-1',
-  })
-  assert.equal(entries[0]?.['resourceId'], 'tool-call-1')
-})
-
-test('main executor: command run audits only the argv program, never its arguments', async () => {
-  const harness = await runLoop({
-    executorTools: {
-      'executor.command.run': {
-        inputSummary: 'run command',
-        output: '{"exitCode":0}',
-        success: true,
-        toolCallRecordId: 'tool-call-2',
-      },
-    },
-    toolArgs: { args: ['--token=not-for-audit'], program: 'tool' },
-    toolName: 'executor.command.run',
-  })
-
-  const entries = harness.fake.auditLog.entries.filter(
-    (entry) => entry['action'] === 'executor.command.run.dispatched',
-  )
-  assert.ok(entries.length > 0)
-  assert.deepEqual(entries[0]?.['metadata'], {
-    program: 'tool',
-    runId: RUN_ID,
-    toolCallId: 'call-1',
-  })
-})
-
-// --- delegated paths: the model calls delegate; the sub-agent then calls the
-// nested tool, whose authorization context is rebuilt for the nested name ---
-
-test('delegated builtin: a policy deny intercepts the nested call before dispatch', async () => {
-  const harness = await runLoop({
-    rules: [denyRule('kb_search')],
-    subAgentTurns: [
-      toolCallTurn('kb_search', { query: 'secret' }),
-      finalTurn('sub-agent answer'),
-    ],
-    toolArgs: { task: 'look something up' },
-    toolName: 'delegate',
-  })
-  const parsed = delegatedDeniedOutput(harness, 'kb_search')
-  assert.equal(parsed['reason'], 'explicit_policy_deny')
-  // The nested context must be the builtin's own name, not `delegate`.
-  assert.ok(harness.fake.ruleLog.includes('kb_search'))
-})
-
-test('delegated builtin: an approval-required allow intercepts the nested call', async () => {
-  const harness = await runLoop({
-    rules: [approvalRule('kb_search')],
-    subAgentTurns: [
-      toolCallTurn('kb_search', { query: 'secret' }),
-      finalTurn('sub-agent answer'),
-    ],
-    toolArgs: { task: 'look something up' },
-    toolName: 'delegate',
-  })
-  const parsed = delegatedDeniedOutput(harness, 'kb_search')
-  assert.equal(parsed['reason'], 'approval_required')
-})
-
-test('delegated MCP: a policy deny intercepts the nested call before dispatch', async () => {
-  const harness = await runLoop({
-    mcpTools: {
-      mcp_fetch: { inputSummary: 'fetch', output: 'fetched', success: true },
-    },
-    rules: [denyRule('mcp_fetch')],
-    subAgentTurns: [
-      toolCallTurn('mcp_fetch', { url: 'https://example.com' }),
-      finalTurn('sub-agent answer'),
-    ],
-    toolArgs: { task: 'fetch a page' },
-    toolName: 'delegate',
-  })
-  assert.deepEqual(harness.dispatchedMcp, [])
-  const parsed = delegatedDeniedOutput(harness, 'mcp_fetch')
-  assert.equal(parsed['reason'], 'explicit_policy_deny')
-})
-
-test('delegated MCP: an approval-required allow intercepts the nested call', async () => {
-  const harness = await runLoop({
-    mcpTools: {
-      mcp_fetch: { inputSummary: 'fetch', output: 'fetched', success: true },
-    },
-    rules: [approvalRule('mcp_fetch')],
-    subAgentTurns: [
-      toolCallTurn('mcp_fetch', { url: 'https://example.com' }),
-      finalTurn('sub-agent answer'),
-    ],
-    toolArgs: { task: 'fetch a page' },
-    toolName: 'delegate',
-  })
-  assert.deepEqual(harness.dispatchedMcp, [])
-  const parsed = delegatedDeniedOutput(harness, 'mcp_fetch')
-  assert.equal(parsed['reason'], 'approval_required')
 })
