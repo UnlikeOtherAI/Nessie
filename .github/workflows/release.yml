@@ -1,0 +1,381 @@
+name: Publish Direct Downloads
+
+on:
+  push:
+    tags: ["v*"]
+
+# A tag is immutable release input. A later replacement tag must never race the
+# build and replace assets from an earlier run.
+concurrency:
+  group: direct-download-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require the current main commit
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate the tag and record shipped app versions
+        id: release
+        run: |
+          set -euo pipefail
+          node scripts/release-metadata.mjs "$GITHUB_REF_NAME" > release-metadata.json
+          jq -r '"tag=\(.tag)"' release-metadata.json >> "$GITHUB_OUTPUT"
+          cat release-metadata.json
+
+      - name: Lint and typecheck the release source
+        run: |
+          pnpm lint
+          pnpm typecheck
+
+      - name: Test the mobile release shell
+        run: pnpm exec turbo run test --filter=@nessie/mobile
+
+  macos:
+    name: macOS ${{ matrix.name }}
+    needs: preflight
+    runs-on: ${{ matrix.runner }}
+    environment: direct-download-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+            asset: Nessie-macOS-Apple-Silicon.dmg
+            artifact: release-macos-apple-silicon
+          - name: Intel
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            asset: Nessie-macOS-Intel.dmg
+            artifact: release-macos-intel
+    env:
+      APPLE_API_KEY: ${{ vars.MACOS_NOTARY_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ vars.MACOS_NOTARY_API_ISSUER_ID }}
+      APPLE_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      MACOS_NOTARY_API_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_P8_BASE64 }}
+      NESSIE_DESKTOP_SIGNING_TEAM_ID: 59S95D279D
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install the Developer ID identity and notary key
+        run: |
+          set -euo pipefail
+          for value in \
+            "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" \
+            "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            "$MACOS_NOTARY_API_KEY_P8_BASE64" \
+            "$APPLE_API_KEY" \
+            "$APPLE_API_ISSUER" \
+            "$APPLE_SIGNING_IDENTITY"; do
+            test -n "$value"
+          done
+
+          certificate="$RUNNER_TEMP/nessie-developer-id.p12"
+          keychain="$RUNNER_TEMP/nessie-direct-download.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          notary_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+
+          printf %s "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
+          printf %s "$MACOS_NOTARY_API_KEY_P8_BASE64" | base64 --decode > "$notary_key"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -P "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
+          security list-keychain -d user -s "$keychain" login.keychain-db
+          security default-keychain -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+          security find-identity -v -p codesigning "$keychain" | grep -F "Developer ID Application:"
+          printf 'APPLE_API_KEY_PATH=%s\n' "$notary_key" >> "$GITHUB_ENV"
+
+      - name: Install dependencies and build executor inputs
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm prisma:generate
+          rustup target add "${{ matrix.target }}"
+          pnpm exec turbo run build --filter=@nessie/executor...
+          pnpm --dir desktop run prepare:executor-runtime
+
+      - name: Build the signed and notarized DMG
+        run: pnpm --dir desktop exec tauri build --target "${{ matrix.target }}" --bundles dmg
+
+      - name: Verify code signature and notarization
+        run: |
+          set -euo pipefail
+          app="desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Nessie.app"
+          dmg="$(find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -type f -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          codesign --verify --deep --strict "$app"
+          codesign -dvv "$app" 2>&1 | tee signing.txt
+          grep -F 'Authority=Developer ID Application:' signing.txt
+          grep -F "TeamIdentifier=$NESSIE_DESKTOP_SIGNING_TEAM_ID" signing.txt
+          grep -F 'Runtime Version' signing.txt
+          xcrun stapler validate "$app"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature -vv "$dmg" 2>&1 | tee gatekeeper.txt
+          grep -F 'source=Notarized Developer ID' gatekeeper.txt
+          mkdir release
+          cp "$dmg" "release/${{ matrix.asset }}"
+
+      - name: Upload the macOS download
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/${{ matrix.asset }}
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    needs: preflight
+    uses: ./.github/workflows/desktop-windows.yml
+    with:
+      source_ref: ${{ github.ref }}
+      require_signed_release: true
+      run_hyperv_conformance: false
+    secrets: inherit
+
+  linux:
+    name: Linux
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
+            desktop-file-utils
+
+      - name: Build the Linux packages
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm prisma:generate
+          pnpm exec turbo run build --filter=@nessie/executor...
+          pnpm --dir desktop run prepare:executor-runtime
+          pnpm --dir desktop exec tauri build --bundles deb,appimage
+
+      - name: Verify and stage Linux downloads
+        run: |
+          set -euo pipefail
+          deb="$(find desktop/src-tauri/target/release/bundle/deb -type f -name '*.deb' -print -quit)"
+          appimage="$(find desktop/src-tauri/target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
+          test -n "$deb"
+          test -n "$appimage"
+          dpkg-deb --info "$deb"
+          "$appimage" --appimage-extract
+          test -x squashfs-root/AppRun
+          mkdir release
+          cp "$deb" release/Nessie-Linux.deb
+          cp "$appimage" release/Nessie-Linux.AppImage
+
+      - name: Upload Linux downloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: release/
+          if-no-files-found: error
+
+  android:
+    name: Android
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: direct-download-release
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build a signed Android APK with EAS
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          pnpm exec expo config --type public
+          eas build --platform android --profile device --non-interactive --wait --json > ../android-build.json
+          artifact_url="$(jq -er '.[0].artifacts.buildUrl' ../android-build.json)"
+          curl --fail --location --retry 3 --output ../Nessie-Android.apk "$artifact_url"
+
+      - name: Verify the APK and launch it on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel
+          script: |
+            set -euo pipefail
+            sdk_root="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+            apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+            test -n "$apksigner"
+            "$apksigner" verify --verbose --print-certs Nessie-Android.apk
+            adb install -r Nessie-Android.apk
+            adb shell monkey -p com.km.nessie 1
+            sleep 10
+            adb shell pidof com.km.nessie
+
+      - name: Upload the Android download
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: Nessie-Android.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [preflight, macos, windows, linux, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+
+      - name: Download release candidates
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-apple-silicon
+          path: release-assets
+
+      - name: Download Intel macOS candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-intel
+          path: release-assets
+
+      - name: Download Linux candidates
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: release-assets
+
+      - name: Download Android candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: release-android
+          path: release-assets
+
+      - name: Download Windows candidates
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-${{ github.sha }}
+          path: windows-candidates
+
+      - name: Stage desktop installers and checksums
+        run: |
+          set -euo pipefail
+          setup="$(find windows-candidates -type f -name '*-setup.exe' -print -quit)"
+          msi="$(find windows-candidates -type f -name 'Nessie_*.msi' ! -name 'NessieExecutor_*' -print -quit)"
+          test -n "$setup"
+          test -n "$msi"
+          cp "$setup" release-assets/Nessie-Windows-Setup.exe
+          cp "$msi" release-assets/Nessie-Windows.msi
+          (
+            cd release-assets
+            sha256sum Nessie-* > SHA256SUMS
+          )
+          node scripts/release-metadata.mjs "$GITHUB_REF_NAME" > release-assets/metadata.json
+
+      - name: Create the release notes
+        run: |
+          set -euo pipefail
+          desktop_version="$(jq -r '.desktop.version' release-assets/metadata.json)"
+          android_version="$(jq -r '.android.version' release-assets/metadata.json)"
+          android_code="$(jq -r '.android.versionCode' release-assets/metadata.json)"
+          cat > release-notes.md <<EOF
+          ## Direct downloads
+
+          - **macOS:** Apple Silicon and Intel DMGs are notarized Developer ID builds.
+          - **Windows:** NSIS and MSI installers are Authenticode-signed release builds.
+          - **Linux:** AppImage and Debian packages are included with SHA-256 checksums.
+          - **Android:** a signed, installable APK is included. Push notifications are not configured yet.
+          - **iOS:** coming soon through the App Store.
+
+          This GitHub release is **$GITHUB_REF_NAME**. It carries desktop version **$desktop_version** and Android version **$android_version** (version code $android_code); their version tracks predate the public direct-download release series.
+          EOF
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "Nessie $GITHUB_REF_NAME" --notes-file release-notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS \
+              --title "Nessie $GITHUB_REF_NAME" \
+              --notes-file release-notes.md
+          fi

@@ -5,6 +5,11 @@ The desktop shell can run unsigned for UI development, but executor controls
 require a publisher-verified release on macOS, Windows, or Linux. The mobile
 WebView shell needs Apple Developer signing to run on a physical device.
 
+For public desktop and Android downloads, see
+[Publishing direct downloads](../releasing.md). The release workflow owns the
+signed macOS and Windows installers, Linux packages, the Android APK, and their
+checksums; iOS remains an App Store delivery.
+
 ## Table of Contents
 
 - This file: physical-device delivery, prerequisites, the Mac desktop shell, desktop notifications, Mac TestFlight, status and caveats.

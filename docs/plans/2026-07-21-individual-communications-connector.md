@@ -754,6 +754,21 @@ scopes, identity depending on a Gmail-only endpoint, and every HTTP 403 being
 retried. See
 [2026-08-31-google-workspace-email-calendar.md](./2026-08-31-google-workspace-email-calendar.md).
 
+19b. Microsoft Outlook mail (built 2026-09-04)
+
+The first Microsoft slice is deliberately mail-only. `@nessie/comms-microsoft`
+uses authorization code + PKCE S256 and an OIDC nonce, proves the selected
+mailbox through Graph `/me`, requests delegated `Mail.Read` and `User.Read`, and
+imports each enabled folder with its own opaque Graph delta link. Junk and
+Deleted Items start disabled. The adapter never imports provider HTML and has
+no send/write permission.
+
+Ongoing correctness currently comes from an adapter-declared five-minute,
+bounded reconciliation sweep; Google uses the same generic worker path when a
+deployment has no Pub/Sub topic. Graph change notifications, subscription
+renewal, and Microsoft Teams remain Phase 2 work and must not be presented as
+implemented.
+
 20. Recommended Delivery Phases
 
 Phase 1: Gmail and Slack Personal Connections

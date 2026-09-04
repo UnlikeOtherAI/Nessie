@@ -5,14 +5,38 @@ name: Desktop (Windows)
 # that is never installed is not a delivery, and an unsigned one is never called
 # a release.
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        description: "Branch, tag, or SHA to build (the caller ref is used when empty)."
+        required: false
+        type: string
+      require_signed_release:
+        description: "Fail instead of producing an unsigned development artifact."
+        required: false
+        default: false
+        type: boolean
+      run_hyperv_conformance:
+        description: "Run the optional self-hosted Hyper-V conformance suite."
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       source_ref:
         description: "Branch, tag, or SHA to build (the selected workflow ref is used when empty)."
         required: false
         type: string
-  push:
-    tags: ["desktop-v*"]
+      require_signed_release:
+        description: "Require a configured Windows signing identity."
+        required: false
+        default: false
+        type: boolean
+      run_hyperv_conformance:
+        description: "Run the optional self-hosted Hyper-V conformance suite."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-windows-${{ github.ref }}
@@ -211,6 +235,7 @@ jobs:
         id: signing
         shell: pwsh
         env:
+          NESSIE_REQUIRE_SIGNED_RELEASE: ${{ inputs.require_signed_release }}
           WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
           WINDOWS_SIGN_TOOL_INSTALL: ${{ secrets.WINDOWS_SIGN_TOOL_INSTALL }}
           WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNER_THUMBPRINT }}
@@ -218,18 +243,22 @@ jobs:
         run: |
           # The `secrets` context is not usable in a step's `if`, so every later
           # step branches on these outputs rather than on the secrets directly.
-          $release = $env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -like 'desktop-v*'
+          $release = `
+            $env:GITHUB_REF_TYPE -eq 'tag' -and `
+            $env:GITHUB_REF_NAME -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and `
+            '${{ inputs.source_ref }}' -eq $env:GITHUB_REF -and `
+            $env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true'
           $trustedMainVerification = `
             $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and `
             $env:GITHUB_REF -eq 'refs/heads/main' -and `
             -not '${{ inputs.source_ref }}'
-          if ($release -and '${{ inputs.source_ref }}') {
-            throw 'A signed desktop release must build the tagged source; source_ref is for unsigned development builds only.'
+          if ($env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true' -and -not $release -and -not $trustedMainVerification) {
+            throw 'Signing was requested for a source that is not an exact release tag or the current main branch.'
           }
           $configured = [bool]($env:WINDOWS_SIGN_COMMAND -and $env:WINDOWS_SIGNER_THUMBPRINT -and $env:WINDOWS_SIGNER_SUBJECT)
           $signingRequired = $release -or $trustedMainVerification
           if ($signingRequired -and -not $configured) {
-            throw 'A desktop-v* release or trusted main verification requires the Windows signing command, signer thumbprint, and signer subject.'
+            throw 'A release tag or trusted main verification requires the Windows signing command, signer thumbprint, and signer subject.'
           }
           $signed = [bool]($signingRequired -and $configured)
           "signed=$($signed.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -582,10 +611,12 @@ jobs:
     # main ref or a desktop release tag can reach it, and only after the signed
     # build/install job succeeds.
     if: >-
-      startsWith(github.ref, 'refs/tags/desktop-v') ||
-      (github.event_name == 'workflow_dispatch' &&
+      ${{ inputs.run_hyperv_conformance &&
+      ((github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      inputs.source_ref == '')
+      inputs.source_ref == '') ||
+      (startsWith(github.ref, 'refs/tags/v') &&
+      inputs.source_ref == github.ref)) }}
     # GitHub-hosted Windows runners offer no nested virtualization, so this job
     # CANNOT run there. The `hyperv` label is the deployment's obligation — a
     # self-hosted Windows 11 Pro (or Server) runner with the Hyper-V role

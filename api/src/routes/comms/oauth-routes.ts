@@ -22,6 +22,7 @@ import type { RouteDeps } from '../types.js'
 import {
   buildAuthorizeUrl,
   buildCommsCallbackUrl,
+  generateOAuthNonce,
   generateOAuthStateToken,
   generatePkcePair,
   getCommsOAuthConfig,
@@ -46,6 +47,8 @@ export const parseProviderParam = (
 type CommsOAuthStatePayload = {
   redirectUri?: string
   codeVerifier?: string | null
+  /** OIDC nonce for a provider that returns an id_token identity assertion. */
+  nonce?: string | null
   /** The connection this flow is re-authorizing, when it is not a first connect. */
   targetConnectionId?: string | null
   /**
@@ -57,6 +60,33 @@ type CommsOAuthStatePayload = {
   /** Capability ids asked for, recorded so the UI can show asked-but-declined. */
   capabilities?: string[]
 }
+
+/** Provider adapters expose only structural, safe error markers to this route. */
+export const callbackErrorCode = (error: unknown): string => {
+  if (typeof error !== 'object' || error === null) return 'connect_failed'
+  const typed = error as {
+    authorizationBlocked?: unknown
+    needsReauthorization?: unknown
+  }
+  if (typed.authorizationBlocked === true) return 'provider_access_blocked'
+  if (typed.needsReauthorization === true) return 'reauthorization_required'
+  return 'connect_failed'
+}
+
+// OAuth callback query parameters are provider-controlled and untrusted. Only
+// these documented structural consent-policy values receive a tailored UI
+// state; every other error is the ordinary cancelled/denied flow. In
+// particular, `error_description` is intentionally never inspected or shown.
+const PROVIDER_ACCESS_BLOCKED_QUERY_ERRORS = new Set([
+  'admin_consent_required',
+  'authorization_required',
+  'consent_required',
+])
+
+export const callbackQueryErrorCode = (error: string): string =>
+  PROVIDER_ACCESS_BLOCKED_QUERY_ERRORS.has(error)
+    ? 'provider_access_blocked'
+    : 'access_denied'
 
 export const registerCommsOAuthRoutes = (
   app: FastifyInstance,
@@ -190,6 +220,7 @@ export const registerCommsOAuthRoutes = (
       : undefined
 
     const pkce = oauthConfig.usePkce ? generatePkcePair() : undefined
+    const nonce = oauthConfig.useNonce ? generateOAuthNonce() : undefined
     const state = generateOAuthStateToken()
     // Resolve the public origin before minting the state row: a missing
     // api.publicUrl in a non-local deployment must fail here, not after a
@@ -215,6 +246,7 @@ export const registerCommsOAuthRoutes = (
     const payload: CommsOAuthStatePayload = {
       redirectUri,
       codeVerifier: pkce?.codeVerifier ?? null,
+      nonce: nonce ?? null,
       targetConnectionId: target?.id ?? null,
       expectedAccountId: target?.providerAccountId ?? null,
       ...(capabilities ? { capabilities } : {}),
@@ -236,11 +268,17 @@ export const registerCommsOAuthRoutes = (
       redirectUri,
       state,
       codeChallenge: pkce?.codeChallenge,
+      nonce,
       ...(scopes ? { scopes } : {}),
       // A first connect must re-prompt so Google issues a refresh token; an
       // incremental add already has one and does not need the extra screen.
       forceConsent: !target,
-      ...(target ? { loginHint: target.externalUserId } : {}),
+      // A reauthorization hint must be the persisted account, not caller
+      // input. On first connect, the entered email only helps choose the right
+      // provider account; callback identity proof remains authoritative.
+      ...(target
+        ? { loginHint: target.externalUserId }
+        : body.loginHint ? { loginHint: body.loginHint } : {}),
     })
     return createApiResponse(
       CommsConnectionStartResponseSchema.parse({ authorizeUrl }),
@@ -265,7 +303,10 @@ export const registerCommsOAuthRoutes = (
         return redirectToConnections(reply, { error: 'unknown_provider' })
       }
       if (query.error) {
-        return redirectToConnections(reply, { error: 'access_denied', provider })
+        return redirectToConnections(reply, {
+          error: callbackQueryErrorCode(query.error),
+          provider,
+        })
       }
       if (!query.code || !query.state) {
         return redirectToConnections(reply, { error: 'invalid_callback', provider })
@@ -361,7 +402,10 @@ export const registerCommsOAuthRoutes = (
           { err: error, provider },
           'comms OAuth connect failed',
         )
-        return redirectToConnections(reply, { error: 'connect_failed', provider })
+        return redirectToConnections(reply, {
+          error: callbackErrorCode(error),
+          provider,
+        })
       }
     },
   )
