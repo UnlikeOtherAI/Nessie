@@ -1043,6 +1043,14 @@ html[data-desktop-platform='linux'] #root {
   min-width: 8px;
 }
 
+/* The native traffic lights sit above the webview in overlay-titlebar mode.
+   Reserve their full leading lane so Back, Forward, and Recent Channels begin
+   beyond the OS-owned hit targets instead of painting underneath them. */
+.admin-topbar-drag-zone--traffic {
+  flex: 0 0 68px;
+  min-width: 68px;
+}
+
 .desktop-window-controls {
   display: flex;
   flex: 0 0 76.8px;
