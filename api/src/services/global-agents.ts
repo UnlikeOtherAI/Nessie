@@ -34,6 +34,8 @@ export const attemptGlobalAgentsBootstrap = async (
 export {
   AGENT_DESIGNER_BLUEPRINT,
   AGENT_DESIGNER_SLUG,
+  DASHBOARD_DESIGNER_BLUEPRINT,
+  DASHBOARD_DESIGNER_SLUG,
   ensureGlobalAgent,
   ensureGlobalAgentBinding,
   ensureGlobalAgentBootstrap,

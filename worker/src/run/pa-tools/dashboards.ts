@@ -32,6 +32,7 @@ import {
   dashboardEgressPolicyFromEnv,
   type DashboardToolServices,
 } from './dashboard-context.js'
+import { runDashboardPresentTool } from './dashboard-presentation.js'
 
 
 /**
@@ -357,6 +358,8 @@ export const runDashboardTool = async (
       return runDashboardWidgetRemoveTool(context, args, services)
     case 'dashboard_read':
       return runDashboardReadTool(context, args, services)
+    case 'dashboard_present':
+      return runDashboardPresentTool(context, args, services)
     case 'dashboard_widget_post':
       return runDashboardWidgetPostTool(context, args, services)
     default:

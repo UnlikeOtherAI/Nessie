@@ -20,6 +20,10 @@ The stable asset names deliberately power the homepage URLs under
 the download without a website change. Mac is two assets because its packaged
 Node executor runtime must match the processor architecture.
 
+The landing page opens a Mac download menu at a reliably detected Apple Silicon
+or Intel choice, while still exposing both installers. It deliberately shows
+both Mac downloads when browser signals are inconclusive.
+
 ## Required GitHub configuration
 
 The macOS and Android jobs run in the `direct-download-release` environment.

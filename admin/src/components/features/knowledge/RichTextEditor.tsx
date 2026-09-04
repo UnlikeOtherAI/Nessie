@@ -51,7 +51,7 @@ const Toolbar = ({ editor }: { editor: Editor }) => {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-[color:var(--sep)] p-2">
+    <div className="kb-editor-toolbar flex flex-wrap items-center gap-1 border-b border-[color:var(--sep)] py-2">
       <ToolbarButton
         active={editor.isActive('bold')}
         label="B"
@@ -151,9 +151,9 @@ export const RichTextEditor = ({ onChange, placeholder, value }: RichTextEditorP
   }, [editor, value])
 
   return (
-    <div className="kb-editor flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[color:var(--sep)]">
+    <div className="kb-editor flex min-h-0 flex-1 flex-col">
       {editor ? <Toolbar editor={editor} /> : null}
-      <EditorContent className="min-h-0 flex-1 overflow-y-auto p-3" editor={editor} />
+      <EditorContent className="min-h-0 flex-1 py-4" editor={editor} />
       {editor ? <WikilinkSuggestionMenu editor={editor} /> : null}
     </div>
   )

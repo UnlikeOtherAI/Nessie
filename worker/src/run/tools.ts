@@ -227,6 +227,7 @@ const executeBuiltinToolUncorrected = async (
     case 'send_message':
       return wrapTool(inputSummary, () =>
         runSendMessageTool(context, {
+          attachmentIds: args.attachmentIds,
           channelId:
             typeof args.channelId === 'string' ? args.channelId : undefined,
           content: String(args.content ?? ''),
@@ -375,6 +376,7 @@ const executeBuiltinToolUncorrected = async (
     case 'dashboard_widget_move':
     case 'dashboard_widget_remove':
     case 'dashboard_read':
+    case 'dashboard_present':
     case 'dashboard_widget_post':
       return wrapTool(inputSummary, async () => {
         const services = await resolveDashboardToolServices(context.prisma)

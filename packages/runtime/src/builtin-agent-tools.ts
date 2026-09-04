@@ -351,7 +351,9 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           description:
             'Type-specific settings: {"cron","timezone","until"} for scheduled, '
             + '{"interval_minutes"} for interval, {"prompt"} for what the agent should do, '
-            + '{"eventType"} for event.',
+            + '{"events":["event.name"],"filter":{...}} for event. Events is the '
+            + 'non-empty list of event names that starts the agent; filter is an optional '
+            + 'exact top-level payload match.',
         },
         nextRunAt: {
           type: 'string',

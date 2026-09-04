@@ -8,10 +8,14 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Pill } from '../components/primitives/Pill'
 import { QueryState } from '../components/shared/QueryState'
 import { useCreateDashboard, useDashboards } from '../facades/dashboards/hooks'
+import {
+  DASHBOARD_DESIGNER_SLUG,
+  useOpenGlobalAgentHome,
+} from '../facades/global-agents/hooks'
 import { prewarmRowHandlers, usePrewarm } from '../navigation/prewarm'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 
@@ -28,7 +32,16 @@ export const DashboardsPage = () => {
   const dashboardsQuery = useDashboards()
   const dashboards = dashboardsQuery.data
   const createDashboard = useCreateDashboard()
+  const openGlobalAgentHome = useOpenGlobalAgentHome()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
+
+  const openDashboardDesigner = () => {
+    void openGlobalAgentHome
+      .mutateAsync(DASHBOARD_DESIGNER_SLUG)
+      .then((response) => navigate(`/channels/${response.channel.id}`))
+      .catch(() => undefined)
+  }
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -44,14 +57,23 @@ export const DashboardsPage = () => {
           moved out of the title row into the body, where a text input belongs
           — the actions lane measures buttons, not fields. */}
       <ScreenHeader
-        actions={[{
-          disabled: createDashboard.isPending,
-          id: 'create-dashboard',
-          label: 'Create dashboard',
-          onSelect: () => createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' }),
-          primary: true,
-          priority: 100,
-        }]}
+        actions={[
+          {
+            disabled: createDashboard.isPending,
+            id: 'create-dashboard',
+            label: 'Blank dashboard',
+            onSelect: () => createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' }),
+            priority: 50,
+          },
+          {
+            disabled: openGlobalAgentHome.isPending,
+            id: 'ask-dashboard-designer',
+            label: 'Ask Dashboard Designer',
+            onSelect: openDashboardDesigner,
+            primary: true,
+            priority: 100,
+          },
+        ]}
         subtitle={
           <p className="text-xs text-[color:var(--tx3)]">
             Live data from the services you connect.
@@ -85,7 +107,7 @@ export const DashboardsPage = () => {
           filtered.length === 0 ? (
             <div className="admin-card p-8 text-center" data-testid="dashboards-empty">
               <p className="text-sm font-medium text-[color:var(--tx)]">
-                Ask your assistant to build one
+                Ask Dashboard Designer to build one
               </p>
               <p className="mx-auto mt-1 max-w-md text-xs text-[color:var(--tx3)]">
                 Describe what you want to watch and it will connect the data and lay out the
@@ -93,12 +115,11 @@ export const DashboardsPage = () => {
               </p>
               <button
                 className="admin-button admin-button-secondary mt-4"
-                onClick={() =>
-                  createDashboard.mutate({ title: 'Untitled dashboard', home: 'personal' })
-                }
+                disabled={openGlobalAgentHome.isPending}
+                onClick={openDashboardDesigner}
                 type="button"
               >
-                Or start with a blank canvas
+                {openGlobalAgentHome.isPending ? 'Opening Dashboard Designer…' : 'Start a dashboard chat'}
               </button>
             </div>
           ) : (

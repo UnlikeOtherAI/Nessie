@@ -35,23 +35,44 @@ export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
 
 /**
  * Where a `secret` block's value is stored. The plaintext is submitted once,
- * placed by the same seam `POST /api/mcp/instances/:id/secret` uses, and never
+ * placed by its typed connector or dashboard-source credential seam, and never
  * recorded on the card, the message, the audit metadata, or the model's
  * context — only the fact that it was provided, and where it landed.
  *
- * `connector_credential` is the only destination that ships: it is what makes
- * an installed app usable, and it is a Prisma row so it commits atomically
- * with the press. A vault destination is an external HTTP call that cannot
- * join that transaction, and no agent can read a vault value today.
+ * `connector_credential` configures an installed app. A
+ * `dashboard_source_credential` configures the HTTPS source the Dashboard
+ * Designer just created. Both are Prisma-backed operations which commit with
+ * the press. A vault destination is an external HTTP call that cannot join
+ * that transaction, and no agent can read a vault value today.
  */
 export const AgentCardSecretDestinationSchema = z
-  .object({
-    kind: z.literal('connector_credential'),
-    instanceId: z.string().uuid(),
-    /** Place on the instance for everyone rather than the presser's own override. */
-    shared: z.boolean().optional(),
-  })
-  .strict()
+  .union([
+    z
+      .object({
+        kind: z.literal('connector_credential'),
+        instanceId: z.string().uuid(),
+        /** Place on the instance for everyone rather than the presser's own override. */
+        shared: z.boolean().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('dashboard_source_credential'),
+        sourceId: z.string().uuid(),
+        mode: z.enum(['bearer', 'header']),
+        headerName: z.string().trim().min(1).max(64).optional(),
+      })
+      .strict()
+      .superRefine((destination, ctx) => {
+        if (destination.mode === 'header' && !destination.headerName) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A header credential needs headerName.',
+            path: ['headerName'],
+          })
+        }
+      }),
+  ])
 export type AgentCardSecretDestination = z.infer<typeof AgentCardSecretDestinationSchema>
 
 export const AgentCardInputKindSchema = z.enum([

@@ -8,6 +8,8 @@ import type { DesignerPageContext } from './DesignerAssistantPanelContext'
 
 type DesignerChatProps = {
   error: string | null
+  /** The chat-first half of the new-agent Create / Configure choice. */
+  guidedCreation?: boolean
   messages: ChatMessage[]
   /**
    * Moves this conversation into the person's own Agent Designer DM, carrying
@@ -50,6 +52,7 @@ const ThinkingIndicator = ({ status }: { status: string | null }) => (
 export const DesignerChat = ({
   continuingInChat,
   error,
+  guidedCreation = false,
   messages,
   onContinueInChat,
   onSend,
@@ -154,13 +157,19 @@ export const DesignerChat = ({
                       ? `I can help with ${pageContext.actions.join(', ')} on this page.`
                       : 'I can explain what you’re seeing here.',
                   ].join('\n\n')
-                : [
-                    'I can fill in this form for you — name, role, model,'
-                    + ' system prompt and tools.',
-                    'Tell me what you want the agent to do and I’ll set it up.'
-                    + ' “Continue in chat” moves us into your own conversation'
-                    + ' with me, carrying the draft over.',
-                  ].join('\n\n')}
+                : guidedCreation
+                  ? [
+                      'Tell me what you want the agent to do and I’ll build the draft for you.',
+                      'I’ll set its name, role, model, instructions, and tools. You can review'
+                      + ' or fine-tune everything in Configure before creating it.',
+                    ].join('\n\n')
+                  : [
+                      'I can fill in this form for you — name, role, model,'
+                      + ' system prompt and tools.',
+                      'Tell me what you want the agent to do and I’ll set it up.'
+                      + ' “Continue in chat” moves us into your own conversation'
+                      + ' with me, carrying the draft over.',
+                    ].join('\n\n')}
             </div>
           </div>
           {messages

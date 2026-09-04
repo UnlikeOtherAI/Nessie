@@ -1844,6 +1844,11 @@ html[data-desktop-platform='linux'] #root {
   padding-left: 32px;
 }
 
+.knowledge-sidebar-tree {
+  margin-left: 20px;
+  border-left: 1px solid var(--sep);
+}
+
 /* Threads aligns with a section's chevron, not the section title. */
 .admin-sb-item.sidebar-threads {
   padding-left: 10px;
@@ -3386,7 +3391,7 @@ button.reaction-pill-active:focus-visible {
 
 /* TipTap editor surface + empty-state placeholder */
 .kb-editor .ProseMirror {
-  min-height: 160px;
+  min-height: 24rem;
 }
 .kb-editor .ProseMirror:focus {
   outline: none;
