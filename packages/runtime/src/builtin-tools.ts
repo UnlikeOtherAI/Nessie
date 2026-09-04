@@ -28,6 +28,10 @@ import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
 import { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 import { DEMONSTRATION_TOOL_DEFINITIONS } from './builtin-demonstration-tools.js'
+import {
+  WEB_FETCH_TOOL_DEFINITION,
+  WEB_SEARCH_TOOL_DEFINITION,
+} from './builtin-web-tools.js'
 
 export { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from './builtin-kb-tools.js'
 import {
@@ -65,54 +69,6 @@ export {
   HTTP_FETCH_TOOL_DEFINITION,
   SANDBOXED_BUILTIN_TOOL_DEFINITIONS,
 } from './builtin-tools-sandboxed.js'
-
-const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'web_search',
-  category: 'web',
-  summary: 'Search the public web for current results and answer snippets.',
-  label: 'Web Search',
-  description:
-    'Search the public web through Ledger-metered Serper results for up-to-date ' +
-    'outside information. Returns top results with titles, URLs, and snippets, ' +
-    'plus a direct answer when one is available.',
-  parameters: {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: 'The search query',
-      },
-      page: {
-        type: 'integer',
-        description:
-          'Google results page to fetch (1-indexed, default 1). Use 2, 3, 4… ' +
-          'to reach deeper results beyond the first page.',
-        minimum: 1,
-      },
-    },
-    required: ['query'],
-  },
-  safe: true,
-}
-
-const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'web_fetch',
-  category: 'web',
-  summary: 'Extract readable text from a public web page URL.',
-  label: 'Web Fetch',
-  description: 'Fetch and read a public URL. Returns the text content.',
-  parameters: {
-    type: 'object',
-    properties: {
-      url: {
-        type: 'string',
-        description: 'The URL to fetch',
-      },
-    },
-    required: ['url'],
-  },
-  safe: true,
-}
 
 // Fan-out to a sub-agent. Advertised to ordinary agent runs so the model can
 // push discovery legwork out of its own context; the worker dispatches it
