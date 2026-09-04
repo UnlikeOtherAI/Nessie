@@ -277,7 +277,15 @@ export const runKbListTool = async (
   }
 
   if (!input.spaceId) {
-    const result = await provider.listSpaces({ organizationId, viewer, limit: MAX_LIST_SPACES })
+    // Unlike the human UI, an agent has no separate My Docs pin. Its catalogue
+    // must therefore include every space the effective principal can read,
+    // including their own personal space.
+    const result = await provider.listSpaces({
+      includePersonal: true,
+      limit: MAX_LIST_SPACES,
+      organizationId,
+      viewer,
+    })
     if (result.data.length === 0) {
       return {
         inputSummary: 'spaces',

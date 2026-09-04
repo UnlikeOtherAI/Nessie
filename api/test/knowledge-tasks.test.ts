@@ -287,6 +287,23 @@ test('GET /tasks/:taskId/pages 404s when the task does not exist in this org', a
   await app.close()
 })
 
+test('ticket document routes reject an unassigned ticket instead of using the session project', async () => {
+  const { app, createPageCalls, spaceCreateCalls } = makeApp({
+    task: { id: taskId, title: 'Unassigned work', projectId: null },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/tasks/${taskId}/pages`,
+    payload: { title: 'Should not be filed' },
+  })
+
+  assert.equal(response.statusCode, 409)
+  assert.equal(response.json().error.code, 'TASK_PROJECT_REQUIRED')
+  assert.equal(createPageCalls.length, 0)
+  assert.equal(spaceCreateCalls.length, 0)
+  await app.close()
+})
+
 test('GET /tasks/:taskId/pages returns the page envelope shape', async () => {
   const { app, ticketPageQueries } = makeApp({})
   const response = await app.inject({

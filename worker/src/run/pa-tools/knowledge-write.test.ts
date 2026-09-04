@@ -11,6 +11,7 @@ type PageFixtureOverrides = Partial<{
   title: string
   status: 'draft' | 'published' | 'archived'
   authorType: 'user' | 'agent'
+  authorId: string
   projectId: string
   teamId: string | null
   taskId: string | null
@@ -37,7 +38,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
       bodyRef: null,
       attachmentId: null,
       authorType: overrides.authorType ?? 'user',
-      authorId: overrides.authorType === 'agent' ? 'agent-1' : 'user-1',
+      authorId: overrides.authorId ?? (overrides.authorType === 'agent' ? 'agent-1' : 'user-1'),
       changeComment: null,
       createdAt: now,
     },
@@ -122,6 +123,8 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   const approvalCreateCalls: unknown[] = []
   const createPageCalls: Array<Record<string, unknown>> = []
   const createVersionCalls: Array<Record<string, unknown>> = []
+  const updatePageCalls: unknown[] = []
+  const movePageCalls: unknown[] = []
   const prisma = {
     agent: {
       findFirst: async (args: {
@@ -183,8 +186,14 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
-      update: async () => options.page,
-      updateMany: async () => ({ count: 1 }),
+      update: async (args: unknown) => {
+        updatePageCalls.push(args)
+        return options.page
+      },
+      updateMany: async (args: unknown) => {
+        movePageCalls.push(args)
+        return { count: 1 }
+      },
       count: async () => 0,
       create: async (args: { data: Record<string, unknown> }) => {
         createPageCalls.push(args.data)
@@ -240,6 +249,8 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     approvalCreateCalls,
     createPageCalls,
     createVersionCalls,
+    movePageCalls,
+    updatePageCalls,
   }
 }
 
@@ -291,6 +302,41 @@ test('kb_file allows an agent filing its own agent-authored draft', async () => 
 
   assert.equal(result.toolName, 'kb_file')
   assert.match(result.outputPreview, /updated title/)
+})
+
+test('kb_file denies an agent filing another agent\'s draft', async () => {
+  const page = buildPageRow({ authorId: 'agent-2', authorType: 'agent', status: 'draft' })
+  const space = buildSpaceRow()
+  const { prisma, movePageCalls, updatePageCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma)
+
+  await assert.rejects(
+    () => runKbFileTool(context, { pageId: 'page-1', parentPageId: 'folder-1', title: 'Takeover' }),
+    /file draft pages you authored/,
+  )
+  assert.equal(movePageCalls.length, 0)
+  assert.equal(updatePageCalls.length, 0)
+})
+
+test('kb_file preserves its authorship limit when a PA is delegated to a user', async () => {
+  const page = buildPageRow({ authorId: 'agent-2', authorType: 'agent', status: 'draft' })
+  const space = buildSpaceRow()
+  const { prisma, movePageCalls, updatePageCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma, {
+    agentKind: 'personal_assistant',
+    actorContext: {
+      actor: { actorId: 'agent-1', actorType: 'agent', roles: [] },
+      actionContext: { effectiveUserId: 'user-1', requestId: 'request-1' },
+      tenant: { organizationId: 'org-1', teamId: 'team-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+
+  await assert.rejects(
+    () => runKbFileTool(context, { pageId: 'page-1', parentPageId: 'folder-1', title: 'Takeover' }),
+    /file draft pages you authored/,
+  )
+  assert.equal(movePageCalls.length, 0)
+  assert.equal(updatePageCalls.length, 0)
 })
 
 test('kb_draft_write denies an agent writing into a restricted space', async () => {
@@ -415,6 +461,19 @@ test('a delegating personal assistant writes with user access but agent authorsh
 
 test('kb_publish_request rejects a human-authored draft', async () => {
   const page = buildPageRow({ status: 'draft', authorType: 'user' })
+  const space = buildSpaceRow()
+  const { prisma, approvalCreateCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma)
+
+  await assert.rejects(
+    () => runKbPublishRequestTool(context, { pageId: 'page-1' }),
+    /Only agent-authored drafts/,
+  )
+  assert.equal(approvalCreateCalls.length, 0)
+})
+
+test('kb_publish_request denies a draft written by another agent', async () => {
+  const page = buildPageRow({ authorId: 'agent-2', authorType: 'agent', status: 'draft' })
   const space = buildSpaceRow()
   const { prisma, approvalCreateCalls } = buildFakePrisma({ page, space })
   const context = makeContext(prisma)

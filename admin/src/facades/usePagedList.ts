@@ -128,6 +128,15 @@ export const usePagedList = <TItem, TData = TItem[]>({
   })
 
   const meta = query.data?.meta
+  const items = useMemo(
+    () => (query.data ? selectItems?.(query.data.data) ?? (query.data.data as unknown as TItem[]) : []),
+    [query.data, selectItems],
+  )
+  // A keyset boundary may disappear between page loads. It is still a real
+  // page in the URL, but there is no row from which the server can derive a
+  // reverse cursor. Return to the first page explicitly instead of trapping
+  // a person behind a disabled Previous control.
+  const isStalePage = query.isSuccess && page > 0 && items.length === 0
 
   const onPageChange = useCallback(
     (next: number) => {
@@ -136,6 +145,19 @@ export const usePagedList = <TItem, TData = TItem[]>({
       // asks for ±1; anything else is a caller bug and is ignored rather than
       // silently landing on the wrong page.
       const forward = next > page
+      if (!forward && isStalePage && next === page - 1) {
+        setSearchParams(
+          (current) => {
+            const updated = new URLSearchParams(current)
+            updated.delete(cursorKey)
+            updated.delete(directionKey)
+            updated.delete(pageKey)
+            return updated
+          },
+          { replace: false },
+        )
+        return
+      }
       const target = forward ? meta?.nextCursor : meta?.prevCursor
       if (Math.abs(next - page) !== 1 || !target) return
 
@@ -155,6 +177,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
       directionKey,
       meta?.nextCursor,
       meta?.prevCursor,
+      isStalePage,
       page,
       pageKey,
       setSearchParams,
@@ -181,17 +204,12 @@ export const usePagedList = <TItem, TData = TItem[]>({
     [cursorKey, directionKey, limit, limitKey, pageKey, setSearchParams],
   )
 
-  const items = useMemo(
-    () => (query.data ? selectItems?.(query.data.data) ?? (query.data.data as unknown as TItem[]) : []),
-    [query.data, selectItems],
-  )
-
   const total = meta?.total
   const pageCount = Math.max(1, Math.ceil((total ?? items.length) / limit))
 
   return {
     canNext: Boolean(meta?.hasMore),
-    canPrevious: Boolean(meta?.prevCursor),
+    canPrevious: Boolean(meta?.prevCursor) || isStalePage,
     items,
     label: buildPageLabel(meta ?? {}, page * limit, items.length),
     meta,
