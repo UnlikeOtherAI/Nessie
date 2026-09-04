@@ -1,10 +1,14 @@
 import type { Prisma } from '@prisma/client'
 import {
   auditWorkflowMutation,
+  canActorReadWorkflowRun,
+  canActorStartWorkflowRun,
   createWorkflowTrigger,
   createWorkflowTemplateForActor,
   installWorkflowTemplateForActor,
   listWorkflowTemplatesForOrganization,
+  startWorkflowRunForActor,
+  updateWorkflowTemplateForActor,
 } from '@nessie/team-admin'
 import {
   AgentTriggerTypeSchema,
@@ -37,6 +41,11 @@ const WorkflowTemplateInputSchema = z.object({
   variableSchema: z.unknown().optional(),
 })
 
+const WorkflowTemplateUpdateInputSchema = WorkflowTemplateInputSchema.extend({
+  expectedVersion: z.number().int().positive().optional(),
+  workflowTemplateId: z.string().uuid(),
+})
+
 const WorkflowInstallInputSchema = z.object({
   active: z.boolean().optional(),
   channelId: z.string().uuid().optional(),
@@ -61,6 +70,15 @@ const WorkflowPreviewInputSchema = z.object({
   workflowTemplateId: z.string().uuid(),
 })
 
+const WorkflowRunInputSchema = z.object({
+  input: z.record(z.unknown()).optional(),
+  workflowInstallationId: z.string().uuid(),
+})
+
+const WorkflowRunStatusInputSchema = z.object({
+  workflowRunId: z.string().uuid(),
+})
+
 const WorkflowListInputSchema = z.object({
   cursor: z.string().optional(),
   direction: z.enum(['backward', 'forward']).optional(),
@@ -82,10 +100,10 @@ export const runWorkflowCreateTool = async (
   requireOwnerMember(member, 'create a workflow')
   const workflow = await createWorkflowTemplateForActor(
     context.prisma,
-    context.actorContext,
+    member.actorContext,
     args,
   )
-  await auditWorkflowMutation(context.prisma, context.actorContext, {
+  await auditWorkflowMutation(context.prisma, member.actorContext, {
     action: 'workflow.template.created',
     metadata: { name: workflow.name },
     resourceId: workflow.id,
@@ -101,6 +119,40 @@ export const runWorkflowCreateTool = async (
       'Install it with workflow_install before creating a workflow trigger.',
     ].join('\n'),
     toolName: 'workflow_create',
+  }
+}
+
+export const runWorkflowUpdateTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = WorkflowTemplateUpdateInputSchema.parse(input)
+  const member = await resolveActingMember(context)
+  requireOwnerMember(member, 'update a workflow')
+  const { expectedVersion, workflowTemplateId, ...templateInput } = args
+  const workflow = await updateWorkflowTemplateForActor(
+    context.prisma,
+    member.actorContext,
+    workflowTemplateId,
+    templateInput,
+    expectedVersion,
+  )
+  if (!workflow) throw new Error('Workflow template not found.')
+  await auditWorkflowMutation(context.prisma, member.actorContext, {
+    action: 'workflow.template.updated',
+    metadata: { name: workflow.name, version: workflow.version },
+    resourceId: workflow.id,
+    resourceType: 'workflow_template',
+  })
+
+  return {
+    inputSummary: `workflowTemplateId=${workflow.id}; version=${workflow.version}`,
+    outputPreview: [
+      `Updated workflow "${workflow.name}" (version ${workflow.version}).`,
+      `workflowTemplateId=${workflow.id}`,
+      `Admin: /agents/workflow-designer/${workflow.id}`,
+    ].join('\n'),
+    toolName: 'workflow_update',
   }
 }
 
@@ -138,13 +190,13 @@ export const runWorkflowInstallTool = async (
   requireOwnerMember(member, 'install a workflow')
   const created = await installWorkflowTemplateForActor(
     context.prisma,
-    context.actorContext,
+    member.actorContext,
     args.workflowTemplateId,
     args,
   )
   if (!created) throw new Error('Workflow template not found.')
   const installation = created.installation
-  await auditWorkflowMutation(context.prisma, context.actorContext, {
+  await auditWorkflowMutation(context.prisma, member.actorContext, {
     action: 'workflow.installation.installed',
     metadata: { workflowTemplateId: args.workflowTemplateId },
     resourceId: installation.id,
@@ -181,7 +233,7 @@ export const runWorkflowTriggerCreateTool = async (
   if (!trigger) {
     throw new Error('Trigger configuration is invalid. Check the schedule or interval settings.')
   }
-  await auditWorkflowMutation(context.prisma, context.actorContext, {
+  await auditWorkflowMutation(context.prisma, member.actorContext, {
     action: 'workflow.trigger.created',
     metadata: { workflowInstallationId: installation.id },
     resourceId: trigger.id,
@@ -263,5 +315,80 @@ export const runWorkflowPreviewTool = async (
       `Admin: /agents/workflow-designer/${workflow.id}`,
     ].join('\n'),
     toolName: 'workflow_preview',
+  }
+}
+
+/** Mirrors Admin's member-level Run now action, including its overlap gate. */
+export const runWorkflowRunTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = WorkflowRunInputSchema.parse(input)
+  const member = await resolveActingMember(context)
+  if (!(await canActorStartWorkflowRun(
+    context.prisma,
+    member.actorContext,
+    args.workflowInstallationId,
+  ))) {
+    throw new Error('Workflow installation not found.')
+  }
+  const workflowRun = await startWorkflowRunForActor(
+    context.prisma,
+    member.actorContext,
+    args.workflowInstallationId,
+    {
+      input: args.input,
+      originChannelId: context.channel.id,
+      originMessageId: context.run.messageId,
+      originThreadId: context.run.threadId,
+      replyRootMessageId: context.runContext?.replyRootMessageId,
+    },
+  )
+  if (!workflowRun) throw new Error('Workflow installation is not active.')
+  await auditWorkflowMutation(context.prisma, member.actorContext, {
+    action: 'workflow.run.started',
+    metadata: { installationId: args.workflowInstallationId },
+    resourceId: workflowRun.id,
+    resourceType: 'workflow_run',
+    status: workflowRun.status,
+  })
+  return {
+    inputSummary: `workflowInstallationId=${args.workflowInstallationId}`,
+    outputPreview: [
+      `Started workflow run (${workflowRun.status}).`,
+      `workflowRunId=${workflowRun.id}`,
+      'Use workflow_run_status to follow it.',
+    ].join('\n'),
+    toolName: 'workflow_run',
+  }
+}
+
+/** Status-only read: W0-sensitive inputs and outputs stay on the Admin detail. */
+export const runWorkflowRunStatusTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = WorkflowRunStatusInputSchema.parse(input)
+  const member = await resolveActingMember(context)
+  if (!(await canActorReadWorkflowRun(context.prisma, member.actorContext, args.workflowRunId))) {
+    throw new Error('Workflow run not found.')
+  }
+  const workflowRun = await context.prisma.workflowRun.findFirst({
+    where: { id: args.workflowRunId, organizationId: member.actorContext.tenant.organizationId },
+    select: { id: true, status: true },
+  })
+  if (!workflowRun) throw new Error('Workflow run not found.')
+  const steps = await context.prisma.workflowStepRun.findMany({
+    where: { workflowRunId: workflowRun.id },
+    orderBy: [{ sequence: 'asc' }, { createdAt: 'asc' }],
+    select: { status: true, stepKey: true, title: true },
+  })
+  return {
+    inputSummary: `workflowRunId=${workflowRun.id}`,
+    outputPreview: [
+      `Workflow run ${workflowRun.id}: ${workflowRun.status}.`,
+      ...steps.map((step) => `${step.title || step.stepKey}: ${step.status}`),
+    ].join('\n'),
+    toolName: 'workflow_run_status',
   }
 }

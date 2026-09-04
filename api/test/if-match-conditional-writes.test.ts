@@ -51,11 +51,11 @@ const actorContext = {
 
 const makeWorkflowPrisma = (version: number) => {
   const calls = { updates: 0 }
+  let currentVersion = version
   const prisma = {
     workflowTemplate: {
-      findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000f01', version }),
-      update: async () => {
-        calls.updates += 1
+      findFirst: async ({ select }: { select?: { version: true } } = {}) => {
+        if (select) return { id: '00000000-0000-4000-8000-000000000f01', version: currentVersion }
         return {
           bindingSchema: {},
           createdAt: new Date(),
@@ -71,12 +71,19 @@ const makeWorkflowPrisma = (version: number) => {
           triggersJson: {},
           updatedAt: new Date(),
           variableSchema: {},
-          version: version + 1,
+          version: currentVersion,
         }
+      },
+      updateMany: async ({ where }: { where: { version?: number } }) => {
+        if (where.version !== undefined && where.version !== currentVersion) return { count: 0 }
+        calls.updates += 1
+        currentVersion += 1
+        return { count: 1 }
       },
     },
     agent: { findMany: async () => [] },
-    executionEnvironmentTemplate: { findMany: async () => [] },
+    executionEnvironmentTemplate: { count: async () => 0 },
+    $transaction: async <T>(work: (tx: unknown) => Promise<T>) => work(prisma),
   } as unknown as PrismaClient
   return { calls, prisma }
 }

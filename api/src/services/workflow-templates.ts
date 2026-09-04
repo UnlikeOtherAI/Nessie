@@ -4,8 +4,10 @@ import {
   installWorkflowTemplateForActor,
   isWorkflowConcurrencyConfig,
   listWorkflowTemplatesForOrganization,
+  updateWorkflowTemplateForActor,
   WorkflowInstallationLifecycleError,
   WorkflowTemplateAdoptionRequiredError,
+  WorkflowTemplateVersionConflictError,
 } from '@nessie/team-admin'
 import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
@@ -21,13 +23,9 @@ import {
   type WorkflowListInput,
   type WorkflowListPage,
 } from './workflow-records.js'
-import {
-  validateRequiredEnvironmentTemplateIds,
-  validateWorkflowInstallationChannel,
-} from './workflow-references.js'
+import { validateWorkflowInstallationChannel } from './workflow-references.js'
 import {
   assertWorkflowSecretWrite,
-  validateWorkflowGraphSteps,
   WorkflowActionError,
 } from './workflow-validation.js'
 
@@ -79,17 +77,7 @@ export const getWorkflowTemplate = async (
   return template ? mapWorkflowTemplate(template) : null
 }
 
-/**
- * The caller's `If-Match` version is not the row's current one: a second editor
- * saved in between. Never resolved by taking the last write — the choice is the
- * person's (docs/navigation/overview.md → "Drafts").
- */
-export class WorkflowTemplateVersionConflictError extends Error {
-  constructor(readonly currentVersion: number) {
-    super('Workflow template version conflict')
-    this.name = 'WorkflowTemplateVersionConflictError'
-  }
-}
+export { WorkflowTemplateVersionConflictError }
 
 export const updateWorkflowTemplate = async (
   prisma: PrismaClient,
@@ -107,56 +95,14 @@ export const updateWorkflowTemplate = async (
   // The version the caller edited, from `If-Match`. Undefined = no opinion.
   expectedVersion?: number,
 ): Promise<WorkflowTemplateRecord | null> => {
-  await validateWorkflowGraphSteps(
+  const template = await updateWorkflowTemplateForActor(
     prisma,
     actorContext,
-    input.graph,
+    workflowTemplateId,
+    input,
+    expectedVersion,
   )
-  await validateRequiredEnvironmentTemplateIds(
-    prisma,
-    actorContext.tenant.organizationId,
-    input.requiredEnvironmentTemplateIds ?? [],
-  )
-
-  const existingTemplate = await prisma.workflowTemplate.findFirst({
-    where: {
-      id: workflowTemplateId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-    select: {
-      id: true,
-      version: true,
-    },
-  })
-
-  if (!existingTemplate) {
-    return null
-  }
-
-  if (expectedVersion !== undefined && existingTemplate.version !== expectedVersion) {
-    throw new WorkflowTemplateVersionConflictError(existingTemplate.version)
-  }
-
-  const template = await prisma.workflowTemplate.update({
-    where: {
-      id: existingTemplate.id,
-    },
-    data: {
-      name: input.name,
-      description: input.description,
-      version: {
-        increment: 1,
-      },
-      graphJson: input.graph as unknown as Prisma.InputJsonValue,
-      triggersJson: (input.triggers ?? {}) as Prisma.InputJsonValue,
-      variableSchema: (input.variableSchema ?? {}) as Prisma.InputJsonValue,
-      bindingSchema: (input.bindingSchema ?? {}) as Prisma.InputJsonValue,
-      requiredEnvironmentTemplateIds:
-        (input.requiredEnvironmentTemplateIds ?? []) as unknown as Prisma.InputJsonValue,
-    },
-  })
-
-  return mapWorkflowTemplate(template)
+  return template ? mapWorkflowTemplate(template) : null
 }
 
 // W8: one installation lifecycle. The schema carries the legacy pair
