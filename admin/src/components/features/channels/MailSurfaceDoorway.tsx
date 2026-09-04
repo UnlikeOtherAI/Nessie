@@ -57,7 +57,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     if (!doorway) return null
     setAccessError(null)
     try {
-      const refreshed = await accounts.refetch()
+      const refreshed = await accounts.refetch({ throwOnError: true })
       const next = findAccount(refreshed.data, doorway)
       if (!next) { setAccessError('This email is no longer available to you.'); return null }
       setAccount(next)
@@ -77,7 +77,10 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
         if (window.sessionStorage.getItem(storageKey) || window.sessionStorage.getItem('mail-doorway-overlay-open')) return
         window.sessionStorage.setItem(storageKey, 'offered')
         window.sessionStorage.setItem('mail-doorway-overlay-open', messageId)
-        void checkAndOpen()
+        void checkAndOpen().then((account) => {
+          if (account) return
+          try { window.sessionStorage.removeItem('mail-doorway-overlay-open') } catch { /* no-op */ }
+        })
       } catch { /* Explicit Open mail remains available when storage is disabled. */ }
       observer.disconnect()
     }, { threshold: 0.5 })
