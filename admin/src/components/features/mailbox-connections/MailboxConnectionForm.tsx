@@ -14,7 +14,9 @@ import {
   commsOAuthProvider,
   hasTrustedMailboxConfiguration,
   isUsableEmailAddress,
+  mailboxErrorCode,
   mailboxErrorMessage,
+  mailboxTechnicalDetails,
   nextMailboxOnboardingStep,
   shouldDiscoverMailbox,
   type MailboxOnboardingStep,
@@ -87,6 +89,8 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   const [screen, setScreen] = useState<MailboxOnboardingStep>('start')
   const [discovery, setDiscovery] = useState<MailboxDiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [isSubmittingDiscovery, setIsSubmittingDiscovery] = useState(false)
@@ -98,12 +102,32 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]): void =>
     setForm((current) => ({ ...current, [key]: value }))
 
+  /** A message and the code behind it are one thing: never half cleared. */
+  const clearError = useCallback(() => {
+    setError(null)
+    setErrorCode(null)
+  }, [])
+
+  /** Guidance survives typing but not a move to another screen. */
+  const clearFeedback = useCallback(() => {
+    clearError()
+    setNotice(null)
+  }, [clearError])
+
+  const failWith = useCallback((cause: unknown, fallback: string) => {
+    setNotice(null)
+    setErrorCode(mailboxErrorCode(cause))
+    setError(mailboxErrorMessage(cause, fallback))
+  }, [])
+
   const reset = useCallback(() => {
     activeDiscoveryKey.current = ''
     discovered.current = null
     inFlightDiscovery.current = null
     setDiscovery(null)
     setError(null)
+    setErrorCode(null)
+    setNotice(null)
     setForm(createFormValues())
     setHelpOpen(false)
     setIsDiscovering(false)
@@ -141,7 +165,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       .catch((cause: unknown) => {
         if (activeDiscoveryKey.current === key) {
           setDiscovery(null)
-          setError(mailboxErrorMessage(cause, 'We could not find the settings automatically.'))
+          failWith(cause, 'We could not find the settings automatically.')
         }
         return null
       })
@@ -152,7 +176,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
 
     inFlightDiscovery.current = { key, promise }
     return promise
-  }, [discoverMailbox, form.teamId, scope])
+  }, [discoverMailbox, failWith, form.teamId, scope])
 
   useEffect(() => {
     if (!shouldDiscoverMailbox(screen)) {
@@ -166,7 +190,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
     const addressChanged = activeDiscoveryKey.current !== key
     activeDiscoveryKey.current = key
     setIsDiscovering(inFlightDiscovery.current?.key === key)
-    if (addressChanged) setError(null)
+    if (addressChanged) clearError()
     if (!isUsableEmailAddress(address)) {
       setDiscovery(null)
       return undefined
@@ -181,15 +205,22 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       void discoverAddress(address)
     }, 350)
     return () => window.clearTimeout(timer)
-  }, [discoverAddress, form.address, form.teamId, scope, screen])
+  }, [clearError, discoverAddress, form.address, form.teamId, scope, screen])
 
+  /**
+   * A hand-off that never left the browser must not leave the person on a
+   * screen whose only action was that hand-off: the address screen is the one
+   * place every route out of here is still reachable.
+   */
   const beginOAuth = async (provider: 'google' | 'microsoft', loginHint?: string) => {
-    setError(null)
+    clearFeedback()
     try {
       const result = await startComms.mutateAsync({ provider, ...(loginHint ? { loginHint } : {}) })
       window.location.assign(result.authorizeUrl)
     } catch (cause) {
-      setError(mailboxErrorMessage(cause, 'Connection was not started. Please try again.'))
+      setScreen('start')
+      failWith(cause, 'Connection wasn\'t completed. Please try again.')
+      window.requestAnimationFrame(() => emailInput.current?.focus({ preventScroll: true }))
     }
   }
 
@@ -231,10 +262,12 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
     event.preventDefault()
     const address = form.address.trim()
     if (!isUsableEmailAddress(address)) {
+      setNotice(null)
+      setErrorCode('INVALID_EMAIL_ADDRESS')
       setError('Enter a valid email address.')
       return
     }
-    setError(null)
+    clearFeedback()
     setIsSubmittingDiscovery(true)
     try {
       const result = await discoverAddress(address)
@@ -264,7 +297,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
         : address
       : form.username.trim() || address
 
-    setError(null)
+    clearFeedback()
     connect.mutate({
       address,
       imapHost: imap.host,
@@ -279,8 +312,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
       teamId: scope === 'team' ? form.teamId || null : null,
       username,
     }, {
-      onError: (cause: unknown) =>
-        setError(mailboxErrorMessage(cause, 'Could not connect this mailbox.')),
+      onError: (cause: unknown) => failWith(cause, 'Could not connect this mailbox.'),
       onSuccess: () => {
         close()
         onConnected?.()
@@ -299,14 +331,20 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   }
 
   const showManual = () => {
-    setError(null)
+    clearFeedback()
     setScreen('manual')
   }
 
   const returnToStart = () => {
-    setError(null)
+    clearFeedback()
     setScreen('start')
   }
+
+  const technicalDetails = mailboxTechnicalDetails({
+    address: form.address.trim(),
+    code: errorCode,
+    result: discovery,
+  })
 
   if (!open) {
     return (
@@ -336,12 +374,14 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           error={error}
           helpOpen={helpOpen}
           isDiscovering={isDiscovering}
+          notice={notice}
           onAddressChange={(value) => set('address', value)}
           onCancel={close}
           onContinue={(event) => void continueFromAddress(event)}
           onHelp={() => setHelpOpen(true)}
           onICloud={() => {
-            setError(
+            clearError()
+            setNotice(
               'Enter your iCloud email address and continue. We will guide you to an app-specific '
               + 'password if it is needed.',
             )
@@ -349,10 +389,19 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           }}
           onOtherProvider={showManual}
           onProvider={(entry) => {
-            if (scope === 'user') void beginOAuth(entry, form.address.trim())
-            else setError('A shared mailbox needs its secure server credential.')
+            if (scope === 'user') {
+              void beginOAuth(entry, form.address.trim())
+              return
+            }
+            clearError()
+            setNotice(
+              'A shared mailbox connects with its own secure server credential. Enter its address '
+              + 'and continue.',
+            )
+            emailInput.current?.focus({ preventScroll: true })
           }}
           pending={isSubmittingDiscovery}
+          technicalDetails={technicalDetails}
         />
       ) : null}
 
@@ -379,6 +428,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           screen={screen}
           teamId={form.teamId}
           teams={teams.data ?? []}
+          technicalDetails={technicalDetails}
         />
       ) : null}
 

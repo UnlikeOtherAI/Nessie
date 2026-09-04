@@ -6,6 +6,7 @@ import {
   isUsableEmailAddress,
   providerMark,
 } from './mailbox-onboarding'
+import { MailboxTechnicalDetails } from './MailboxTechnicalDetails'
 
 type MailboxAddressStartProps = {
   address: string
@@ -14,6 +15,8 @@ type MailboxAddressStartProps = {
   error: string | null
   helpOpen: boolean
   isDiscovering: boolean
+  /** Guidance a provider row offers. Never a failure — it is not styled as one. */
+  notice: string | null
   onAddressChange: (value: string) => void
   onCancel: () => void
   onContinue: (event: FormEvent<HTMLFormElement>) => void
@@ -22,6 +25,7 @@ type MailboxAddressStartProps = {
   onOtherProvider: () => void
   onProvider: (provider: 'google' | 'microsoft') => void
   pending: boolean
+  technicalDetails: string[]
 }
 
 const ProviderRow = ({
@@ -61,6 +65,7 @@ export const MailboxAddressStart = ({
   error,
   helpOpen,
   isDiscovering,
+  notice,
   onAddressChange,
   onCancel,
   onContinue,
@@ -69,6 +74,7 @@ export const MailboxAddressStart = ({
   onOtherProvider,
   onProvider,
   pending,
+  technicalDetails,
 }: MailboxAddressStartProps) => (
   <form className="grid gap-5" onSubmit={onContinue}>
     <p className="text-center text-sm text-[color:var(--tx2)]">Enter your email address</p>
@@ -122,7 +128,15 @@ export const MailboxAddressStart = ({
         mail server settings yourself.
       </p>
     ) : null}
-    {error ? <p className="text-sm text-[color:var(--danger-text)]">{error}</p> : null}
+    {notice ? (
+      <p aria-live="polite" className="text-sm text-[color:var(--tx2)]">{notice}</p>
+    ) : null}
+    {error ? (
+      <div className="grid gap-1">
+        <p className="text-sm text-[color:var(--danger-text)]">{error}</p>
+        <MailboxTechnicalDetails lines={technicalDetails} />
+      </div>
+    ) : null}
     <div className="flex items-center justify-between gap-3">
       <button className="text-sm text-[color:var(--tx2)] underline" onClick={onHelp} type="button">
         Help
