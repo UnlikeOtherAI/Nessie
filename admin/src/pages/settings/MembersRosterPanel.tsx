@@ -44,9 +44,8 @@ const memberColumns = (
           displayName={member.displayName ?? member.email ?? 'Member'}
           size={32}
           token={token}
-          {...(member.userId
-            ? { userId: member.userId }
-            : scope === 'team' ? { uoaSub: member.uoaSub } : {})}
+          uoaSub={scope === 'team' ? member.uoaSub : undefined}
+          userId={member.userId}
         />
         <span className="min-w-0">
           <span className="block truncate font-medium">{member.displayName ?? 'Unnamed member'}</span>

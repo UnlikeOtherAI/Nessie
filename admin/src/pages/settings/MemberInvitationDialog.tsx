@@ -37,6 +37,8 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const [candidateQuery, setCandidateQuery] = useState('')
   const [debouncedCandidateQuery, setDebouncedCandidateQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // This selects a branch of the in-progress form. It is deliberately reset
+  // when the transient dialog closes rather than becoming a navigable URL tab.
   const [mode, setMode] = useState<InviteMode>('existing')
   const emailRef = useRef<HTMLInputElement | null>(null)
   const targets = useInvitationTargets(open && scope === 'organization')

@@ -183,26 +183,6 @@ const RAW_KEY_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
   },
 ]
 
-/**
- * Call sites that genuinely cannot use a factory, as data with a reason — the
- * shape `ROOT_EXCEPTIONS` uses, for the same purpose: an exception that stops
- * being needed fails the test rather than lingering. `line` is the offending
- * source line, trimmed, so an exception cannot silently widen to cover a
- * different literal that drifts onto the same line number.
- */
-const RAW_KEY_EXCEPTIONS: readonly { file: string; line: string; reason: string }[] = [
-  {
-    file: 'facades/usePagedList.ts',
-    line: 'queryKey: [...queryKey, paramsKey, cursor ?? null, direction ?? null, limit],',
-    reason:
-      'Not a key literal: the identity is the caller\'s `queryKey`, which is a factory result '
-      + 'from lib/query-keys.ts. This appends the paging state — filters, cursor, page size — '
-      + 'that makes one page of that list distinct from another. Spelling it in each list\'s '
-      + 'factory instead would put the same three suffixes in twenty factories, which is the '
-      + 'duplication this guard exists to prevent.',
-  },
-]
-
 const isSourceFile = (name: string) => name.endsWith('.ts') || name.endsWith('.tsx')
 
 const sourceFiles = (): string[] => {
@@ -238,8 +218,6 @@ test('no raw query-key literal outside query-keys.ts', () => {
   assert.ok(files.includes(KEY_MODULE), `expected ${KEY_MODULE} in the scanned tree`)
 
   const violations: string[] = []
-  const usedExceptions = new Set<string>()
-
   for (const file of files) {
     if (file === KEY_MODULE) continue
     const contents = readFileSync(join(SOURCE_ROOT, file), 'utf8')
@@ -247,13 +225,6 @@ test('no raw query-key literal outside query-keys.ts', () => {
       if (isCommentLine(line)) return
       const hit = RAW_KEY_PATTERNS.find(({ pattern }) => pattern.test(line))
       if (!hit) return
-      const excepted = RAW_KEY_EXCEPTIONS.find(
-        (entry) => entry.file === file && entry.line === line.trim(),
-      )
-      if (excepted) {
-        usedExceptions.add(`${excepted.file} :: ${excepted.line}`)
-        return
-      }
       violations.push(`${file}:${index + 1}  ${hit.label}  ${line.trim()}`)
     })
   }
@@ -263,19 +234,9 @@ test('no raw query-key literal outside query-keys.ts', () => {
     [],
     'These call sites spell a cache key inline instead of calling a factory in lib/query-keys.ts. '
       + 'A literal is a second definition of the same cache identity and stops matching the moment '
-      + 'either side moves — add or reuse a factory, or, if the site genuinely cannot, add it to '
-      + 'RAW_KEY_EXCEPTIONS with the reason:\n' + violations.join('\n'),
+      + 'either side moves — add or reuse a factory:\n' + violations.join('\n'),
   )
 
-  const stale = RAW_KEY_EXCEPTIONS.filter(
-    (entry) => !usedExceptions.has(`${entry.file} :: ${entry.line}`),
-  ).map((entry) => `${entry.file} :: ${entry.line} (${entry.reason})`)
-
-  assert.deepEqual(
-    stale,
-    [],
-    'These RAW_KEY_EXCEPTIONS no longer match a call site — delete them:\n' + stale.join('\n'),
-  )
 })
 
 test('the raw-key scan detects a literal when one is present', () => {

@@ -23,8 +23,8 @@ const pathFor = (scope: MemberRosterScope, resource: 'members' | 'invitations') 
 
 const keyFor = (scope: MemberRosterScope, resource: 'members' | 'invitations') =>
   scope === 'organization'
-    ? [...organizationKeys.members, resource] as const
-    : [...teamKeys.members, resource] as const
+    ? organizationKeys.memberRoster(resource)
+    : teamKeys.memberRoster(resource)
 
 export const useMemberRoster = (
   scope: MemberRosterScope,
@@ -57,7 +57,7 @@ export const useInvitationTargets = (enabled: boolean) =>
     items: (response) => response.items,
     paramPrefix: 'invite-',
     path: '/api/organization/member-invitation-targets',
-    queryKey: [...organizationKeys.members, 'invitation-targets'],
+    queryKey: organizationKeys.invitationTargets(),
   })
 
 type CandidateEnvelope = PagedRoster<TeamMemberCandidate, {
@@ -71,7 +71,7 @@ export const useTeamMemberCandidates = (query: string, enabled: boolean) => {
   return useQuery({
     enabled: enabled && search.length > 0,
     queryFn: () => api.getPage<CandidateEnvelope>(`/api/team/members/candidates?q=${encodeURIComponent(search)}&limit=20`),
-    queryKey: [...teamKeys.members, 'candidates', search],
+    queryKey: teamKeys.memberCandidates(search),
   })
 }
 
