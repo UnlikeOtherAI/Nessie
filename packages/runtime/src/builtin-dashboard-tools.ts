@@ -195,7 +195,7 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'dashboard_source_import',
     category: 'dashboards',
-    summary: 'Import JSON, CSV, Excel, document text, or article text as a self-contained static dashboard source.',
+    summary: 'Import structured data or text as a static dashboard source.',
     label: 'Import Static Dashboard Data',
     description:
       'Import JSON records, CSV with a header row, or a base64-encoded XLSX workbook into a self-contained '
