@@ -24,6 +24,7 @@ test('Space White owns the shared product geometry instead of route-local copies
   assert.match(styles, /\[data-theme="space-white"\]\s*\{[\s\S]*?--accent: #000000/)
   assert.match(styles, /--font-family-display: 'Starleague'/)
   assert.match(spaceWhite, /\.admin-page-action\s*\{[\s\S]*?border-radius: 7px/)
+  assert.match(spaceWhite, /\.admin-page-action\s*\{[\s\S]*?font-size: 13px/)
   assert.match(spaceWhite, /\.admin-input\s*\{[\s\S]*?min-height: 44px[\s\S]*?border-radius: 14px/)
   assert.match(spaceWhite, /\.admin-card\s*\{[\s\S]*?border-radius: 20px/)
   assert.match(spaceWhite, /\.create-channel-panel\s*\{[\s\S]*?border-radius: 28px/)

@@ -116,7 +116,8 @@ summary and points here; **this file is the rule**.
   lists do not repeat their title with generic explanatory copy. The shared
   `.admin-page-subtitle` owns subtitle size, colour and line-height, so call
   sites supply content and layout constraints only. Header icons are 16px in a
-  36px action, and compact actions are 36px squares. Selected, pressed and open
+  36px action, action labels are 13px, and compact actions are 36px squares.
+  Selected, pressed and open
   controls expose their state structurally (`selected`, `aria-pressed`,
   `aria-expanded`) and the theme styles those states; a route never paints a
   private active treatment.
