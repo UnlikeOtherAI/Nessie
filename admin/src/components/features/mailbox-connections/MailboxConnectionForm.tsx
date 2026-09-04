@@ -311,7 +311,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   if (!open) {
     return (
       <button
-        className="admin-button admin-button-secondary admin-button-compact mt-3"
+        className="admin-button admin-button-secondary admin-button-compact"
         onClick={() => setOpen(true)}
         type="button"
       >

@@ -28,10 +28,15 @@ import { useOverlay } from '../overlays/useOverlay'
 type DialogSize = 'md' | 'lg' | 'xl' | 'full'
 
 // `md` is the `.create-channel-panel` default (440px, 16px gutter). The other
-// two are the exact inline overrides their call sites already carried.
+// sizes are the exact inline overrides their call sites require.
 const PANEL_STYLE: Record<DialogSize, CSSProperties | undefined> = {
   md: undefined,
-  lg: { maxWidth: 640, width: '100%' },
+  lg: {
+    maxHeight: 'calc(100dvh - 2rem)',
+    maxWidth: 640,
+    overflowY: 'auto',
+    width: '100%',
+  },
   xl: {
     maxHeight: '88dvh',
     maxWidth: 'none',
