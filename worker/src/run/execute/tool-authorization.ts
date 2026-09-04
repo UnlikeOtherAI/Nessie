@@ -1,15 +1,19 @@
 import {
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_START_FAILURE_DETAIL,
-  isEmailAccountTool,
-  parseEmailAccountToolArgs,
+  hasStrictToolAuthorizationInput,
+  parseToolAuthorizationArgs,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '@nessie/runtime'
-import { recordSendDecision, resolveStandingConsentForToolCall } from '@nessie/team-admin'
+import {
+  consumeToolApprovalProof,
+  recordSendDecision,
+  resolveStandingConsentForToolCall,
+} from '@nessie/team-admin'
 import { type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
-import { summarizeToolInput } from '../tool-util.js'
+import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
 import {
   reviewableToolSurface,
   type AutoReviewResult,
@@ -199,7 +203,7 @@ export const authorizeToolExecution = async (
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
   let canonicalArgs: Record<string, unknown>
   try {
-    canonicalArgs = parseEmailAccountToolArgs(toolName, args)
+    canonicalArgs = parseToolAuthorizationArgs(toolName, args)
   } catch {
     // These are credential-boundary tools. An unrecognised field can be a
     // password or authorization code, so it must not reach any durable sink.
@@ -209,9 +213,9 @@ export const authorizeToolExecution = async (
     return {
       decision: 'deny',
       result: {
-        inputSummary: 'Invalid email account tool input.',
-        output: isEmailAccountTool(toolName)
-          ? 'The email account tool arguments were invalid. Use only the documented fields.'
+        inputSummary: 'Invalid tool input.',
+        output: hasStrictToolAuthorizationInput(toolName)
+          ? 'The tool arguments were invalid. Use only the documented fields.'
           : 'The tool arguments were invalid.',
         success: false,
       },
@@ -274,7 +278,9 @@ export const authorizeToolExecution = async (
     context,
     toolName,
     canonicalArgs,
-    { consumeApprovalProof: auth.consumeApprovalProof },
+    // Policy tells us whether a proof is valid, but the dispatch chokepoint
+    // claims it only after every structural and auto-review gate has cleared.
+    { consumeApprovalProof: false },
   )
 
   // A tool may declare its approval requirement in CODE rather than relying on
@@ -289,12 +295,20 @@ export const authorizeToolExecution = async (
   let boundaryReason: string | null = null
   let structuralApprover: string | null = null
   let structuralContext: Record<string, unknown> | null = null
+  let structuralApprovalProofUsed = false
   const policyDecision = await (async () => {
     if (
       !rawPolicyDecision.allowed
       || !STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
-      || toolActorContext.approval?.approvalProof
+      || rawPolicyDecision.approvalProofVerified
     ) {
+      if (
+        rawPolicyDecision.allowed
+        && STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
+        && rawPolicyDecision.approvalProofVerified
+      ) {
+        structuralApprovalProofUsed = true
+      }
       return rawPolicyDecision
     }
     // A family that owns its own escalation answers first and is final for its
@@ -480,6 +494,43 @@ export const authorizeToolExecution = async (
             reason: 'approval_required',
           }),
         }
+      }
+    }
+  }
+
+  // A structurally gated call has no PolicyRule to set approvalProofUsed. The
+  // proof was nevertheless verified against its approval id, canonical args,
+  // org, tool and direct continuation lineage above. Claim it here, after the
+  // final pre-dispatch gate, so a stale or raced proof cannot bypass a
+  // code-declared approval a second time.
+  if (
+    auth.consumeApprovalProof !== false
+    && (policyDecision.approvalProofUsed || structuralApprovalProofUsed)
+  ) {
+    const verifiedApproval = policyDecision.approvalProofVerified
+    const approval = toolActorContext.approval
+    if (
+      !verifiedApproval
+      || !approval?.approvalId
+      || !approval.approvalProof
+      || !await consumeToolApprovalProof(prisma, {
+        approvalId: verifiedApproval.id,
+        argsHash: hashJsonValue(canonicalArgs),
+        continuationRunId: context.run.id,
+        organizationId: context.channel.organizationId,
+        proof: approval.approvalProof,
+        toolName,
+      })
+    ) {
+      await auditDenial(emitAudit, toolActorContext, context, toolName, {
+        source: 'worker_tool_policy',
+      }, 'approval_required')
+      return {
+        decision: 'deny',
+        result: toolDeniedResult(toolName, canonicalArgs, {
+          message: `Tool "${toolName}" requires approval before it can run.`,
+          reason: 'approval_required',
+        }),
       }
     }
   }

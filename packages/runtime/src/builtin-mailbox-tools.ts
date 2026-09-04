@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { MailboxSendToolInputSchema } from './builtin-approval-inputs.js'
 
 export const MAILBOX_SEARCH_TOOL_ID = 'mailbox_search'
 export const MAILBOX_READ_TOOL_ID = 'mailbox_read'
@@ -103,6 +104,7 @@ export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['to', 'subject', 'text'],
       type: 'object',
     },
+    inputSchema: MailboxSendToolInputSchema,
     requiresExplicitGrant: true,
     // Declared in code, never in `PolicyRule` data: the policy evaluator's
     // default verdict is `allow`, so a data-only gate is simply absent in any

@@ -13,6 +13,7 @@ import {
   searchMailbox,
   sendFromMailbox,
 } from '@nessie/agent-mail'
+import { MailboxSendToolInputSchema } from '@nessie/runtime'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 
@@ -50,15 +51,6 @@ const SearchSchema = CommonSchema.extend({
 const ReadSchema = CommonSchema.extend({
   folder: z.string().max(200).optional(),
   uid: z.number().int().positive(),
-}).strict()
-
-const SendSchema = CommonSchema.extend({
-  bcc: z.array(z.string()).max(50).optional(),
-  cc: z.array(z.string()).max(50).optional(),
-  inReplyToUid: z.number().int().positive().optional(),
-  subject: z.string().max(500),
-  text: z.string().max(100_000),
-  to: z.array(z.string()).min(1).max(50),
 }).strict()
 
 const encryptionSecret = (): string => {
@@ -209,7 +201,7 @@ export const runMailboxSendTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = SendSchema.parse(input)
+  const args = MailboxSendToolInputSchema.parse(input)
   // Sending resolves the mailbox through the same predicate a read does, and
   // stamps the same scope: a send is also a read of who the mailbox is.
   const mailbox = await useMailbox(context, args.connectionId)

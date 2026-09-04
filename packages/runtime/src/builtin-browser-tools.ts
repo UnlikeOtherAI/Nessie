@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { ExecutorBrowserActArgumentsSchema } from '@nessie/schemas'
 
 /**
  * Cloud browser tools.
@@ -136,6 +137,7 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['action'],
     },
+    inputSchema: ExecutorBrowserActArgumentsSchema,
     requiresExplicitGrant: true,
     /**
      * Conditional, decided in code: an ordinary action is not gated at all.

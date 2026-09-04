@@ -10,7 +10,12 @@ import {
   queryFreeBusy,
 } from '@nessie/comms-google'
 import { loadUserGoogleCommsCredential } from '@nessie/team-admin'
-import { safeFetch } from '@nessie/runtime'
+import {
+  CalendarEventCancelToolInputSchema,
+  CalendarEventCreateToolInputSchema,
+  CalendarEventUpdateToolInputSchema,
+  safeFetch,
+} from '@nessie/runtime'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -72,33 +77,6 @@ const FreeBusySchema = z.object({
   timeMin: z.string(),
   timeMax: z.string(),
   attendees: z.array(z.string()).max(30).optional(),
-}).strict()
-
-const EventCreateSchema = z.object({
-  calendarId: z.string().optional(),
-  title: z.string().min(1).max(500),
-  start: z.string(),
-  end: z.string(),
-  description: z.string().max(20_000).optional(),
-  location: z.string().max(500).optional(),
-  attendees: z.array(z.string()).max(100).optional(),
-  addMeet: z.boolean().optional(),
-}).strict()
-
-const EventUpdateSchema = z.object({
-  calendarId: z.string().optional(),
-  eventId: z.string().min(1),
-  title: z.string().max(500).optional(),
-  start: z.string().optional(),
-  end: z.string().optional(),
-  description: z.string().max(20_000).optional(),
-  location: z.string().max(500).optional(),
-  attendees: z.array(z.string()).max(100).optional(),
-}).strict()
-
-const EventCancelSchema = z.object({
-  calendarId: z.string().optional(),
-  eventId: z.string().min(1),
 }).strict()
 
 export const runCalendarListTool = async (
@@ -184,7 +162,7 @@ export const runCalendarEventCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = EventCreateSchema.parse(input)
+  const args = CalendarEventCreateToolInputSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
   const credential = await credentialFor(context, 'calendar.write', userId)
   recordGoogleRead(context, credential.ownerUserId)
@@ -219,7 +197,7 @@ export const runCalendarEventUpdateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = EventUpdateSchema.parse(input)
+  const args = CalendarEventUpdateToolInputSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
   const credential = await credentialFor(context, 'calendar.write', userId)
   recordGoogleRead(context, credential.ownerUserId)
@@ -239,7 +217,7 @@ export const runCalendarEventCancelTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = EventCancelSchema.parse(input)
+  const args = CalendarEventCancelToolInputSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
   const credential = await credentialFor(context, 'calendar.write', userId)
   recordGoogleRead(context, credential.ownerUserId)
