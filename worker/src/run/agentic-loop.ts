@@ -4,6 +4,7 @@ import type {
   ProviderMessage,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import { redactDetectedSecrets } from '@nessie/schemas'
 import { createRetryBudget } from './error-classification.js'
 import { callInferenceWithRetry } from './inference-retry.js'
 import {
@@ -42,6 +43,11 @@ import {
 } from './tool-batch.js'
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
+
+const redactMessageContent = (message: ProviderMessage): ProviderMessage => {
+  if (typeof message.content !== 'string') return message
+  return { ...message, content: redactDetectedSecrets(message.content) } as ProviderMessage
+}
 
 export type LoopCallbacks = ToolBatchCallbacks & {
   onIterationStart: (iteration: number) => Promise<void>
@@ -150,7 +156,10 @@ export const runAgenticLoop = async (input: {
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
-  const messages: ProviderMessage[] = [...initialMessages]
+  // Covers every caller, including delegated agents whose initial prompt does
+  // not pass through buildModelPrompt. Raw values never remain in the loop's
+  // retained context or its eventual checkpoint input.
+  const messages: ProviderMessage[] = initialMessages.map(redactMessageContent)
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   const signatureCounts = new Map<string, number>()
   const retryBudget = createRetryBudget(6)
@@ -285,22 +294,23 @@ export const runAgenticLoop = async (input: {
     )
     allInvocations.push(...result.invocations)
     spend = meterSpend(allInvocations, cacheReadWeight)
-    if (result.outputText) {
-      lastAssistantText = result.outputText
+    const safeOutputText = redactDetectedSecrets(result.outputText)
+    if (safeOutputText) {
+      lastAssistantText = safeOutputText
     }
 
     const spendStop = stopAfterInference(budget, spend)
     if (spendStop) return stop(spendStop)
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
-      if (result.outputText) {
-        await callbacks.onTextDelta(result.outputText)
+      if (safeOutputText) {
+        await callbacks.onTextDelta(safeOutputText)
       }
-      return finish(null, result.outputText)
+      return finish(null, safeOutputText)
     }
 
     messages.push({
-      content: result.outputText || null,
+      content: safeOutputText || null,
       role: 'assistant',
       toolCalls: result.toolCalls,
     })

@@ -152,7 +152,11 @@ export const SpaceSettingsDialog = ({
               <SectionLabel size="sm">Agents with access</SectionLabel>
               <MemberChecklist
                 emptyLabel="No agents available yet."
-                members={(agentsQuery.data ?? []).map((agent) => ({ id: agent.id, label: agent.name }))}
+                members={(agentsQuery.data ?? []).map((agent) => ({
+                  agentVisibility: agent.visibility,
+                  id: agent.id,
+                  label: agent.name,
+                }))}
                 onChange={setMemberAgentIds}
                 selectedIds={memberAgentIds}
               />

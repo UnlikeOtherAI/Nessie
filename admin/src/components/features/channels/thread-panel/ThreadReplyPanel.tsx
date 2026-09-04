@@ -130,6 +130,9 @@ export const ThreadReplyPanel = ({
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    confirmSecretCapture,
+    dismissSecretCapture,
+    secretCapture,
   } = useChannelComposer({
     activeChannel,
     threadMessages: replies,
@@ -195,7 +198,14 @@ export const ThreadReplyPanel = ({
 
   // Same stick-to-bottom behaviour as the channel feed: the panel opens on the
   // newest reply and follows growing rows until the reader scrolls up.
-  const threadScroll = useStickToBottom(openRootMessageId)
+  const threadScroll = useStickToBottom(openRootMessageId, true, {
+    failed: repliesQuery.isFetchNextPageError,
+    hasMore: Boolean(repliesQuery.hasNextPage),
+    isLoading: repliesQuery.isFetchingNextPage,
+    itemCount: replies.length,
+    loadMore: () => repliesQuery.fetchNextPage({ cancelRefetch: false }),
+    pageCount: repliesQuery.pageCount,
+  })
 
   const rootDeleted = Boolean(root?.deletedAt)
 
@@ -272,6 +282,12 @@ export const ThreadReplyPanel = ({
                   editingContent={editingContent}
                   editingMessageId={editingMessageId}
                   feedItems={threadFeedItems}
+                  historyStatus={{
+                    hasOlder: Boolean(repliesQuery.hasNextPage),
+                    isLoadingOlder: repliesQuery.isFetchingNextPage,
+                    olderLoadFailed: repliesQuery.isFetchNextPageError,
+                    retryOlder: threadScroll.loadOlder,
+                  }}
                   isExternalAgentConversation={isExternalAgentConversation}
                   isPersonalAssistantConversation={isPersonalAssistantConversation}
                   meAvatar={meAvatar}
@@ -323,6 +339,8 @@ export const ThreadReplyPanel = ({
                   onInsertEmoji={insertEmoji}
                   onInsertHashSign={() => mentionRef.current?.insertHashSign()}
                   onOversizePaste={(paste) => setOversizePaste(paste)}
+                  onConfirmSecretCapture={confirmSecretCapture}
+                  onDismissSecretCapture={dismissSecretCapture}
                   onSubmitForm={(event) => {
                     threadScroll.pinToBottom()
                     markReplySent()
@@ -338,6 +356,7 @@ export const ThreadReplyPanel = ({
                   inviteErrors={inviteErrors}
                   onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
                   onDismissPendingAgent={dismissPendingAgent}
+                  secretCapture={secretCapture}
                 />
               </>
             )}

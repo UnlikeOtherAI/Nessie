@@ -1,7 +1,11 @@
+import type { AgentVisibility } from '@nessie/schemas'
+
+import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
 import { Checkbox } from '../../primitives/Checkbox'
 import { EmptyState } from '../../shared/EmptyState'
 
 export type KnowledgeMemberOption = {
+  agentVisibility?: AgentVisibility
   id: string
   label: string
 }
@@ -41,14 +45,19 @@ export const MemberChecklist = ({
     >
       {members.map((member) => (
         <div
-          className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]"
+          className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]"
           key={member.id}
         >
-          <Checkbox
-            checked={selected.has(member.id)}
-            label={member.label}
-            onChange={(checked) => toggle(member.id, checked)}
-          />
+          <div className="min-w-0 flex-1">
+            <Checkbox
+              checked={selected.has(member.id)}
+              label={member.label}
+              onChange={(checked) => toggle(member.id, checked)}
+            />
+          </div>
+          {member.agentVisibility ? (
+            <AgentVisibilityPill visibility={member.agentVisibility} />
+          ) : null}
         </div>
       ))}
     </div>

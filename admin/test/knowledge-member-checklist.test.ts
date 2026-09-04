@@ -14,6 +14,9 @@ test('knowledge-space member selection uses one parameterized checklist for peop
   assert.match(createSpace, /<MemberChecklist/)
   assert.match(settings, /<MemberChecklist/g)
   assert.match(checklist, /Shared checkbox list for either human or agent KnowledgeSpaceMember rows/)
+  assert.match(checklist, /<AgentVisibilityPill visibility=\{member\.agentVisibility\}/)
+  assert.match(createSpace, /agentVisibility: agent\.visibility/)
+  assert.match(settings, /agentVisibility: agent\.visibility/)
   assert.equal(
     existsSync(fileURLToPath(new URL('../src/components/features/knowledge/AgentMemberChecklist.tsx', import.meta.url))),
     false,

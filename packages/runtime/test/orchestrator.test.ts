@@ -135,6 +135,24 @@ test('a PA presence mention uses its stored ids and never parses its display nam
   }])
 })
 
+test('a structured mention addresses only the selected duplicate-named agent', async () => {
+  const duplicateAria = { ...aria, name: 'Web summary' }
+  const duplicateBeck = { ...beck, name: 'Web summary' }
+  const decisions = await decideAgentEngagement(forbiddenModel(), {
+    agents: [duplicateAria, duplicateBeck],
+    agentMentions: [{ agentId: duplicateAria.id, type: 'agent' }],
+    content: '@Web summary are you there?',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+
+  assert.deepEqual(decisions, [{
+    action: 'reply',
+    agentId: duplicateAria.id,
+    replyPlacement: 'thread',
+  }])
+})
+
 test('plain @PA never addresses a presence', async () => {
   const principalUserId = '33333333-3333-3333-3333-333333333333'
   const decisions = await decideAgentEngagement(forbiddenModel(), {

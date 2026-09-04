@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { CHAT_MESSAGE_MAX_CHARS, detectSecrets, type DetectedSecret } from '@nessie/schemas'
-import type { MentionInputHandle, PersonalAssistantMention } from '../../shared/MentionInput'
+import {
+  CHAT_MESSAGE_MAX_CHARS,
+  detectSecrets,
+  extractDetectedSecretValue,
+  redactDetectedSecrets,
+  type DetectedSecret,
+} from '@nessie/schemas'
+import type { AgentMention, MentionInputHandle } from '../../shared/MentionInput'
 import {
   useSendMessage,
   useUploadAttachment,
@@ -20,6 +26,7 @@ import {
   type ComposerDraft,
 } from './composer-draft'
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
+import type { SecretRecord } from '../../../facades/secrets/hooks'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
@@ -46,7 +53,7 @@ interface UseChannelComposerResult {
   // Files staged for the next send (paperclip + drag-and-drop).
   attachments: ComposerAttachments
   insertEmoji: (emoji: string) => void
-  sendText: (rawText: string, agentMentions?: PersonalAssistantMention[]) => Promise<void>
+  sendText: (rawText: string, agentMentions?: AgentMention[]) => Promise<void>
   sendMessageSubmit: (event?: FormEvent<HTMLFormElement>) => Promise<void>
   sendAsFile: (rawText: string) => Promise<void>
   pendingAgentInvites: PendingAgentInvite[]
@@ -55,6 +62,7 @@ interface UseChannelComposerResult {
   invitePendingAgent: (agentId: string) => Promise<void>
   dismissPendingAgent: (agentId: string) => void
   secretCapture: SecretCapture | null
+  confirmSecretCapture: (secret: SecretRecord) => Promise<void>
   dismissSecretCapture: () => void
 }
 
@@ -64,7 +72,10 @@ const newClientMessageId = (): string =>
     : `${Date.now()}-${Math.random()}`
 
 export type SecretCapture = {
+  agentMentions: AgentMention[]
   detected: DetectedSecret
+  replacementContent: string
+  replacementMode: 'file' | 'message'
   scopeId?: string
   scopeType: 'personal' | 'project'
   value: string
@@ -164,13 +175,14 @@ export const useChannelComposer = ({
     setPendingInviteMessageIds({})
     setInviteErrors({})
     setSendError(null)
+    setSecretCapture(null)
     // A different conversation is a different post: never carry one channel's
     // idempotency key into the next.
     clientMessageIdRef.current = null
   }, [activeChannel?.id])
 
   const sendText = useCallback(
-    async (rawText: string, agentMentions: PersonalAssistantMention[] = []) => {
+    async (rawText: string, agentMentions: AgentMention[] = []) => {
       const text = rawText.trim()
       const attachmentIds = attachments.attachmentIds
       // A post needs text or at least one uploaded file (attachment-only send).
@@ -192,13 +204,18 @@ export const useChannelComposer = ({
         // message-memory path can receive the material. The value stays only
         // in this protected capture state until the vault POST succeeds.
         setSecretCapture({
+          agentMentions,
           detected,
+          replacementContent: redactDetectedSecrets(text),
+          replacementMode: 'message',
           ...(activeChannel.projectId
             ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
             : { scopeType: 'personal' as const }),
-          value: text.slice(detected.start, detected.end),
+          value: extractDetectedSecretValue(text, detected),
         })
-        setMessage('')
+        // Cancel the debounced local write and synchronously remove any draft
+        // written while the credential was still incomplete.
+        clearDraft()
         mentionRef.current?.clear()
         return
       }
@@ -347,11 +364,14 @@ export const useChannelComposer = ({
       const detected = detectSecrets(rawText)[0]
       if (detected) {
         setSecretCapture({
+          agentMentions: [],
           detected,
+          replacementContent: redactDetectedSecrets(rawText),
+          replacementMode: 'file',
           ...(activeChannel.projectId
             ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
             : { scopeType: 'personal' as const }),
-          value: rawText.slice(detected.start, detected.end),
+          value: extractDetectedSecretValue(rawText, detected),
         })
         setOversizePaste(null)
         return
@@ -380,6 +400,29 @@ export const useChannelComposer = ({
     [activeChannel, clearDraft, uploadAttachment, sendMessage, getSendExtras],
   )
 
+  const confirmSecretCapture = useCallback(
+    async (secret: SecretRecord) => {
+      const capture = secretCapture
+      if (!capture) return
+
+      // Drop the only React state holding the raw value before doing any chat
+      // work. The follow-up contains only the scanner-produced replacement and
+      // the non-secret key the person approved.
+      setSecretCapture(null)
+      const replacement = [
+        capture.replacementContent,
+        `[Secret protected and saved as ${secret.name}; the value was replaced.]`,
+      ].filter(Boolean).join('\n\n')
+
+      if (capture.replacementMode === 'file') {
+        await sendAsFile(replacement)
+        return
+      }
+      await sendText(replacement, capture.agentMentions)
+    },
+    [secretCapture, sendAsFile, sendText],
+  )
+
   return {
     message,
     setMessage,
@@ -400,6 +443,7 @@ export const useChannelComposer = ({
     invitePendingAgent,
     dismissPendingAgent,
     secretCapture,
+    confirmSecretCapture,
     dismissSecretCapture: () => setSecretCapture(null),
   }
 }

@@ -10,11 +10,13 @@ import type { AvatarSources } from '../../components/primitives/UserAvatar'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { ChannelAgentInfoDrawer } from '../../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelUserInfoDrawer } from '../../components/features/channels/ChannelUserInfoDrawer'
+import type { MessageHistoryStatus } from '../../components/features/channels/ChannelMessageFeed'
 import type {
   ChannelAgentParticipant,
   MessageUserIdentity,
 } from '../../components/features/channels/channel-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
+import type { OlderContentLoader } from '../../hooks/useStickToBottom'
 
 interface ChannelInfoDrawersProps {
   activeChannel: ChannelRecord | null
@@ -27,6 +29,8 @@ interface ChannelInfoDrawersProps {
   selectedMessageAgent: ChannelAgentParticipant | null
   selectedMessageUser: MessageUserIdentity | null
   threadMessages: ThreadMessageRecord[]
+  threadMessageHistory: MessageHistoryStatus
+  threadMessageLoader: OlderContentLoader
   token: string | null
   onCloseAgent: () => void
   onCloseUser: () => void
@@ -46,6 +50,8 @@ export const ChannelInfoDrawers = ({
   selectedMessageAgent,
   selectedMessageUser,
   threadMessages,
+  threadMessageHistory,
+  threadMessageLoader,
   token,
   onCloseAgent,
   onCloseUser,
@@ -69,6 +75,8 @@ export const ChannelInfoDrawers = ({
         pendingMessages={pendingMessages}
         renderContent={renderContent}
         threadMessages={threadMessages}
+        threadMessageHistory={threadMessageHistory}
+        threadMessageLoader={threadMessageLoader}
         token={token}
         onClose={onCloseAgent}
         onOpenActivity={onOpenActivity}

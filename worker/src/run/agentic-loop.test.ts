@@ -215,6 +215,34 @@ test('natural completion carries no budget stop', async () => {
   assert.equal(result.finalText, 'final answer')
 })
 
+test('the loop never retains or emits bypassed secret material', async () => {
+  const token = ['sk', 'proj', 'abcdefghijklmnopqrstuv'].join('-')
+  let providerMessages: ProviderMessage[] = []
+  let emitted = ''
+  const callbacks = {
+    ...noopCallbacks(),
+    onTextDelta: async (delta: string) => {
+      emitted += delta
+    },
+  }
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks,
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: `use ${token}`, role: 'user' }],
+    runInference: async (messages) => {
+      providerMessages = messages
+      return finalAnswerInference(`I found ${token}`)
+    },
+    tools: [],
+  })
+  const serialized = JSON.stringify(providerMessages)
+  assert.doesNotMatch(serialized, /abcdefghijklmnopqrstuv/)
+  assert.doesNotMatch(result.finalText, /abcdefghijklmnopqrstuv/)
+  assert.doesNotMatch(emitted, /abcdefghijklmnopqrstuv/)
+  assert.match(result.finalText, new RegExp(`sk-proj-${'•'.repeat(12)}`))
+})
+
 test('oversized tool results are truncated before entering the loop context', async () => {
   let capturedMessages: ProviderMessage[] = []
   let turn = 0

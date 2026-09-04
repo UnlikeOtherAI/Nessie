@@ -1,6 +1,7 @@
 import type { AgentRecord, PersonalAssistantPresenceParticipant } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { getAgentScope } from '../../features/agents/agent-scope'
+import { AgentVisibilityPill } from '../../features/agents/AgentVisibilityPill'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../AgentAvatar'
 import { CloneIcon, CloseIcon, ViewIcon } from './icons'
@@ -59,6 +60,7 @@ export const CurrentAgentRow = ({
         </div>
       </div>
       {isGlobalAgent(agent) ? <GlobalAgentPill /> : null}
+      {isGlobalAgent(agent) ? null : <AgentVisibilityPill visibility={agent.visibility} />}
       <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
         agent
       </Pill>
@@ -184,6 +186,7 @@ export const AvailableAgentRow = ({
         </div>
       </div>
       {isGlobalAgent(agent) ? <GlobalAgentPill /> : null}
+      {isGlobalAgent(agent) ? null : <AgentVisibilityPill visibility={agent.visibility} />}
       <div className="flex items-center gap-1">
         {isGlobalAgent(agent) ? null : (
           <button

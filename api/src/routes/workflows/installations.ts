@@ -1,3 +1,4 @@
+import { WorkflowRunOverlapError } from '@nessie/team-admin'
 import type { FastifyInstance } from 'fastify'
 
 import {
@@ -270,7 +271,7 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       workflowRun = await createWorkflowRun(prisma, actorContext, installationId, body)
     } catch (error) {
       // W26: an overlap-policy skip is a conflict, not a not-found.
-      if (error instanceof WorkflowActionError) {
+      if (error instanceof WorkflowActionError || error instanceof WorkflowRunOverlapError) {
         sendApiError(reply, 409, error.code, error.message)
         return reply
       }

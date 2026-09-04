@@ -30,7 +30,6 @@ import {
   knowledgeKeys,
   projectKeys,
   agentKeys,
-  threadKeys,
 } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { fetchAgentStatus } from '../facades/agents/queries'
@@ -41,7 +40,7 @@ import {
   fetchKnowledgeSpace,
   fetchKnowledgeSpacePages,
 } from '../facades/knowledge/hooks'
-import { fetchThreadMessages } from '../facades/threads/queries'
+import { threadMessagesInfiniteQueryOptions } from '../facades/threads/queries'
 import { normalizeNavigationPathname } from './surfaces'
 
 /**
@@ -91,8 +90,15 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
       const channels = context.queryClient.getQueryData<ChannelRecord[]>(channelKeys.all)
       const threadId = channels?.find((channel) => channel.id === channelId)?.defaultThreadId
       if (!threadId) return
-      prefetch(context, threadKeys.messages(threadId), () =>
-        fetchThreadMessages(context.apiClient, threadId))
+      // This destination is an infinite query, so prewarm its exact options;
+      // `prefetchQuery` would cache one envelope where the screen expects
+      // `InfiniteData` and make the landed feed unreadable.
+      void context.queryClient
+        .prefetchInfiniteQuery(threadMessagesInfiniteQueryOptions(
+          context.apiClient,
+          threadId,
+        ))
+        .catch(() => undefined)
     },
   },
   {

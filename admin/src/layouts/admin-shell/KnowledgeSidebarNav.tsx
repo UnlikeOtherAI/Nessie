@@ -11,7 +11,10 @@ import { useProductSurfaces } from '../../facades/integrations/useProductSurface
 import { useProjects } from '../../facades/projects/hooks'
 import { useScrollMemory } from '../../hooks/useScrollMemory'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
-import { shouldHighlightKnowledgeSidebarSelection } from './phone-navigation'
+import {
+  resolveKnowledgeSidebarSelectionPath,
+  shouldHighlightKnowledgeSidebarSelection,
+} from './phone-navigation'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 import { sidebarAriaCurrent } from './SidebarRow'
 
@@ -64,16 +67,22 @@ export const KnowledgeSidebarNav = () => {
 
   const openSpace = (spaceId: string) => {
     selectSpace(spaceId)
-    if (phoneLayout) {
-      void navigate(`/knowledge-base/spaces/${encodeURIComponent(spaceId)}`)
-    }
+    const pathname = resolveKnowledgeSidebarSelectionPath(
+      location.pathname,
+      phoneLayout,
+      { id: spaceId, type: 'space' },
+    )
+    if (pathname) void navigate(pathname)
   }
 
   const openProductView = (view: string) => {
     selectProductView(view)
-    if (phoneLayout) {
-      void navigate(`/knowledge-base/views/${encodeURIComponent(view)}`)
-    }
+    const pathname = resolveKnowledgeSidebarSelectionPath(
+      location.pathname,
+      phoneLayout,
+      { id: view, type: 'view' },
+    )
+    if (pathname) void navigate(pathname)
   }
 
   const openPage = (spaceId: string, path: string[]) => {
@@ -266,9 +275,12 @@ export const KnowledgeSidebarNav = () => {
         onClose={() => setCreateOpen(false)}
         onCreate={async (name, memberAgentIds, visibility) => {
           const created = await createSpace(name, memberAgentIds, visibility)
-          if (phoneLayout) {
-            void navigate(`/knowledge-base/spaces/${encodeURIComponent(created.id)}`)
-          }
+          const pathname = resolveKnowledgeSidebarSelectionPath(
+            location.pathname,
+            phoneLayout,
+            { id: created.id, type: 'space' },
+          )
+          if (pathname) void navigate(pathname)
         }}
         open={createOpen}
         pending={createSpacePending}

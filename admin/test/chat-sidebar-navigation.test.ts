@@ -22,6 +22,12 @@ test('chat navigation does not duplicate the Agents activity section', () => {
   assert.doesNotMatch(source, /sidebar-nav-agents/)
 })
 
+test('the organisation-wide channel section names its shared scope', () => {
+  const source = readSource('../src/layouts/admin-shell/SidebarChannelsSection.tsx')
+
+  assert.match(source, /title="Shared channels"/)
+})
+
 test('Threads aligns with section chevrons and remains a bold top-level destination', () => {
   const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
   const styles = readSource('../src/styles.css')

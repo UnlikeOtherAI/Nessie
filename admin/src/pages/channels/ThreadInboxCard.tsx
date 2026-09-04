@@ -71,8 +71,12 @@ export const ThreadInboxCard = ({
     [repliesQuery.data, rootQuery.data],
   )
   const inboxMessages = useMemo(
-    () => splitThreadInboxMessages(rootQuery.data?.message, repliesQuery.data ?? []),
-    [repliesQuery.data, rootQuery.data],
+    () => splitThreadInboxMessages(
+      rootQuery.data?.message,
+      repliesQuery.data ?? [],
+      activity.replyCount,
+    ),
+    [activity.replyCount, repliesQuery.data, rootQuery.data],
   )
   const getSendExtras = useCallback(
     () => ({ alsoSendToChannel, rootMessageId: activity.rootMessageId }),
@@ -249,13 +253,16 @@ export const ThreadInboxCard = ({
             placeholder="Reply to thread"
             onChangeMessage={composer.setMessage}
             onDismissPendingAgent={composer.dismissPendingAgent}
+            onDismissSecretCapture={composer.dismissSecretCapture}
             onInsertAtSign={() => composer.mentionRef.current?.insertAtSign()}
             onInsertEmoji={composer.insertEmoji}
             onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}
             onInvitePendingAgent={(agentId) => void composer.invitePendingAgent(agentId)}
+            onConfirmSecretCapture={composer.confirmSecretCapture}
             onOversizePaste={composer.setOversizePaste}
             onSubmitForm={(event) => void composer.sendMessageSubmit(event)}
             onSubmitText={(text, agentMentions) => void composer.sendText(text, agentMentions)}
+            secretCapture={composer.secretCapture}
           />
         </>
       ) : null}

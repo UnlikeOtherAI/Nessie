@@ -7,6 +7,7 @@ import {
 import type { AgentRecord, ProjectRecord, UserRecord } from '../../../lib/api-client'
 import { useCreateExecutor } from '../../../facades/executors/hooks'
 import { FormError } from '../../shared/FormActions'
+import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
 
 type ExecutorCreatePanelProps = {
   agents: AgentRecord[]
@@ -157,7 +158,8 @@ export const ExecutorCreatePanel = ({
                   onChange={(event) => setAgentSelected(agent.id, event.target.checked)}
                   type="checkbox"
                 />
-                <span>{agent.name}</span>
+                <span className="min-w-0 truncate">{agent.name}</span>
+                <AgentVisibilityPill visibility={agent.visibility} />
               </label>
             ))}
           </div>

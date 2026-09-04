@@ -96,7 +96,11 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
         <FormField label="Agents">
           <MemberChecklist
             emptyLabel="No agents available yet."
-            members={(agentsQuery.data ?? []).map((agent) => ({ id: agent.id, label: agent.name }))}
+            members={(agentsQuery.data ?? []).map((agent) => ({
+              agentVisibility: agent.visibility,
+              id: agent.id,
+              label: agent.name,
+            }))}
             onChange={setMemberAgentIds}
             selectedIds={memberAgentIds}
           />

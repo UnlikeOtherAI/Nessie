@@ -4,8 +4,8 @@
 **Channel:** `dev-chatter` (only Code Buddy bound)
 **Covers:** Two subtle behaviours regressed and fixed on 2026-04-10:
 
-1. `@mention` an agent that is NOT bound to the current channel —
-   resolver in `messages.ts` must find it by name.
+1. `@mention` an agent that is NOT bound to the current channel — the
+   structured identity must produce an invitation for that exact agent.
 2. `@mention` multiple agents in a single message — all of them must
    reply, not just the first.
 
@@ -24,8 +24,10 @@ For `"hi @Code Buddy what think"` it captured
 names can contain spaces, so the regex cannot split names out of free
 text correctly without also matching the name list.
 
-**Fix** — iterate candidate agents, use the same per-name escape that
-`orchestrator.ts` uses, and test each against the content:
+**Historical fix** — legacy plain-text API requests iterate candidate agents,
+use the same per-name escape that `orchestrator.ts` uses, and test each against
+the content. Composer messages now include exact agent ids, so this fallback is
+not used for interactive mentions:
 
 ```ts
 for (const agent of candidates) {
@@ -58,11 +60,12 @@ it from `dev-chatter`:
 curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"content":"@Sprint Scribe please record: the Stripe webhook retry fix shipped to production today at 14:30 UTC."}'
+  -d '{"content":"@Sprint Scribe please record: the Stripe webhook retry fix shipped to production today at 14:30 UTC.","agentMentions":[{"type":"agent","agentId":"'"$SPRINT_AGENT_ID"'"}]}'
 ```
 
-Expected: a `completed` run for Sprint Scribe tied to `$DEV_CH` (not
-`$SPRINT_CH`), and a reply message in `$DEV_TH`.
+Expected: `pendingAgentInvites` contains exactly Sprint Scribe and no run starts
+until the person accepts **Invite & reply**. Acceptance binds the agent, replays
+the exact structured mention, and produces a completed run tied to `$DEV_CH`.
 
 ```bash
 psql -h localhost -U dictator -d nessie -c "
@@ -79,7 +82,7 @@ psql -h localhost -U dictator -d nessie -c "
 curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"content":"Multi-agent test — @Code Buddy please sanity check the idempotency approach one more time, and @Sprint Scribe please record this as the shipping milestone for the Stripe fix."}'
+  -d '{"content":"Multi-agent test — @Code Buddy please sanity check the idempotency approach one more time, and @Sprint Scribe please record this as the shipping milestone for the Stripe fix.","agentMentions":[{"type":"agent","agentId":"'"$CODE_AGENT_ID"'"},{"type":"agent","agentId":"'"$SPRINT_AGENT_ID"'"}]}'
 ```
 
 Expected: TWO `completed` runs in the same window, one per agent, and
@@ -116,8 +119,8 @@ Both replies arrived in `$DEV_TH` from a single POST.
 
 ## What this validates
 
-- `messages.ts` and `orchestrator.ts` share the same
-  `@name` parsing rule — mentions resolve identically on both sides.
-- Cross-channel mention works end-to-end (the agent does not need a
-  `channel_bindings` row to be invoked).
+- `message-create.ts` and `orchestrator.ts` preserve the same id-keyed mention
+  identities end-to-end; duplicate names cannot widen the target set.
+- A cross-channel mention requires an explicit invitation before the agent is
+  invoked; accepting it replays only that selected identity.
 - The orchestrator fan-out supports `N` agents per user message.
