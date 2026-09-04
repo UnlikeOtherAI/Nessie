@@ -115,7 +115,7 @@ export const resolveMailboxForToolCall = async (
     throw new MailboxAccessError(
       'NO_MAILBOX',
       'I have not been given access to any connected mailbox. An owner or admin '
-      + 'grants that from the mailbox connector on the Integrations page.',
+      + 'grants that from Connected accounts in Settings.',
     )
   }
   if (input.connectionId) {

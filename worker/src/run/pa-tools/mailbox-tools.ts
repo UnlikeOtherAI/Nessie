@@ -106,7 +106,7 @@ const runAgainstMailbox = async <T>(
     if (failure === 'credential_rejected') {
       await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id)
       throw new Error(
-        `${detail} The mailbox needs reconnecting from the Integrations page before I can use it.`,
+        `${detail} Reconnect the mailbox from Connected accounts in Settings before I can use it.`,
       )
     }
     // Protocol error text is controlled by the remote mail server. Only the
