@@ -8,7 +8,10 @@ Give a person a real mail-shaped review surface for accounts already connected
 to Nessie. It is intentionally a task surface, not an attempt to replace the
 provider's mail client: a person can choose an account, scan threaded mail,
 search or narrow it, open the complete conversation, and compose or reply to a
-draft an agent prepared.
+draft an agent prepared. An agent can also bring that same surface into the
+conversation: open a review or compose popup for an entitled viewer, leave a
+reopenable doorway in chat, and post a concise email preview or editable compose
+form through the universal agent-card system.
 
 The surface covers the two connected-account lanes that already have mail
 capabilities:
@@ -35,11 +38,14 @@ Doorways:
 2. Each personal or shared SMTP/IMAP connection offers **Open mail** to a caller
    entitled to read it.
 3. An agent-produced Gmail draft card offers **Open in Mail**. Existing generic
-   agent cards can link to a returned `reviewUrl`, so an agent can hand a person
-   a narrowed result set without a new email-specific card renderer.
+   agent cards can present a returned mail doorway, so an agent can hand a
+   person a narrowed result set without a new email-specific card renderer.
 4. Inside Mail, a thread row opens the reading surface, **New email** opens the
    compose flow, and **Reply** opens the same compose flow with structural reply
    context.
+5. `mail_present` can open the same review or compose surface over the active
+   conversation and leaves an **Open mail** chip in the message that announced
+   it. Closing the popup is final for that announcement; it never reopens itself.
 
 Routes are declared in the navigation registry:
 
@@ -109,6 +115,57 @@ loses work and one account's draft cannot appear in another.
 - Reply context supplies the real provider thread id or `In-Reply-To` identity;
   it never infers a reply from subject text.
 
+## Agent-driven presentation in chat
+
+Presentation is an agent capability, not a second mail implementation.
+`mail_present` is a safe UI tool whose closed modes are `account`, `thread`, and
+`compose`. It accepts an explicit `source` and `accountId`, plus the provider
+thread or draft reference required by the mode. It performs the same account
+entitlement lookup as `/api/mail`, records the personal-user or shared-team
+scope in the run's `ConsumedSourceSink`, and only then publishes its result. It
+never accepts recipients or a body and it cannot send mail.
+
+The tool writes an ordinary agent-authored message with a small
+`mailSurfaceDoorway` metadata pointer: source, account id, mode, and an optional
+thread/draft id. Search text, snippets, recipients, subject, and body never enter
+that metadata. The realtime creation of that message may offer the popup once
+in the active channel or reply panel. Historical messages render only the
+reopenable chip; changing threads, reloading, closing, or minimizing never
+causes an old request to seize focus. The popup uses `useOverlay` and the
+navigation Back contract, becomes a full-screen Flow on a phone, and reuses the
+same `MailboxWorkspace`, `MailConversation`, and `MailCompose` components as
+`/mail`.
+
+Opening is presentation, never authority. The client live-fetches through the
+normal no-store mail routes, and every open rechecks the signed-in viewer's
+current entitlement. The message itself inherits the run's disclosure basis;
+an ineligible viewer gets neither its preview nor a working doorway. An agent
+cannot target another person's browser or create a global popup: only clients
+currently viewing the conversation that received the authorized message may
+auto-open it.
+
+The existing universal `AgentCard` supplies embedded chat content:
+
+- a preview uses `fields` for sender, subject, date, and account plus a bounded,
+  model-authored `text` summary; it does not persist or reproduce the complete
+  inbound provider body;
+- a compose card uses existing `input` blocks for To, Cc, Bcc, Subject, and
+  Body and ordinary submit/dismiss actions; the textarea limit is raised only
+  as far as a useful email draft requires;
+- a card action creates the usual real user response and wakes the card's
+  agent. The agent then updates a Gmail provider draft or prepares the explicit
+  SMTP send. A button labelled **Send** still enters the existing Gmail
+  grant/approval decision or the mandatory `mailbox_send` approval gate; a card
+  press is not a send-authorization shortcut.
+
+These cards are deliberately durable conversational answers, and therefore
+carry the same disclosure basis as any agent reply derived from connected mail.
+That is distinct from syncing provider mail into Nessie: no bulk body, mailbox
+index, or provider draft mirror is created. Gmail's provider draft stays the
+source of truth. SMTP/IMAP compose-card text is an agent-authored draft retained
+as part of the chat artifact; the standalone compose Flow keeps human-only
+unsent text in `useDraft`.
+
 ## One contract from provider to pixel
 
 Add domain-owned contracts in `@nessie/schemas`:
@@ -145,7 +202,14 @@ Do not create a fourth ambiguous email tool family. The existing families stay
 the public agent capability:
 
 - `gmail_search`, `gmail_thread_read`, `gmail_draft_create/update/send`;
-- `mailbox_search`, `mailbox_read`, `mailbox_send`.
+- `mailbox_search`, `mailbox_read`, `mailbox_compose`, `mailbox_send`.
+
+`mail_present` is the one provider-neutral presentation tool. It does not read,
+draft, mutate, or send provider data, so it does not collapse the deliberately
+separate Gmail and SMTP/IMAP resource families. Its output includes the created
+message id and canonical `reviewUrl`; provider search/read/draft tools also
+return presentation references that the agent may pass to it without copying
+mail content through arguments.
 
 The implementation moves the shared provider operations used by the new REST
 surface behind the same `@nessie/team-admin` seams the tools call. The agent
@@ -153,10 +217,11 @@ tools keep their stronger run-specific obligations: effective-user resolution,
 disclosure-sink stamping, per-connection agent access, and structural approval
 for connected-mailbox sends. A human route never weakens those gates.
 
-Search/list tool results return a `reviewUrl` scoped to the account and query;
-Gmail draft cards return an **Open in Mail** doorway. `card_post` remains the
-single renderer for an agent-curated email overview — a dedicated `email_card`
-kind is forbidden.
+Search/list tool results return a `reviewUrl` scoped to the account and provider
+reference; search text is not encoded into a durable URL or message. Gmail
+draft cards return an **Open in Mail** doorway. `card_post` remains the single
+renderer for an agent-curated email preview or compose form — a dedicated
+`email_card` kind is forbidden.
 
 ## Reuse and component shape
 
@@ -190,6 +255,10 @@ colour is expressed through existing tokens in `styles.css`.
 - Human sends audit account id/source and outcome only — never recipients,
   subject, body, username, or credential material.
 - Agent read paths continue stamping the disclosure sink before provider I/O.
+- `mail_present` records account scope even when it presents a reference already
+  known to the model, and every popup open repeats viewer authorization.
+- Auto-open delivery is conversation-local, offered once, and carries no mail
+  body or compose data on the realtime event.
 - Agent sends continue through the existing approval gate; no standing send
   grant is introduced for shared SMTP/IMAP mailboxes.
 
@@ -199,11 +268,13 @@ colour is expressed through existing tokens in `styles.css`.
    adapters; IMAP flags, structural headers, paging/threading, and bounded body
    reads; shared account entitlement and provider dispatch; focused unit tests.
 2. **API and agent parity.** Thin routes, no-store responses, human compose/send,
-   existing tool refactor, review URLs and Gmail draft doorway; route/service
-   authorization and redaction tests.
+   existing tool refactor, `mailbox_compose`, `mail_present`, review URLs,
+   disclosure-stamped doorway messages, and Gmail draft doorway; route/service,
+   authorization, presentation, and redaction tests.
 3. **Admin surface.** Facade, routes and navigation registry, settings doorways,
    reusable mailbox workspace, responsive thread/read views, compose/reply with
-   drafts, query and component tests.
+   drafts, the conversation-owned mail popup/chip, universal preview/compose
+   card fixtures, query and component tests.
 4. **Integration and documentation.** Update the connected-mailbox guide,
    functionality table, navigation route inventory and this plan's status.
 
@@ -219,11 +290,14 @@ colour is expressed through existing tokens in `styles.css`.
   counted-literal inputs.
 - Admin tests cover route totality, deep links, Back behavior, selected thread,
   account/filter/search URL state, compose draft isolation, Gmail draft open,
-  reply context, validation, send/undo, and no duplicate mailbox component.
+  reply context, validation, send/undo, auto-open once, no reopen after dismiss,
+  unauthorized doorway refusal, universal preview/compose cards, and no
+  duplicate mailbox component.
 - Playwright loads `http://localhost:5455` headlessly at phone, tablet, and
   desktop sizes, captures account list, thread list, conversation, and compose,
-  and exercises open → reply → draft restore → send/undo against deterministic
-  provider fixtures.
+  and exercises settings doorway → open → reply → draft restore → send/undo plus
+  agent preview card → mail popup → dismiss/reopen and compose-card → approval
+  against deterministic provider fixtures.
 
 ## Deliberate non-goals for this slice
 
