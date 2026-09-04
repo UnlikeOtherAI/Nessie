@@ -126,6 +126,11 @@ Plan and as-built deltas:
   mail, connected-mail, Gmail, contact, and
   connected-account lifecycle tools; a provider failure becomes a stable remedy
   rather than raw remote text.
+  A judged Gmail send is the narrow exception that proves the boundary: the
+  worker reads the live draft and originating user request into one transient
+  utility-model prompt, verifies that snapshot's fingerprint before minting a
+  fact, and never writes that projection to a transcript, thought, event,
+  approval, audit row, card, or realtime payload.
 - **Approval continuations execute a frozen action, never a model recreation.**
   `ApprovalRequest.resumeState` retains the strict, server-owned canonical
   arguments. The continuation queue carries only the approval id and its

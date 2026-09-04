@@ -5,6 +5,7 @@ import { buildBrowserActApprovalHook } from '../browser-cloud/act-approval-gate.
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildEmailSendApprovalHook } from './email-send-gate.js'
 import { buildMailboxSendApprovalHook } from './mailbox-send-gate.js'
+import { loadGmailJudgedProjection } from './gmail-judged-projection.js'
 import { composeStructuralGates } from './structural-gates.js'
 import { authorizeToolExecution } from './tool-authorization.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -73,6 +74,17 @@ export const createMainToolAuthorizer = (input: {
         input.actorContext.actionContext.effectiveUserId ?? null,
       ),
     ]),
+    loadGmailJudgedProjection: ({
+      connectionId, draftActionId, expectedFingerprint, requestingUserId,
+    }) => loadGmailJudgedProjection({
+      connectionId,
+      context: input.context,
+      draftActionId,
+      expectedFingerprint,
+      messageId: input.messageId,
+      prisma: input.prisma,
+      requestingUserId,
+    }),
     toolPolicy: input.toolPolicy,
     runUtility: async (prompt: string) => {
       const result = await input.inference.runUtility([{ content: prompt, role: 'user' }], [])

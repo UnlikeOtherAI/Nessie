@@ -1,6 +1,8 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { JudgedGmailDraftAuthorization } from '@nessie/team-admin'
 
+import type { GmailJudgedProjection } from './gmail-judged-projection.js'
+
 import type { AutoReviewResult, ReviewableToolSurface } from './auto-review.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import type { AgenticToolResult } from '../tools.js'
@@ -63,6 +65,13 @@ export type ToolAuthorizationContext = {
   resumeState?: { actorContext: AuthorizedActionContext; interactive: boolean; messageId: string }
   /** A structurally gated family whose outcome is authoritative. */
   structuralGate?: StructuralGate
+  /** Exact Gmail correspondence for one silent, non-durable boundary decision. */
+  loadGmailJudgedProjection?: (input: {
+    connectionId: string
+    draftActionId: string
+    expectedFingerprint: string
+    requestingUserId: string
+  }) => Promise<GmailJudgedProjection | null>
   toolPolicy: Record<string, boolean> | null
 }
 

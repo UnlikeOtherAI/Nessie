@@ -96,6 +96,7 @@ const fakePrisma = (
   judgedGrant = false,
 ) => {
   const approvals: Array<Record<string, unknown>> = []
+  const messages: Array<Record<string, unknown>> = []
   const prisma = {
     approvalRequest: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -125,7 +126,10 @@ const fakePrisma = (
         connectionId: 'connection-1', contentFingerprint: state.contentFingerprint,
       }),
     },
-    message: { create: async () => ({}) },
+    message: { create: async ({ data }: { data: Record<string, unknown> }) => {
+      messages.push(data)
+      return {}
+    } },
     policyRule: { findMany: async () => [] },
     run: { findUnique: async () => ({ continuationOfRunId: ids.parentRun }) },
     sendAuthorizationGrant: {
@@ -139,7 +143,7 @@ const fakePrisma = (
           : null,
     },
   } as unknown as PrismaClient
-  return { approvals, prisma }
+  return { approvals, messages, prisma }
 }
 
 const approve = (approval: Record<string, unknown>) => {
@@ -317,6 +321,7 @@ test('a model cannot supply an approval fingerprint', async () => {
 
 test('a judged grant that proceeds mints an exact server-only Gmail dispatch fact', async () => {
   const fake = fakePrisma({ contentFingerprint: fingerprint('j') }, true, false, true)
+  let judgePrompt = ''
   const allowed = await authorizeToolExecution(
     fake.prisma,
     actor(),
@@ -326,7 +331,15 @@ test('a judged grant that proceeds mints an exact server-only Gmail dispatch fac
     'call-judged-proceed',
     {
       ...authorization(false),
-      runUtility: async () => '{"verdict":"proceed","reason":"Routine reply."}',
+      loadGmailJudgedProjection: async () => ({
+        contentFingerprint: fingerprint('j'),
+        proposal: '{"to":["recipient@example.test"],"subject":"Routine update","body":"Exact body"}',
+        request: 'Please send the routine update.',
+      }),
+      runUtility: async (prompt) => {
+        judgePrompt = prompt
+        return '{"verdict":"proceed","reason":"Routine reply."}'
+      },
       structuralGate: undefined,
     },
     hooks([]),
@@ -347,6 +360,33 @@ test('a judged grant that proceeds mints an exact server-only Gmail dispatch fac
     fact.boundaryHash,
     'Send routine replies.',
   )
+  assert.match(judgePrompt, /recipient@example\.test/)
+  assert.match(judgePrompt, /Routine update/)
+  assert.match(judgePrompt, /Exact body/)
+  assert.match(judgePrompt, /Please send the routine update/)
+  const durable = JSON.stringify({ approvals: fake.approvals, messages: fake.messages })
+  assert.doesNotMatch(durable, /recipient@example\.test|Routine update|Exact body|Please send/)
+})
+
+test('a judged Gmail send asks when its private live projection is unavailable', async () => {
+  const fake = fakePrisma({ contentFingerprint: fingerprint('q') }, true, false, true)
+  const asked = await authorizeToolExecution(
+    fake.prisma,
+    actor(),
+    runContext(),
+    GMAIL_DRAFT_SEND_TOOL_ID,
+    toolArgs,
+    'call-judged-unavailable-projection',
+    {
+      ...authorization(true),
+      runUtility: async () => '{"verdict":"proceed","reason":"Must not run."}',
+      structuralGate: undefined,
+    },
+    hooks([]),
+  )
+  assert.equal(asked.decision, 'suspend')
+  assert.equal(fake.approvals.length, 1)
+  assert.equal(JSON.stringify(fake.approvals).includes('Must not run.'), false)
 })
 
 test('a judged grant that asks suspends rather than minting a send fact', async () => {
@@ -360,6 +400,9 @@ test('a judged grant that asks suspends rather than minting a send fact', async 
     'call-judged-ask',
     {
       ...authorization(true),
+      loadGmailJudgedProjection: async () => ({
+        contentFingerprint: fingerprint('k'), proposal: '{"subject":"Needs review"}', request: 'Send it.',
+      }),
       runUtility: async () => '{"verdict":"ask","reason":"This needs confirmation."}',
       structuralGate: undefined,
     },
