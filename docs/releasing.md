@@ -23,8 +23,9 @@ Node executor runtime must match the processor architecture.
 ## Required GitHub configuration
 
 The macOS and Android jobs run in the `direct-download-release` environment.
-Create it before publishing and scope its secrets to maintainers who can cut a
-release. It needs:
+It must require a release-owner approval and allow deployment from the `v*`
+tag pattern only. Scope its secrets to maintainers who can cut a release. It
+needs:
 
 | Name | Type | Purpose |
 | --- | --- | --- |
@@ -40,6 +41,10 @@ The Windows reusable workflow reads its signing configuration from repository
 secrets: `WINDOWS_SIGN_COMMAND`, `WINDOWS_SIGNER_THUMBPRINT`,
 `WINDOWS_SIGNER_SUBJECT`, plus `WINDOWS_SIGN_TOOL_INSTALL` and the Azure
 credentials when the configured signing command uses Azure Artifact Signing.
+Those three mandatory values must remain repository secrets: reusable workflows
+do not inherit the caller environment's secrets. `WINDOWS_SIGN_COMMAND` must
+use the `%1` placeholder for the artifact path and the thumbprint must identify
+the intended 40-character SHA-1 certificate thumbprint.
 The release caller marks signing mandatory, so missing Windows configuration
 fails the build instead of publishing the workflow's normal unsigned
 development artifact.
@@ -66,7 +71,9 @@ and Android `versionCode` must increase for every installable update.
 
 1. Merge the release commit into `main` and ensure its normal CI is green.
 2. Confirm the `direct-download-release` secrets above and the Windows signing
-   secrets are configured.
+   secrets are configured. The protected **Direct-distribution credential gate**
+   and repository-scoped **Windows-signing credential gate** list every missing
+   name before any platform build begins.
 3. Create and push the annotated tag, for example `git tag -a v0.0.1 -m
    "Nessie v0.0.1"` followed by `git push origin v0.0.1`.
 4. Approve the protected environment if configured. The release becomes public

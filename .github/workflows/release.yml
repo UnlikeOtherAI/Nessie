@@ -59,9 +59,101 @@ jobs:
       - name: Test the mobile release shell
         run: pnpm exec turbo run test --filter=@nessie/mobile
 
+  direct-distribution-credentials:
+    name: Direct-distribution credential gate
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: direct-download-release
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      MACOS_NOTARY_API_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_P8_BASE64 }}
+      MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}
+      MACOS_NOTARY_API_KEY_ID: ${{ vars.MACOS_NOTARY_API_KEY_ID }}
+      MACOS_NOTARY_API_ISSUER_ID: ${{ vars.MACOS_NOTARY_API_ISSUER_ID }}
+    steps:
+      - name: Require direct-distribution credentials
+        run: |
+          set -euo pipefail
+          required=(
+            EXPO_TOKEN
+            MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64
+            MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
+            MACOS_NOTARY_API_KEY_P8_BASE64
+            MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY
+            MACOS_NOTARY_API_KEY_ID
+            MACOS_NOTARY_API_ISSUER_ID
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing release configuration:' >&2
+            printf ' %s' "${missing[@]}" >&2
+            printf '\n' >&2
+            exit 1
+          fi
+          case "$MACOS_DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY" in
+            'Developer ID Application: '*) ;;
+            *) echo 'The macOS identity must be a Developer ID Application certificate.' >&2; exit 1 ;;
+          esac
+          certificate="$RUNNER_TEMP/nessie-developer-id.p12"
+          notary_key="$RUNNER_TEMP/nessie-notary-key.p8"
+          printf '%s' "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" | base64 --decode >"$certificate"
+          printf '%s' "$MACOS_NOTARY_API_KEY_P8_BASE64" | base64 --decode >"$notary_key"
+          openssl pkcs12 -in "$certificate" \
+            -passin "pass:$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -nokeys -noout
+          openssl pkey -in "$notary_key" -noout
+
+  windows-signing-credentials:
+    name: Windows-signing credential gate
+    needs: preflight
+    runs-on: ubuntu-latest
+    # These stay repository-level because the reusable Windows workflow cannot
+    # receive caller environment secrets.
+    env:
+      WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+      WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
+      WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNER_THUMBPRINT }}
+    steps:
+      - name: Require Windows publisher configuration
+        run: |
+          set -euo pipefail
+          required=(
+            WINDOWS_SIGN_COMMAND
+            WINDOWS_SIGNER_SUBJECT
+            WINDOWS_SIGNER_THUMBPRINT
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing Windows signing configuration:' >&2
+            printf ' %s' "${missing[@]}" >&2
+            printf '\n' >&2
+            exit 1
+          fi
+          thumbprint="$(printf '%s' "$WINDOWS_SIGNER_THUMBPRINT" | tr -d '[:space:]')"
+          if ! [[ "$thumbprint" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+            echo 'WINDOWS_SIGNER_THUMBPRINT must contain exactly 40 hexadecimal characters.' >&2
+            exit 1
+          fi
+          if [[ "$WINDOWS_SIGN_COMMAND" != *'%1'* ]]; then
+            echo 'WINDOWS_SIGN_COMMAND must contain the %1 artifact placeholder.' >&2
+            exit 1
+          fi
+
   macos:
     name: macOS ${{ matrix.name }}
-    needs: preflight
+    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
     runs-on: ${{ matrix.runner }}
     environment: direct-download-release
     strategy:
@@ -169,7 +261,7 @@ jobs:
 
   windows:
     name: Windows
-    needs: preflight
+    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
     uses: ./.github/workflows/desktop-windows.yml
     with:
       source_ref: ${{ github.ref }}
@@ -179,7 +271,7 @@ jobs:
 
   linux:
     name: Linux
-    needs: preflight
+    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the tagged source
@@ -233,7 +325,7 @@ jobs:
 
   android:
     name: Android
-    needs: preflight
+    needs: [preflight, direct-distribution-credentials, windows-signing-credentials]
     runs-on: ubuntu-latest
     environment: direct-download-release
     env:
