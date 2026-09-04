@@ -23,6 +23,7 @@ import {
   reserveUoaAutomaticMembershipControlRequest,
   verifyUoaAutomaticMembershipControlSignature,
 } from '../services/uoa-automatic-membership-control-auth.js'
+import { createProductionUoaAutomaticMembershipAdapter } from '../services/uoa-automatic-membership-production.js'
 import {
   hasExactUoaTeamBindings,
   isUoaControlActionAllowed,
@@ -282,6 +283,30 @@ export const registerUoaAutomaticMembershipControlRoutes = (app: FastifyInstance
       teamId = team.id
     } else if (body.data.external_team_id) {
       return sendApiError(reply, 400, 'UNEXPECTED_UOA_TEAM', 'Organisation-scoped control cannot include a UOA team.')
+    }
+
+    // A valid bridge HMAC authenticates the UOA service, not the human actor.
+    // Recheck the actor at UOA immediately before every read or mutation so a
+    // stale UOA Admin page can never become a tenant-authority bypass.
+    const adapter = createProductionUoaAutomaticMembershipAdapter()
+    if (!adapter) {
+      return sendApiError(reply, 503, 'AUTOMATIC_MEMBERSHIP_NOT_CONFIGURED', 'Automatic membership is not configured on this deployment.')
+    }
+    let authorized: boolean
+    try {
+      authorized = await adapter.assertRuleAdministrator({
+        externalOrgId: organization.externalOrgId,
+        // An organisation operation passes no teams and therefore requires an
+        // active UOA organisation owner/admin. Team operations pass exactly the
+        // UOA team selected in the signed request.
+        externalTeamIds: body.data.scope === 'team' ? [body.data.external_team_id!] : [],
+        uoaSub: body.data.uoa_actor_sub,
+      })
+    } catch {
+      return sendApiError(reply, 503, 'UOA_CONTROL_ACTOR_CHECK_UNAVAILABLE', 'UnlikeOtherAI could not confirm administrator access for this scope.')
+    }
+    if (!authorized) {
+      return sendApiError(reply, 403, 'UOA_CONTROL_ACTOR_FORBIDDEN', 'UnlikeOtherAI could not confirm administrator access for this scope.')
     }
 
     const digest = createHash('sha256').update(bodyText(request.body)).digest('hex')
