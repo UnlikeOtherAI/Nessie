@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint src test e2e --max-warnings 0",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
-    "test": "node --test --experimental-test-isolation=none --import tsx 'test/**/*.test.ts'",
+    "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
