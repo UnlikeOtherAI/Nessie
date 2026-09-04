@@ -12,6 +12,7 @@ import {
   createAutomaticMembershipRule,
   DomainPolicyError,
   listAutomaticMembershipRules,
+  listAutomaticMembershipTargetTeams,
   revokeAutomaticMembershipRule,
   releaseAutomaticMembershipClaim,
   suspendAutomaticMembershipRule,
@@ -92,7 +93,9 @@ export const registerAutomaticMembershipRoutes = (app: FastifyInstance, deps: Ro
       app.get(`${base(scope)}/teams`, async (request, reply) => {
         const access = await requireScopeAdministrator(deps, request, reply, scope)
         if (!access) return reply
-        return sendApiError(reply, 503, 'UOA_TEAM_DIRECTORY_REQUIRED', 'Automatic organisation rules require UOA’s live team-directory contract.')
+        try {
+          return createApiResponse({ teams: await listAutomaticMembershipTargetTeams(deps.prisma, access.context.tenant.organizationId, access.externalOrgId) })
+        } catch (error) { if (sendServiceError(reply, error)) return reply; throw error }
       })
     }
     app.get(base(scope), async (request, reply) => {
@@ -147,6 +150,15 @@ export const registerAutomaticMembershipRoutes = (app: FastifyInstance, deps: Ro
       if (!(await requireRuleInScope(deps, access.context.tenant.organizationId, request.params.ruleId, scope, access.teamId))) return sendApiError(reply, 404, 'RULE_NOT_FOUND', 'Automatic login rule not found.')
       try { return createApiResponse(await suspendAutomaticMembershipRule(deps.prisma, access.context, request.params.ruleId)) } catch (error) { if (sendServiceError(reply, error)) return reply; throw error }
     })
+    if (scope === 'organization') {
+      app.post<{ Params: { ruleId: string } }>(`${base(scope)}/:ruleId/release`, async (request, reply) => {
+        const access = await requireScopeAdministrator(deps, request, reply, scope)
+        if (!access) return reply
+        const rule = await deps.prisma.automaticMembershipRule.findFirst({ where: { id: request.params.ruleId, organizationId: access.context.tenant.organizationId }, select: { claimId: true } })
+        if (!rule) return sendApiError(reply, 404, 'RULE_NOT_FOUND', 'Automatic login rule not found.')
+        try { await releaseAutomaticMembershipClaim(deps.prisma, access.context, rule.claimId); return createApiResponse({ ok: true }) } catch (error) { if (sendServiceError(reply, error)) return reply; throw error }
+      })
+    }
   }
   app.post<{ Params: { claimId: string } }>('/api/organization/automatic-membership/claims/:claimId/release', async (request, reply) => {
     const access = await requireScopeAdministrator(deps, request, reply, 'organization')

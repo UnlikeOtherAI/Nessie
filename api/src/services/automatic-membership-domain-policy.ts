@@ -1,29 +1,23 @@
 import { domainToASCII } from 'node:url'
+import { createRequire } from 'node:module'
+import { parse } from 'tldts'
 
 /** Pinned policy data, reviewed with every dependency/security update. */
-export const DOMAIN_CLASSIFIER_VERSION = '2026-09-04.1'
+export const DOMAIN_CLASSIFIER_VERSION = 'tldts-7.0.19+disposable-email-domains-1.0.62'
 
-// This is intentionally an explicit denylist rather than a heuristic. It is
-// audited in source and covers the providers that make consumer mail public.
-const CONSUMER_OR_DISPOSABLE_DOMAINS = new Set([
+// The PSL comes from tldts' bundled, versioned Mozilla PSL snapshot. The
+// disposable source is a separately versioned MIT dataset. Keep a small,
+// explicit set only for major consumer providers that are not disposable;
+// neither source is a heuristic or an MX-based classifier.
+const CONSUMER_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
   'msn.com', 'yahoo.com', 'ymail.com', 'rocketmail.com', 'icloud.com',
   'me.com', 'mac.com', 'proton.me', 'protonmail.com', 'pm.me', 'tutanota.com',
   'mail.com', 'aol.com', 'gmx.com', 'gmx.net', 'zoho.com', 'fastmail.com',
-  'hey.com', 'duck.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com',
-  'mailinator.com', 'yopmail.com', 'dispostable.com', 'trashmail.com',
+  'hey.com', 'duck.com',
 ])
-
-const configuredPublicSuffixes = (): Set<string> => {
-  // This must be the complete, versioned PSL artifact supplied by deployment
-  // automation. A truncated fallback is an unsafe authorization classifier.
-  const supplied = process.env.NESSIE_AUTOMATIC_MEMBERSHIP_PSL
-  const version = process.env.NESSIE_AUTOMATIC_MEMBERSHIP_PSL_VERSION
-  if (!supplied || !version) {
-    throw new DomainPolicyError('DOMAIN_POLICY_UNAVAILABLE', 'A maintained public-suffix classifier is required before domains can be configured.')
-  }
-  return new Set(supplied.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean))
-}
+const require = createRequire(import.meta.url)
+const disposableDomains = new Set<string>(require('disposable-email-domains') as string[])
 
 export class DomainPolicyError extends Error {
   constructor(readonly code: string, message: string) {
@@ -50,11 +44,13 @@ export const normalizeAutomaticMembershipDomain = (input: string): string => {
 
 export const assertAutomaticMembershipDomainAllowed = (input: string): string => {
   const domain = normalizeAutomaticMembershipDomain(input)
-  const suffixes = configuredPublicSuffixes()
-  if (suffixes.has(domain)) {
+  const parsed = parse(domain, { allowPrivateDomains: false })
+  // A suffix is public when it is syntactically a recognised suffix but has
+  // no registrable domain. This correctly handles PSL wildcards/exceptions.
+  if (!parsed.publicSuffix || !parsed.domain) {
     throw new DomainPolicyError('PUBLIC_SUFFIX', 'A public suffix cannot be used for automatic access.')
   }
-  if (CONSUMER_OR_DISPOSABLE_DOMAINS.has(domain)) {
+  if (CONSUMER_DOMAINS.has(domain) || disposableDomains.has(domain)) {
     throw new DomainPolicyError('CONSUMER_DOMAIN', 'Consumer and disposable email domains cannot be used.')
   }
   return domain

@@ -61,9 +61,13 @@ const audit = async (
 
 const targetTeams = async (prisma: PrismaClient, externalOrgId: string, input: string[], scope: RuleScope, currentTeamId?: string | null): Promise<string[]> => {
   if (scope === 'organization') {
-    // Nessie cannot currently enumerate a live UOA team directory with a
-    // subject assertion. Do not turn the local Team mirror into authority.
-    throw new AutomaticMembershipError('UOA_TEAM_DIRECTORY_REQUIRED', 'Automatic organisation rules require UOA’s live team-directory contract.', 503)
+    if (input.length === 0) throw new AutomaticMembershipError('TEAM_TARGET_REQUIRED', 'Choose at least one team.', 400)
+    const adapter = createProductionUoaAutomaticMembershipAdapter()
+    if (!adapter) throw new AutomaticMembershipError('UOA_TEAM_DIRECTORY_REQUIRED', 'Automatic organisation rules require UOA’s live team-directory contract.', 503)
+    const allowed = new Set((await adapter.listTeams({ externalOrgId })).map((team) => team.externalTeamId))
+    const teams = await prisma.team.findMany({ where: { id: { in: input }, externalOrgId, externalTeamId: { in: [...allowed] } }, select: { id: true } })
+    if (teams.length !== new Set(input).size) throw new AutomaticMembershipError('INVALID_TEAM_TARGET', 'One or more selected teams are not in this organisation.', 403)
+    return teams.map((team) => team.id)
   }
   const expected = [currentTeamId].filter((id): id is string => Boolean(id))
   if (expected.length === 0) throw new AutomaticMembershipError('TEAM_TARGET_REQUIRED', 'Choose at least one team.', 400)
@@ -100,6 +104,16 @@ export const listAutomaticMembershipRules = async (prisma: PrismaClient, organiz
     include: { claim: true, targets: true }, orderBy: { createdAt: 'desc' },
   })
   return { featureEnabled: automaticMembershipEnabled(), killSwitchEnabled: automaticMembershipKillSwitchEnabled(), rules: rules.map(presentRule) }
+}
+
+/** Live UOA directory, joined only to Nessie's stable UOA team bindings. */
+export const listAutomaticMembershipTargetTeams = async (prisma: PrismaClient, organizationId: string, externalOrgId: string) => {
+  const adapter = createProductionUoaAutomaticMembershipAdapter()
+  if (!adapter) throw new AutomaticMembershipError('UOA_TEAM_DIRECTORY_REQUIRED', 'Automatic organisation rules require UOA’s live team-directory contract.', 503)
+  const directory = await adapter.listTeams({ externalOrgId })
+  const byExternalId = new Map(directory.map((team) => [team.externalTeamId, team.name]))
+  const local = await prisma.team.findMany({ where: { externalOrgId, externalTeamId: { in: [...byExternalId.keys()] } }, select: { id: true, externalTeamId: true } })
+  return local.flatMap((team) => team.externalTeamId ? [{ id: team.id, name: byExternalId.get(team.externalTeamId)! }] : [])
 }
 
 export const createAutomaticMembershipRule = async (
@@ -161,7 +175,11 @@ export const verifyAutomaticMembershipClaim = async (
   const updated = await prisma.$transaction(async (tx) => {
     const claim = await tx.automaticMembershipDomainClaim.update({ where: { id: rule.claimId }, data: matched
       ? { state: 'verified', verifiedAt: now, verificationExpiresAt: expiresAt, lastDnsCheckAt: now, lastDnsFailure: null }
-      : { state: 'pending', lastDnsCheckAt: now, lastDnsFailure: 'TXT record was missing or did not match' }, })
+      : { state: 'suspended', lastDnsCheckAt: now, lastDnsFailure: 'TXT record was missing or did not match' }, })
+    if (!matched) {
+      await tx.automaticMembershipRule.updateMany({ where: { claimId: rule.claimId, state: 'active' }, data: { state: 'suspended', suspensionReason: 'DNS verification no longer passed.' } })
+      await audit(tx, context, 'automatic_membership.suspended', rule.id, { reason: 'dns_mismatch' })
+    }
     await audit(tx, context, matched ? 'automatic_membership.verified' : 'automatic_membership.dns_checked', rule.id, { matched })
     return claim
   })
@@ -171,6 +189,8 @@ export const verifyAutomaticMembershipClaim = async (
 export const rotateAutomaticMembershipClaim = async (prisma: PrismaClient, context: AuthorizedActionContext, ruleId: string, authSecret: string) => {
   const rule = await prisma.automaticMembershipRule.findFirst({ where: { id: ruleId, organizationId: context.tenant.organizationId }, include: { claim: true, targets: true } })
   if (!rule) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic login rule not found.', 404)
+  const otherRules = await prisma.automaticMembershipRule.count({ where: { claimId: rule.claimId, id: { not: rule.id }, state: { not: 'revoked' } } })
+  if (rule.scope === 'team' && otherRules > 0) throw new AutomaticMembershipError('SHARED_CLAIM_ORGANIZATION_ADMIN_REQUIRED', 'Only an organisation administrator can rotate a shared domain claim.', 403)
   const challenge = createAutomaticMembershipChallenge()
   const claim = await prisma.$transaction(async (tx) => {
     const next = await tx.automaticMembershipDomainClaim.update({ where: { id: rule.claimId }, data: {
@@ -188,6 +208,10 @@ export const rotateAutomaticMembershipClaim = async (prisma: PrismaClient, conte
 export const updateAutomaticMembershipRule = async (prisma: PrismaClient, context: AuthorizedActionContext, ruleId: string, scope: RuleScope, input: UpdateRuleInput, teamId?: string | null) => {
   const existing = await prisma.automaticMembershipRule.findFirst({ where: { id: ruleId, organizationId: context.tenant.organizationId, scope }, include: { claim: true, targets: true } })
   if (!existing) throw new AutomaticMembershipError('RULE_NOT_FOUND', 'Automatic login rule not found.', 404)
+  if (scope === 'team' && input.notificationEmail !== undefined) {
+    const otherRules = await prisma.automaticMembershipRule.count({ where: { claimId: existing.claimId, id: { not: existing.id }, state: { not: 'revoked' } } })
+    if (otherRules > 0) throw new AutomaticMembershipError('SHARED_CLAIM_ORGANIZATION_ADMIN_REQUIRED', 'Only an organisation administrator can change a shared domain contact.', 403)
+  }
   const organization = await prisma.organization.findUnique({ where: { id: context.tenant.organizationId }, select: { externalOrgId: true } })
   if (!organization?.externalOrgId) throw new AutomaticMembershipError('ORGANIZATION_NOT_LINKED', 'Automatic logins require an UnlikeOtherAI organisation.', 404)
   const targets = input.targetTeamIds === undefined ? existing.targets.map((target) => target.teamId) : await targetTeams(prisma, organization.externalOrgId, input.targetTeamIds, scope, teamId)
@@ -220,6 +244,7 @@ export const activateAutomaticMembershipRule = async (prisma: PrismaClient, cont
     const updated = await tx.automaticMembershipRule.update({ where: { id: ruleId }, data: { state: 'active', suspensionReason: null }, include: { claim: true, targets: true } })
     await tx.automaticMembershipBackfillRun.upsert({ where: { ruleId_generation: { ruleId, generation: updated.generation } }, update: { status: 'queued', cursor: null, snapshotId: null, nextAttemptAt: null }, create: { organizationId: context.tenant.organizationId, ruleId, generation: updated.generation, requestedByUoaSub: subject } })
     await audit(tx, context, 'automatic_membership.activated', ruleId, { generation: updated.generation })
+    await audit(tx, context, 'automatic_membership.backfill_started', ruleId, { generation: updated.generation })
     return updated
   })
   return presentRule(next)
