@@ -1,6 +1,7 @@
 /* eslint-disable max-len -- concise facade declarations mirror one API operation each. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AutomaticMembershipRule, AutomaticMembershipRulesResponse } from '@nessie/schemas'
+import { automaticMembershipKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { MemberRosterScope } from './member-roster'
 
@@ -42,7 +43,7 @@ export type AutomaticMembershipTeam = { id: string; name: string }
 
 const path = (scope: MemberRosterScope) =>
   `/api/${scope === 'organization' ? 'organization' : 'team'}/automatic-membership`
-const key = (scope: MemberRosterScope) => ['automatic-membership', scope] as const
+const key = (scope: MemberRosterScope) => automaticMembershipKeys.rules(scope)
 
 export const useAutomaticMembershipRules = (scope: MemberRosterScope) => {
   const api = useApiClient()
@@ -76,7 +77,7 @@ export const useAutomaticMembershipTeams = (enabled: boolean) => {
   const api = useApiClient()
   return useQuery({
     enabled,
-    queryKey: ['automatic-membership', 'organization', 'teams'],
+    queryKey: automaticMembershipKeys.teams,
     queryFn: () => api.get<{ teams: AutomaticMembershipTeam[] }>('/api/organization/automatic-membership/teams'),
   })
 }

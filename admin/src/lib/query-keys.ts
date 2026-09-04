@@ -125,6 +125,12 @@ export const approvalKeys = {
   pendingCount: ['approvals', 'pending-count'] as const,
 }
 
+export const automaticMembershipKeys = {
+  all: ['automatic-membership'] as const,
+  rules: (scope: 'organization' | 'team') => ['automatic-membership', scope] as const,
+  teams: ['automatic-membership', 'organization', 'teams'] as const,
+}
+
 export const demonstrationKeys = {
   all: ['demonstrations'] as const,
   active: (channelId?: string) => ['demonstrations', 'active', channelId] as const,

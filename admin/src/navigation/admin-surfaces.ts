@@ -31,7 +31,9 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     // Every settings page shares one screen identity, so page A → page B swaps
     // in place exactly as it does today.
     depth: 1,
-    intent: { state: ['tab'] },
+    // A connected-mail doorway waits for its target account card, then clears
+    // the one-shot anchor under the navigation framework.
+    intent: { hash: ['connection'], state: ['tab'] },
     parentOf: toAdmin,
     pattern: /^\/settings\/([^/]+)$/,
     root: adminRoot,
