@@ -25,6 +25,8 @@ export type GmailDraftErrorCode =
   | 'DRAFT_CHANGED'
   /** Another send already claimed this draft. */
   | 'DRAFT_NOT_SENDABLE'
+  /** A server-minted judged-grant fact no longer matches live authority. */
+  | 'JUDGED_AUTHORIZATION_INVALID'
   | 'PROVIDER_FAILED'
 
 export class GmailDraftError extends Error {

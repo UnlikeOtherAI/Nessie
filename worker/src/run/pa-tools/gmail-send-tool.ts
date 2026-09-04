@@ -1,7 +1,9 @@
 import {
+  GmailDraftError,
   hasLiveJudgedGmailDraftAuthorization,
   hasStandingSendAuthorization,
   sendDraftForUser,
+  type JudgedGmailDraftAuthorization,
 } from '@nessie/team-admin'
 import { AuthorizedGmailDraftSendToolInputSchema } from '@nessie/runtime'
 
@@ -45,7 +47,7 @@ export const authorizeGmailDraftDispatch = async (
   draft: GmailDraftSendTarget,
   approvalFingerprint: string,
   userId: string,
-): Promise<{ consented: boolean }> => {
+): Promise<{ consented: boolean; judgedAuthorization?: JudgedGmailDraftAuthorization }> => {
   const approvalProofClaimed =
     context.authorization?.approvalProofClaimedForTool === 'gmail_draft_send'
   const approvalProofPresented = Boolean(
@@ -89,7 +91,9 @@ export const authorizeGmailDraftDispatch = async (
         + '/settings/connections.',
     )
   }
-  return { consented }
+  return judgedAuthorization && judged
+    ? { consented, judgedAuthorization }
+    : { consented }
 }
 
 export const runGmailDraftSendTool = async (
@@ -112,7 +116,7 @@ export const runGmailDraftSendTool = async (
   }
   recordGoogleRead(context, draft.ownerUserId)
 
-  const { consented } = await authorizeGmailDraftDispatch(
+  const { consented, judgedAuthorization } = await authorizeGmailDraftDispatch(
     context, draft, args.approvalFingerprint, userId,
   )
 
@@ -129,6 +133,7 @@ export const runGmailDraftSendTool = async (
         ...(consented && UNDO_WINDOW_MS > 0
           ? { holdMs: UNDO_WINDOW_MS }
           : {}),
+        ...(judgedAuthorization ? { judgedAuthorization } : {}),
       },
       { encryptionSecret: process.env.NESSIE_AUTH_SECRET ?? '' },
     )
@@ -146,6 +151,9 @@ export const runGmailDraftSendTool = async (
       toolName: 'gmail_draft_send',
     }
   } catch (error) {
+    if (error instanceof GmailDraftError && error.code === 'JUDGED_AUTHORIZATION_INVALID') {
+      throw new Error('I need approval before sending that.')
+    }
     return explainGoogleFailure(context, 'gmail.compose', userId, error)
   }
 }
