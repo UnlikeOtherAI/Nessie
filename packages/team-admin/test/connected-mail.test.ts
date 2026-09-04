@@ -14,6 +14,7 @@ import {
 const ORGANIZATION_ID = '11111111-1111-4111-8111-111111111111'
 const USER_ID = '22222222-2222-4222-8222-222222222222'
 const CONNECTION_ID = '33333333-3333-4333-8333-333333333333'
+const OTHER_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 
 test('account listing asks only for the person’s own Google and live team mailbox rows', async () => {
@@ -133,4 +134,58 @@ test('an SMTP failure is delivery_unknown and the same idempotency key never dia
   assert.match(String(firstMessageId), /^nessie-[0-9a-f-]+@example\.test$/)
   assert.equal(sends.length, 2, 'the replay sees the same durable action before refusing')
   assert.equal(action?.messageId, firstMessageId)
+})
+
+test('a known sent SMTP action replays before a revoked credential is loaded', async () => {
+  let credentialReads = 0
+  const connection = {
+    id: CONNECTION_ID, organizationId: ORGANIZATION_ID, ownerUserId: USER_ID, status: 'active',
+    address: 'owner@example.test', imapHost: 'imap.example.test', imapPort: 993, imapSecurity: 'tls',
+    smtpHost: 'smtp.example.test', smtpPort: 465, smtpSecurity: 'tls', username: 'owner@example.test',
+  }
+  const prisma = {
+    mailboxConnection: { findFirst: async () => connection },
+    mailboxConnectionCredential: { findUnique: async () => { credentialReads += 1; return null } },
+    mailboxSendAction: {
+      upsert: async ({ create }: { create: Record<string, unknown> }) => ({ ...create, state: 'sent' }),
+      updateMany: async () => { throw new Error('a sent replay must not claim the action') },
+    },
+  } as unknown as PrismaClient
+  const result = await sendConnectedMailboxMail(prisma, {
+    organizationId: ORGANIZATION_ID, userId: USER_ID,
+  }, CONNECTION_ID, {
+    body: 'Hello', idempotencyKey: '44444444-4444-4444-8444-444444444444',
+    subject: 'Status', to: ['recipient@example.test'],
+  }, { encryptionSecret: 'test-secret' })
+  assert.equal(result.status, 'sent')
+  assert.equal(credentialReads, 0)
+})
+
+test('an SMTP action cannot be replayed by a different owner', async () => {
+  let credentialReads = 0
+  const connection = {
+    id: CONNECTION_ID, organizationId: ORGANIZATION_ID, ownerUserId: null, status: 'active',
+    address: 'support@example.test', imapHost: 'imap.example.test', imapPort: 993, imapSecurity: 'tls',
+    smtpHost: 'smtp.example.test', smtpPort: 465, smtpSecurity: 'tls', username: 'support@example.test',
+  }
+  const prisma = {
+    mailboxConnection: { findFirst: async () => connection },
+    mailboxConnectionCredential: { findUnique: async () => { credentialReads += 1; return null } },
+    mailboxSendAction: {
+      upsert: async ({ create }: { create: Record<string, unknown> }) => ({
+        ...create, ownerUserId: OTHER_USER_ID, state: 'sent',
+      }),
+      updateMany: async () => { throw new Error('a foreign action must not be claimed') },
+    },
+  } as unknown as PrismaClient
+  await assert.rejects(
+    () => sendConnectedMailboxMail(prisma, {
+      organizationId: ORGANIZATION_ID, userId: USER_ID,
+    }, CONNECTION_ID, {
+      body: 'Hello', idempotencyKey: '44444444-4444-4444-8444-444444444444',
+      subject: 'Status', to: ['recipient@example.test'],
+    }, { encryptionSecret: 'test-secret' }),
+    (error: unknown) => error instanceof ConnectedMailError && error.code === 'NOT_FOUND',
+  )
+  assert.equal(credentialReads, 0)
 })

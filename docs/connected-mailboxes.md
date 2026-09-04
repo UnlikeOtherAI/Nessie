@@ -141,6 +141,12 @@ lane offers standing consent because a grant there is one person's to give about
 their own account; a shared team mailbox has no such single owner, and one grant
 table meaning two different things is how that distinction gets lost.
 
+After approval, each SMTP send is recorded without its message body before the
+provider call. A run replay finds that same record through its run and tool-call
+identity and retains its original Message-ID. If SMTP's `DATA` outcome is lost,
+Nessie marks delivery **unknown** and will not send a second copy; a person can
+check the mailbox and decide what to do next.
+
 ## Reading
 
 Reads run live, and they carry their provenance. An agent that answers you out
