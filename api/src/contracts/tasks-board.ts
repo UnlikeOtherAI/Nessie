@@ -69,9 +69,10 @@ export const UpdateTaskBodySchema = z.object({
   storyPoints: z.number().int().min(0).nullable().optional(),
 })
 
-// Bulk-archive the org's done tasks; an absent / null olderThanDays archives
-// every done task, otherwise only those last touched before the cutoff.
+// Archive completed work from one explicit project. A board action must never
+// silently affect another project in the same organisation.
 export const ArchiveDoneTasksBodySchema = z.object({
+  projectId: ProjectIdSchema,
   olderThanDays: z.number().int().positive().nullable().optional(),
 })
 
