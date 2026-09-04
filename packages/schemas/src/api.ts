@@ -36,12 +36,13 @@ export type PaginationDirection = z.infer<typeof PaginationDirectionSchema>
  * reach the rest of the rows at all. These schemas existed the whole time and
  * nothing imported them; that is the drift the content system closes.
  *
- * The default page is 25 and the ceiling is 100. There is deliberately no
- * page-size control: a size a person can change is a preference to store, a
- * URL to keep, and a second thing that can differ between two lists.
+ * The default page is 25 and the ceiling is 100. Admin lists offer the same
+ * small set of page sizes; the selected size belongs in the URL with the
+ * cursor, so a reload, share, or Back navigation preserves the view exactly.
  */
 export const DEFAULT_PAGE_LIMIT = 25
 export const MAX_PAGE_LIMIT = 100
+export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 
 export const PaginationParamsSchema = z.object({
   cursor: z.string().optional(),

@@ -177,6 +177,7 @@ export const WorkflowListQuerySchema = z.object({
   // An opaque keyset cursor (`decodeKeysetCursor`/`buildPage`, @nessie/schemas)
   // rather than a raw row id — never parsed or constructed by a client.
   cursor: z.string().optional(),
+  direction: z.enum(['forward', 'backward']).optional(),
   limit: z.coerce.number().int().positive().optional(),
   status: WorkflowRunStatusSchema.optional(),
   /**

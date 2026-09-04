@@ -8,6 +8,7 @@ import {
   decodeKeysetCursor,
   encodeKeysetCursor,
   resolvePageLimit,
+  resolvePageSize,
 } from '../pagination.js'
 
 const row = (iso: string, id: string) => ({ createdAt: new Date(iso), id })
@@ -80,6 +81,29 @@ test('the page limit is clamped to the one size the admin uses', () => {
   assert.equal(resolvePageLimit(10.7), 10)
   assert.equal(resolvePageLimit(5_000), MAX_PAGE_LIMIT)
   assert.equal(resolvePageLimit(-4), 1)
+})
+
+test('the page size accepts only the shared picker options', () => {
+  assert.equal(resolvePageSize(10), 10)
+  assert.equal(resolvePageSize(50), 50)
+  assert.equal(resolvePageSize(42), DEFAULT_PAGE_LIMIT)
+  assert.equal(resolvePageSize(undefined), DEFAULT_PAGE_LIMIT)
+})
+
+test('a backward query restores canonical order and leaves both neighbours usable', () => {
+  // A descending list's preceding page is read in ascending order. The
+  // over-fetched final row belongs to the page before it.
+  const backwardRows = [
+    row('2026-09-01T08:00:00.000Z', 'c'),
+    row('2026-09-01T09:00:00.000Z', 'b'),
+    row('2026-09-01T10:00:00.000Z', 'a'),
+  ]
+  const result = buildPage({ direction: 'backward', hasCursor: true, limit: 2, rows: backwardRows, total: 4 })
+
+  assert.deepEqual(result.data.map((entry) => entry.id), ['b', 'c'])
+  assert.equal(result.meta.prevCursor, encodeKeysetCursor(row('2026-09-01T09:00:00.000Z', 'b')))
+  assert.equal(result.meta.nextCursor, encodeKeysetCursor(row('2026-09-01T08:00:00.000Z', 'c')))
+  assert.equal(result.meta.hasMore, true)
 })
 
 test('the label states a range, and a total only when the server sent one', () => {

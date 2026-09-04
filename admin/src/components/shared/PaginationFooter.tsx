@@ -1,36 +1,34 @@
-type PaginationFooterProps = {
+import { PAGE_SIZE_OPTIONS } from '@nessie/schemas'
+
+import { Select } from './FormControls'
+
+export type PaginationFooterProps = {
   canNext: boolean
   canPrevious: boolean
-  /** Spacing only — the border and the three-slot layout are not negotiable. */
+  /** Spacing only — layout, page position and page-size control are shared. */
   className?: string
   /**
-   * Render nothing when neither direction is reachable, i.e. the list fits on
-   * one page. Off by default: a footer that always shows keeps the row height
-   * of a table stable as its pages change.
+   * A small, non-actionable list may omit its pager. Paged lists normally keep
+   * it visible so people can see the selected page size before it grows.
    */
   hideWhenSinglePage?: boolean
+  /** The result range, for example “26–50 of 134”. */
   label: string
   onPageChange: (page: number) => void
+  onPageSizeChange: (pageSize: number) => void
+  /** Zero-based internally; the control always speaks one-based pages. */
   page: number
+  /** Always at least one while a pager is shown. */
+  pageCount: number
+  pageSize: number
 }
 
 /**
- * The Previous / label / Next strip that closes a paged list.
+ * The one closing control for a paged list.
  *
- * It is presentational and nothing more. **How a caller gets its pages is
- * deliberately not shared**: `AgentsList` slices an array it already holds,
- * while `AgentDetailTabs` asks the server for `PAGE_SIZE + 1` rows to learn
- * whether a next page exists at all. Those are different problems with
- * different failure modes, and a single "usePagination" hook over both would
- * only be able to serve them by branching on which one it was given. So each
- * caller keeps its own arithmetic and hands over the two booleans and the one
- * string that arithmetic produced — `page` is passed back untouched, purely so
- * the strip can ask for `page - 1` / `page + 1` without caring whether the
- * caller counts from zero or one.
- *
- * The label is a caller string for the same reason: "1–10 of 34 · Page 1 of 4"
- * and a bare "Page 1" are true statements about different amounts of
- * knowledge, and the strip is not the thing that knows which applies.
+ * Every pager states the current page and page count, keeps the range label,
+ * and gives the same Items per page selector. The component owns this contract
+ * so a list cannot quietly regress to a bare Previous / Next pair.
  */
 export const PaginationFooter = ({
   canNext,
@@ -39,36 +37,60 @@ export const PaginationFooter = ({
   hideWhenSinglePage = false,
   label,
   onPageChange,
+  onPageSizeChange,
   page,
+  pageCount,
+  pageSize,
 }: PaginationFooterProps) => {
-  if (hideWhenSinglePage && !canPrevious && !canNext) return null
+  if (hideWhenSinglePage && pageCount <= 1) return null
 
   return (
     <div
       className={[
-        'flex items-center justify-between border-t border-[color:var(--sep)]',
+        'flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[color:var(--sep)] py-3',
         className ?? '',
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      <button
-        className="admin-button admin-button-secondary"
-        disabled={!canPrevious}
-        onClick={() => onPageChange(page - 1)}
-        type="button"
-      >
-        Previous
-      </button>
-      <span className="text-xs text-[color:var(--tx3)]">{label}</span>
-      <button
-        className="admin-button admin-button-secondary"
-        disabled={!canNext}
-        onClick={() => onPageChange(page + 1)}
-        type="button"
-      >
-        Next
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          aria-label="Previous page"
+          className="admin-button admin-button-secondary"
+          disabled={!canPrevious}
+          onClick={() => onPageChange(page - 1)}
+          type="button"
+        >
+          Previous
+        </button>
+        <span aria-live="polite" className="text-sm tabular-nums text-[color:var(--tx2)]">
+          Page {page + 1} of {pageCount}
+        </span>
+        <button
+          aria-label="Next page"
+          className="admin-button admin-button-secondary"
+          disabled={!canNext}
+          onClick={() => onPageChange(page + 1)}
+          type="button"
+        >
+          Next
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+        <span className="text-xs tabular-nums text-[color:var(--tx3)]">{label}</span>
+        <label className="flex items-center gap-2 text-xs text-[color:var(--tx2)]">
+          <span>Items per page</span>
+          <Select
+            aria-label="Items per page"
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            size="compact"
+            value={pageSize}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+          </Select>
+        </label>
+      </div>
     </div>
   )
 }

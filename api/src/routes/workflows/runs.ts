@@ -81,6 +81,7 @@ export const registerWorkflowRunRoutes = (app: FastifyInstance, deps: RouteDeps)
       (await workflowInstallationEntitlementFilter(prisma, actorContext)) ?? undefined
     const page = await listWorkflowRuns(prisma, actorContext.tenant.organizationId, {
       cursor: query.cursor,
+      direction: query.direction,
       limit: query.limit,
       ...(query.status ? { status: query.status } : {}),
       ...(installationWhere ? { installationWhere } : {}),

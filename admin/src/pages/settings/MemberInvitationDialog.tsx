@@ -180,7 +180,10 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                   hideWhenSinglePage
                   label={targets.label}
                   onPageChange={targets.onPageChange}
+                  onPageSizeChange={targets.onPageSizeChange}
                   page={targets.page}
+                  pageCount={targets.pageCount}
+                  pageSize={targets.pageSize}
                 />
               </div>
             ) : null}

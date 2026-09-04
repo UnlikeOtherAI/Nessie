@@ -38,6 +38,7 @@ export const registerAlertRoutes = (app: FastifyInstance, deps: RouteDeps): void
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
       cursor: query.cursor,
+      direction: query.direction === 'backward' ? 'backward' : 'forward',
       limit,
       unreadOnly: query.unread === 'true' || query.unread === '1',
     })

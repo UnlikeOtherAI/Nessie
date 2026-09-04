@@ -4,6 +4,7 @@ import {
   parseChannelId,
   parseOrganizationId,
   parseRunId,
+  type PaginationDirection,
   type PaginationMeta,
 } from '@nessie/schemas'
 
@@ -235,5 +236,6 @@ export type WorkflowListPage<T> = {
 
 export type WorkflowListInput = {
   cursor?: string
+  direction?: PaginationDirection
   limit?: number
 }

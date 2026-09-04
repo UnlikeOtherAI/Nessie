@@ -175,8 +175,9 @@ the rest. Audit log, policy and alerts cap at 50–100 rows and the UI simply
 never shows more.
 
 **Verdict: many variants, on both sides. Canonical:** the single end-to-end
-contract in §4.7. `PaginationFooter` stays the one control (Previous / label /
-Next); the two "Load more" buttons and the in-place "Show all" become
+contract in §4.7. `PaginationFooter` is the one control: Previous / **Page X
+of Y** / Next, the range label, and an **Items per page** picker (10, 25, 50,
+100). The two "Load more" buttons and the in-place "Show all" become
 `PaginationFooter` or `SectionOverflowHint`. No infinite scroll on content
 pages.
 

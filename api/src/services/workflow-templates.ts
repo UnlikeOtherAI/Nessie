@@ -42,16 +42,19 @@ export const listWorkflowTemplates = async (
   const total = await prisma.workflowTemplate.count({ where })
 
   const parsed = decodeKeysetCursor(input.cursor)
+  const backwards = input.direction === 'backward'
   if (parsed) {
     where.OR = [
-      { createdAt: { lt: parsed.createdAt } },
-      { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+      { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
+      { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
     ]
   }
 
   const templates = await prisma.workflowTemplate.findMany({
     where,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
     select: {
       id: true,
@@ -74,7 +77,7 @@ export const listWorkflowTemplates = async (
     },
   })
 
-  const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: templates, total })
+  const page = buildPage({ direction: input.direction, hasCursor: Boolean(parsed), limit, rows: templates, total })
 
   // One grouped aggregate for exactly the templates on this page, rather than
   // a second unbounded list the client would have to group itself. Bounded by
@@ -499,14 +502,15 @@ export const listWorkflowInstallations = async (
   const total = await prisma.workflowInstallation.count({ where })
 
   const parsed = decodeKeysetCursor(input.cursor)
+  const backwards = input.direction === 'backward'
   if (parsed) {
     const existingAnd = where.AND
     where.AND = [
       ...(Array.isArray(existingAnd) ? existingAnd : existingAnd ? [existingAnd] : []),
       {
         OR: [
-          { createdAt: { lt: parsed.createdAt } },
-          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+          { createdAt: { [backwards ? 'gt' : 'lt']: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { [backwards ? 'gt' : 'lt']: parsed.id } },
         ],
       },
     ]
@@ -514,12 +518,14 @@ export const listWorkflowInstallations = async (
 
   const installations = await prisma.workflowInstallation.findMany({
     where,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: backwards
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
     include: { workflowTemplate: { select: { bindingSchema: true } } },
   })
 
-  const page = buildPage({ hasCursor: Boolean(parsed), limit, rows: installations, total })
+  const page = buildPage({ direction: input.direction, hasCursor: Boolean(parsed), limit, rows: installations, total })
   return {
     data: page.data.map((installation) =>
       mapWorkflowInstallation({

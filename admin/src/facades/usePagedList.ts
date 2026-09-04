@@ -4,6 +4,7 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import {
   DEFAULT_PAGE_LIMIT,
   buildPageLabel,
+  resolvePageSize,
   type PaginationMeta,
 } from '@nessie/schemas'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -43,7 +44,7 @@ type UsePagedListOptions<TData, TItem> = {
    * it is going to decline.
    */
   enabled?: boolean
-  /** Page size. The one place it is chosen; there is no per-user control. */
+  /** Fallback before the URL chooses a page size. */
   limit?: number
   /**
    * Filters, search and sort, already resolved by the caller. Changing any of
@@ -51,12 +52,6 @@ type UsePagedListOptions<TData, TItem> = {
    * result set and means nothing in the new one.
    */
   params?: Record<string, string | undefined>
-  /**
-   * UOA's opaque previous cursor is only valid with `direction=backward`.
-   * Most local cursor APIs encode the direction in the cursor and retain the
-   * existing default, so this opt-in keeps one pagination surface.
-   */
-  usesDirectionalCursors?: boolean
   /**
    * Distinguishes this list's URL parameters when a page shows two paged
    * lists. Defaults to unprefixed, which is what a page with one list wants.
@@ -76,7 +71,10 @@ export type PagedList<T, TData = T[]> = {
   label: string
   meta: PaginationMeta | undefined
   onPageChange: (page: number) => void
+  onPageSizeChange: (pageSize: number) => void
   page: number
+  pageCount: number
+  pageSize: number
   query: UseQueryResult<PagedResponse<TData>>
   /** The server's count of matching records, for a `ListToolbar`. */
   total: number | undefined
@@ -99,12 +97,11 @@ const buildSearch = (
 export const usePagedList = <TItem, TData = TItem[]>({
   enabled = true,
   items: selectItems,
-  limit = DEFAULT_PAGE_LIMIT,
+  limit: configuredLimit = DEFAULT_PAGE_LIMIT,
   params = {},
   paramPrefix = '',
   path,
   queryKey,
-  usesDirectionalCursors = false,
 }: UsePagedListOptions<TData, TItem>): PagedList<TItem, TData> => {
   const api = useApiClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -112,10 +109,11 @@ export const usePagedList = <TItem, TData = TItem[]>({
   const cursorKey = `${paramPrefix}cursor`
   const pageKey = `${paramPrefix}page`
   const directionKey = `${paramPrefix}direction`
+  const limitKey = `${paramPrefix}limit`
   const cursor = searchParams.get(cursorKey) ?? undefined
-  const direction = usesDirectionalCursors
-    ? searchParams.get(directionKey) ?? undefined
-    : undefined
+  const savedLimit = Number(searchParams.get(limitKey))
+  const limit = resolvePageSize(Number.isFinite(savedLimit) ? savedLimit : configuredLimit)
+  const direction = searchParams.get(directionKey) === 'backward' ? 'backward' : 'forward'
   const page = Number(searchParams.get(pageKey) ?? '0') || 0
 
   // Serialised so the query key and the reset check both compare by value; two
@@ -145,12 +143,10 @@ export const usePagedList = <TItem, TData = TItem[]>({
           const updated = new URLSearchParams(current)
           updated.set(cursorKey, target)
           updated.set(pageKey, String(Math.max(next, 0)))
-          if (usesDirectionalCursors) {
-            updated.set(directionKey, forward ? 'forward' : 'backward')
-          }
+          updated.set(directionKey, forward ? 'forward' : 'backward')
           return updated
         },
-        { replace: true },
+        { replace: false },
       )
     },
     [
@@ -161,14 +157,36 @@ export const usePagedList = <TItem, TData = TItem[]>({
       page,
       pageKey,
       setSearchParams,
-      usesDirectionalCursors,
     ],
+  )
+
+  const onPageSizeChange = useCallback(
+    (nextPageSize: number) => {
+      const next = resolvePageSize(nextPageSize)
+      if (next === limit) return
+
+      setSearchParams(
+        (current) => {
+          const updated = new URLSearchParams(current)
+          updated.set(limitKey, String(next))
+          updated.delete(cursorKey)
+          updated.delete(directionKey)
+          updated.delete(pageKey)
+          return updated
+        },
+        { replace: false },
+      )
+    },
+    [cursorKey, directionKey, limit, limitKey, pageKey, setSearchParams],
   )
 
   const items = useMemo(
     () => (query.data ? selectItems?.(query.data.data) ?? (query.data.data as unknown as TItem[]) : []),
     [query.data, selectItems],
   )
+
+  const total = meta?.total
+  const pageCount = Math.max(1, Math.ceil((total ?? items.length) / limit))
 
   return {
     canNext: Boolean(meta?.hasMore),
@@ -177,9 +195,12 @@ export const usePagedList = <TItem, TData = TItem[]>({
     label: buildPageLabel(meta ?? {}, page * limit, items.length),
     meta,
     onPageChange,
+    onPageSizeChange,
     page,
+    pageCount,
+    pageSize: limit,
     query,
-    total: meta?.total,
+    total,
   }
 }
 
@@ -201,6 +222,7 @@ export const usePagedListReset = (paramPrefix = ''): (() => void) => {
         updated.delete(`${paramPrefix}cursor`)
         updated.delete(`${paramPrefix}direction`)
         updated.delete(`${paramPrefix}page`)
+        updated.delete(`${paramPrefix}limit`)
         return updated
       },
       { replace: true },

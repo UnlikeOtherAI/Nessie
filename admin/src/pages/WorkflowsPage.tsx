@@ -103,12 +103,14 @@ export const WorkflowsPage = () => {
   // failed-runs triage view.
   const templatesList = usePagedList<WorkflowTemplateRecord>({
     enabled: isWorkflowAdmin,
+    paramPrefix: 'templates-',
     path: '/api/workflows',
     queryKey: workflowKeys.templates,
   })
   const templates = templatesList.items
   const failedRunsList = usePagedList<WorkflowRunRecord>({
     params: { status: 'failed' },
+    paramPrefix: 'failed-runs-',
     path: '/api/workflow-runs',
     queryKey: workflowKeys.failedRuns,
   })
@@ -139,6 +141,7 @@ export const WorkflowsPage = () => {
   const installationsList = usePagedList<WorkflowInstallationRecord>({
     enabled: Boolean(selectedTemplateId),
     params: { workflowTemplateId: selectedTemplateId },
+    paramPrefix: 'installations-',
     path: '/api/workflow-installations',
     queryKey: workflowKeys.installations,
   })
@@ -289,7 +292,10 @@ export const WorkflowsPage = () => {
                 hideWhenSinglePage
                 label={failedRunsList.label}
                 onPageChange={failedRunsList.onPageChange}
+                onPageSizeChange={failedRunsList.onPageSizeChange}
                 page={failedRunsList.page}
+                pageCount={failedRunsList.pageCount}
+                pageSize={failedRunsList.pageSize}
               />
             </>
           )}
@@ -449,9 +455,12 @@ export const WorkflowsPage = () => {
                   canPrevious={templatesList.canPrevious}
                   className="mt-3"
                   hideWhenSinglePage
-                  label={templatesList.label}
-                  onPageChange={templatesList.onPageChange}
-                  page={templatesList.page}
+                label={templatesList.label}
+                onPageChange={templatesList.onPageChange}
+                onPageSizeChange={templatesList.onPageSizeChange}
+                page={templatesList.page}
+                pageCount={templatesList.pageCount}
+                pageSize={templatesList.pageSize}
                 />
               </>
             )}

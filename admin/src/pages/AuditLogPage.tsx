@@ -101,7 +101,10 @@ export const AuditLogPage = () => {
                     hideWhenSinglePage
                     label={rows.label}
                     onPageChange={rows.onPageChange}
+                    onPageSizeChange={rows.onPageSizeChange}
                     page={rows.page}
+                    pageCount={rows.pageCount}
+                    pageSize={rows.pageSize}
                   />
                 </>
               )}
