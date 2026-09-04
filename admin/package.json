@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint src test e2e --max-warnings 0",
     "test:e2e:executor-companion": "node e2e/executor-companion/run.mjs",
+    "test:e2e:email-onboarding": "node e2e/email-onboarding/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
