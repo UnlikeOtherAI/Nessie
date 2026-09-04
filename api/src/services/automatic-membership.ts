@@ -33,7 +33,7 @@ type CreateRuleInput = { domain: string; notificationEmail?: string; targetTeamI
 type UpdateRuleInput = { notificationEmail?: string | null; targetTeamIds?: string[] }
 
 const subjectFor = (context: AuthorizedActionContext): string => {
-  const subject = context.actionContext.uoaIdentity?.subject
+  const subject = context.actionContext.uoaIdentity?.subject ?? context.actionContext.uoaControlSubject
   if (!subject) throw new AutomaticMembershipError('UOA_SESSION_REQUIRED', 'A current UnlikeOtherAI session is required.')
   return subject
 }
@@ -55,7 +55,7 @@ const audit = async (
 ) => writeAuditEntryInTransaction(tx, {
   organizationId: context.tenant.organizationId,
   teamId,
-  actorType: 'user',
+  actorType: context.actor.actorType,
   actorId: context.actor.actorId,
   action,
   resourceType: 'automatic_membership_rule',
