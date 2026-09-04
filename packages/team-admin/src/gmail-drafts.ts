@@ -243,6 +243,9 @@ export const updateDraftForUser = async (
   if (!existing || existing.state === 'sent' || existing.state === 'discarded') {
     throw new GmailDraftError('DRAFT_NOT_FOUND')
   }
+  if (input.connectionId && input.connectionId !== existing.connectionId) {
+    throw new GmailDraftError('DRAFT_NOT_FOUND')
+  }
   const credential = await loadCredential(
     prisma,
     { ...input, connectionId: existing.connectionId, capabilityId: 'gmail.compose' },
@@ -314,6 +317,8 @@ export type SendDraftInput = {
   organizationId: string
   userId: string
   draftActionId: string
+  /** When a route already identified an account, it must stay pinned to it. */
+  connectionId?: string
   /**
    * The fingerprint the approver (or the person clicking Send) actually saw.
    * When present the send refuses on mismatch — this is what stops an approved
@@ -350,6 +355,9 @@ export const sendDraftForUser = async (
     },
   })
   if (!existing) throw new GmailDraftError('DRAFT_NOT_FOUND')
+  if (input.connectionId && input.connectionId !== existing.connectionId) {
+    throw new GmailDraftError('DRAFT_NOT_FOUND')
+  }
   if (existing.state !== 'draft') throw new GmailDraftError('DRAFT_NOT_SENDABLE')
 
   const credential = await loadCredential(

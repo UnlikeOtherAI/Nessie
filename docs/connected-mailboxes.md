@@ -1,19 +1,22 @@
 # Connected mailboxes — an agent working in a mailbox you already have
 
 An agent can work in a mailbox that exists somewhere else: your own, or a team's
-shared `support@`. A personal Gmail or Microsoft account can use its native,
-secure sign-in and private sync with label/folder controls; another provider, or
-a team's shared mailbox, connects over SMTP/IMAP. You then choose which agents may use the live
+shared `support@`. A personal Gmail account can use its native, secure sign-in;
+another provider, or a team's shared mailbox, connects over SMTP/IMAP. Microsoft
+remains a connection card, not a mail account, until its connector exposes a
+live mail capability. You then choose which agents may use the live
 mailbox and ask them things — *"anything from the bank?"*, *"reply to Petra that
 Thursday works"*.
 
-The IMAP/SMTP route has no inbox screen, deliberately. The provider holds the
+The IMAP/SMTP route has no inbox screen today, deliberately. The provider holds the
 mail; Nessie holds a credential and an audit trail, and reads it live when an
 agent is asked something. Nothing is imported, nothing is copied, and
-disconnecting leaves no trace of that correspondence behind. Native Gmail and
-Microsoft cards share the personal Email page but are different connectors: they
-show their own selected-email sync behaviour rather than making the live-mail
-claim.
+disconnecting leaves no trace of that correspondence behind. Gmail and Microsoft
+cards share the personal Email page but are different connectors: only Gmail
+currently exposes the live-mail capability. The upcoming connected-account Mail
+review surface reads Gmail and SMTP/IMAP accounts live; its account, thread,
+and conversation responses are private and non-cacheable, and SMTP/IMAP threads
+come only from Message-ID reference structure, never a guessed subject match.
 
 This is agent email **Model A**. The other model gives an agent its own hosted
 address on the deployment's Amazon SES account, with a real mailbox surface

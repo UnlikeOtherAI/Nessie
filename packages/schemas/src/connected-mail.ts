@@ -103,6 +103,11 @@ export type ConnectedMailComposeInput = z.infer<typeof ConnectedMailComposeInput
 
 export const ConnectedMailSendInputSchema = ConnectedMailComposeInputSchema.extend({
   expectedFingerprint: z.string().min(1).max(200).optional(),
-  immediate: z.boolean().optional(),
 }).strict()
 export type ConnectedMailSendInput = z.infer<typeof ConnectedMailSendInputSchema>
+
+export const ConnectedMailGmailDraftSendInputSchema = z.object({
+  draftId: z.string().uuid(),
+  expectedFingerprint: z.string().min(1).max(200),
+}).strict()
+export type ConnectedMailGmailDraftSendInput = z.infer<typeof ConnectedMailGmailDraftSendInputSchema>

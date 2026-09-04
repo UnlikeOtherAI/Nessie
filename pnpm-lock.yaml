@@ -514,6 +514,9 @@ importers:
 
   packages/comms-google:
     dependencies:
+      '@nessie/agent-mail':
+        specifier: workspace:*
+        version: link:../agent-mail
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../comms-connect

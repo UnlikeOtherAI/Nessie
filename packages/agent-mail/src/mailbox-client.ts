@@ -1,4 +1,6 @@
-import { ImapSession, type ImapPart } from './imap.js'
+import { createHash } from 'node:crypto'
+
+import { ImapError, ImapSession, type ImapPart } from './imap.js'
 import { buildOutboundMime, parseInboundEmail, type OutboundEmail } from './mime.js'
 import { closeSmtpSession, openSmtpSession, sendOverSmtp } from './smtp.js'
 import type { DialOptions, MailEndpoint } from './dial.js'
@@ -48,8 +50,42 @@ export type MailboxMessage = MailboxSummary & {
   truncated: boolean
 }
 
+export type MailboxMailThreadPage = {
+  items: Array<{
+    id: string
+    from: string | null
+    subject: string
+    snippet: string
+    receivedAt: string | null
+    unread: boolean
+    hasAttachments: boolean
+    messageCount: number
+  }>
+  nextCursor?: string
+}
+
+export type MailboxMailConversation = {
+  id: string
+  messages: Array<{
+    id: string
+    threadId: string
+    from: string | null
+    to: string[]
+    cc: string[]
+    subject: string
+    receivedAt: string | null
+    body: string
+    bodyFormat: 'text' | 'html'
+    blockedRemoteContent: boolean
+    attachments: { filename: string; contentType: string; sizeBytes: number }[]
+    inReplyTo: string | null
+  }>
+  earlierMessagesMayExist: boolean
+}
+
 const DEFAULT_FOLDER = 'INBOX'
 const MAX_BODY_CHARS = 20_000
+const HEADER_WINDOW_LIMIT = 100
 
 const IMAP_MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -108,6 +144,230 @@ const withImap = async <T>(
     session.close()
   }
 }
+
+type ThreadHeader = MailboxSummary & {
+  inReplyTo: string | null
+  references: string[]
+  snippet: string
+  hasAttachments: boolean
+  unread: boolean
+}
+
+const summarizeThreadHeader = async (
+  uid: number,
+  raw: Buffer,
+  flags: readonly string[],
+): Promise<ThreadHeader> => {
+  const parsed = await parseInboundEmail(raw)
+  return {
+    ...summarize(uid, parsed),
+    hasAttachments: parsed.attachments.length > 0,
+    inReplyTo: parsed.inReplyTo,
+    references: parsed.references,
+    snippet: parsed.snippet,
+    unread: !flags.some((flag) => flag.toUpperCase() === '\\SEEN'),
+  }
+}
+
+/** Stable opaque id for a structural conversation; no mailbox content is stored. */
+export const mailboxThreadToken = (input: {
+  accountId: string
+  folder: string
+  uidValidity: number | null
+  rootMessageId: string | null
+  uid: number
+}): string => createHash('sha256').update([
+  input.accountId,
+  input.rootMessageId ?? [
+    'folder', input.folder, 'uidvalidity', input.uidValidity ?? 'unknown', 'uid', input.uid,
+  ].join(':'),
+].join('\u0000')).digest('base64url')
+
+const threadHeaders = (
+  headers: ThreadHeader[], accountId: string, folder: string, uidValidity: number | null,
+) => {
+  const parent = new Map<string, string>()
+  const byMessageId = new Map(headers.flatMap((header) =>
+    header.messageId ? [[header.messageId, header.messageId] as const] : []))
+  for (const header of headers) {
+    if (!header.messageId) continue
+    const candidate = [header.inReplyTo, ...header.references].reverse()
+      .find((id): id is string => Boolean(id && byMessageId.has(id)))
+    if (candidate) parent.set(header.messageId, candidate)
+  }
+  const rootOf = (header: ThreadHeader): string | null => {
+    // References are normalized by parseInboundEmail. The first is the
+    // structural root even when this bounded window does not include it.
+    let root = header.references[0] ?? header.inReplyTo ?? header.messageId
+    const visited = new Set<string>()
+    while (root && parent.has(root) && !visited.has(root)) {
+      visited.add(root)
+      root = parent.get(root) ?? null
+    }
+    return root
+  }
+  const groups = new Map<string, ThreadHeader[]>()
+  for (const header of headers) {
+    const root = rootOf(header)
+    const id = mailboxThreadToken({
+      accountId, folder, rootMessageId: root, uid: header.uid, uidValidity,
+    })
+    const group = groups.get(id) ?? []
+    group.push(header)
+    groups.set(id, group)
+  }
+  return [...groups.entries()].map(([id, members]) => ({ id, members }))
+}
+
+const decodeCursor = (cursor: string | undefined): { uidValidity: number | null; offset: number } | null => {
+  if (!cursor) return { offset: 0, uidValidity: null }
+  try {
+    const raw = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown
+    if (!raw || typeof raw !== 'object') return null
+    const value = raw as { offset?: unknown; uidValidity?: unknown }
+    return Number.isInteger(value.offset) && Number(value.offset) >= 0
+      ? {
+          offset: Number(value.offset),
+          uidValidity: Number.isInteger(value.uidValidity) ? Number(value.uidValidity) : null,
+        }
+      : null
+  } catch {
+    return null
+  }
+}
+
+const encodeCursor = (value: { uidValidity: number | null; offset: number }): string =>
+  Buffer.from(JSON.stringify(value)).toString('base64url')
+
+/**
+ * Live IMAP list with a bounded header window. Subject equality never creates
+ * a thread: only Message-ID reference structure may join messages.
+ */
+export const listMailboxMailThreads = async (
+  endpoints: MailboxEndpoints,
+  input: {
+    accountId: string
+    cursor?: string
+    folder?: string
+    pageSize: number
+    query?: string
+    unreadOnly?: boolean
+  },
+  options: MailboxClientOptions,
+): Promise<MailboxMailThreadPage> => withImap(endpoints, options, async (session) => {
+  const folder = input.folder?.trim() || DEFAULT_FOLDER
+  const selected = await session.selectFolder(folder)
+  const cursor = decodeCursor(input.cursor)
+  if (!cursor || (cursor.uidValidity !== null && cursor.uidValidity !== selected.uidValidity)) {
+    throw new ImapError('The mailbox folder changed; refresh the list.', 'not_found')
+  }
+  const criteria = buildCriteria({
+    from: undefined,
+    limit: HEADER_WINDOW_LIMIT,
+    since: undefined,
+    subject: undefined,
+    text: input.query,
+    unseenOnly: input.unreadOnly,
+  })
+  const capabilities = await session.capabilities()
+  const nativeGroups = capabilities.has('THREAD=REFERENCES')
+    ? await session.threadReferencesUids(criteria)
+    : null
+  const uids = nativeGroups
+    ? nativeGroups.flat()
+    : await session.searchUids(criteria)
+  const pageUnits = nativeGroups
+    ? nativeGroups.slice(cursor.offset, cursor.offset + input.pageSize)
+    : uids.slice(cursor.offset, cursor.offset + input.pageSize).map((uid) => [uid])
+  const pageUids = [...new Set(pageUnits.flat())].slice(0, HEADER_WINDOW_LIMIT)
+  const fetched = await session.fetchMessages(pageUids, 'headers')
+  const headers = await Promise.all(fetched.map((message) =>
+    summarizeThreadHeader(message.uid, message.raw, message.flags)))
+  const groups: Array<{ id?: string; members: ThreadHeader[] }> = nativeGroups
+    ? pageUnits.map((uids) => ({
+        members: headers.filter((header) => uids.includes(header.uid)),
+      }))
+    : threadHeaders(headers, input.accountId, folder, selected.uidValidity)
+  const rows = groups
+    .map(({ id, members }) => {
+      const fallback = members[0]
+      const threadId = id ?? (fallback
+        ? mailboxThreadToken({
+            accountId: input.accountId,
+            folder,
+            rootMessageId: fallback.references[0] ?? fallback.inReplyTo ?? fallback.messageId,
+            uid: fallback.uid,
+            uidValidity: selected.uidValidity,
+          })
+        : null)
+      const newest = [...members].sort((left, right) => right.uid - left.uid)[0]
+      return newest && threadId ? {
+        from: newest.from,
+        hasAttachments: members.some((member) => member.hasAttachments),
+        id: threadId,
+        messageCount: members.length,
+        receivedAt: newest.date,
+        snippet: newest.snippet,
+        subject: newest.subject,
+        unread: newest.unread,
+      } : null
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((left, right) => (right.receivedAt ?? '').localeCompare(left.receivedAt ?? ''))
+  const nextOffset = cursor.offset + pageUnits.length
+  const totalUnits = nativeGroups?.length ?? uids.length
+  return {
+    items: rows,
+    ...(nextOffset < totalUnits
+      ? { nextCursor: encodeCursor({ offset: nextOffset, uidValidity: selected.uidValidity }) }
+      : {}),
+  }
+})
+
+/** Read a bounded, structurally identified IMAP conversation without persisting it. */
+export const readMailboxMailConversation = async (
+  endpoints: MailboxEndpoints,
+  input: { accountId: string; folder?: string; threadId: string },
+  options: MailboxClientOptions,
+): Promise<MailboxMailConversation | null> => withImap(endpoints, options, async (session) => {
+  const folder = input.folder?.trim() || DEFAULT_FOLDER
+  const selected = await session.selectFolder(folder)
+  const uids = (await session.searchUids(['ALL'])).slice(0, HEADER_WINDOW_LIMIT)
+  const headers = await Promise.all((await session.fetchMessages(uids, 'headers'))
+    .map((message) => summarizeThreadHeader(message.uid, message.raw, message.flags)))
+  const group = threadHeaders(headers, input.accountId, folder, selected.uidValidity)
+    .find((candidate) => candidate.id === input.threadId)
+  if (!group) return null
+  const full = await session.fetchMessages(group.members.map((member) => member.uid), 'full')
+  const messages = await Promise.all(full.map(async (fetched) => {
+    const parsed = await parseInboundEmail(fetched.raw)
+    const body = parsed.htmlBody ?? parsed.textBody
+    const bodyFormat: 'html' | 'text' = parsed.htmlBody ? 'html' : 'text'
+    return {
+      attachments: parsed.attachments.map((attachment) => ({
+        contentType: attachment.contentType,
+        filename: attachment.filename,
+        sizeBytes: attachment.content.byteLength,
+      })),
+      blockedRemoteContent: parsed.blockedRemoteContent,
+      body: body.slice(0, MAX_BODY_CHARS),
+      bodyFormat,
+      cc: parsed.ccAddresses,
+      from: parsed.fromAddress,
+      id: String(fetched.uid),
+      inReplyTo: parsed.inReplyTo,
+      receivedAt: parsed.date?.toISOString() ?? null,
+      subject: parsed.subject,
+      threadId: input.threadId,
+      to: parsed.toAddresses,
+    }
+  }))
+  return {
+    earlierMessagesMayExist: uids.length === HEADER_WINDOW_LIMIT,
+    id: input.threadId,
+    messages: messages.sort((left, right) => (left.receivedAt ?? '').localeCompare(right.receivedAt ?? '')),
+  }
+})
 
 export const searchMailbox = async (
   endpoints: MailboxEndpoints,

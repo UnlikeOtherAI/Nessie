@@ -2,6 +2,11 @@
 
 Status: implementation plan (2026-09-04)
 
+Implementation note (2026-09-04): the live provider, entitlement, and REST
+foundation is in place for Gmail and SMTP/IMAP. It keeps provider mail live and
+no-store; the owning `/mail` surface and agent-presentation work remain separate
+implementation slices.
+
 ## Outcome
 
 Give a person a real mail-shaped review surface for accounts already connected

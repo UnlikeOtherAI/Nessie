@@ -92,7 +92,7 @@ export {
 
 export { MailWire, MailWireError, type MailWireOptions } from './wire.js'
 
-export { ImapError, ImapSession, type ImapPart } from './imap.js'
+export { ImapError, ImapSession, parseThreadReferenceSets, type ImapPart } from './imap.js'
 
 export {
   SmtpError,
@@ -105,12 +105,17 @@ export {
 
 export {
   readMailboxMessage,
+  readMailboxMailConversation,
+  listMailboxMailThreads,
+  mailboxThreadToken,
   searchMailbox,
   sendFromMailbox,
   testMailboxConnection,
   type MailboxClientOptions,
   type MailboxEndpoints,
   type MailboxMessage,
+  type MailboxMailConversation,
+  type MailboxMailThreadPage,
   type MailboxSearchQuery,
   type MailboxSummary,
 } from './mailbox-client.js'
