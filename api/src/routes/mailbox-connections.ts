@@ -271,6 +271,7 @@ export const registerMailboxConnectionRoutes = (
       const connection = await reconnectMailboxConnection(
         prisma,
         {
+          actorUserId: actorContext.actor.actorId,
           connection: existing,
           imapHost: body.imapHost,
           imapPort: body.imapPort,

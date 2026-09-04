@@ -88,7 +88,14 @@ Plan and as-built deltas:
   same address-first form used by Settings; it accepts no password, server, or
   OAuth-code argument, and refuses a team-scope doorway for a non-manager before
   it posts anything. `email_account_check` invokes the same provider resync or
-  live two-leg mailbox test as the account card, and
+  live two-leg mailbox test as the account card. A saved-credential check is
+  observation, not recovery: it refreshes `lastVerifiedAt` only for an already
+  active mailbox and cannot clear `needs_reauthorization` or resolve its alert;
+  only an explicit reconnect that replaces the credential and endpoints can do
+  that. When an owner or admin reconnects a shared mailbox, that live manager
+  atomically becomes its future send approver (`createdByUserId`) while the
+  connection id and every agent-access row remain intact; a personal mailbox's
+  owner/creator is never reassigned. The tool
   `email_account_disconnect` is structurally approval-gated before it invokes
   the same disconnect service. `email_account_agent_access` changes only the
   per-`(connection, agent)` row: it never silently rewrites that agent's tool

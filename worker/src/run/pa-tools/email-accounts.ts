@@ -190,6 +190,8 @@ export const runEmailAccountCheckTool = async (
     inputSummary: `accountKind=mailbox accountId=${ref.accountId}`,
     outputPreview: result.ok
       ? `${connection.address}: ${result.detail}`
+      : result.recoveryRequired
+        ? `${connection.address}: ${result.detail}`
       : `${connection.address}: check failed — ${result.detail}`,
     toolName: 'email_account_check',
   }

@@ -152,6 +152,7 @@ export {
   mailboxConnectionFailureMessage,
   mailboxConnectionTestFailure,
   presentMailboxConnection,
+  recordMailboxConnectionVerification,
   setMailboxAgentAccess,
   verifyMailboxConnection,
   type ActingMember as MailboxActingMember,
@@ -162,6 +163,7 @@ export {
 } from './mailbox-connections.js'
 
 export {
+  persistMailboxReconnection,
   reconnectMailboxConnection,
   recordMailboxConnectionCredentialRejection,
   resolveMailboxConnectionHealthAlerts,
