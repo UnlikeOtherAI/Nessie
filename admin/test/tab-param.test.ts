@@ -261,6 +261,7 @@ const tabBarElements = (content: string): string[] => {
 const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/apps/AppConnectDialog.tsx',
   'admin/src/components/features/apps/AppSecretDialog.tsx',
+  'admin/src/components/features/approvals/ApprovalDecision.tsx',
   'admin/src/components/features/channels/RunApprovalGate.tsx',
   'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
   'admin/src/pages/settings/MemberInvitationDialog.tsx',
