@@ -5,9 +5,7 @@ import { z } from 'zod'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
-  InfisicalVault,
   InfisicalVaultError,
-  type InfisicalSecretNamespace,
 } from '../services/infisical-vault.js'
 import {
   secretMetadataIsUnsafe,
@@ -19,10 +17,12 @@ import {
 } from './secret-capture-create.js'
 import {
   canManageSecretScope,
-  hasEverySecretPermission,
-  hasSecretPermission,
-  secretGrantPrincipalExists,
 } from './secret-route-access.js'
+import {
+  grantActiveSecret,
+  revokeActiveSecret,
+  rotateActiveSecret,
+} from './secret-lifecycle.js'
 import type { RouteDeps } from './types.js'
 const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 
@@ -69,8 +69,6 @@ const publicSecret = (secret: {
   createdAt: secret.createdAt.toISOString(),
   updatedAt: secret.updatedAt.toISOString(),
 })
-const vaultName = (reference: string): string => `NESSIE_${reference.slice(4).toUpperCase()}`
-
 const sendVaultError = (reply: Parameters<typeof sendApiError>[0], error: unknown): boolean => {
   if (!(error instanceof InfisicalVaultError)) return false
   sendApiError(
@@ -236,40 +234,32 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
       return reply
     }
-    const canManage = actorContext.actor.roles?.includes('owner')
-      || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasSecretPermission({
-        actorId: actorContext.actor.actorId,
-        permission: 'manage',
+    let result
+    try {
+      result = await rotateActiveSecret({
+        actor: {
+          actorId: actorContext.actor.actorId,
+          isOwner: actorContext.actor.roles?.includes('owner') ?? false,
+          organizationId: actorContext.tenant.organizationId,
+        },
         prisma,
         secretId: secret.id,
-      })
-    if (!canManage) {
-      sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
-      return reply
-    }
-    if (secret.status !== 'active') {
-      sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can be rotated.')
-      return reply
-    }
-    const namespace: InfisicalSecretNamespace = {
-      organizationId: secret.organizationId,
-      scopeId: secret.scopeId,
-      scopeType: secret.scopeType,
-    }
-    try {
-      await new InfisicalVault().replace({
-        name: vaultName(secret.reference),
-        namespace,
         value: body.value,
       })
     } catch (error) {
       if (sendVaultError(reply, error)) return reply
       throw error
     }
-    const rotated = await prisma.secret.update({
-      where: { id: secret.id }, data: { rotatedAt: new Date(), status: 'active' },
-    })
+    if (!result.ok) {
+      if (result.reason === 'denied') {
+        return sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
+      }
+      if (result.reason === 'missing') {
+        return sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
+      }
+      return sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can be rotated.')
+    }
+    const rotated = result.value
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'secret.rotated' as Parameters<typeof emitAuditEvent>[1]['action'],
@@ -298,35 +288,32 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
       return reply
     }
-    const canManage = actorContext.actor.roles?.includes('owner')
-      || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasSecretPermission({
-        actorId: actorContext.actor.actorId,
-        permission: 'manage',
+    let result
+    try {
+      result = await revokeActiveSecret({
+        actor: {
+          actorId: actorContext.actor.actorId,
+          isOwner: actorContext.actor.roles?.includes('owner') ?? false,
+          organizationId: actorContext.tenant.organizationId,
+        },
         prisma,
         secretId: secret.id,
       })
-    if (!canManage) {
-      sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
-      return reply
-    }
-    if (secret.status === 'revoked') return createApiResponse(publicSecret(secret))
-    if (secret.status !== 'active') {
-      sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can be revoked.')
-      return reply
-    }
-    const namespace: InfisicalSecretNamespace = {
-      organizationId: secret.organizationId,
-      scopeId: secret.scopeId,
-      scopeType: secret.scopeType,
-    }
-    try {
-      await new InfisicalVault().remove({ name: vaultName(secret.reference), namespace })
     } catch (error) {
       if (sendVaultError(reply, error)) return reply
       throw error
     }
-    const revoked = await prisma.secret.update({ where: { id: secret.id }, data: { status: 'revoked' } })
+    if (!result.ok) {
+      if (result.reason === 'denied') {
+        return sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
+      }
+      if (result.reason === 'missing') {
+        return sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
+      }
+      return sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can be revoked.')
+    }
+    const revoked = result.value
+    if (result.changed === false) return createApiResponse(publicSecret(revoked))
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'secret.revoked' as Parameters<typeof emitAuditEvent>[1]['action'],
@@ -366,50 +353,29 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
       return reply
     }
-    const canDelegate = actorContext.actor.roles?.includes('owner')
-      || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasEverySecretPermission({
+    const result = await grantActiveSecret({
+      actor: {
         actorId: actorContext.actor.actorId,
-        permissions: body.permissions,
-        prisma,
-        secretId: secret.id,
-      })
-    if (!canDelegate) {
-      sendApiError(reply, 403, 'SECRET_DELEGATE_DENIED', 'You cannot delegate access to this secret.')
-      return reply
-    }
-    if (secret.status !== 'active') {
-      sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can receive grants.')
-      return reply
-    }
-    if (!(await secretGrantPrincipalExists({
-      organizationId: actorContext.tenant.organizationId,
-      principalId: body.principalId,
-      principalType: body.principalType,
+        isOwner: actorContext.actor.roles?.includes('owner') ?? false,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      body,
       prisma,
-    }))) {
-      sendApiError(reply, 400, 'SECRET_GRANT_PRINCIPAL_INVALID', 'The grant target is not in this team.')
-      return reply
-    }
-    const grant = await prisma.secretGrant.upsert({
-      where: {
-        secretId_principalType_principalId: {
-          principalId: body.principalId,
-          principalType: body.principalType,
-          secretId: secret.id,
-        },
-      },
-      create: {
-        ...body,
-        createdById: actorContext.actor.actorId,
-        expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
-        secretId: secret.id,
-      },
-      update: {
-        expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-        permissions: body.permissions,
-      },
+      secretId: secret.id,
     })
+    if (!result.ok) {
+      if (result.reason === 'denied') {
+        return sendApiError(reply, 403, 'SECRET_DELEGATE_DENIED', 'You cannot delegate access to this secret.')
+      }
+      if (result.reason === 'inactive') {
+        return sendApiError(reply, 409, 'SECRET_NOT_ACTIVE', 'Only an active secret can receive grants.')
+      }
+      if (result.reason === 'invalid_principal') {
+        return sendApiError(reply, 400, 'SECRET_GRANT_PRINCIPAL_INVALID', 'The grant target is not in this team.')
+      }
+      return sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
+    }
+    const grant = result.value
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'secret.access_granted' as Parameters<typeof emitAuditEvent>[1]['action'],

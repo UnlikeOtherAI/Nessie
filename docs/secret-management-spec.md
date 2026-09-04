@@ -100,9 +100,12 @@ The same deterministic scanner runs in the browser and API. It matches only
 structural credential syntax (known provider formats, PEM blocks, JWTs,
 credential-bearing connection URLs, explicit token assignments, and bounded
 high-entropy tokens including base64-style `/`, `+`, and padding); it does not
-use an LLM or infer intent from prose. A bullet mask followed by plausible raw
-credential bytes on the same or next line is treated as camouflage and scanned
-again rather than trusted as an existing redaction.
+use an LLM or infer intent from prose. A bullet mask is a terminal display
+placeholder rather than trusted provenance: except for a structural sequence
+of other mask-only values, later bytes are treated as camouflage and removed
+through a fixed-point redaction before reaching a sink. This deliberately
+prefers truncating prose after a user-supplied mask over letting a disguised
+value through.
 
 The composer scan happens before a chat request, optimistic message, oversize
 paste state, or durable draft can survive. It covers channel posts, thread and
@@ -177,7 +180,10 @@ vault write, with an explicit bounded transaction timeout. The metadata row
 stores an organisation-scoped keyed HMAC of the submitted value so a reused key
 with different bytes is refused without storing recoverable secret material.
 Only an active matching row may be replayed, and revoked secrets cannot be
-rotated or granted new access. If a failed metadata write leaves its
+rotated or granted new access. Rotation, revocation, and grant changes share a
+per-secret advisory lock, so an active-state check and its mutation cannot race
+another lifecycle change. A temporary delegate cannot grant a capability past
+their own grant's expiry. If a failed metadata write leaves its
 deterministic vault name behind, the next locked retry replaces that orphan and
 continues instead of wedging the capture identity. A response-loss retry
 returns the original metadata row without writing the vault twice, while

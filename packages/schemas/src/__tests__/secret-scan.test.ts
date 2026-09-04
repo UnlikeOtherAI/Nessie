@@ -46,13 +46,15 @@ test('detectSecrets catches private key blocks and database URLs', () => {
 
 test('detectSecrets catches common provider prefixes and unprefixed high-entropy tokens', () => {
   const awsSecret = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+  const lettersOnly = 'aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJkLmN'
   const detected = detectSecrets(
-    `glpat-abcdefghijklmnopqrstuvwxyz123456 Xz9_kLm2Pq7Rs4Tu8Vw1Yz6Ab3Cd5Ef0 ${awsSecret}`,
+    `glpat-abcdefghijklmnopqrstuvwxyz123456 Xz9_kLm2Pq7Rs4Tu8Vw1Yz6Ab3Cd5Ef0 ${awsSecret} ${lettersOnly}`,
   )
-  assert.equal(detected.length, 3)
+  assert.equal(detected.length, 4)
   assert.equal(detected[0]?.type, 'github_token')
   assert.equal(detected[1]?.type, 'high_entropy_token')
   assert.equal(detected[2]?.type, 'high_entropy_token')
+  assert.equal(detected[3]?.type, 'high_entropy_token')
   assert.doesNotMatch(redactDetectedSecrets(awsSecret), /EXAMPLEKEY/u)
   assert.equal(detectSecrets('sk-proj-abcdefghijkl')[0]?.type, 'openai_api_key')
   assert.equal(detectSecrets('sk_live_abcdefgh')[0]?.type, 'stripe_api_key')
@@ -113,7 +115,8 @@ test('a masked private-key prefix cannot conceal newly appended raw material', (
     1,
   )
   assert.equal(detectSecrets(`${masked}\n\n${uppercaseBody}`).length, 1)
-  assert.equal(detectSecrets(`${masked}\nordinary prose`).length, 0)
+  assert.equal(detectSecrets(`${masked}\nordinary prose`).length, 1)
+  assert.equal(redactDetectedSecrets(`${masked}\nordinary prose`), masked)
 })
 
 test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
@@ -126,11 +129,15 @@ test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
     `api_key=${mask} huntertwo`,
     `api_key=${mask} "hunter2"`,
     `api_key=${mask}\nhunter2`,
+    `api_key=${mask}\nhuntertwo please use it`,
+    `api_key=${mask} huntertwo please use it`,
+    `api_key=${mask}: hunter2`,
+    `api_key=${mask}\nok\nhunter2`,
     `api_key=${mask}\n123456`,
   ]) {
     const redacted = redactDetectedSecrets(value)
     assert.equal(detectSecrets(value).length, 1)
-    assert.doesNotMatch(redacted, /hunter2|huntertwo|raw-tail|123456/u)
+    assert.doesNotMatch(redacted, /hunter2|huntertwo|raw-tail|123456|please use it/u)
     assert.equal(detectSecrets(redacted).length, 0)
   }
   assert.equal(
@@ -138,6 +145,14 @@ test('a fixed bullet mask cannot camouflage appended credential bytes', () => {
     `password="${mask}"`,
   )
   assert.equal(detectSecrets(`Protected: ${mask}.`).length, 0)
+  assert.equal(
+    redactDetectedSecrets(`OPENAI_API_KEY=sk-proj-${mask}\nSENDGRID_API_KEY=SG.${mask}`),
+    `OPENAI_API_KEY=sk-proj-${mask}\nSENDGRID_API_KEY=SG.${mask}`,
+  )
+  assert.equal(
+    redactDetectedSecrets(`OPENAI_API_KEY=sk-proj-${mask}\nSENDGRID_API_KEY=SG.${mask}\nhuntertwo`),
+    `OPENAI_API_KEY=sk-proj-${mask}`,
+  )
 })
 
 test('provider-specific dotted and anthropic credentials are classified as one value', () => {
@@ -158,7 +173,7 @@ test('display masks retain only structural provider prefixes', () => {
   )
   assert.equal(
     redactDetectedSecrets('postgresql://admin:really-secret@db.example/nessie'),
-    `postgresql://${'•'.repeat(12)}/nessie`,
+    `postgresql://${'•'.repeat(12)}`,
   )
   assert.equal(
     redactDetectedSecrets('api_key=abcdefghijklmnopqrstuv'),
@@ -213,12 +228,14 @@ test('assignment extraction excludes surrounding quotes and prose punctuation', 
     'abcdefghijklmnopqrstuvwxyz123456',
   )
   assert.equal(redactDetectedSecrets(parenthesized), `token=(${'•'.repeat(12)})`)
+  assert.equal(redactDetectedSecrets('password=pa$$word123'), `password=${'•'.repeat(12)}`)
+  assert.equal(redactDetectedSecrets(String.raw`password=pa\ssword123`), `password=${'•'.repeat(12)}`)
 })
 
 test('stream redaction holds partial lines and private keys until they are safe', () => {
   const stream = createSecretRedactingStream()
   assert.equal(stream.push('before\napi_key=abc'), 'before\n')
-  assert.equal(stream.push('defghijklmnopqrstuv\nafter\n'), `api_key=${'•'.repeat(12)}\nafter\n`)
+  assert.equal(stream.push('defghijklmnopqrstuv\nafter\n'), `api_key=${'•'.repeat(12)}`)
   assert.equal(stream.finish(), '')
 
   const pemStream = createSecretRedactingStream()
@@ -237,8 +254,8 @@ test('stream redaction holds partial lines and private keys until they are safe'
 
   const maskedPemStream = createSecretRedactingStream()
   const maskedPem = `-----BEGIN PRIVATE KEY-----${'•'.repeat(12)}`
-  assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), `${maskedPem}\nafter\n`)
-  assert.equal(maskedPemStream.push('QUJDREVGR0hJSktM\n'), `${'•'.repeat(12)}\n`)
+  assert.equal(maskedPemStream.push(`${maskedPem}\nafter\n`), maskedPem)
+  assert.equal(maskedPemStream.push('QUJDREVGR0hJSktM\n'), '')
   assert.equal(maskedPemStream.finish(), '')
 
   const appendedPemStream = createSecretRedactingStream()
@@ -255,7 +272,8 @@ test('stream redaction holds partial lines and private keys until they are safe'
   assert.equal(camouflagedMaskStream.push(`api_key=${'•'.repeat(12)}\n`), '')
   assert.equal(
     camouflagedMaskStream.push('hunter2\n'),
-    `api_key=${'•'.repeat(12)}\n${'•'.repeat(12)}\n`,
+    `api_key=${'•'.repeat(12)}`,
   )
+  assert.equal(camouflagedMaskStream.push('hunter2 again\n'), '')
   assert.equal(camouflagedMaskStream.finish(), '')
 })

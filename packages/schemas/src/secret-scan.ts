@@ -102,6 +102,10 @@ const PRIVATE_KEY_BEGIN = new RegExp(
 
 const SECRET_MASK = '•'.repeat(12)
 const SAFE_REDACTION_MARKERS = new Set(['[MaxDepth]', '[REDACTED]', '[REDACTED_SECRET]'])
+const SAFE_MASK_END = String.raw`["'\x60)\]},;.]*`
+const SAFE_MASKED_VALUE = String.raw`(?:[A-Za-z_][A-Za-z0-9_.-]{0,119}\s*[:=]\s*)?`
+  + String.raw`(?:[A-Za-z0-9]{1,16}[-_.])?${SECRET_MASK}${SAFE_MASK_END}`
+const SAFE_MASK_SUFFIX = String.raw`${SAFE_MASK_END}\s*(?:${SAFE_MASKED_VALUE}\s*)*$`
 
 /**
  * A legitimate redaction is exactly the armor header plus the fixed mask.
@@ -115,11 +119,6 @@ const maskedPrivateKeyHasRawTail = (content: string, beginEnd: number): boolean 
     || /^[ \t]*(?:[A-Za-z0-9+/_=-]{16,})[ \t]*\r?$/mu.test(tail)
 }
 
-const MASKED_TAIL_VALUE = String.raw`(?:["'\x60([{]\s*)?(`
-  + String.raw`(?:(?=[A-Za-z0-9_./+=-]{6,})(?=[A-Za-z0-9_./+=-]*[A-Za-z])`
-  + String.raw`(?=[A-Za-z0-9_./+=-]*\d)[A-Za-z0-9_./+=-]{6,}`
-  + String.raw`|[A-Za-z][A-Za-z-]{7,}(?![A-Za-z-]|\s+[A-Za-z])|\d{6,}))`
-
 const DATABASE_URL = new RegExp(
   '\\b(?:https?|amqps?|ldaps?|neo4j|bolt|postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis(?:s)?|sqlserver):\\/\\/'
     + '[^\\s/:]+:[^\\s@]+@[^\\s/]+',
@@ -128,19 +127,15 @@ const DATABASE_URL = new RegExp(
 
 const PATTERNS: SecretPattern[] = [
   {
-    // A valid protected replacement ends at the fixed mask. Anything joined
-    // directly onto it is new material, never part of the placeholder.
+    // A mask is a terminal display placeholder, not trusted provenance. Apart
+    // from a structural sequence of other mask-only values, later bytes could
+    // be camouflage. Fail closed through the end so redaction reaches a stable
+    // mask-only suffix before any sink sees it.
     type: 'token_assignment',
-    expression: new RegExp(`${SECRET_MASK}([^\\s•,;.)\\]}"'\\x60]+)`, 'g'),
-    valueGroup: 1,
-  },
-  {
-    // A fixed mask followed by another plausible value is camouflage, not a
-    // protected placeholder. Include quoted and newline-separated tails;
-    // alphabetic passwords and six-digit codes are credentials too.
-    type: 'token_assignment',
-    expression: new RegExp(`${SECRET_MASK}\\s+${MASKED_TAIL_VALUE}`, 'g'),
-    valueGroup: 1,
+    expression: new RegExp(
+      `${SECRET_MASK}(?!${SAFE_MASK_SUFFIX})[\\s\\S]+`,
+      'g',
+    ),
   },
   {
     type: 'pem_private_key',
@@ -207,7 +202,7 @@ const PATTERNS: SecretPattern[] = [
   {
     type: 'token_assignment',
     expression: assignmentExpression(
-      String.raw`(?:\(|\[|\{)?([^\\\s$"'\x60([{]+)`,
+      String.raw`(?:\(|\[|\{)?((?!\\["'\x60]|\$[{'"\x60])[^\s"'\x60([{]+)`,
     ),
     stripTrailingPunctuation: true,
     valueGroup: 1,
@@ -272,7 +267,7 @@ const highEntropyTokens = (content: string): DetectedSecret[] => {
     const value = match[0]
     const classes = [/[a-z]/, /[A-Z]/, /\d/, /[_+/=-]/]
       .filter((candidate) => candidate.test(value)).length
-    if (classes >= 3 && entropy(value) >= 4) {
+    if (classes >= 2 && entropy(value) >= 4) {
       candidates.push({
         type: 'high_entropy_token',
         prefix: '',
@@ -367,7 +362,7 @@ export const containsDetectedSecret = (value: unknown, depth = 0): boolean => {
     .some((entry) => containsDetectedSecret(entry, depth + 1))
 }
 
-export const redactDetectedSecrets = (content: string): string => {
+const redactDetectedSecretsOnce = (content: string): string => {
   const matches = detectSecrets(content)
   if (matches.length === 0) return content
   let cursor = 0
@@ -378,6 +373,17 @@ export const redactDetectedSecrets = (content: string): string => {
     cursor = match.end
   }
   return result + content.slice(cursor)
+}
+
+/** Redaction is a fixed point: its own placeholders can never camouflage a tail. */
+export const redactDetectedSecrets = (content: string): string => {
+  let safe = content
+  for (let pass = 0; pass < 3; pass++) {
+    const next = redactDetectedSecretsOnce(safe)
+    if (next === safe) return safe
+    safe = next
+  }
+  return safe
 }
 
 /** Recursively redact string leaves before JSON-like provider data reaches a sink. */
@@ -404,22 +410,15 @@ export const createSecretRedactingStream = (): {
   push: (chunk: string) => string
 } => {
   let buffer = ''
-  let maskedPrivateKeyContext = false
+  let outputClosedAfterMask = false
 
   const redactStreamContent = (content: string): string => {
-    const beginScan = new RegExp(PRIVATE_KEY_BEGIN.source, PRIVATE_KEY_BEGIN.flags)
-    for (let begin = beginScan.exec(content); begin; begin = beginScan.exec(content)) {
-      if (content.startsWith(SECRET_MASK, begin.index + begin[0].length)) {
-        maskedPrivateKeyContext = true
-        break
-      }
-    }
+    if (outputClosedAfterMask) return ''
     const safe = redactDetectedSecrets(content)
-    if (!maskedPrivateKeyContext) return safe
-    return safe.replace(
-      /^([ \t]*)[A-Za-z0-9+/_=-]{16,}([ \t]*\r?)$/gmu,
-      `$1${SECRET_MASK}$2`,
-    )
+    const maskIndex = safe.indexOf(SECRET_MASK)
+    if (maskIndex < 0) return safe
+    outputClosedAfterMask = true
+    return safe
   }
 
   const safeCut = (): number => {

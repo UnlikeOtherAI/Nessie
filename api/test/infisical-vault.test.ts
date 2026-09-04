@@ -27,7 +27,6 @@ type InfisicalEnvironment = Record<
   'INFISICAL_API_URL' | 'INFISICAL_ENVIRONMENT' | 'INFISICAL_PROJECT_ID' | 'INFISICAL_SERVICE_TOKEN' | 'INFISICAL_SERVICE_TOKEN_FILE',
   string | undefined
 >
-
 const infisicalEnvironment: InfisicalEnvironment = {
   INFISICAL_API_URL: 'https://8.8.8.8',
   INFISICAL_ENVIRONMENT: 'prod',
@@ -148,8 +147,9 @@ const makeSecretRouteApp = () => {
         }
         return stored
       },
-      findFirst: async ({ where }: { where: { organizationId: string; reference: string } }) =>
-        stored?.organizationId === where.organizationId && stored.reference === where.reference
+      findFirst: async ({ where }: { where: { id?: string; organizationId: string; reference?: string } }) =>
+        stored?.organizationId === where.organizationId
+          && (where.id === stored.id || where.reference === stored.reference)
           ? stored
           : null,
       findUnique: async ({ where }: { where: { reference: string } }) => stored?.reference === where.reference ? stored : null,

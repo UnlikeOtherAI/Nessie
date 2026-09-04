@@ -1363,8 +1363,9 @@ type ControlCommandDefinition = {
     organisation-scoped value fingerprint; only active matches replay, failed
     metadata writes can repair their deterministic vault orphan, and editing a
     failed form rotates that identity.
-  - a delegate can grant only permissions they also hold; revoked secrets
-    cannot be rotated or receive new grants.
+  - a delegate can grant only permissions and a lifetime they also hold;
+    per-secret lifecycle locking prevents rotate/revoke/grant races, and
+    revoked secrets cannot be rotated or receive new grants.
   - a successful save posts only a masked replacement turn; raw secret text is
     never the message later deleted or rewritten.
   - broader scope selection (`global`, `team`, `channel`, `agent`, `thread`,
