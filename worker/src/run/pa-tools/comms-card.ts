@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client'
+import { parseEmailAccountToolArgs } from '@nessie/runtime'
 import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
+import { resolveActingMember } from './access.js'
 import { buildRealtimeScopesForChannel } from './message-destination.js'
 
 const CONNECTABLE_PROVIDERS = ['slack', 'google', 'microsoft'] as const
@@ -95,11 +97,16 @@ export const runCommsConnectCardTool = async (
 }
 
 /** The one chat doorway into the same address-first email form as Settings. */
-export const runEmailAccountConnectTool = (
+export const runEmailAccountConnectTool = async (
   context: BuiltinToolRuntimeContext,
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const scope = args.scope === 'team' ? 'team' : 'user'
+  const parsed = parseEmailAccountToolArgs('email_account_connect', args)
+  const scope = parsed.scope === 'team' ? 'team' : 'user'
+  const member = await resolveActingMember(context)
+  if (scope === 'team' && member.role !== 'owner' && member.role !== 'admin') {
+    throw new Error('Only an owner or admin can connect a shared mailbox for a team.')
+  }
   return postConnectCard(context, {
     card: { kind: 'email_account_connect', scope },
     content: scope === 'team'

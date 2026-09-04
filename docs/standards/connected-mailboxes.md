@@ -64,18 +64,22 @@ Plan and as-built deltas:
   mailbox they may administer: the caller's personal mailboxes, plus shared
   mailboxes only for an organisation owner or admin. It deliberately does not
   reuse the broader member-visibility list, because a visible shared mailbox is
-  not necessarily mutable. Connection status carries only fixed structural
-  remedies; untrusted provider error text is neither persisted nor presented,
-  and a migration sanitises legacy rows. `email_account_connect` posts a doorway into the
+  not necessarily mutable. That management read stamps the acting person's user
+  disclosure basis. Connection status carries only fixed structural remedies;
+  untrusted provider error text is neither persisted nor presented, and a
+  migration sanitises legacy rows. `email_account_connect` posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
-  OAuth-code argument. `email_account_check` invokes the same provider resync or
+  OAuth-code argument, and refuses a team-scope doorway for a non-manager before
+  it posts anything. `email_account_check` invokes the same provider resync or
   live two-leg mailbox test as the account card, and
   `email_account_disconnect` is structurally approval-gated before it invokes
   the same disconnect service. `email_account_agent_access` changes only the
   per-`(connection, agent)` row: it never silently rewrites that agent's tool
   policy. These lifecycle tools are Personal-Assistant-only and stay separate
   from the independently grantable `mailbox_search` / `mailbox_read` /
-  `mailbox_send` content tools.
+  `mailbox_send` content tools. Their schemas reject undeclared fields before a
+  policy or approval record can observe them, so a secret-shaped extra argument
+  never becomes durable approval state.
 - **Discovery has no credential capability.** The authenticated discovery route
   accepts only an address plus explicit scope, fans out reviewed registry, MX,
   secure mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration evidence,

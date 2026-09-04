@@ -91,7 +91,13 @@ Google's or Microsoft's own page, and a conventional mailbox password stays in
 the protected connection form.
 
 Listing returns an exact account id and kind so a follow-up operation cannot
-guess between two addresses. Google and Microsoft checks queue their normal
+guess between two addresses. A personal mailbox is manageable only by the
+person who connected it; an owner or admin may also manage shared mailboxes.
+The listing is treated as private account metadata, so a reply built from it is
+limited to the requesting person. Connection-state wording is deliberately
+generic — server replies and diagnostics never enter chat. A shared-mailbox
+connection request from a non-manager is refused before a form is posted.
+Google and Microsoft checks queue their normal
 initial or incremental sync. An IMAP/SMTP check logs in to both incoming and
 outgoing services with the stored credential. Disconnect is always held for a
 person to approve before the assistant runs it.
