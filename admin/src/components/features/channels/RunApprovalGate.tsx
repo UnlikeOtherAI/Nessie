@@ -10,11 +10,13 @@ import {
   type ApprovalDuration,
 } from '../../../facades/approvals/gate-hooks'
 import { useToasts } from '../../../providers/ToastProvider'
+import { EmailApprovalReviewDialog } from '../approvals/EmailApprovalReviewDialog'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 import {
   APPROVAL_GATE_ACTIONS,
   canCreateStandingConsentFromApproval,
+  requiresEmailApprovalReview,
 } from './approval-gate-eligibility'
 
 const ApprovalGateSchema = z.object({
@@ -81,6 +83,7 @@ export const RunApprovalGate = ({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [duration, setDuration] = useState<ApprovalDuration>('30d')
   const [showDetails, setShowDetails] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   if (!gate) return null
 
@@ -95,7 +98,15 @@ export const RunApprovalGate = ({
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
   const isCalendar = gate.toolName.startsWith('calendar_')
-  const canCreateStandingConsent = canCreateStandingConsentFromApproval(gate.toolName, context)
+  // The server-generated notice tool id is the authoritative first guard. If
+  // the fetched approval ever disagrees, choose the stricter email route; no
+  // stale chat card may turn correspondence into a generic confirmation.
+  const approvalToolName = readString(context, 'toolName')
+  const requiresExactEmailReview =
+    requiresEmailApprovalReview(gate.toolName)
+    || (approvalToolName !== null && requiresEmailApprovalReview(approvalToolName))
+  const canCreateStandingConsent = !requiresExactEmailReview
+    && canCreateStandingConsentFromApproval(gate.toolName, context)
 
   const submit = () => {
     resolve.mutate(
@@ -156,7 +167,22 @@ export const RunApprovalGate = ({
       {approval.isError ? (
         <p className="mt-2 text-xs text-[color:var(--tx3)]">Approval details are no longer available.</p>
       ) : null}
-      {active ? (
+      {active && requiresExactEmailReview ? (
+        <div className="mt-3">
+          <button
+            className="admin-button admin-button-primary"
+            data-testid="run-approval-gate-review-email"
+            disabled={!approval.data || approval.isLoading}
+            onClick={() => setReviewOpen(true)}
+            type="button"
+          >
+            {approval.isLoading ? 'Loading review…' : 'Review email'}
+          </button>
+          <p className="mt-1 text-[11px] leading-4 text-[color:var(--tx3)]">
+            Review the exact sender, recipients, subject and message before approving or rejecting it.
+          </p>
+        </div>
+      ) : active ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <TabBar<Resolution>
             ariaLabel="Approval decision"
@@ -253,37 +279,44 @@ export const RunApprovalGate = ({
           </p>
         </div>
       ) : null}
-      <Dialog
-        description={reason ?? `Decide whether ${gate.toolName} may run.`}
-        dismissDisabled={resolve.isPending}
-        onClose={() => setConfirmOpen(false)}
-        open={confirmOpen}
-        title={copy.title}
-      >
-        <div className="text-sm text-[color:var(--tx2)]">
-          {resolution === 'approved'
-            ? 'This lets the agent resume and retry the exact proposed action.'
-            : 'This ends the waiting run; the agent will not run this action.'}
-        </div>
-        <div className="flex justify-end gap-2 pt-5">
-          <button
-            className="admin-button admin-button-secondary"
-            disabled={resolve.isPending}
-            onClick={() => setConfirmOpen(false)}
-            type="button"
-          >
-            Cancel
-          </button>
-          <button
-            className={['admin-button', resolution === 'approved' ? 'admin-button-primary' : 'admin-button-danger'].join(' ')}
-            disabled={resolve.isPending}
-            onClick={submit}
-            type="button"
-          >
-            {resolve.isPending ? 'Resolving…' : copy.action}
-          </button>
-        </div>
-      </Dialog>
+      {!requiresExactEmailReview ? (
+        <Dialog
+          description={reason ?? `Decide whether ${gate.toolName} may run.`}
+          dismissDisabled={resolve.isPending}
+          onClose={() => setConfirmOpen(false)}
+          open={confirmOpen}
+          title={copy.title}
+        >
+          <div className="text-sm text-[color:var(--tx2)]">
+            {resolution === 'approved'
+              ? 'This lets the agent resume and retry the exact proposed action.'
+              : 'This ends the waiting run; the agent will not run this action.'}
+          </div>
+          <div className="flex justify-end gap-2 pt-5">
+            <button
+              className="admin-button admin-button-secondary"
+              disabled={resolve.isPending}
+              onClick={() => setConfirmOpen(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className={['admin-button', resolution === 'approved' ? 'admin-button-primary' : 'admin-button-danger'].join(' ')}
+              disabled={resolve.isPending}
+              onClick={submit}
+              type="button"
+            >
+              {resolve.isPending ? 'Resolving…' : copy.action}
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+      <EmailApprovalReviewDialog
+        approval={approval.data ?? null}
+        onClose={() => setReviewOpen(false)}
+        open={reviewOpen && approval.data !== undefined}
+      />
     </section>
   )
 }
