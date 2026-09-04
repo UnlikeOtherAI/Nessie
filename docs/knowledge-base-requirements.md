@@ -340,6 +340,12 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
   because the admin treats an empty list as a first visit, made it seed a second
   "General" space beside the real one.
   `listSpaces` applies the readable-space predicate in SQL before pagination;
+  its cursor supports both forward and backward traversal, so every entitled
+  space remains reachable from the shared pager rather than only the first
+  page. Ticket-document routes require the ticket itself to have a project;
+  an unassigned ticket returns `TASK_PROJECT_REQUIRED` and never falls back to
+  the session's ambient project. A page bound to a ticket must name one in the
+  destination space's project, whether it was created by a route or a tool.
   `getSpace`/page reads return 403 to non-readers; create/edit/delete/publish/
   move/restore return 403 to non-writers; search drops unreadable hits. The space
   record exposes the caller's effective `canWrite`. A new space must target a
@@ -446,7 +452,12 @@ route.
 (`/projects/:projectId/docs`, `ProjectDocsTab`). In that scope the space list is
 fetched with `?projectId=`, the caller's personal "My Docs" space is neither
 ensured nor listed (it belongs to the person, not the project, even though it is
-filed under whichever project provisioned it), first-visit seeding is off (an
+filed under whichever project provisioned it). The paged shared-space endpoint
+excludes only the caller's own personal space before it counts or keys results:
+that space has a stable Knowledge-sidebar pin, while a different person's
+explicitly granted personal space remains discoverable. Location pickers
+explicitly opt in when they need the caller's own personal space. First-visit
+seeding is off (an
 empty project means "nothing filed here", never "no knowledge base"), a new
 space is created in the project being viewed rather than the session's project,
 and the org-wide storage meter is hidden. Everything else is the same code: the

@@ -36,9 +36,10 @@ export const KnowledgeSidebarNav = () => {
   const phoneLayout = usePhoneLayout()
   const {
     spaces,
+    spacePagination,
     spacesLoaded,
     spacesLoadFailed,
-    myDocsSpaceId,
+    myDocsSpace,
     selectedSpaceId,
     scopeProjectId,
     selectSpace,
@@ -70,9 +71,9 @@ export const KnowledgeSidebarNav = () => {
     }
   }
 
-  const myDocsSpace = spaces.find((space) => space.id === myDocsSpaceId)
-  // The personal space is pinned above "Spaces" — never duplicated below.
-  const otherSpaces = spaces.filter((space) => space.id !== myDocsSpaceId)
+  // The personal space is fetched through its own stable endpoint and omitted
+  // from the paged shared list, so its pin never depends on the current page.
+  const otherSpaces = spaces
 
   // This list is organization-wide, so two projects that each seeded a
   // "General" space render as two identical rows. Name the project on every
@@ -210,6 +211,7 @@ export const KnowledgeSidebarNav = () => {
           emptyLabel="No spaces yet"
           isPending={!spacesLoaded && !spacesLoadFailed}
           onSelect={openSpace}
+          pagination={spacePagination}
           projectLabels={projectLabels}
           selectedSpaceId={activeProductView || !showSelectedSpace ? undefined : selectedSpaceId}
           spaces={otherSpaces}

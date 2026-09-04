@@ -196,11 +196,16 @@ export const runKbFileTool = async (
     throw new Error('You do not have write access to this knowledge space.')
   }
 
-  // Agents may only organize their own drafts, never a human's or another
-  // agent's already-published page.
+  // An agent keeps its authorship limits even when it is delegated to a person
+  // for space access. `principal` deliberately becomes that person in a PA or
+  // system-DM run, so it cannot decide this agent-specific edit authority.
   if (
-    principal.actorType === 'agent' &&
-    !(page.status === 'draft' && page.latestVersion?.authorType === 'agent')
+    context.actorContext.actor.actorType === 'agent' &&
+    !(
+      page.status === 'draft'
+      && page.latestVersion?.authorType === 'agent'
+      && page.latestVersion.authorId === context.agentId
+    )
   ) {
     throw new Error('You may only file draft pages you authored.')
   }
@@ -269,7 +274,11 @@ export const runKbPublishRequestTool = async (
     throw new Error('You do not have write access to this knowledge space.')
   }
 
-  if (page.status !== 'draft' || page.latestVersion?.authorType !== 'agent') {
+  if (
+    page.status !== 'draft'
+    || page.latestVersion?.authorType !== 'agent'
+    || page.latestVersion.authorId !== context.agentId
+  ) {
     throw new Error('Only agent-authored drafts can be submitted for publication with this tool.')
   }
 

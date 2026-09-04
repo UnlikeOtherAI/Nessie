@@ -13,6 +13,7 @@ import { useClearProjectAttention } from '../../facades/alerts/clear-project-att
 const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
   const {
     spaces,
+    spacePagination,
     spacesLoaded,
     spacesLoadFailed,
     selectedSpaceId,
@@ -49,9 +50,11 @@ const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
           <KnowledgeSpaceList
+            compactPagination
             emptyLabel="No documents filed under this project yet"
             isPending={!spacesLoaded && !spacesLoadFailed}
             onSelect={selectSpace}
+            pagination={spacePagination}
             selectedSpaceId={selectedSpaceId}
             spaces={spaces}
           />

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { DocumentStreamTarget } from '@nessie/schemas'
 import {
   useKnowledgePages,
+  useKnowledgeSpace,
   useKnowledgeSpaces,
   type KnowledgePageRecord,
 } from '../../../facades/knowledge/hooks'
@@ -9,6 +10,7 @@ import {
   isFolderPage,
   sortFilesystemPages,
 } from '../knowledge/KnowledgeFilesystemRows'
+import { PaginationFooter } from '../../shared/PaginationFooter'
 
 type DocumentTargetBarProps = {
   disabled: boolean
@@ -35,7 +37,7 @@ export const DocumentTargetBar = ({
   const [open, setOpen] = useState(false)
   const [browseSpaceId, setBrowseSpaceId] = useState<string | null>(null)
   const [browsePath, setBrowsePath] = useState<string[]>([])
-  const spacesQuery = useKnowledgeSpaces()
+  const spacesQuery = useKnowledgeSpaces(undefined, true, true)
   const pagesQuery = useKnowledgePages(browseSpaceId ?? undefined)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
 
@@ -66,7 +68,10 @@ export const DocumentTargetBar = ({
       ),
     [childrenOf, currentParentId, pages],
   )
-  const browseSpace = spacesQuery.data?.find((space) => space.id === browseSpaceId) ?? null
+  const writableSpaces = spacesQuery.items.filter((space) => space.canWrite)
+  const listedBrowseSpace = spacesQuery.items.find((space) => space.id === browseSpaceId)
+  const browseSpaceQuery = useKnowledgeSpace(listedBrowseSpace ? undefined : browseSpaceId ?? undefined)
+  const browseSpace = listedBrowseSpace ?? browseSpaceQuery.data ?? null
   const pathTitles = browsePath.map(
     (pageId) => pages.find((page) => page.id === pageId)?.title ?? '…',
   )
@@ -80,6 +85,10 @@ export const DocumentTargetBar = ({
     .join(' › ')
 
   const choose = (spaceId: string, parentPageId: string | null) => {
+    if (
+      !writableSpaces.some((space) => space.id === spaceId)
+      && !(browseSpace?.id === spaceId && browseSpace.canWrite)
+    ) return
     onSelect({ parentPageId, spaceId })
     setOpen(false)
   }
@@ -124,7 +133,7 @@ export const DocumentTargetBar = ({
               <p className="px-2 py-1 text-[0.6875rem] uppercase text-[color:var(--tx3)]">
                 Spaces
               </p>
-              {(spacesQuery.data ?? []).map((space) => (
+              {writableSpaces.map((space) => (
                 <button
                   className="block w-full truncate rounded px-2 py-1.5 text-left text-xs text-[var(--tx)] hover:bg-[var(--overlay)]"
                   key={space.id}
@@ -137,11 +146,23 @@ export const DocumentTargetBar = ({
                   {space.name}
                 </button>
               ))}
-              {spacesQuery.data?.length === 0 ? (
+              {writableSpaces.length === 0 ? (
                 <p className="px-2 py-2 text-xs text-[color:var(--tx3)]">
                   No spaces you can write to.
                 </p>
               ) : null}
+              <PaginationFooter
+                canNext={spacesQuery.canNext}
+                canPrevious={spacesQuery.canPrevious}
+                className="mx-2"
+                hideWhenSinglePage
+                label={spacesQuery.label}
+                onPageChange={spacesQuery.onPageChange}
+                onPageSizeChange={spacesQuery.onPageSizeChange}
+                page={spacesQuery.page}
+                pageCount={spacesQuery.pageCount}
+                pageSize={spacesQuery.pageSize}
+              />
             </>
           ) : (
             <>
@@ -187,13 +208,15 @@ export const DocumentTargetBar = ({
                   >
                     📁 {folder.title}
                   </button>
-                  <button
-                    className="flex-shrink-0 rounded px-2 py-1 text-[0.6875rem] text-[color:var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]"
-                    onClick={() => choose(browseSpaceId, folder.id)}
-                    type="button"
-                  >
-                    Save here
-                  </button>
+                  {browseSpace?.canWrite ? (
+                    <button
+                      className="flex-shrink-0 rounded px-2 py-1 text-[0.6875rem] text-[color:var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]"
+                      onClick={() => choose(browseSpaceId, folder.id)}
+                      type="button"
+                    >
+                      Save here
+                    </button>
+                  ) : null}
                 </div>
               ))}
               {folders.length === 0 && !pagesQuery.isLoading ? (
@@ -202,16 +225,22 @@ export const DocumentTargetBar = ({
                 </p>
               ) : null}
 
-              <button
-                className={[
-                  'mt-1 block w-full rounded bg-[var(--accent-soft)] px-2 py-1.5 text-xs',
-                  'font-semibold text-[var(--thinking)] hover:bg-[color:var(--main-hover)]',
-                ].join(' ')}
-                onClick={() => choose(browseSpaceId, currentParentId)}
-                type="button"
-              >
-                Save in {pathTitles.at(-1) ?? browseSpace?.name ?? 'this space'}
-              </button>
+              {browseSpace?.canWrite ? (
+                <button
+                  className={[
+                    'mt-1 block w-full rounded bg-[var(--accent-soft)] px-2 py-1.5 text-xs',
+                    'font-semibold text-[var(--thinking)] hover:bg-[color:var(--main-hover)]',
+                  ].join(' ')}
+                  onClick={() => choose(browseSpaceId, currentParentId)}
+                  type="button"
+                >
+                  Save in {pathTitles.at(-1) ?? browseSpace.name}
+                </button>
+              ) : (
+                <p className="px-2 py-2 text-xs text-[color:var(--tx3)]">
+                  You no longer have write access to this space.
+                </p>
+              )}
             </>
           )}
         </div>

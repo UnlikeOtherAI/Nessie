@@ -103,6 +103,7 @@ type FakePrismaOptions = {
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
   parentAgentId?: string | null
+  onListSpaces?: (args: { where: Record<string, unknown> }) => void
   onQueryRaw?: (query: { sql: string }) => void
 }
 
@@ -133,8 +134,12 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
       findMany: async () => (options.page ? [options.page] : []),
     },
     knowledgeSpace: {
+      count: async () => (options.space ? 1 : 0),
       findFirst: async () => options.space ?? null,
-      findMany: async () => (options.space ? [options.space] : []),
+      findMany: async (args: { where: Record<string, unknown> }) => {
+        options.onListSpaces?.(args)
+        return options.space ? [options.space] : []
+      },
     },
     $queryRaw: async (query: { sql: string }) => {
       options.onQueryRaw?.(query)
@@ -367,4 +372,26 @@ test('a bare kb_list catalogue leaves a following shared-channel reply unrestric
     projectId: 'project-1',
     teamId: 'team-1',
   }, ['agent-1']), [])
+})
+
+test('a delegated bare kb_list catalogue includes the acting user\'s My Docs', async () => {
+  const listCalls: Array<{ where: Record<string, unknown> }> = []
+  const prisma = buildFakePrisma({
+    onListSpaces: (args) => listCalls.push(args),
+    space: buildSpaceRow({ userId: 'user-1', visibility: 'private' }),
+  })
+  const context = makeContext(prisma, {
+    actorContext: {
+      actor: { actorId: 'agent-1', actorType: 'agent', roles: [] },
+      actionContext: { effectiveUserId: 'user-1' },
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+
+  const result = await runKbListTool(context, {})
+
+  assert.match(result.outputPreview, /Engineering/)
+  const filters = listCalls[0]?.where?.AND
+  assert.ok(Array.isArray(filters))
+  assert.equal(filters.length, 1)
 })
