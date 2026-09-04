@@ -49,6 +49,8 @@ test('the chat doorway uses session-only offer state and shared dialog navigatio
   assert.match(doorway, /open && Boolean\(account\)/)
   assert.match(doorway, /accounts\.refetch\(\{ throwOnError: true \}\)/)
   assert.match(doorway, /removeItem\('mail-doorway-overlay-open'\)/)
+  assert.match(doorway, /<MailboxWorkspace/)
+  assert.match(doorway, /<MailboxThreadList/)
   assert.doesNotMatch(doorway, /body:|recipients:|send:/)
 })
 
@@ -58,10 +60,32 @@ test('compose and reply keep draft references structural and provider-owned', ()
   assert.match(compose, /useGmailDraft/)
   assert.match(compose, /gmailDraftId \? null : draftKey/)
   assert.match(compose, /useUpdateConnectedMailDraft/)
+  assert.match(compose, /inReplyTo: replyTo\?\.messageId \?\? undefined/)
   assert.match(compose, /providerDraft\.data\.id !== gmailDraftId/)
   assert.match(compose, /Your email was sent/)
   assert.match(compose, /Your email is queued to send/)
   assert.match(page, /searchParams\.get\('draftId'\)/)
   assert.match(page, /threadId=.*reply=/)
   assert.doesNotMatch(page, /searchParams\.get\('query'\)/)
+  assert.match(page, /Search phrases are provider content/)
+  assert.match(page, /Items per page/)
+  assert.match(page, /Mail account/)
+  assert.match(page, /flowOwnsBack=\{layout === 'single' && Boolean\(threadId\)\}/)
+})
+
+test('mail content queries never retain a prior account, thread, or draft', () => {
+  const mailHooks = source('../src/facades/mail/hooks.ts')
+  const gmailHooks = source('../src/facades/gmail/hooks.ts')
+
+  assert.doesNotMatch(mailHooks, /keepPreviousData/)
+  assert.doesNotMatch(gmailHooks, /keepPreviousData/)
+})
+
+test('unavailable account rows name their remedy instead of offering a dead-end control', () => {
+  const page = source('../src/pages/ConnectedMailPage.tsx')
+
+  assert.match(page, /ConnectedMailAccountRow/)
+  assert.match(page, /!account\.canRead \? <p/)
+  assert.match(page, /Open mailbox settings/)
+  assert.match(page, /navigate\(settingsPath\(account\)\)/)
 })

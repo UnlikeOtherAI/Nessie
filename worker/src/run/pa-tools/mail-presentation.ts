@@ -18,9 +18,10 @@ const MailboxComposeSchema = z.object({ connectionId: z.string().uuid().optional
 
 const accessFor = async (
   context: BuiltinToolRuntimeContext,
-  input: { accountId?: string; source: 'gmail' | 'mailbox' },
+  input: { accountId?: string; draftId?: string; source: 'gmail' | 'mailbox' },
 ) => resolveConnectedMailPresentationAccess(context.prisma, {
   accountId: input.accountId,
+  draftId: input.draftId,
   agentId: context.agentId,
   effectiveUserId: resolveEffectiveUserId(context),
   organizationId: context.channel.organizationId,

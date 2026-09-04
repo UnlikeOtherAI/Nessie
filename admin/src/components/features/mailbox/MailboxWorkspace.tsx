@@ -48,10 +48,14 @@ export const MailboxWorkspace = ({
 }: MailboxWorkspaceProps) => (
   <div
     className={[
-      'grid min-h-0 flex-1 gap-4 px-[var(--page-gutter)] pb-6',
+      'grid min-h-0 min-w-0 flex-1 gap-4 px-[var(--page-gutter)] pb-6',
       layout === 'single'
         ? 'grid-rows-[minmax(11rem,2fr)_minmax(0,3fr)]'
-        : 'grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]',
+        // The reader owns the majority of a split viewport. The navigation rail
+        // leaves roughly 400px at the narrowest split layout, so an 8rem list
+        // floor preserves a useful 240px+ reader there while still giving the
+        // list 30% on wider screens. Both mail homes share this decision.
+        : 'grid-cols-[minmax(8rem,30%)_minmax(0,1fr)]',
     ].join(' ')}
     data-layout={layout}
     data-testid="mailbox-workspace"
@@ -81,8 +85,11 @@ export const MailboxThreadList = ({
 
   return (
     <div aria-label={ariaLabel} className="min-h-0 overflow-y-auto" role="listbox">
-      {threads.map((thread) => {
+      {threads.map((thread, index) => {
         const selected = thread.id === selectedId
+        // A listbox has one roving tab stop even before a route selects a
+        // thread. Otherwise keyboard users cannot enter a fresh mailbox.
+        const tabStop = selected || (!selectedId && index === 0)
         return (
           <button
             aria-selected={selected}
@@ -103,7 +110,7 @@ export const MailboxThreadList = ({
               }
             }}
             role="option"
-            tabIndex={selected ? 0 : -1}
+            tabIndex={tabStop ? 0 : -1}
             type="button"
           >
             <span className="flex items-center justify-between gap-2">

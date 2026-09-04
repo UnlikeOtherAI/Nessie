@@ -1,7 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 import type { ConnectedMailSource } from '@nessie/schemas'
 
-import { MailboxAccessError, resolveMailboxForToolCall } from './mailbox-connection-access.js'
+import {
+  MailboxAccessError,
+  listReachableMailboxes,
+  type ReachableMailbox,
+} from './mailbox-connection-access.js'
 
 /**
  * Authorization for an agent-created doorway into the connected-mail surface.
@@ -24,14 +28,14 @@ export type ConnectedMailPresentationAccess = {
   source: ConnectedMailSource
 }
 
-type ActiveMember = { role: string; deactivatedAt: Date | null }
+type ActiveMember = { deactivatedAt: Date | null }
 
 const activeMemberFor = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string },
 ): Promise<ActiveMember> => {
   const member = await prisma.organizationMember.findUnique({
-    select: { deactivatedAt: true, role: true },
+    select: { deactivatedAt: true },
     where: { organizationId_userId: input },
   })
   if (!member || member.deactivatedAt) {
@@ -40,18 +44,57 @@ const activeMemberFor = async (
   return member
 }
 
-const assertSharedMailboxViewer = async (
+const isSharedMailboxViewer = async (
   prisma: PrismaClient,
-  input: { member: ActiveMember; teamId: string; userId: string },
-): Promise<void> => {
-  if (input.member.role === 'owner' || input.member.role === 'admin') return
+  input: { teamId: string; userId: string },
+): Promise<boolean> => {
   const membership = await prisma.teamMember.findUnique({
     select: { id: true },
     where: { teamId_userId: { teamId: input.teamId, userId: input.userId } },
   })
-  if (!membership) {
+  return Boolean(membership)
+}
+
+const resolvePresentationMailbox = async (
+  prisma: PrismaClient,
+  input: {
+    accountId?: string
+    agentId: string
+    effectiveUserId: string
+    organizationId: string
+  },
+): Promise<ReachableMailbox> => {
+  const candidates = await listReachableMailboxes(prisma, input)
+  const visible: ReachableMailbox[] = []
+  for (const candidate of candidates) {
+    if (candidate.scope === 'user') {
+      visible.push(candidate)
+      continue
+    }
+    const teamId = candidate.connection.teamId
+    if (teamId && await isSharedMailboxViewer(prisma, { teamId, userId: input.effectiveUserId })) {
+      visible.push(candidate)
+    }
+  }
+  if (visible.length === 0) {
     throw new ConnectedMailPresentationError('That mail account is not available to you.')
   }
+  if (input.accountId) {
+    const named = visible.find((candidate) => candidate.connection.id === input.accountId)
+    if (!named) throw new ConnectedMailPresentationError('That mail account is not available to you.')
+    return named
+  }
+  if (visible.length > 1) {
+    const options = visible.map((candidate) =>
+      `${candidate.connection.label} (${candidate.connection.id})`).join('; ')
+    throw new MailboxAccessError(
+      'AMBIGUOUS_MAILBOX',
+      `I can reach more than one mailbox, so tell me which to use by passing connectionId: ${options}.`,
+    )
+  }
+  const only = visible[0]
+  if (!only) throw new ConnectedMailPresentationError('That mail account is not available to you.')
+  return only
 }
 
 const resolveMailboxPresentationAccess = async (
@@ -69,27 +112,16 @@ const resolveMailboxPresentationAccess = async (
       'I can only open a connected mailbox for the person who is asking right now.',
     )
   }
-  const mailbox = await resolveMailboxForToolCall(prisma, {
-    agentId: input.agentId,
-    connectionId: input.accountId,
-    effectiveUserId: input.effectiveUserId,
-    organizationId: input.organizationId,
-  })
-  const member = await activeMemberFor(prisma, {
+  await activeMemberFor(prisma, {
     organizationId: input.organizationId,
     userId: input.effectiveUserId,
   })
-  if (mailbox.scope === 'team') {
-    const teamId = mailbox.connection.teamId
-    if (!teamId) {
-      throw new ConnectedMailPresentationError('That mail account is not available to you.')
-    }
-    await assertSharedMailboxViewer(prisma, {
-      member,
-      teamId,
-      userId: input.effectiveUserId,
-    })
-  }
+  const mailbox = await resolvePresentationMailbox(prisma, {
+    agentId: input.agentId,
+    accountId: input.accountId,
+    effectiveUserId: input.effectiveUserId,
+    organizationId: input.organizationId,
+  })
   return {
     accountId: mailbox.connection.id,
     basis: mailbox.basis,
@@ -99,7 +131,12 @@ const resolveMailboxPresentationAccess = async (
 
 const resolveGmailPresentationAccess = async (
   prisma: PrismaClient,
-  input: { accountId: string; effectiveUserId: string | null; organizationId: string },
+  input: {
+    accountId: string
+    draftId?: string
+    effectiveUserId: string | null
+    organizationId: string
+  },
 ): Promise<ConnectedMailPresentationAccess> => {
   if (!input.effectiveUserId) {
     throw new ConnectedMailPresentationError(
@@ -123,6 +160,17 @@ const resolveGmailPresentationAccess = async (
   if (!connection) {
     throw new ConnectedMailPresentationError('That mail account is not available to you.')
   }
+  if (input.draftId) {
+    const draft = await prisma.gmailDraftAction.findFirst({
+      where: {
+        connectionId: connection.id,
+        id: input.draftId,
+        organizationId: input.organizationId,
+        ownerUserId: input.effectiveUserId,
+      },
+    })
+    if (!draft) throw new ConnectedMailPresentationError('That mail account is not available to you.')
+  }
   return {
     accountId: connection.id,
     basis: { scopeId: connection.ownerUserId, scopeType: 'user' },
@@ -142,6 +190,7 @@ export const resolveConnectedMailPresentationAccess = async (
   input: {
     accountId?: string
     agentId: string
+    draftId?: string
     effectiveUserId: string | null
     organizationId: string
     source: ConnectedMailSource
@@ -155,6 +204,7 @@ export const resolveConnectedMailPresentationAccess = async (
   }
   return resolveGmailPresentationAccess(prisma, {
     accountId: input.accountId,
+    draftId: input.draftId,
     effectiveUserId: input.effectiveUserId,
     organizationId: input.organizationId,
   })

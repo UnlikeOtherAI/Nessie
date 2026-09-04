@@ -80,7 +80,9 @@ export const ConnectedMailCompose = ({
     setError(null)
     const input = {
       bcc: recipients(draft.draft.bcc), body: draft.draft.body, cc: recipients(draft.draft.cc),
-      inReplyTo: replyTo?.id, providerThreadId: replyTo?.threadId,
+      // The provider-facing reply header is its RFC Message-ID, not the
+      // mailbox-local UID/Gmail message id used by this reader's route.
+      inReplyTo: replyTo?.messageId ?? undefined, providerThreadId: replyTo?.threadId,
       subject: draft.draft.subject, to: recipients(draft.draft.to),
     }
     if (!input.to.length || !input.body) { setError('Add at least one recipient and a message body.'); return }

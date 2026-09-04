@@ -69,6 +69,25 @@ test('outbound MIME carries the caller-supplied Message-ID and threading headers
   assert.equal(mime.includes('blind@example.com'), false)
 })
 
+test('outbound MIME refuses address and header injection before SMTP sees it', () => {
+  const base = {
+    fromAddress: 'research@nessie.works',
+    messageId: 'out-1@nessie.works',
+    subject: 'Hi',
+    text: 'Hello',
+    to: ['petra@example.com'],
+  }
+  assert.throws(() => buildOutboundMime({
+    ...base, to: ['petra@example.com\r\nBcc: attacker@example.com'],
+  }), /line break/)
+  assert.throws(() => buildOutboundMime({
+    ...base, subject: 'Hi\r\nBcc: attacker@example.com',
+  }), /line break/)
+  assert.throws(() => buildOutboundMime({
+    ...base, inReplyTo: 'parent@example.com\nReferences: attacker@example.com',
+  }), /line break/)
+})
+
 test('an outbound message round-trips back through the parser', async () => {
   const mime = buildOutboundMime({
     fromAddress: 'research@nessie.works',

@@ -15,6 +15,9 @@ import {
 import { safeFetch } from '@nessie/runtime'
 import {
   capabilityIsGranted,
+  ConnectedMailConversationSchema,
+  ConnectedMailPageSchema,
+  ConnectedMailThreadSummarySchema,
   getGoogleCapability,
   type ConnectedMailAccountRecord,
   type ConnectedMailConversation,
@@ -171,7 +174,11 @@ export const listConnectedMailAccounts = async (
       label: connection.label,
       scope: connection.ownerUserId ? 'personal' as const : 'shared' as const,
       source: 'mailbox' as const,
-      status: connection.status,
+      status: connection.status === 'active'
+        ? 'active' as const
+        : connection.status === 'needs_reauthorization'
+          ? 'needs_reauthorization' as const
+          : 'disabled' as const,
     })),
   ]
 }
@@ -181,15 +188,24 @@ const mapThreads = (items: Array<{
   unread: boolean; hasAttachments: boolean; messageCount: number
 }>): ConnectedMailThreadSummary[] => items
 
+const validatedPage = (page: {
+  estimate?: number
+  items: ConnectedMailThreadSummary[]
+  nextCursor?: string
+}): { estimate?: number; items: ConnectedMailThreadSummary[]; nextCursor?: string } =>
+  ConnectedMailPageSchema(ConnectedMailThreadSummarySchema).parse(page)
+
 const mapConversation = (conversation: {
   id: string
   messages: Array<{
     id: string; threadId: string; from: string | null; to: string[]; cc: string[]; subject: string
     receivedAt: string | null; body: string; bodyFormat: 'text' | 'html'; blockedRemoteContent: boolean
-    attachments: { filename: string; contentType: string; sizeBytes: number }[]; inReplyTo: string | null
+    attachments: { filename: string; contentType: string; sizeBytes: number }[]
+    messageId: string | null; inReplyTo: string | null
   }>
 }, earlierMessagesMayExist: boolean): ConnectedMailConversation => ({
-  ...conversation,
+  id: conversation.id,
+  messages: conversation.messages,
   earlierMessagesMayExist,
 })
 
@@ -210,11 +226,14 @@ export const listConnectedMailThreads = async (
     const credential = await gmailCredential(prisma, actor, input.accountId, deps)
     try {
       const page = await listGmailMailThreads(gmailFetch(deps), credential.credential.accessToken, input)
-      return { ...page, items: mapThreads(page.items) }
+      return validatedPage({ ...page, items: mapThreads(page.items) })
     } catch (error) {
       if (error instanceof GmailApiError && error.status === 401) {
         await markCommsConnectionNeedsReauthorization(prisma, credential.id)
         throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
+      }
+      if (error instanceof GmailApiError && error.scopeMissing) {
+        throw new ConnectedMailError('CAPABILITY_UNSUPPORTED')
       }
       throw new ConnectedMailError('PROVIDER_FAILED')
     }
@@ -226,7 +245,7 @@ export const listConnectedMailThreads = async (
       input,
       mailboxDialOptions(),
     )
-    return { ...page, items: mapThreads(page.items) }
+    return validatedPage({ ...page, items: mapThreads(page.items) })
   } catch (error) {
     if (error instanceof ImapError && error.kind === 'auth') {
       await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
@@ -248,13 +267,21 @@ export const readConnectedMailConversation = async (
       const conversation = await readGmailMailThread(
         gmailFetch(deps), credential.credential.accessToken, input.threadId,
       )
-      return mapConversation(conversation, false)
+      return ConnectedMailConversationSchema.parse(
+        mapConversation(conversation, conversation.earlierMessagesMayExist),
+      )
     } catch (error) {
       if (error instanceof GmailApiError && error.status === 401) {
         await markCommsConnectionNeedsReauthorization(prisma, credential.id)
         throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
       }
-      throw new ConnectedMailError('NOT_FOUND')
+      if (error instanceof GmailApiError && error.status === 404) {
+        throw new ConnectedMailError('NOT_FOUND')
+      }
+      if (error instanceof GmailApiError && error.scopeMissing) {
+        throw new ConnectedMailError('CAPABILITY_UNSUPPORTED')
+      }
+      throw new ConnectedMailError('PROVIDER_FAILED')
     }
   }
   const connection = await mailboxForActor(prisma, actor, input.accountId)
@@ -262,7 +289,9 @@ export const readConnectedMailConversation = async (
     const conversation = await readMailboxMailConversation(
       await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret), input, mailboxDialOptions())
     if (!conversation) throw new ConnectedMailError('NOT_FOUND')
-    return mapConversation(conversation, conversation.earlierMessagesMayExist)
+    return ConnectedMailConversationSchema.parse(
+      mapConversation(conversation, conversation.earlierMessagesMayExist),
+    )
   } catch (error) {
     if (error instanceof ConnectedMailError) throw error
     if (mailboxConnectionTestFailure(error) === 'credential_rejected') {

@@ -1,8 +1,20 @@
-import { sanitizeEmailHtml, htmlToText, buildSnippet } from '@nessie/agent-mail'
+import { sanitizeEmailHtml, htmlToText, buildSnippet, normalizeMessageId } from '@nessie/agent-mail'
 
 import { GMAIL_API_BASE, encodeForm, requestJson, type FetchLike } from '../http.js'
 
 const MAX_BODY_CHARS = 100_000
+const MAX_ATTACHMENTS = 100
+const MAX_ADDRESS_CHARS = 1_000
+const MAX_ATTACH_NAME_CHARS = 500
+const MAX_CONTENT_TYPE_CHARS = 200
+const MAX_HEADER_CHARS = 1_000
+const MAX_MESSAGES = 200
+
+const bounded = (value: string, max: number): string => value.slice(0, max)
+const optionalHeader = (value: string, max = MAX_HEADER_CHARS): string | null =>
+  value ? bounded(value, max) : null
+const attachmentSize = (value: unknown): number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
 
 export type GmailMailThreadPage = {
   items: Array<{
@@ -21,6 +33,8 @@ export type GmailMailThreadPage = {
 
 export type GmailMailConversation = {
   id: string
+  earlierMessagesMayExist: boolean
+  messageCount: number
   messages: Array<{
     id: string
     threadId: string
@@ -34,6 +48,7 @@ export type GmailMailConversation = {
     blockedRemoteContent: boolean
     unread: boolean
     attachments: { filename: string; contentType: string; sizeBytes: number }[]
+    messageId: string | null
     inReplyTo: string | null
   }>
 }
@@ -61,12 +76,29 @@ const header = (headers: Header[] | undefined, name: string): string => {
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const recipients = (value: string): string[] =>
-  value.split(',').map((entry) => entry.trim()).filter(Boolean)
+/** Commas in an RFC quoted display name are not recipient delimiters. */
+const recipients = (value: string): string[] => {
+  const entries: string[] = []
+  let current = ''
+  let escaped = false
+  let quoted = false
+  for (const character of value) {
+    if (character === '"' && !escaped) quoted = !quoted
+    if (character === ',' && !quoted) {
+      entries.push(current)
+      current = ''
+    } else current += character
+    escaped = character === '\\' && !escaped
+    if (character !== '\\') escaped = false
+  }
+  entries.push(current)
+  return entries.map((entry) => bounded(entry.trim(), MAX_ADDRESS_CHARS)).filter(Boolean).slice(0, 100)
+}
 
 const date = (value: unknown): string | null => {
   const milliseconds = typeof value === 'string' ? Number(value) : NaN
-  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null
+  const parsed = Number.isFinite(milliseconds) ? new Date(milliseconds) : null
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null
 }
 
 const decode = (value: unknown): string =>
@@ -79,11 +111,15 @@ const collect = (part: Part | undefined, into: {
 }): void => {
   if (!part) return
   const filename = typeof part.filename === 'string' ? part.filename : ''
-  if (filename && typeof part.body?.attachmentId === 'string') {
+  if (filename && (typeof part.body?.attachmentId === 'string' || typeof part.body?.data === 'string')
+    && into.attachments.length < MAX_ATTACHMENTS) {
     into.attachments.push({
-      contentType: typeof part.mimeType === 'string' ? part.mimeType : 'application/octet-stream',
-      filename,
-      sizeBytes: typeof part.body.size === 'number' ? part.body.size : 0,
+      contentType: bounded(
+        typeof part.mimeType === 'string' && part.mimeType ? part.mimeType : 'application/octet-stream',
+        MAX_CONTENT_TYPE_CHARS,
+      ),
+      filename: bounded(filename, MAX_ATTACH_NAME_CHARS),
+      sizeBytes: attachmentSize(part.body.size),
     })
     return
   }
@@ -113,11 +149,12 @@ const toMessage = (
     body,
     bodyFormat,
     cc: recipients(header(message.payload?.headers, 'Cc')),
-    from: header(message.payload?.headers, 'From') || null,
+    from: optionalHeader(header(message.payload?.headers, 'From')),
     id: message.id,
-    inReplyTo: header(message.payload?.headers, 'In-Reply-To') || null,
+    inReplyTo: optionalHeader(normalizeMessageId(header(message.payload?.headers, 'In-Reply-To')) ?? ''),
+    messageId: optionalHeader(normalizeMessageId(header(message.payload?.headers, 'Message-ID')) ?? ''),
     receivedAt: date(message.internalDate),
-    subject: header(message.payload?.headers, 'Subject') || '(no subject)',
+    subject: bounded(header(message.payload?.headers, 'Subject') || '(no subject)', MAX_HEADER_CHARS),
     threadId: typeof message.threadId === 'string' ? message.threadId : fallbackThreadId,
     to: recipients(header(message.payload?.headers, 'To')),
     unread: Array.isArray(message.labelIds) && message.labelIds.includes('UNREAD'),
@@ -161,11 +198,11 @@ export const listGmailMailThreads = async (
       from: newest.from,
       hasAttachments: rawMessages.some((message) => message.attachments.length > 0),
       id: ref.id,
-      messageCount: rawMessages.length,
+      messageCount: conversation.messageCount,
       receivedAt: newest.receivedAt,
       snippet: buildSnippet(newest.bodyFormat === 'html' ? htmlToText(newest.body) : newest.body),
       subject: newest.subject,
-      unread: newest.unread,
+      unread: rawMessages.some((message) => message.unread),
     })
   }
   return {
@@ -187,11 +224,13 @@ export const readGmailMailThread = async (
     `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}?format=full`,
     { headers: { authorization: `Bearer ${accessToken}` } },
   )
-  const messages = ((body as { messages?: unknown[] }).messages ?? [])
+  const normalized = ((body as { messages?: unknown[] }).messages ?? [])
     .flatMap((message) => {
       const normalized = toMessage(message, threadId)
       return normalized ? [normalized] : []
     })
     .sort((left, right) => (left.receivedAt ?? '').localeCompare(right.receivedAt ?? ''))
-  return { id: threadId, messages }
+  const earlierMessagesMayExist = normalized.length > MAX_MESSAGES
+  const messages = normalized.slice(-MAX_MESSAGES)
+  return { earlierMessagesMayExist, id: threadId, messageCount: normalized.length, messages }
 }

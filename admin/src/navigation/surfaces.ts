@@ -92,7 +92,7 @@ export const SURFACES: Surface[] = [
     depth: 2,
     flowPresentation: 'screen',
     identityOf: (match) => `mail-compose:${match[1]}:${match[2]}`,
-    intent: { state: ['reply', 'threadId'] },
+    intent: { state: ['draftId', 'reply', 'threadId'] },
     keyScope: () => 'mail-compose',
     parentOf: (match) => ({ label: 'Back to mail', pathname: `/mail/${match[1]}/${match[2]}` }),
     pattern: /^\/mail\/([^/]+)\/([^/]+)\/compose$/,

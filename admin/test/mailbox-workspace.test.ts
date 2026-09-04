@@ -62,6 +62,12 @@ test('mail threads are one keyboard-selectable listbox with a non-colour unread 
   assert.match(markup, /aria-selected="true"/)
   assert.match(markup, /Unread/)
   assert.match(markup, /message/)
+
+  const unselected = renderToStaticMarkup(createElement(MailboxThreadList, {
+    onSelect: () => undefined,
+    threads: [thread(), thread({ id: '00000000-0000-4000-8000-000000000003' })],
+  }))
+  assert.match(unselected, /tabindex="0"/)
 })
 
 test('the workspace is bounded and changes its grid composition with the shell layout', () => {
@@ -80,6 +86,7 @@ test('the workspace is bounded and changes its grid composition with the shell l
   assert.match(split, /data-layout="split"/)
   assert.match(split, /grid-cols/)
   assert.match(split, /min-h-0/)
+  assert.match(split, /min-w-0/)
 })
 
 test('the conversation renderer keeps EmailMessageBody remote images opt-in', () => {

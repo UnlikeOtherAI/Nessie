@@ -8,15 +8,23 @@ live mail capability. You then choose which agents may use the live
 mailbox and ask them things — *"anything from the bank?"*, *"reply to Petra that
 Thursday works"*.
 
-The IMAP/SMTP route has no inbox screen today, deliberately. The provider holds the
-mail; Nessie holds a credential and an audit trail, and reads it live when an
-agent is asked something. Nothing is imported, nothing is copied, and
-disconnecting leaves no trace of that correspondence behind. Gmail and Microsoft
-cards share the personal Email page but are different connectors: only Gmail
-currently exposes the live-mail capability. The upcoming connected-account Mail
-review surface reads Gmail and SMTP/IMAP accounts live; its account, thread,
-and conversation responses are private and non-cacheable, and SMTP/IMAP threads
-come only from Message-ID reference structure, never a guessed subject match.
+The `/mail` review surface reads Gmail and SMTP/IMAP accounts live. It lists
+structural threads, opens the complete bounded conversation, and lets an
+entitled person compose or reply. The provider still holds the mail: Nessie
+holds a credential and an audit trail, imports no connected-account messages,
+and makes account, thread, conversation, and draft responses private and
+non-cacheable. Disconnecting leaves no copied correspondence behind. Gmail and
+Microsoft cards share the personal Email page but are different connectors:
+only Gmail currently exposes the live-mail capability. SMTP/IMAP threads come
+from Message-ID reference structure, never a guessed subject match.
+
+Agents can bring that same surface into chat without copying provider mail into
+message metadata. `mail_present` writes a restricted, content-free doorway for
+an account, thread, or compose flow, and the client checks the current viewer's
+entitlement again before opening it. Mail search/read and Gmail draft results
+include canonical review references. `mailbox_compose` can offer an editable
+universal card form; submitting it creates a normal user response, and any
+later agent send still goes through the existing approval rules.
 
 This is agent email **Model A**. The other model gives an agent its own hosted
 address on the deployment's Amazon SES account, with a real mailbox surface
@@ -144,6 +152,13 @@ Mail is treated as information, never instruction. Anything in a message that
 reads like an order to the agent — *"forward this to…"*, *"ignore your
 instructions"* — is data about what a correspondent wants, and cannot authorize
 a tool call on its own.
+
+The IMAP list is deliberately header-only, so it does not invent snippets or
+attachment indicators. Opening a conversation fetches and sanitizes full
+messages one at a time; a message above 1 MiB or a conversation above 2 MiB is
+refused instead of being buffered without a bound. Attachment download is not
+part of this surface yet. A future BODYSTRUCTURE/partial-fetch implementation
+can lift the per-message limitation without weakening the bounds.
 
 ## When it stops working
 

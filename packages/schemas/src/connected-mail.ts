@@ -107,6 +107,8 @@ export const ConnectedMailPageSchema = <T extends z.ZodTypeAny>(item: T) => z.ob
 
 export const ConnectedMailMessageSchema = z.object({
   id: z.string().min(1),
+  /** RFC 5322 Message-ID, normalized by the provider when one was supplied. */
+  messageId: z.string().max(1000).nullable(),
   threadId: z.string().min(1),
   from: z.string().max(1000).nullable(),
   to: z.array(z.string().max(1000)).max(100),
@@ -135,7 +137,10 @@ export type ConnectedMailAccountsQuery = z.infer<typeof ConnectedMailAccountsQue
 export const ConnectedMailThreadsQuerySchema = z.object({
   cursor: z.string().min(1).max(2000).optional(),
   query: z.string().trim().min(1).max(500).optional(),
-  unreadOnly: z.coerce.boolean().optional(),
+  unreadOnly: z.union([
+    z.boolean(),
+    z.enum(['true', 'false']).transform((value) => value === 'true'),
+  ]).optional(),
   pageSize: z.coerce.number().int().min(10).max(100).default(25),
 }).strict()
 export type ConnectedMailThreadsQuery = z.infer<typeof ConnectedMailThreadsQuerySchema>
@@ -147,18 +152,29 @@ export const ConnectedMailConversationParamsSchema = z.object({
 }).strict()
 export type ConnectedMailConversationParams = z.infer<typeof ConnectedMailConversationParamsSchema>
 
-const recipients = z.array(z.string().trim().min(3).max(320)).min(1).max(50)
-const optionalRecipients = z.array(z.string().trim().min(3).max(320)).max(50).optional()
+const headerText = (max: number) => z.string().max(max).refine(
+  (value) => !/[\r\n]/.test(value),
+  'Mail headers cannot contain a line break.',
+)
+const recipient = z.string().trim().min(3).max(320).refine(
+  (value) => !/[\r\n]/.test(value),
+  'Mail headers cannot contain a line break.',
+)
+const recipients = z.array(recipient).min(1).max(50)
+const optionalRecipients = z.array(recipient).max(50).optional()
 
 /** `from` is intentionally absent: the server derives it from the account. */
 export const ConnectedMailComposeInputSchema = z.object({
   to: recipients,
   cc: optionalRecipients,
   bcc: optionalRecipients,
-  subject: z.string().max(500),
+  subject: headerText(500),
   body: z.string().min(1).max(100_000),
   providerThreadId: z.string().min(1).max(500).optional(),
-  inReplyTo: z.string().min(1).max(1000).optional(),
+  inReplyTo: z.string().min(1).max(1000).refine(
+    (value) => !/[\r\n]/.test(value),
+    'Mail headers cannot contain a line break.',
+  ).optional(),
 }).strict()
 export type ConnectedMailComposeInput = z.infer<typeof ConnectedMailComposeInputSchema>
 
