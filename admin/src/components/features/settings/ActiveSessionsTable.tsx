@@ -103,6 +103,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
       <DataTable
         columns={columns}
         empty={<EmptyState>No active sessions.</EmptyState>}
+        expandable={false}
         label="Active sessions table"
         loading={isLoading}
         rowKey={(session) => session.sessionId}

@@ -87,7 +87,12 @@ each platform file restates the complete main window and a Rust unit test
 (`src/shell.rs`) asserts they still agree on size, minimum size, and background
 colour. macOS keeps the overlay title bar with its traffic lights; Windows and
 Linux are frameless (`decorations: false`, with `shadow` on Windows and a
-transparent window on Linux) and the admin draws Nessie's own chrome. The design
+transparent window on Linux) and the admin draws Nessie's own chrome. Windows
+and Linux render one route-independent frame above the router, so its shared
+traffic-light controls, layout chooser, drag surface, and eight resize edges
+remain reachable on sign-in, bootstrap, error, and authenticated screens.
+Normal Linux windows clip the transparent native surface to softly rounded
+corners; maximized and full-screen windows remain flush. The design
 behind that split is
 [docs/plans/2026-09-01-linux-desktop-delivery.md](../plans/2026-09-01-linux-desktop-delivery.md)
 → "Shared shell contract", which the Windows plan adopts by reference.
@@ -104,14 +109,22 @@ must land first, so no signed-in browser session can be invoked prematurely.
 In dev, the companion intentionally pairs only with the local API at
 `http://127.0.0.1:5454`. It cannot pair an unsigned development app with the
 production API. Production executor pairing, local workspace selection, daemon
-lifecycle, and policy controls require an intact signed macOS 15+ release; the
-app verifies its own signature before exposing the companion IPC.
+lifecycle, and policy controls require an intact publisher-verified desktop
+release: Developer ID on macOS, the pinned Authenticode publisher on Windows,
+or the root-owned package runtime on Linux. The app verifies that trust root
+before exposing the companion IPC.
 
 Desktop SSO uses the user's default browser instead of the Tauri webview. The
 desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 `nessie://auth/callback`, macOS focuses the running app and the always-mounted
 callback bridge finishes the PKCE exchange from the deep link, including while
 an authenticated workspace screen remains open.
+
+Windows and Linux use the same callback bridge. Their single-instance plugin
+forwards a callback from a second process into the already-running app, shows
+and restores a minimized window, and then focuses it. The provider list has an
+explicit failure state and retry action, so a temporary network or API failure
+cannot leave the sign-in page claiming it is still loading indefinitely.
 
 An interrupted browser hand-off is always recoverable: the login screen offers
 **Cancel sign-in**, and a new deliberate sign-in replaces only the exact stale

@@ -2,6 +2,16 @@
 
 Chapter of [Running the Native Apps](overview.md).
 
+### Desktop application icon
+
+The Mac application's `assets/icon-1024.png` is the canonical Nessie icon for
+every Tauri desktop bundle. Regenerate the Windows `.ico`, Linux PNGs, and
+other platform exports together after changing that source asset:
+
+```sh
+pnpm --dir desktop run icons:generate
+```
+
 Run the build on a Windows machine:
 
 ```sh
@@ -57,7 +67,7 @@ remedy rather than disappearing. On a machine with no Hyper-V — Windows Home,
 where it is an edition rather than a setting — the companion pairs as
 `workspace_only`: file review and drafts work, sandboxed commands, browsers and
 coding sessions do not. A second launch carries the `nessie://` sign-in callback
-into the running instance.
+into the running instance, shows and restores it if minimized, and focuses it.
 
 The executor's private state under `%LOCALAPPDATA%\Nessie\executors\<id>` is
 owner-only through an explicit, non-inherited DACL granting the signed-in user

@@ -17,6 +17,7 @@ const SKELETON_ROWS = 4
 const TableFrame = ({ children }: { children: React.ReactNode }) => (
   <ExpandableTable
     className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
+    expandable={false}
     label="Agents table"
   >
     <table className="agents-table w-full border-collapse">{children}</table>

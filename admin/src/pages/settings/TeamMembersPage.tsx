@@ -4,6 +4,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useIsOwner } from '../../components/shared/OwnerGate'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { MembersRosterPanel } from './MembersRosterPanel'
 
 /**
  * A team's own roster — the direct, top-level peer of
@@ -26,6 +27,10 @@ export const TeamMembersPage = () => {
   const { theme } = useTheme()
 
   if (!me) return null
+
+  if (me.auth.providerType === 'uoa') {
+    return <MembersRosterPanel scope="team" />
+  }
 
   return (
     <SettingsPanel eyebrow="Team" title="Members">

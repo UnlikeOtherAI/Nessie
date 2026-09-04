@@ -1,10 +1,9 @@
 # Windows desktop parity
 
-**Status:** active — design refined 2026-09-01, then re-scoped the same day
-on Ondrej's direction: the executor ships on Windows as a service with a tray
-icon beside the clock, the desktop app can enable itself as an executor, and
-the window is fully custom chrome. "Review and direction changes" at the end
-records every revision.
+**Status:** active — the shared shell, executor integration, service/tray, and
+release pipeline are implemented; signed physical release and Hyper-V
+acceptance remain. "Review and direction changes" at the end records every
+revision.
 **Owner:** Desktop
 **Target:** signed Windows x86_64 release for Windows 11 and Windows 10 —
 the Nessie desktop app (NSIS per-user installer supported; MSI for managed
@@ -42,8 +41,10 @@ orchestration design are not implemented by the current cross-platform desktop
 shell, including on macOS. If those experiences become a product requirement,
 they need a separately approved cross-platform service protocol and UI scope.
 
-Windows today has the same shell code as macOS, no signed release pipeline,
-no CI job, and a companion that refuses every platform but macOS.
+Windows now has the shared route-independent desktop frame, the signed release
+pipeline, the local companion, and the standalone service/tray package. The
+remaining boundary is physical acceptance of the publisher-signed artifacts
+and the booted Hyper-V guest path.
 
 ## How the Windows app looks and works
 
@@ -52,8 +53,8 @@ The shared shell contract applies. Windows-specific facts:
 - **Window.** `decorations: false` and `shadow: true` on both Windows
   versions. Tauri's config documents that an undecorated window then has "a
   1px white border, and on Windows 11, it will have a rounded corners" with
-  the OS shadow. `DesktopWindowFrame` renders the drag strip, Nessie's own
-  minimize / maximize / close at the top right, and the resize handles;
+  the OS shadow. `DesktopWindowFrame` renders the drag strip, Nessie's shared
+  top-left traffic-light controls and layout chooser, and the resize handles;
   maximized and fullscreen windows are square-cornered by the OS. Snap
   Layouts' hover flyout does not appear over a custom maximize button;
   Win+Arrow snapping still works. Default 1280 × 800, minimum 1024 × 700,
@@ -85,8 +86,8 @@ The shared shell contract applies. Windows-specific facts:
   are registry-registered by the NSIS/MSI installer and that a portable
   executable cannot register). A second launch — how the browser callback
   reaches a running app on Windows — is forwarded by
-  `tauri-plugin-single-instance` with `features = ["deep-link"]`; today the
-  callback is dropped.
+  `tauri-plugin-single-instance` with `features = ["deep-link"]`. The running
+  app is shown, restored if minimized, focused, and receives the callback.
 - **Notifications.** Windows toast via `notify-rust` with `app_id` set to the
   bundle identifier. The plugin documents that toasts "only work for installed
   apps", so notification acceptance is always on the installed build.
@@ -281,6 +282,10 @@ disk is which — are stated with their remedies in
 
 ## Delivery phases
 
+The shared shell now keeps its controls reachable before sign-in, forwards
+second-launch callback arguments, restores a minimized instance before focus,
+and gives provider discovery an explicit retry state.
+
 1. **Shell parity.** Shared contract items: `desktopPlatform` exposure,
    `DesktopWindowFrame` with `decorations: false` + `shadow: true`, window
    permissions, single instance with `deep-link`, structured companion
@@ -306,7 +311,8 @@ disk is which — are stated with their remedies in
    1. Install the app; Start shows Nessie; one frameless window with Nessie's
       controls, no console — rounded with a shadow on Windows 11, square with
       a shadow on Windows 10; drag, resize from every edge, double-click to
-      maximize (square), restore, F11, close. Steps 1–4 and 8–9 repeat on a
+      maximize (square), restore, enter full screen from the layout chooser,
+      and close. Steps 1–4 and 8–9 repeat on a
       Windows 10 22H2 machine.
    2. Sign in through the browser; the window returns authenticated. Start a
       second sign-in with the app open; it completes in the existing window.

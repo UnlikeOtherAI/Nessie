@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
+import { type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { AVATAR_CACHE_CONTROL, sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
@@ -11,7 +11,9 @@ import {
 } from '../services/uoa-avatar.js'
 import { isTeamRosterSubject } from '../services/uoa-roster-subjects.js'
 import {
-  createTeamInvitations,
+  addTeamMember,
+  createTeamInvitation,
+  findTeamMemberCandidates,
   listTeamInvitations,
   listTeamMembers,
   removeTeamMember,
@@ -28,6 +30,7 @@ import {
   UoaRosterUnavailableError,
   withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
+  type UoaRosterPage,
   type UoaRosterTeam,
 } from '../services/uoa-org-roster.js'
 import type { RouteDeps } from './types.js'
@@ -68,17 +71,23 @@ const TeamRoleBodySchema = z.object({
   role: z.enum(['admin', 'member']),
 })
 
-const CreateInvitationsBodySchema = z.object({
-  invites: z
-    .array(
-      z.object({
-        email: z.string().trim().email().max(320),
-        name: z.string().trim().min(1).max(200).optional(),
-        teamRole: z.enum(['admin', 'member']).optional(),
-      }),
-    )
-    .min(1)
-    .max(200),
+const CreateMemberInvitationSchema = z.object({
+  email: z.string().trim().email().max(320),
+  name: z.string().trim().min(1).max(200).optional(),
+  teamRole: z.string().trim().min(1).max(100).optional(),
+})
+
+const AddTeamMemberSchema = z.object({
+  uoaSub: z.string().trim().min(1).max(200),
+  teamRole: z.string().trim().min(1).max(100).optional(),
+})
+
+const RosterQuerySchema = z.object({
+  cursor: z.string().optional(),
+  direction: z.enum(['forward', 'backward']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  status: z.enum(['ACTIVE', 'DEACTIVATED', 'REMOVED', 'all']).optional(),
 })
 
 const requireTeam = async (
@@ -99,22 +108,6 @@ const requireTeam = async (
     return null
   }
   return team
-}
-
-const requireTeamAdmin = (
-  actorContext: AuthorizedActionContext,
-  reply: FastifyReply,
-): boolean => {
-  const allowed = actorContext.actor.actorType === 'user' && isAdminActor(actorContext)
-  if (!allowed) {
-    sendApiError(
-      reply,
-      403,
-      'FORBIDDEN',
-      'Only organisation owners and admins can change team membership',
-    )
-  }
-  return allowed
 }
 
 /** Map a relay failure onto the API's error envelope. Returns true if handled. */
@@ -185,7 +178,7 @@ export const registerTeamMembersRoutes = (
   const relay = async <TResult, TBody = undefined>(
     request: FastifyRequest,
     reply: FastifyReply,
-    options: { admin: boolean; parse?: () => TBody | null },
+    options: { parse?: () => TBody | null },
     run: (
       team: UoaRosterTeam,
       body: TBody,
@@ -195,8 +188,6 @@ export const registerTeamMembersRoutes = (
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (options.admin && !requireTeamAdmin(actorContext, reply)) return reply
-
     const body = options.parse ? options.parse() : (undefined as TBody)
     if (body === null) return reply
 
@@ -220,6 +211,34 @@ export const registerTeamMembersRoutes = (
     }
   }
 
+  const relayPage = async <TItem, TPermissions>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    run: (
+      team: UoaRosterTeam,
+      actorContext: AuthorizedActionContext,
+      subjectDeps: UoaRosterDeps,
+    ) => Promise<UoaRosterPage<TItem, TPermissions>>,
+  ): Promise<FastifyReply | { data: { items: TItem[]; permissions: TPermissions } }> => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const query = parseInput(RosterQuerySchema, request.query, reply, 'query')
+    if (!query) return reply
+    const team = await requireTeam(deps, actorContext, reply)
+    if (!team) return reply
+    try {
+      const result = await run(
+        team,
+        actorContext,
+        withUoaRosterSubjectAssertion(team, actorContext.actionContext.uoaIdentity, rosterDeps),
+      )
+      return createApiResponse({ items: result.items, permissions: result.permissions }, result.meta)
+    } catch (error) {
+      if (sendRelayError(request, reply, error)) return reply
+      throw error
+    }
+  }
+
   /**
    * The roster, with each person's local principal id attached where one
    * exists. The id is resolved org-scoped (`resolveLocalUserIdsByUoaSub`) and
@@ -227,20 +246,38 @@ export const registerTeamMembersRoutes = (
    * steward, without Nessie storing any second copy of UOA's roster.
    */
   app.get('/api/team/members', async (request, reply) =>
-    relay(request, reply, { admin: false }, async (team, _body, actorContext, subjectDeps) => {
-      const members = await listTeamMembers(team, subjectDeps)
+    relayPage(request, reply, async (team, actorContext, subjectDeps) => {
+      const page = await listTeamMembers(team, RosterQuerySchema.parse(request.query), subjectDeps)
       const localIdBySub = await resolveLocalUserIdsByUoaSub(
         deps.prisma,
         actorContext.tenant.organizationId,
-        members.map((member) => member.uoaSub),
+        page.items.map((member) => member.uoaSub),
       )
       return {
-        members: members.map((member) => {
+        ...page,
+        items: page.items.map((member) => {
           const userId = localIdBySub.get(member.uoaSub)
           return userId ? { ...member, userId } : member
         }),
       }
     }))
+
+  app.get('/api/team/members/candidates', async (request, reply) =>
+    relayPage(request, reply, async (team, _actorContext, subjectDeps) => {
+      const query = RosterQuerySchema.parse(request.query)
+      return findTeamMemberCandidates(team, { ...query, q: query.q ?? '' }, subjectDeps)
+    }))
+
+  app.post('/api/team/members', async (request, reply) =>
+    relay(
+      request,
+      reply,
+      { parse: () => parseInput(AddTeamMemberSchema, request.body, reply) },
+      async (team, body, _actorContext, subjectDeps) => {
+        await addTeamMember(team, body, subjectDeps)
+        return { ok: true }
+      },
+    ))
 
   /**
    * The picture UOA holds for one person in this team's roster. Same
@@ -302,7 +339,7 @@ export const registerTeamMembersRoutes = (
       relay(
         request,
         reply,
-        { admin: true, parse: () => parseInput(TeamRoleBodySchema, request.body, reply) },
+        { parse: () => parseInput(TeamRoleBodySchema, request.body, reply) },
         async (team, body, _actorContext, subjectDeps) => {
           await updateTeamMemberRole(team, request.params.uoaSub, body.role, subjectDeps)
           return { ok: true }
@@ -313,7 +350,7 @@ export const registerTeamMembersRoutes = (
   app.delete<{ Params: { uoaSub: string } }>(
     '/api/team/members/:uoaSub',
     async (request, reply) =>
-      relay(request, reply, { admin: true }, async (team, _body, _actorContext, subjectDeps) => {
+      relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
         await removeTeamMember(team, request.params.uoaSub, subjectDeps)
         return { ok: true }
       }),
@@ -323,7 +360,7 @@ export const registerTeamMembersRoutes = (
     app.post<{ Params: { uoaSub: string } }>(
       `/api/team/members/:uoaSub/${action}`,
       async (request, reply) =>
-        relay(request, reply, { admin: true }, async (team, _body, _actorContext, subjectDeps) => {
+        relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
           await setTeamMemberActivation(
             team,
             request.params.uoaSub,
@@ -335,27 +372,26 @@ export const registerTeamMembersRoutes = (
     )
   }
 
-  // Invitation emails are PII; UOA gates its own invited list to owners/admins
-  // and so does this route.
+  // UOA's separate actionable feed carries its own live visibility verdict.
   app.get('/api/team/invitations', async (request, reply) =>
-    relay(request, reply, { admin: true }, async (team, _body, _actorContext, subjectDeps) => ({
-      invitations: await listTeamInvitations(team, subjectDeps),
-    })))
+    relayPage(request, reply, async (team, _actorContext, subjectDeps) =>
+      listTeamInvitations(team, RosterQuerySchema.parse(request.query), subjectDeps)))
 
   app.post('/api/team/invitations', async (request, reply) =>
     relay(
       request,
       reply,
-      { admin: true, parse: () => parseInput(CreateInvitationsBodySchema, request.body, reply) },
-      async (team, body, _actorContext, subjectDeps) => ({
-        results: await createTeamInvitations(team, body, subjectDeps),
-      }),
+      { parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply) },
+      async (team, body, _actorContext, subjectDeps) => {
+        await createTeamInvitation(team, body, subjectDeps)
+        return { ok: true }
+      },
     ))
 
   app.post<{ Params: { inviteId: string } }>(
     '/api/team/invitations/:inviteId/resend',
     async (request, reply) =>
-      relay(request, reply, { admin: true }, async (team, _body, _actorContext, subjectDeps) => {
+      relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
         await resendTeamInvitation(team, request.params.inviteId, subjectDeps)
         return { ok: true }
       }),
@@ -370,7 +406,7 @@ export const registerTeamMembersRoutes = (
   app.post<{ Params: { inviteId: string } }>(
     '/api/team/invitations/:inviteId/revoke',
     async (request, reply) =>
-      relay(request, reply, { admin: true }, async (team, _body, _actorContext, subjectDeps) => {
+      relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
         await revokeTeamInvitation(team, request.params.inviteId, subjectDeps)
         return { ok: true }
       }),
@@ -382,7 +418,7 @@ export const registerTeamMembersRoutes = (
     app.post<{ Params: { inviteId: string } }>(
       `/api/team/invitations/:inviteId/${action}`,
       async (request, reply) =>
-        relay(request, reply, { admin: true }, async (team, _body, _actorContext, subjectDeps) => {
+        relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
           await reviewTeamInvitation(
             team,
             request.params.inviteId,

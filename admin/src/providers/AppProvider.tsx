@@ -1,6 +1,6 @@
 import { RouterProvider } from 'react-router-dom'
-import { router } from '../router'
 import { DesktopWindowFrame } from '../components/desktop/DesktopWindowFrame'
+import { router } from '../router'
 import { ApiClientProvider } from './ApiClientProvider'
 import { AuthSessionProvider } from './AuthSessionProvider'
 import { ExternalAuthProvider } from './ExternalAuthProvider'

@@ -21,8 +21,7 @@ import type { AgentRecord } from '../../lib/api-client'
 import { SettingsPanel } from './settings-shared'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { OrganizationMembersSection } from './OrganizationMembersSection'
-import { activeTeam } from '../../lib/teams'
+import { MembersRosterPanel } from './MembersRosterPanel'
 import { toFormErrors } from '../../facades/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
@@ -137,12 +136,10 @@ const MemberRow = ({
 
 export const SettingsMembersPage = () => {
   const { me, token } = useAuthSession()
-  const roleIds = me?.user.roleIds ?? []
   const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
   // features: UOA owns membership, and Nessie holds no list to show.
   const isUoaSession = me?.auth.providerType === 'uoa'
-  const canManageTeam = isOwner || roleIds.includes('admin')
   const usersQuery = useUsers(isOwner && !isUoaSession)
   const users = usersQuery.data ?? []
   const createUser = useCreateUser()
@@ -186,20 +183,7 @@ export const SettingsMembersPage = () => {
   }
 
   if (isUoaSession) {
-    // The ORG-wide roster: `GET /api/organization/members`, entitlement-scoped
-    // the way `GET /api/team/members` is — any active member reads it, and
-    // only owners and admins get the controls that mutate it (org role,
-    // activation, invitations) — the API refuses those for anyone else, so
-    // rendering them would only produce 403s. Invitations stay team-scoped:
-    // a UOA invite always lands in one team, and the card names which.
-    return (
-      <SettingsPanel eyebrow="Organization" title="Members">
-        <OrganizationMembersSection
-          canManage={canManageTeam}
-          inviteTeamLabel={activeTeam(me)?.label}
-        />
-      </SettingsPanel>
-    )
+    return <MembersRosterPanel scope="organization" />
   }
 
   // Members management is owner-only; non-owners are routed back to their profile.

@@ -51,8 +51,10 @@ pub fn desktop_init_script(platform: &str) -> String {
 pub fn should_register_deep_link_schemes(
     operating_system: &str,
     appimage_path: Option<&OsStr>,
+    debug_build: bool,
 ) -> bool {
-    operating_system == "linux" && appimage_path.is_some_and(|value| !value.is_empty())
+    operating_system == "linux"
+        && (debug_build || appimage_path.is_some_and(|value| !value.is_empty()))
 }
 
 /// Best-effort by construction: nothing in the admin depends on the badge, so a
@@ -197,12 +199,19 @@ mod tests {
         assert!(should_register_deep_link_schemes(
             "linux",
             Some(OsStr::new("/home/person/Downloads/Nessie.AppImage")),
+            false,
         ));
-        assert!(!should_register_deep_link_schemes("linux", None));
-        assert!(!should_register_deep_link_schemes("linux", Some(OsStr::new(""))));
+        assert!(should_register_deep_link_schemes("linux", None, true));
+        assert!(!should_register_deep_link_schemes("linux", None, false));
+        assert!(!should_register_deep_link_schemes(
+            "linux",
+            Some(OsStr::new("")),
+            false,
+        ));
         assert!(!should_register_deep_link_schemes(
             "macos",
             Some(OsStr::new("/Applications/Nessie.AppImage")),
+            true,
         ));
     }
 }

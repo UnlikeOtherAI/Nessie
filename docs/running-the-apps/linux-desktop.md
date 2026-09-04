@@ -16,6 +16,17 @@ The standalone executor daemon below is built and installed by
 `.github/workflows/desktop-linux.yml`, which also builds the shell's `.deb` and
 AppImage, publishes SHA-256 checksums, and proves both packages install.
 
+Windows and Linux render one shared undecorated window frame. The traffic-light
+controls, window-layout chooser, drag regions, and eight resize edges live above
+the router, so they remain available on login, bootstrap, error, and
+authenticated screens. Linux clips the transparent native window to rounded
+corners while it is not maximized or full screen, and returns to a flush
+rectangle in either edge-bound state. The Debian package installs the
+`nessie://` handler; development builds and AppImages register their current
+executable at runtime. Launch an AppImage once after moving it so the callback
+returns to its new location, and a callback launch is forwarded into the
+existing process rather than being lost when the second process exits.
+
 ### The standalone executor daemon
 
 `nessie-executor` turns a Linux computer with no desktop app into an executor:

@@ -70,16 +70,9 @@
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
-  /* The height of the app's live area. It is the viewport everywhere except
-     inside the Linux desktop frame, which insets the window by its shadow
-     gutter (see `.desktop-frame`); every full-height root resolves this token
-     rather than restating `100dvh`, so the frame shrinks the app instead of
-     letting it overflow behind the rounded corners. */
+  /* The height of the app's live area. Full-height roots resolve this token
+     rather than restating the viewport unit. */
   --app-live-height: 100dvh;
-  --desktop-frame-gutter: 12px;
-  --desktop-frame-radius: 12px;
-  --desktop-frame-controls-w: 138px;
-  --desktop-frame-grip: 8px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -94,6 +87,8 @@
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: ease;
+  --desktop-window-control-inactive: #b8b8b8;
+  --desktop-window-layout-scale: 0.5;
   /* Navigation motion. The numbers live in admin/src/navigation/motion.ts
      and are mirrored here for the static poses; a test pins them equal. */
   --nav-duration: 300ms;
@@ -925,152 +920,6 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   transition: background-color 120ms ease;
 }
 
-/* ── Desktop window frame (Windows + Linux) ────────────────────────────────
-   The frameless shells (`decorations: false`) hand the admin the title bar, the
-   window controls and the resize border. One component draws all of it
-   (components/desktop/DesktopWindowFrame.tsx); the only per-platform difference
-   is who paints the shadow and the corners:
-
-   - Windows keeps `shadow: true`, so the OS draws the shadow and — on Windows
-     11 — rounds the corners. The admin must add no radius of its own or a
-     Windows 10 window would get an un-shadowed rounded rectangle.
-   - Linux runs a transparent window (Tauri documents `shadow` as unsupported
-     there), so the admin insets itself by one gutter, rounds its own corners
-     and paints the shadow into the gap it left. Maximized and fullscreen drop
-     both, because a maximized window has no gutter to paint into. */
-.desktop-frame {
-  position: fixed;
-  inset: 0;
-}
-
-.desktop-frame[data-platform='linux'] {
-  overflow: hidden;
-  /* Paint containment clips the rounded corners AND makes the frame the
-     containing block for the app's fixed overlays, so a dialog scrim covers the
-     window rather than the transparent gutter around it. */
-  contain: paint;
-  background: var(--rail);
-}
-
-.desktop-frame[data-platform='linux'][data-flush='false'] {
-  inset: var(--desktop-frame-gutter);
-  border-radius: var(--desktop-frame-radius);
-  box-shadow: 0 12px 32px var(--scrim-strong), 0 2px 8px var(--scrim);
-}
-
-/* The window itself is transparent on Linux, so the body must stop painting the
-   gutter and every full-height root must resolve against the inset frame. */
-[data-desktop-frame='linux'] body {
-  background: transparent;
-}
-
-:root[data-desktop-frame='linux'][data-desktop-frame-flush='false'] {
-  --app-live-height: calc(100dvh - (2 * var(--desktop-frame-gutter)));
-}
-
-/* The drag strip sits above the chromeless routes (sign-in, bootstrap, the
-   error pages) and below the admin's own top bar, which already carries drag
-   zones around its interactive controls. That ordering is what keeps the strip
-   from covering a single button while still giving every screen a top edge to
-   move the window by. */
-.desktop-frame-drag {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 1;
-  height: var(--topbar-h);
-}
-
-[data-desktop-frame] .admin-topbar {
-  position: relative;
-  z-index: 2;
-  padding-right: var(--desktop-frame-controls-w);
-}
-
-.desktop-frame-controls {
-  position: absolute;
-  top: 0;
-  right: 0;
-  /* Above the admin's own dialogs (9999): the window controls are chrome, and a
-     person must always be able to close the window. */
-  z-index: 10002;
-  display: flex;
-  align-items: stretch;
-  height: var(--topbar-h);
-}
-
-.desktop-frame-control {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  color: var(--tx2);
-  transition: background var(--duration-fast) var(--easing-standard), color var(--duration-fast) var(--easing-standard);
-}
-
-.desktop-frame-control:hover {
-  background: var(--overlay-weak);
-  color: var(--tx);
-}
-
-.desktop-frame-control:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.desktop-frame-control--close:hover {
-  background: var(--danger);
-  color: var(--on-accent);
-}
-
-.desktop-frame[data-platform='linux'][data-flush='false'] .desktop-frame-controls {
-  border-top-right-radius: var(--desktop-frame-radius);
-}
-
-.desktop-frame[data-platform='linux'][data-flush='false'] .desktop-frame-control--close {
-  border-top-right-radius: var(--desktop-frame-radius);
-}
-
-/* Invisible 8px grips: an undecorated window has no OS resize border. */
-.desktop-frame-resize {
-  position: absolute;
-  z-index: 10001;
-}
-
-.desktop-frame-resize--n,
-.desktop-frame-resize--s {
-  right: 0;
-  left: 0;
-  height: var(--desktop-frame-grip);
-  cursor: ns-resize;
-}
-
-.desktop-frame-resize--w,
-.desktop-frame-resize--e {
-  top: 0;
-  bottom: 0;
-  width: var(--desktop-frame-grip);
-  cursor: ew-resize;
-}
-
-.desktop-frame-resize--nw,
-.desktop-frame-resize--ne,
-.desktop-frame-resize--sw,
-.desktop-frame-resize--se {
-  width: var(--desktop-frame-grip);
-  height: var(--desktop-frame-grip);
-}
-
-.desktop-frame-resize--n { top: 0; }
-.desktop-frame-resize--s { bottom: 0; }
-.desktop-frame-resize--w { left: 0; }
-.desktop-frame-resize--e { right: 0; }
-.desktop-frame-resize--nw { top: 0; left: 0; cursor: nwse-resize; }
-.desktop-frame-resize--ne { top: 0; right: 0; cursor: nesw-resize; }
-.desktop-frame-resize--sw { bottom: 0; left: 0; cursor: nesw-resize; }
-.desktop-frame-resize--se { bottom: 0; right: 0; cursor: nwse-resize; }
-
 /* ── Global top bar (Slack-style) ──────────────────────────────────────────
    Full-width chrome above the rail + content. On the desktop (Tauri) app it
    doubles as the window title bar: it carries the drag region and leaves a gap
@@ -1092,6 +941,101 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 .admin-topbar--desktop {
   padding-left: 12px;
 }
+
+/* Windows and Linux share this one undecorated frame. Keeping it above the
+   router makes the same drag area, controls, and resize edges reachable on the
+   sign-in screen as well as the authenticated shell. */
+.desktop-window-frame {
+  position: relative;
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+/* The Linux window is transparent at the native layer, so the shared frame
+   owns its visible silhouette. Keep normal windows softly rounded while
+   maximised/full-screen windows remain flush with their monitor edges. */
+html[data-desktop-platform='linux'],
+html[data-desktop-platform='linux'] body,
+html[data-desktop-platform='linux'] #root {
+  background: transparent;
+}
+
+.desktop-window-frame[data-platform='linux'] {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--rail);
+}
+
+.desktop-window-frame[data-platform='linux'][data-flush='true'] {
+  border-radius: 0;
+}
+
+.desktop-window-frame-drag {
+  position: absolute;
+  z-index: var(--layer-stack);
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--topbar-h);
+}
+
+.desktop-window-frame-controls {
+  position: absolute;
+  z-index: var(--layer-card);
+  top: 0;
+  left: 12px;
+  display: flex;
+  height: var(--topbar-h);
+  align-items: center;
+}
+
+/* This preserves the authenticated Windows layout byte-for-byte after the
+   controls move from the top-bar flow into the route-independent frame. */
+.desktop-window-frame .admin-topbar--desktop {
+  position: relative;
+  z-index: 2;
+  padding-left: calc(12px + 76.8px + 8px);
+}
+
+.desktop-window-frame-resize {
+  position: fixed;
+  z-index: var(--layer-card);
+}
+
+.desktop-window-frame-resize--n,
+.desktop-window-frame-resize--s {
+  right: 0;
+  left: 0;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+.desktop-window-frame-resize--e,
+.desktop-window-frame-resize--w {
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+
+.desktop-window-frame-resize--ne,
+.desktop-window-frame-resize--nw,
+.desktop-window-frame-resize--se,
+.desktop-window-frame-resize--sw {
+  width: 9px;
+  height: 9px;
+}
+
+.desktop-window-frame-resize--n { top: 0; }
+.desktop-window-frame-resize--s { bottom: 0; }
+.desktop-window-frame-resize--w { left: 0; }
+.desktop-window-frame-resize--e { right: 0; }
+.desktop-window-frame-resize--nw { top: 0; left: 0; cursor: nwse-resize; }
+.desktop-window-frame-resize--ne { top: 0; right: 0; cursor: nesw-resize; }
+.desktop-window-frame-resize--sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.desktop-window-frame-resize--se { right: 0; bottom: 0; cursor: nwse-resize; }
 
 .admin-topbar-drag-zone {
   align-self: stretch;
@@ -1119,7 +1063,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   font-size: 9.6px;
   font-weight: 800;
   line-height: 1;
-  transition: filter 120ms ease, transform 120ms ease;
+  transition: background-color 120ms ease, filter 120ms ease, transform 120ms ease;
 }
 
 .desktop-window-control > span {
@@ -1151,23 +1095,28 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   background: #28c840;
 }
 
+.desktop-window-controls--inactive .desktop-window-control {
+  background: var(--desktop-window-control-inactive);
+}
+
 /* The green traffic light keeps its normal click-to-maximise behaviour. A
    settled hover opens this native-only chooser, whose layout presets resize
    the native Tauri window instead of imitating a browser panel. */
 .desktop-window-layout-popover {
   width: 366px;
+  zoom: var(--desktop-window-layout-scale);
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
   border-radius: 22px;
   background:
-    linear-gradient(135deg, rgb(249 229 252 / 64%), rgb(202 150 214 / 43%)),
+    linear-gradient(135deg, rgb(245 247 249 / 72%), rgb(166 172 181 / 48%)),
     color-mix(in srgb, var(--panel) 74%, transparent);
   box-shadow:
-    0 22px 54px rgb(22 7 27 / 34%),
+    0 22px 54px rgb(20 24 28 / 28%),
     inset 0 1px rgb(255 255 255 / 47%),
-    inset 0 -1px rgb(75 25 87 / 16%);
-  backdrop-filter: blur(26px) saturate(1.35);
-  -webkit-backdrop-filter: blur(26px) saturate(1.35);
+    inset 0 -1px rgb(36 42 48 / 16%);
+  backdrop-filter: blur(26px) saturate(1.05);
+  -webkit-backdrop-filter: blur(26px) saturate(1.05);
 }
 
 .desktop-window-layout-popover::before {
@@ -1178,7 +1127,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   height: 15px;
   border-top: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--tx) 23%, transparent);
-  background: rgb(239 207 245 / 78%);
+  background: rgb(221 225 229 / 86%);
   content: '';
   transform: rotate(45deg);
 }
@@ -1208,7 +1157,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   min-height: 57px;
   place-items: center;
   border-radius: 10px;
-  color: color-mix(in srgb, var(--tx) 86%, #190f1d);
+  color: color-mix(in srgb, var(--tx) 86%, #15171a);
   transition: background-color 120ms ease, transform 120ms ease;
 }
 

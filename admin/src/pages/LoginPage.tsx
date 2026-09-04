@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
+import { faCheck, faChevronDown } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useRedirect } from '../navigation/redirect'
+import { Popover } from '../components/overlays/Popover'
 import { LoginSessionImportButton } from '../components/shared/LoginSessionImportButton'
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
@@ -11,7 +22,7 @@ import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
 import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { resolveAppliedTheme, useTheme, type Theme } from '../providers/ThemeProvider'
+import { resolveAppliedTheme, useTheme } from '../providers/ThemeProvider'
 import { identityTileRadius } from '../components/primitives/identity-shape'
 
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
@@ -36,12 +47,142 @@ const errorBoxClass = [
   'text-[color:var(--danger-text)]',
 ].join(' ')
 
+const LoginThemeSelector = () => {
+  const { setTheme, theme, themes } = useTheme()
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const listboxId = useId()
+  const selectedTheme = themes.find((option) => option.id === theme) ?? themes[0]
+
+  const openSelector = (preferredIndex?: number): void => {
+    const selectedIndex = themes.findIndex((option) => option.id === theme)
+    setActiveIndex(preferredIndex ?? Math.max(0, selectedIndex))
+    setOpen(true)
+  }
+
+  const selectTheme = (index: number): void => {
+    const option = themes[index]
+    if (!option) return
+    setTheme(option.id)
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (!open) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        openSelector(event.key === 'ArrowUp' ? themes.length - 1 : undefined)
+      }
+      return
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      setActiveIndex((index) => (index + step + themes.length) % themes.length)
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      setActiveIndex(event.key === 'Home' ? 0 : themes.length - 1)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectTheme(activeIndex)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      setOpen(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        aria-activedescendant={open ? `${listboxId}-${themes[activeIndex]?.id}` : undefined}
+        aria-controls={listboxId}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label="Theme"
+        className={[
+          'inline-flex min-w-36 items-center justify-between gap-3 rounded-xl',
+          'border border-[var(--line)] bg-[color:var(--surface-inverse)]',
+          'px-3 py-2 text-left text-sm text-[var(--ink)] outline-none transition',
+          'hover:bg-[color:var(--surface-inverse-2)] focus:border-[var(--accent)]',
+          'focus:ring-2 focus:ring-[var(--accent-soft)]',
+        ].join(' ')}
+        onBlur={() => setOpen(false)}
+        onClick={() => (open ? setOpen(false) : openSelector())}
+        onKeyDown={handleKeyDown}
+        ref={triggerRef}
+        role="combobox"
+        type="button"
+      >
+        <span>{selectedTheme?.label}</span>
+        <FontAwesomeIcon
+          aria-hidden="true"
+          className={`text-[10px] transition-transform${open ? ' rotate-180' : ''}`}
+          icon={faChevronDown}
+        />
+      </button>
+      <Popover
+        anchorRef={triggerRef}
+        className={[
+          'overflow-hidden rounded-xl border border-[color:var(--line)]',
+          'bg-[color:var(--surface-inverse)] p-1',
+          'shadow-[0_18px_45px_var(--scrim)]',
+        ].join(' ')}
+        id={listboxId}
+        label="Theme"
+        matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        placement="top-end"
+        role="listbox"
+      >
+        {themes.map((themeOption, index) => {
+          const selected = themeOption.id === theme
+          const active = index === activeIndex
+          return (
+            <button
+              aria-selected={selected}
+              className={[
+                'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2',
+                'text-left text-sm text-[color:var(--ink)] outline-none transition',
+                active ? 'bg-[color:var(--surface-inverse-2)]' : '',
+              ].join(' ')}
+              id={`${listboxId}-${themeOption.id}`}
+              key={themeOption.id}
+              onClick={() => selectTheme(index)}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActiveIndex(index)}
+              role="option"
+              type="button"
+            >
+              <span>{themeOption.label}</span>
+              <FontAwesomeIcon
+                aria-hidden="true"
+                className={selected ? 'text-[color:var(--accent)]' : 'invisible'}
+                icon={faCheck}
+              />
+            </button>
+          )
+        })}
+      </Popover>
+    </>
+  )
+}
+
 export const LoginPage = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const { devLogin, login, sessionState } = useAuthSession()
-  const { setTheme, theme, themes } = useTheme()
-  const { data: providers = [] } = useAuthProviders()
+  const { theme } = useTheme()
+  const {
+    data: providers = [],
+    error: providersError,
+    isPending: providersPending,
+    refetch: refetchProviders,
+  } = useAuthProviders()
   // Pre-filled dev credentials for convenience (local mode only).
   const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
@@ -241,9 +382,23 @@ export const LoginPage = () => {
                   {isSubmitting ? 'Signing in...' : provider.label}
                 </button>
               ))
+            ) : providersError ? (
+              <div className="grid gap-3" role="alert">
+                <p className={errorBoxClass}>
+                  Couldn&apos;t load sign-in options. Check your connection and try again.
+                </p>
+                <button
+                  className={primaryButtonClass}
+                  disabled={isSubmitting}
+                  onClick={() => void refetchProviders()}
+                  type="button"
+                >
+                  Retry loading sign-in options
+                </button>
+              </div>
             ) : (
               <div className="text-sm text-[var(--muted)]">
-                {providers.length === 0
+                {providersPending
                   ? 'Loading providers...'
                   : 'No sign-in providers are configured.'}
               </div>
@@ -320,18 +475,7 @@ export const LoginPage = () => {
         <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
           Theme
         </span>
-        <select
-          aria-label="Theme"
-          className="rounded-xl border border-[var(--line)] bg-[color:var(--surface-inverse)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
-          onChange={(event) => setTheme(event.target.value as Theme)}
-          value={theme}
-        >
-          {themes.map((themeOption) => (
-            <option key={themeOption.id} value={themeOption.id}>
-              {themeOption.label}
-            </option>
-          ))}
-        </select>
+        <LoginThemeSelector />
       </div>
 
       {showSessionImport ? (

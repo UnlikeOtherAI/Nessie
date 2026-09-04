@@ -74,10 +74,10 @@ test('the primitive composes useOverlay, and nothing else composes the internals
   const source = read('components/overlays/Popover.tsx')
   assert.match(source, /useOverlay\(\{/)
   assert.match(source, /kind: 'popover'/)
-  // Element anchors go through D11's observed placement; rect anchors (the
-  // editor caret) still place synchronously through the pure helper.
-  assert.match(source, /usePopoverPlacement\(/)
+  // Every anchor is measured with the primitive's viewport placement helper;
+  // a portalled panel must not inherit an overflow clip from its trigger.
   assert.match(source, /placePopover\(/)
+  assert.match(source, /new ResizeObserver\(measure\)/)
   // Motion is the hook's; a popover never writes a CSS transition of its own.
   assert.doesNotMatch(source, /transition:/)
   assert.doesNotMatch(source, /useModalA11y|useOverlayDismiss/)
@@ -177,7 +177,17 @@ const domGlobals = {
   window: dom.window,
 }
 
-const mount = async () => {
+type Rect = { bottom: number; height: number; left: number; right: number; top: number; width: number }
+
+const mount = async ({
+  anchorRect,
+  panelRect,
+  placement = 'bottom-start',
+}: {
+  anchorRect?: Rect
+  panelRect?: Rect
+  placement?: 'bottom-start' | 'right'
+} = {}) => {
   const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
   for (const [key, value] of Object.entries(domGlobals)) {
     previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
@@ -189,8 +199,27 @@ const mount = async () => {
   dom.window.document.body.appendChild(container)
   const trigger = dom.window.document.createElement('button')
   dom.window.document.body.appendChild(trigger)
+  if (anchorRect) {
+    Object.defineProperty(trigger, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => anchorRect,
+    })
+  }
   const outside = dom.window.document.createElement('div')
   dom.window.document.body.appendChild(outside)
+
+  const prototype = dom.window.HTMLElement.prototype
+  const originalPanelRect = Object.getOwnPropertyDescriptor(prototype, 'getBoundingClientRect')
+  if (panelRect) {
+    Object.defineProperty(prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: function getBoundingClientRect(this: HTMLElement): Rect {
+        return this.getAttribute('role') === 'menu'
+          ? panelRect
+          : originalPanelRect?.value?.call(this) as Rect
+      },
+    })
+  }
 
   const root = createRoot(container)
   await act(async () => {
@@ -204,6 +233,7 @@ const mount = async () => {
             closes += 1
           },
           open: true,
+          placement,
           role: 'menu',
         },
         h('button', { type: 'button' }, 'Log out'),
@@ -224,6 +254,18 @@ const mount = async () => {
     panel,
     pressAnchor: () => press(trigger),
     pressInside: () => press(panel.querySelector('button') as HTMLElement),
+    pressOtherOverlay: () => {
+      const otherOverlay = dom.window.document.createElement('div')
+      panel.parentElement?.appendChild(otherOverlay)
+      return press(otherOverlay)
+    },
+    touchOtherOverlay: async () => {
+      const otherOverlay = dom.window.document.createElement('div')
+      panel.parentElement?.appendChild(otherOverlay)
+      await act(async () => {
+        otherOverlay.dispatchEvent(new dom.window.Event('touchstart', { bubbles: true, cancelable: true }))
+      })
+    },
     pressOutside: () => press(outside),
     pressEscape: async () => {
       await act(async () => {
@@ -239,6 +281,8 @@ const mount = async () => {
       container.remove()
       trigger.remove()
       outside.remove()
+      if (originalPanelRect) Object.defineProperty(prototype, 'getBoundingClientRect', originalPanelRect)
+      else Reflect.deleteProperty(prototype, 'getBoundingClientRect')
       for (const [key, descriptor] of previousGlobals) {
         if (descriptor) Object.defineProperty(globalThis, key, descriptor)
         else Reflect.deleteProperty(globalThis, key)
@@ -257,6 +301,41 @@ test('an outside press closes; a press on the panel or on its trigger does not',
     assert.equal(view.closes(), 0, 'a press on the trigger is not an outside press')
     await view.pressOutside()
     assert.equal(view.closes(), 1)
+  } finally {
+    await view.unmount()
+  }
+})
+
+test('a press in a higher portalled overlay does not unmount its owner menu', async () => {
+  const view = await mount()
+  try {
+    await view.pressOtherOverlay()
+    assert.equal(view.closes(), 0)
+    await view.touchOtherOverlay()
+    assert.equal(view.closes(), 0)
+  } finally {
+    await view.unmount()
+  }
+})
+
+test('a rail menu is positioned within the viewport on its first open', async () => {
+  const viewportHeight = dom.window.innerHeight
+  const view = await mount({
+    anchorRect: {
+      bottom: viewportHeight - 4,
+      height: 32,
+      left: 56,
+      right: 88,
+      top: viewportHeight - 36,
+      width: 32,
+    },
+    panelRect: { bottom: 320, height: 320, left: 0, right: 252, top: 0, width: 252 },
+    placement: 'right',
+  })
+  try {
+    assert.equal(view.panel.style.left, '96px')
+    assert.equal(view.panel.style.top, `${viewportHeight - 328}px`)
+    assert.notEqual(view.panel.style.visibility, 'hidden')
   } finally {
     await view.unmount()
   }

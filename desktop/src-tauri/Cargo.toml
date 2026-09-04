@@ -28,11 +28,6 @@ tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-opener = "2.5.4"
-# The deep-link feature hands a second launch's argv URL to the running
-# instance's onOpenUrl listeners, which is how the `nessie://` sign-in callback
-# reaches an already open app on Windows and Linux.
-tauri-plugin-single-instance = { version = "2.4.4", features = ["deep-link"] }
-
 # Only the Win32 surface the executor companion still reaches for directly: the
 # process handle that answers whether a prior daemon is still tearing down.
 # Authenticode verification lives in nessie-windows-provenance, which owns the
@@ -42,3 +37,9 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
   "Win32_System_Threading",
 ] }
+
+# The deep-link feature hands a second launch's argv URL to the running
+# instance's onOpenUrl listeners, which is how the `nessie://` sign-in callback
+# reaches an already open app on Windows and Linux. Keep it off mobile targets.
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+tauri-plugin-single-instance = { version = "2.4.4", features = ["deep-link"] }

@@ -51,7 +51,7 @@ test('custom traffic lights are only exposed by Windows and Linux Tauri shells',
   }
 })
 
-test('the green traffic light owns the shared window-layout popover', () => {
+test('the green traffic light owns the shared window-layout popover and inactive controls dim together', () => {
   const controls = source('../src/layouts/admin-shell/DesktopWindowControls.tsx')
   const layouts = source('../src/layouts/admin-shell/WindowLayoutPopover.tsx')
   const styles = source('../src/styles.css')
@@ -59,8 +59,18 @@ test('the green traffic light owns the shared window-layout popover', () => {
   assert.match(controls, /<WindowLayoutPopover/)
   assert.match(layouts, /from '..\/..\/components\/overlays\/Popover'/)
   assert.match(layouts, /className="desktop-window-layout-popover"/)
+  assert.match(layouts, /style={{ marginLeft: -27, marginTop: 36 }}/)
   assert.match(styles, /width: 14\.4px/)
   assert.match(styles, /height: 14\.4px/)
+  assert.match(styles, /--desktop-window-layout-scale: 0\.5/)
+  assert.match(styles, /zoom: var\(--desktop-window-layout-scale\)/)
+  assert.match(styles, /rgb\(245 247 249 \/ 72%\)/)
+  assert.match(styles, /rgb\(166 172 181 \/ 48%\)/)
+  assert.match(styles, /saturate\(1\.05\)/)
+  assert.match(controls, /onFocusChanged/)
+  assert.match(controls, /desktop-window-controls--inactive/)
+  assert.match(styles, /--desktop-window-control-inactive: #b8b8b8/)
+  assert.match(styles, /\.desktop-window-controls--inactive \.desktop-window-control/)
 })
 
 test('the embedded desktop build pins the production API before packaging', () => {

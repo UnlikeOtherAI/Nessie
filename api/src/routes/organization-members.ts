@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
+import { type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
+  createTeamInvitation,
+  listMemberInvitationTargets,
+  listOrganisationMemberInvitations,
   listOrganisationMembers,
   resolveLocalUserIdsByUoaSub,
   setTeamMemberActivation,
@@ -14,6 +17,7 @@ import {
   UoaRosterUnavailableError,
   withUoaOrgRosterSubjectAssertion,
   type UoaRosterDeps,
+  type UoaRosterPage,
 } from '../services/uoa-org-roster.js'
 import type { RouteDeps } from './types.js'
 
@@ -38,6 +42,20 @@ const OrgRoleBodySchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
 })
 
+const RosterQuerySchema = z.object({
+  cursor: z.string().optional(),
+  direction: z.enum(['forward', 'backward']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  status: z.enum(['ACTIVE', 'DEACTIVATED', 'REMOVED', 'all']).optional(),
+})
+
+const CreateMemberInvitationSchema = z.object({
+  email: z.string().trim().email().max(320),
+  name: z.string().trim().min(1).max(200).optional(),
+  teamId: z.string().trim().min(1).max(200),
+  teamRole: z.string().trim().min(1).max(100).optional(),
+})
+
 const resolveOrganizationExternalId = async (
   deps: RouteDeps,
   actorContext: AuthorizedActionContext,
@@ -57,22 +75,6 @@ const resolveOrganizationExternalId = async (
     return null
   }
   return organization.externalOrgId
-}
-
-const requireOrganizationAdmin = (
-  actorContext: AuthorizedActionContext,
-  reply: FastifyReply,
-): boolean => {
-  const allowed = actorContext.actor.actorType === 'user' && isAdminActor(actorContext)
-  if (!allowed) {
-    sendApiError(
-      reply,
-      403,
-      'FORBIDDEN',
-      'Only organisation owners and admins can change organisation membership',
-    )
-  }
-  return allowed
 }
 
 /** Map a relay failure onto the API's error envelope. Returns true if handled. */
@@ -135,7 +137,7 @@ export const registerOrganizationMembersRoutes = (
   const relay = async <TResult, TBody = undefined>(
     request: FastifyRequest,
     reply: FastifyReply,
-    options: { admin: boolean; parse?: () => TBody | null },
+    options: { parse?: () => TBody | null },
     run: (
       orgId: string,
       body: TBody,
@@ -144,8 +146,6 @@ export const registerOrganizationMembersRoutes = (
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (options.admin && !requireOrganizationAdmin(actorContext, reply)) return reply
-
     const body = options.parse ? options.parse() : (undefined as TBody)
     if (body === null) return reply
 
@@ -168,6 +168,34 @@ export const registerOrganizationMembersRoutes = (
     }
   }
 
+  const relayPage = async <TItem, TPermissions>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    run: (
+      orgId: string,
+      actorContext: AuthorizedActionContext,
+      subjectDeps: UoaRosterDeps,
+    ) => Promise<UoaRosterPage<TItem, TPermissions>>,
+  ): Promise<FastifyReply | { data: { items: TItem[]; permissions: TPermissions } }> => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const query = parseInput(RosterQuerySchema, request.query, reply, 'query')
+    if (!query) return reply
+    const orgId = await resolveOrganizationExternalId(deps, actorContext, reply)
+    if (!orgId) return reply
+    try {
+      const result = await run(
+        orgId,
+        actorContext,
+        withUoaOrgRosterSubjectAssertion(orgId, actorContext.actionContext.uoaIdentity, rosterDeps),
+      )
+      return createApiResponse({ items: result.items, permissions: result.permissions }, result.meta)
+    } catch (error) {
+      if (sendRelayError(request, reply, error)) return reply
+      throw error
+    }
+  }
+
   /**
    * Every member of the organisation, with each person's local principal id
    * attached where one exists — same `resolveLocalUserIdsByUoaSub` join the
@@ -175,22 +203,49 @@ export const registerOrganizationMembersRoutes = (
    * steward without Nessie storing a second copy of UOA's roster.
    */
   app.get('/api/organization/members', async (request, reply) =>
-    relay(request, reply, { admin: false }, async (orgId, _body, subjectDeps) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) throw new Error('unreachable: actor context already required')
-      const members = await listOrganisationMembers(orgId, subjectDeps)
+    relayPage(request, reply, async (orgId, actorContext, subjectDeps) => {
+      const page = await listOrganisationMembers(
+        orgId,
+        RosterQuerySchema.parse(request.query),
+        subjectDeps,
+      )
       const localIdBySub = await resolveLocalUserIdsByUoaSub(
         deps.prisma,
         actorContext.tenant.organizationId,
-        members.map((member) => member.uoaSub),
+        page.items.map((member) => member.uoaSub),
       )
       return {
-        members: members.map((member) => {
+        ...page,
+        items: page.items.map((member) => {
           const userId = localIdBySub.get(member.uoaSub)
           return userId ? { ...member, userId } : member
         }),
       }
     }))
+
+  app.get('/api/organization/member-invitation-targets', async (request, reply) =>
+    relayPage(request, reply, async (orgId, _actorContext, subjectDeps) =>
+      listMemberInvitationTargets(orgId, RosterQuerySchema.parse(request.query), subjectDeps)))
+
+  app.get('/api/organization/member-invitations', async (request, reply) =>
+    relayPage(request, reply, async (orgId, _actorContext, subjectDeps) =>
+      listOrganisationMemberInvitations(orgId, RosterQuerySchema.parse(request.query), subjectDeps)))
+
+  app.post('/api/organization/member-invitations', async (request, reply) =>
+    relay(
+      request,
+      reply,
+      { parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply) },
+      async (orgId, body, subjectDeps) => {
+        const { teamId, ...invitation } = body
+        await createTeamInvitation(
+          { externalOrgId: orgId, externalTeamId: teamId },
+          invitation,
+          subjectDeps,
+        )
+        return { ok: true }
+      },
+    ))
 
   app.put<{ Params: { uoaSub: string } }>(
     '/api/organization/members/:uoaSub/role',
@@ -198,7 +253,7 @@ export const registerOrganizationMembersRoutes = (
       relay(
         request,
         reply,
-        { admin: true, parse: () => parseInput(OrgRoleBodySchema, request.body, reply) },
+        { parse: () => parseInput(OrgRoleBodySchema, request.body, reply) },
         async (orgId, body, subjectDeps) => {
           await updateOrganisationMemberRole(orgId, request.params.uoaSub, body.role, subjectDeps)
           return { ok: true }
@@ -210,7 +265,7 @@ export const registerOrganizationMembersRoutes = (
     app.post<{ Params: { uoaSub: string } }>(
       `/api/organization/members/:uoaSub/${action}`,
       async (request, reply) =>
-        relay(request, reply, { admin: true }, async (orgId, _body, subjectDeps) => {
+        relay(request, reply, {}, async (orgId, _body, subjectDeps) => {
           // Deactivation is already org-scoped upstream (posts to the org
           // path, not a team path) — reuse it unchanged.
           await setTeamMemberActivation(

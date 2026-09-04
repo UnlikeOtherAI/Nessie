@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "tauri:build": "tauri build --bundles none"
+    "tauri:build": "tauri build --no-bundle"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2"

@@ -1,9 +1,8 @@
 # Linux desktop delivery
 
-**Status:** active — design refined 2026-09-01, then re-scoped the same day
-on Ondrej's direction: the executor ships on Linux (standalone daemon and
-desktop enablement), and the window is fully custom chrome, not the native
-frame. "Review and direction changes" at the end records every revision.
+**Status:** active — shared shell and executor delivery are implemented;
+physical Ubuntu/KVM acceptance remains. "Review and direction changes" at the
+end records every revision.
 **Owner:** Desktop
 **Target:** Ubuntu 26.04 x86_64. `.deb` is the supported install; AppImage is
 a portable evaluator artifact for the shell only.
@@ -18,7 +17,8 @@ Nessie is installable and usable as a native Linux desktop application with no
 terminal after installation. The app opens the same hosted Nessie workspace as
 the macOS desktop product inside a window that is entirely Nessie's design,
 completes browser sign-in through the `nessie://` callback, shows native
-notifications while it runs, and a second launch focuses the existing window.
+notifications while it runs, and a second launch forwards any sign-in callback,
+restores a minimized window, and focuses the existing instance.
 
 A Linux machine can also be an **executor**, in either of two shapes:
 
@@ -64,31 +64,28 @@ bar with traffic lights and the OS's own rounded corners; it is unchanged.
     version; the OS decides the corner shape (Windows plan).
   - Linux: `transparent: true`, because Tauri documents `shadow` as
     "Unsupported" on Linux and an undecorated GTK window has square corners.
-    The admin paints a 12 px radius on the app root and a soft shadow inside
-    a transparent margin. This needs a compositing window manager; Ubuntu's
-    GNOME always composites. Maximized and fullscreen windows drop the radius
-    and the margin.
+    The admin clips the visible app root to a 14 px radius. This needs a
+    compositing window manager; Ubuntu's GNOME always composites. Maximized
+    and fullscreen windows drop the radius.
 - **`DesktopWindowFrame` is the one frame component.** It mounts at the admin
   root — above the router, so the login screen has it too — when
   `desktopPlatform` is `windows` or `linux`, and renders: a top drag strip
   (`data-tauri-drag-region`, which Tauri applies only to the element carrying
-  it, so interactive children stay clickable); window controls at the top
-  right — minimize, maximize/restore, close — through the Tauri window API
-  with the `core:window:allow-minimize`, `allow-toggle-maximize`, and
-  `allow-close` permissions added to both capability files; double-click on
-  the drag strip toggles maximize; and 8 px invisible resize handles on the
-  edges and corners that call `startResizeDragging` (its permission is
-  already granted), because an undecorated window has no OS resize border.
-  `TopBar.tsx` keeps its drag zones and loses the macOS-only 68 px
-  traffic-light spacer off macOS. Accepted trade-off: Windows 11's snap-layout
+  it, so interactive children stay clickable); the shared top-left
+  traffic-light controls and window-layout chooser through the Tauri window
+  API; double-click on the Linux drag strip toggles maximize; and invisible
+  resize handles on every edge and corner that call `startResizeDragging`,
+  because an undecorated window has no OS resize border. The frame reports the
+  target with `data-platform`, and `TopBar.tsx` retains its macOS-only
+  traffic-light spacer. Accepted trade-off: Windows 11's system snap-layout
   flyout does not appear over a custom maximize button; Win+Arrow snapping
   still works.
 - **Platform reaches the admin structurally.** The desktop init script
   publishes `window.__nessieDesktopPlatform` (`'macos' | 'windows' | 'linux'`,
   from Rust `std::env::consts::OS`); `ShellEnvironmentProvider` carries it as
   `desktopPlatform`. Nothing reads the user agent.
-- **Fullscreen** toggles with F11 (`core:window:allow-set-fullscreen`) and is
-  edge-to-edge with no frame.
+- **Fullscreen** is available from the shared window-layout chooser
+  (`core:window:allow-set-fullscreen`) and is edge-to-edge with no frame.
 - **Size and colour are shared:** 1280 × 800 default, 1024 × 700 minimum,
   `#2e1132` behind the document while the hosted admin loads (on Linux this is
   the app root's own background, since the window itself is transparent).
@@ -107,13 +104,13 @@ bar with traffic lights and the OS's own rounded corners; it is unchanged.
   URL arrives as the argv of a *second* process; on macOS the OS delivers it to
   the running app. `tauri-plugin-single-instance` supports Linux through D-Bus
   (current release 2.4.4) and exposes a `deep-link` feature that forwards that
-  argv to the running instance's `onOpenUrl` listener. Today the plugin is
-  compiled only for macOS and Windows and its callback only focuses the window,
-  so on Windows a sign-in started while the app is already open focuses the
-  window and **drops the callback**. The contract: the plugin is enabled on all
-  three desktop targets with `features = ["deep-link"]`, registered first (the
-  deep-link plugin docs require that order), and its callback still focuses the
-  main window. Snap and Flatpak would additionally need D-Bus `own-name` /
+  argv to the running instance's `onOpenUrl` listener. It is enabled on all
+  three desktop targets, registered first (the deep-link plugin docs require
+  that order), and its callback shows, restores, and focuses the main window.
+  Development builds and AppImages register the Linux handler at runtime; the
+  Debian package owns its installed association. Provider discovery has an
+  explicit retry state instead of leaving sign-in at an indefinite loading
+  message. Snap and Flatpak would additionally need D-Bus `own-name` /
   `talk-name` permissions; they are not targets of this plan.
 
 ### Notifications and the badge

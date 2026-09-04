@@ -1,11 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 import type {
-  CreateTeamInvitationsRequest,
+  MemberRosterPermissions,
   UoaSessionIdentity,
   TeamInvitationRecord,
-  TeamInviteResult,
   TeamMemberRecord,
 } from '@nessie/schemas'
+import type { PaginationMeta } from '@nessie/schemas'
 import {
   createUoaSubjectAssertion,
   type UoaDelegatedIdentitySettings,
@@ -95,6 +95,20 @@ export type TeamMemberActivation = 'deactivate' | 'reactivate'
 
 export type TeamInvitationReview = 'approve' | 'deny'
 
+export type UoaRosterListQuery = {
+  cursor?: string
+  direction?: 'forward' | 'backward'
+  limit?: number
+  status?: string
+}
+
+/** UOA's paging details stay at the relay boundary; the API writes them into its own envelope. */
+export type UoaRosterPage<T, TPermissions> = {
+  items: T[]
+  meta: PaginationMeta
+  permissions: TPermissions
+}
+
 /** Exported for `uoa-org-members.ts`'s org-scoped subject assertion. */
 export const delegatedSettings = (): UoaDelegatedIdentitySettings => {
   const settings = requireSettings()
@@ -111,10 +125,9 @@ export const delegatedSettings = (): UoaDelegatedIdentitySettings => {
 /**
  * Attach an assertion of the signed-in UOA user to a roster operation.
  *
- * The session's selected UOA org/team must be precisely the mapped team;
- * otherwise the caller is not entitled to ask UOA for this roster. UOA then
- * verifies the product signature and repeats the live epoch and membership
- * checks before it serves the request.
+ * The session must belong to the mapped UOA organisation. Its active team is
+ * intentionally not a target constraint: a manager may select another team
+ * they are entitled to administer, and UOA authorizes that exact target.
  */
 export const withUoaRosterSubjectAssertion = (
   team: UoaRosterTeam,
@@ -125,10 +138,9 @@ export const withUoaRosterSubjectAssertion = (
     !identity
     || identity.tokenVersion === null
     || identity.organizationId !== team.externalOrgId
-    || identity.teamId !== team.externalTeamId
   ) {
     throw new UoaRosterIdentityError(
-      'A current UnlikeOtherAI session for this team is required.',
+      'A current UnlikeOtherAI session for this organisation is required.',
     )
   }
   const settings = delegatedSettings()
@@ -188,24 +200,43 @@ const rowsAt = (payload: unknown, key: string): Record<string, unknown>[] => {
   })
 }
 
+const numberAt = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+
+export const parseUoaPaginationMeta = (payload: unknown): PaginationMeta => {
+  const envelope = asRecord(payload)
+  const meta = asRecord(envelope?.meta)
+  return {
+    hasMore: meta?.hasMore === true,
+    nextCursor: trimString(meta?.nextCursor) ?? trimString(envelope?.next_cursor) ?? null,
+    prevCursor: trimString(meta?.prevCursor) ?? null,
+    ...(numberAt(envelope?.total) === undefined ? {} : { total: numberAt(envelope?.total) }),
+  }
+}
+
+export const parseUoaRosterPermissions = (payload: unknown): MemberRosterPermissions => {
+  const permissions = asRecord(asRecord(payload)?.permissions)
+  return {
+    addMember: permissions?.addMember === true,
+    changeMemberRole: permissions?.changeMemberRole === true,
+    removeMember: permissions?.removeMember === true,
+    ...(typeof permissions?.deactivateMember === 'boolean'
+      ? { deactivateMember: permissions.deactivateMember }
+      : {}),
+    ...(typeof permissions?.reactivateMember === 'boolean'
+      ? { reactivateMember: permissions.reactivateMember }
+      : {}),
+    viewMemberEmail: permissions?.viewMemberEmail === true,
+    ...(typeof permissions?.searchMemberCandidates === 'boolean'
+      ? { searchMemberCandidates: permissions.searchMemberCandidates }
+      : {}),
+  }
+}
+
 const optional = (
   entries: [string, string | undefined][],
 ): Record<string, string> =>
   Object.fromEntries(entries.filter((entry): entry is [string, string] => entry[1] !== undefined))
-
-/**
- * Team membership rows (`{ userId, teamRole }`). They carry no email or name —
- * UOA keeps identity on the organisation membership — so the roster is the join
- * of these two reads on the UOA subject.
- */
-const parseTeamMembers = (payload: unknown): Map<string, string | undefined> => {
-  const members = new Map<string, string | undefined>()
-  for (const row of rowsAt(payload, 'members')) {
-    const uoaSub = trimString(row.userId)
-    if (uoaSub) members.set(uoaSub, trimString(row.teamRole))
-  }
-  return members
-}
 
 /**
  * Exported for `uoa-org-members.ts`: the organisation-wide roster (every org
@@ -216,25 +247,46 @@ const parseTeamMembers = (payload: unknown): Map<string, string | undefined> => 
 export const parseOrgMembers = (payload: unknown): Map<string, TeamMemberRecord> => {
   const members = new Map<string, TeamMemberRecord>()
   for (const row of rowsAt(payload, 'data')) {
-    const uoaSub = trimString(row.userId)
+    const identity = asRecord(row.identity)
+    const uoaSub = trimString(row.subject) ?? trimString(row.userId)
     if (!uoaSub) continue
     members.set(uoaSub, {
       uoaSub,
       ...optional([
-        ['displayName', trimString(row.name) ?? trimString(row.displayName)],
-        ['email', trimString(row.email)],
-        ['orgRole', trimString(row.role)],
+        ['displayName', trimString(identity?.displayName) ?? trimString(row.name) ?? trimString(row.displayName)],
+        ['email', trimString(identity?.email) ?? trimString(row.email)],
+        ['orgRole', trimString(row.role) ?? trimString(row.orgRole)],
         ['status', trimString(row.status)],
+        ['avatarImageUrl', trimString(row.avatarImageUrl) ?? trimString(identity?.avatarImageUrl)],
       ]),
     })
   }
   return members
 }
 
-const parseInvitations = (payload: unknown, key: string): TeamInvitationRecord[] =>
+export const parseTeamRosterMembers = (payload: unknown): TeamMemberRecord[] =>
+  rowsAt(payload, 'data').flatMap((row) => {
+    const identity = asRecord(row.identity)
+    const uoaSub = trimString(row.subject) ?? trimString(row.userId)
+    if (!uoaSub) return []
+    return [{
+      uoaSub,
+      ...optional([
+        ['displayName', trimString(identity?.displayName) ?? trimString(row.displayName)],
+        ['email', trimString(identity?.email) ?? trimString(row.email)],
+        ['teamRole', trimString(row.teamRole) ?? trimString(row.role)],
+        ['status', trimString(row.status)],
+        ['avatarImageUrl', trimString(row.avatarImageUrl) ?? trimString(identity?.avatarImageUrl)],
+      ]),
+    }]
+  })
+
+export const parseUoaInvitations = (payload: unknown, key = 'data'): TeamInvitationRecord[] =>
   rowsAt(payload, key).flatMap((row) => {
     const inviteId = trimString(row.inviteId) ?? trimString(row.id)
     if (!inviteId) return []
+    const team = asRecord(row.team)
+    const teamId = trimString(team?.id)
     return [{
       inviteId,
       ...optional([
@@ -247,45 +299,20 @@ const parseInvitations = (payload: unknown, key: string): TeamInvitationRecord[]
         ['lastSentAt', trimString(row.lastSentAt)],
         ['expiresAt', trimString(row.expiresAt)],
       ]),
+      ...(teamId
+        ? {
+            team: {
+              id: teamId,
+              name: trimString(team?.name) ?? 'Unnamed team',
+              ...optional([
+                ['slug', trimString(team?.slug)],
+                ['avatarImageUrl', trimString(team?.avatarImageUrl)],
+              ]),
+            },
+          }
+        : {}),
     }]
   })
-
-const parseInviteResults = (payload: unknown): TeamInviteResult[] =>
-  rowsAt(payload, 'results').map((row) => ({
-    ...optional([
-      ['email', trimString(row.email)],
-      ['status', trimString(row.status)],
-    ]),
-  }))
-
-/**
- * The team roster: everyone in the UOA team, named from the organisation
- * membership list. Members whose organisation row is not visible still appear
- * with their subject and team role — a roster that silently drops people would
- * be worse than one with a missing name.
- */
-export const listTeamMembers = async (
-  team: UoaRosterTeam,
-  deps: UoaRosterDeps = {},
-): Promise<TeamMemberRecord[]> => {
-  const settings = requireSettings()
-  const [teamPayload, orgPayload] = await Promise.all([
-    rosterRequest(settings, teamPath(team), { method: 'GET' }, deps),
-    rosterRequest(
-      settings,
-      `${orgPath(team)}/members`,
-      { method: 'GET', query: { status: 'all' } },
-      deps,
-    ),
-  ])
-
-  const teamRoles = parseTeamMembers(teamPayload)
-  const identities = parseOrgMembers(orgPayload)
-  return [...teamRoles.entries()].map(([uoaSub, teamRole]) => ({
-    ...(identities.get(uoaSub) ?? { uoaSub }),
-    ...(teamRole ? { teamRole } : {}),
-  }))
-}
 
 /** Change a member's role inside this team (UOA team role). */
 export const updateTeamMemberRole = async (
@@ -335,46 +362,10 @@ export const setTeamMemberActivation = async (
   )
 }
 
-/** Invitation history for this team (pending, accepted, expired, …). */
-export const listTeamInvitations = async (
-  team: UoaRosterTeam,
-  deps: UoaRosterDeps = {},
-): Promise<TeamInvitationRecord[]> => {
-  const payload = await rosterRequest(
-    requireSettings(),
-    `${teamPath(team)}/invitations`,
-    { method: 'GET' },
-    deps,
-  )
-  return parseInvitations(payload, 'data')
-}
-
 /**
  * Send invitations. Acceptance is hosted by UOA — Nessie never mints, stores or
  * renders an invitation token.
  */
-export const createTeamInvitations = async (
-  team: UoaRosterTeam,
-  input: CreateTeamInvitationsRequest,
-  deps: UoaRosterDeps = {},
-): Promise<TeamInviteResult[]> => {
-  const payload = await rosterRequest(
-    requireSettings(),
-    `${teamPath(team)}/invitations`,
-    {
-      method: 'POST',
-      body: {
-        invites: input.invites.map((invite) => ({
-          email: invite.email,
-          ...optional([['name', invite.name], ['teamRole', invite.teamRole]]),
-        })),
-      },
-    },
-    deps,
-  )
-  return parseInviteResults(payload)
-}
-
 /** Resend a pending invitation email; UOA refreshes its 30-day expiry. */
 export const resendTeamInvitation = async (
   team: UoaRosterTeam,
@@ -389,22 +380,7 @@ export const resendTeamInvitation = async (
   )
 }
 
-/**
- * Withdraw an invitation that has already been sent. The link stops working and
- * the row leaves the team's pending list.
- *
- * UOA answers `200 { ok: true }` for a live invitation **and** for one that was
- * already revoked — revoking twice is the same outcome as revoking once, so the
- * second click is a success, not an error. An invitation that has already been
- * accepted is a `409`: the person is a member now, and removing them is a
- * different operation with different consequences, so it is refused in words
- * rather than quietly reinterpreted. An unknown or foreign invite id is a
- * generic `404`, which tells a caller nothing about other teams.
- *
- * A 200 body that is not the agreed success shape is treated as an outage:
- * "revoked" is a claim about the upstream's state, and a body we cannot read is
- * no evidence for it.
- */
+/** Withdraw a pending invitation; an accepted invitation remains a distinct action. */
 export const revokeTeamInvitation = async (
   team: UoaRosterTeam,
   inviteId: string,

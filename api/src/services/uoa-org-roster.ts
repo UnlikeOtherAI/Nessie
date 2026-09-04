@@ -6,7 +6,10 @@ export {
   acceptTeamInvitation,
   createUoaOrganisation,
   createUoaTeamTeam,
+  createTeamInvitation,
   createTeamInvitations,
+  addTeamMember,
+  findTeamMemberCandidates,
   listTeamInvitations,
   listTeamMembers,
   removeTeamMember,
@@ -29,6 +32,8 @@ export {
   type UoaRosterTeam,
   type TeamInvitationReview,
   type TeamMemberActivation,
+  type UoaRosterListQuery,
+  type UoaRosterPage,
 } from '@nessie/team-admin'
 
 // The organisation and the team are UOA-owned objects too, not just the
@@ -42,6 +47,8 @@ export { renameUoaOrganization, renameUoaTeam } from '@nessie/team-admin'
 // "Organization Members" surface must read these, never the team-scoped
 // ones.
 export {
+  listMemberInvitationTargets,
+  listOrganisationMemberInvitations,
   listOrganisationMembers,
   updateOrganisationMemberRole,
   withUoaOrgRosterSubjectAssertion,

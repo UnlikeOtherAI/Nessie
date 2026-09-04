@@ -1,10 +1,11 @@
 # Members roster restructure
 
-Status: blocked pending UOA contract work and cross-repository approval (2026-09-04).
+Status: implemented for UOA-backed organisation and team settings (2026-09-04).
 
 Review: Codex Sol reviewed the first draft on 2026-09-04 and returned a
-no-go. This revision incorporates its findings; it is the implementation plan
-to approve, not a promise that the current APIs can already support the UI.
+no-go. This revision incorporates its findings. The required UOA contract work
+landed first; this document records the implemented UOA path and the deliberate
+local-mode boundary.
 
 ## Outcome
 
@@ -31,14 +32,14 @@ tab. The removal action therefore returns to the Active tab rather than
 claiming a result appears in Deactivated.
 
 The page-header primary action is **Send invitation** in UOA-enabled installs.
-Local/no-IdP installs reuse the table shell but retain their authoritative
-**Add member** path until a local invitation system is separately designed;
-they must not pretend an email invitation exists. This plan does not replace
-local identity authority with UOA-style flows.
+Local/no-IdP installs retain their authoritative existing member management
+until a local roster migration is designed; they must not pretend an email
+invitation exists. This change does not replace local identity authority with
+UOA-style flows.
 
-The old card grids, person-agent nesting and unassigned-agent buckets leave
-these roster pages: they do not drive a membership decision and do not belong
-inside a people table.
+The UOA roster pages replace their old card grids, person-agent nesting and
+unassigned-agent buckets: they do not drive a membership decision and do not
+belong inside a people table. The no-IdP surface remains a separate migration.
 
 ## Surface and interaction design
 
@@ -46,37 +47,31 @@ inside a people table.
    adapters. The existing settings routes and `SettingsPanel` headers remain
    the doorways; no duplicate team and organisation table implementations are
    introduced.
-2. Use the shared `TabBar` and `useTabParam` for the three page tabs. The
+2. Use the shared `TabBar` and a replace-only URL parameter for the three page tabs. The
    selected state is a replace-only URL parameter, so refreshes and shared
    links preserve it without Back-stack noise. The invite dialog's two team
    choices are local dialog state, not page URL state.
 3. Render every tab with `DataTable` plus `PaginationFooter`, never a card
    list. Rows use the shared identity primitive. Narrow layouts fold secondary
    facts into the user cell rather than silently discard them.
-4. Member rows show the UOA-authorized identity fields, role for the selected
-   scope and an action only when the current actor has the corresponding live
-   UOA capability. Email is not assumed to be universally visible: UOA must
-   make the visibility decision and omit it when the reader lacks the contact
-   disclosure permission.
-5. Organisation rows may offer organisation role and lifecycle controls.
-   Team rows offer team role and Remove from team, but never an ambiguous
-   lifecycle control: deactivating a person is organisation-wide and is not a
-   team action. If a product later adds an organisation lifecycle shortcut in
-   the team view, it must say “Deactivate from organisation”, explain the
-   cross-team effect and require the organisation-scoped capability.
-6. Pending-invitation rows show recipient, target team, role, inviter, expiry
-   and the authorized resend/revoke/approval action. They use the same server
-   pagination as member rows; the UI never loads an unbounded history then
-   slices it in the browser.
+4. Member rows show the UOA-authorized identity fields and role for the selected
+   scope. Email is not assumed to be universally visible: UOA makes the
+   disclosure decision and omits it when the reader lacks the permission.
+   Role/lifecycle/removal controls remain out of this first table because UOA
+   roles are configurable and no authoritative option vocabulary is yet in the
+   roster contract; the live capability response is retained for that follow-up.
+5. Pending-invitation rows show recipient, target team where relevant and
+   expiry. They use the same server pagination as member rows; the UI never
+   loads an unbounded history then slices it in the browser.
 7. **Send invitation** opens the shared `Dialog` in the header action.
    - In organisation scope, the dialog first requires an explicit target-team
-     selection from teams the actor may invite into, then collects the email
-     and role. It never silently uses the session's active team.
+     selection from teams the actor may invite into, then collects the email.
+     It never silently uses the session's active team.
    - In team scope, the dialog has two internal `TabBar` panels. **Existing
      user** is a debounced, server-side name/email autocomplete of eligible
      active organisation members and directly adds the selected UOA subject to
-     this team. **Invite to workspace** sends the email invitation. Both
-     choose a team role before submitting.
+     this team. **Invite to workspace** sends the email invitation. The default
+     UOA team role is used until UOA exposes the configured role vocabulary.
    - Success closes the dialog, invalidates the scope's paged query family
      and selects the tab that honestly contains the result. Validation and
      upstream refusal remain inline in the dialog.
@@ -126,7 +121,7 @@ not a substitute: it would expire on another instance, after a refresh or
 after UOA revocation. Browser-side slicing is prohibited for these unbounded
 lists.
 
-## Required UOA contract work
+## Required UOA contract work (completed)
 
 The following has to land in UnlikeOtherAuthenticator before Nessie implements
 the UOA-backed UI. These are product/API changes in a separate repository, not
@@ -163,14 +158,14 @@ organisation-wide lifecycle that deactivates/restores all active team
 memberships) and `REMOVED` (a team membership history state). Nessie will not
 rename one as the other.
 
-## Nessie implementation after the contracts land
+## Nessie implementation after the contracts landed
 
 1. Extend `@nessie/schemas` with the common paged roster, invitation,
    capability and candidate shapes. Implement UOA relay services/routes with
    strict query validation and no local profile/membership fallback.
-2. Add matching local-mode adapters that preserve local identity authority and
-   existing member creation semantics while using the common table/pagination
-   composition. Do not add a local email-invite system under this change.
+2. Keep local-mode adapters and member creation out of the UOA change. A later
+   migration may adopt the common table/pagination composition, but must not
+   add a local email-invite system under this change.
 3. Build `MembersRoster`, scope adapters, member/invitation row definitions,
    `DataTable` layout, URL tabs and standard footer. Delete the old duplicated
    card sections only after both route doorways render the replacement.
@@ -195,7 +190,5 @@ rename one as the other.
   and 5455, verify health, then use headless Playwright on both member routes
   to exercise every tab and invitation dialog and capture screenshots.
 
-Release is blocked until the required UOA contracts are available and tested.
-Implementing only the Nessie cards/tables first would create a page that looks
-finished while hiding memberships, invitations or identity data, which is not
-an acceptable partial delivery.
+The UOA release gate is satisfied by the companion UOA contract change and the
+Nessie relay/UI verification. Local-mode convergence remains separate work.

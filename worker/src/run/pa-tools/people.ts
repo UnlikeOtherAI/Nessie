@@ -50,7 +50,7 @@ const readRosterCached = async (
   const key = `${organizationId}:${team.externalOrgId}:${team.externalTeamId}:${uoaSubject}`
   const cached = rosterCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.members
-  const members = await listTeamMembers(team, deps)
+  const members = (await listTeamMembers(team, { limit: 100, status: 'ACTIVE' }, deps)).items
   rosterCache.delete(key)
   if (rosterCache.size >= ROSTER_CACHE_MAX_ENTRIES) {
     const oldest = rosterCache.keys().next().value
