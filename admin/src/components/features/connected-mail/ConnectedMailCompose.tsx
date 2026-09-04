@@ -180,12 +180,21 @@ export const ConnectedMailCompose = ({
   const undoGmailSend = async () => {
     if (!sent?.id) return
     await undo.mutateAsync(sent.id)
-    providerDraftRef.current = null
-    hydratedDraftRef.current = null
+    const refreshed = await providerDraft.refetch()
+    if (!refreshed.data) throw new Error('Could not reload the restored Gmail draft.')
+    hydratedDraftRef.current = refreshed.data.id
+    providerDraftRef.current = {
+      contentFingerprint: refreshed.data.contentFingerprint,
+      id: refreshed.data.id,
+    }
     editedProviderDraftRef.current = false
+    draft.setDraft({
+      bcc: refreshed.data.bcc.join(', '), body: refreshed.data.body,
+      cc: refreshed.data.cc.join(', '), subject: refreshed.data.subject,
+      to: refreshed.data.to.join(', '),
+    })
     setActiveGmailDraftId(sent.id)
     setSent(null)
-    await providerDraft.refetch()
   }
 
   if (sent) return (
