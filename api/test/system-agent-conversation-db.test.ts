@@ -3,14 +3,17 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { listAgentsForUser } from '@nessie/team-admin'
+import { listAgentsForUser, listGlobalAgentBlueprints } from '@nessie/team-admin'
 
 import {
   AGENT_DESIGNER_BLUEPRINT,
   ensureGlobalAgentsForUser,
   globalAgentHomeDmKey,
 } from '../src/services/global-agents.js'
-import { ensurePersonalAssistantBootstrap } from '../src/services/personal-assistant.js'
+import {
+  ensurePersonalAssistantBootstrap,
+  PERSONAL_ASSISTANT_NAME,
+} from '../src/services/personal-assistant.js'
 import { resolveSystemAgentConversation } from '../src/services/system-agent-conversations.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -281,7 +284,7 @@ dbTest('a system agent from another organisation is not addressable', async () =
   }
 })
 
-dbTest('the Personal Assistant resolves to its own DM, and both are listed as addressable', async () => {
+dbTest('the Personal Assistant and every registered global agent are listed as addressable', async () => {
   const context = await seed('system-agent-address-pa')
   const { memberUserId, organizationId, prisma, teamId } = context
 
@@ -310,7 +313,11 @@ dbTest('the Personal Assistant resolves to its own DM, and both are listed as ad
     const addressable = listed.filter((agent) => agent.dmAddressable === true)
     assert.deepEqual(
       addressable.map((agent) => agent.name).sort(),
-      ['Agent Designer', 'Personal Assistant'],
+      [
+        PERSONAL_ASSISTANT_NAME,
+        ...listGlobalAgentBlueprints().map((blueprint) => blueprint.name),
+      ].sort(),
+      'the address book must expose the Personal Assistant and every registered global agent',
     )
 
     const ordinaryAgent = await prisma.agent.create({
