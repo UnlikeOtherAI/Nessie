@@ -159,10 +159,13 @@ test('mailbox_compose returns the universal card template and does not send', as
   const { context, events, messageCreates } = makeContext()
   const result = await runMailboxComposeTool(context, { connectionId: IDS.account })
   const output = JSON.parse(result.outputPreview) as {
-    card: { blocks: Array<{ key: string }>; actions: Array<{ key: string }> }
+    card: { blocks: Array<{ key: string; maxLength?: number }>; actions: Array<{ key: string }> }
+    mailPresentation: { reviewUrl: string }
   }
   assert.deepEqual(output.card.blocks.map((block) => block.key), ['to', 'cc', 'bcc', 'subject', 'body'])
   assert.deepEqual(output.card.actions.map((action) => action.key), ['send', 'dismiss'])
+  assert.equal(output.card.blocks.find((block) => block.key === 'body')?.maxLength, 100_000)
+  assert.equal(output.mailPresentation.reviewUrl, `/mail/mailbox/${IDS.account}/compose`)
   assert.equal(messageCreates.length, 0)
   assert.equal(events.length, 0)
 })

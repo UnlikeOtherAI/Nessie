@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client'
 import {
   type AgentCardBlock,
   type AgentCardSpec,
@@ -92,6 +93,36 @@ export const renderAgentCardResponseText = (input: {
   ]
 
   return parts.length > 0 ? `${input.actionLabel} · ${parts.join(' · ')}` : input.actionLabel
+}
+
+type AgentCardResponseBasisWriter = Pick<Prisma.TransactionClient, 'messageBasisScope'>
+
+/**
+ * A card response can contain every value a person entered, so it is at least
+ * as sensitive as the card that requested those values. Copy the source
+ * message's basis in the response transaction rather than trusting every card
+ * caller to remember the disclosure boundary.
+ */
+export const inheritAgentCardResponseBasis = async (
+  tx: AgentCardResponseBasisWriter,
+  input: {
+    organizationId: string
+    responseMessageId: string
+    sourceBasis: readonly { scopeId: string; scopeType: string }[]
+  },
+): Promise<void> => {
+  if (input.sourceBasis.length === 0) return
+  await tx.messageBasisScope.createMany({
+    data: input.sourceBasis.map((scope) => ({
+      messageId: input.responseMessageId,
+      organizationId: input.organizationId,
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+    })),
+    // A basis is a set. This also keeps the helper safe for a caller that
+    // combines an inherited basis with another structural restriction.
+    skipDuplicates: true,
+  })
 }
 
 export type AgentCardNoteState = {

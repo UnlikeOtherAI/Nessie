@@ -29,6 +29,10 @@ export const AGENT_CARD_MAX_BLOCKS = 12
 export const AGENT_CARD_MAX_ACTIONS = 4
 export const AGENT_CARD_MAX_FIELDS = 12
 export const AGENT_CARD_MAX_OPTIONS = 20
+/** The normal input limit; a textarea must opt into a larger bounded value. */
+export const AGENT_CARD_DEFAULT_INPUT_MAX_CHARS = 500
+/** Email-sized text is allowed only when the card declares its own bound. */
+export const AGENT_CARD_MAX_INPUT_CHARS = 100_000
 /** 60 seconds … 30 days. Below a minute nobody can answer; beyond a month is not a card. */
 export const AGENT_CARD_MIN_EXPIRY_SECONDS = 60
 export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
@@ -141,6 +145,7 @@ const InputBlockSchema = z
     key: AgentCardKeySchema,
     label: z.string().trim().min(1).max(80),
     input: AgentCardInputKindSchema,
+    maxLength: z.number().int().min(1).max(AGENT_CARD_MAX_INPUT_CHARS).optional(),
     required: z.boolean().optional(),
     placeholder: z.string().trim().max(120).optional(),
     options: z
@@ -155,7 +160,7 @@ const InputBlockSchema = z
       .min(1)
       .max(AGENT_CARD_MAX_OPTIONS)
       .optional(),
-    default: z.union([z.string().max(500), z.number(), z.boolean()]).optional(),
+    default: z.union([z.string().max(AGENT_CARD_MAX_INPUT_CHARS), z.number(), z.boolean()]).optional(),
   })
   .strict()
   .superRefine((block, ctx) => {
@@ -169,6 +174,21 @@ const InputBlockSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `Input "${block.key}" only takes options when it is a select.`,
+      })
+    }
+    if (block.maxLength !== undefined && block.input !== 'text' && block.input !== 'textarea') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Input "${block.key}" only takes maxLength when it is text or textarea.`,
+      })
+    }
+    if (
+      typeof block.default === 'string'
+      && block.default.length > (block.maxLength ?? AGENT_CARD_DEFAULT_INPUT_MAX_CHARS)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Input "${block.key}" has a default longer than its maxLength.`,
       })
     }
   })

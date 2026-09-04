@@ -191,6 +191,7 @@ export const AgentCardBlocks = ({
               {...common}
               className="admin-input admin-input-sm"
               onChange={(event) => onValueChange(block.key, event.target.value)}
+              maxLength={block.maxLength ?? 500}
               placeholder={block.placeholder ?? ''}
               rows={3}
               value={String(value ?? '')}
@@ -226,6 +227,7 @@ export const AgentCardBlocks = ({
                   block.input === 'number' ? Number(event.target.value) : event.target.value,
                 )
               }
+              {...(block.input === 'text' ? { maxLength: block.maxLength ?? 500 } : {})}
               placeholder={block.placeholder ?? ''}
               type={block.input === 'number' ? 'number' : block.input === 'date' ? 'date' : 'text'}
               value={String(value ?? '')}

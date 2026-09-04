@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
-import type { ConnectedMailSource } from '@nessie/schemas'
+import {
+  capabilityIsGranted,
+  type ConnectedMailSource,
+  type MailSurfaceDoorwayMode,
+} from '@nessie/schemas'
 
 import {
   MailboxAccessError,
@@ -29,6 +33,12 @@ export type ConnectedMailPresentationAccess = {
 }
 
 type ActiveMember = { deactivatedAt: Date | null }
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+
+const gmailCapabilityForMode = (mode: MailSurfaceDoorwayMode): 'gmail.read' | 'gmail.compose' =>
+  mode === 'compose' ? 'gmail.compose' : 'gmail.read'
 
 const activeMemberFor = async (
   prisma: PrismaClient,
@@ -135,6 +145,7 @@ const resolveGmailPresentationAccess = async (
     accountId: string
     draftId?: string
     effectiveUserId: string | null
+    mode: MailSurfaceDoorwayMode
     organizationId: string
   },
 ): Promise<ConnectedMailPresentationAccess> => {
@@ -148,7 +159,7 @@ const resolveGmailPresentationAccess = async (
     userId: input.effectiveUserId,
   })
   const connection = await prisma.commsConnection.findFirst({
-    select: { id: true, ownerUserId: true },
+    select: { disabledCapabilities: true, grantedScopes: true, id: true, ownerUserId: true },
     where: {
       id: input.accountId,
       organizationId: input.organizationId,
@@ -158,6 +169,13 @@ const resolveGmailPresentationAccess = async (
     },
   })
   if (!connection) {
+    throw new ConnectedMailPresentationError('That mail account is not available to you.')
+  }
+  const capability = gmailCapabilityForMode(input.mode)
+  if (
+    !capabilityIsGranted(capability, strings(connection.grantedScopes))
+    || strings(connection.disabledCapabilities).includes(capability)
+  ) {
     throw new ConnectedMailPresentationError('That mail account is not available to you.')
   }
   if (input.draftId) {
@@ -192,6 +210,7 @@ export const resolveConnectedMailPresentationAccess = async (
     agentId: string
     draftId?: string
     effectiveUserId: string | null
+    mode: MailSurfaceDoorwayMode
     organizationId: string
     source: ConnectedMailSource
   },
@@ -206,6 +225,7 @@ export const resolveConnectedMailPresentationAccess = async (
     accountId: input.accountId,
     draftId: input.draftId,
     effectiveUserId: input.effectiveUserId,
+    mode: input.mode,
     organizationId: input.organizationId,
   })
 }

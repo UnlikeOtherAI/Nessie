@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   AgentCardSpecSchema,
   CardPostToolInputSchema,
+  AGENT_CARD_MAX_INPUT_CHARS,
   AGENT_CARD_MAX_EXPIRY_SECONDS,
   isAgentCardResponseMessage,
 } from '../agent-card.js'
@@ -131,6 +132,51 @@ test('a select needs options and a non-select refuses them', () => {
           type: 'input',
         },
       ],
+    }).success,
+    false,
+  )
+})
+
+test('large input values require a per-card textarea bound', () => {
+  const longDefault = 'x'.repeat(10_000)
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        default: longDefault,
+        input: 'textarea',
+        key: 'body',
+        label: 'Message',
+        maxLength: AGENT_CARD_MAX_INPUT_CHARS,
+        type: 'input',
+      }],
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        input: 'textarea',
+        key: 'body',
+        label: 'Message',
+        maxLength: AGENT_CARD_MAX_INPUT_CHARS + 1,
+        type: 'input',
+      }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        input: 'select',
+        key: 'choice',
+        label: 'Choice',
+        maxLength: 1_000,
+        options: [{ label: 'One', value: 'one' }],
+        type: 'input',
+      }],
     }).success,
     false,
   )
