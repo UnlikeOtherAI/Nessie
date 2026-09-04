@@ -380,6 +380,7 @@ export const runExecutionAgentLoop = async (
     pendingApproval: {
       approvalId: authorization.approval.id,
       notice: authorization.approval.notice,
+      requiredApproverUserId: authorization.approval.requiredApproverUserId,
       toolName: authorization.approval.toolName,
     },
     success: false,
@@ -421,6 +422,7 @@ export const runExecutionAgentLoop = async (
         approval: {
           approvalId: authorization.approval.id,
           notice: authorization.approval.notice,
+          requiredApproverUserId: authorization.approval.requiredApproverUserId,
           toolName: authorization.approval.toolName,
         },
         kind: 'suspend' as const,

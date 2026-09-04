@@ -12,6 +12,10 @@ import {
 import { useToasts } from '../../../providers/ToastProvider'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
+import {
+  APPROVAL_GATE_ACTIONS,
+  canCreateStandingConsentFromApproval,
+} from './approval-gate-eligibility'
 
 const ApprovalGateSchema = z.object({
   approvalId: z.string().min(1),
@@ -22,8 +26,8 @@ const ApprovalGateSchema = z.object({
 type Resolution = 'approved' | 'rejected'
 
 const resolutionCopy: Record<Resolution, { action: string; title: string }> = {
-  approved: { action: 'Approve action', title: 'Approve this action?' },
-  rejected: { action: 'Reject action', title: 'Reject this action?' },
+  approved: { action: APPROVAL_GATE_ACTIONS.approve, title: 'Approve this action?' },
+  rejected: { action: APPROVAL_GATE_ACTIONS.reject, title: 'Reject this action?' },
 }
 
 const readApprovalGate = (
@@ -46,25 +50,6 @@ const readString = (
   const value = context?.[key]
   return typeof value === 'string' && value.length > 0 ? value : null
 }
-
-const STANDING_CONSENT_TOOL_NAMES = new Set([
-  'gmail_draft_send',
-  'calendar_event_create',
-  'calendar_event_update',
-  'calendar_event_cancel',
-])
-
-/**
- * The API grants standing consent only when authorization froze a supported
- * Google action's exact connection. Connected-mailbox sends and account
- * lifecycle approvals remain one-time decisions.
- */
-export const canCreateStandingConsentFromApproval = (
-  toolName: string,
-  context: Record<string, unknown> | null | undefined,
-): boolean =>
-  STANDING_CONSENT_TOOL_NAMES.has(toolName)
-  && typeof context?.approvedGoogleConnectionId === 'string'
 
 /**
  * The in-thread doorway for a suspended tool gate. Approval data is never
@@ -257,7 +242,7 @@ export const RunApprovalGate = ({
               }}
               type="button"
             >
-              Approve, and don’t ask again
+              {APPROVAL_GATE_ACTIONS.standingConsent}
             </button>
           </div>
           <p className="mt-1 text-[11px] leading-4 text-[color:var(--tx3)]">

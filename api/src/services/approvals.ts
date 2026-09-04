@@ -61,24 +61,47 @@ export const createApprovalRequest = async (
  * Which approvals an actor may see. An approval carries a free-text `reason`,
  * a `context` blob and the originating channel/task ids, so org scope alone
  * leaks private-channel activity — and the task ids it exposes are usable
- * against other endpoints. Owners see everything in their org; everyone else
- * sees what they requested plus what happened in a channel they can reach.
+ * against other endpoints. A pinned approval is visible only to its exact
+ * approver; otherwise owners see their organization and members see what they
+ * requested plus what happened in a channel they can reach.
  */
 export const approvalVisibilityWhere = (
   actorContext: AuthorizedActionContext,
 ): Prisma.ApprovalRequestWhereInput => {
-  if (actorContext.actor.roles?.includes('owner')) return {}
   const userId = actorContext.actor.actorId
+  // A pin is an audience boundary, not just a resolution rule. It takes
+  // precedence over owner and channel visibility because approval reason and
+  // context can describe a private recipient/body. The explicit approver still
+  // reaches their existing /approvals home even when they are not in the source
+  // channel.
+  if (actorContext.actor.roles?.includes('owner')) {
+    return {
+      OR: [
+        { requiredApproverUserId: userId },
+        { requiredApproverUserId: null },
+      ],
+    }
+  }
   return {
     OR: [
-      { requesterId: userId },
+      { requiredApproverUserId: userId },
       {
-        channel: {
-          OR: [
-            { visibility: 'public' },
-            { members: { some: { userId } } },
-          ],
-        },
+        AND: [
+          { requiredApproverUserId: null },
+          {
+            OR: [
+              { requesterId: userId },
+              {
+                channel: {
+                  OR: [
+                    { visibility: 'public' },
+                    { members: { some: { userId } } },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
       },
     ],
   }
@@ -163,6 +186,25 @@ export const resolveApprovalRequest = async (
   resolution: 'approved' | 'rejected',
   note?: string,
 ) => {
+  // Resolution returns a distinct refusal for a known pin. The GET/list paths
+  // remain indistinguishable for other viewers, but collapsing this into a
+  // generic 400 makes an approver-facing client unable to tell a stale action
+  // from a decision reserved for somebody else.
+  const identity = await prisma.approvalRequest.findFirst({
+    where: {
+      id: approvalId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+    select: { requiredApproverUserId: true },
+  })
+  if (!identity) return null
+  if (
+    identity.requiredApproverUserId
+    && identity.requiredApproverUserId !== actorContext.actor.actorId
+  ) {
+    return { error: 'APPROVER_REQUIRED' as const }
+  }
+
   const approval = await prisma.approvalRequest.findFirst({
     where: {
       id: approvalId,
@@ -188,16 +230,6 @@ export const resolveApprovalRequest = async (
   // resolve it. Check the LIVE organization membership rather than the JWT `roles`
   // claim — tokens are long-lived (default 24h), so a user demoted after their
   // token was issued must not retain approval power on a stale claim.
-  // An exact required approver outranks every other visibility rule. Approval
-  // visibility otherwise reaches any member who can read a public channel, so
-  // without this a colleague could authorise an email sent in your name.
-  if (
-    approval.requiredApproverUserId
-    && approval.requiredApproverUserId !== actorContext.actor.actorId
-  ) {
-    return { error: 'APPROVER_REQUIRED' as const, approval: mapApproval(approval) }
-  }
-
   if (approval.requiredApproverRole) {
     const membership = await prisma.organizationMember.findUnique({
       where: {

@@ -175,6 +175,12 @@ export const useAlertEvents = (): void => {
 export const getAlertLink = (
   alert: UserAlertRecord,
 ): { to: string; state?: { highlightMessageId: string } } | null => {
+  // A pinned approver may deliberately not belong to the source channel. Their
+  // approval is still visible on its entitlement-scoped home, while sending
+  // them to the chat doorway would turn a valid alert into an access error.
+  if (alert.kind === 'approval_requested') {
+    return { to: '/approvals' }
+  }
   if (alert.kind === 'trigger_health' && alert.triggerId) {
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
