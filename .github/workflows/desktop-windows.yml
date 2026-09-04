@@ -217,6 +217,9 @@ jobs:
           # The `secrets` context is not usable in a step's `if`, so every later
           # step branches on these outputs rather than on the secrets directly.
           $configured = [bool]($env:WINDOWS_SIGN_COMMAND -and $env:WINDOWS_SIGNER_THUMBPRINT -and $env:WINDOWS_SIGNER_SUBJECT)
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and -not $configured) {
+            throw 'A desktop-v* release requires the Windows signing command, signer thumbprint, and signer subject.'
+          }
           "signed=$($configured.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           $installs = [bool]($configured -and $env:WINDOWS_SIGN_TOOL_INSTALL)
           "install_tool=$($installs.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -320,17 +323,27 @@ jobs:
         shell: pwsh
         env:
           WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
+          WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNER_THUMBPRINT }}
         run: |
           if ('${{ steps.signing.outputs.signed }}' -ne 'true') {
             Write-Host '::warning::Unsigned development build — signature verification skipped and no release may be cut from it.'
             exit 0
           }
           $failed = @()
+          $expectedThumbprint = $env:WINDOWS_SIGNER_THUMBPRINT -replace '[^0-9A-Fa-f]', ''
+          if ($expectedThumbprint.Length -ne 40) {
+            throw 'WINDOWS_SIGNER_THUMBPRINT must contain exactly 40 hexadecimal characters.'
+          }
           Get-ChildItem artifacts -Include *.exe, *.msi -Recurse -File | ForEach-Object {
             $signature = Get-AuthenticodeSignature $_.FullName
             $subject = $signature.SignerCertificate.Subject
-            Write-Host "$($_.Name): $($signature.Status) $subject"
-            if ($signature.Status -ne 'Valid' -or $subject -notlike "*$env:WINDOWS_SIGNER_SUBJECT*") {
+            $thumbprint = $signature.SignerCertificate.Thumbprint -replace '[^0-9A-Fa-f]', ''
+            Write-Host "$($_.Name): $($signature.Status) $subject $thumbprint"
+            if (
+              $signature.Status -ne 'Valid' -or
+              $subject -notlike "*$env:WINDOWS_SIGNER_SUBJECT*" -or
+              $thumbprint -ine $expectedThumbprint
+            ) {
               $failed += $_.Name
             }
           }

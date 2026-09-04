@@ -3,15 +3,17 @@ import { createHash, generateKeyPairSync, type KeyObject, sign } from 'node:cryp
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
   ImplementedExecutorOperationKeySchema,
   type ExecutorSignedDescriptor,
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
-import { buildSignedDescriptor } from './descriptor.js'
+import { assertHostSupportsOperations, buildSignedDescriptor } from './descriptor.js'
 import { compileExecutorEgressPolicy } from './egress-policy.js'
 import { verifyPrivateCodexAuthProfile, verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
 import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
+import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
 import { verifyNativeHelperPath } from './native-helper.js'
 import {
   saveExecutorState,
@@ -32,13 +34,8 @@ export type PairExecutorInput = {
   workspaceRoot: string
 }
 
-export const COW_WORKSPACE_OPERATION_KEYS = [
-  'file.list',
-  'file.read',
-  'file.write',
-  'workspace.review',
-  'sandbox.stop',
-] as const
+/** The daemon-owned copy-on-write bundle, named once in `@nessie/schemas`. */
+export const COW_WORKSPACE_OPERATION_KEYS = EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
 export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe', 'browser.act'] as const
@@ -95,6 +92,7 @@ const configuredOperationKeys = (
   requestedOperationKeys: string[],
   browserConfigured: boolean,
   codexConfigured: boolean,
+  host: ExecutorHost,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -138,13 +136,17 @@ const configuredOperationKeys = (
   )) {
     throw new Error('command.run requires workspace.review and sandbox.stop.')
   }
-  return [
+  const operationKeys = [
     ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(COMMAND_OPERATION_KEY) ? [COMMAND_OPERATION_KEY] : []),
     ...BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
   ]
+  // The same refusal the descriptor build makes, raised here so a person
+  // proposing a policy hears it now instead of at the next connect.
+  assertHostSupportsOperations(host, operationKeys, profilesForOperationKeys(operationKeys))
+  return operationKeys
 }
 
 const profilesForOperationKeys = (operationKeys: string[]): string[] =>
@@ -165,11 +167,13 @@ export const configureExecutorLocalPolicy = async (
   state: ExecutorLocalState,
   requestedOperationKeys: string[],
   nativeHelperPath?: string,
+  host: ExecutorHost = detectExecutorHost(),
 ): Promise<ExecutorLocalState> => {
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
     Boolean(state.codexSandbox),
+    host,
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -201,6 +205,7 @@ export const configureExecutorBrowserSandbox = async (
     kernelPath: string
     vmHelperPath: string
   },
+  host: ExecutorHost = detectExecutorHost(),
 ): Promise<ExecutorLocalState> => {
   const egress = compileExecutorEgressPolicy({ allowedOrigins: input.allowedOrigins })
   const artifacts = await verifyGuestVmArtifacts(input)
@@ -224,7 +229,7 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox))
+  ])], true, Boolean(state.codexSandbox), host)
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -248,6 +253,7 @@ export const configureExecutorCodexSandbox = async (
   stateDir: string,
   state: ExecutorLocalState,
   input: GuestVmArtifactInput & { codexAuthProfilePath: string },
+  host: ExecutorHost = detectExecutorHost(),
 ): Promise<ExecutorLocalState> => {
   const [artifacts, codexAuthProfilePath] = await Promise.all([
     verifyGuestVmArtifacts(input),
@@ -273,7 +279,7 @@ export const configureExecutorCodexSandbox = async (
     'workspace.review',
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
-  ])], Boolean(state.browserSandbox), true)
+  ])], Boolean(state.browserSandbox), true, host)
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,

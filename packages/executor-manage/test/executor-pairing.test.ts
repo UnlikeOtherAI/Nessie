@@ -23,6 +23,8 @@ const enrollmentRequest = () => {
     revision: 1,
     profiles: ['workspace_sandbox'] as const,
     platform: { architecture: 'arm64' as const, os: 'macos' as const, osMajorVersion: 15 },
+    sandboxBackend: 'virtualization_framework' as const,
+    supervisor: 'desktop' as const,
     operationKeys: ['file.list'] as const,
     localPolicyDigest: `sha256:${'1'.repeat(64)}`,
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1_024, maxSessions: 1 },

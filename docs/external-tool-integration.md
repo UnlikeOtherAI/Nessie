@@ -897,7 +897,7 @@ not use MCP credentials, generic instance lifecycle, arbitrary stdio, or a
 public machine endpoint.
 
 The authoritative protocol and threat model is
-[Executor Protocol and Threat Model](executor-protocol.md). It defines the
+[Executor Protocol and Threat Model](executor-protocol/overview.md). It defines the
 outbound-only connection, private/project/organization scope, exact
 agent-operation grants, durable command receipts, forced egress gateway,
 credential broker, and the only host-write boundary. The approved delivery

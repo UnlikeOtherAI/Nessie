@@ -1,6 +1,10 @@
 # Executor Integration Plan
 
 **Status:** approved — Phase 1 pairing control plane in progress
+**Note (2026-09-02):** the companion's pairing-time VM handshake runner
+described below was deleted; sessions boot through the shared
+`GuestVmBackend` seam on every backend
+([docs/executor-protocol/sandbox-forced-egress-and-credentials.md](../executor-protocol/sandbox-forced-egress-and-credentials.md)).
 
 ## Current implementation boundary
 

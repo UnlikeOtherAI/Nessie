@@ -7,6 +7,7 @@ import test from 'node:test'
 
 import { executeExecutorCommand } from '../src/daemon.js'
 import { parseCommand } from '../src/index.js'
+import type { ExecutorHost } from '../src/host-platform.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
   promotionManifestForSandbox,
@@ -17,6 +18,14 @@ import {
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
 import { canonicalExecutorJson, type ExecutorCommandEnvelope } from '@nessie/schemas'
+
+// The configure path now asks the host what sandbox it can start, so this
+// pins a host with one instead of depending on the machine running the suite.
+const sandboxHost: ExecutorHost = {
+  platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+  sandboxBackend: 'virtualization_framework',
+  supervisor: 'desktop',
+}
 
 const commandFor = (
   operationKey: ExecutorCommandEnvelope['operationKey'],
@@ -209,6 +218,8 @@ test('local policy configuration proposes only implemented COW operations', asyn
       stateDir,
       state,
       ['file.write', 'file.read'],
+      undefined,
+      sandboxHost,
     )
     assert.deepEqual(configured.descriptor, {
       ...state.descriptor,
@@ -218,11 +229,11 @@ test('local policy configuration proposes only implemented COW operations', asyn
     })
     assert.deepEqual((await loadExecutorState(stateDir)).descriptor, configured.descriptor)
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, configured, ['browser.open']),
+      configureExecutorLocalPolicy(stateDir, configured, ['browser.open'], undefined, sandboxHost),
       /browser\.open, browser\.observe, and browser\.act must be enabled together/,
     )
     await assert.rejects(
-      configureExecutorLocalPolicy(stateDir, configured, ['workspace.promote']),
+      configureExecutorLocalPolicy(stateDir, configured, ['workspace.promote'], undefined, sandboxHost),
       /native helper path/,
     )
   } finally {
@@ -347,13 +358,23 @@ test('sandbox workspace paths exclude the native promotion journal', async () =>
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-journal-state-'))
   try {
     await mkdir(join(root, '.nessie-executor-promotions'))
-    await assert.rejects(
-      writeSandboxFile(stateDir, root, '00000000-0000-4000-8000-000000000105', {
-        content: 'forbidden',
-        path: '.nessie-executor-promotions/forbidden.txt',
-      }),
-      /journal state/,
-    )
+    await writeFile(join(root, '.nessie-executor-promotions', 'private.txt'), 'journal secret')
+    for (const path of [
+      '.nessie-executor-promotions/private.txt',
+      './.nessie-executor-promotions/private.txt',
+      'ordinary/../.nessie-executor-promotions/private.txt',
+      '.nessie-executor-promotions\\private.txt',
+      '.\\.nessie-executor-promotions\\private.txt',
+    ]) {
+      await assert.rejects(readWorkspaceFile(root, { path }), /journal state/)
+      await assert.rejects(
+        writeSandboxFile(stateDir, root, '00000000-0000-4000-8000-000000000105', {
+          content: 'forbidden',
+          path,
+        }),
+        /journal state/,
+      )
+    }
     assert.deepEqual(
       await listWorkspaceFiles(root, { path: '.' }),
       { entries: [], path: '.', success: true, truncated: false },

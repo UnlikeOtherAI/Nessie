@@ -186,7 +186,7 @@ export const LoginPage = () => {
 
   return (
     <main
-      className="relative flex h-[100dvh] min-h-0 touch-pan-y flex-col overflow-y-scroll overscroll-y-contain px-6"
+      className="relative flex h-[var(--app-vh)] min-h-0 touch-pan-y flex-col overflow-y-scroll overscroll-y-contain px-6"
       style={{
         // Clear the device status bar / home indicator in the mobile WebView
         // (viewport-fit=cover is injected by the native shell). env() is 0 on

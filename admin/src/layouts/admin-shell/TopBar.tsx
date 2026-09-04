@@ -1,6 +1,5 @@
-import { isDesktopApp } from '../../lib/desktop'
+import { useShellEnvironment } from '../../providers/ShellEnvironmentProvider'
 import { AlertsBell } from './AlertsBell'
-import { DesktopWindowControls } from './DesktopWindowControls'
 import { TopBarSearch } from './TopBarSearch'
 import { RecentChannelsControl } from './topbar-navigation'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
@@ -36,8 +35,14 @@ type TopBarProps = {
 // Slack-style global top bar. Rendered full-width above the rail and content. On
 // the desktop (Tauri) app it doubles as the window title bar, with dedicated
 // drag regions around the interactive search field and buttons.
+//
+// The 68px spacer is the macOS traffic lights' seat and nothing else: Windows
+// and Linux draw their controls at the top *right* through DesktopWindowFrame,
+// which reserves that side with `--desktop-frame-controls-w`. Leaving the spacer
+// in off macOS would indent the whole bar past an empty corner.
 export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
-  const desktop = isDesktopApp()
+  const { desktopPlatform } = useShellEnvironment()
+  const desktop = desktopPlatform !== null
   // History controls read the one ledger the phone Back uses; they walk it
   // across sections, which Back never does, and close an open owner first.
   const history = usePhoneNavigation()?.history
@@ -50,7 +55,13 @@ export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBar
     <header
       className={['admin-topbar', desktop ? 'admin-topbar--desktop' : ''].filter(Boolean).join(' ')}
     >
-      {desktop ? <DesktopWindowControls /> : null}
+      {desktopPlatform === 'macos' ? (
+        <div
+          aria-hidden="true"
+          className="admin-topbar-drag-zone admin-topbar-drag-zone--traffic"
+          data-tauri-drag-region
+        />
+      ) : null}
 
       <div className="hidden items-center gap-1 md:flex">
         <button

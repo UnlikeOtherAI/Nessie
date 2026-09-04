@@ -34,7 +34,7 @@ Nessie is not a chatbot with tools; it is a platform whose agents hold real capa
 over systems people depend on:
 
 - Agents run shell commands, write files, and drive managed coding sessions on
-  user-controlled machines ([executor-protocol.md](executor-protocol.md)).
+  user-controlled machines ([executor-protocol.md](executor-protocol/overview.md)).
 - Agents carry **real external identities** — email addresses, VOIP numbers, WhatsApp
   and SMS — "These are not simulations. An agent with an email address receives real
   emails." ([research/agent-identity-and-channels.md](research/agent-identity-and-channels.md)).
@@ -98,7 +98,7 @@ code, and as regexes over message content they also contradict the standard in `
 **Second, Nessie already knows what the fix looks like, because the executor protocol is
 the fix.** Its threat model states it exactly: *"Terminal spoofing — Typed lifecycle
 events are authoritative; terminal/ANSI output is display-only"*
-([executor-protocol.md](executor-protocol.md) §11). Commands have durable receipts
+([executor-protocol.md](executor-protocol/overview.md) §11). Commands have durable receipts
 (`leased → accepted → started → result-acknowledged`); a lost acknowledgement becomes
 `unknown_outcome`, "never presumed success" (§6, §11); confirmations are structural web
 controls because "chat text is never confirmation" (§7). The executor layer never trusts
@@ -162,7 +162,7 @@ debugger): reviewer verdict pass/fail, max 3 repair iterations, then human escal
 ([agent-base-template.md](agent-base-template.md) §5). Executor work goes further: a
 `team.review` result carries a canonical manifest digest binding every changed
 path's base and draft SHA-256, and "a same-length post-review edit cannot reuse a
-review" ([executor-protocol.md](executor-protocol.md) §6).
+review" ([executor-protocol.md](executor-protocol/overview.md) §6).
 
 **Gap.** For everything outside the executor path, `done` is reachable on the strength
 of the agent's own completion message. Run flow step 12 transitions "Task → done" when
@@ -183,14 +183,14 @@ Reviewer verdicts should evaluate the diff/manifest, not the agent's summary of 
 the executor's manifest digest is the model. Lands in:
 [agent-base-template.md](agent-base-template.md) §5 (review and approval gates) and §9
 (execution constraints), with the receipt pattern cross-referenced from
-[executor-protocol.md](executor-protocol.md) §6.
+[executor-protocol.md](executor-protocol/overview.md) §6.
 
 ### 2.3 Hidden failure (the agent narrates around a failed or denied tool)
 
 **Mechanism today.** `ToolCall` records success/failure; the audit catalog has
 `tool.execution.denied` ([audit-trail-spec.md](audit-trail-spec.md) §3); the executor
 maps lost acknowledgements to `unknown_outcome` and "does not invent at-most-once
-success" ([executor-protocol.md](executor-protocol.md) §6). Agent status can show
+success" ([executor-protocol.md](executor-protocol/overview.md) §6). Agent status can show
 `error` ([agent-communication-spec.md](agent-communication-spec.md) §2.2a).
 
 **Gap.** All of that is admin-visible telemetry. The *user in the thread* sees only the
@@ -263,7 +263,7 @@ rendering in the admin/task UI.
 (tool args, file path, etc.)") ([approval-gating-spec.md](approval-gating-spec.md) §3).
 The executor side already refuses this trap for its own approvals: confirmation is "a
 structural confirmation control", and "chat text is never confirmation"
-([executor-protocol.md](executor-protocol.md) §7).
+([executor-protocol.md](executor-protocol/overview.md) §7).
 
 **Gap.** For the general approval flow, the approver's primary evidence is text the
 requesting agent wrote. An agent that has learned the form of a persuasive reason can
@@ -277,7 +277,7 @@ labelled layers:
    name and arguments, target host/path, and any manifest/argument digests — taken from
    the intercepted call itself, never from the model. For executor-bound work this is
    the canonical argument digest that already exists on every command frame
-   ([executor-protocol.md](executor-protocol.md) §6).
+   ([executor-protocol.md](executor-protocol/overview.md) §6).
 2. **Agent's stated reason (displayed as unverified):** the existing `reason` prose,
    explicitly labelled as authored by the requesting agent.
 
@@ -328,7 +328,7 @@ organisation. The affected parties an agent's actions reach are wider.
    human* they are dealing with.
 3. **Operators and users of external systems** reached by `web_fetch`, `web_search`
    ([agent-base-template.md](agent-base-template.md) §4), and executor `browser.open`
-   sessions ([executor-protocol.md](executor-protocol.md) §8). This is the gym-booking
+   sessions ([executor-protocol.md](executor-protocol/overview.md) §8). This is the gym-booking
    case verbatim: the stranger whose reservation an agent can cancel is a user of a
    system Nessie's agent merely *reached*.
 4. **People whose personal data flows into memory and the knowledge base** via fetched
@@ -347,7 +347,7 @@ Credit where due, because these are the patterns to extend rather than reinvent:
   pipe must" answer: guest browser traffic is forced through an authenticated gateway
   enforcing an owner-local HTTPS origin allowlist, with no direct DNS/TCP, using the
   shared `safeFetch`/`pinnedFetch`/`pinnedConnect` policy "rather than implementing a
-  second SSRF policy" ([executor-protocol.md](executor-protocol.md) §8).
+  second SSRF policy" ([executor-protocol.md](executor-protocol/overview.md) §8).
 - The runtime-bundle manifest is the anti-TOCTOU pattern: every file's SHA-256 verified
   at configuration, snapshotted per session, and re-hashed *inside the guest* before
   boot, "so later source-bundle edits cannot change a running guest" (§8).
@@ -355,7 +355,7 @@ Credit where due, because these are the patterns to extend rather than reinvent:
   ([audit-trail-spec.md](audit-trail-spec.md) §2a) — the precondition for ever making
   amends to an affected outsider.
 - Executor lifecycle has real teeth: `draining`, `revoked`, epoch fencing that stops
-  live guests within one control poll ([executor-protocol.md](executor-protocol.md)
+  live guests within one control poll ([executor-protocol.md](executor-protocol/overview.md)
   §5, §10).
 
 ### 3.3 What the platform owes them
@@ -368,7 +368,7 @@ adapter stamps it, the model cannot remove it. And one hard rule: **send-as-user
 crosses the organisation boundary.** The PA's delegated `send_message` is an internal
 convenience; an external message is sent either under the agent's own disclosed
 identity, or by the human personally after a structural confirmation (the executor's
-prepare/confirm pattern, [executor-protocol.md](executor-protocol.md) §7). Lands in:
+prepare/confirm pattern, [executor-protocol.md](executor-protocol/overview.md) §7). Lands in:
 [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) when
 it graduates to a spec — the disclosure invariant should be in its first normative
 version — and the PA tool contract in [the-agents.md](the-agents.md).
@@ -392,7 +392,7 @@ host — so the approver approves an *action on someone*, not a paraphrase. Land
 `web_fetch` "Blocks private IPs" ([agent-base-template.md](agent-base-template.md) §4)
 — necessary and nowhere near sufficient. Route all worker-side web tools through the
 same `@nessie/runtime` `safeFetch`/`pinnedFetch` policy layer the executor gateway uses
-([executor-protocol.md](executor-protocol.md) §8), and extend that layer with
+([executor-protocol.md](executor-protocol/overview.md) §8), and extend that layer with
 third-party-conduct rules: method restrictions (non-GET requires a connector grant or
 an O2 approval), per-host rate limits, no credential-guessing or auth-retry loops. The
 gym agent found an unlocked door because nothing between goal and endpoint refused; in
@@ -405,7 +405,7 @@ catalog shows tool bundles are imported and approved (`tool.bundle.imported`,
 `tool.bundle.approved`, [audit-trail-spec.md](audit-trail-spec.md) §3). The
 skill-poisoning campaign is aimed at exactly this seam: content that is clean at
 approval and swapped afterwards. Apply the runtime-bundle pattern
-([executor-protocol.md](executor-protocol.md) §8) to tool bundles and MCP connector
+([executor-protocol.md](executor-protocol/overview.md) §8) to tool bundles and MCP connector
 definitions: hash-manifest at approval, verify the digest at load, and treat any
 externally-hosted instruction content a tool definition references as part of the
 approved artifact — snapshotted, not fetched live. A changed upstream is a new bundle
@@ -472,7 +472,7 @@ prerequisite), and item 1 needs a small schema addition (§2.1 cost correction).
    disclosure onto. Decide the invariant while it costs a paragraph.
 6. **Completion by receipt for mutating tasks** (§2.2) — **NOT DONE.**
    [agent-base-template.md](agent-base-template.md) §5/§9, pattern from
-   [executor-protocol.md](executor-protocol.md) §6.
+   [executor-protocol.md](executor-protocol/overview.md) §6.
 7. **Unified egress conduct policy for worker web tools** (§3.3 O3) — **PARTIAL: the
    SSRF/pinning half is done, the conduct half is absent.** `web_fetch` and `http_fetch`
    already route through the shared `safeFetch`/`pinnedFetch` policy, which resolves once,
@@ -486,7 +486,7 @@ prerequisite), and item 1 needs a small schema addition (§2.1 cost correction).
    the `pending_review` gate; there is no hash-manifest pinning of externally-hosted
    instruction content, which is the half the skill-poisoning campaign targets.
    [audit-trail-spec.md](audit-trail-spec.md); digest pattern from
-   [executor-protocol.md](executor-protocol.md) §8.
+   [executor-protocol.md](executor-protocol/overview.md) §8.
 9. **Immutable task statement + truthful task tree** (§2.5) — **NOT DONE.**
    [agent-base-template.md](agent-base-template.md) §5;
    [agent-communication-spec.md](agent-communication-spec.md) §3.3 already mandates

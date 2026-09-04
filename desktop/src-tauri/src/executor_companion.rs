@@ -6,8 +6,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 mod runtime;
 
 use runtime::{
-    companion_root, daemon_status, executor_state_dir, has_executor_state, run_pair, runtime_directory,
-    start_daemon, stop_daemon,
+    companion_availability, companion_root, daemon_status, executor_state_dir, has_executor_state,
+    run_pair, start_daemon, stop_daemon,
 };
 
 #[cfg(not(debug_assertions))]
@@ -20,7 +20,21 @@ const WORKSPACE_OPERATION_KEYS: [&str; 5] = [
     "sandbox.stop",
 ];
 
-pub use runtime::{shutdown, ExecutorCompanionState, ExecutorCompanionStatus};
+pub use runtime::{
+    shutdown, ExecutorCompanionAvailability, ExecutorCompanionState, ExecutorCompanionStatus,
+};
+
+/// Pairing, starting, stopping and reconfiguring all need a runtime this
+/// computer may actually run. The refusal repeats the availability card's own
+/// words rather than inventing a second explanation.
+fn require_local_control(app: &AppHandle) -> Result<(), String> {
+    let (availability, reason) = companion_availability(app);
+    if availability.permits_local_control() {
+        Ok(())
+    } else {
+        Err(reason)
+    }
+}
 
 fn identifier(value: &str, field: &str) -> Result<(), String> {
     if value.is_empty()
@@ -128,29 +142,48 @@ async fn choose_workspace(app: AppHandle) -> Result<PathBuf, String> {
         .ok_or_else(|| "Workspace selection was cancelled.".to_owned())
 }
 
+/// Only the caller-origin check refuses here. A computer that cannot run the
+/// companion answers with the state it is in and the remedy for it, so the
+/// Executors panel explains itself instead of rendering nothing.
 #[tauri::command]
 pub fn executor_companion_status(
     app: AppHandle, state: State<'_, ExecutorCompanionState>, webview: WebviewWindow,
-) -> Result<Vec<ExecutorCompanionStatus>, String> {
+) -> Result<ExecutorCompanionAvailability, String> {
     assert_approved_companion_caller(&webview)?;
-    runtime_directory(&app)?;
-    let root = companion_root(&app)?;
+    let (availability, reason) = companion_availability(&app);
+    let executors = if availability.permits_local_control() {
+        paired_executors(&app, &state)
+    } else {
+        Vec::new()
+    };
+    Ok(ExecutorCompanionAvailability {
+        availability,
+        reason,
+        platform: crate::shell::desktop_platform(),
+        executors,
+    })
+}
+
+fn paired_executors(
+    app: &AppHandle, state: &State<'_, ExecutorCompanionState>,
+) -> Vec<ExecutorCompanionStatus> {
+    let Ok(root) = companion_root(app) else { return Vec::new(); };
+    let Ok(entries) = fs::read_dir(root) else { return Vec::new(); };
     let mut result = Vec::new();
-    for entry in fs::read_dir(root)
-        .map_err(|_| "Nessie Desktop could not read its local executor list.".to_owned())?
-        .flatten()
-    {
+    for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let state_dir = entry.path();
         if identifier(&name, "executor id").is_ok() && has_executor_state(&state_dir) {
-            result.push(ExecutorCompanionStatus {
-                daemon_status: daemon_status(&state, &name, &state_dir)?,
-                executor_id: name,
-                workspace_configured: true,
-            });
+            if let Ok(daemon_status) = daemon_status(state, &name, &state_dir) {
+                result.push(ExecutorCompanionStatus {
+                    daemon_status,
+                    executor_id: name,
+                    workspace_configured: true,
+                });
+            }
         }
     }
-    Ok(result)
+    result
 }
 
 #[tauri::command]
@@ -159,6 +192,7 @@ pub async fn executor_companion_pair(
     enrollment_id: String, executor_id: String,
 ) -> Result<ExecutorCompanionStatus, String> {
     assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
     let api_base_url = approved_api_base_url(&api_base_url)?;
     identifier(&enrollment_id, "enrollment id")?;
     identifier(&executor_id, "executor id")?;
@@ -169,7 +203,7 @@ pub async fn executor_companion_pair(
     if !confirm(
         app.clone(),
         "Pair Nessie executor",
-        "Nessie Desktop will create a private machine key and pair this device with Nessie. The selected workspace remains local and is used only through the executor's reviewed policy.".to_owned(),
+        "Nessie Desktop will create a private machine key and pair this device with Nessie. The selected folder stays under the reviewed local policy. File contents and bounded tool output are sent to Nessie and the configured model provider only when an allowed operation runs.".to_owned(),
         "Pair executor",
     ).await? {
         return Err("Executor pairing was cancelled.".to_owned());
@@ -194,6 +228,7 @@ pub async fn executor_companion_start(
     app: AppHandle, state: State<'_, ExecutorCompanionState>, webview: WebviewWindow, executor_id: String,
 ) -> Result<ExecutorCompanionStatus, String> {
     assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
     if !confirm(
         app.clone(), "Start Nessie executor",
@@ -214,6 +249,7 @@ pub async fn executor_companion_stop(
     app: AppHandle, state: State<'_, ExecutorCompanionState>, webview: WebviewWindow, executor_id: String,
 ) -> Result<ExecutorCompanionStatus, String> {
     assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
     if !confirm(
         app, "Stop Nessie executor",
@@ -235,6 +271,7 @@ pub async fn executor_companion_configure_workspace(
     executor_id: String, operation_keys: Vec<String>,
 ) -> Result<ExecutorCompanionStatus, String> {
     assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
     let operation_keys = workspace_operation_keys(operation_keys)?;
     let state_dir = executor_state_dir(&app, &executor_id)?;
@@ -278,12 +315,7 @@ pub async fn executor_companion_configure_workspace(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        approved_api_base_url,
-        identifier,
-        runtime::{application_bundle_from_resource_dir, pair_arguments},
-        workspace_operation_keys,
-    };
+    use super::{approved_api_base_url, identifier, runtime::pair_arguments, workspace_operation_keys};
     use std::path::Path;
 
     #[test]
@@ -321,15 +353,5 @@ mod tests {
         #[cfg(not(debug_assertions))]
         assert_eq!(approved_api_base_url("https://api.nessie.works").unwrap(), "https://api.nessie.works");
         assert!(approved_api_base_url("https://example.test").is_err());
-    }
-
-    #[test]
-    fn release_signature_checks_the_application_bundle_not_its_contents_directory() {
-        assert_eq!(
-            application_bundle_from_resource_dir(Path::new(
-                "/Applications/Nessie.app/Contents/Resources/executor-runtime",
-            )).unwrap(),
-            Path::new("/Applications/Nessie.app"),
-        );
     }
 }

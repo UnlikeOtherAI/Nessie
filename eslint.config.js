@@ -353,6 +353,7 @@ export default [
       'api/src/realtime/hub.ts', // (c) `import type { ServerResponse } from 'node:http'` — Fastify reply internals, not a request client.
       'executor/src/api-client.ts', // (b) executor daemon → our own configured API base URL only.
       'executor/src/egress-gateway.ts', // (a) the egress boundary itself: it HOSTS the allow/deny proxy with node:http.
+      'executor/src/firecracker/api.ts', // (a) host-local Firecracker control over a fixed Unix socket; it cannot dial an IP endpoint.
       'cli/src/local.ts', // (b) localhost health polling against a dev server the CLI itself launched.
       'packages/mock-llm/src/server.ts', // (a) test-harness HTTP server (mock inference endpoint), never a client.
       'packages/runtime/src/web-search.ts', // (c) `fetchImpl?: typeof fetch` DI seam; the handler pins at dial.
