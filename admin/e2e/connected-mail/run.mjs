@@ -64,6 +64,14 @@ const expectNoErrors = (errors, fixture) => {
   assert(errors.length === 0, `browser errors:\n${errors.join('\n')}`)
 }
 
+const waitForThreads = (page, source, accountId, expected) => page.waitForResponse((response) => {
+  if (response.request().method() !== 'GET') return false
+  const url = new URL(response.url())
+  if (url.pathname !== `/api/mail/accounts/${source}/${accountId}/threads`) return false
+  return Object.entries(expected).every(([key, value]) =>
+    value === undefined ? !url.searchParams.has(key) : url.searchParams.get(key) === String(value))
+})
+
 const fillCompose = async (page, subject) => {
   await page.getByRole('textbox', { name: 'To', exact: true }).fill('casey@acme.example')
   await page.getByRole('textbox', { name: 'Subject', exact: true }).fill(subject)
@@ -82,14 +90,52 @@ const desktopMail = async ({ browser, fixture }) => {
     await page.getByRole('button', { name: 'Open mail' }).first().click()
     await page.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
     await page.getByText('Launch checklist').waitFor()
+    const first = page.locator('#mailbox-thread-thread-1')
+    assert(await first.getAttribute('tabindex') === '0', 'the first unselected conversation must be the keyboard tab stop')
+    await first.focus()
+    assert(await first.evaluate((element) => document.activeElement === element), 'the first conversation could not receive keyboard focus')
+
+    const refresh = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 25, query: undefined })
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await refresh
+    assert(!new URL(page.url()).searchParams.has('query'), 'Refresh leaked a provider query into the address bar')
+
+    const nextPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: 'next-page', pageSize: 25, query: undefined })
+    await page.getByRole('button', { name: 'Next' }).click()
+    await nextPage
+    for (const pageSize of [10, 25, 50, 100]) {
+      await page.getByLabel('Items per page').selectOption(String(pageSize))
+      // A previously viewed size may already be React Query-cached. Refresh
+      // makes this control's provider request observable either way.
+      const resizedPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize, query: undefined })
+      await page.getByRole('button', { name: 'Refresh' }).click()
+      await resizedPage
+      assert(new URL(page.url()).searchParams.get('pageSize') === (pageSize === 25 ? null : String(pageSize)), `page size ${pageSize} was not reflected in the mailbox state`)
+    }
+
+    const mailboxThreads = waitForThreads(page, 'mailbox', 'mailbox-1', { cursor: undefined, pageSize: 100, query: undefined })
+    const mailboxNavigation = page.waitForURL(/\/mail\/mailbox\/mailbox-1/)
+    await page.getByLabel('Mail account').selectOption('mailbox:mailbox-1')
+    await Promise.all([mailboxThreads, mailboxNavigation])
+    assert(new URL(page.url()).pathname === '/mail/mailbox/mailbox-1', 'account switching did not navigate to the selected mailbox')
+    const gmailNavigation = page.waitForURL(/\/mail\/gmail\/gmail-1/)
+    await page.getByLabel('Mail account').selectOption('gmail:gmail-1')
+    await gmailNavigation
+    const gmailThreads = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 100, query: undefined })
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await gmailThreads
+
+    await page.getByLabel('Items per page').selectOption('25')
+    const defaultPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 25, query: undefined })
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await defaultPage
     await page.getByLabel('Search mail').fill('private provider query')
+    const search = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 25, query: 'private provider query' })
     await page.getByRole('button', { name: 'Search' }).click()
-    await page.waitForTimeout(0)
+    await search
     assert(!new URL(page.url()).searchParams.has('query'), 'provider query leaked into the address bar')
 
-    const first = page.locator('[role="option"]', { hasText: 'Launch checklist' })
-    await first.click()
-    await page.getByTestId('connected-mail-conversation').waitFor()
+    await first.focus()
     await first.press('ArrowDown')
     await page.waitForURL(/threads\/thread-2/)
     await page.locator('#mailbox-thread-thread-2').waitFor({ state: 'attached' })
@@ -136,6 +182,10 @@ const responsiveMail = async ({ browser, fixture }) => {
     await tablet.page.goto(`${adminUrl}/mail/gmail/gmail-1/threads/thread-1`)
     await tablet.page.getByTestId('mailbox-workspace').waitFor()
     assert(await tablet.page.getByTestId('mailbox-workspace').getAttribute('data-layout') === 'split', 'tablet must keep list and reader split')
+    const readerBounds = await tablet.page.getByTestId('connected-mail-conversation').boundingBox()
+    const readerWidth = Math.round(readerBounds?.width ?? 0)
+    assert(readerWidth >= 240, `tablet reader is too narrow to read email copy (${readerWidth}px)`)
+    console.log(`connected-mail e2e: tablet reader ${readerWidth}px wide`)
     await shot(tablet.page, 'tablet-thread-split')
   } finally {
     expectNoErrors(tablet.errors, fixture)
@@ -215,6 +265,25 @@ const chatDoorway = async ({ browser, fixture }) => {
     assert(await page.getByRole('textbox', { name: 'From', exact: true }).isDisabled(), 'chat draft form exposed a mutable From field')
     await page.getByRole('textbox', { name: 'Subject', exact: true }).waitFor()
     await shot(page, 'chat-doorway-compose-form')
+    await page.getByRole('button', { name: 'Close' }).click()
+
+    // Account doorways carry the real, entitlement-scoped mailbox list into
+    // chat. Selecting its row must enter the normal reader route, not an
+    // email-shaped summary card with a second navigation implementation.
+    fixture.showAccountDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const accountOpener = page.getByRole('button', { name: 'Open mail' })
+    await accountOpener.click()
+    const accountDialog = page.getByRole('dialog', { name: 'Mail ready to review' })
+    await accountDialog.waitFor()
+    const accountPreview = accountDialog.getByTestId('mailbox-workspace')
+    await accountPreview.waitFor()
+    assert(await accountPreview.getAttribute('data-layout') === 'single', 'account doorway did not embed the canonical mailbox list')
+    await accountDialog.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
+    await shot(page, 'chat-doorway-account-preview')
+    await accountDialog.locator('#mailbox-thread-thread-1').click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-1$/)
+    await page.getByTestId('connected-mail-conversation').waitFor()
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()
