@@ -8,6 +8,7 @@ import {
   ConnectedMailError,
   listConnectedMailAccounts,
   listConnectedMailThreads,
+  sendConnectedMailboxMail,
 } from '../src/connected-mail.js'
 
 const ORGANIZATION_ID = '11111111-1111-4111-8111-111111111111'
@@ -88,4 +89,48 @@ test('a Gmail 401 transitions the selected live connection to reauthorization', 
     data: { status: 'needs_reauthorization' },
     where: { id: CONNECTION_ID, status: { not: 'disconnected' } },
   }])
+})
+
+test('an SMTP failure is delivery_unknown and the same idempotency key never dials again', async () => {
+  let action: Record<string, unknown> | undefined
+  const sends: unknown[] = []
+  const connection = {
+    id: CONNECTION_ID, organizationId: ORGANIZATION_ID, ownerUserId: USER_ID, status: 'active',
+    address: 'owner@example.test', imapHost: '127.0.0.1', imapPort: 1, imapSecurity: 'tls',
+    smtpHost: '127.0.0.1', smtpPort: 1, smtpSecurity: 'tls', username: 'owner@example.test',
+  }
+  const prisma = {
+    mailboxConnection: { findFirst: async () => connection },
+    mailboxConnectionCredential: {
+      findUnique: async () => ({ secretCiphertext: sealSecret('test-secret', 'password') }),
+    },
+    mailboxSendAction: {
+      upsert: async ({ create }: { create: Record<string, unknown> }) => {
+        sends.push(create)
+        action ??= { ...create, state: 'ready' }
+        return action
+      },
+      updateMany: async ({ where, data }: { where: { state?: string }; data: Record<string, unknown> }) => {
+        if (action?.state !== where.state) return { count: 0 }
+        action = { ...action, ...data }
+        return { count: 1 }
+      },
+      update: async () => action,
+    },
+  } as unknown as PrismaClient
+  const input = {
+    body: 'Hello', idempotencyKey: '44444444-4444-4444-8444-444444444444',
+    subject: 'Status', to: ['recipient@example.test'],
+  }
+  const send = () => sendConnectedMailboxMail(
+    prisma, { organizationId: ORGANIZATION_ID, userId: USER_ID }, CONNECTION_ID, input,
+    { encryptionSecret: 'test-secret' },
+  )
+  await assert.rejects(send, (error: unknown) => error instanceof ConnectedMailError && error.code === 'DELIVERY_UNKNOWN')
+  const firstMessageId = action?.messageId
+  await assert.rejects(send, (error: unknown) => error instanceof ConnectedMailError && error.code === 'DELIVERY_UNKNOWN')
+  assert.equal(action?.state, 'delivery_unknown')
+  assert.match(String(firstMessageId), /^nessie-[0-9a-f-]+@example\.test$/)
+  assert.equal(sends.length, 2, 'the replay sees the same durable action before refusing')
+  assert.equal(action?.messageId, firstMessageId)
 })

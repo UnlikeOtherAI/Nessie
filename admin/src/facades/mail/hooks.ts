@@ -8,6 +8,7 @@ import {
 import type {
   ConnectedMailAccountRecord,
   ConnectedMailComposeInput,
+  ConnectedMailboxSendInput,
   ConnectedMailDraftCreateInput,
   ConnectedMailConversation,
   ConnectedMailSource,
@@ -119,7 +120,7 @@ export const useConnectedMailSend = (address: MailAddress | null) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: ConnectedMailComposeInput | { draftId: string; expectedFingerprint?: string }) => {
+    mutationFn: (input: ConnectedMailboxSendInput | { draftId: string; expectedFingerprint?: string }) => {
       if (!address) throw new Error('Choose a mailbox first.')
       return apiClient.post<ConnectedMailDraftResult>(mailMutationUrl(address, '/send'), input)
     },

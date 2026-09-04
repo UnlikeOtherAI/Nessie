@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ApiClientError } from '@nessie/client-core'
 import type { ConnectedMailAccountRecord, ConnectedMailMessage } from '@nessie/schemas'
 
 import { draftKey, useDraft } from '../../../navigation/useDraft'
@@ -59,6 +60,7 @@ export const ConnectedMailCompose = ({
   const [error, setError] = useState<string | null>(null)
   const hydratedDraftRef = useRef<string | null>(null)
   const createIdempotencyKeyRef = useRef<string | null>(null)
+  const mailboxSendIdempotencyKeyRef = useRef<string | null>(null)
 
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
@@ -103,11 +105,16 @@ export const ConnectedMailCompose = ({
           draftId: providerDraft!.id || gmailDraftId!,
           expectedFingerprint: providerDraft!.contentFingerprint,
         })
-        : await send.mutateAsync(input)
+        : await send.mutateAsync({
+          ...input,
+          idempotencyKey: mailboxSendIdempotencyKeyRef.current ??= crypto.randomUUID(),
+        })
       setSent({ ...result, id: result.id || providerDraft?.id || '' })
       draft.clear()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not send this email.')
+      setError(cause instanceof ApiClientError && cause.code === 'DELIVERY_UNKNOWN'
+        ? 'We could not confirm whether this email was sent. It will not be resent automatically.'
+        : cause instanceof Error ? cause.message : 'Could not send this email.')
     }
   }
 

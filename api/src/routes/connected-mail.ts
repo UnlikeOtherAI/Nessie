@@ -3,7 +3,7 @@ import {
   ConnectedMailDraftCreateInputSchema,
   ConnectedMailConversationParamsSchema,
   ConnectedMailGmailDraftSendInputSchema,
-  ConnectedMailSendInputSchema,
+  ConnectedMailboxSendInputSchema,
   ConnectedMailSourceSchema,
   ConnectedMailThreadsQuerySchema,
 } from '@nessie/schemas'
@@ -41,6 +41,7 @@ const noStore = (reply: { header: (name: string, value: string) => unknown }): v
 const connectedMailStatus = (error: ConnectedMailError): number => {
   if (error.code === 'NOT_FOUND') return 404
   if (error.code === 'CAPABILITY_UNSUPPORTED') return 409
+  if (error.code === 'DELIVERY_UNKNOWN') return 409
   if (error.code === 'NEEDS_REAUTHORIZATION') return 401
   return 502
 }
@@ -118,6 +119,7 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
         ...params,
         ...query,
         pageSize: query.pageSize ?? 25,
+        unreadOnly: query.unreadOnly === true ? true : query.unreadOnly === false ? false : undefined,
       }, serviceDeps))
     } catch (error) {
       return fail(reply, error)
@@ -236,16 +238,18 @@ export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDep
           ? { status: 'sending', sendAfter: result.sendAfter.toISOString() }
           : { status: 'sent', sentMessageId: result.sentMessageId })
       }
-      const body = parseInput(ConnectedMailSendInputSchema, request.body, reply)
+      const body = parseInput(ConnectedMailboxSendInputSchema, request.body, reply)
       if (!body) return reply
-      await sendConnectedMailboxMail(prisma, resolved.mailActor, params.accountId, body, serviceDeps)
+      const result = await sendConnectedMailboxMail(
+        prisma, resolved.mailActor, params.accountId, body, serviceDeps,
+      )
       await emitAuditEvent(prisma, {
         action: 'email.sent', actorContext: resolved.context, outcome: 'success',
         metadata: { source: params.source, status: 'sent' }, resourceId: params.accountId,
         resourceType: 'connected_mail_account',
       })
       noStore(reply)
-      return createApiResponse({ status: 'sent' })
+      return createApiResponse(result)
     } catch (error) {
       return fail(reply, error)
     }

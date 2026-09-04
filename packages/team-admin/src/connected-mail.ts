@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
+  canonicalDraftFingerprintInput,
   listGmailMailThreads,
   readGmailMailThread,
   GmailApiError,
@@ -21,7 +22,7 @@ import {
   getGoogleCapability,
   type ConnectedMailAccountRecord,
   type ConnectedMailConversation,
-  type ConnectedMailSendInput,
+  type ConnectedMailboxSendInput,
   type ConnectedMailSource,
   type ConnectedMailThreadSummary,
 } from '@nessie/schemas'
@@ -43,6 +44,7 @@ export type ConnectedMailErrorCode =
   | 'NOT_FOUND'
   | 'CAPABILITY_UNSUPPORTED'
   | 'NEEDS_REAUTHORIZATION'
+  | 'DELIVERY_UNKNOWN'
   | 'PROVIDER_FAILED'
 
 /** Foreign, stale and absent resources intentionally collapse to NOT_FOUND. */
@@ -307,31 +309,88 @@ export const readConnectedMailConversation = async (
   }
 }
 
+const mailboxSendFingerprint = (input: ConnectedMailboxSendInput): string =>
+  createHash('sha256').update(canonicalDraftFingerprintInput(input)).digest('hex')
+
 /** SMTP sends are only reached from an entitled human route and pin From to the connection. */
 export const sendConnectedMailboxMail = async (
   prisma: PrismaClient,
   actor: Actor,
   accountId: string,
-  input: ConnectedMailSendInput,
+  input: ConnectedMailboxSendInput,
   deps: ConnectedMailDeps,
-): Promise<void> => {
+): Promise<{ status: 'sent'; actionId: string; messageId: string }> => {
   const connection = await mailboxForActor(prisma, actor, accountId)
+  let endpoints
   try {
-    await sendFromMailbox(await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret), {
-      bcc: input.bcc,
-      cc: input.cc,
-      inReplyTo: input.inReplyTo,
-      messageId: `<nessie-${randomUUID()}@${connection.address.split('@')[1] ?? 'localhost'}>`,
-      references: input.inReplyTo ? [input.inReplyTo] : undefined,
-      subject: input.subject,
-      text: input.body,
-      to: input.to,
-    }, mailboxDialOptions())
+    endpoints = await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret)
   } catch (error) {
-    if (error instanceof MailboxCredentialMissingError || mailboxConnectionTestFailure(error) === 'credential_rejected') {
+    if (error instanceof MailboxCredentialMissingError) {
       await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
-    throw new ConnectedMailError('PROVIDER_FAILED')
+    throw error
   }
+  const fingerprint = mailboxSendFingerprint(input)
+  const id = randomUUID()
+  const domain = connection.address.split('@')[1] ?? 'localhost'
+  const action = await prisma.mailboxSendAction.upsert({
+    where: { connectionId_clientRequestId: { connectionId: connection.id, clientRequestId: input.idempotencyKey } },
+    create: {
+      id, organizationId: actor.organizationId, ownerUserId: actor.userId,
+      connectionId: connection.id, clientRequestId: input.idempotencyKey,
+      contentFingerprint: fingerprint, messageId: `nessie-${id}@${domain}`,
+    },
+    update: {},
+  })
+  if (action.contentFingerprint !== fingerprint || action.state === 'delivery_unknown') {
+    throw new ConnectedMailError('DELIVERY_UNKNOWN')
+  }
+  if (action.state === 'dispatching') {
+    await prisma.mailboxSendAction.updateMany({
+      where: { id: action.id, state: 'dispatching' },
+      data: { state: 'delivery_unknown', claimedAt: null },
+    })
+    throw new ConnectedMailError('DELIVERY_UNKNOWN')
+  }
+  if (action.state === 'sent') {
+    return { status: 'sent', actionId: action.id, messageId: action.messageId }
+  }
+  const claimed = await prisma.mailboxSendAction.updateMany({
+    where: { id: action.id, state: 'ready' },
+    data: { state: 'dispatching', claimedAt: new Date() },
+  })
+  if (claimed.count !== 1) throw new ConnectedMailError('DELIVERY_UNKNOWN')
+  try {
+    await sendFromMailbox(endpoints, {
+      bcc: input.bcc, cc: input.cc, inReplyTo: input.inReplyTo,
+      messageId: action.messageId, references: input.inReplyTo ? [input.inReplyTo] : undefined,
+      subject: input.subject, text: input.body, to: input.to,
+    }, mailboxDialOptions())
+  } catch (error) {
+    if (error instanceof MailboxCredentialMissingError || mailboxConnectionTestFailure(error) === 'credential_rejected') {
+      await prisma.mailboxSendAction.updateMany({
+        where: { id: action.id, state: 'dispatching' }, data: { state: 'ready', claimedAt: null },
+      })
+      await markMailboxNeedsReauthorization(prisma, connection.id, 'The email address or password was not accepted.')
+      throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
+    }
+    await prisma.mailboxSendAction.updateMany({
+      where: { id: action.id, state: 'dispatching' },
+      data: { state: 'delivery_unknown', claimedAt: null },
+    })
+    throw new ConnectedMailError('DELIVERY_UNKNOWN')
+  }
+  try {
+    await prisma.mailboxSendAction.update({
+      where: { id: action.id }, data: { state: 'sent', sentAt: new Date(), claimedAt: null },
+    })
+  } catch {
+    await prisma.mailboxSendAction.updateMany({
+      where: { id: action.id, state: 'dispatching' },
+      data: { state: 'delivery_unknown', claimedAt: null },
+    })
+    throw new ConnectedMailError('DELIVERY_UNKNOWN')
+  }
+  return { status: 'sent', actionId: action.id, messageId: action.messageId }
 }
