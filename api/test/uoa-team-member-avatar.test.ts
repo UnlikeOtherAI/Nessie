@@ -132,26 +132,37 @@ const forbidUpstream = (message: string) => ({
   resolveHost: async () => ['93.184.216.34'],
 })
 
-const teamDetail = {
-  id: externalTeamId,
-  name: 'Design',
-  members: [
-    { userId: 'usr_ada', teamRole: 'owner' },
-    { userId: 'usr_grace', teamRole: 'member' },
-  ],
-}
-
-const orgMembers = {
+// The guard reuses the paged, active team roster that the Members page reads.
+// It must not regress to the retired team-detail + org-members join.
+const activeTeamRoster = {
   data: [
-    { userId: 'usr_ada', email: 'ada@acme.test', name: 'Ada Lovelace', role: 'owner' },
-    { userId: 'usr_grace', email: 'grace@acme.test', name: 'Grace Hopper', role: 'member' },
+    {
+      subject: 'usr_ada',
+      identity: { displayName: 'Ada Lovelace', email: 'ada@acme.test' },
+      teamRole: 'owner',
+      status: 'ACTIVE',
+    },
+    {
+      subject: 'usr_grace',
+      identity: { displayName: 'Grace Hopper', email: 'grace@acme.test' },
+      teamRole: 'member',
+      status: 'ACTIVE',
+    },
   ],
 }
 
 const isAvatarCall = (call: StubCall): boolean => call.url.includes('/domain/users/')
 
-const rosterResponse = (call: StubCall): Response =>
-  json(call.url.includes('/teams/') ? teamDetail : orgMembers)
+const rosterResponse = (call: StubCall): Response => {
+  const url = new URL(call.url)
+  assert.equal(
+    url.pathname,
+    `/org/organisations/${externalOrgId}/teams/${externalTeamId}/members`,
+  )
+  assert.equal(url.searchParams.get('status'), 'ACTIVE')
+  assert.equal(url.searchParams.get('limit'), '100')
+  return json(activeTeamRoster)
+}
 
 const makeApp = (
   actorContext: AuthorizedActionContext,
@@ -230,9 +241,9 @@ test('a subject outside the roster is a 404 and never reaches the avatar endpoin
       assert.equal(response.statusCode, 404)
       assert.equal(response.json().error.code, 'AVATAR_NOT_FOUND')
       assert.equal(response.headers['cache-control'], 'private, max-age=300')
-      // Side two: only the two roster reads were made.
+      // Side two: only the one canonical roster read was made.
       assert.deepEqual(calls.filter(isAvatarCall), [])
-      assert.equal(calls.length, 2)
+      assert.equal(calls.length, 1)
     } finally {
       await app.close()
     }
@@ -258,8 +269,8 @@ test('the roster read behind the check is asked once per team, not once per row'
 
       for (const response of responses) assert.equal(response.statusCode, 200)
       assert.equal(calls.filter(isAvatarCall).length, 2)
-      // Two roster calls total (team + organisation), shared by both rows.
-      assert.equal(calls.filter((call) => !isAvatarCall(call)).length, 2)
+      // One roster call total, shared by both rows.
+      assert.equal(calls.filter((call) => !isAvatarCall(call)).length, 1)
     } finally {
       await app.close()
     }
