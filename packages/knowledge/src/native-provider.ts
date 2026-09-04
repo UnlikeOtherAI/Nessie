@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
 import { replaceLabels } from './native-labels.js'
-import { canReadSpace } from './access.js'
+import { readableKnowledgeSpaceWhere } from './access.js'
 import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
 import { listNativeRecentPages } from './native-recent-pages.js'
 import { searchNativePages } from './native-search.js'
@@ -87,6 +87,48 @@ const assertAgentsBelongToOrg = async (
     throw new KnowledgeConflictError(
       `Unknown agent id(s) for knowledge space membership: ${unknown.join(', ')}`,
     )
+  }
+}
+
+// User grants are organization-scoped, just like agent grants. Persisting an
+// arbitrary global User id would leave a latent cross-tenant grant that starts
+// working if that person later joins this organization.
+const assertUsersBelongToOrg = async (
+  client: PrismaClient | Prisma.TransactionClient,
+  organizationId: string,
+  userIds: string[],
+): Promise<void> => {
+  const found = await client.organizationMember.findMany({
+    where: {
+      organizationId,
+      userId: { in: userIds },
+      deactivatedAt: null,
+    },
+    select: { userId: true },
+  })
+  const foundIds = new Set(found.map((member) => member.userId))
+  const unknown = userIds.filter((id) => !foundIds.has(id))
+  if (unknown.length > 0) {
+    throw new KnowledgeConflictError(
+      `Unknown, foreign, or deactivated user id(s) for knowledge space membership: ${unknown.join(', ')}`,
+    )
+  }
+}
+
+// KnowledgeSpace stores both organizationId and projectId. The database FK
+// validates only that the project exists, so the domain layer must also prove
+// that it belongs to the same organization before it writes the pair.
+const assertProjectBelongsToOrg = async (
+  client: PrismaClient | Prisma.TransactionClient,
+  organizationId: string,
+  projectId: string,
+): Promise<void> => {
+  const project = await client.project.findFirst({
+    where: { id: projectId, organizationId },
+    select: { id: true },
+  })
+  if (!project) {
+    throw new KnowledgeConflictError('Knowledge space project does not belong to this organization')
   }
 }
 
@@ -282,6 +324,12 @@ const movePage = async (
   prisma.$transaction(async (tx) => {
     const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
+    if (
+      input.expectedRevision !== undefined
+      && page.revision !== input.expectedRevision
+    ) {
+      throw new KnowledgePageRevisionConflictError(page.revision)
+    }
     const validMove = await assertMoveDoesNotCycle(
       tx,
       input.organizationId,
@@ -295,18 +343,33 @@ const movePage = async (
           id: input.parentPageId,
           organizationId: input.organizationId,
           spaceId: page.spaceId,
+          deletedAt: null,
+          status: { not: 'archived' },
         },
         select: { id: true },
       })
       if (!parent) return null
     }
-    await tx.knowledgePage.update({
-      where: { id: input.pageId },
+    const moved = await tx.knowledgePage.updateMany({
+      where: {
+        id: input.pageId,
+        organizationId: input.organizationId,
+        ...(input.expectedRevision !== undefined ? { revision: input.expectedRevision } : {}),
+      },
       data: {
         parentPageId: input.parentPageId ?? null,
         position: input.position,
+        revision: { increment: 1 },
       },
     })
+    // The initial revision check gives the common stale path a direct answer;
+    // this conditional update closes the race between that read and the tree
+    // write. A concurrent edit has won, so report its current revision.
+    if (moved.count === 0 && input.expectedRevision !== undefined) {
+      const current = await getMutablePage(tx, input.organizationId, input.pageId)
+      if (!current) return null
+      throw new KnowledgePageRevisionConflictError(current.revision)
+    }
     return fetchPage(tx, input.organizationId, input.pageId)
   })
 
@@ -504,6 +567,8 @@ export const createNativeKnowledgeProvider = (
             id: input.parentPageId,
             organizationId: input.organizationId,
             spaceId: input.spaceId,
+            deletedAt: null,
+            status: { not: 'archived' },
           },
           select: { id: true },
         })
@@ -567,6 +632,10 @@ export const createNativeKnowledgeProvider = (
   createSpace: async (input) => {
     const memberUserIds = Array.from(new Set(input.memberUserIds ?? []))
     const memberAgentIds = Array.from(new Set(input.memberAgentIds ?? []))
+    await assertProjectBelongsToOrg(prisma, input.organizationId, input.projectId)
+    if (memberUserIds.length > 0) {
+      await assertUsersBelongToOrg(prisma, input.organizationId, memberUserIds)
+    }
     if (memberAgentIds.length > 0) {
       await assertAgentsBelongToOrg(prisma, input.organizationId, memberAgentIds)
     }
@@ -623,31 +692,29 @@ export const createNativeKnowledgeProvider = (
   listSpaces: async (input) => {
     const limit = clampLimit(input.limit)
     const cursor = parseCursor(input.cursor)
+    const readableWhere = input.viewer
+      ? readableKnowledgeSpaceWhere(input.organizationId, input.viewer)
+      : null
     const spaces = await prisma.knowledgeSpace.findMany({
       where: {
-        organizationId: input.organizationId,
-        deletedAt: null,
-        ...(input.projectId ? { projectId: input.projectId } : {}),
-        ...(cursor
-          ? {
-              OR: [
-                { updatedAt: { lt: cursor.cursorDate } },
-                { updatedAt: cursor.cursorDate, id: { lt: cursor.cursorId } },
-              ],
-            }
-          : {}),
+        AND: [
+          readableWhere ?? { organizationId: input.organizationId, deletedAt: null },
+          ...(input.projectId ? [{ projectId: input.projectId }] : []),
+          ...(cursor
+            ? [{
+                OR: [
+                  { updatedAt: { lt: cursor.cursorDate } },
+                  { updatedAt: cursor.cursorDate, id: { lt: cursor.cursorId } },
+                ],
+              }]
+            : []),
+        ],
       },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       include: spaceInclude,
       take: limit + 1,
     })
-    const records = spaces.map(mapSpace)
-    const viewer = input.viewer
-    const visible =
-      viewer && !viewer.bypass
-        ? records.filter((space) => canReadSpace(space, viewer))
-        : records
-    return trimPage(visible, limit)
+    return trimPage(spaces.map(mapSpace), limit)
   },
 
   listVersions: async (organizationId, pageId) => {
@@ -717,6 +784,9 @@ export const createNativeKnowledgeProvider = (
       }
       if (input.memberUserIds !== undefined) {
         const memberUserIds = Array.from(new Set(input.memberUserIds))
+        if (memberUserIds.length > 0) {
+          await assertUsersBelongToOrg(tx, organizationId, memberUserIds)
+        }
         await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, userId: { not: null } } })
         if (memberUserIds.length) {
           await tx.knowledgeSpaceMember.createMany({

@@ -7,7 +7,12 @@ export type {
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
-export { canReadSpace, canWriteSpace, loadSpaceViewer } from './access.js'
+export {
+  canReadSpace,
+  canWriteSpace,
+  loadSpaceViewer,
+  readableKnowledgeSpaceWhere,
+} from './access.js'
 // Mapper + include shape re-exported so callers that need to list pages by a
 // filter the KnowledgeProvider interface doesn't expose (e.g. by taskId) can
 // query knowledgePage directly and still get the same KnowledgePageRecord shape.

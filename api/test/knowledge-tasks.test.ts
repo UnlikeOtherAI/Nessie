@@ -84,6 +84,7 @@ type MakeAppOptions = {
   existingMyDocsSpaceId?: string | null
   existingProjectDocsSpaceId?: string | null
   existingFolderId?: string | null
+  projectMemberships?: string[]
   createProviderPage?: KnowledgeProvider['createPage']
   fileServiceOverrides?: Partial<{
     store: () => Promise<{ attachment: { id: string }; bytesWritten: number }>
@@ -95,6 +96,7 @@ const makeApp = (options: MakeAppOptions = {}) => {
   const auditLogs: Array<Record<string, unknown>> = []
   const createPageCalls: CreatePageInput[] = []
   const spaceCreateCalls: Array<Record<string, unknown>> = []
+  const ticketPageQueries: Array<Record<string, unknown>> = []
 
   const defaultCreatePage: KnowledgeProvider['createPage'] = async (input) => {
     createPageCalls.push(input)
@@ -129,7 +131,9 @@ const makeApp = (options: MakeAppOptions = {}) => {
   const prisma = {
     $queryRaw: async () => (options.policyEffect === 'deny' ? [policyRow('deny')] : [policyRow('allow')]),
     $transaction: async <T>(callback: (tx: typeof txPrisma) => Promise<T>) => callback(txPrisma),
-    projectMember: { findMany: async () => [{ projectId }] },
+    projectMember: {
+      findMany: async () => (options.projectMemberships ?? [projectId]).map((id) => ({ projectId: id })),
+    },
     agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
@@ -141,7 +145,10 @@ const makeApp = (options: MakeAppOptions = {}) => {
     },
     knowledgePage: {
       findFirst: async () => (options.existingFolderId ? { id: options.existingFolderId } : null),
-      findMany: async () => [],
+      findMany: async (args: { where: Record<string, unknown> }) => {
+        ticketPageQueries.push(args.where)
+        return []
+      },
     },
   } as unknown as PrismaClient
 
@@ -221,7 +228,7 @@ const makeApp = (options: MakeAppOptions = {}) => {
     requireActorContext: () => options.actorContextOverride ?? actorContext,
   } as unknown as Parameters<typeof registerKnowledgeTaskRoutes>[1])
 
-  return { app, auditLogs, createPageCalls, spaceCreateCalls }
+  return { app, auditLogs, createPageCalls, spaceCreateCalls, ticketPageQueries }
 }
 
 test('POST /my-docs rejects a non-user actor', async () => {
@@ -281,7 +288,7 @@ test('GET /tasks/:taskId/pages 404s when the task does not exist in this org', a
 })
 
 test('GET /tasks/:taskId/pages returns the page envelope shape', async () => {
-  const { app } = makeApp({})
+  const { app, ticketPageQueries } = makeApp({})
   const response = await app.inject({
     method: 'GET',
     url: `/api/knowledge-base/tasks/${taskId}/pages`,
@@ -290,6 +297,14 @@ test('GET /tasks/:taskId/pages returns the page envelope shape', async () => {
   assert.equal(response.statusCode, 200)
   const payload = response.json() as { data: unknown[] }
   assert.deepEqual(payload.data, [])
+  assert.deepEqual(ticketPageQueries, [{
+    taskId,
+    organizationId,
+    projectId,
+    spaceId: docsSpaceId,
+    deletedAt: null,
+    status: { not: 'archived' },
+  }])
   await app.close()
 })
 
@@ -323,6 +338,21 @@ test('POST /tasks/:taskId/pages denies before creating the page when policy deni
 
   assert.equal(response.statusCode, 403)
   assert.equal(createPageCalls.length, 0)
+  await app.close()
+})
+
+test('ticket document routes reject a user outside the ticket project before provisioning', async () => {
+  const { app, createPageCalls, spaceCreateCalls } = makeApp({ projectMemberships: [] })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/tasks/${taskId}/pages`,
+    payload: { title: 'Foreign ticket note' },
+  })
+
+  assert.equal(response.statusCode, 403)
+  assert.equal(response.json().error.code, 'POLICY_DENIED')
+  assert.equal(createPageCalls.length, 0)
+  assert.equal(spaceCreateCalls.length, 0)
   await app.close()
 })
 
