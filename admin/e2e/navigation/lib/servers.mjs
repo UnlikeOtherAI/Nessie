@@ -37,6 +37,21 @@ export const waitForUrl = async (url, { label, timeoutMs = 120_000 }) => {
   throw new Error(`${label} never became ready at ${url} (${lastError})`)
 }
 
+const waitForOwnedServer = async (server, { label, readyOutput, url }) => {
+  const deadline = Date.now() + 180_000
+  while (Date.now() < deadline) {
+    if (server.child.exitCode !== null) {
+      throw new Error(`${label} stopped before becoming ready: ${server.output().slice(-4000)}`)
+    }
+    if (readyOutput.test(server.output())) {
+      await waitForUrl(url, { label, timeoutMs: 5_000 })
+      if (server.child.exitCode === null) return
+    }
+    await new Promise((done) => { setTimeout(done, 100) })
+  }
+  throw new Error(`${label} never reported that it owned ${url}: ${server.output().slice(-4000)}`)
+}
+
 const startProcess = ({ args, command, cwd, env, label }) => {
   if (!existsSync(command)) {
     throw new Error(`${label} cannot start: ${command} is missing — run pnpm install first`)
@@ -129,7 +144,11 @@ export const startApi = async ({ requireOwned = false } = {}) => {
     label: 'api',
   })
   try {
-    await waitForUrl(`${API_URL}/api/health`, { label: 'API', timeoutMs: 180_000 })
+    await waitForOwnedServer(server, {
+      label: 'API',
+      readyOutput: /Server listening at http:\/\/127\.0\.0\.1:/,
+      url: `${API_URL}/api/health`,
+    })
   } catch (error) {
     await stopProcess(server)
     throw new Error(`${error.message}\n--- api output ---\n${server.output().slice(-4000)}`)
@@ -137,8 +156,13 @@ export const startApi = async ({ requireOwned = false } = {}) => {
   return server
 }
 
-export const startAdmin = async () => {
+export const startAdmin = async ({ requireOwned = false } = {}) => {
   if (await alreadyRunning(ADMIN_URL)) {
+    if (requireOwned) {
+      throw new Error(
+        `Admin port ${ADMIN_PORT} is already in use. This suite needs an admin it owns for its browser proof.`,
+      )
+    }
     console.log(`navigation e2e: using the admin already listening on ${ADMIN_URL}`)
     return adopted('admin')
   }
@@ -154,7 +178,11 @@ export const startAdmin = async () => {
     label: 'admin',
   })
   try {
-    await waitForUrl(ADMIN_URL, { label: 'Admin', timeoutMs: 180_000 })
+    await waitForOwnedServer(server, {
+      label: 'Admin',
+      readyOutput: /Local:\s+http:\/\/localhost:/,
+      url: ADMIN_URL,
+    })
   } catch (error) {
     await stopProcess(server)
     throw new Error(`${error.message}\n--- admin output ---\n${server.output().slice(-4000)}`)

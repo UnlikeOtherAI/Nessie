@@ -221,7 +221,7 @@ const main = async () => {
     isolated = await createIsolatedDatabase(baseDatabase)
     process.env.DATABASE_URL = isolated.database
     api = await startApi({ requireOwned: true })
-    admin = await startAdmin()
+    admin = await startAdmin({ requireOwned: true })
     const seed = await seedTeam(api)
     fixture = await seedApproval(seed)
     browser = await launchBrowser()
