@@ -2,6 +2,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const MAILBOX_SEARCH_TOOL_ID = 'mailbox_search'
 export const MAILBOX_READ_TOOL_ID = 'mailbox_read'
+export const MAILBOX_COMPOSE_TOOL_ID = 'mailbox_compose'
 export const MAILBOX_SEND_TOOL_ID = 'mailbox_send'
 
 /**
@@ -25,10 +26,32 @@ export const MAILBOX_SEND_TOOL_ID = 'mailbox_send'
 export const MAILBOX_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     description:
+      'Prepare the universal chat-card form for composing from a connected '
+      + 'mailbox. It does not send mail; a later Send action still goes through '
+      + 'the normal mailbox approval gate.',
+    category: 'email-calendar',
+    id: MAILBOX_COMPOSE_TOOL_ID,
+    label: 'Compose From Mailbox',
+    parameters: {
+      properties: {
+        connectionId: {
+          description: 'Which connected mailbox to compose from when more than one is available.',
+          type: 'string',
+        },
+      },
+      type: 'object',
+    },
+    requiresExplicitGrant: true,
+    safe: false,
+    summary: 'Prepare a universal compose form for a connected mailbox.',
+  },
+  {
+    description:
       'Search a connected mailbox and return matching messages with sender, '
       + 'subject, date and UID. Every field narrows the search and they combine, '
-      + 'so prefer a precise search over listing everything. Omit all of them to '
-      + 'get the most recent mail.',
+      + 'so prefer a precise search over listing everything. Searches inspect at '
+      + 'most the newest 2,000 messages; a notice says when older matches may exist. '
+      + 'Omit all fields to get the most recent mail.',
     category: 'email-calendar',
     id: MAILBOX_SEARCH_TOOL_ID,
     label: 'Search Mailbox',

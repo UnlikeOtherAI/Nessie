@@ -58,6 +58,53 @@ Plan and as-built deltas:
   native connector, while a reviewed IMAP/SMTP route keeps its server details
   hidden until the person chooses Advanced settings. A team shared mailbox stays
   Model A-only and never starts a personal OAuth connection.
+- **One live review surface, several content-free doorways.** `/mail` owns the
+  connected-account list, structural thread view, bounded conversation reader,
+  and human compose/reply flow for Gmail and SMTP/IMAP. The provider remains the
+  source of truth and every read is private and no-store. `mail_present` may
+  leave an account, thread, or compose pointer in a disclosure-scoped agent
+  message, but the pointer contains no query, sender, recipient, subject,
+  snippet, or body and the client repeats live viewer authorization before it
+  opens. Search/read and Gmail-draft tools return the same canonical review
+  references. `mailbox_compose` uses the universal AgentCard form; its press is
+  a user response, never send authority, so the later send still crosses the
+  existing approval gate.
+- **Provider input and external side effects are bounded and replay-safe.**
+  Gmail response streams stop at the per-request cap before JSON parsing;
+  aggregate provider and decoded-body budgets span the whole read, and metadata
+  fan-out has a fixed concurrency ceiling. Gmail draft create and SMTP send
+  actions use durable user or run/tool-call identities. Changed content cannot
+  reuse an earlier Gmail create action, and an ambiguous Gmail or SMTP outcome
+  is terminal rather than eligible for an automatic retry. Mail audit entries
+  record only structural action ids and the distinct held, undone, sent, or
+  delivery-unknown state—never recipients, subject, or body.
+- **A direct Gmail send retains its provider draft.** Gmail exposes no atomic
+  compare-and-delete for drafts, so deleting a captured version after sending
+  it could erase a newer owner edit. The durable Nessie action is sent exactly
+  once; the provider draft remains for the owner to manage in Gmail.
+- **Compose recovery fails closed.** Recipient syntax and deterministic MIME
+  construction are checked before a browser mutation, while the server remains
+  authoritative: invalid local content makes no provider request and leaves an
+  editable Gmail draft untouched. A durable Gmail action is reconciled through an owner-only,
+  content-free status route: only a future held send offers Undo; `dispatching`,
+  expired `sending`, `updating`, `update_unknown`, and unknown delivery never
+  expose a resend. A live SMTP replay reports `dispatching` without another
+  dial; only its stale-claim sweep may mark it unknown. Gmail drafts containing
+  attachments or non-plain MIME remain provider-owned, show their metadata, and
+  offer Gmail rather than a lossy PATCH or local Send. Gmail MIME parsing is
+  bounded for response, headers, parts, nesting, attachments, filenames, and
+  decoded bodies.
+- **Exact mail approval is private and short-lived.** A pending
+  `gmail_draft_send` or `mailbox_send` approval may fetch one frozen full
+  envelope/body preview only for its pinned approver; public approval reads
+  never contain that content. The client drops the preview at resolution, and
+  Gmail send still checks the frozen draft fingerprint. Gmail standing-grant
+  controls require that exact preview; mailbox sends retain no standing grant.
+- **SMTP/IMAP searches are recent and explicit about their boundary.** A search
+  walks at most twenty structural UID windows (the newest 2,000 UIDs), never a
+  mailbox-wide `SEARCH`; when it has not filled the requested result limit by
+  then, the tool says that older matches may exist. Connection verification
+  reads the selected mailbox's scalar `EXISTS` status instead of a UID list.
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP

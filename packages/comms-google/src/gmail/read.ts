@@ -1,4 +1,11 @@
 import { requestJson, GMAIL_API_BASE, encodeForm, type FetchLike } from '../http.js'
+import {
+  GMAIL_MAX_METADATA_RESPONSE_BYTES,
+  GMAIL_MAX_READ_RESPONSE_BYTES,
+  GmailReadBudget,
+  GmailReadLimitError,
+} from './read-budget.js'
+import { GMAIL_MAX_ATTACHMENTS, GMAIL_MAX_PART_DEPTH, GMAIL_MAX_PARTS } from './part-limits.js'
 
 /**
  * Gmail read operations for the agent tools.
@@ -12,6 +19,7 @@ import { requestJson, GMAIL_API_BASE, encodeForm, type FetchLike } from '../http
 export type GmailThreadSummary = {
   threadId: string
   messageId: string
+  rfcMessageId?: string
   from: string
   to: string[]
   subject: string
@@ -23,6 +31,7 @@ export type GmailThreadSummary = {
 
 export type GmailMessageDetail = {
   messageId: string
+  rfcMessageId?: string
   threadId: string
   from: string
   to: string[]
@@ -35,7 +44,25 @@ export type GmailMessageDetail = {
 
 type RawHeader = { name?: unknown; value?: unknown }
 
+export const GMAIL_MAX_READ_HEADERS = 100
+export const GMAIL_MAX_READ_HEADER_BYTES = 1_000
+export const GMAIL_MAX_READ_ADDRESSES = 50
+export const GMAIL_MAX_READ_FILENAME_BYTES = 500
+export const GMAIL_MAX_READ_MIME_TYPE_BYTES = 200
+export const GMAIL_MAX_READ_THREAD_MESSAGES = 100
+export const GMAIL_MAX_READ_SNIPPET_CHARS = 4_000
+
+const assertHeaders = (headers: RawHeader[]): void => {
+  if (headers.length > GMAIL_MAX_READ_HEADERS || headers.some((header) => {
+    const name = typeof header?.name === 'string' ? header.name : ''
+    const value = typeof header?.value === 'string' ? header.value : ''
+    return Buffer.byteLength(name) > GMAIL_MAX_READ_HEADER_BYTES
+      || Buffer.byteLength(value) > GMAIL_MAX_READ_HEADER_BYTES
+  })) throw new GmailReadLimitError('structure')
+}
+
 const headerValue = (headers: RawHeader[], name: string): string => {
+  assertHeaders(headers)
   const match = headers.find(
     (header) =>
       typeof header?.name === 'string'
@@ -44,8 +71,12 @@ const headerValue = (headers: RawHeader[], name: string): string => {
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const splitAddressList = (value: string): string[] =>
-  value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+const splitAddressList = (value: string): string[] => {
+  const entries = value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+  if (entries.length > GMAIL_MAX_READ_ADDRESSES || entries.some((entry) =>
+    Buffer.byteLength(entry) > GMAIL_MAX_READ_HEADER_BYTES)) throw new GmailReadLimitError('structure')
+  return entries
+}
 
 type RawPart = {
   mimeType?: unknown
@@ -58,12 +89,23 @@ type RawPart = {
 const walk = (
   part: RawPart | undefined,
   into: { body: string; attachments: GmailMessageDetail['attachments'] },
+  budget: GmailReadBudget,
+  depth = 0,
+  seen = { parts: 0 },
 ): void => {
   if (!part) return
+  if (depth > GMAIL_MAX_PART_DEPTH || ++seen.parts > GMAIL_MAX_PARTS) {
+    throw new GmailReadLimitError('structure')
+  }
   const filename = typeof part.filename === 'string' ? part.filename : ''
   const attachmentId =
     typeof part.body?.attachmentId === 'string' ? part.body.attachmentId : ''
   if (filename.length > 0 && attachmentId.length > 0) {
+    if (into.attachments.length >= GMAIL_MAX_ATTACHMENTS
+      || Buffer.byteLength(filename) > GMAIL_MAX_READ_FILENAME_BYTES
+      || (typeof part.mimeType === 'string' && Buffer.byteLength(part.mimeType) > GMAIL_MAX_READ_MIME_TYPE_BYTES)) {
+      throw new GmailReadLimitError('structure')
+    }
     into.attachments.push({
       attachmentId,
       filename,
@@ -77,10 +119,28 @@ const walk = (
     && typeof part.body?.data === 'string'
     && into.body.length === 0
   ) {
-    into.body = Buffer.from(part.body.data, 'base64url').toString('utf8')
+    into.body = budget.decode(part.body.data)
     return
   }
-  for (const child of part.parts ?? []) walk(child, into)
+  for (const child of part.parts ?? []) walk(child, into, budget, depth + 1, seen)
+}
+
+const hasAttachment = (
+  part: RawPart | undefined,
+  depth = 0,
+  seen = { parts: 0 },
+): boolean => {
+  if (!part) return false
+  if (depth > GMAIL_MAX_PART_DEPTH || ++seen.parts > GMAIL_MAX_PARTS) {
+    throw new GmailReadLimitError('structure')
+  }
+  if (typeof part.filename === 'string' && part.filename.length > 0) {
+    if (Buffer.byteLength(part.filename) > GMAIL_MAX_READ_FILENAME_BYTES) {
+      throw new GmailReadLimitError('structure')
+    }
+    return true
+  }
+  return (part.parts ?? []).some((child) => hasAttachment(child, depth + 1, seen))
 }
 
 const parseInternalDate = (value: unknown): string => {
@@ -88,6 +148,23 @@ const parseInternalDate = (value: unknown): string => {
   return Number.isFinite(millis)
     ? new Date(millis).toISOString()
     : new Date(0).toISOString()
+}
+
+const mapBounded = async <T, R>(
+  values: readonly T[],
+  concurrency: number,
+  map: (value: T) => Promise<R>,
+): Promise<R[]> => {
+  const results: R[] = []
+  let nextIndex = 0
+  const worker = async (): Promise<void> => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++
+      results[index] = await map(values[index]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker))
+  return results
 }
 
 /**
@@ -100,11 +177,12 @@ export const searchGmailThreads = async (
   accessToken: string,
   input: { query?: string; maxResults?: number; labelIds?: string[] },
 ): Promise<GmailThreadSummary[]> => {
+  const budget = new GmailReadBudget()
   const params: Record<string, string> = {
     maxResults: String(Math.min(Math.max(input.maxResults ?? 15, 1), 50)),
   }
   if (input.query) params.q = input.query
-  const { body } = await requestJson(
+  const listedResponse = await requestJson(
     fetchImpl,
     'messages.list',
     `${GMAIL_API_BASE}/messages?${encodeForm(params)}${
@@ -112,23 +190,26 @@ export const searchGmailThreads = async (
         .map((id) => `&labelIds=${encodeURIComponent(id)}`)
         .join('')
     }`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(listedResponse.responseBytes ?? 0)
+  const { body } = listedResponse
   const refs = (body as { messages?: { id?: unknown }[] }).messages ?? []
 
-  const summaries: GmailThreadSummary[] = []
-  for (const ref of refs) {
-    if (typeof ref?.id !== 'string') continue
+  const messageIds = refs.flatMap((ref) => typeof ref?.id === 'string' ? [ref.id] : [])
+  const summaries = await mapBounded(messageIds, 8, async (messageId) => {
     // `metadata` format returns headers without bodies — enough for a list and
     // far smaller than pulling every full message into the context window.
-    const { body: raw } = await requestJson(
+    const response = await requestJson(
       fetchImpl,
       'messages.get',
-      `${GMAIL_API_BASE}/messages/${encodeURIComponent(ref.id)}`
+      `${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}`
         + '?format=metadata&metadataHeaders=From&metadataHeaders=To'
-        + '&metadataHeaders=Subject&metadataHeaders=Date',
-      { headers: { authorization: `Bearer ${accessToken}` } },
+        + '&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID',
+      { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_METADATA_RESPONSE_BYTES },
     )
+    budget.addHttp(response.responseBytes ?? 0)
+    const raw = response.body
     const message = raw as {
       id?: unknown
       threadId?: unknown
@@ -137,24 +218,25 @@ export const searchGmailThreads = async (
       labelIds?: unknown
       payload?: { headers?: RawHeader[]; parts?: RawPart[] }
     }
-    if (typeof message?.id !== 'string') continue
+    if (typeof message?.id !== 'string') return null
     const headers = message.payload?.headers ?? []
     const labelIds = Array.isArray(message.labelIds) ? message.labelIds : []
-    summaries.push({
+    return {
       threadId: typeof message.threadId === 'string' ? message.threadId : message.id,
       messageId: message.id,
+      ...(headerValue(headers, 'Message-ID') ? { rfcMessageId: headerValue(headers, 'Message-ID') } : {}),
       from: headerValue(headers, 'From'),
       to: splitAddressList(headerValue(headers, 'To')),
       subject: headerValue(headers, 'Subject'),
-      snippet: typeof message.snippet === 'string' ? message.snippet : '',
+      snippet: typeof message.snippet === 'string'
+        ? message.snippet.slice(0, GMAIL_MAX_READ_SNIPPET_CHARS)
+        : '',
       receivedAt: parseInternalDate(message.internalDate),
       unread: labelIds.includes('UNREAD'),
-      hasAttachments: (message.payload?.parts ?? []).some(
-        (part) => typeof part?.filename === 'string' && part.filename.length > 0,
-      ),
-    })
-  }
-  return summaries
+      hasAttachments: hasAttachment(message.payload),
+    }
+  })
+  return summaries.filter((summary): summary is GmailThreadSummary => summary !== null)
 }
 
 export const getGmailMessage = async (
@@ -162,12 +244,15 @@ export const getGmailMessage = async (
   accessToken: string,
   messageId: string,
 ): Promise<GmailMessageDetail> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'messages.get',
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const message = body as {
     id?: unknown
     threadId?: unknown
@@ -179,9 +264,10 @@ export const getGmailMessage = async (
   }
   const headers = message.payload?.headers ?? []
   const collected = { body: '', attachments: [] as GmailMessageDetail['attachments'] }
-  walk(message.payload, collected)
+  walk(message.payload, collected, budget)
   return {
     messageId: message.id,
+    ...(headerValue(headers, 'Message-ID') ? { rfcMessageId: headerValue(headers, 'Message-ID') } : {}),
     threadId: typeof message.threadId === 'string' ? message.threadId : message.id,
     from: headerValue(headers, 'From'),
     to: splitAddressList(headerValue(headers, 'To')),
@@ -199,13 +285,17 @@ export const getGmailThread = async (
   accessToken: string,
   threadId: string,
 ): Promise<GmailMessageDetail[]> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'threads.get',
     `${GMAIL_API_BASE}/threads/${encodeURIComponent(threadId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    { headers: { authorization: `Bearer ${accessToken}` }, maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const messages = (body as { messages?: unknown[] }).messages ?? []
+  if (messages.length > GMAIL_MAX_READ_THREAD_MESSAGES) throw new GmailReadLimitError('structure')
   return messages.flatMap((raw) => {
     const message = raw as {
       id?: unknown
@@ -216,9 +306,10 @@ export const getGmailThread = async (
     if (typeof message?.id !== 'string') return []
     const headers = message.payload?.headers ?? []
     const collected = { body: '', attachments: [] as GmailMessageDetail['attachments'] }
-    walk(message.payload, collected)
+    walk(message.payload, collected, budget)
     return [{
       messageId: message.id,
+      ...(headerValue(headers, 'Message-ID') ? { rfcMessageId: headerValue(headers, 'Message-ID') } : {}),
       threadId: typeof message.threadId === 'string' ? message.threadId : threadId,
       from: headerValue(headers, 'From'),
       to: splitAddressList(headerValue(headers, 'To')),

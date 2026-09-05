@@ -23,10 +23,11 @@ export class MailboxCredentialMissingError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 20_000
 
-export const mailboxDialOptions = (): MailboxClientOptions => {
+export const mailboxDialOptions = (threadTokenSecret?: string): MailboxClientOptions => {
   const configured = Number(process.env.NESSIE_MAILBOX_TIMEOUT_MS)
   return {
     timeoutMs: Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS,
+    ...(threadTokenSecret ? { threadTokenSecret } : {}),
   }
 }
 

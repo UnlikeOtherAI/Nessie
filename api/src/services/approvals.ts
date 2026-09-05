@@ -61,25 +61,34 @@ export const createApprovalRequest = async (
  * Which approvals an actor may see. An approval carries a free-text `reason`,
  * a `context` blob and the originating channel/task ids, so org scope alone
  * leaks private-channel activity — and the task ids it exposes are usable
- * against other endpoints. Owners see everything in their org; everyone else
- * sees what they requested plus what happened in a channel they can reach.
+ * against other endpoints. A named approver is a stricter disclosure boundary:
+ * only that person may read the request, including its reason and context.
+ * Unpinned approvals remain visible to owners and to their ordinary audience.
  */
 export const approvalVisibilityWhere = (
   actorContext: AuthorizedActionContext,
 ): Prisma.ApprovalRequestWhereInput => {
-  if (actorContext.actor.roles?.includes('owner')) return {}
   const userId = actorContext.actor.actorId
+  const ordinaryVisibility: Prisma.ApprovalRequestWhereInput =
+    actorContext.actor.roles?.includes('owner')
+      ? {}
+      : {
+          OR: [
+            { requesterId: userId },
+            {
+              channel: {
+                OR: [
+                  { visibility: 'public' },
+                  { members: { some: { userId } } },
+                ],
+              },
+            },
+          ],
+        }
   return {
     OR: [
-      { requesterId: userId },
-      {
-        channel: {
-          OR: [
-            { visibility: 'public' },
-            { members: { some: { userId } } },
-          ],
-        },
-      },
+      { requiredApproverUserId: userId },
+      { AND: [{ requiredApproverUserId: null }, ordinaryVisibility] },
     ],
   }
 }
@@ -403,6 +412,7 @@ const mapApproval = (approval: {
   resolution: string | null
   resolutionNote: string | null
   requiredApproverRole: string | null
+  toolName: string | null
   continuationToken: string
   expiresAt: Date
   createdAt: Date
@@ -426,6 +436,7 @@ const mapApproval = (approval: {
   resolution: approval.resolution,
   resolutionNote: approval.resolutionNote,
   requiredApproverRole: approval.requiredApproverRole,
+  toolName: approval.toolName,
   expiresAt: approval.expiresAt.toISOString(),
   createdAt: approval.createdAt.toISOString(),
   updatedAt: approval.updatedAt.toISOString(),

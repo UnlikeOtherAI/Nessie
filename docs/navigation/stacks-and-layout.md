@@ -38,7 +38,13 @@ inner scroller — see `page-types-and-motion.md` §2). Everything else derives 
   `/agents/:id` 2, both designers Flows at 2 returning to the list they edit,
   the four automation browsers 1; every settings page 1 with
   `/settings/statuses/:id` at 2; `/ops` 1 and `/ops/usage` 2; `/apps` 1 and
-  `/apps/:slug` 2; `/audit`, `/approvals`, `/tokens`, `/policy` 1. A project's
+  `/apps/:slug` 2; `/audit`, `/approvals`, `/tokens`, `/policy` 1. Connected
+  mail is `/mail` 1 (the entitled account chooser),
+  `/mail/:source/:accountId` 2, `/mail/:source/:accountId/threads/:threadId` 3
+  (a nested screen on `single`, the inline reading pane on `split`), and
+  `/mail/:source/:accountId/compose` a Flow at 3. `/mail` is deliberately not a
+  rail item: it is a contextual work surface reached from Connected accounts,
+  an agent's chat doorway, or a Gmail draft card. A project's
   seven section routes are one `tabHost` identity, so switching sections never
   animates.
 - **`parent: 'origin'`** (`/alerts`, `/feedback`): reached from the bell, the

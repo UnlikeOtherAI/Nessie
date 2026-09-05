@@ -281,7 +281,7 @@ dbTest('a system agent from another organisation is not addressable', async () =
   }
 })
 
-dbTest('the Personal Assistant resolves to its own DM, and both are listed as addressable', async () => {
+dbTest('the Personal Assistant resolves to its own DM, and built-ins are listed as addressable', async () => {
   const context = await seed('system-agent-address-pa')
   const { memberUserId, organizationId, prisma, teamId } = context
 

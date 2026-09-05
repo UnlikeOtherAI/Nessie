@@ -71,11 +71,17 @@ afterwards. Spec:
   same parts under `AgentCardMessage`/`AgentCardBlocks`. A `kind:
   'linear_ticket'` is a renderer in waiting and the eighth look-alike Rule zero
   names. An `image` is an attachment id the run can already reach, never a URL.
+  Text inputs default to 500 characters; a text or textarea card block alone
+  may declare a smaller or larger `maxLength`, bounded at 100,000, so mail copy
+  does not silently widen every card field.
 - **The press is a message.** It writes a real `user` turn stamped
   `metadata.agentCardResponse`, so the outcome is in the chat, is an ordinary
   human turn in the transcript, and wakes the card's agent through one
   *structural* orchestrator path (a server-written metadata key — never content
-  matching). A resolved card also renders a state note beside its message
+  matching). The response atomically inherits every disclosure-basis scope on
+  the source card message: an entered value can be more sensitive than the card
+  copy, never less, and its realtime notice is content-free when that basis is
+  non-empty. A resolved card also renders a state note beside its message
   content in every later window (`message-cards.ts`, joined by
   `withMessageNotes` exactly where the attachment inventory line goes), so
   nothing ever rewrites a message. Nor may a person: `updateMessage` refuses a

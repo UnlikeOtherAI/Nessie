@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -16,7 +15,9 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type GmailDraftView = {
   id: string
-  state: 'draft' | 'sending' | 'sent' | 'discarded'
+  state: 'draft' | 'updating' | 'update_unknown' | 'sending' | 'dispatching' | 'delivery_unknown' | 'sent' | 'discarded'
+  /** Present only while the owner can still undo a held send. */
+  sendAfter?: string | null
   revision: number
   contentFingerprint: string
   to: string[]
@@ -25,11 +26,20 @@ export type GmailDraftView = {
   subject: string
   body: string
   attachments: { filename: string; mimeType: string; sizeBytes: number }[]
+  editable: boolean
+  unsupportedReason: 'attachments' | 'non_plain_content' | null
 }
 
 export const gmailKeys = {
   draft: (id: string) => ['gmail', 'draft', id] as const,
+  draftStatus: (id: string) => ['gmail', 'draft-status', id] as const,
   sendGrants: ['gmail', 'send-grants'] as const,
+}
+
+export type GmailDraftActionStatus = {
+  id: string
+  sendAfter: string | null
+  state: GmailDraftView['state']
 }
 
 export const useGmailDraft = (id: string | null) => {
@@ -38,12 +48,25 @@ export const useGmailDraft = (id: string | null) => {
     queryKey: gmailKeys.draft(id ?? 'none'),
     queryFn: () => apiClient.get(`/api/gmail/drafts/${id}`),
     enabled: id !== null,
-    // Keep the rendered draft while a refetch runs, so acting on the card does
-    // not blank it back to a skeleton mid-interaction.
-    placeholderData: keepPreviousData,
     // A non-owner gets an indistinguishable 404; retrying it would just burn
     // requests to reach the same answer.
     retry: false,
+  })
+}
+
+/** Content-free owner action state for held-send recovery after a reload. */
+export const useGmailDraftStatus = (id: string | null) => {
+  const apiClient = useApiClient()
+  return useQuery<GmailDraftActionStatus>({
+    queryKey: gmailKeys.draftStatus(id ?? 'none'),
+    queryFn: () => apiClient.get(`/api/gmail/drafts/${id}/status`),
+    enabled: id !== null,
+    // Only transient action states poll. A terminal answer stays explicit; it
+    // never triggers an automatic resend. Updating returns to draft after the
+    // provider restores it, so leaving it unpolled would strand the composer.
+    refetchInterval: (query) => ['sending', 'dispatching', 'updating'].includes(query.state.data?.state ?? '') ? 1_000 : false,
+    retry: false,
+    staleTime: 0,
   })
 }
 

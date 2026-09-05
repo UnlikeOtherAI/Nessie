@@ -1,5 +1,11 @@
 import { requestJson, GMAIL_API_BASE, type FetchLike } from '../http.js'
 import { buildRawMessage, type OutboundMessage } from './mime-build.js'
+import {
+  GMAIL_MAX_READ_RESPONSE_BYTES,
+  GmailReadBudget,
+  GmailReadLimitError,
+} from './read-budget.js'
+import { GMAIL_MAX_ATTACHMENTS, GMAIL_MAX_PART_DEPTH, GMAIL_MAX_PARTS } from './part-limits.js'
 
 /**
  * Gmail draft operations.
@@ -16,6 +22,21 @@ export type GmailDraftRef = {
   messageId: string
   threadId?: string
 }
+
+/** A validated Gmail request body, built before a durable mutation claim. */
+export type PreparedGmailDraft = {
+  raw: string
+  threadId?: string
+}
+
+/**
+ * MIME construction is pure and must happen before a caller marks a provider
+ * write as ambiguous. A local invalid address or header never reaches Gmail.
+ */
+export const prepareGmailDraft = (
+  message: OutboundMessage,
+  threadId?: string,
+): PreparedGmailDraft => ({ raw: buildRawMessage(message), ...(threadId ? { threadId } : {}) })
 
 const bearer = (accessToken: string): Record<string, string> => ({
   authorization: `Bearer ${accessToken}`,
@@ -48,6 +69,14 @@ export const createGmailDraft = async (
   message: OutboundMessage,
   threadId?: string,
 ): Promise<GmailDraftRef> => {
+  return createPreparedGmailDraft(fetchImpl, accessToken, prepareGmailDraft(message, threadId))
+}
+
+export const createPreparedGmailDraft = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  draft: PreparedGmailDraft,
+): Promise<GmailDraftRef> => {
   const { body } = await requestJson(
     fetchImpl,
     'drafts.create',
@@ -57,8 +86,8 @@ export const createGmailDraft = async (
       headers: bearer(accessToken),
       body: JSON.stringify({
         message: {
-          raw: buildRawMessage(message),
-          ...(threadId ? { threadId } : {}),
+          raw: draft.raw,
+          ...(draft.threadId ? { threadId: draft.threadId } : {}),
         },
       }),
     },
@@ -73,6 +102,17 @@ export const updateGmailDraft = async (
   message: OutboundMessage,
   threadId?: string,
 ): Promise<GmailDraftRef> => {
+  return updatePreparedGmailDraft(
+    fetchImpl, accessToken, draftId, prepareGmailDraft(message, threadId),
+  )
+}
+
+export const updatePreparedGmailDraft = async (
+  fetchImpl: FetchLike,
+  accessToken: string,
+  draftId: string,
+  draft: PreparedGmailDraft,
+): Promise<GmailDraftRef> => {
   const { body } = await requestJson(
     fetchImpl,
     'drafts.update',
@@ -82,8 +122,8 @@ export const updateGmailDraft = async (
       headers: bearer(accessToken),
       body: JSON.stringify({
         message: {
-          raw: buildRawMessage(message),
-          ...(threadId ? { threadId } : {}),
+          raw: draft.raw,
+          ...(draft.threadId ? { threadId: draft.threadId } : {}),
         },
       }),
     },
@@ -101,8 +141,23 @@ export type GmailDraftContent = {
   bcc: string[]
   subject: string
   body: string
+  hasPlainTextBody: boolean
+  editable: boolean
+  unsupportedReason: 'attachments' | 'non_plain_content' | null
+  inReplyTo?: string
+  references: string[]
   attachments: { filename: string; mimeType: string; sizeBytes: number }[]
 }
+
+export const GMAIL_MAX_DRAFT_HEADERS = 100
+export const GMAIL_MAX_DRAFT_HEADER_BYTES = 1_000
+export const GMAIL_MAX_DRAFT_PART_DEPTH = GMAIL_MAX_PART_DEPTH
+export const GMAIL_MAX_DRAFT_PARTS = GMAIL_MAX_PARTS
+export const GMAIL_MAX_DRAFT_ATTACHMENTS = GMAIL_MAX_ATTACHMENTS
+export const GMAIL_MAX_DRAFT_FILENAME_BYTES = 500
+export const GMAIL_MAX_DRAFT_MIME_TYPE_BYTES = 200
+export const GMAIL_MAX_DRAFT_REFERENCES = 20
+export const GMAIL_MAX_DRAFT_MESSAGE_ID_BYTES = 500
 
 const headerValue = (
   headers: { name?: unknown; value?: unknown }[],
@@ -116,14 +171,23 @@ const headerValue = (
   return typeof match?.value === 'string' ? match.value : ''
 }
 
-const splitAddressList = (value: string): string[] =>
-  value
+const splitAddressList = (value: string): string[] => {
+  const addresses = value
     .split(',')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
+  if (addresses.length > 50) throw new GmailReadLimitError('structure')
+  return addresses
+}
 
-const decodeBase64Url = (value: string): string =>
-  Buffer.from(value, 'base64url').toString('utf8')
+const splitMessageIds = (value: string, max: number): string[] => {
+  const messageIds = value.trim().split(/\s+/).filter((entry) => entry.length > 0)
+  if (
+    messageIds.length > max
+    || messageIds.some((entry) => Buffer.byteLength(entry) > GMAIL_MAX_DRAFT_MESSAGE_ID_BYTES)
+  ) throw new GmailReadLimitError('structure')
+  return messageIds
+}
 
 type GmailPart = {
   mimeType?: unknown
@@ -134,12 +198,28 @@ type GmailPart = {
 
 const collectBodyAndAttachments = (
   part: GmailPart | undefined,
-  into: { body: string; attachments: GmailDraftContent['attachments'] },
+  into: {
+    body: string
+    attachments: GmailDraftContent['attachments']
+    hasPlainTextBody: boolean
+    hasUnsupportedContent: boolean
+  },
+  budget: GmailReadBudget,
+  depth = 0,
+  seen = { parts: 0 },
 ): void => {
   if (!part) return
+  if (depth > GMAIL_MAX_DRAFT_PART_DEPTH || ++seen.parts > GMAIL_MAX_DRAFT_PARTS) {
+    throw new GmailReadLimitError('structure')
+  }
   const filename = typeof part.filename === 'string' ? part.filename : ''
   const mimeType = typeof part.mimeType === 'string' ? part.mimeType : ''
   if (filename.length > 0) {
+    if (
+      into.attachments.length >= GMAIL_MAX_DRAFT_ATTACHMENTS
+      || Buffer.byteLength(filename) > GMAIL_MAX_DRAFT_FILENAME_BYTES
+      || Buffer.byteLength(mimeType) > GMAIL_MAX_DRAFT_MIME_TYPE_BYTES
+    ) throw new GmailReadLimitError('structure')
     into.attachments.push({
       filename,
       mimeType,
@@ -148,13 +228,18 @@ const collectBodyAndAttachments = (
     return
   }
   if (mimeType === 'text/plain' && typeof part.body?.data === 'string') {
+    into.hasPlainTextBody = true
     if (into.body.length === 0) {
-      into.body = decodeBase64Url(part.body.data)
+      into.body = budget.decode(part.body.data)
     }
     return
   }
-  for (const child of part.parts ?? []) {
-    collectBodyAndAttachments(child, into)
+  const children = Array.isArray(part.parts) ? part.parts : []
+  if (children.length === 0 && (typeof part.body?.data === 'string' || mimeType.length > 0)) {
+    into.hasUnsupportedContent = true
+  }
+  for (const child of children) {
+    collectBodyAndAttachments(child, into, budget, depth + 1, seen)
   }
 }
 
@@ -163,12 +248,18 @@ export const getGmailDraft = async (
   accessToken: string,
   draftId: string,
 ): Promise<GmailDraftContent> => {
-  const { body } = await requestJson(
+  const budget = new GmailReadBudget()
+  const response = await requestJson(
     fetchImpl,
     'drafts.get',
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(draftId)}?format=full`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+      maxResponseBytes: GMAIL_MAX_READ_RESPONSE_BYTES,
+    },
   )
+  budget.addHttp(response.responseBytes ?? 0)
+  const { body } = response
   const draft = body as {
     id?: unknown
     message?: {
@@ -182,8 +273,18 @@ export const getGmailDraft = async (
   }
   const payload = draft.message.payload
   const headers = payload?.headers ?? []
-  const collected = { body: '', attachments: [] as GmailDraftContent['attachments'] }
-  collectBodyAndAttachments(payload, collected)
+  if (headers.length > GMAIL_MAX_DRAFT_HEADERS || headers.some((header) => {
+    const name = typeof header.name === 'string' ? header.name : ''
+    const value = typeof header.value === 'string' ? header.value : ''
+    return Buffer.byteLength(name) > GMAIL_MAX_DRAFT_HEADER_BYTES
+      || Buffer.byteLength(value) > GMAIL_MAX_DRAFT_HEADER_BYTES
+  })) throw new GmailReadLimitError('structure')
+  const collected = {
+    body: '', attachments: [] as GmailDraftContent['attachments'], hasPlainTextBody: false, hasUnsupportedContent: false,
+  }
+  collectBodyAndAttachments(payload, collected, budget)
+  const inReplyTo = splitMessageIds(headerValue(headers, 'In-Reply-To'), 1)
+  const references = splitMessageIds(headerValue(headers, 'References'), GMAIL_MAX_DRAFT_REFERENCES)
 
   return {
     id: draft.id,
@@ -196,6 +297,13 @@ export const getGmailDraft = async (
     bcc: splitAddressList(headerValue(headers, 'Bcc')),
     subject: headerValue(headers, 'Subject'),
     body: collected.body,
+    hasPlainTextBody: collected.hasPlainTextBody,
+    editable: collected.attachments.length === 0 && collected.hasPlainTextBody && !collected.hasUnsupportedContent,
+    unsupportedReason: collected.attachments.length > 0
+      ? 'attachments'
+      : collected.hasPlainTextBody && !collected.hasUnsupportedContent ? null : 'non_plain_content',
+    ...(inReplyTo[0] ? { inReplyTo: inReplyTo[0] } : {}),
+    references,
     attachments: collected.attachments,
   }
 }

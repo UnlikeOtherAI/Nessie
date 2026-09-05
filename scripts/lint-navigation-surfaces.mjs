@@ -3,7 +3,7 @@
 // Surface-registry totality gate
 // (docs/done/2026-09-01-navigation-motion-system.md §4.1/§4.18, step 3):
 // every route declared in `admin/src/router.tsx` must resolve to a row in
-// `admin/src/navigation/surfaces.ts`, or be one of the few screens the
+// the navigation surface registry, or be one of the few screens the
 // registry itself lists as outside the navigation stack
 // (`OUTSIDE_STACK_PATHS`: login, bootstrap, the external-auth completion and
 // the not-found catch-all).
@@ -12,8 +12,8 @@
 // swallowed every unclassified admin route. A route added without a row would
 // simply stop animating, lose its Back destination and render outside the
 // retained stack — a defect that shows up only on a phone, months later. The
-// lint reads both files as text (no TypeScript loader), so it runs anywhere
-// `node` does; `admin/test/navigation-surfaces-total.test.ts` runs the same
+// lint reads the router and registry modules as text (no TypeScript loader),
+// so it runs anywhere `node` does; `admin/test/navigation-surfaces-total.test.ts` runs the same
 // extraction against the real, executed registry.
 
 import fs from 'node:fs'
@@ -22,7 +22,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const ROUTER_FILE = 'admin/src/router.tsx'
-const SURFACES_FILE = 'admin/src/navigation/surfaces.ts'
+const SURFACE_FILES = [
+  'admin/src/navigation/surfaces.ts',
+  'admin/src/navigation/admin-surfaces.ts',
+  'admin/src/navigation/connected-mail-surfaces.ts',
+]
 
 const readRepoFile = (relativePath) =>
   fs.readFileSync(path.resolve(REPO_ROOT, relativePath), 'utf8')
@@ -168,7 +172,7 @@ export const toSamplePathname = (routerPath) =>
 
 const main = () => {
   const routerSource = readRepoFile(ROUTER_FILE)
-  const surfacesSource = readRepoFile(SURFACES_FILE)
+  const surfacesSource = SURFACE_FILES.map(readRepoFile).join('\n')
   const patterns = collectSurfacePatterns(surfacesSource)
   const outside = new Set(collectOutsideStackPaths(surfacesSource))
   const routerPaths = collectRouterPaths(routerSource)
@@ -178,7 +182,9 @@ const main = () => {
     process.exit(1)
   }
   if (patterns.length === 0) {
-    console.error(`lint-navigation-surfaces: no surface patterns found in ${SURFACES_FILE}`)
+    console.error(
+      `lint-navigation-surfaces: no surface patterns found in ${SURFACE_FILES.join(', ')}`,
+    )
     process.exit(1)
   }
 
