@@ -5,7 +5,12 @@ import {
   useNativeIOSPhoneApp,
   usePhoneLayout,
 } from '../../lib/mobile-shell'
-import { sameScreenBar, useCurrentScreenBar, type ScreenBar } from '../../navigation/screen-bar'
+import {
+  onScreenTransition,
+  sameScreenBar,
+  useCurrentScreenBar,
+  type ScreenBar,
+} from '../../navigation/screen-bar'
 import {
   applyScreen,
   describeScreen,
@@ -116,6 +121,20 @@ export const NativePhoneNavigationBridge = () => {
       }),
     )
   }, [bar, layerKey, nativeIOSPhone])
+
+  // `nessie:screen-transition` — the bar runs the stack's motion beside it.
+  // Announced from the viewport's layout effect as the transition starts,
+  // which is *before* the incoming layer has mounted and published anything:
+  // the native side fills that lane when the descriptor arrives rather than
+  // restarting the animation.
+  useEffect(() => {
+    if (!nativeIOSPhone) return undefined
+    return onScreenTransition((transition) => {
+      ;(window as NativePhoneWindow).ReactNativeWebView?.postMessage(
+        JSON.stringify({ type: 'nessie:screen-transition', ...transition }),
+      )
+    })
+  }, [nativeIOSPhone])
 
   // The bar's Back is the header's own, not the resolver's, so the native
   // chevron runs the handler the live descriptor carries rather than

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { isAttentionMessage, isScreenBarMessage, isScreenMessage } from './native-shell-message'
+import {
+  isAttentionMessage,
+  isScreenBarMessage,
+  isScreenMessage,
+  isScreenTransitionMessage,
+} from './native-shell-message'
 import type { NativeShellMessage } from './native-shell-message'
 
 const VALID_SCREEN: NativeShellMessage = {
@@ -108,4 +113,37 @@ test('a malformed screen-bar message is refused rather than half-rendered', () =
     layerKey: 12,
   } as never), false)
   assert.equal(isScreenBarMessage({ type: 'nessie:screen', title: 'x' } as never), false)
+})
+
+test('a screen-transition message names both ends of the motion and its duration', () => {
+  assert.equal(isScreenTransitionMessage({
+    type: 'nessie:screen-transition',
+    direction: 'forward',
+    durationMs: 300,
+    from: 'channels:0:root:channels:/channels',
+    to: 'channels:1:channels:channel',
+  }), true)
+  // A released swipe settles over whatever travel remains, so zero and
+  // fractional durations are ordinary — reduced motion is zero.
+  assert.equal(isScreenTransitionMessage({
+    type: 'nessie:screen-transition',
+    direction: 'back',
+    durationMs: 0,
+    from: 'a:1:b',
+    to: 'a:0:c',
+  }), true)
+})
+
+test('a malformed screen-transition is refused rather than animating to nowhere', () => {
+  const valid = {
+    type: 'nessie:screen-transition',
+    direction: 'forward',
+    durationMs: 300,
+    from: 'a:0:b',
+    to: 'a:1:c',
+  }
+  assert.equal(isScreenTransitionMessage({ ...valid, direction: 'sideways' } as never), false)
+  assert.equal(isScreenTransitionMessage({ ...valid, durationMs: Number.NaN } as never), false)
+  assert.equal(isScreenTransitionMessage({ ...valid, to: undefined } as never), false)
+  assert.equal(isScreenTransitionMessage({ ...valid, type: 'nessie:screen-bar' } as never), false)
 })

@@ -27,8 +27,8 @@ import {
   refreshPhoneNavigationRoute,
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
-import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
-import { publishCurrentLayerKey } from '../../navigation/screen-bar'
+import { NAV_MOTION, runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { publishCurrentLayerKey, publishScreenTransition } from '../../navigation/screen-bar'
 import { beginStackTransition } from '../../navigation/transition-state'
 import { useReducedMotion } from '../../navigation/reduced-motion'
 import type { NavigationLayout } from '../../navigation/layout'
@@ -162,6 +162,18 @@ export const PhoneNavigationViewport = ({
     // A push closes the soft keyboard on purpose, not as a side effect of
     // the outgoing layer becoming inert.
     if (direction === 'forward') blurBeforePush(active)
+    // Announced as the transition starts, from this layout effect — ahead of
+    // the bridge's passive effect, and well ahead of the incoming layer
+    // mounting and publishing its own descriptor. Only `single` announces: a
+    // split layout's detail column is not the phone's one bar.
+    if (layout === 'single') {
+      publishScreenTransition({
+        direction,
+        durationMs: reducedMotion ? 0 : NAV_MOTION.durationMs,
+        from: fromLayerKey,
+        to: toLayerKey,
+      })
+    }
     transitionId.current += 1
     commitTransition({
       direction,
@@ -174,7 +186,7 @@ export const PhoneNavigationViewport = ({
       phase: direction === 'forward' && !reducedMotion ? 'preparing' : 'running',
       toLayerKey,
     })
-  }, [commitTransition, reducedMotion])
+  }, [commitTransition, layout, reducedMotion])
 
   // Route children are captured only after the route commits. Until this
   // layout effect, React continues to render the previous stack unchanged;
@@ -427,6 +439,21 @@ export const PhoneNavigationViewport = ({
   const gesture = usePhoneBackSwipeGesture({
     enabled: layout === 'single' && stack.currentIndex > 0 && transition === null && gestureArmed,
     onCommit: performGestureBack,
+    // The gesture's own settle, which `startTransition` never sees: the
+    // viewport suppresses the route animation because this already ran it.
+    // A cancel settles back to the layer it started from.
+    onSettleStart: (outcome, durationMs) => {
+      if (layout !== 'single') return
+      const top = stack.entries[stack.currentIndex]
+      const beneath = stack.entries[stack.currentIndex - 1]
+      if (!top || !beneath) return
+      publishScreenTransition({
+        direction: outcome === 'commit' ? 'back' : 'forward',
+        durationMs,
+        from: outcome === 'commit' ? top.layerKey : beneath.layerKey,
+        to: outcome === 'commit' ? beneath.layerKey : top.layerKey,
+      })
+    },
     reducedMotion,
     viewportRef,
   })

@@ -1,4 +1,14 @@
-import { ActionSheetIOS, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef } from 'react'
+import {
+  AccessibilityInfo,
+  ActionSheetIOS,
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { withOpacity } from '../lib/ipad-native-chrome'
@@ -8,6 +18,11 @@ import {
   partitionNativeScreenBarActions,
 } from '../lib/native-screen-bar'
 import {
+  currentNativeScreenBar,
+  nativeScreenBarTransitionLanes,
+  type NativeScreenBarState,
+} from '../lib/native-screen-bar-state'
+import {
   getNativePhoneHeaderHeight,
   type NativeScreenBar,
   type NativeScreenBarAction,
@@ -15,14 +30,25 @@ import {
 
 export type NativePhoneNavBarProps = {
   accentColor: string
+  barState: NativeScreenBarState
   headerSurface: string
   headerText: string
   landscape: boolean
   onAction: (id: string, itemId?: string) => void
   onBack: () => void
+  onTransitionEnd: () => void
   safeTop: number
-  screenBar: NativeScreenBar | null
 }
+
+// The stack's own curve and duration (admin/src/navigation/motion.ts). The bar
+// travels on the layers' curve or it is visibly a separate thing bolted above
+// them; the duration comes over the wire, because a released swipe settles
+// over whatever travel remains rather than a fixed 300ms.
+const NAV_EASING = Easing.bezier(0.22, 1, 0.36, 1)
+// How far a title slides while it crossfades. UIKit moves it a short distance
+// in the direction of travel; a full-width slide would read as a second
+// content layer rather than chrome.
+const TITLE_TRAVEL = 24
 
 /**
  * The navigation bar on a screen that is not a tab root.
@@ -41,16 +67,19 @@ export type NativePhoneNavBarProps = {
  * screen publishing, the bar is bare surface. A team switcher briefly flashing
  * above a conversation is worse than an empty band.
  */
-export const NativePhoneNavBar = ({
+const NavBarLanes = ({
   accentColor,
-  headerSurface,
   headerText,
-  landscape,
   onAction,
   onBack,
-  safeTop,
   screenBar,
-}: NativePhoneNavBarProps): React.JSX.Element => {
+}: {
+  accentColor: string
+  headerText: string
+  onAction: (id: string, itemId?: string) => void
+  onBack: () => void
+  screenBar: NativeScreenBar | null
+}): React.JSX.Element => {
   const back = screenBar?.back ?? null
   const title = screenBar?.title ?? ''
   const { overflow, primary } = partitionNativeScreenBarActions(screenBar?.actions ?? [])
@@ -94,17 +123,7 @@ export const NativePhoneNavBar = ({
   }
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[
-        styles.bar,
-        {
-          backgroundColor: headerSurface,
-          height: safeTop + getNativePhoneHeaderHeight(landscape),
-        },
-      ]}
-    >
-      <View style={[styles.content, { paddingTop: safeTop }]}>
+    <View style={styles.content}>
         <View style={styles.leading}>
           {back ? (
             <Pressable
@@ -178,6 +197,130 @@ export const NativePhoneNavBar = ({
             </Pressable>
           ) : null}
         </View>
+    </View>
+  )
+}
+
+/**
+ * The bar, and the stack transition it runs alongside.
+ *
+ * Two lanes, crossfaded: the layer being left and the layer being travelled
+ * to. It cannot be one lane updated at the end, because the layers move for
+ * 300ms and a bar that changed only when they landed would read as a separate
+ * thing above them — and it cannot be one lane updated at the start, because
+ * on a forward push the incoming descriptor has not arrived yet and the bar
+ * would blank for a frame before filling.
+ */
+export const NativePhoneNavBar = ({
+  accentColor,
+  barState,
+  headerSurface,
+  headerText,
+  landscape,
+  onAction,
+  onBack,
+  onTransitionEnd,
+  safeTop,
+}: NativePhoneNavBarProps): React.JSX.Element => {
+  const lanes = nativeScreenBarTransitionLanes(barState)
+  const resting = currentNativeScreenBar(barState)
+  const transition = barState.transition
+  const progress = useRef(new Animated.Value(1)).current
+  const reduceMotion = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => { if (!cancelled) reduceMotion.current = enabled })
+      .catch(() => undefined)
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      (enabled) => { reduceMotion.current = enabled },
+    )
+    return () => { cancelled = true; subscription.remove() }
+  }, [])
+
+  // Keyed on the transition itself, so a descriptor arriving late for the
+  // incoming lane fills it without restarting the motion.
+  const transitionKey = transition ? `${transition.from}->${transition.to}` : null
+  useEffect(() => {
+    if (!transition) return undefined
+    progress.setValue(0)
+    const animation = Animated.timing(progress, {
+      duration: reduceMotion.current ? 0 : transition.durationMs,
+      easing: NAV_EASING,
+      toValue: 1,
+      useNativeDriver: true,
+    })
+    animation.start(({ finished }) => { if (finished) onTransitionEnd() })
+    return () => animation.stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress, transitionKey])
+
+  const forward = transition?.direction === 'forward'
+  const outgoingStyle = {
+    opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+    transform: [{
+      translateX: progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, forward ? -TITLE_TRAVEL : TITLE_TRAVEL],
+      }),
+    }],
+  }
+  const incomingStyle = {
+    opacity: progress,
+    transform: [{
+      translateX: progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [forward ? TITLE_TRAVEL : -TITLE_TRAVEL, 0],
+      }),
+    }],
+  }
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.bar,
+        {
+          backgroundColor: headerSurface,
+          height: safeTop + getNativePhoneHeaderHeight(landscape),
+        },
+      ]}
+    >
+      <View style={[styles.lanes, { paddingTop: safeTop }]} pointerEvents="box-none">
+        {lanes ? (
+          <>
+            <Animated.View pointerEvents="none" style={[styles.lane, outgoingStyle]}>
+              <NavBarLanes
+                accentColor={accentColor}
+                headerText={headerText}
+                onAction={onAction}
+                onBack={onBack}
+                screenBar={lanes.outgoing}
+              />
+            </Animated.View>
+            <Animated.View style={[styles.lane, incomingStyle]}>
+              <NavBarLanes
+                accentColor={accentColor}
+                headerText={headerText}
+                onAction={onAction}
+                onBack={onBack}
+                screenBar={lanes.incoming}
+              />
+            </Animated.View>
+          </>
+        ) : (
+          <View style={styles.lane}>
+            <NavBarLanes
+              accentColor={accentColor}
+              headerText={headerText}
+              onAction={onAction}
+              onBack={onBack}
+              screenBar={resting}
+            />
+          </View>
+        )}
       </View>
     </View>
   )
@@ -199,6 +342,8 @@ const styles = StyleSheet.create({
     height: '100%',
     paddingHorizontal: 12,
   },
+  lane: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
+  lanes: { flex: 1 },
   // The two side lanes share a width so the title sits on the bar's centre
   // line rather than the centre of whatever is left over.
   leading: { alignItems: 'flex-start', flexBasis: 0, flexGrow: 1, minWidth: 0 },

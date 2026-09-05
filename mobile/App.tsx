@@ -103,11 +103,15 @@ import {
   isAuthGateRoute,
   isFullScreenTaskRoute,
   type LastKnownScreen,
-  type NativeScreenBar,
   shouldShowNativePhoneNavBar,
   shouldShowNativePhoneRootLanes,
 } from './src/lib/native-shell-layout'
 import { tabIndexForSection } from './src/lib/tabs'
+import {
+  currentNativeScreenBar,
+  DEFAULT_NATIVE_SCREEN_BAR_STATE,
+  reduceNativeScreenBar,
+} from './src/lib/native-screen-bar-state'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
@@ -187,10 +191,15 @@ const Shell = (): React.JSX.Element => {
   // bookkeeping (boot recovery, notification/push registration), which is a
   // separate concern from tab selection and root-ness.
   const [lastKnownScreen, setLastKnownScreen] = useState<LastKnownScreen>(DEFAULT_LAST_KNOWN_SCREEN)
-  // What the native navigation bar shows, straight from the admin's own
-  // per-layer descriptor. Null until the first `nessie:screen-bar` of a cold
-  // start arrives, which is why the band renders bare rather than guessing.
-  const [screenBar, setScreenBar] = useState<NativeScreenBar | null>(null)
+  // What the native navigation bar shows, and what it is moving between: a
+  // descriptor per layer, because a transition needs both ends of it. Empty
+  // until the first `nessie:screen-bar` of a cold start arrives, which is why
+  // the band renders bare rather than guessing.
+  const [screenBarState, dispatchScreenBar] = useReducer(
+    reduceNativeScreenBar,
+    DEFAULT_NATIVE_SCREEN_BAR_STATE,
+  )
+  const screenBar = currentNativeScreenBar(screenBarState)
   // Once a `nessie:screen` message has arrived it is authoritative for
   // hardware Back consumption; a `nessie:back-state` kept around during the
   // admin's transition no longer overrides it (native-shell-message-handler.ts).
@@ -437,7 +446,8 @@ const Shell = (): React.JSX.Element => {
       setCurrentPath,
       setIndex,
       setLastKnownScreen,
-      setScreenBar,
+      setScreenBar: (bar) => { if (bar) dispatchScreenBar({ bar, kind: 'bar' }) },
+      startScreenBarTransition: (transition) => dispatchScreenBar({ kind: 'transition', transition }),
       triggerHaptic,
     })
   }
@@ -615,13 +625,14 @@ const Shell = (): React.JSX.Element => {
       ) : showNativePhoneNavBar ? (
         <NativePhoneNavBar
           accentColor={accent}
+          barState={screenBarState}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
           landscape={largePhoneLandscape}
           onAction={nativeActions.runScreenBarAction}
           onBack={nativeActions.runScreenBarBack}
+          onTransitionEnd={() => dispatchScreenBar({ kind: 'transition-end' })}
           safeTop={insets.top}
-          screenBar={screenBar}
         />
       ) : null}
 

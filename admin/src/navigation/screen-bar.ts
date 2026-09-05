@@ -237,3 +237,37 @@ export const resetScreenBars = (): void => {
   currentLayerKey = null
   notify()
 }
+
+/**
+ * A stack transition, for the native bar to run alongside the layers.
+ *
+ * The bar cannot animate off `nessie:screen-bar` alone: that says what the
+ * current layer is, not that it is *moving*, and on a forward push it arrives
+ * before the incoming layer has even mounted. So the viewport announces the
+ * transition as it starts it — from the layout effect, ahead of the bridge's
+ * passive effect — and the native side animates between two descriptors it
+ * already holds.
+ *
+ * `from` and `to` are layer keys. The incoming layer's descriptor may not
+ * exist yet when this fires (its header publishes a render later); the native
+ * reducer fills that lane late rather than restarting the animation.
+ */
+export type ScreenTransition = {
+  direction: 'back' | 'forward'
+  durationMs: number
+  from: string
+  to: string
+}
+
+const transitionListeners = new Set<(transition: ScreenTransition) => void>()
+
+export const onScreenTransition = (
+  listener: (transition: ScreenTransition) => void,
+): (() => void) => {
+  transitionListeners.add(listener)
+  return () => { transitionListeners.delete(listener) }
+}
+
+export const publishScreenTransition = (transition: ScreenTransition): void => {
+  for (const listener of transitionListeners) listener(transition)
+}

@@ -45,6 +45,7 @@ const buildInput = () => {
     },
     setLastKnownScreen: (screen: LastKnownScreen) => { state.lastKnownScreen = screen },
     setScreenBar: (bar: NativeScreenBar | null) => { state.screenBar = bar },
+    startScreenBarTransition: () => undefined,
     setNativeVoiceCallMuted: (muted: boolean) => {
       state.voiceCalls.push({ action: 'mute', detail: muted })
     },

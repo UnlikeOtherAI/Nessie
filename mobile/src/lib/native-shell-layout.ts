@@ -93,6 +93,14 @@ export type NativeScreenBarAction = {
   tone: 'danger' | null
 }
 
+/** A stack transition the bar runs alongside — see native-shell-message.ts. */
+export type NativeScreenBarTransition = {
+  direction: 'back' | 'forward'
+  durationMs: number
+  from: string
+  to: string
+}
+
 export type NativeScreenBar = {
   actions: NativeScreenBarAction[]
   back: { label: string } | null

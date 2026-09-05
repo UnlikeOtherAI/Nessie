@@ -13,6 +13,10 @@ export type ScreenType = 'root' | 'detail' | 'nested' | 'tabHost' | 'flow'
 export type NativeShellMessage = {
   accent?: string
   actions?: unknown
+  direction?: string
+  durationMs?: number
+  from?: string
+  to?: string
   back?: { label?: unknown } | null
   layerKey?: string | null
   accentStrong?: string
@@ -157,3 +161,30 @@ export const isScreenBarMessage = (message: NativeShellMessage): message is Scre
   // names, and a bar that quietly lost one would look complete.
   && Array.isArray(message.actions)
   && message.actions.every(isScreenBarAction)
+
+/**
+ * `nessie:screen-transition` — the stack is moving, so the bar moves with it.
+ *
+ * `from` and `to` are layer keys. The bar cannot animate off `nessie:screen-bar`
+ * alone: that says which layer is current, not that it is changing, and on a
+ * forward push it arrives before the incoming layer has mounted. The incoming
+ * descriptor may therefore not have been posted yet — that lane fills late
+ * rather than restarting the animation.
+ */
+export type ScreenTransitionMessage = NativeShellMessage & {
+  direction: 'back' | 'forward'
+  durationMs: number
+  from: string
+  to: string
+  type: 'nessie:screen-transition'
+}
+
+export const isScreenTransitionMessage = (
+  message: NativeShellMessage,
+): message is ScreenTransitionMessage =>
+  message.type === 'nessie:screen-transition'
+  && (message.direction === 'back' || message.direction === 'forward')
+  && typeof message.durationMs === 'number'
+  && Number.isFinite(message.durationMs)
+  && typeof message.from === 'string'
+  && typeof message.to === 'string'

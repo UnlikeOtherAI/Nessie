@@ -43,6 +43,12 @@ type UsePhoneBackSwipeGestureOptions = {
   // executes the same immutable route Back action as the shared button, so a
   // local action mounting during the settle cannot steal the gesture.
   onCommit: () => void
+  // Called once when the release settle begins, with the outcome it is
+  // settling to and how long that will take. The native navigation bar runs
+  // its own crossfade on this: `startTransition` never fires for a
+  // swipe-committed pop, because the viewport suppresses the animation this
+  // gesture has already run.
+  onSettleStart?: (outcome: 'cancel' | 'commit', durationMs: number) => void
   reducedMotion: boolean
   viewportRef: RefObject<HTMLDivElement | null>
 }
@@ -80,6 +86,7 @@ const findTrackedTouch = (
 export const usePhoneBackSwipeGesture = ({
   enabled,
   onCommit,
+  onSettleStart,
   reducedMotion,
   viewportRef,
 }: UsePhoneBackSwipeGestureOptions): PhoneBackSwipeGestureState => {
@@ -91,6 +98,8 @@ export const usePhoneBackSwipeGesture = ({
   enabledRef.current = enabled
   const onCommitRef = useRef(onCommit)
   onCommitRef.current = onCommit
+  const onSettleStartRef = useRef(onSettleStart)
+  onSettleStartRef.current = onSettleStart
   const reducedMotionRef = useRef(reducedMotion)
   reducedMotionRef.current = reducedMotion
   const settleRef = useRef<PhoneBackSwipeSettle | null>(null)
@@ -156,6 +165,7 @@ export const usePhoneBackSwipeGesture = ({
         reducedMotion: reducedMotionRef.current,
       })
       settleRun = run
+      onSettleStartRef.current?.(outcome, run.durationMs)
       endSettleTransition = beginStackTransition()
       void run.finished.then(() => {
         if (settleRun !== run) return
