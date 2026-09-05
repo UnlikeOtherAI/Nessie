@@ -1,6 +1,13 @@
 # Connected-account mail surface
 
-Status: implemented and verified (2026-09-04)
+Status: implemented; verified with the gaps recorded below (2026-09-05)
+
+Correction (2026-09-05): the previous record read "implemented and verified" and
+restated claims this repository does not support. An adversarial review found a
+stored XSS in the shared mail sanitizer, an unpinned `mailbox_send` approval, a
+Gmail undo-hold bypass, and unbounded IMAP response aggregation; all four are
+fixed, and the verification record below now separates what is proven by a test
+from what is not.
 
 Implementation note (2026-09-04): the live provider, entitlement, REST,
 `/mail`, and agent-presentation slices are implemented for Gmail and
@@ -100,13 +107,21 @@ an opaque thread token, but it does not persist messages or a second mailbox.
 
 #### Threading and paging contract
 
-Gmail uses its native thread identity and opaque `nextPageToken`. IMAP uses
-`THREAD=REFERENCES` when the server advertises that capability. Otherwise one
-page load fetches a bounded newest-first header window, builds reference-linked
+Gmail uses its native thread identity and opaque `nextPageToken`. IMAP threading
+is always structural, in this slice: every page load fetches a bounded
+newest-first header window, builds reference-linked
 threads inside that window, and orders them by the newest member visible in the
 window. An older page may reveal earlier members of the same conversation; the
 UI says **Earlier messages** rather than claiming that every provider has
 returned an exhaustive thread.
+
+`ImapSession` carries `capabilities()` and `threadReferencesUids` for a future
+server-side `THREAD=REFERENCES` path, but **no production code calls them**: the
+structural window above is the only threading this slice performs, on every
+server. Deciding whether to adopt native threading is deliberately left open —
+it interacts with the thread-token and cursor design, which are both built
+around the window model. Until it is wired, treat those helpers and their tests
+as unreached.
 
 An IMAP thread token is a compact, signed, list-issued capability bound to the
 account, folder, selected `UIDVALIDITY`, structural root digest, and stable
@@ -443,14 +458,22 @@ of the Gmail source draft after direct send.
 
 - Package tests run through Turbo, with `DATABASE_URL` exported when present.
 - Root lint, typecheck, and lint-gated build pass.
-- API tests prove personal-owner, shared-team-member, manager, cross-org, stale
-  membership, missing capability, credential rejection, no-store, and audit
-  redaction cases; every mutation also refuses a foreign/missing browser origin,
-  non-JSON or empty bodies, and a client-supplied From.
+- API tests prove missing capability, Gmail credential rejection, no-store on
+  the account and send-action reads, and a client-supplied From (asserted by
+  error code against a payload that is otherwise complete). The mutation
+  origin/JSON/empty-body refusals are proven on `POST /drafts`; the other two
+  mutations share the one guard but are not separately exercised.
+  **Not covered by a test:** cross-org, stale membership and manager access at
+  `/api/mail` (the account-scoping `where` is asserted, not evaluated against
+  seeded rows); IMAP credential rejection; and human-send audit redaction, since
+  no API test reaches a successful send. `mail_present`'s deactivated-owner and
+  non-member cases *are* covered, but that is the agent path, not the route.
 - Provider tests cover Gmail page tokens and thread reads; IMAP threading covers
   references, replies, unlinked same-subject mail, unread flags, ordering, and
   counted-literal inputs, window boundaries, `UIDVALIDITY`, stable thread tokens,
-  and `THREAD=REFERENCES` capability fallback.
+  and the per-command response budget that bounds a hostile server. The
+  `THREAD=REFERENCES` helpers are tested but unreached by production code (see
+  "Threading and paging contract").
 - Admin tests cover route totality, deep links, Back behavior, selected thread,
   account/filter URL state, session-only search, compose draft isolation and
   exclusion of provider quotes, Gmail draft open,
@@ -467,6 +490,14 @@ of the Gmail source draft after direct send.
   `aria-selected`, a non-colour unread indicator, keyboard use of remote-content
   reveal, reduced motion, layout at 200% zoom, and the owning `/approvals`
   mail-send preview before approval.
+- **Weaknesses in this suite, recorded rather than implied away.** Several
+  admin assertions match the component's *source text* rather than rendering it,
+  so a refactor that preserves the strings and breaks the behaviour stays green.
+  The reduced-motion and 200%-zoom steps capture a screenshot without asserting
+  on it. The `Unread` filter is never clicked, so `unreadOnly` has no end-to-end
+  coverage. The e2e fixture's send response does not match the route's actual
+  shape. Every `/api/**` call is intercepted in the browser, so this job gates
+  the UI against fixtures — no API or provider code runs in it.
 
 ## Deliberate non-goals for this slice
 
