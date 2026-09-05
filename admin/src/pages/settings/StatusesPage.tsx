@@ -41,7 +41,8 @@ export const StatusesPage = () => {
   const phoneLayout = usePhoneLayout()
   const redirect = useRedirect()
   const statuses = useStatuses()
-  const statusRows = statuses.data ?? []
+  // Memoised so the empty-array fallback is not a fresh literal every render.
+  const statusRows = useMemo(() => statuses.data ?? [], [statuses.data])
   const { data: channels = [] } = useChannels()
   const { data: projects = [] } = useProjects()
   const { data: agents = [] } = useAgents()
@@ -92,6 +93,8 @@ export const StatusesPage = () => {
     setAgentEnabled(selectedStatus?.agentEnabled ?? false)
     setAgentInstructions(selectedStatus?.agentInstructions ?? '')
     setSaveError(undefined)
+    // The four fields are read at this render, never depended on — see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStatus?.id])
 
   const createStatusSubmit = async (event: FormEvent<HTMLFormElement>) => {

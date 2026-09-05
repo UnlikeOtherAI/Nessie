@@ -96,7 +96,11 @@ test('the chat doorway uses session-only offer state and shared dialog navigatio
   assert.match(doorway, /useConnectedMailAccounts/)
   assert.match(doorway, /MailSurfaceDoorwayMetadataSchema/)
   assert.match(doorway, /open && Boolean\(account\)/)
-  assert.match(doorway, /accounts\.refetch\(\{ throwOnError: true \}\)/)
+  // The entitlement recheck goes through the accounts query's throwing refetch,
+  // held as a stable handle so the offer effect is not restarted by every
+  // account-list change (react-hooks/exhaustive-deps).
+  assert.match(doorway, /const refetchAccounts = accounts\.refetch/)
+  assert.match(doorway, /refetchAccounts\(\{ throwOnError: true \}\)/)
   // Which doorway owns the overlay is module state, not sessionStorage: a
   // reload does not run effect cleanup, so a stored marker outlived it and
   // disabled auto-open for the rest of the tab. The per-message "offered"

@@ -188,7 +188,14 @@ export const useWorkflowGraphIo = ({
       nodes: draft.nodes,
       workflowName: draft.workflowName.trim(),
     })
-  }, [workflowTemplateId])
+  }, [
+    nextInsertOffsetRef,
+    setConnections,
+    setNodes,
+    setSelectedNodeId,
+    setWorkflowName,
+    workflowTemplateId,
+  ])
 
   useEffect(() => {
     if (!workflowTemplateId || !workflowTemplate) {
@@ -223,7 +230,16 @@ export const useWorkflowGraphIo = ({
     })
     lastStoredDraftSignatureRef.current = null
     clearWorkflowDraft(workflowTemplateId)
-  }, [workflowTemplate, workflowTemplateId])
+  }, [
+    canvasRef,
+    nextInsertOffsetRef,
+    setConnections,
+    setNodes,
+    setSelectedNodeId,
+    setWorkflowName,
+    workflowTemplate,
+    workflowTemplateId,
+  ])
 
   const persistWorkflow = useCallback(
     async (mode: 'auto' | 'manual' | 'overwrite') => {

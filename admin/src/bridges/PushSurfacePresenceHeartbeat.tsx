@@ -77,7 +77,7 @@ export const PushSurfacePresenceHeartbeat = () => {
   const heartbeatSequence = useRef(Date.now() * 1_000)
   const surface = useMemo(
     () => resolvePushSurface(location.pathname),
-    [location.pathname, location.search],
+    [location.pathname],
   )
   const route = useMemo(
     () => ({ pathname: location.pathname, search: location.search }),

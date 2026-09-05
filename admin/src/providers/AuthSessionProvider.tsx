@@ -233,7 +233,11 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
         refresh: authApi.refresh,
       }),
     // coordinatorGeneration is not read inside the factory; it only re-runs
-    // the memo after the previous coordinator went terminal.
+    // the memo after the previous coordinator went terminal. That is exactly
+    // the "unnecessary dependency" exhaustive-deps objects to, and removing it
+    // would leave a retired coordinator in place — so the rule is silenced for
+    // this array only. Every other entry here is a real read: keep them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ambientRefreshGate, applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
   )
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
@@ -251,7 +255,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       return Promise.resolve(null)
     }
     return sessionMutations.reconcile()
-  }, [sessionMode, sessionMutations, token])
+  }, [ambientRefreshGate, sessionMode, sessionMutations, token])
 
   const refreshAccessToken = useCallback(async (
     expected?: SessionCredentialSnapshot,
@@ -271,7 +275,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       await clearImportedSession(currentToken)
     }
     return null
-  }, [clearImportedSession, sessionMutations])
+  }, [ambientRefreshGate, clearImportedSession, sessionMutations])
 
   const readSessionCredential = useCallback((): SessionCredentialSnapshot => {
     const currentToken = tokenRef.current

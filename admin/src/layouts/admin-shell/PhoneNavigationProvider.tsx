@@ -101,10 +101,12 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
   // for actions dispatched from events.
   const [ledger, setLedger] = useState<PhoneHistoryLedger>(ledgerRef.current)
 
-  // Record in a layout effect (never mutate refs during render): every commit
-  // folds its location into the ledger before paint, so an action dispatched
-  // from an event after commit always reads the current location. The
-  // reducer is idempotent, so a StrictMode double-effect records nothing twice.
+  // Record in a layout effect (never mutate refs during render): every
+  // navigation folds its location into the ledger before paint, so an action
+  // dispatched from an event after commit always reads the current location.
+  // The reducer is idempotent, so a StrictMode double-effect records nothing
+  // twice, and `location`/`navigationType` are the reducer's only inputs — a
+  // commit that changes neither has nothing to record.
   useLayoutEffect(() => {
     const next = recordPhoneHistory(
       ledgerRef.current ?? createPhoneHistoryLedger(location.key, fullPath(location)),
@@ -116,7 +118,7 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
       ledgerRef.current = next
       setLedger(next)
     }
-  })
+  }, [location, navigationType])
 
   const stateRef = useRef({ localBack, location, navigate })
   useLayoutEffect(() => {

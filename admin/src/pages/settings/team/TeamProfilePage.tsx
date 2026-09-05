@@ -38,9 +38,13 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  // Seed the input from the loaded team once per team id. Keying on the whole
+  // record would let a background refetch clobber an unsaved rename, so `team`
+  // is read at this render rather than depended on.
   const teamId = team?.id
   useEffect(() => {
     if (team) setName(team.name)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId])
 
   const externallyManaged = team?.externallyManaged ?? false

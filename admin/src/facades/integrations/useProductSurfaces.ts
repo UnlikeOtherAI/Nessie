@@ -113,6 +113,9 @@ export const useProductSurfaces = (): ProductSurfaceRegistry => {
       isLoading: productsQuery.isLoading || manifestsLoading,
     }
     // Keyed on `manifestSignature` (stable manifest content) rather than the
-    // per-render `manifestQueries` identity, plus the loading flags.
+    // per-render `manifestQueries` identity, plus the loading flags: useQueries
+    // hands back a new array every render, so depending on it would make this
+    // memo recompute unconditionally.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, manifestSignature, manifestsLoading, productsQuery.isLoading])
 }

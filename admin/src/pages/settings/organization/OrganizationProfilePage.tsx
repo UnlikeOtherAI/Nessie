@@ -34,6 +34,8 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
     if (organization) {
       setName(organization.name)
     }
+    // `organization` is read at this render, never a dependency — see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId])
 
   const saveName = async (event: FormEvent<HTMLFormElement>) => {

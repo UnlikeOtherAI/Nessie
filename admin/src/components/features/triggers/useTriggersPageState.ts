@@ -95,7 +95,9 @@ export const useTriggersPageState = (): TriggersPageState => {
   // refusal is <OwnerGate>, which asks the same question of the same session.
   const isOwner = useIsOwner()
   const triggersQuery = useTriggers(isOwner)
-  const triggers = triggersQuery.data ?? []
+  // Memoised: the empty-array fallback would otherwise be a fresh literal on
+  // every render, and the sort/filter memos below key off this identity.
+  const triggers = useMemo(() => triggersQuery.data ?? [], [triggersQuery.data])
   const triggersPending = triggersQuery.isPending
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
@@ -269,7 +271,7 @@ export const useTriggersPageState = (): TriggersPageState => {
     }
 
     return undefined
-  }, [selectedTrigger])
+  }, [createTargetAgentId, selectedTrigger])
 
   return {
     agents,

@@ -41,7 +41,11 @@ export const AgentMailboxPage = () => {
   const mailboxQuery = useAgentMailbox(agentId)
   const conversationsQuery = useMailboxConversations(agentId, filter)
 
-  const conversations = conversationsQuery.data?.data ?? []
+  // Memoised so the empty-array fallback is not a fresh literal every render.
+  const conversations = useMemo(
+    () => conversationsQuery.data?.data ?? [],
+    [conversationsQuery.data?.data],
+  )
   const selectedId = searchParams.get('conversation') ?? conversations[0]?.id
   const messagesQuery = useMailboxConversation(agentId, selectedId)
 

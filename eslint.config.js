@@ -1,5 +1,6 @@
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
+import reactHooksPlugin from 'eslint-plugin-react-hooks'
 
 // Shared with the navigation-gate blocks below (docs/navigation/overview.md §4.18):
 // ESLint flat config replaces a rule's whole value — including every
@@ -37,6 +38,21 @@ const SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX = {
     "scrollIntoView() inside useLayoutEffect can run while the screen is parked "
     + "off-screen mid-push and scroll the clipped stack container itself — see "
     + 'docs/navigation/overview.md §2. Move the call to useEffect, or drop the layout timing.',
+}
+
+// React hook correctness gate (AGENTS.md → "Linting"): the plugin
+// ships a `configs.flat['recommended-latest']` preset, but that preset also
+// turns on the react-compiler diagnostics (set-state-in-effect,
+// immutability, …) which are a separate, much larger conversation. Only the
+// two hook-correctness rules are registered here, and both at 'error' —
+// admin's lint script is `--max-warnings 0`, so 'warn' would fail the build
+// anyway and would only hide the severity from a reader of this file.
+// Rules set: 'react-hooks/*' only, so this block cannot clobber the
+// admin-scoped 'no-restricted-syntax' gates below (see the note on
+// FORWARDED_HEADER_RESTRICTED_SYNTAX above).
+const REACT_HOOKS_RULES = {
+  'react-hooks/rules-of-hooks': 'error',
+  'react-hooks/exhaustive-deps': 'error',
 }
 
 export default [
@@ -434,5 +450,23 @@ export default [
         },
       ],
     },
+  },
+  {
+    // Every React tree in the repo: admin's app and its node:test suite, plus
+    // the shared sign-in surface. packages/client-core is deliberately absent —
+    // it is framework-free (no hook, no JSX) and registering the plugin there
+    // would claim a React dependency it does not have.
+    files: [
+      'admin/src/**/*.ts',
+      'admin/src/**/*.tsx',
+      'admin/test/**/*.ts',
+      'admin/test/**/*.tsx',
+      'packages/sign-in-surface/src/**/*.ts',
+      'packages/sign-in-surface/src/**/*.tsx',
+    ],
+    plugins: {
+      'react-hooks': reactHooksPlugin,
+    },
+    rules: REACT_HOOKS_RULES,
   },
 ]

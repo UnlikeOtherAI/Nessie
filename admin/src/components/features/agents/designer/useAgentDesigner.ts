@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { findModelOption } from './model-options'
@@ -99,7 +99,13 @@ export const useAgentDesigner = (
   // Local only: a debounced PUT would publish an agent's behaviour to every
   // channel it is bound to on every keystroke, and creating one needs a model
   // the form may not have yet, so Save stays the deliberate act.
-  const baseline: AgentFormState = { ...DEFAULT_STATE, ...initialState }
+  // Memoised on `initialState` (itself memoised by AgentDesignerPage), so the
+  // mirror effect below can depend on it honestly instead of on a fresh object
+  // every render.
+  const baseline: AgentFormState = useMemo(
+    () => ({ ...DEFAULT_STATE, ...initialState }),
+    [initialState],
+  )
   const formDraft = useDraft<AgentFormState>(draftKey('agent-designer', agentId ?? 'new'), {
     initial: baseline,
     isEmpty: (value) => sameAsBaseline(value, baseline),
@@ -114,7 +120,10 @@ export const useAgentDesigner = (
     restoredRevisionRef.current = draftRevision
     if (draftRevision === 0) return
     dispatch({ state: draftState, type: 'restore' })
-    // The draft's own replacements only; typing goes the other way.
+    // The draft's own replacements only; typing goes the other way, so
+    // `draftState` — which changes on every keystroke — is deliberately not a
+    // dependency: depending on it would restore the reducer from its own echo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftRevision])
 
   // An untouched form is never mirrored: on mount the reducer still holds the
@@ -131,8 +140,7 @@ export const useAgentDesigner = (
     if (untouched && !mirrorDirtyRef.current && draftRevision === 0) return
     mirrorDirtyRef.current = true
     setFormDraft(state)
-    // `baseline` is rebuilt every render; its content is what matters.
-  }, [draftRevision, setFormDraft, state])
+  }, [baseline, draftRevision, setFormDraft, state])
 
   const setName = useCallback((name: string) => dispatch({ type: 'set_name', name }), [])
   const setRole = useCallback((role: string) => dispatch({ type: 'set_role', role }), [])

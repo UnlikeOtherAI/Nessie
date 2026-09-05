@@ -140,9 +140,12 @@ const AuthenticatedAdminShellLayout = () => {
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
   const nativePhoneApp = useNativePhoneApp();
   const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
+  // The callback, not `shell`: the shell object is rebuilt every render, so an
+  // effect depending on it would close the drawer on every render.
+  const closeMobileDrawer = shell.closeMobileDrawer;
   useEffect(() => {
-    if (showPhoneTabRoot) shell.closeMobileDrawer();
-  }, [shell.closeMobileDrawer, showPhoneTabRoot]);
+    if (showPhoneTabRoot) closeMobileDrawer();
+  }, [closeMobileDrawer, showPhoneTabRoot]);
 
   const isComposeRoute = shell.pathname === '/channels/new';
   // The web tab bar is only for mobile *web*; the native app draws its own

@@ -103,7 +103,9 @@ export const ChannelUserInfoDrawer = ({
   }, [openDirectMessage, target])
 
   const messageHistory = useThreadMessages(dmChannel?.defaultThreadId)
-  const threadMessages = messageHistory.data ?? []
+  // Memoised so the empty-array fallback is not a fresh literal on every
+  // render — three memos and a virtualiser below key off this identity.
+  const threadMessages = useMemo(() => messageHistory.data ?? [], [messageHistory.data])
   const { pendingMessages } = useThreadStream(dmChannel?.defaultThreadId)
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
   const agentMap = useMemo(

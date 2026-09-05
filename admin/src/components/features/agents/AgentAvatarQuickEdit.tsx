@@ -100,7 +100,7 @@ export const AgentAvatarQuickEdit = ({
     if (preview) setGenerated(preview)
   }
 
-  const useGenerated = async () => {
+  const handleUseGenerated = async () => {
     if (!generated) return
     if (await avatarChanges.replace(generated)) close()
   }
@@ -164,7 +164,7 @@ export const AgentAvatarQuickEdit = ({
               <button
                 className="admin-button admin-button-primary flex-1"
                 disabled={avatarChanges.isReplacing}
-                onClick={() => void useGenerated()}
+                onClick={() => void handleUseGenerated()}
                 type="button"
               >
                 {avatarChanges.isReplacing ? 'Saving…' : 'Use this'}

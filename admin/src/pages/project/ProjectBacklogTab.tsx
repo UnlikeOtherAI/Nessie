@@ -174,7 +174,9 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   const isOwner = useIsOwner()
   const iterationsQuery = useIterations(projectId)
   const tasksQuery = useTasks(projectId)
-  const iterations = iterationsQuery.data ?? []
+  // Memoised so the empty-array fallback is not a fresh literal every render;
+  // the planning/completed memos below key off this identity.
+  const iterations = useMemo(() => iterationsQuery.data ?? [], [iterationsQuery.data])
   const tasks = tasksQuery.data ?? []
   const createIteration = useCreateIteration(projectId)
   const [newName, setNewName] = useState('')

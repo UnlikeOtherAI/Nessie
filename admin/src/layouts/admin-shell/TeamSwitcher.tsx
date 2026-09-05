@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -86,11 +86,14 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   // never withheld.
   const canCreateTeam = isAdminRole(organization?.role)
 
-  const toggleMenu = (): void => {
+  // Memoised because the native-bridge effect below installs it on `window`:
+  // the effect depends on this identity rather than re-deriving which pieces
+  // of busy state the closure happens to read.
+  const toggleMenu = useCallback((): void => {
     if (busyTeamId !== null || busyInviteId !== null) return
     setSwitchError(null)
     toggle()
-  }
+  }, [busyInviteId, busyTeamId, toggle])
 
   const closeMenu = (): void => {
     if (busyTeamId === null && busyInviteId === null) close()
@@ -224,7 +227,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       delete target.__nessieToggleTeamMenu
       delete target.__nessieToggleWorkspaceMenu
     }
-  }, [busyTeamId, variant])
+  }, [toggleMenu, variant])
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return

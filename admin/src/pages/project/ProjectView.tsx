@@ -32,8 +32,6 @@ export const ProjectView = () => {
   const [activeBoardId, selectBoard] = useTabParam('board', boardIds, defaultBoardId)
   const board = boards.find((item) => item.id === activeBoardId) ?? null
 
-  if (!projectId) return null
-
   const project = projects.find((p) => p.id === projectId)
   // Backlog and Insights are project-level, so they appear when *any* board of
   // this project runs sprints — not only when the one on screen does.
@@ -41,6 +39,11 @@ export const ProjectView = () => {
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
+
+  // `projectId` only goes missing on a malformed URL, and the guard sits below
+  // every hook so the hook order never depends on it (rules-of-hooks). The
+  // queries above already no-op on an undefined id.
+  if (!projectId) return null
   // A project's sections are chosen in the Projects sidebar, which draws them
   // as the project's subpages (`navigation/project-sections.ts`). The header
   // carries no section dropdown: two doorways to the same seven routes only
