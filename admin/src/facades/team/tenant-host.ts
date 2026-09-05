@@ -11,11 +11,14 @@ import { useApiClient } from '../../providers/ApiClientProvider'
  * base domain configured — resolves to `null` and the app behaves exactly as it
  * always has.
  *
- * The request is deliberately made without requiring a session: the branded
- * landing page has to render for somebody who is not signed in yet, which is
- * the entire point of it. The server answers an anonymous caller with the
- * organisation's public name and mark only — never the ids that would let a
- * client switch into a team.
+ * `useTenantHost` needs no session: the branded landing page has to render for
+ * somebody not signed in yet, which is the entire point of it. That endpoint
+ * answers about the ORGANISATION only and has no access to a team id, so it
+ * cannot leak one.
+ *
+ * `useTenantTeam` is the authenticated other half — the ids behind a team
+ * hostname, fetched only when there is a session to switch. Resolving is still
+ * not authorization: the switch that follows re-checks live membership.
  */
 
 export type TenantOrganisation = {
@@ -33,7 +36,8 @@ export type TenantTeam = {
 export type TenantHost =
   | { kind: null }
   | {
-      kind: 'organisation'
+      /** `organisation` is a tenant's portal; `team` is a team inside one. */
+      kind: 'organisation' | 'team'
       organisation: TenantOrganisation
       /**
        * The product's canonical origin, where sign-in happens. A tenant host is
@@ -41,13 +45,6 @@ export type TenantHost =
        * byte-for-byte and tenant hostnames are made at runtime — so a
        * signed-out visitor is handed off there and returned here.
        */
-      signInOrigin: string | null
-    }
-  | {
-      kind: 'team'
-      organisation: TenantOrganisation
-      /** Null for an anonymous caller: branding is public, ids are not. */
-      team: TenantTeam | null
       signInOrigin: string | null
     }
 
@@ -83,5 +80,24 @@ export const useTenantHost = () => {
     placeholderData: keepPreviousData,
     queryFn: () =>
       apiClient.get<TenantHost>(`/api/hosts/resolve?host=${encodeURIComponent(hostname)}`),
+  })
+}
+
+/** The ids behind a team hostname. Requires a session; null without one. */
+export const useTenantTeam = (enabled: boolean) => {
+  const apiClient = useApiClient()
+  const hostname = typeof window === 'undefined' ? '' : window.location.hostname
+
+  return useQuery({
+    queryKey: tenantHostKeys.team(hostname),
+    enabled: enabled && couldBeTenantHost(hostname),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      apiClient.get<{ team: TenantTeam | null }>(
+        `/api/hosts/team?host=${encodeURIComponent(hostname)}`,
+      ),
   })
 }

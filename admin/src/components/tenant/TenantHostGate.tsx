@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 
-import { useTenantHost } from '../../facades/team/tenant-host'
+import { useTenantHost, useTenantTeam } from '../../facades/team/tenant-host'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 
@@ -25,7 +25,10 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { switchUoaTeam, token } = useAuthSession()
   const switched = useRef<string | null>(null)
 
-  const team = data?.kind === 'team' ? data.team : null
+  // The ids only exist for a signed-in caller on a team host — the public
+  // resolver above never carries them.
+  const { data: teamData } = useTenantTeam(Boolean(token) && data?.kind === 'team')
+  const team = teamData?.team ?? null
 
   useEffect(() => {
     if (!token || !team) return
