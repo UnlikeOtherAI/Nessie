@@ -15,6 +15,7 @@ export type FailoverReason =
   | 'rate_limit'
   | 'credits_exhausted'
   | 'billing'
+  | 'provider_forbidden'
   | 'context_overflow'
   | 'timeout'
   | 'overloaded'
@@ -43,6 +44,8 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
       return 'The model provider rejected its API key. Ask a team owner to update the provider credential, then try again.'
     case 'auth':
       return 'The model provider could not authenticate this request. Ask a team owner to verify the provider credential, then try again.'
+    case 'provider_forbidden':
+      return 'The model provider refused this request: the deployment\'s credential is not permitted to use the configured model. Ask a team owner to check the configured model against what the credential allows, then try again.'
     case 'rate_limit':
       return 'The model provider is rate limited. Please try again shortly.'
     case 'credits_exhausted':
@@ -82,7 +85,13 @@ export const classifyError = (error: unknown): FailoverReason => {
 
   const message = error.message.toLowerCase()
   const providerFailure = providerFailureDetails(error)
-  const statusMatch = message.match(/status[:\s]*(\d{3})/)
+  // Both spellings: a provider that says "status: 403", and this codebase's own
+  // connector format, `<provider> <operation> request failed with HTTP <code>`
+  // (connector-invocations.ts). The pattern only understood the first, so an
+  // untyped error carrying the second classified purely on its words — and
+  // every arm below that reads `status` was dead for exactly the errors the
+  // runtime raises most.
+  const statusMatch = message.match(/(?:status|http)[:\s]*(\d{3})/)
   const status = providerFailure?.statusCode
     ?? (statusMatch ? parseInt(statusMatch[1]!, 10) : null)
 
@@ -104,6 +113,17 @@ export const classifyError = (error: unknown): FailoverReason => {
       return 'auth_permanent'
     }
     return 'auth'
+  }
+  // 403 is authenticated-but-not-permitted, and it had no branch at all: it
+  // fell to `unknown`, whose reply says "an unexpected error" and whose
+  // recovery is `abort`. A Ledger proxy token that authenticates fine but is
+  // not scoped for the configured model answers exactly this way
+  // (`<model> is not allowed for <service>`), so every agent in the deployment
+  // failed instantly, identically, and with nothing pointing at the model
+  // configuration that had just changed. It is terminal, not transient: no
+  // amount of retrying widens a credential's scope.
+  if (status === 403 || message.includes('forbidden')) {
+    return 'provider_forbidden'
   }
   if (status === 429 || message.includes('rate limit') || message.includes('too many requests')) {
     return 'rate_limit'
@@ -194,6 +214,7 @@ export const resolveRecovery = (
     case 'credentials_scope':
     case 'auth_permanent':
     case 'auth':
+    case 'provider_forbidden':
     case 'billing':
     case 'model_not_found':
     case 'content_filter':
