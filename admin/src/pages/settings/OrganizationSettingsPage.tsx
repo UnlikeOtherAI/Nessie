@@ -1,17 +1,19 @@
 import { OrganizationAgentsPage } from './organization/OrganizationAgentsPage'
+import { OrganizationAppearancePage } from './organization/OrganizationAppearancePage'
 import { OrganizationProfilePage } from './organization/OrganizationProfilePage'
 import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
 import { TabBar } from '../../components/primitives/TabBar'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTabParam } from '../../navigation/useTabParam'
 
-const ORGANIZATION_SETTINGS_TABS = ['profile', 'agents'] as const
+const ORGANIZATION_SETTINGS_TABS = ['profile', 'agents', 'appearance'] as const
 
 type OrganizationSettingsTab = (typeof ORGANIZATION_SETTINGS_TABS)[number]
 
 const TABS: ReadonlyArray<{ label: string; value: OrganizationSettingsTab }> = [
   { label: 'Profile', value: 'profile' },
   { label: 'Agents', value: 'agents' },
+  { label: 'Appearance', value: 'appearance' },
 ]
 
 const PAGES: Record<
@@ -19,6 +21,7 @@ const PAGES: Record<
   (props: { tabs?: React.ReactNode }) => React.JSX.Element | null
 > = {
   agents: OrganizationAgentsPage,
+  appearance: OrganizationAppearancePage,
   profile: OrganizationProfilePage,
 }
 

@@ -126,7 +126,17 @@ At most one organisation is designated (`Organization.instanceBrand`; setting
 one clears the rest). With none designated — or when the designated
 organisation has uploaded no logo — the endpoint 404s and the sign-in screen
 falls back to the static Nessie mark. The designated organisation still uploads
-and changes its own logo the ordinary way, at Settings → Appearance. Migration
+and changes its own logo the ordinary way, at Settings → Appearance.
+
+**An organisation's colour theme is not instance state and does not reach this
+screen.** An org admin authors a palette at Settings → Organization →
+Appearance, and it paints that organisation's people once they are signed in
+and known. Before sign-in nobody knows which organisation the visitor belongs
+to — and an instance routinely holds many — so `/login` renders the visitor's
+own last built-in theme, or Sandstone. That is the same claim on the same
+shared screen the instance brand exists to keep out of one tenant's hands. See
+[docs/plans/2026-09-05-organisation-custom-theme.md](../plans/2026-09-05-organisation-custom-theme.md)
+§4.3. Migration
 `20260816100000_organization_instance_brand` backfills the designation on a
 single-organisation instance, replacing the earlier implicit rule ("the
 organisation's logo, if the instance holds exactly one organisation") that both

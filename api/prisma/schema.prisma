@@ -1212,6 +1212,15 @@ model Organization {
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.
   stripImageMetadata         Boolean                     @default(true) @map("strip_image_metadata")
+  // The organisation's own colour scheme: the four authored seeds
+  // (appearance, accent, surface, sidebar) validated by
+  // `OrganizationThemeSchema`, never the forty-eight derived tokens — those are
+  // recomputed from these by `@nessie/schemas` `evaluateOrganizationTheme` on
+  // both ends. Null = no palette, and everyone who has not chosen a theme sees
+  // Sandstone. Colours only: the schema is `.strict()`, so type, radii and
+  // spacing cannot arrive here.
+  // docs/plans/2026-09-05-organisation-custom-theme.md
+  theme                      Json?                       @map("theme")
   // Narrow, product-specific early-access gate for conversational agent setup.
   // It is organization configuration, not UOA-owned identity or hierarchy.
   createdAt                  DateTime                    @default(now()) @map("created_at")
