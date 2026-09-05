@@ -57,12 +57,15 @@ test('a disabled primary action does not claim the bar slot and stays reachable'
   assert.deepEqual(nativeScreenBarDisabledIndices(overflow), [0])
 })
 
-test('the sheet lists labels, marks a checked toggle, and always offers Cancel', () => {
+test('the sheet marks what is currently on, and always offers Cancel', () => {
   const labels = nativeScreenBarSheetLabels([
     action({ checked: true, id: 'notify', kind: 'toggle', label: 'Notifications' }),
+    // Not a toggle: a live call and an open search say so through `selected`,
+    // and a row that read the same as an idle one would misreport the screen.
+    action({ id: 'call', label: 'End call', selected: true }),
     action({ id: 'archive', label: 'Archive' }),
   ])
-  assert.deepEqual(labels, ['✓ Notifications', 'Archive', 'Cancel'])
+  assert.deepEqual(labels, ['✓ Notifications', '✓ End call', 'Archive', 'Cancel'])
 })
 
 test('an empty action list leaves the bar with nothing to draw', () => {

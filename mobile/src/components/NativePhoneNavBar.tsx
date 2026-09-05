@@ -1,6 +1,7 @@
 import { ActionSheetIOS, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
+import { withOpacity } from '../lib/ipad-native-chrome'
 import {
   nativeScreenBarDisabledIndices,
   nativeScreenBarSheetLabels,
@@ -147,9 +148,18 @@ export const NativePhoneNavBar = ({
             <Pressable
               accessibilityLabel={primary.label}
               accessibilityRole="button"
+              accessibilityState={{ selected: primary.selected }}
               hitSlop={8}
               onPress={() => (primary.kind === 'menu' ? openMenu(primary) : onAction(primary.id))}
-              style={({ pressed }) => [styles.primaryAction, pressed ? { opacity: 0.55 } : null]}
+              style={({ pressed }) => [
+                styles.primaryAction,
+                // `selected` is state, not decoration: a live call, an open
+                // search and a recording routine all say so through it, and a
+                // bar that drew them the same as an idle button would be
+                // lying about what the screen is doing.
+                primary.selected ? { backgroundColor: withOpacity(accentColor, 0.16) } : null,
+                pressed ? { opacity: 0.55 } : null,
+              ]}
             >
               <Text numberOfLines={1} style={[styles.primaryLabel, { color: accentColor }]}>
                 {primary.label}
@@ -193,7 +203,7 @@ const styles = StyleSheet.create({
   // line rather than the centre of whatever is left over.
   leading: { alignItems: 'flex-start', flexBasis: 0, flexGrow: 1, minWidth: 0 },
   overflowButton: { alignItems: 'center', height: 32, justifyContent: 'center', width: 32 },
-  primaryAction: { flexShrink: 1, minWidth: 0, paddingHorizontal: 4 },
+  primaryAction: { borderRadius: 14, flexShrink: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 4 },
   primaryLabel: { fontSize: 17, fontWeight: '600' },
   title: { fontSize: 17, fontWeight: '700' },
   titleLane: { alignItems: 'center', flexShrink: 1, minWidth: 0, paddingHorizontal: 8 },

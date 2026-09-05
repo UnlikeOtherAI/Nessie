@@ -1,7 +1,8 @@
 # iOS native navigation bar
 
-Status: plan, revised after review (Fable, 2026-09-05: GO WITH CHANGES). Every
-blocking finding is folded in below; §14 records what changed and why.
+Status: **in progress.** Slices 1–3 are built and verified; §15 is the live
+status, including what is deliberately still open. Reviewed by Fable over four
+rounds (§14).
 
 Scope: the **iOS native shell only** (`mobile/` running on iPhone). Mobile
 Safari, the Android app, iPad and desktop keep exactly today's behaviour, pixel
@@ -659,3 +660,67 @@ Confirmed by review, not assumed: a pop leaves no blank frame — the retained
 target's header is still mounted with its descriptor when `currentIndex` moves,
 and the popped layer's publishers unpublish from a per-layer stack nobody reads
 any more.
+
+## 15. Status
+
+**Built and verified (slices 1–3).**
+
+- The band is one constant height on the iOS phone shell, so the WebView frame
+  no longer moves with navigation. Pinned by `native-shell-layout.test.ts`.
+- The bar draws a native Back and the screen's title from a per-layer
+  descriptor, with the lanes following the published Back rather than the
+  screen type.
+- Header actions travel to the bar; `ScreenHeader` draws no visible bar on that
+  one surface and keeps its `sr-only` `h1`.
+- A stage that draws no header publishes a per-layer fallback, so the dashboard
+  and executor panels are not blank bands.
+- `admin/e2e/ios-nav-bar` (`pnpm --filter @nessie/admin test:e2e:ios-nav-bar`)
+  drives the admin with the iOS shell's globals injected: 11 checks, including
+  that mobile Safari is unchanged and that every action the web header rendered
+  reaches the bar.
+
+**Still open, in order.**
+
+1. The remaining six stray headers of §6 — `ThreadReplyPanel`,
+   `AgentScreenPanel`, `DashboardWorkspacePanel`, `KnowledgePane`,
+   `WorkflowDesignerHeader`, `ColumnBrowserColumn`. Until each publishes, the
+   bar on those screens names the screen underneath them. `KnowledgePane` and
+   `ColumnBrowserColumn` need an `active` gate rather than a blanket adoption:
+   both also render inside a route layer beside a page's own `ScreenHeader`,
+   where they would win by mount order.
+2. Slice 4, motion (§8).
+3. Slice 5's edges (§9, the designer's title input, `titleInput` on the iOS
+   path), the source-gate widening of §6, and the `docs/navigation/` updates
+   of §12.
+
+**Known deviations from this document, recorded rather than left to be found.**
+
+- §6 said `ConversationInfoFlow`'s `FlowHeader` would be converted to
+  `ScreenHeader`. It publishes through the shared `useNativeBarHeader` instead:
+  converting would have changed what mobile Safari draws, which the hard
+  constraint forbids. The same hook is the mechanism for the other six.
+- The bar's chevron reads "Back" rather than the published label. The label is
+  written for assistive technology ("Back to channel info") and reads as a
+  sentence in a bar; it stays the accessibility label. Showing the previous
+  screen's name there needs §8's transition descriptors.
+
+### Round four (Fable, 2026-09-05) — progress review: ON TRACK on scope
+
+Reviewed the branch against this plan. No detour and no gold-plating; the
+findings were under-delivery, and all of the blocking ones are now fixed:
+
+- **The plan's central lane rule had not been implemented.** The lanes still
+  read `screenType`, which §5.2 forbids in as many words — and a mobile test
+  asserted the opposite of what the app did. Fixed, with the Android answer
+  left byte-identical.
+- **Stages that draw no header** would have shown an empty band with no way
+  out. `NestedStage` now sets a per-layer fallback.
+- **The verification was thinner than the commit messages claimed**: the store
+  had no unit tests at all, and three e2e checks could not fail — one compared
+  two full page loads for a push that never happened. Fixed; the strengthened
+  action check immediately caught two entries that are header chrome rather
+  than page actions.
+- Smaller: the chevron showed its accessibility label as visible text; a header
+  with no layer to publish to hid itself anyway; publishing ran on every
+  platform; `selected` drew nothing; and Notifications' permission request
+  still ran from a bridge-driven submit that carries no transient activation.

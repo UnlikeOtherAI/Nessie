@@ -41,7 +41,12 @@ export const nativeScreenBarSheetLabels = (
   actions: readonly NativeScreenBarAction[],
 ): string[] => [
   ...actions.map((action) => (
-    action.kind === 'toggle' && action.checked ? `✓ ${action.label}` : action.label
+    // A checked toggle and a selected action are both "this is on right now"
+    // — a live call, an open search, a recording routine. A sheet row that
+    // read the same either way would be lying about what the screen is doing.
+    (action.kind === 'toggle' && action.checked) || action.selected
+      ? `✓ ${action.label}`
+      : action.label
   )),
   'Cancel',
 ]
