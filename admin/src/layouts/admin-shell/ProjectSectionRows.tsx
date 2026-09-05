@@ -4,7 +4,7 @@ import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
 import { projectSections } from '../../navigation/project-sections'
-import { sidebarAriaCurrent } from './SidebarRow'
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 
 /** Which list a row belongs to, so Starred and Projects can show one project twice. */
 export type ProjectListId = 'starred' | 'projects'

@@ -135,7 +135,7 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
 - Pinned by `admin/test/navigation-settle.test.ts`.
 - **`aria-current="page"`**: the rail item and every section-sidebar row that
   carries an `active` class set it through one shared helper,
-  `sidebarAriaCurrent` (`layouts/admin-shell/SidebarRow.tsx`) — the rail,
+  `sidebarAriaCurrent` (`components/shared/row-a11y.ts`) — the rail,
   `SidebarNav` and its four section components, `AdminSidebarNav`,
   `KnowledgeSidebarNav` (plus `KnowledgeSpaceList`, shared with the project
   Docs tab), `ProjectsSidebarNav`, and the personal-assistant sidebar entry.

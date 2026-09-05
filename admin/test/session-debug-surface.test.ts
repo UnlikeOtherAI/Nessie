@@ -49,7 +49,7 @@ test('the import doorway is reachable from mobile and Linux login without forkin
 
 test('imported bearer sessions stay nonrenewable and never register native push', () => {
   const authProvider = readSource('../src/providers/AuthSessionProvider.tsx')
-  const nativeBridge = readSource('../src/providers/NativeShellBridge.tsx')
+  const nativeBridge = readSource('../src/bridges/NativeShellBridge.tsx')
   const renewal = readSource('../src/providers/useAccessTokenRenewal.ts')
   // The re-scoping refusal lives with the team switches it guards.
   const teamRecovery = readSource('../src/providers/useTeamSessionRecovery.ts')

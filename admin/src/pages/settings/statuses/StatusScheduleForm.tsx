@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { UserStatusRecord, UserStatusScheduleKind } from '../../../lib/api-client'
 import type { useCreateStatusSchedule, useDeleteStatusSchedule } from '../../../facades/statuses/hooks'
-import { toFormErrors } from '../../../facades/form-errors'
+import { toFormErrors } from '../../../facades/forms/form-errors'
 import { Card } from '../../../components/shared/Card'
 import { EmptyState } from '../../../components/shared/EmptyState'
 import { FormActions, FormError } from '../../../components/shared/FormActions'
@@ -9,7 +9,7 @@ import { FormField } from '../../../components/shared/FormField'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Row, RowList } from '../../../components/shared/RowList'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
-import { dayLabels, describeSchedule, toIsoFromLocal } from './status-components'
+import { dayLabels, describeSchedule, toIsoFromLocal } from './status-presentation'
 
 type StatusScheduleFormProps = {
   createSchedule: ReturnType<typeof useCreateStatusSchedule>

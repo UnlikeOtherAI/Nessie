@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { FeedItem } from './channel-helpers'
+import type { FeedItem } from './channel-feed'
 
 // The date-collapse bookkeeping for the message feed: which date separators
 // are collapsed, and the filtered item list that skips whatever falls under a

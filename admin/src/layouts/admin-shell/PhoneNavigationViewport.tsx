@@ -12,7 +12,7 @@ import { UNSAFE_LocationContext, useNavigate } from 'react-router-dom'
 import {
   getPhoneNavigationDirection,
   type PhoneNavigationDirection,
-} from './phone-navigation'
+} from '../../navigation/phone-navigation'
 import {
   advancePhoneNavigationStack,
   committedPhoneNavigationRoute,
@@ -34,8 +34,8 @@ import { NestedStageHostContext, type NestedStageHost } from '../../navigation/N
 import { haptic } from '../../lib/haptics'
 import { announceScreen, blurBeforePush, layerHoldsFocus, settleFocus } from '../../navigation/settle'
 import { resolveBack } from '../../navigation/back'
-import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
-import { useLocalBackSnapshot } from './local-back/LocalBackContext'
+import { usePhoneBackSwipeGesture } from './usePhoneBackSwipe'
+import { useLocalBackSnapshot } from '../../navigation/LocalBackContext'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
 import {
   PhoneNavigationLayer,

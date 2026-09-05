@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { isReactNativeWebView, useNativeIPadApp } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
+import { useNativeIPadApp } from '../../navigation/mobile-shell'
 import { TopBarSearch } from './TopBarSearch'
 import { useTransientMenu } from './TransientMenuContext'
 

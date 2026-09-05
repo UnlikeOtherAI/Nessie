@@ -2,11 +2,7 @@ import type { ReactNode } from 'react'
 import type { DesignerToolCatalogQuery, DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { Link } from 'react-router-dom'
-import type {
-  AgentDesignerActions,
-  AgentEffortValue,
-  AgentFormState,
-} from './useAgentDesigner'
+import type { AgentDesignerActions, AgentEffortValue, AgentFormState } from '../../../../facades/designer/types'
 import { AgentSpeechFieldset } from './AgentSpeechFieldset'
 import { ModelCombobox } from './ModelCombobox'
 import { RunLimitsFieldset } from './RunLimitsFieldset'

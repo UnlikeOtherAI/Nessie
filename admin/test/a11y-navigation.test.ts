@@ -14,7 +14,7 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'u
 // keyboard inset and split scroll memory (step 11's remainder).
 
 test('the shared helper marks aria-current="page" only when active', () => {
-  const helper = source('../src/layouts/admin-shell/SidebarRow.tsx')
+  const helper = source('../src/components/shared/row-a11y.ts')
   assert.match(helper, /export const sidebarAriaCurrent = \(active: boolean\): 'page' \| undefined/)
   assert.match(helper, /active \? 'page' : undefined/)
 })
@@ -22,7 +22,7 @@ test('the shared helper marks aria-current="page" only when active', () => {
 test('the rail item carries aria-current through the shared helper', () => {
   const rail = source('../src/layouts/admin-shell/SidebarRail.tsx')
   assert.match(rail, /aria-current=\{sidebarAriaCurrent\(isActive\)\}/)
-  assert.match(rail, /from '\.\/SidebarRow'/)
+  assert.match(rail, /from '\.\.\/\.\.\/components\/shared\/row-a11y'/)
 })
 
 // Every file that renders a sidebar row carrying the `active` class must

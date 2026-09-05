@@ -97,10 +97,10 @@ test('creating a board opens the board list that was closed and lands on the new
 test('one board-create dialog serves both the sidebar and project settings', () => {
   assert.match(
     source('layouts/admin-shell/ProjectsNavDialogs.tsx'),
-    /from '\.\.\/\.\.\/components\/kanban\/BoardCreateDialog'/,
+    /from '\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
   )
   assert.match(
     source('pages/project/settings/BoardsSettingsSection.tsx'),
-    /from '\.\.\/\.\.\/\.\.\/components\/kanban\/BoardCreateDialog'/,
+    /from '\.\.\/\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
   )
 })

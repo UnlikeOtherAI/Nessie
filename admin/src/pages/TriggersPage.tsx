@@ -3,8 +3,8 @@ import { TriggerEditorDialog } from '../components/features/triggers/TriggerEdit
 import { TriggerListColumn } from '../components/features/triggers/TriggerListColumn'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { usePhoneLayout } from '../lib/mobile-shell'
-import { useTriggersPageState } from './triggers/useTriggersPageState'
+import { usePhoneLayout } from '../navigation/mobile-shell'
+import { useTriggersPageState } from '../components/features/triggers/useTriggersPageState'
 
 export const TriggersPage = () => {
   const phoneLayout = usePhoneLayout()

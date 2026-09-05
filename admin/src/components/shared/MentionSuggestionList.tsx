@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import { AgentVisibilityPill } from '../features/agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from './AgentVisibilityPill'
 import { MentionEntityAvatar } from './MentionEntityAvatar'
 import type { MentionEntity } from './MentionInput'
 

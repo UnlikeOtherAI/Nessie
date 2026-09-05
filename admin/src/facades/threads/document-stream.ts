@@ -31,7 +31,7 @@ import {
   type DocumentEdit,
   type DocumentFrame,
   type DocumentStreamEntry,
-} from './document-stream-helpers'
+} from './document-stream-entries'
 import type { DocumentStreamStore } from './document-stream-store'
 
 export type DocumentStreamController = {

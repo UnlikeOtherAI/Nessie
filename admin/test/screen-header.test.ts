@@ -9,7 +9,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 
-import { LocalBackProvider } from '../src/layouts/admin-shell/local-back/LocalBackContext.js'
+import { LocalBackProvider } from '../src/navigation/LocalBackContext.js'
 import { ShellStateProvider } from '../src/layouts/admin-shell/ShellStateContext.js'
 import { PhoneNavigationProvider } from '../src/layouts/admin-shell/PhoneNavigationProvider.js'
 import { ScreenHeader } from '../src/components/shared/ScreenHeader.js'
@@ -194,7 +194,7 @@ test('the bridge posts nessie:screen with its six fields off the registry, the r
   assert.match(bridge, /if \(sameScreen\(postedScreen\.current, screen\)\) return/)
   // The two existing bridge messages are untouched beside it.
   assert.match(bridge, /type: 'nessie:back-state'/)
-  const shellBridge = readSource('../src/providers/NativeShellBridge.tsx')
+  const shellBridge = readSource('../src/bridges/NativeShellBridge.tsx')
   assert.match(shellBridge, /type: 'nessie:route'/)
 })
 

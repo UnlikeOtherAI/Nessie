@@ -3,7 +3,7 @@ import type { KnowledgeSpaceResponse } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { usePagedList } from '../usePagedList'
+import { usePagedList } from '../pagination/usePagedList'
 
 export type KnowledgeVersionRecord = {
   id: string

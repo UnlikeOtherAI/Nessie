@@ -5,7 +5,7 @@ import type {
   TriggerStatusCounts,
   TriggerStatusFilter,
   TriggerTypeFilter,
-} from '../../../pages/triggers/useTriggersPageState'
+} from './useTriggersPageState'
 import { Skeleton } from '../../primitives/Skeleton'
 import { TabBar } from '../../primitives/TabBar'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'

@@ -11,7 +11,7 @@ import {
   useMailboxConversations,
 } from '../facades/agent-mailbox/hooks'
 import { useAgents } from '../facades/agents/queries'
-import { useNavigationLayout } from '../lib/mobile-shell'
+import { useNavigationLayout } from '../navigation/mobile-shell'
 import { useTabParam } from '../navigation/useTabParam'
 
 type MailboxFilter = 'all' | 'inbox' | 'sent'

@@ -14,7 +14,7 @@ import {
   type MemberUser,
 } from './channel-members/MemberUserRow'
 import { sectionHeadingClass } from './channel-members/styles'
-import { useUserMemberFilters } from './channel-members/use-member-filters'
+import { useUserMemberFilters } from './channel-members/useMemberFilters'
 
 type ProjectMembersDialogProps = {
   project: ProjectRecord

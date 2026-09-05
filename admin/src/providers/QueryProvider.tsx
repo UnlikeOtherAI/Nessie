@@ -1,6 +1,6 @@
 import type { PropsWithChildren } from 'react'
 import { createQueryClient, QueryProvider as BaseQueryProvider } from '@nessie/client-core'
-import { formErrorMessage } from '../facades/form-errors'
+import { formErrorMessage } from '../facades/forms/form-errors'
 import { notifyMutationError } from './ToastProvider'
 
 /**

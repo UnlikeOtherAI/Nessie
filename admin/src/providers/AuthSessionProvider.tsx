@@ -44,7 +44,7 @@ import { resolveImportedSession } from '../lib/session-debug-import'
 import {
   NATIVE_PUSH_UNREGISTER_EVENT,
 } from '../lib/native-push-registration'
-import { isReactNativeWebView } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
 import { createAmbientRefreshGateHost } from './ambient-refresh-gate-host'
 import {
   createSessionQueryBoundary,

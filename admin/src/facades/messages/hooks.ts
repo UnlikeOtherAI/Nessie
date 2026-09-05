@@ -1,10 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { AgentMention } from '@nessie/schemas'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { channelKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import type { AgentMention } from '../../components/shared/MentionInput'
 
 /** An agent @mentioned in a message that is not a member of the channel. */
 export interface PendingAgentInvite {

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { useLocalBack } from './LocalBackContext'
 
 // A nested stage is how a state-driven screen joins the navigation stack: a
 // column browser's next column, a Knowledge folder → document → history →

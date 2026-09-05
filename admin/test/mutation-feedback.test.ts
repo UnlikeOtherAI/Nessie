@@ -40,7 +40,7 @@ const stripComments = (source: string): string =>
 
 const MUTATE_CALL = /\.mutate(?:Async)?\(/
 // Any of the four reads the rejection: an inline `onError`, a `try`/`catch`
-// or `.catch(`, or either of the two shared helpers in facades/form-errors.ts.
+// or `.catch(`, or either of the two shared helpers in facades/forms/form-errors.ts.
 const READS_ITS_OWN_ERROR = /\bonError\b|\bcatch\b|\btoFormErrors\b|\bformErrorMessage\b/
 
 /**
@@ -82,8 +82,8 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'components/features/workflows/DemonstrationDraftsColumn.tsx': REASON,
   'components/features/workflows/WorkflowInstallationDetail.tsx': REASON,
   'components/features/workflows/WorkflowRunDetail.tsx': REASON,
-  'components/kanban/ArchiveDoneMenu.tsx': REASON,
-  'components/kanban/TaskDocuments.tsx': REASON,
+  'components/features/projects/kanban/ArchiveDoneMenu.tsx': REASON,
+  'components/features/projects/kanban/TaskDocuments.tsx': REASON,
   'components/shared/ChannelMembersPopup.tsx': REASON,
   'components/shared/CreateProjectDialog.tsx': REASON,
   'components/shared/ProjectMembersDialog.tsx': REASON,

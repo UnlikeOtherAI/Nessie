@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { useCurrentOrganization } from '../../facades/organization/hooks'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 /**
  * One client gate for the whole Organization section. Its API counterpart

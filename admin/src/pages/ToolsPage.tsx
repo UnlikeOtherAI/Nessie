@@ -6,11 +6,12 @@ import type {
 } from '@nessie/schemas'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
+import { OwnerGate } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { QueryState } from '../components/shared/QueryState'
 import { ToolAgentAccessPanel } from '../components/features/workflow-tools/ToolAgentAccessPanel'
 import { ExplicitToolAgentAccessPanel } from '../components/features/workflow-tools/ExplicitToolAgentAccessPanel'
-import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
+import { ToolDetailSection } from '../components/features/workflow-tools/ToolDetailSection'
 import {
   ToolFilterBar,
   TOOL_SOURCE_SEGMENTS,
@@ -22,18 +23,18 @@ import { useAgents } from '../facades/agents/hooks'
 import {
   matchesDeepWaterInstanceFilter,
   readDeepWaterInstanceFilter,
-} from '../facades/deep-water-tool-filter'
+} from '../facades/tools/deep-water-tool-filter'
 import {
   matchesMcpInstanceToolFilter,
   readMcpInstanceToolFilter,
-} from '../facades/mcp-instance-tool-filter'
+} from '../facades/tools/mcp-instance-tool-filter'
 import {
   useAgentToolPolicyTargets,
   useMcpToolRegistry,
 } from '../facades/tool-grants/hooks'
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
 import { useTabParam } from '../navigation/useTabParam'
-import { usePhoneLayout } from '../lib/mobile-shell'
+import { usePhoneLayout } from '../navigation/mobile-shell'
 
 /**
  * `/agents/tools` — the single, canonical tool surface.
@@ -244,7 +245,7 @@ export const ToolsPage = () => {
         title={selectedTool.label}
       >
         <div className="grid gap-6">
-          <ToolDetailDrawer tool={selectedTool} />
+          <ToolDetailSection tool={selectedTool} />
           <ToolReviewActions tool={selectedTool} />
           <section>
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">Agent access</h3>

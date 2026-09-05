@@ -11,7 +11,7 @@ import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { mailPath, type MailAddress, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../facades/mail/hooks'
 import { connectedMailSettingsPath } from '../facades/mail/settings-path'
-import { useNavigationLayout } from '../lib/mobile-shell'
+import { useNavigationLayout } from '../navigation/mobile-shell'
 import { useTabParam } from '../navigation/useTabParam'
 
 const PAGE_SIZES = [10, 25, 50, 100] as const

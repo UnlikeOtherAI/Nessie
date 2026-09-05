@@ -1,5 +1,5 @@
 import { isDesktopApp } from '../../lib/desktop'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
 import { Dialog } from './Dialog'
 import type { CallIncomingEvent } from '@nessie/schemas'
 

@@ -16,7 +16,7 @@ import type {
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { TriggerRunState } from '../triggers/TriggerRunState'
 import { findTriggerActivity, groupTriggers } from '../triggers/trigger-groups'
 import {

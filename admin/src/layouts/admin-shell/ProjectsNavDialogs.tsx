@@ -1,4 +1,4 @@
-import { BoardCreateDialog } from '../../components/kanban/BoardCreateDialog'
+import { BoardCreateDialog } from '../../components/features/projects/kanban/BoardCreateDialog'
 import type { BoardRecord } from '../../facades/boards/hooks'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'

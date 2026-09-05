@@ -19,11 +19,11 @@ import { AgentDesignerForm } from '../src/components/features/agents/designer/Ag
 import { TodoInstanceCard, canChangeTodo } from '../src/components/features/agents/todos/TodoInstanceCard.js'
 import { TodoTemplateCard } from '../src/components/features/agents/todos/TodoTemplateCard.js'
 import { TodoTemplateEditor } from '../src/components/features/agents/todos/TodoTemplateEditor.js'
-import { emptyRunLimitsForm } from '../src/components/features/agents/designer/run-limits.js'
+import { emptyRunLimitsForm } from '../src/facades/designer/run-limits.js'
 import type {
   AgentDesignerActions,
   AgentFormState,
-} from '../src/components/features/agents/designer/useAgentDesigner.js'
+} from '../src/facades/designer/types.js'
 import { agentTodoKeys } from '../src/lib/query-keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
 

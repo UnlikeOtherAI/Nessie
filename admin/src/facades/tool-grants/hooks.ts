@@ -14,7 +14,7 @@ import type {
   ToolRegistrySource,
   ToolRegistryTransport,
 } from '@nessie/schemas'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {

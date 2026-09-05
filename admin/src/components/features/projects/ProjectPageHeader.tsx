@@ -1,7 +1,7 @@
 import { faUsers } from '@fortawesome/free-solid-svg-icons'
 import { useState, type ReactNode } from 'react'
 import type { ProjectRecord } from '../../../lib/api-client'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'

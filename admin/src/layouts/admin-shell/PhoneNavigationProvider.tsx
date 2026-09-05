@@ -15,12 +15,12 @@ import {
   resolvePhoneTabSelect,
   type PhoneHistoryLedger,
   type PhoneTabAction,
-} from './phone-navigation-ledger'
-import { getPhoneTabRootPath } from './phone-navigation'
-import type { NavSectionId } from './nav-items'
+} from '../../navigation/phone-navigation-ledger'
+import { getPhoneTabRootPath } from '../../navigation/phone-navigation'
+import type { NavSectionId } from '../../navigation/nav-items'
 import { NativePhoneNavigationBridge } from './NativePhoneNavigationBridge'
-import { useLocalBackSnapshot } from './local-back/LocalBackContext'
-import { useNativeLargePhoneLandscapeApp } from '../../lib/mobile-shell'
+import { useLocalBackSnapshot } from '../../navigation/LocalBackContext'
+import { useNativeLargePhoneLandscapeApp } from '../../navigation/mobile-shell'
 import { resolveBack, type BackAction } from '../../navigation/back'
 import { ANNOUNCER_ATTRIBUTE } from '../../navigation/settle'
 import { canGoBack, canGoForward, resolveSectionTarget } from '../../navigation/history'

@@ -113,7 +113,7 @@ export default [
     // (docs/plans/2026-08-13-responsive-coherence.md §B/§D, Phase 6): viewport
     // bands derive only from the useViewport store (the @theme static tokens in
     // styles.css are the sole numeric source), and shell-vs-viewport composition
-    // lives in lib/mobile-shell.ts + ShellEnvironmentProvider. Pages must never
+    // lives in navigation/mobile-shell.ts + ShellEnvironmentProvider. Pages must never
     // re-classify the viewport from raw window reads. The allowlisted modules
     // below are either the classification owners themselves (useViewport,
     // mobile-shell), ThemeProvider's prefers-color-scheme listener, or
@@ -125,7 +125,7 @@ export default [
     ignores: [
       'admin/src/hooks/useViewport.ts',
       'admin/src/providers/ThemeProvider.tsx',
-      'admin/src/lib/mobile-shell.ts',
+      'admin/src/navigation/mobile-shell.ts',
       'admin/src/layouts/admin-shell/ResizableSidebar.tsx',
       // The same drag geometry, lifted out of useReplyThread so the reply
       // panel and the agent-screen panel cannot disagree about clamping.
@@ -152,7 +152,7 @@ export default [
             {
               group: ['**/hooks/useMediaQuery'],
               message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
+                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in navigation/mobile-shell.ts.',
             },
           ],
         },
@@ -271,7 +271,7 @@ export default [
     // Error-shape reading ratchet (F4): one local `errorMessage` helper after
     // another hand-rolled `error instanceof Error ? error.message : fallback`,
     // throwing away the `ApiClientError.details` field errors a validation
-    // failure carries. `facades/form-errors.ts` exports `formErrorMessage` for
+    // failure carries. `facades/forms/form-errors.ts` exports `formErrorMessage` for
     // exactly this — import it instead of re-declaring the same helper.
     // Same files/ignores as the navigate() admission block above, so this
     // does not reintroduce FORWARDED_HEADER_RESTRICTED_SYNTAX or
@@ -286,7 +286,7 @@ export default [
         {
           selector: "VariableDeclarator[id.name='errorMessage'] > ArrowFunctionExpression",
           message:
-            "A local 'errorMessage' helper duplicates facades/form-errors.ts — import "
+            "A local 'errorMessage' helper duplicates facades/forms/form-errors.ts — import "
             + 'formErrorMessage(error, fallback) instead of hand-rolling error.message reading.',
         },
       ],

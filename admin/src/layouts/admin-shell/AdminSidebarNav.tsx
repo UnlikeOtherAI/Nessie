@@ -2,9 +2,9 @@ import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
 import { usePendingApprovalCount } from '../../facades/approvals/hooks';
-import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/mobile-shell';
+import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/native-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
-import { sidebarAriaCurrent } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import {
   ADMIN_NAV,
   isAdminNavGroupVisible,

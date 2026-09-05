@@ -15,7 +15,7 @@ import {
 } from '../facades/alerts/hooks'
 import { useAcceptTeamInvitation } from '../facades/team/invitations'
 import { alertKeys } from '../lib/query-keys'
-import { usePagedList } from '../facades/usePagedList'
+import { usePagedList } from '../facades/pagination/usePagedList'
 
 export const AlertsPage = () => {
   const navigate = useNavigate()

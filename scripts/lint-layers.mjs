@@ -42,7 +42,7 @@ const ALLOWLIST = new Set([
   'admin/src/components/features/knowledge/wikilink/WikilinkCreateConfirm.tsx',
   'admin/src/components/features/workflow-designer/WorkflowCanvas.tsx',
   'admin/src/components/features/workflow-designer/WorkflowCanvasNode.tsx',
-  'admin/src/components/kanban/ArchiveDoneMenu.tsx',
+  'admin/src/components/features/projects/kanban/ArchiveDoneMenu.tsx',
   'admin/src/components/shared/DropZoneOverlay.tsx',
   'admin/src/components/shared/EditProjectDialog.tsx',
   'admin/src/components/shared/LoginSessionImportButton.tsx',

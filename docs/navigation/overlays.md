@@ -140,7 +140,7 @@ and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
 hover hint, not a dismissible anchored surface.
 
-**`Card`** (`components/overlays/Card.tsx`) is the ambient kind, and one
+**`OverlayCard`** (`components/overlays/OverlayCard.tsx`) is the ambient kind, and one
 **`CardViewport`** per shell (mounted by `ToastProvider`) is the region it lives
 in: top-right on `split`, above the tab bar on `single`, decided from
 `useNavigationLayout()` — which is what replaced the toast viewport's own

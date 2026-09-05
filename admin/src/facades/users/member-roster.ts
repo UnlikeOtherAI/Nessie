@@ -11,7 +11,7 @@ import type {
 
 import { teamKeys, organizationKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { usePagedList } from '../usePagedList'
+import { usePagedList } from '../pagination/usePagedList'
 
 export type MemberRosterScope = 'organization' | 'team'
 

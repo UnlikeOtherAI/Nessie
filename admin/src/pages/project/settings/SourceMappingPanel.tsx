@@ -13,7 +13,7 @@ import { useTaskFields } from '../../../facades/task-fields/hooks'
 import { ChoiceGroup } from '../../../components/shared/ChoiceGroup'
 import { Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/kanban/kanban-config'
+import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
 
 type SourceMappingPanelProps = {
   canAdminister: boolean

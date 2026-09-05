@@ -15,10 +15,10 @@ import {
   TeamMemberRow,
   TEAM_TEAM_ROLE_OPTIONS,
 } from './TeamMemberPeople'
-import { FeedbackBanner } from './settings-shared'
+import { FeedbackBanner } from './FeedbackBanner'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { formErrorMessage, toFormErrors } from '../../facades/form-errors'
+import { formErrorMessage, toFormErrors } from '../../facades/forms/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { FormActions, FormError, FormSuccess } from '../../components/shared/FormActions'

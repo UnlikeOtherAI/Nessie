@@ -2,7 +2,7 @@ import type { AuthSessionState, SessionPayload } from '@nessie/client-core'
 import { claimPendingExternalAuth, clearPendingExternalAuthMatching } from './pkce'
 import type {
   ExternalAuthCallbackEnvelope,
-} from '../providers/external-auth-callback'
+} from './external-auth-callback'
 
 export type ExternalAuthCompletionResult =
   | { claimed: true; message: string; outcome: 'cancelled'; returnPath: string }

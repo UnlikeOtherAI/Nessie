@@ -6,7 +6,7 @@ import type { ProjectRecord } from '../../lib/api-client'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { ProjectSectionRows, type ProjectListId } from './ProjectSectionRows'
-import { sidebarAriaCurrent } from './SidebarRow'
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 import { useSidebarRowMenu } from './useSidebarRowMenu'
 import type { StarredItem } from './types'
 

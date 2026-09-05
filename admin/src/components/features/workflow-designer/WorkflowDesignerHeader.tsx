@@ -1,6 +1,6 @@
 import { faPlay } from '@fortawesome/free-solid-svg-icons'
 import { DEFAULT_WORKFLOW_NAME } from '../../../lib/workflow-designer/constants'
-import type { WorkflowTestRunState } from '../../../pages/workflow-designer/useWorkflowTestRun'
+import type { WorkflowTestRunState } from './useWorkflowTestRun'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 

@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { UserRecord } from '../../lib/api-client'
-import { UserAvatar } from '../../components/primitives/UserAvatar'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { UserAvatar } from '../../components/shared/UserAvatar'
+import { useIsOwner } from '../../facades/auth/hooks'
 import {
   useCreateUser,
   useSetUserDeactivated,
@@ -18,12 +18,12 @@ import {
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import { useAgents, usePausedPrivateAgentCount } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { MembersRosterPanel } from './MembersRosterPanel'
+import { MembersRosterPanel } from '../../components/features/settings/MembersRosterPanel'
 import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
-import { toFormErrors } from '../../facades/form-errors'
+import { toFormErrors } from '../../facades/forms/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { FormActions, FormError, FormSuccess } from '../../components/shared/FormActions'

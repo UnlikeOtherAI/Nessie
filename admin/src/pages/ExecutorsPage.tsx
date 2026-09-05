@@ -32,7 +32,7 @@ import { useUsers } from '../facades/users/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
 import { NestedStage } from '../navigation/NestedStage'
 import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
 

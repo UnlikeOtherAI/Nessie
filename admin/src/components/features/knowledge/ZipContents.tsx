@@ -5,7 +5,7 @@ import { useZipEntries, useZipEntryText } from '../../../facades/knowledge/file-
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { QueryState } from '../../shared/QueryState'
 import { Row, RowList } from '../../shared/RowList'
-import { iconForFilename } from './file-icons'
+import { iconForFilename } from '../../shared/file-icons'
 
 const formatBytes = (n: number): string => {
   if (n < 1024) return `${n} B`

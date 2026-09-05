@@ -8,7 +8,7 @@ import {
   getPhoneNavigationDirection,
   getPhoneNavigationScreen,
   shouldHighlightKnowledgeSidebarSelection,
-} from '../src/layouts/admin-shell/phone-navigation'
+} from '../src/navigation/phone-navigation'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8').replaceAll('\r\n', '\n')
@@ -32,7 +32,7 @@ test('the full-screen phone thread owns the shared Back doorway', () => {
   assert.match(threadPanel, /import \{ usePhoneLayout \} from '[^']*mobile-shell'/)
   assert.match(
     threadPanel,
-    /import \{ PhoneBackButton \} from '[^']*layouts\/admin-shell\/PhoneBackButton'/,
+    /import \{ PhoneBackButton \} from '[^']*navigation\/PhoneBackButton'/,
   )
   assert.match(threadPanel, /const phoneLayout = usePhoneLayout\(\)/)
   assert.match(
@@ -283,8 +283,8 @@ test('routes phone Knowledge selections and Projects rows to stack details', () 
 })
 
 test('shares the phone Back control across route headers and channel flows', () => {
-  const navigationButton = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
-  const backButton = readSource('../src/layouts/admin-shell/PhoneBackButton.tsx')
+  const navigationButton = readSource('../src/navigation/PhoneNavigationButton.tsx')
+  const backButton = readSource('../src/navigation/PhoneBackButton.tsx')
   const channelHeader = readSource('../src/components/features/channels/ChannelHeader.tsx')
   const composePage = readSource('../src/pages/ChannelConversationComposePage.tsx')
   const infoFlow = readSource('../src/components/features/channels/ConversationInfoFlow.tsx')
@@ -332,7 +332,7 @@ test('navigation motion is scripted from static poses, never a CSS keyframe', ()
   assert.doesNotMatch(styles, /\.phone-navigation-screen[^{]*\{[^}]*animation/)
 
   const viewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
-  const swipe = readSource('../src/layouts/admin-shell/use-phone-back-swipe.ts')
+  const swipe = readSource('../src/layouts/admin-shell/usePhoneBackSwipe.ts')
   assert.match(viewport, /runStackTransition\(/)
   assert.match(swipe, /runStackTransition\(/)
   assert.doesNotMatch(swipe, /\.animate\(/)
@@ -376,7 +376,7 @@ test('a committed swipe is the one Back that gives a haptic', () => {
   )
   assert.match(commit, /haptic\('light'\)/)
   assert.equal((viewport.match(/haptic\(/g) ?? []).length, 1)
-  const button = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  const button = readSource('../src/navigation/PhoneNavigationButton.tsx')
   assert.doesNotMatch(button, /haptic\(/)
 })
 

@@ -8,14 +8,14 @@ import {
   emptyDocumentStore,
   type DocumentStreamStore,
 } from '../../../facades/threads/document-stream-store'
-import type { DocumentStreamEntry } from '../../../facades/threads/document-stream-helpers'
+import type { DocumentStreamEntry } from '../../../facades/threads/document-stream-entries'
 import {
   groupPendingByRoot,
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
 import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { useAgentIdentityLookup } from '../../../providers/AgentIdentityProvider'
-import type { AvatarSources } from '../../primitives/UserAvatar'
+import type { AvatarSources } from '../../shared/UserAvatar'
 import { ChannelMessageRow } from './ChannelMessageRow'
 import type { DisclosureDuration } from './RestrictedMessageCard'
 import { OptimisticMessageRow } from './ChannelTransientMessageRows'
@@ -24,13 +24,9 @@ import { ThinkingBubble } from './ThinkingBubble'
 import { useAttachmentViewer } from '../../shared/AttachmentViewer'
 import { useDocumentStreamDialog } from './DocumentStreamDialog'
 import { useThoughtProcessDialog } from './ThoughtProcessDialog'
-import {
-  type FeedItem,
-  type ChannelAgentParticipant,
-  type MessageUserIdentity,
-  type OptimisticMessage,
-} from './channel-helpers'
-import type { ThreadParticipant } from './thread-panel/thread-panel-helpers'
+import { type FeedItem, type OptimisticMessage } from './channel-feed'
+import { type ChannelAgentParticipant, type MessageUserIdentity } from './channel-participants'
+import type { ThreadParticipant } from './thread-panel/thread-replies'
 import {
   indexPersonalAssistantPresences,
   personalAssistantPresenceKey,

@@ -10,10 +10,10 @@ import {
   useExecutorAvailability,
   useLaunchExecutorRun,
 } from '../../../facades/executors/hooks'
-import { formErrorMessage } from '../../../facades/form-errors'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { FormError } from '../../shared/FormActions'
-import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
+import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]

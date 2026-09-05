@@ -13,7 +13,7 @@ import {
   isMarkdownFilename,
   isZipFilename,
   previewKindForFilename,
-} from './file-icons'
+} from '../../shared/file-icons'
 import { KnowledgePane } from './KnowledgePane'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'

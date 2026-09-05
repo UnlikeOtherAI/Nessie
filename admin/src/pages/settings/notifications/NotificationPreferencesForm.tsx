@@ -4,7 +4,7 @@ import type { useUpdatePreferences } from '../../../facades/auth/hooks'
 import { requestNotificationPermission } from '../../../facades/notifications/permission'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Switch } from '../../../components/primitives/Switch'
-import { FeedbackBanner, type SettingsFeedback } from '../settings-shared'
+import { FeedbackBanner, type SettingsFeedback } from '../FeedbackBanner'
 import { BrowserNotificationsSection } from './BrowserNotificationsSection'
 import { PushPreferenceCard } from './notification-preference-controls'
 

@@ -12,7 +12,7 @@ import {
 } from '../../../lib/web-push'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Switch } from '../../../components/primitives/Switch'
-import { FeedbackBanner, type SettingsFeedback } from '../settings-shared'
+import { FeedbackBanner, type SettingsFeedback } from '../FeedbackBanner'
 
 const getNotificationPermission = (): NotificationPermission | null =>
   typeof Notification === 'undefined' ? null : Notification.permission

@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  channelHashClassName,
-  projectSelectionClassName,
-  renderUnreadCount,
-  sidebarAriaCurrent,
-} from './SidebarRow';
+import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { getCookie, setCookie } from '../../lib/storage';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';

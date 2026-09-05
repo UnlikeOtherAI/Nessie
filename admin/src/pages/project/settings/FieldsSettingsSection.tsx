@@ -15,7 +15,7 @@ import { EmptyState } from '../../../components/shared/EmptyState'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { Pill } from '../../../components/primitives/Pill'
-import { formErrorMessage } from '../../../facades/form-errors'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 
 const TYPE_LABEL: Record<TaskFieldType, string> = {
   text: 'Text',

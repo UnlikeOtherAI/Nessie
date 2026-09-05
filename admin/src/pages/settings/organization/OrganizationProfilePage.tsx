@@ -6,8 +6,8 @@ import { FormField } from '../../../components/shared/FormField'
 import { Input } from '../../../components/shared/FormControls'
 import { LogoPanel } from './LogoPanel'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
-import { toFormErrors } from '../../../facades/form-errors'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
+import { toFormErrors } from '../../../facades/forms/form-errors'
 
 /**
  * Who the organisation is: its name and its logo.

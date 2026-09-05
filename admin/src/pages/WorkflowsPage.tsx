@@ -11,10 +11,10 @@ import {
   useDemonstrations,
 } from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { usePagedList } from '../facades/usePagedList'
+import { usePagedList } from '../facades/pagination/usePagedList'
 import { workflowKeys } from '../lib/query-keys'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { WorkflowFailedRunsColumn } from '../components/features/workflows/WorkflowFailedRunsColumn'
 import { WorkflowsListColumn } from '../components/features/workflows/WorkflowsListColumn'

@@ -2,58 +2,14 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { findModelOption } from './model-options'
-import {
-  emptyRunLimitsForm,
-  type RunLimitsField,
-  type RunLimitsFormState,
-} from './run-limits'
-
-export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
-export type AgentVisibilityValue = 'private' | 'team'
-
-export type AgentFormState = {
-  effort: AgentEffortValue
-  model: string
-  name: string
-  provider: string
-  role: string
-  // Optional explicit per-run caps; blank fields mean "governed by the
-  // deployment backstop". Separate from `effort`, which is reasoning depth only.
-  runLimits: RunLimitsFormState
-  /**
-   * How this agent talks to people. The stored value is the *text*, never the
-   * preset that seeded it — see `AGENT_SPEAKING_STYLE_PRESETS`. Empty = none.
-   */
-  speakingStyle: string
-  streamingField: string | null
-  systemPrompt: string
-  todosEnabled: boolean
-  tools: Record<string, boolean>
-  visibility: AgentVisibilityValue
-  /** One of `GEMINI_LIVE_VOICES`, or '' for the deployment default. */
-  voiceName: string
-}
-
-export type AgentDesignerAction =
-  | { chunk: string; type: 'append_system_prompt' }
-  | { field: string; type: 'clear_streaming' }
-  | { field: string; type: 'set_streaming' }
-  | { effort: AgentEffortValue; type: 'set_effort' }
-  // Model and provider are one decision: the form resolves its selection by
-  // matching both, so a half-applied pair reads as no model at all.
-  | { option: AgentModelOption; type: 'set_model_selection' }
-  | { name: string; type: 'set_name' }
-  | { prompt: string; type: 'set_system_prompt' }
-  | { role: string; type: 'set_role' }
-  | { field: RunLimitsField; type: 'set_run_limit'; value: string }
-  | { enabled: boolean; type: 'set_todos_enabled' }
-  | { style: string; type: 'set_speaking_style' }
-  | { type: 'set_voice_name'; voiceName: string }
-  | { enabled: boolean; toolId: string; type: 'toggle_tool' }
-  | { visibility: AgentVisibilityValue; type: 'set_visibility' }
-  // A stored draft coming back on mount. The reducer owns the state, so a
-  // restore is an action rather than a second writer.
-  | { state: AgentFormState; type: 'restore' }
+import { emptyRunLimitsForm, type RunLimitsField } from '../../../../facades/designer/run-limits'
+import type {
+  AgentDesignerAction,
+  AgentDesignerActions,
+  AgentEffortValue,
+  AgentFormState,
+  AgentVisibilityValue,
+} from '../../../../facades/designer/types'
 
 // `tools` is a sparse overlay over the org tool catalog: unset keys fall back
 // to the tool kind's default (builtin on, connector off) — the same semantics
@@ -116,22 +72,6 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
     default:
       return state
   }
-}
-
-export type AgentDesignerActions = {
-  applyToolCall: (name: string, args: Record<string, unknown>) => void
-  dispatch: React.Dispatch<AgentDesignerAction>
-  setEffort: (effort: AgentEffortValue) => void
-  setModelSelection: (option: AgentModelOption) => void
-  setName: (name: string) => void
-  setRole: (role: string) => void
-  setRunLimit: (field: RunLimitsField, value: string) => void
-  setSpeakingStyle: (style: string) => void
-  setSystemPrompt: (prompt: string) => void
-  setTodosEnabled: (enabled: boolean) => void
-  setVoiceName: (voiceName: string) => void
-  toggleTool: (toolId: string, enabled: boolean) => void
-  setVisibility: (visibility: AgentVisibilityValue) => void
 }
 
 // `streamingField` is a live indicator of the Design Assistant writing into a

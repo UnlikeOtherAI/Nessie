@@ -4,7 +4,7 @@ import { useRef, type ContextType, type CSSProperties, type ReactNode } from 're
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
 import { matchSurface } from '../../navigation/surfaces'
-import type { PhoneNavigationDirection } from './phone-navigation'
+import type { PhoneNavigationDirection } from '../../navigation/phone-navigation'
 import type { PhoneNavigationStackEntry } from './phone-navigation-stack'
 
 // The pull-to-refresh content refresh: re-fetch the mounted queries (the visible

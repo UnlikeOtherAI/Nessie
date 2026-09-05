@@ -15,7 +15,7 @@ import {
 } from '../../../facades/messages/hooks'
 import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
-import type { OptimisticMessage } from './channel-helpers'
+import type { OptimisticMessage } from './channel-feed'
 import { useDraft } from '../../../navigation/useDraft'
 import {
   composerAttachmentIdsMatch,

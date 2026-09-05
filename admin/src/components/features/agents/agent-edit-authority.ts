@@ -1,5 +1,5 @@
 import type { AgentRecord } from '../../../lib/api-client'
-import { isOwnerSession } from '../../shared/OwnerGate'
+import { isOwnerSession } from '../../../facades/auth/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 
 /**

@@ -1,6 +1,6 @@
 import type { DemonstrationRecord } from '../../../facades/demonstrations/hooks'
 import type { WorkflowTemplateRecord } from '../../../lib/api-client'
-import type { PagedList } from '../../../facades/usePagedList'
+import type { PagedList } from '../../../facades/pagination/usePagedList'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'

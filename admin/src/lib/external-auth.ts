@@ -1,7 +1,7 @@
 import type { PendingExternalAuthTarget } from '@nessie/client-core'
-import type { SignInTheme } from '../providers/ThemeProvider'
+import type { SignInTheme } from './theme-storage'
 import { isDesktopApp } from './desktop'
-import { isReactNativeWebView } from './mobile-shell'
+import { isReactNativeWebView } from './native-shell'
 import {
   beginExternalAuth,
   clearPendingExternalAuthMatching,

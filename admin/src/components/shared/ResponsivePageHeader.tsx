@@ -13,7 +13,7 @@ import {
   HeaderAccountMenu,
   useHeaderAccountMenuVisible,
 } from '../../layouts/admin-shell/ShellStateContext'
-import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
+import { PhoneBackButton } from '../../navigation/PhoneBackButton'
 import {
   MORE_ACTION_ID,
   useResponsivePageHeaderOverflow,

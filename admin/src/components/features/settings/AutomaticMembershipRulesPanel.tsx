@@ -14,7 +14,7 @@
 import { useState } from 'react'
 import type { AutomaticMembershipDomainRecord } from '@nessie/schemas'
 
-import { formErrorMessage } from '../../../facades/form-errors'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { EmptyState } from '../../shared/EmptyState'
 import { FormError } from '../../shared/FormActions'

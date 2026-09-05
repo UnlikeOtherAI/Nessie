@@ -5,9 +5,9 @@ import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { useProjectSources } from '../../../facades/board-sources/hooks'
-import { formErrorMessage } from '../../../facades/form-errors'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
-import { BoardCreateDialog } from '../../../components/kanban/BoardCreateDialog'
+import { BoardCreateDialog } from '../../../components/features/projects/kanban/BoardCreateDialog'
 
 type BoardsSettingsSectionProps = {
   boards: BoardRecord[]

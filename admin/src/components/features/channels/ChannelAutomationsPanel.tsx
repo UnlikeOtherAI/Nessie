@@ -9,7 +9,7 @@ import {
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../providers/ToastProvider'
 import { Pill } from '../../primitives/Pill'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import {
   formatRelativeTime,
   getInstallationTone,

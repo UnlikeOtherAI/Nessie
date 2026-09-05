@@ -1,8 +1,8 @@
 import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
-import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
-import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
-import { useNavigationLayout } from '../../lib/mobile-shell'
+import { PhoneBackButton } from '../../navigation/PhoneBackButton'
+import { PhoneNavigationButton } from '../../navigation/PhoneNavigationButton'
+import { useNavigationLayout } from '../../navigation/mobile-shell'
 import { publishScreenTitle, retireScreenTitle } from '../../navigation/screen'
 import { surfaceParent } from '../../navigation/surface-lookup'
 import {

@@ -17,7 +17,7 @@ import {
   useCurrentOrganization,
   useUpdateOrganizationTheme,
 } from '../../../facades/organization/hooks'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { useTheme } from '../../../providers/ThemeProvider'
 import type { PageHeaderAction } from '../../../components/shared/ResponsivePageHeader'
 

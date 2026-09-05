@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
+import { usePhoneLayout } from '../../navigation/mobile-shell'
 import {
   applyScreen,
   describeScreen,
@@ -9,7 +10,7 @@ import {
   type ScreenMessage,
 } from '../../navigation/screen'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
-import { useLocalBackSnapshot } from './local-back/LocalBackContext'
+import { useLocalBackSnapshot } from '../../navigation/LocalBackContext'
 
 type NativePhoneWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }

@@ -7,8 +7,8 @@ import type {
   UserStatusRuleScope,
 } from '../../../lib/api-client'
 import type { useCreateStatusRule, useDeleteStatusRule } from '../../../facades/statuses/hooks'
-import { toFormErrors } from '../../../facades/form-errors'
-import { agentSelectionLabel } from '../../../components/features/agents/AgentVisibilityPill'
+import { toFormErrors } from '../../../facades/forms/form-errors'
+import { agentSelectionLabel } from '../../../components/shared/AgentVisibilityPill'
 import { Card } from '../../../components/shared/Card'
 import { EmptyState } from '../../../components/shared/EmptyState'
 import { FormActions, FormError } from '../../../components/shared/FormActions'
@@ -17,7 +17,7 @@ import { Select, Textarea } from '../../../components/shared/FormControls'
 import { Row, RowList } from '../../../components/shared/RowList'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Switch } from '../../../components/primitives/Switch'
-import { describeRule } from './status-components'
+import { describeRule } from './status-presentation'
 
 type StatusRuleFormProps = {
   agents: AgentRecord[]

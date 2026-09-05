@@ -3,9 +3,9 @@ import type { BoardColumnRecord, ColumnCategory } from '../../../facades/boards/
 import { useCreateColumn, useDeleteColumn, useUpdateColumn } from '../../../facades/boards/hooks'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/kanban/kanban-config'
+import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
 import { Pill } from '../../../components/primitives/Pill'
-import { formErrorMessage } from '../../../facades/form-errors'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 
 const CategorySelect = ({
   value,

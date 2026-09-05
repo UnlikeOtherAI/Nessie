@@ -5,7 +5,7 @@ import { FormActions, FormError, FormSuccess } from '../../../components/shared/
 import { FormField } from '../../../components/shared/FormField'
 import { Input } from '../../../components/shared/FormControls'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { TeamAvatarPanel } from './TeamAvatarPanel'
 import { useRenameTeam } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'

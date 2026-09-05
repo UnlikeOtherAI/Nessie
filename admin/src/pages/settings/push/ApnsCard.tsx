@@ -12,7 +12,7 @@ import {
 } from '../../../facades/platform-push/hooks'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
-import { PushResultBanner, PushStatusRow } from './shared'
+import { PushResultBanner, PushStatusRow } from './push-status'
 
 // Derive a Key ID from an `AuthKey_<KEYID>.p8` filename, matching the server's
 // auto-derivation so the field pre-fills on file pick.

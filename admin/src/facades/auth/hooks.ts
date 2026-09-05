@@ -20,6 +20,28 @@ const bumpMyAvatarRevision = (queryClient: QueryClient): void => {
 
 export type { SessionSummary } from '@nessie/schemas'
 
+/**
+ * The derivation itself, over a session that may not exist yet. A signed-out
+ * session is not an owner — the `?? false` every call site carried.
+ *
+ * `roleIds` is dereferenced without a second `?.`, matching 25 of the 29
+ * call sites this replaces. Four disagreed (`roleIds?.includes`), and that
+ * chain was unreachable defence rather than a guard someone needs back: all
+ * four render inside `AdminShellLayout`, whose `useAdminShell` reads
+ * `me?.user.roleIds.includes('owner')` *unguarded* on the same object before
+ * any of them mounts. A session that could reach them with no `roleIds` has
+ * already crashed one level up. Nothing feeds a partial session either — the
+ * provider persists only the bearer token and re-fetches `me` from
+ * `/api/auth/me` on every mount, and the debug-session import deliberately
+ * discards the pasted user and re-fetches too. The field is required by
+ * `MeUserSchema` and set unconditionally by `buildMeResponse`.
+ */
+export const isOwnerSession = (me: MeResponse | null): boolean =>
+  me?.user.roleIds.includes('owner') ?? false
+
+/** The same question, asked from a component or a hook. */
+export const useIsOwner = (): boolean => isOwnerSession(useAuthSession().me)
+
 export const useAuthProviders = () => {
   const apiClient = useApiClient()
 

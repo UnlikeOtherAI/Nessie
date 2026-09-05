@@ -2,14 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { AgentRecord } from '../src/lib/api-client'
-import {
-  CHANNEL_TABS,
-  isAgentsTabAvailable,
-  isConversationAgentTabAvailable,
-  isConversationTriggersTabAvailable,
-  isConversationTodosTabAvailable,
-  resolveConversationAgent,
-} from '../src/components/features/channels/channel-helpers'
+import { CHANNEL_TABS, isAgentsTabAvailable, isConversationAgentTabAvailable, isConversationTriggersTabAvailable, isConversationTodosTabAvailable, resolveConversationAgent } from '../src/components/features/channels/channel-tabs'
 
 const agent = (overrides: Partial<AgentRecord> = {}): AgentRecord => ({
   channelIds: [],

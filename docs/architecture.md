@@ -70,6 +70,16 @@ creating files, moving code, reusing logic, or widening an existing service.
   for the small number of headers with navigation context or an editable
   title; do not add page-specific breakpoint hiding or arbitrary React-node
   action slots.
+- `admin/src` is ten ordered layers and every import runs downward: `lib` →
+  `hooks` → `navigation`/`facades` → `providers`/`bridges` →
+  `components/primitives` → `components/overlays` → `components/shared` →
+  `components/features` → `layouts` → `pages` (with `router.tsx`/`main.tsx`
+  above all of it). A layer may import from itself and from anything below it,
+  never upward; `scripts/lint-admin-layers.mjs` enforces it on every
+  `pnpm lint`, with one named exception and a shrinking, self-checking
+  allowlist of individual edges. The full table and the reasoning are in
+  [provider-system-and-frontend-architecture.md](provider-system-and-frontend-architecture.md)
+  §5.4.
 - Keep docs next to architecture changes. If behavior, topology, ports,
   deployment, MCP surface, or workflow changes, update the corresponding
   document before committing.

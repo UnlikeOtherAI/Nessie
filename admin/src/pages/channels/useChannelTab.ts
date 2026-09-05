@@ -1,15 +1,7 @@
 import { useEffect } from 'react'
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client'
 import { useTabParam } from '../../navigation/useTabParam'
-import {
-  CHANNEL_TABS,
-  isAgentsTabAvailable,
-  isConversationAgentTabAvailable,
-  isConversationTriggersTabAvailable,
-  isConversationTodosTabAvailable,
-  resolveConversationAgent,
-  type ChannelTab,
-} from '../../components/features/channels/channel-helpers'
+import { CHANNEL_TABS, isAgentsTabAvailable, isConversationAgentTabAvailable, isConversationTriggersTabAvailable, isConversationTodosTabAvailable, resolveConversationAgent, type ChannelTab } from '../../components/features/channels/channel-tabs'
 
 // Which section of a conversation is showing, in one place.
 //

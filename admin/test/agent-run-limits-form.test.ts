@@ -6,7 +6,7 @@ import {
   emptyRunLimitsForm,
   readAgentRunLimits,
   runLimitsToForm,
-} from '../src/components/features/agents/designer/run-limits.js'
+} from '../src/facades/designer/run-limits.js'
 
 test('an all-blank fieldset saves null so stored limits are cleared', () => {
   assert.equal(buildRunLimits(emptyRunLimitsForm), null)

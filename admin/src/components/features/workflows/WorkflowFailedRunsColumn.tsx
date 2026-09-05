@@ -1,5 +1,5 @@
 import type { WorkflowRunRecord } from '../../../lib/api-client'
-import type { PagedList } from '../../../facades/usePagedList'
+import type { PagedList } from '../../../facades/pagination/usePagedList'
 import { Pill } from '../../primitives/Pill'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
 import { PaginationFooter } from '../../shared/PaginationFooter'

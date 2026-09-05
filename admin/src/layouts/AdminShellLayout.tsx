@@ -3,26 +3,20 @@ import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { DashboardRealtimeProvider } from '../components/features/dashboards/DashboardRealtimeProvider';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
-import {
-  isReactNativeWebView,
-  useMobileLayout,
-  useNativeLargePhoneLandscapeApp,
-  useNativeIPadApp,
-  useNativePhoneApp,
-  useNavigationLayout,
-} from '../lib/mobile-shell';
+import { isReactNativeWebView } from '../lib/native-shell';
+import { useMobileLayout, useNativeLargePhoneLandscapeApp, useNativeIPadApp, useNativePhoneApp, useNavigationLayout } from '../navigation/mobile-shell';
 import { useTeamHostSync } from '../facades/team/host-sync';
-import { NotificationsProvider } from '../providers/NotificationsProvider';
+import { MessageNotificationBridge } from '../bridges/MessageNotificationBridge';
 import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
-import { PushSurfacePresenceHeartbeat } from '../providers/PushSurfacePresenceHeartbeat';
-import { AttentionDisplayManager } from '../providers/AttentionDisplayManager';
+import { PushSurfacePresenceHeartbeat } from '../bridges/PushSurfacePresenceHeartbeat';
+import { AttentionDisplayManager } from '../bridges/AttentionDisplayManager';
 import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
-import { LocalBackProvider } from './admin-shell/local-back/LocalBackContext';
+import { LocalBackProvider } from '../navigation/LocalBackContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
@@ -32,7 +26,7 @@ import { SHELL_MAIN_ID, SkipToContentLink } from '../navigation/SkipToContentLin
 import {
   isPhoneTabRoot,
   phoneTabRootHasContextualList,
-} from './admin-shell/phone-navigation';
+} from '../navigation/phone-navigation';
 import { PhoneNavigationProvider } from './admin-shell/PhoneNavigationProvider';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
@@ -387,7 +381,7 @@ const AuthenticatedAdminShellLayout = () => {
       <AttentionDisplayManager />
       <PushSurfacePresenceHeartbeat />
       <ToastProvider>
-        <NotificationsProvider>
+        <MessageNotificationBridge>
           <TransientMenuProvider>
             <ShellStateProvider value={shellState}>
                 <SkipToContentLink />
@@ -458,7 +452,7 @@ const AuthenticatedAdminShellLayout = () => {
                 />
             </ShellStateProvider>
           </TransientMenuProvider>
-        </NotificationsProvider>
+        </MessageNotificationBridge>
       </ToastProvider>
     </PresenceProvider>
     </AgentIdentityProvider>

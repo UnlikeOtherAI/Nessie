@@ -2418,7 +2418,7 @@ html[data-desktop-platform='linux'] #root {
    rewrap the whole thread on every frame, which reads as the panel being
    crushed rather than pushed — so the footprint goes with a negative margin
    while the panel itself rides out on a transform. Duration is mirrored in
-   `thread-panel-helpers.ts` THREAD_PANEL_CLOSE_MS, which holds the route
+   `thread-panel-layout.ts` THREAD_PANEL_CLOSE_MS, which holds the route
    change until the move is done; change both together. */
 .thread-panel {
   transition:
@@ -2746,8 +2746,8 @@ button.reaction-pill-active:focus-visible {
    say `admin-card rounded-md`), but it also handed EVERY other utility a win
    against this rule: `bg-*`, `border-*`, `hover:bg-*` all began painting on
    cards where they had been silently inert, including through indirect
-   composition (`hoverCardClass` in `pages/settings/settings-shared.tsx`, the
-   joined class array in `pages/settings/statuses/status-components.tsx`).
+   composition (`hoverCardClass` in `pages/settings/settings-presentation.ts`, the
+   joined class array in `pages/settings/statuses/StatusList.tsx`).
    Two site-by-site audits could not enumerate the blast radius; the flips
    they did catch repainted the appearance panels, four App Store panels,
    three executor panels and five hover rows. Do not repeat it as part of a

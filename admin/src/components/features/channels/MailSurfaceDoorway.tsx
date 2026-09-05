@@ -14,7 +14,7 @@ import { ConnectedMailConversationView } from '../connected-mail/ConnectedMailCo
 import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../mailbox/MailboxWorkspace'
 import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../../../facades/mail/hooks'
 import { connectedMailSettingsPath } from '../../../facades/mail/settings-path'
-import { useNavigationLayout } from '../../../lib/mobile-shell'
+import { useNavigationLayout } from '../../../navigation/mobile-shell'
 
 export type MailSurfaceDoorway = MailSurfaceDoorwayMetadata
 

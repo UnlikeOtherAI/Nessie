@@ -6,7 +6,7 @@ import { TeamAgentsPage } from './team/TeamAgentsPage'
 import { TeamProfilePage } from './team/TeamProfilePage'
 import type { TeamRecord } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../../facades/auth/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
 import { useTeams } from '../../facades/projects/hooks'
 

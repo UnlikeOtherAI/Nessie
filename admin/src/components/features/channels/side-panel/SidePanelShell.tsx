@@ -11,7 +11,7 @@ import {
 import { useResizeHandleReveal } from '../../../../hooks/useResizeHandleReveal'
 import { useViewport } from '../../../../hooks/useViewport'
 import { ColumnResizeHandle } from '../../../primitives/ColumnResizeHandle'
-import { THREAD_PANEL_MIN_WIDTH } from '../thread-panel/thread-panel-helpers'
+import { SIDE_PANEL_MIN_WIDTH } from '../../../../hooks/useSidePanelGeometry'
 
 const KEYBOARD_RESIZE_STEP = 16
 
@@ -129,7 +129,7 @@ export const SidePanelShell = ({
     if (event.key === 'ArrowLeft') nextWidth = panelWidth + KEYBOARD_RESIZE_STEP
     if (event.key === 'ArrowRight') nextWidth = panelWidth - KEYBOARD_RESIZE_STEP
     if (event.key === 'Home') nextWidth = viewportWidth / 2
-    if (event.key === 'End') nextWidth = THREAD_PANEL_MIN_WIDTH
+    if (event.key === 'End') nextWidth = SIDE_PANEL_MIN_WIDTH
     if (nextWidth === null) return
 
     event.preventDefault()
@@ -166,8 +166,8 @@ export const SidePanelShell = ({
         <div
           aria-label={`Resize ${ariaLabel.toLowerCase()}`}
           aria-orientation="vertical"
-          aria-valuemax={Math.floor(Math.max(viewportWidth / 2, THREAD_PANEL_MIN_WIDTH))}
-          aria-valuemin={THREAD_PANEL_MIN_WIDTH}
+          aria-valuemax={Math.floor(Math.max(viewportWidth / 2, SIDE_PANEL_MIN_WIDTH))}
+          aria-valuemin={SIDE_PANEL_MIN_WIDTH}
           aria-valuenow={panelWidth}
           className={[
             'column-resize-control thread-panel-resize-control absolute inset-y-0 z-[var(--layer-stack)] hidden touch-none xl:flex',

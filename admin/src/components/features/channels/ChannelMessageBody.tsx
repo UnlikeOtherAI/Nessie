@@ -27,7 +27,7 @@ import { WorkflowRunCard } from './WorkflowRunCard'
 import { DashboardPresentation } from '../dashboards/DashboardPresentation'
 import { EmbeddedWidget, readMessageEmbedIds } from '../dashboards/EmbeddedWidget'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
-import { getReplyBroadcastRootId, type ThreadParticipant } from './thread-panel/thread-panel-helpers'
+import { getReplyBroadcastRootId, type ThreadParticipant } from './thread-panel/thread-replies'
 
 interface ChannelMessageBodyProps {
   message: ThreadMessageRecord

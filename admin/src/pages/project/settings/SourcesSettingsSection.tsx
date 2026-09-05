@@ -10,7 +10,7 @@ import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { EmptyState } from '../../../components/shared/EmptyState'
 import { Section } from '../../../components/shared/PageBody'
 import { Pill } from '../../../components/primitives/Pill'
-import { formErrorMessage } from '../../../facades/form-errors'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { ConnectSourceDialog } from './ConnectSourceDialog'
 import { SourceMappingPanel } from './SourceMappingPanel'
 

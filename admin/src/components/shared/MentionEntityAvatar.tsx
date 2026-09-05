@@ -1,5 +1,5 @@
 import { IdentityTile } from '../primitives/IdentityTile'
-import { UserAvatar } from '../primitives/UserAvatar'
+import { UserAvatar } from './UserAvatar'
 import { AgentAvatar } from './AgentAvatar'
 import type { MentionEntity } from './MentionInput'
 import { useAuthSession } from '../../providers/AuthSessionProvider'

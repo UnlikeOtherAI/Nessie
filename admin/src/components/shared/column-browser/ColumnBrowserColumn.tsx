@@ -7,9 +7,9 @@ import {
   type ReactNode,
 } from 'react'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
-import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
-import { useColumnBackContext } from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
+import { PhoneNavigationButton } from '../../../navigation/PhoneNavigationButton'
+import { useColumnBackContext } from '../../../navigation/LocalBackContext'
 import { ScreenHeader } from '../ScreenHeader'
 import type { PageHeaderAction, PageHeaderButtonAction } from '../ResponsivePageHeader'
 

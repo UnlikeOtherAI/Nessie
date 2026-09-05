@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { TeamMemberRecord } from '@nessie/schemas'
 
-import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 import {
   PausedPrivateAgentsBucket,
   PersonAgents,
@@ -19,7 +19,7 @@ import { Pill } from '../../components/primitives/Pill'
 import { Card } from '../../components/shared/Card'
 import { FormError } from '../../components/shared/FormActions'
 import { Select } from '../../components/shared/FormControls'
-import { formErrorMessage } from '../../facades/form-errors'
+import { formErrorMessage } from '../../facades/forms/form-errors'
 
 const memberLabel = (member: TeamMemberRecord): string =>
   member.displayName ?? member.email ?? member.uoaSub

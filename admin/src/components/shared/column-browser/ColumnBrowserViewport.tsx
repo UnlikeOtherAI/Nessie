@@ -7,14 +7,14 @@ import {
   type ReactNode,
 } from 'react'
 import { useViewport } from '../../../hooks/useViewport'
-import { useNavigationLayout } from '../../../lib/mobile-shell'
+import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { NestedStage, NestedStageHostContext } from '../../../navigation/NestedStage'
 import {
   ColumnBackProvider,
   columnBackPriority,
   useLocalBack,
   type ColumnStageReport,
-} from '../../../layouts/admin-shell/local-back/LocalBackContext'
+} from '../../../navigation/LocalBackContext'
 
 type ReportBack = ((index: number, report: ColumnStageReport | null) => void) | null
 

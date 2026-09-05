@@ -1,6 +1,6 @@
 import { PROJECT_ADMIN_ROLES } from '@nessie/schemas'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../auth/hooks'
 import { useProjectMembers } from './hooks'
 
 /**

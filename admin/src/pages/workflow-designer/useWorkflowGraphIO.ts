@@ -7,7 +7,7 @@ import {
   useUpdateWorkflowTemplate,
   useWorkflowTemplate,
 } from '../../facades/workflows/hooks'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../../facades/auth/hooks'
 import { workflowKeys } from '../../lib/query-keys'
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 import {

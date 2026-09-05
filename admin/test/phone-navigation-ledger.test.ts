@@ -8,7 +8,7 @@ import {
   resolvePhoneLedgerBackAction,
   resolvePhoneTabPress,
   resolvePhoneTabSelect,
-} from '../src/layouts/admin-shell/phone-navigation-ledger'
+} from '../src/navigation/phone-navigation-ledger'
 
 const ledgerOf = (
   ...events: Array<['PUSH' | 'REPLACE' | 'POP', string, string]>
