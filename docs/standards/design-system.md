@@ -131,7 +131,10 @@ summary and points here; **this file is the rule**.
   Selected, pressed and open
   controls expose their state structurally (`selected`, `aria-pressed`,
   `aria-expanded`) and the theme styles those states; a route never paints a
-  private active treatment.
+  private active treatment. A header control that is a standing on/off state
+  rather than an action you fire — a list filter — is a `toggle` action: the
+  label stays readable beside the shared `Switch`, so the bar says what it is
+  filtered by instead of asking the reader to decode a highlighted button.
 - **One icon family for product controls.** Repeated interface actions use the
   installed Font Awesome set through a shared primitive, never text glyphs or
   one-off inline SVGs. In the sidebar, section add actions, disclosure chevrons,

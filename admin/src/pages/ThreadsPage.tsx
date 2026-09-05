@@ -21,13 +21,13 @@ export const ThreadsPage = () => {
   const { data: users = [] } = useUsers(isOwner)
   const items = activity.data?.items ?? []
   const headerActions: PageHeaderAction[] = [{
+    checked: unreadOnly,
     id: 'unread-only',
+    kind: 'toggle',
     label: 'Unread only',
-    onSelect: toggleUnreadOnly,
-    pressed: unreadOnly,
+    onChange: toggleUnreadOnly,
     priority: 80,
-    selected: unreadOnly,
-    title: unreadOnly ? 'Show all threads' : 'Show only unread threads',
+    title: 'Show only threads with unread replies',
   }]
 
   return (
