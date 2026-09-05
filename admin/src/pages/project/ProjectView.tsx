@@ -4,6 +4,8 @@ import { ProjectPageHeader } from '../../components/features/projects/ProjectPag
 import { TaskDialog } from '../../components/kanban/TaskDialog'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoards } from '../../facades/boards/hooks'
+import { BoardSwitcher } from '../../components/kanban/BoardSwitcher'
+import { usePhoneLayout } from '../../lib/mobile-shell'
 import { useTabParam } from '../../navigation/useTabParam'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -22,19 +24,22 @@ export const ProjectView = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const { data: boards = [] } = useProjectBoards(projectId)
+  // No pinned sidebar on the single column, so the board strip stays there —
+  // see `BoardSwitcher`. Read above the `projectId` guard: it is a hook.
+  const singleColumn = usePhoneLayout()
 
   // Which board is on screen. A tab, so it rides in `?board=` written with
   // `replace`; an unknown or absent value reads as the project's default
   // board, so a stale bookmark degrades to the board the project opens on.
   // The boards themselves are chosen in the Projects sidebar, under this
-  // project's Board section — there is no strip in the header, because the
-  // sidebar already draws every board and two doorways to the same choice
-  // only made the reader guess which one moved them.
+  // project's Board section — the header carries no strip, because the sidebar
+  // already draws every board and two doorways to the same choice only made
+  // the reader guess which one moved them. The single-column layout is the
+  // exception: it has no pinned sidebar, and the board screen's leading
+  // doorway is Back, so there the strip is the only doorway there is.
   const defaultBoardId = boards.find((item) => item.isDefault)?.id ?? boards[0]?.id ?? ''
   const boardIds: string[] = boards.map((item) => item.id)
-  // Read-only: the sidebar's board rows write `?board=` themselves, so nothing
-  // on this screen selects a board.
-  const [activeBoardId] = useTabParam('board', boardIds, defaultBoardId)
+  const [activeBoardId, selectBoard] = useTabParam('board', boardIds, defaultBoardId)
   const board = boards.find((item) => item.id === activeBoardId) ?? null
 
   if (!projectId) return null
@@ -102,7 +107,18 @@ export const ProjectView = () => {
       <ProjectPageHeader
         actions={headerActions}
         project={project}
-        subtitle={tab === 'board' && boards.length > 1 ? board?.name : undefined}
+        subtitle={
+          tab === 'board' && boards.length > 1 && !singleColumn ? board?.name : undefined
+        }
+        tabs={
+          tab === 'board' && singleColumn ? (
+            <BoardSwitcher
+              activeBoardId={activeBoardId}
+              boards={boards}
+              onSelect={selectBoard}
+            />
+          ) : undefined
+        }
       />
 
       <div className="min-h-0 flex-1">

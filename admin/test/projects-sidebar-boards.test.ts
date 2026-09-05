@@ -48,11 +48,18 @@ test('every open/closed state of the Projects menu is written to a store that ou
   assert.equal((sidebar.match(/retainExpandedProjectIds\(current, projects\)/g) ?? []).length, 2)
 })
 
-// The project header carries no board strip, so this list is the only doorway
-// to a board that is not the project's default: it has to be open unless the
-// reader closed it (AGENTS.md → "Rule zero").
+// On every layout that pins this sidebar the project header carries no board
+// strip, so this list is the only doorway to a board that is not the project's
+// default: it has to be open unless the reader closed it (AGENTS.md → "Rule
+// zero"). The single column, which has no pinned sidebar, keeps the strip.
 test('the boards under Board are open until the reader closes them', () => {
   assert.match(sidebar, /boardsExpanded=\{!collapsedBoardProjectIds\.has\(project\.id\)\}/)
+})
+
+test('the header board strip is the single column’s doorway and nowhere else', () => {
+  const view = source('pages/project/ProjectView.tsx')
+  assert.match(view, /const singleColumn = usePhoneLayout\(\)/)
+  assert.match(view, /tab === 'board' && singleColumn \? \(\s*<BoardSwitcher/)
 })
 
 test('the Board section lists the project boards and creates one through a dialog', () => {
