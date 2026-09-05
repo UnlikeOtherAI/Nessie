@@ -138,6 +138,36 @@ project-scoped; it is scoped — not yet fully specified — in
 [docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md),
 and `scripts/inspect-team-shape.sql` sizes it against real data.
 
+## Channel names, and what an archived channel keeps
+
+A channel's name is its slug and its label at once — one name, and it is the
+addressable one (`validateChannelLabel` is the single chokepoint every write
+goes through). The name is unique **within the container the person is looking
+at**, which under the model above is one team's body of work:
+
+- A channel inside a project is unique across that project. A project holds one
+  team, so per-project and per-team are the same rule stated at the row that
+  exists today; do not add a second constraint that assumes otherwise.
+- A shared (standalone) channel is unique across the organisation's
+  `channelRoot` project — the one container all shared channels live in.
+- The two namespaces are independent. `#general` may exist as a shared channel
+  *and* in every project; twice inside one of them, never.
+
+**An archived channel does not hold its name.** `DELETE /api/channels/:id`
+archives rather than hard-deletes, and every list a person can see hides
+archived channels — so before this, deleting `#random` left no trace except the
+refusal to create a new one, naming a channel nobody could see, open, or
+rename. Both halves of the rule carry the condition: the partial unique index
+`channels_project_slug_standard_key` is `WHERE type = 'standard' AND archived_at
+IS NULL`, and `ensureChannelSlugAvailable` filters `archivedAt: null`. Never
+change one without the other — a check looser than the index is a 500, and a
+check tighter than the index is an invisible conflict again.
+
+The cost is paid at the other end: unarchiving can now collide, so
+`setChannelArchived` re-checks the name on the way back and refuses in a
+sentence that says which channel to rename (409 `CHANNEL_SLUG_CONFLICT`), rather
+than failing on the constraint.
+
 ## Changing what UOA owns, from inside Nessie
 
 "UOA is the authority" is a rule about **where the value is stored**, not about

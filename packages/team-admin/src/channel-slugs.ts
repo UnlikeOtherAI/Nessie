@@ -16,12 +16,21 @@ export class ChannelValidationError extends Error {}
 
 export type ChannelSlugScope = 'project' | 'standalone'
 
+export type ChannelSlugConflictIntent = 'claim' | 'restore'
+
 export class ChannelSlugConflictError extends Error {
-  constructor(slug: string, scope: ChannelSlugScope = 'project') {
+  constructor(
+    slug: string,
+    scope: ChannelSlugScope = 'project',
+    intent: ChannelSlugConflictIntent = 'claim',
+  ) {
+    const holder = scope === 'standalone'
+      ? `A standalone channel with slug "${slug}" already exists`
+      : `A channel with slug "${slug}" already exists in this project`
     super(
-      scope === 'standalone'
-        ? `A standalone channel with slug "${slug}" already exists`
-        : `A channel with slug "${slug}" already exists in this project`,
+      intent === 'restore'
+        ? `${holder}. Rename that channel, or rename this one, before unarchiving`
+        : holder,
     )
   }
 }
@@ -69,10 +78,42 @@ export const loadChannelTeamProject = async (
   }
 }
 
+/**
+ * Which namespace a channel's name is unique in, read from where the channel
+ * lives rather than from what the caller believes: standalone (shared) channels
+ * sit in the organisation's hidden channel-root project, project channels in a
+ * real one. Renaming and unarchiving both need this, and neither is told a
+ * scope by its caller — asking the row is the only way the message about the
+ * conflict names the place the person is actually looking at.
+ */
+export const resolveChannelSlugScope = async (
+  prisma: PrismaClient,
+  projectId: string,
+): Promise<ChannelSlugScope> => {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { channelRoot: true },
+  })
+  return project?.channelRoot ? 'standalone' : 'project'
+}
+
+/**
+ * An archived channel does not hold its name.
+ *
+ * `DELETE /api/channels/:id` archives rather than hard-deletes, and the sidebar
+ * hides archived channels, so before this the only trace of a deleted `#random`
+ * was the refusal to create a new one — a conflict with a channel nobody could
+ * see, open, or rename. The partial unique index carries the same `archived_at
+ * IS NULL` condition, so the database agrees rather than overruling this.
+ *
+ * The cost is that unarchiving can now collide; `setChannelArchived` re-checks
+ * on the way back and says so rather than failing on the constraint.
+ */
 export const ensureChannelSlugAvailable = async (
   prisma: PrismaClient,
   input: {
     excludeChannelId?: string
+    intent?: ChannelSlugConflictIntent
     projectId: string
     scope?: ChannelSlugScope
     slug: string
@@ -80,6 +121,7 @@ export const ensureChannelSlugAvailable = async (
 ): Promise<void> => {
   const existing = await prisma.channel.findFirst({
     where: {
+      archivedAt: null,
       projectId: input.projectId,
       slug: input.slug,
       type: 'standard',
@@ -88,7 +130,7 @@ export const ensureChannelSlugAvailable = async (
     select: { id: true },
   })
   if (existing) {
-    throw new ChannelSlugConflictError(input.slug, input.scope)
+    throw new ChannelSlugConflictError(input.slug, input.scope, input.intent)
   }
 }
 
@@ -96,6 +138,7 @@ export const throwIfChannelSlugConflict = (
   error: unknown,
   slug: string,
   scope: ChannelSlugScope = 'project',
+  intent: ChannelSlugConflictIntent = 'claim',
 ): never => {
   const target = error instanceof Prisma.PrismaClientKnownRequestError
     ? error.meta?.['target']
@@ -109,7 +152,7 @@ export const throwIfChannelSlugConflict = (
       || (Array.isArray(target) && target.includes('project_id') && target.includes('slug'))
     )
   ) {
-    throw new ChannelSlugConflictError(slug, scope)
+    throw new ChannelSlugConflictError(slug, scope, intent)
   }
   throw error
 }
