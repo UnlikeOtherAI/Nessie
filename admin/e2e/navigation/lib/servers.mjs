@@ -16,7 +16,9 @@ import {
   databaseUrl,
 } from './config.mjs'
 
-const BIN = resolve(REPO_ROOT, 'node_modules', '.bin')
+const nodeBin = process.execPath
+const nodeModuleBin = (packageName, binPath) =>
+  resolve(REPO_ROOT, 'node_modules', packageName, binPath)
 
 export const waitForUrl = async (url, { label, timeoutMs = 120_000 }) => {
   const deadline = Date.now() + timeoutMs
@@ -105,8 +107,11 @@ export const startApi = async () => {
   }
   const database = databaseUrl()
   const server = startProcess({
-    args: [resolve(REPO_ROOT, 'api', 'src', 'index.ts')],
-    command: resolve(BIN, 'tsx'),
+    args: [
+      nodeModuleBin('tsx', 'dist/cli.mjs'),
+      resolve(REPO_ROOT, 'api', 'src', 'index.ts'),
+    ],
+    command: nodeBin,
     cwd: resolve(REPO_ROOT, 'api'),
     env: {
       DATABASE_URL: database,
@@ -142,8 +147,14 @@ export const startAdmin = async () => {
     throw new Error('NAV_E2E_ADMIN_MODE=preview needs admin/dist — run pnpm --filter @nessie/admin build')
   }
   const server = startProcess({
-    args: [mode === 'preview' ? 'preview' : '', '--port', String(ADMIN_PORT), '--strictPort'].filter(Boolean),
-    command: resolve(BIN, 'vite'),
+    args: [
+      nodeModuleBin('vite', 'bin/vite.js'),
+      mode === 'preview' ? 'preview' : '',
+      '--port',
+      String(ADMIN_PORT),
+      '--strictPort',
+    ].filter(Boolean),
+    command: nodeBin,
     cwd: ADMIN_ROOT,
     env: { NESSIE_API_PORT: String(API_PORT) },
     label: 'admin',

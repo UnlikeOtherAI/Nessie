@@ -59,7 +59,7 @@ test('the web callback replaces login with a dedicated completion screen', async
     assert.equal(router.state.location.search, '?code=flow&state=state')
     assert.match(container.textContent ?? '', /Finishing sign-in…/)
     assert.match(container.textContent ?? '', /Connecting to Nessie…/)
-    assert.doesNotMatch(container.textContent ?? '', /Open the Nessie team/)
+    assert.doesNotMatch(container.textContent ?? '', /The Slack alternative for an AI world/)
     assert.doesNotMatch(container.textContent ?? '', /Sign in with SSO/)
 
     await act(async () => { await router.navigate(-1) })

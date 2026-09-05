@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   DASHBOARD_WIDGET_SCHEMA_VERSION,
+  DashboardDeltaSchema,
   WidgetDefinitionSchema,
   validateWidgetBinding,
   type DashboardOutputColumn,
@@ -107,6 +108,93 @@ test('currency format demands a currency code', () => {
   assert.equal(parsed.success, false)
 })
 
+test('accepts the closed metric-card icon vocabulary and defaults its options', () => {
+  const withIcon = WidgetDefinitionSchema.safeParse({
+    kind: 'stat',
+    schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+    sourceId: SOURCE_ID,
+    presentation: { title: 'Active users' },
+    binding: { value: 'successful' },
+    options: { icon: 'users' },
+  })
+  const withoutIcon = WidgetDefinitionSchema.safeParse({
+    kind: 'stat',
+    schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+    sourceId: SOURCE_ID,
+    presentation: { title: 'Active users' },
+    binding: { value: 'successful' },
+  })
+
+  assert.equal(withIcon.success, true)
+  assert.equal(withoutIcon.success, true)
+  assert.ok(withoutIcon.success)
+  assert.equal(withoutIcon.data.kind, 'stat')
+  assert.deepEqual(withoutIcon.data.options, {})
+})
+
+test('refuses an arbitrary metric-card icon identifier', () => {
+  const parsed = WidgetDefinitionSchema.safeParse({
+    kind: 'stat',
+    schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+    sourceId: SOURCE_ID,
+    presentation: { title: 'Active users' },
+    binding: { value: 'successful' },
+    options: { icon: 'faCustomSvg' },
+  })
+  assert.equal(parsed.success, false)
+})
+
+test('accepts the additional composition, target, and correlation widgets', () => {
+  const definitions = [
+    {
+      kind: 'donut' as const,
+      schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+      sourceId: SOURCE_ID,
+      presentation: { title: 'Requests by region' },
+      binding: { category: 'region', value: 'successful' },
+    },
+    {
+      kind: 'gauge' as const,
+      schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+      sourceId: SOURCE_ID,
+      presentation: { title: 'Daily target' },
+      binding: { value: 'successful', target: 'failed' },
+    },
+    {
+      kind: 'scatter' as const,
+      schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+      sourceId: SOURCE_ID,
+      presentation: { title: 'Succeeded versus failed' },
+      binding: { x: 'successful', y: 'failed', label: 'region' },
+    },
+  ]
+
+  for (const definition of definitions) {
+    const parsed = WidgetDefinitionSchema.parse(definition)
+    assert.deepEqual(validateWidgetBinding(parsed, columns), [])
+  }
+})
+
+test('additional chart bindings refuse fields their renderers cannot plot', () => {
+  const gauge = WidgetDefinitionSchema.parse({
+    kind: 'gauge',
+    schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+    sourceId: SOURCE_ID,
+    presentation: { title: 'Daily target' },
+    binding: { value: 'successful', target: 'region' },
+  })
+  const scatter = WidgetDefinitionSchema.parse({
+    kind: 'scatter',
+    schemaVersion: DASHBOARD_WIDGET_SCHEMA_VERSION,
+    sourceId: SOURCE_ID,
+    presentation: { title: 'Correlation' },
+    binding: { x: 'region', y: 'failed' },
+  })
+
+  assert.match(validateWidgetBinding(gauge, columns)[0]?.message ?? '', /is string/)
+  assert.match(validateWidgetBinding(scatter, columns)[0]?.message ?? '', /is string/)
+})
+
 test('binding validation refuses a field the source does not declare', () => {
   const parsed = WidgetDefinitionSchema.parse({
     ...timeseries,
@@ -160,4 +248,59 @@ test('a table cannot sort by a column it does not display', () => {
 test('a valid binding produces no issues', () => {
   const parsed = WidgetDefinitionSchema.parse(timeseries)
   assert.deepEqual(validateWidgetBinding(parsed, columns), [])
+})
+
+test('dashboard delta is a closed versioned operation contract', () => {
+  const parsed = DashboardDeltaSchema.safeParse({
+    schemaVersion: 1,
+    mutationId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a6',
+    baseRevision: 4,
+    operations: [{
+      type: 'set_layout',
+      layout: { lg: [], md: [], sm: [] },
+    }],
+  })
+  assert.equal(parsed.success, true)
+})
+
+test('dashboard delta rejects unvalidated patch extensions', () => {
+  const parsed = DashboardDeltaSchema.safeParse({
+    schemaVersion: 1,
+    mutationId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a6',
+    baseRevision: 4,
+    operations: [{ type: 'set_layout', layout: { lg: [], md: [], sm: [] }, arbitraryPatch: true }],
+  })
+  assert.equal(parsed.success, false)
+})
+
+test('dashboard delta supports bounded filters, insights, and source-note display', () => {
+  const parsed = DashboardDeltaSchema.safeParse({
+    schemaVersion: 1,
+    mutationId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a6',
+    baseRevision: 4,
+    operations: [{
+      type: 'set_presentation',
+      presentation: {
+        style: 'executive',
+        filters: [{
+          id: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a7',
+          sourceId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a8',
+          column: 'quarter',
+          label: 'Q2 only',
+          values: ['Q2'],
+        }],
+        insights: [{
+          id: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a9',
+          text: 'Revenue is concentrated in two regions.',
+          tone: 'info',
+        }],
+        attributions: [{
+          sourceId: '1f2a3b4c-5d6e-4f70-8a90-b1c2d3e4f5a8',
+          label: 'Q2 finance upload',
+          visible: true,
+        }],
+      },
+    }],
+  })
+  assert.equal(parsed.success, true)
 })

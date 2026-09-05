@@ -40,9 +40,11 @@ sentence changes only if the invariant itself did.
   person to check a screen you can open yourself.
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
-- **Worktrees are mandatory** and the main checkout stays on `main`. Full rule,
-  including the merge-and-clean-up step, in [`AGENTS.md`](AGENTS.md) →
-  "Workflow".
+- **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is
+  protected — every change lands through a pull request and only a green one can
+  merge**, but no human approval is needed: merge as soon as CI passes. Full
+  rule, including the required checks and the clean-up step, in
+  [`AGENTS.md`](AGENTS.md) → "Workflow".
 - **Voice** is a secondary control surface, not the primary interface — that is
   the admin web UI (`admin/`). Two independent things carry the name: calling
   the Personal Assistant (Gemini Live, browser + iPhone,

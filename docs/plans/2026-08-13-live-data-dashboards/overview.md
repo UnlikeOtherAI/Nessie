@@ -34,6 +34,25 @@ one cache. Access is resolved live at every read by one function; embedding
 grants nothing. Versions are append-only, attribute agent edits to the run that
 made them, and restore by appending.
 
+### 2026-09 static workspace extension
+
+Static material adds JSON, CSV, XLSX, document-text, and article-text imports
+without creating a live connection. Each import normalizes into the same bounded
+dataset envelope and stores immutable parser, digest, source-reference,
+canonical-URL, access-basis, and normalization-loss metadata. A referenced
+conversation attachment is live-authorized and copied as retained raw material;
+its extraction is a separate normalized representation, never its claimed
+original. Spreadsheet formulas are refused rather than evaluated.
+
+Dashboard edits use a closed versioned delta log: a mutation id makes retries
+idempotent, a conditional revision claim rejects concurrent stale writes before
+children change, and a version snapshot is written in the same transaction.
+`dashboard.updated` is content-free and scope-authorized at both subscription
+and delivery. Conversation presentation uses the shared compact canvas and the
+URL-owned right workspace panel; one shared client subscription aggregates every
+mounted dashboard id, and the two views refetch the same entitled state after an
+update or reconnect.
+
 ---
 
 ## 1. Why this section exists, and where the line is
@@ -227,29 +246,35 @@ The contract is closed **structurally**, not by sanitising. The browser receives
 a server-produced `DashboardWidgetProjectionV1` — never the agent's original tool
 arguments, never a render tree.
 
-### 3.1 The catalogue — five kinds
+### 3.1 The catalogue — eight kinds
 
 | kind | The question only it answers |
 |---|---|
 | `stat` | What is the number now, and is it moving the right way? |
 | `timeseries` | How has it moved over time? (line/area, ≤12 series) |
 | `bar` | How does it split or rank across categories? (vertical/horizontal, grouped/stacked) |
+| `donut` | What share does each category make up? (one numeric value, aggregated by category) |
+| `gauge` | How close is the current value to a current target? |
+| `scatter` | How do two numeric measures relate? (one bounded point per source row) |
 | `table` | What are the actual records? (typed columns, one default sort) |
 | `status` | Is the thing ok / warning / failing / unknown — since when? |
 
-**Cut by name, with reasons:** pie and donut (a sorted bar answers the only
-question a pie pretends to); gauge and progress ring (a `stat` with a target bar
-uses less ink); area-as-its-own-kind (a `timeseries` preset); scatter, heatmap,
-pivot, funnel, map (real but rare — v2 candidates when someone asks *with data in
-hand*); **markdown/text widget, image, iframe, and "custom"** (the thin end of
-the freeform wedge this entire boundary exists to prevent — the dashboard
-description and each widget's own caption slot carry prose).
+`stat` also supports an optional controlled metric-card icon. It is one of ten
+schema-owned identifiers mapped to local Font Awesome Free glyphs, never a class,
+SVG, package import, or arbitrary icon name.
 
-**Extension path:** a new kind needs a product question the five cannot answer,
-plus a new discriminant in the shared schema, a renderer taking only normalized
-props, accessibility and cap tests, diff support, compact message/knowledge
-rendering, export behaviour, and a dual-reader migration plan. There is no plugin
-registry and no JSON pass-through to the chart library — ever.
+**Still cut by name, with reasons:** area-as-its-own-kind (a `timeseries`
+preset); heatmap, pivot, funnel, map and freeform charts (they do not yet have a
+specific dashboard question or binding contract); **markdown/text widget, image,
+iframe, and "custom"** (the thin end of the freeform wedge this entire boundary
+exists to prevent — the dashboard description and each widget's own caption slot
+carry prose).
+
+**Extension path:** a new kind needs a product question the existing catalogue
+cannot answer, plus a new discriminant in the shared schema, a renderer taking
+only normalized props, accessibility and cap tests, diff support, compact
+message/knowledge rendering, export behaviour, and a dual-reader migration plan.
+There is no plugin registry and no JSON pass-through to the chart library — ever.
 
 ### 3.2 The authored schema
 
@@ -308,6 +333,7 @@ Three worked examples:
                     "density": "cozy", "tone": "success" },
   "binding": { "sourceId": "…", "value": "mrr", "compareTo": "mrr_previous",
                "higherIsBetter": true, "spark": "mrr_series" },
+  "options": { "icon": "revenue" },
   "format": { "kind": "currency", "currency": "GBP", "precision": 0 } }
 ```
 
@@ -528,7 +554,7 @@ dotted grid and a toolbar; selecting a widget opens the right-hand pane —
 drag-resized and width-persisted exactly like the reply-thread panel — which has
 **one implementation and three tenants**: Inspector (Data tab: source picker then
 slot-filler; Style tab: the three segmented controls plus the agent Lock),
-Sources, and Versions. `+ Add widget` shows the five kinds as miniature live
+Sources, and Versions. `+ Add widget` shows the eight kinds as miniature live
 examples captioned by their question ("Stat — *what is the number now?*").
 
 **Keyboard and mobile.** Drag handles are focusable; arrows move by a cell,

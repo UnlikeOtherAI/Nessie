@@ -65,8 +65,8 @@ import {
 } from './control/execution.js'
 import { executeAttachmentThumbnailJob } from './control/attachment-thumbnail.js'
 import { generalizeDemonstration } from './control/demonstration-generalize.js'
+import { DASHBOARD_REFRESH_TOPIC } from '@nessie/dashboard'
 import {
-  DASHBOARD_REFRESH_TOPIC,
   refreshDashboardDataSource,
   sweepDueDashboardSources,
 } from './control/dashboard-refresh.js'
@@ -499,6 +499,7 @@ export const startWorker = async (
     egressPolicy: dashboardEgressPolicy,
     resolveCredential: async (ref: string) =>
       ref.startsWith('secret_dashboard_') ? dashboardSecretResolver.resolve(ref) : null,
+    realtimeTransport,
   }
 
   queueProvider.subscribe(

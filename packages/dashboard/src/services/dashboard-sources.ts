@@ -149,6 +149,7 @@ export const listDashboardSources = async (context: DashboardContext) =>
     select: {
       id: true,
       name: true,
+      kind: true,
       origin: true,
       path: true,
       outputColumns: true,
@@ -186,7 +187,7 @@ export const probeSource = async (
     const source = await prisma.dashboardDataSource.findFirst({
       where: { id: input.sourceId, organizationId: actor.organizationId, archivedAt: null },
     })
-    if (!source) {
+    if (!source || source.kind !== 'http' || !source.origin || !source.path || !source.transform) {
       throw new DashboardServiceError(404, 'DASHBOARD_SOURCE_NOT_FOUND', 'data source not found')
     }
     const secret = source.credentialRef ? await credentials.resolve(source.credentialRef) : null
@@ -253,9 +254,9 @@ export const setSourceCredential = async (
 
   const source = await prisma.dashboardDataSource.findFirst({
     where: { id: input.sourceId, organizationId: actor.organizationId, archivedAt: null },
-    select: { id: true, credentialRef: true },
+    select: { id: true, credentialRef: true, kind: true, origin: true, path: true },
   })
-  if (!source) {
+  if (!source || source.kind !== 'http' || !source.origin || !source.path) {
     throw new DashboardServiceError(404, 'DASHBOARD_SOURCE_NOT_FOUND', 'data source not found')
   }
   if (input.mode === 'header' && !input.headerName) {
@@ -305,7 +306,7 @@ export const updateSourceEndpoint = async (
   const source = await prisma.dashboardDataSource.findFirst({
     where: { id: input.sourceId, organizationId: actor.organizationId, archivedAt: null },
   })
-  if (!source) {
+  if (!source || source.kind !== 'http' || !source.origin || !source.path) {
     throw new DashboardServiceError(404, 'DASHBOARD_SOURCE_NOT_FOUND', 'data source not found')
   }
 

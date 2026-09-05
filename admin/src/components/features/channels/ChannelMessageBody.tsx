@@ -177,7 +177,7 @@ export const ChannelMessageBody = ({
           </div>
         ))
         : null}
-      {!isEditingMessage ? <DashboardPresentation metadata={message.metadata} /> : null}
+      {!isEditingMessage ? <DashboardPresentation metadata={message.metadata} threadId={message.threadId} /> : null}
       {!isEditingMessage ? <CommsConnectCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <EmailAccountConnectCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <GmailDraftCard metadata={message.metadata} /> : null}

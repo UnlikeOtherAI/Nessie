@@ -60,7 +60,7 @@ Nessie HTTP endpoints · non-GET methods, GraphQL, webhook/push sources,
 sub-5-minute schedules, streaming APIs, per-viewer fetches, custom request bodies
 · public or anonymous links, cross-organization grants, email embeds, exported
 active content · custom colours or hex pickers, chart-library config, plugin
-widgets, pie/gauge/map/scatter/heatmap/pivot, conditional scripting, arbitrary
+widgets, heatmap/pivot/funnel/map, conditional scripting, arbitrary
 drill-down · SQL or report-builder access to Nessie tables, owner telemetry on
 member surfaces, charts copied onto the project overview · CRDT editing, cursor
 collaboration, automatic conflict merge · a second scheduler, realtime, secret
@@ -204,6 +204,21 @@ One more defect surfaced only by looking: a frozen snapshot's footer read
 "Live · 3m ago" — a quotation of a past moment claiming to be current, which is
 exactly what the freshness footer exists to prevent. It now keys off the
 projection's `snapshotId`.
+
+### Widget catalogue expansion — 2026-09-04
+
+The catalogue now has eight kinds. `donut` is a bounded part-to-whole view that
+aggregates one declared numeric column by a declared category; `gauge` binds a
+current numeric value and current numeric target from the same source; and
+`scatter` plots the declared relationship between two numeric columns. The
+shared schema validates each binding both at mutation and read time, all three
+render through `DashboardWidgetCard`, and their compact chat/knowledge surfaces
+therefore use the same canvas implementation as the editor.
+
+`stat` cards gained an optional icon from a fixed Font Awesome Free mapping. The
+definition stores only the schema-owned id; it accepts no SVG, CSS class,
+package, or arbitrary icon identifier. Recharts remains the sole chart renderer
+and does not receive author-supplied configuration.
 
 ### Still not built
 

@@ -27,6 +27,11 @@ import {
   loadLastMessageAtByThread,
   readAgentVoiceName,
 } from '@nessie/team-admin'
+import {
+  assertDashboardAccess,
+  createDashboardMembership,
+  resolveDashboardActor,
+} from '@nessie/dashboard'
 
 /**
  * Request-scoped authorization + visibility helpers. These all close over the
@@ -416,6 +421,32 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
   }): Promise<boolean> =>
     (await getVisibleChannel(input.userId, input.organizationId, input.channelId)) !== null
 
+  // Dashboard scopes are subscription-authorized and rechecked at delivery;
+  // an opaque id is never an entitlement and a revoked grant stops the stream.
+  const canAccessDashboardRealtimeEvent = async (input: {
+    dashboardId: string
+    organizationId: string
+    userId: string
+  }): Promise<boolean> => {
+    const actor = await resolveDashboardActor(prisma, {
+      organizationId: input.organizationId,
+      userId: input.userId,
+    })
+    if (!actor) return false
+    try {
+      await assertDashboardAccess({
+        prisma,
+        membership: createDashboardMembership(prisma),
+        actor,
+        resource: { type: 'dashboard', id: input.dashboardId },
+        capability: 'view',
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   const createAgentVisibilityScope = (actorContext: AuthorizedActionContext) => ({
     includeAllOrgChannels: actorContext.actor.roles?.includes('owner') ?? false,
     organizationId: actorContext.tenant.organizationId,
@@ -449,6 +480,17 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
           scope.userId === parseUserId(userId)
           && scope.organizationId === parseOrganizationId(tenantOrganizationId)
         ) {
+          authorizedScopes.push(scope)
+        }
+        continue
+      }
+
+      if (scope.kind === 'dashboard') {
+        if (await canAccessDashboardRealtimeEvent({
+          dashboardId: scope.dashboardId,
+          organizationId: tenantOrganizationId,
+          userId,
+        })) {
           authorizedScopes.push(scope)
         }
         continue
@@ -502,6 +544,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     isTriggerTargetWritableByActor,
     isTriggerAccessibleToActor,
     canAccessChannelRealtimeEvent,
+    canAccessDashboardRealtimeEvent,
     createAgentVisibilityScope,
     filterAuthorizedScopes,
   }

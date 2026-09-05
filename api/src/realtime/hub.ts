@@ -91,6 +91,7 @@ const toScopeKey = (scope: WsScope): string => JSON.stringify(scope)
 export const shouldDeliverWsNotification = async (
   input: {
     canAccessChannel: (channelId: string) => Promise<boolean>
+    canAccessDashboard?: (dashboardId: string) => Promise<boolean>
     connectionScopes: WsScope[]
     notificationScopes: WsScope[]
   },
@@ -100,6 +101,9 @@ export const shouldDeliverWsNotification = async (
   )
   const notificationUserScopes = input.notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
+  )
+  const notificationDashboardScopes = input.notificationScopes.filter(
+    (scope): scope is Extract<WsScope, { kind: 'dashboard' }> => scope.kind === 'dashboard',
   )
   if (notificationUserScopes.length > 0) {
     return input.connectionScopes.some((scope) =>
@@ -123,6 +127,18 @@ export const shouldDeliverWsNotification = async (
     return true
   }
 
+  if (notificationDashboardScopes.length > 0) {
+    if (!input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))) {
+      return false
+    }
+    for (const scope of notificationDashboardScopes) {
+      if (!input.canAccessDashboard || !(await input.canAccessDashboard(scope.dashboardId))) {
+        return false
+      }
+    }
+    return true
+  }
+
   return input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))
 }
 
@@ -138,6 +154,11 @@ export const shouldDeliverWsNotification = async (
 export const createWsNotificationDelivery = (input: {
   canAccessChannelEvent?: (input: {
     channelId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
+  canAccessDashboardEvent?: (input: {
+    dashboardId: string
     organizationId: string
     userId: string
   }) => Promise<boolean>
@@ -217,6 +238,14 @@ export const createWsNotificationDelivery = (input: {
                   userId: connection.userId,
                 })
               : connection.channelIds.has(channelId),
+          canAccessDashboard: async (dashboardId) =>
+            input.canAccessDashboardEvent
+              ? input.canAccessDashboardEvent({
+                  dashboardId,
+                  organizationId: connection.organizationId,
+                  userId: connection.userId,
+                })
+              : false,
         })
 
         if (!shouldDeliver) {
@@ -247,6 +276,14 @@ export const createWsNotificationDelivery = (input: {
             : connection.scopes.some(
                 (scope) => scope.kind === 'channel' && scope.channelId === channelId,
               ),
+        canAccessDashboard: async (dashboardId) =>
+          input.canAccessDashboardEvent
+            ? input.canAccessDashboardEvent({
+                dashboardId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : false,
       })
 
       if (!shouldDeliver) {
@@ -268,6 +305,11 @@ export const createWsNotificationDelivery = (input: {
 export const createRealtimeHub = async (input: {
   canAccessChannelEvent?: (input: {
     channelId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
+  canAccessDashboardEvent?: (input: {
+    dashboardId: string
     organizationId: string
     userId: string
   }) => Promise<boolean>

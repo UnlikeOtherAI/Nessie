@@ -254,6 +254,87 @@ const embedAudienceAlreadyReaches = async (
   return Boolean(grant)
 }
 
+/** A presented dashboard is also a reference in a channel, so it cannot widen reach. */
+export const assertDashboardAudienceForChannel = async (
+  context: DashboardContext,
+  input: { dashboardId: string; channelId: string; allowOwnerPersonalDm?: boolean },
+): Promise<void> => {
+  const dashboard = await context.prisma.dashboard.findFirst({
+    where: { id: input.dashboardId, organizationId: context.actor.organizationId },
+    select: { home: true, channelId: true, ownerUserId: true },
+  })
+  if (!dashboard) throw new DashboardServiceError(404, 'DASHBOARD_NOT_FOUND', 'dashboard not found')
+  // A Dashboard Designer runs in a structurally single-user home DM. A
+  // personal dashboard owned by that same effective user is therefore already
+  // visible to every human who can read this message; it is not a share into a
+  // room. The worker may opt in only after its global-home predicate proves
+  // that structural fact.
+  const homeCoversChannel = (input.allowOwnerPersonalDm === true
+      && dashboard.home === 'personal'
+      && dashboard.ownerUserId === context.actor.userId)
+    || dashboard.home === 'organization'
+    || (dashboard.home === 'channel' && dashboard.channelId === input.channelId)
+  const grant = homeCoversChannel ? null : await context.prisma.dashboardGrant.findFirst({
+    where: {
+      organizationId: context.actor.organizationId,
+      resourceType: 'dashboard',
+      resourceId: input.dashboardId,
+      subjectType: 'channel',
+      subjectId: input.channelId,
+      revokedAt: null,
+    },
+    select: { id: true },
+  })
+  if (!homeCoversChannel && !grant) {
+    throw new DashboardServiceError(
+      409,
+      'DASHBOARD_SHARE_REQUIRED',
+      'this conversation does not already have access to the dashboard',
+    )
+  }
+
+  const materials = await context.prisma.dashboardSourceMaterial.findMany({
+    where: {
+      organizationId: context.actor.organizationId,
+      source: { widgets: { some: { dashboardId: input.dashboardId } } },
+    },
+    select: { accessBasis: true },
+  })
+  for (const material of materials) {
+    const basis = Array.isArray(material.accessBasis) ? material.accessBasis : null
+    if (!basis || basis.length === 0) {
+      throw new DashboardServiceError(
+        409,
+        'DASHBOARD_SOURCE_AUDIENCE_MISMATCH',
+        'the source has no verified audience basis',
+      )
+    }
+    const readableByOrganization = basis.some((scope) =>
+      scope && typeof scope === 'object'
+      && (scope as { scopeType?: unknown }).scopeType === 'organization'
+      && (scope as { scopeId?: unknown }).scopeId === context.actor.organizationId,
+    )
+    const readableByChannel = basis.some((scope) =>
+      scope && typeof scope === 'object'
+      && (scope as { scopeType?: unknown }).scopeType === 'channel'
+      && (scope as { scopeId?: unknown }).scopeId === input.channelId,
+    )
+    const readableByOwnerDm = input.allowOwnerPersonalDm === true
+      && basis.some((scope) =>
+        scope && typeof scope === 'object'
+        && (scope as { scopeType?: unknown }).scopeType === 'user'
+        && (scope as { scopeId?: unknown }).scopeId === context.actor.userId,
+      )
+    if (!readableByOrganization && !readableByChannel && !readableByOwnerDm) {
+      throw new DashboardServiceError(
+        409,
+        'DASHBOARD_SOURCE_AUDIENCE_MISMATCH',
+        'this conversation is not entitled to every source used by the dashboard',
+      )
+    }
+  }
+}
+
 /**
  * Resolves an embed for a viewer. Both checks, every time — this is the single
  * read path all three surfaces share.

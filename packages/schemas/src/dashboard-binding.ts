@@ -93,6 +93,27 @@ export const validateWidgetBinding = (
       })
       break
     }
+    case 'donut': {
+      const { binding } = definition
+      requireColumn(index, binding.category, 'binding.category', CATEGORICAL, issues)
+      requireColumn(index, binding.value, 'binding.value', NUMERIC, issues)
+      break
+    }
+    case 'gauge': {
+      const { binding } = definition
+      requireColumn(index, binding.value, 'binding.value', NUMERIC, issues)
+      requireColumn(index, binding.target, 'binding.target', NUMERIC, issues)
+      break
+    }
+    case 'scatter': {
+      const { binding } = definition
+      requireColumn(index, binding.x, 'binding.x', NUMERIC, issues)
+      requireColumn(index, binding.y, 'binding.y', NUMERIC, issues)
+      if (binding.label) {
+        requireColumn(index, binding.label, 'binding.label', CATEGORICAL, issues)
+      }
+      break
+    }
     case 'table': {
       const { binding } = definition
       binding.columns.forEach((column, position) => {

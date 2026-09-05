@@ -37,7 +37,7 @@ test('the import doorway is reachable from mobile and Linux login without forkin
   assert.match(loginPage, /label="Use Windows session"/)
   assert.match(loginPage, /variant="inline"/)
   assert.match(loginPage, /LoginSessionImportButton onOpenChange=\{setSessionImportOpen\}/)
-  assert.match(loginPage, /paddingRight: 'calc\(3\.5rem \+ env\(safe-area-inset-right, 0px\)\)'/)
+  assert.match(loginPage, /paddingBottom: 'calc\(3\.5rem \+ env\(safe-area-inset-bottom, 0px\)\)'/)
   assert.match(importButton, /bottom: 'calc\(env\(safe-area-inset-bottom, 0px\) \+ 1rem\)'/)
   assert.match(importButton, /right: 'calc\(env\(safe-area-inset-right, 0px\) \+ 1rem\)'/)
   assert.match(importButton, /variant === 'floating'/)

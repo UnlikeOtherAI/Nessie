@@ -32,6 +32,7 @@ import {
   exponentialBackoffMs,
   type FileService,
   type LedgerAttribution,
+  type PgRealtimeTransport,
 } from '@nessie/runtime'
 
 export type DashboardRefreshDeps = {
@@ -40,6 +41,7 @@ export type DashboardRefreshDeps = {
   egressPolicy: DashboardEgressPolicy
   /** Resolves a `secret_dashboard_*` ref. Server-side only, never returned. */
   resolveCredential: (ref: string) => Promise<string | null>
+  realtimeTransport?: Pick<PgRealtimeTransport, 'publishWs'>
 }
 
 export type DashboardRefreshPayload = { sourceId: string }
@@ -66,6 +68,34 @@ const backoffMs = (consecutiveFailures: number): number =>
 
 const nextRunAfterSuccess = (intervalMinutes: number | null): Date | null =>
   intervalMinutes ? new Date(Date.now() + intervalMinutes * 60_000) : null
+
+const publishDashboardsUsingSource = async (
+  deps: DashboardRefreshDeps,
+  sourceId: string,
+  organizationId: string,
+): Promise<void> => {
+  if (!deps.realtimeTransport) return
+  const widgets = await deps.prisma.dashboardWidget.findMany({
+    where: {
+      organizationId,
+      sourceId,
+      dashboard: { archivedAt: null },
+    },
+    select: {
+      dashboard: { select: { id: true, revision: true } },
+    },
+  })
+  const dashboards = new Map<string, number>()
+  for (const widget of widgets) {
+    dashboards.set(widget.dashboard.id, widget.dashboard.revision)
+  }
+  await Promise.all([...dashboards].map(([dashboardId, revision]) =>
+    deps.realtimeTransport!.publishWs([{ kind: 'dashboard', dashboardId }], {
+      event: 'dashboard.updated',
+      data: { dashboardId, revision },
+    }).catch(() => undefined),
+  ))
+}
 
 /**
  * Retention: keep the newest 50 datasets per source, and never delete one a
@@ -112,11 +142,16 @@ export const refreshDashboardDataSource = async (
 ): Promise<'refreshed' | 'not_modified' | 'failed' | 'skipped'> => {
   const { prisma } = deps
   const source = await prisma.dashboardDataSource.findFirst({
-    where: { id: payload.sourceId, archivedAt: null },
+    where: { id: payload.sourceId, archivedAt: null, kind: 'http' },
   })
   // A source deleted or archived between enqueue and execution: cancel quietly
   // rather than fetching on behalf of something that no longer exists.
   if (!source) return 'skipped'
+
+  // `kind: http` is an invariant, but the columns became nullable to model
+  // self-contained static sources. Keep an old/corrupt HTTP row from turning
+  // into an accidental request with fabricated endpoint fields.
+  if (!source.origin || !source.path || !source.transform) return 'skipped'
 
   const credentialValue = source.credentialRef
     ? await deps.resolveCredential(source.credentialRef)
@@ -136,6 +171,7 @@ export const refreshDashboardDataSource = async (
           : null,
       },
     })
+    await publishDashboardsUsingSource(deps, source.id, source.organizationId)
     return 'failed' as const
   }
 
@@ -179,6 +215,7 @@ export const refreshDashboardDataSource = async (
         nextRunAt: nextRunAfterSuccess(source.intervalMinutes),
       },
     })
+    await publishDashboardsUsingSource(deps, source.id, source.organizationId)
     return 'not_modified'
   }
 
@@ -245,6 +282,7 @@ export const refreshDashboardDataSource = async (
   })
 
   await pruneOldDatasets(deps, source.id, source.organizationId).catch(() => undefined)
+  await publishDashboardsUsingSource(deps, source.id, source.organizationId)
   return 'refreshed'
 }
 
@@ -267,6 +305,7 @@ export const sweepDueDashboardSources = async (
   const due = await prisma.dashboardDataSource.findMany({
     where: {
       archivedAt: null,
+      kind: 'http',
       refreshMode: 'interval',
       nextRunAt: { lte: now },
       OR: [{ claimedAt: null }, { claimedAt: { lt: staleClaim } }],
@@ -286,5 +325,3 @@ export const sweepDueDashboardSources = async (
   }
   return claimed
 }
-
-export const DASHBOARD_REFRESH_TOPIC = 'dashboard.source.refresh'

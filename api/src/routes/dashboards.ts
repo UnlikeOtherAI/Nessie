@@ -10,7 +10,13 @@
 
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { DashboardAccessError } from '@nessie/dashboard'
+import {
+  DASHBOARD_STATIC_IMPORT_FORMATS,
+  DASHBOARD_REFRESH_TOPIC,
+  DashboardAccessError,
+  importStaticDashboardSource,
+  listDashboardSourceNotes,
+} from '@nessie/dashboard'
 import { DashboardFetchError, DashboardNormalizeError } from '@nessie/dashboard'
 import { formatZodIssues } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -21,20 +27,15 @@ import {
 } from '../lib/if-match.js'
 import {
   DashboardServiceError,
+  DashboardRevisionConflictError,
+  applyDashboardDelta,
   createDashboard,
   getDashboardWithWidgets,
   listDashboardsForActor,
-  recordDashboardVersion,
-  summarizeChange,
-  validateLayout,
 } from '../services/dashboards.js'
 import {
-  addWidget,
   loadSnapshotProjection,
   loadWidgetProjection,
-  removeWidget,
-  setWidgetLock,
-  updateWidget,
 } from '../services/dashboard-widgets.js'
 import {
   createDashboardSource,
@@ -57,8 +58,9 @@ import {
 import { createDashboardDatasetLoader } from '../services/dashboard-runtime.js'
 import type { RouteDeps } from './types.js'
 import type { DashboardEgressPolicy } from '@nessie/dashboard'
-import type { DashboardLayout } from '@nessie/schemas'
-import { DashboardLayoutSchema } from '@nessie/schemas'
+import { DashboardDeltaSchema, DashboardLayoutSchema } from '@nessie/schemas'
+import { randomUUID } from 'node:crypto'
+import { enqueueQueueJob } from '../queue/pgqueue.js'
 
 const HomeSchema = z.enum(['organization', 'project', 'team', 'channel', 'personal'])
 
@@ -80,6 +82,20 @@ const CreateSourceBodySchema = z.object({
   outputColumns: z.unknown(),
   refreshMode: z.enum(['manual', 'interval']).optional(),
   intervalMinutes: z.number().int().optional(),
+}).strict()
+
+const ImportStaticSourceBodySchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  format: z.enum(DASHBOARD_STATIC_IMPORT_FORMATS),
+  // XLSX is base64 over this JSON API, which expands a 256 KiB binary source
+  // to at most 350 KiB before the importer rechecks the decoded byte cap.
+  content: z.string().min(1).max(350 * 1024),
+  // The importer re-authorizes this attachment against the live actor and
+  // retains a dashboard-owned copy of its bytes. It is never a bare download.
+  originalAttachmentId: z.string().uuid().optional(),
+  sourceReference: z.string().trim().min(1).max(500).optional(),
+  canonicalUrl: z.string().url().max(2_000).optional(),
+  provenance: z.record(z.string().max(80), z.unknown()).optional(),
 }).strict()
 
 const ProbeBodySchema = z.object({
@@ -134,6 +150,15 @@ const sendDashboardError = (reply: Parameters<typeof sendApiError>[0], error: un
     sendApiError(reply, status, `DASHBOARD_${error.decision.reason.toUpperCase()}`, 'not available')
     return true
   }
+  if (error instanceof DashboardRevisionConflictError) {
+    sendRevisionConflict(
+      reply as never,
+      error.code,
+      error.message,
+      error.currentRevision,
+    )
+    return true
+  }
   if (error instanceof DashboardServiceError) {
     sendApiError(reply, error.httpStatus, error.code, error.message)
     return true
@@ -150,7 +175,7 @@ export const registerDashboardRoutes = (
   app: FastifyInstance,
   deps: RouteDeps & { egressPolicy: DashboardEgressPolicy; credentials: Parameters<typeof setSourceCredential>[2] },
 ): void => {
-  const { prisma, requireActorContext, requireUserActor, egressPolicy, credentials } = deps
+  const { prisma, requireActorContext, requireUserActor, egressPolicy, credentials, realtimeHub } = deps
   const membership = createDashboardMembership(prisma)
 
   const contextFor = async (request: unknown, reply: never) => {
@@ -167,6 +192,28 @@ export const registerDashboardRoutes = (
       return null
     }
     return { prisma, membership, actor }
+  }
+  const dashboardForWidget = async (context: NonNullable<Awaited<ReturnType<typeof contextFor>>>, widgetId: string) => {
+    const widget = await prisma.dashboardWidget.findFirst({
+      where: { id: widgetId, organizationId: context.actor.organizationId },
+      select: { dashboardId: true },
+    })
+    if (!widget) throw new DashboardServiceError(404, 'DASHBOARD_WIDGET_NOT_FOUND', 'widget not found')
+    return getDashboardWithWidgets(context, widget.dashboardId)
+  }
+
+  const applyAndPublish = async (
+    context: NonNullable<Awaited<ReturnType<typeof contextFor>>>,
+    input: Parameters<typeof applyDashboardDelta>[1],
+  ) => {
+    const result = await applyDashboardDelta(context, input)
+    if (!result.replayed) {
+      await realtimeHub.publishWs([{ kind: 'dashboard', dashboardId: result.dashboard.id }], {
+        event: 'dashboard.updated',
+        data: { dashboardId: result.dashboard.id, revision: result.dashboard.revision },
+      })
+    }
+    return result
   }
 
   app.get('/api/dashboards', async (request, reply) => {
@@ -221,46 +268,49 @@ export const registerDashboardRoutes = (
 
     try {
       const dashboard = await getDashboardWithWidgets(context, params.id)
-      if (ifMatch.kind === 'revision' && dashboard.revision !== ifMatch.revision) {
-        return sendRevisionConflict(
-          reply as never,
-          'DASHBOARD_REVISION_CONFLICT',
-          'This dashboard changed since you started editing',
-          dashboard.revision,
-        )
-      }
-      const kinds = new Map(
-        dashboard.widgets.map((widget) => [widget.id, widget.kind as never]),
-      )
-      validateLayout(layout, kinds)
-
-      const before = {
-        widgets: dashboard.widgets.map((widget) => ({ id: widget.id, kind: widget.kind })),
-        layout: dashboard.layout as unknown as DashboardLayout,
-      }
-      const after = { widgets: before.widgets, layout }
-
-      const updated = await prisma.$transaction(async (tx) => {
-        const saved = await tx.dashboard.update({
-          where: { id: dashboard.id },
-          data: { layout: layout as never, revision: { increment: 1 } },
-        })
-        await recordDashboardVersion(tx, {
-          organizationId: context.actor.organizationId,
-          dashboardId: dashboard.id,
-          layout,
-          widgets: dashboard.widgets.map((widget) => ({
-            id: widget.id,
-            kind: widget.kind,
-            spec: widget.spec,
-          })),
-          authorType: 'user',
-          authorId: context.actor.userId,
-          summary: summarizeChange(before, after),
-        })
-        return saved
+      const baseRevision = ifMatch.kind === 'revision' ? ifMatch.revision : dashboard.revision
+      const result = await applyAndPublish(context, {
+        dashboardId: params.id,
+        schemaVersion: 1,
+        mutationId: randomUUID(),
+        baseRevision,
+        operations: [{ type: 'set_layout', layout }],
       })
-      return createApiResponse(updated)
+      return createApiResponse(result.dashboard)
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.get('/api/dashboards/:id/source-notes', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    try {
+      return createApiResponse(await listDashboardSourceNotes(context, params.id))
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  // The canonical mutation contract. Clients retry the same mutation id after
+  // reconnect; stale or out-of-order revisions receive a visible 409 and make
+  // no partial change. Legacy UI routes below are thin adapters onto this path.
+  app.post('/api/dashboards/:id/deltas', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const body = parseInput(DashboardDeltaSchema, request.body, reply, 'body')
+    if (!body) return reply
+    try {
+      return createApiResponse(await applyAndPublish(context, {
+        dashboardId: params.id,
+        ...body,
+      }))
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
       throw error
@@ -273,10 +323,16 @@ export const registerDashboardRoutes = (
     const params = parseInput(IdParamsSchema, request.params, reply, 'params')
     if (!params) return reply
     try {
-      const widget = await addWidget(context, {
+      const dashboard = await getDashboardWithWidgets(context, params.id)
+      const widgetId = randomUUID()
+      await applyAndPublish(context, {
         dashboardId: params.id,
-        definition: request.body,
+        schemaVersion: 1,
+        mutationId: randomUUID(),
+        baseRevision: dashboard.revision,
+        operations: [{ type: 'add_widget', widgetId, definition: request.body }],
       })
+      const widget = await prisma.dashboardWidget.findUniqueOrThrow({ where: { id: widgetId } })
       return createApiResponse(widget)
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
@@ -290,12 +346,15 @@ export const registerDashboardRoutes = (
     const params = parseInput(IdParamsSchema, request.params, reply, 'params')
     if (!params) return reply
     try {
-      const widget = await updateWidget(context, {
-        widgetId: params.id,
-        definition: request.body,
-        byAgent: false,
+      const dashboard = await dashboardForWidget(context, params.id)
+      await applyAndPublish(context, {
+        dashboardId: dashboard.id,
+        schemaVersion: 1,
+        mutationId: randomUUID(),
+        baseRevision: dashboard.revision,
+        operations: [{ type: 'update_widget', widgetId: params.id, definition: request.body }],
       })
-      return createApiResponse(widget)
+      return createApiResponse(await prisma.dashboardWidget.findUniqueOrThrow({ where: { id: params.id } }))
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
       throw error
@@ -308,7 +367,14 @@ export const registerDashboardRoutes = (
     const params = parseInput(IdParamsSchema, request.params, reply, 'params')
     if (!params) return reply
     try {
-      await removeWidget(context, { widgetId: params.id, byAgent: false })
+      const dashboard = await dashboardForWidget(context, params.id)
+      await applyAndPublish(context, {
+        dashboardId: dashboard.id,
+        schemaVersion: 1,
+        mutationId: randomUUID(),
+        baseRevision: dashboard.revision,
+        operations: [{ type: 'remove_widget', widgetId: params.id }],
+      })
       return createApiResponse({ removed: true })
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
@@ -324,7 +390,15 @@ export const registerDashboardRoutes = (
     const body = parseInput(z.object({ locked: z.boolean() }).strict(), request.body, reply, 'body')
     if (!body) return reply
     try {
-      return createApiResponse(await setWidgetLock(context, { widgetId: params.id, locked: body.locked }))
+      const dashboard = await dashboardForWidget(context, params.id)
+      const result = await applyAndPublish(context, {
+        dashboardId: dashboard.id,
+        schemaVersion: 1,
+        mutationId: randomUUID(),
+        baseRevision: dashboard.revision,
+        operations: [{ type: 'set_widget_lock', widgetId: params.id, locked: body.locked }],
+      })
+      return createApiResponse(result.dashboard)
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
       throw error
@@ -356,6 +430,46 @@ export const registerDashboardRoutes = (
     }
   })
 
+  app.post('/api/dashboard-widgets/:id/refresh', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    try {
+      const widget = await prisma.dashboardWidget.findFirst({
+        where: { id: params.id, organizationId: context.actor.organizationId },
+        select: {
+          id: true,
+          source: {
+            select: {
+              archivedAt: true,
+              id: true,
+              kind: true,
+            },
+          },
+        },
+      })
+      if (!widget) {
+        throw new DashboardServiceError(404, 'DASHBOARD_WIDGET_NOT_FOUND', 'widget not found')
+      }
+      await dashboardForWidget(context, params.id)
+      if (widget.source.archivedAt) {
+        throw new DashboardServiceError(404, 'DASHBOARD_SOURCE_NOT_FOUND', 'data source not found')
+      }
+      if (widget.source.kind !== 'http') {
+        return createApiResponse({ enqueued: false, reason: 'static_source' })
+      }
+      const enqueued = await enqueueQueueJob(prisma, {
+        payload: { sourceId: widget.source.id },
+        topic: DASHBOARD_REFRESH_TOPIC,
+      })
+      return createApiResponse({ enqueued })
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
   app.get('/api/dashboard-sources', async (request, reply) => {
     const context = await contextFor(request, reply as never)
     if (!context) return reply
@@ -369,6 +483,25 @@ export const registerDashboardRoutes = (
     if (!body) return reply
     try {
       return createApiResponse(await createDashboardSource(context, body, egressPolicy))
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/dashboard-sources/import', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const body = parseInput(ImportStaticSourceBodySchema, request.body, reply, 'body')
+    if (!body) return reply
+    try {
+      return createApiResponse(await importStaticDashboardSource(context, {
+        ...body,
+        // HTTP uploads are private to the submitting user until an entitled
+        // source basis is established by an agent run. This is never inferred
+        // from an arbitrary client-supplied locator.
+        accessBasis: [{ scopeId: context.actor.userId, scopeType: 'user' }],
+      }, deps.fileService))
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
       throw error

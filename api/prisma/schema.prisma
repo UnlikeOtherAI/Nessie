@@ -5864,10 +5864,9 @@ enum DashboardAuthorType {
   agent
 }
 
-/// Only `http` at v1. In-process adapters for internal Nessie data are a later
-/// kind, deliberately not a loopback HTTP source (privilege confusion).
 enum DashboardSourceKind {
   http
+  static
 }
 
 enum DashboardRefreshMode {
@@ -5902,6 +5901,8 @@ model Dashboard {
   description String?
   /// DashboardLayout — per-breakpoint rects (lg/md/sm), validated on write.
   layout      Json    @default("{\"lg\":[],\"md\":[],\"sm\":[]}")
+  /// DashboardPresentation — bounded filters, insights and source-note display.
+  presentation Json   @default("{\"filters\":[],\"insights\":[],\"attributions\":[],\"style\":\"standard\"}")
   /// Optimistic concurrency: a stale editor loses rather than silently
   /// overwriting an agent that moved a widget a second ago.
   revision    Int     @default(1)
@@ -5915,6 +5916,7 @@ model Dashboard {
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   widgets      DashboardWidget[]
   versions     DashboardVersion[]
+  deltas       DashboardDelta[]
 
   @@index([organizationId, home, archivedAt])
   @@index([organizationId, projectId])
@@ -5928,9 +5930,10 @@ model DashboardDataSource {
   kind           DashboardSourceKind @default(http)
 
   /// Locked once a credential is attached: changing it revokes the secret, so
-  /// "point Alice's key at my server" is not expressible.
-  origin      String
-  path        String @default("/")
+  /// "point Alice's key at my server" is not expressible. Static sources have
+  /// no endpoint at all.
+  origin      String?
+  path        String? @default("/")
   /// Bounded literals plus closed relative-time tokens. No templating.
   queryParams Json?  @map("query_params")
 
@@ -5945,7 +5948,7 @@ model DashboardDataSource {
   accessMode      DashboardAccessMode @default(delegated) @map("access_mode")
 
   /// JMESPath, compiled at write through the shared sandboxed evaluator.
-  transform     String
+  transform     String?
   /// Declared [{ key, label, type, nullable }] — rows carrying anything else
   /// fail the refresh rather than being persisted "just in case".
   outputColumns Json   @map("output_columns")
@@ -5974,6 +5977,7 @@ model DashboardDataSource {
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   datasets     DashboardDataset[]
   widgets      DashboardWidget[]
+  material     DashboardSourceMaterial?
 
   @@unique([organizationId, name])
   @@index([nextRunAt, claimedAt])
@@ -5998,6 +6002,32 @@ model DashboardDataset {
 
   @@index([organizationId, sourceId, fetchedAt(sort: Desc)])
   @@map("dashboard_datasets")
+}
+
+/// Immutable provenance and access basis for a locally materialized source.
+/// The normalized dataset is retained through DashboardDataset; this row keeps
+/// its origin auditable even if the original upload or article later changes.
+model DashboardSourceMaterial {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  sourceId            String   @unique @map("source_id") @db.Uuid
+  kind                String
+  sourceReference     String?  @map("source_reference")
+  canonicalUrl        String?  @map("canonical_url")
+  contentDigest       String   @map("content_digest")
+  /// The original supplied bytes, retained separately from normalized rows.
+  originalAttachmentId String? @map("original_attachment_id") @db.Uuid
+  parser              String
+  parserVersion       Int      @default(1) @map("parser_version")
+  provenance          Json
+  accessBasis         Json     @default("[]") @map("access_basis")
+  normalizationLosses Json     @default("[]") @map("normalization_losses")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  source DashboardDataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sourceId])
+  @@map("dashboard_source_materials")
 }
 
 model DashboardWidget {
@@ -6061,6 +6091,8 @@ model DashboardVersion {
   versionNumber  Int    @map("version_number")
 
   layout  Json
+  /// Frozen dashboard-level filters, insights and attribution display settings.
+  presentation Json @default("{\"filters\":[],\"insights\":[],\"attributions\":[],\"style\":\"standard\"}")
   /// Frozen validated widget specs, not joins: history must survive deletion.
   widgets Json
 
@@ -6078,6 +6110,29 @@ model DashboardVersion {
   @@unique([dashboardId, versionNumber])
   @@index([organizationId, dashboardId, createdAt(sort: Desc)])
   @@map("dashboard_versions")
+}
+
+/// The validated, idempotent operation log. A snapshot is retained beside the
+/// delta so a resync never has to replay unbounded history.
+model DashboardDelta {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  dashboardId    String              @map("dashboard_id") @db.Uuid
+  mutationId     String              @map("mutation_id") @db.Uuid
+  baseRevision   Int                 @map("base_revision")
+  revision       Int
+  operations     Json
+  authorType     DashboardAuthorType @map("author_type")
+  authorId       String              @map("author_id") @db.Uuid
+  runId          String?             @map("run_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, mutationId])
+  @@unique([dashboardId, revision])
+  @@index([organizationId, dashboardId, createdAt(sort: Desc)])
+  @@map("dashboard_deltas")
 }
 
 /// An explicit grant. Audience grants (channel/team/project/knowledge space)

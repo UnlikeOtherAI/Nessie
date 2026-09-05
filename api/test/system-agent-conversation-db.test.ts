@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { listAgentsForUser } from '@nessie/team-admin'
+import { GLOBAL_AGENT_BLUEPRINTS, listAgentsForUser } from '@nessie/team-admin'
 
 import {
   AGENT_DESIGNER_BLUEPRINT,
@@ -308,9 +308,18 @@ dbTest('the Personal Assistant resolves to its own DM, and built-ins are listed 
     // fetches (`GET /api/agents?scope=all`), for a plain member.
     const listed = await listAgentsForUser(prisma, memberUserId, organizationId, false, true)
     const addressable = listed.filter((agent) => agent.dmAddressable === true)
+    // Derived from the registry rather than hard-coded, so adding a global
+    // blueprint (every one is per_user_dm-homed, hence addressable) extends
+    // this list instead of breaking main's CI — which is exactly how Dashboard
+    // Designer turned this test red for a day. The assertion still bites both
+    // ways: an ordinary agent leaking into the address book, or a blueprint
+    // failing to be addressable, each fails it.
     assert.deepEqual(
       addressable.map((agent) => agent.name).sort(),
-      ['Agent Designer', 'Dashboard Designer', 'Personal Assistant'],
+      [
+        ...[...GLOBAL_AGENT_BLUEPRINTS.values()].map((blueprint) => blueprint.name),
+        'Personal Assistant',
+      ].sort(),
     )
 
     const ordinaryAgent = await prisma.agent.create({

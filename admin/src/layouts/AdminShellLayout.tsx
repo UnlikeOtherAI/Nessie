@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import { DashboardRealtimeProvider } from '../components/features/dashboards/DashboardRealtimeProvider';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import {
   isReactNativeWebView,
@@ -335,6 +336,7 @@ const AuthenticatedAdminShellLayout = () => {
     .join(' ');
 
   return (
+    <DashboardRealtimeProvider>
     <AgentIdentityProvider>
     <PresenceProvider>
       <AttentionDisplayManager />
@@ -421,5 +423,6 @@ const AuthenticatedAdminShellLayout = () => {
       </ToastProvider>
     </PresenceProvider>
     </AgentIdentityProvider>
+    </DashboardRealtimeProvider>
   );
 };
