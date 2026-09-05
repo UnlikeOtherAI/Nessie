@@ -150,3 +150,41 @@ test('403 stays distinct from 401 — permitted is not the same question as auth
     userMessageForFailureReason('auth'),
   )
 })
+
+test('a provider 404 is a model-availability failure, not an unexpected error', () => {
+  // Production, 2026-09-05 21:08 UTC. With the token scope and the account's
+  // age gate both cleared, OpenRouter answered 404: "0 endpoints out of 1
+  // requested are available matching your guardrail restrictions and data
+  // policy … Paid model training violation (account settings)". The route
+  // exists — it is the provider's own — so a 404 here can only mean the
+  // configured model is not available to this deployment. It reached `unknown`
+  // and was reported as an unexpected error, exactly like the 403 before it.
+  const error = new ProviderInvocationError(
+    'openai-compatible chat request failed with HTTP 404',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-404',
+      latencyMs: 1,
+      model: 'meta/muse-spark-1.3-contributor',
+      operationType: 'chat',
+      provider: 'openai-compatible',
+      requestId: 'request-404',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 404 },
+  )
+
+  assert.equal(classifyError(error), 'model_not_found')
+  assert.match(
+    userMessageForFailureReason(classifyError(error)),
+    /configured model was not found/,
+  )
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 }),
+    {
+      action: 'surface_error',
+      userMessage: userMessageForFailureReason('model_not_found'),
+    },
+  )
+})
