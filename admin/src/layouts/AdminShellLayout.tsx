@@ -202,6 +202,7 @@ const AuthenticatedAdminShellLayout = () => {
       personalAssistantChannelId={shell.personalAssistantChannelId}
       personalAssistantUnreadCount={shell.personalAssistantUnreadCount}
       projectsCollapsed={shell.projectsCollapsed}
+      revealedChannel={shell.revealedChannel}
       setSidebarMenu={shell.setSidebarMenu}
       sidebarAgentDms={shell.sidebarAgentDms}
       sidebarGroupDms={shell.sidebarGroupDms}
@@ -436,6 +437,7 @@ const AuthenticatedAdminShellLayout = () => {
                   createProjectOpen={shell.createProjectOpen}
                   onCloseCreateChannel={shell.closeCreateChannel}
                   onCloseCreateProject={shell.closeCreateProject}
+                  onCreatedChannel={shell.revealCreatedChannel}
                   editProjectTarget={shell.editProjectTarget}
                   onCloseEditProject={shell.closeEditProject}
                 />

@@ -25,6 +25,26 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1')
   const [starred, setStarred] = useState<PreferenceStarredItem[]>(() => initialStarred)
 
+  // Expanding is its own verb, not a toggle with a guard at every call site.
+  // Something new landing in a closed section has to open it — a channel
+  // nobody can see is not a channel that was created — and that must never
+  // close a section that was already open.
+  const expandChannels = useCallback(() => {
+    setChannelsCollapsed((prev) => {
+      if (!prev) return prev
+      setCookie('channelsCollapsed', '0')
+      return false
+    })
+  }, [])
+
+  const expandProjects = useCallback(() => {
+    setProjectsCollapsed((prev) => {
+      if (!prev) return prev
+      setCookie('projectsCollapsed', '0')
+      return false
+    })
+  }, [])
+
   const toggleChannelsCollapsed = useCallback(() => {
     setChannelsCollapsed((prev) => {
       const next = !prev
@@ -88,6 +108,8 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
   return {
     channelsCollapsed,
     dmCollapsed,
+    expandChannels,
+    expandProjects,
     projectsCollapsed,
     starred,
     starredChannelIds,

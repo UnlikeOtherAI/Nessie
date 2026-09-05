@@ -19,6 +19,7 @@ import {
   projectSections,
 } from '../../navigation/project-sections'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { SidebarEmptyNote } from './SidebarEmptyNote'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 import { sidebarAriaCurrent } from './SidebarRow'
 import type { StarredItem } from './types'
@@ -624,21 +625,7 @@ export const ProjectsSidebarNav = ({
           title="Projects"
         >
           {projects.length === 0 ? (
-            isOwner ? (
-              <button
-                className={[
-                  'mx-2 flex w-[calc(100%-1rem)] rounded-md border border-dashed',
-                  'border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-3',
-                  'text-left text-sm text-[color:var(--tx3)] hover:bg-[var(--overlay)]',
-                ].join(' ')}
-                onClick={() => setCreateOpen(true)}
-                type="button"
-              >
-                Create your first project.
-              </button>
-            ) : (
-              <div className="px-5 py-2 text-[13px] text-[color:var(--tx3)]">No projects yet.</div>
-            )
+            <SidebarEmptyNote>There are no projects in this team yet.</SidebarEmptyNote>
           ) : (
             // Empty when every project is starred — they are all in Starred
             // above, so there is nothing left to say here.

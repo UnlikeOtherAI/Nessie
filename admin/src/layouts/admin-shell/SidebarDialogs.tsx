@@ -1,6 +1,7 @@
 import { CreateChannelDialog } from '../../components/shared/CreateChannelDialog';
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog';
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog';
+import type { ChannelRecord } from '../../lib/api-client';
 import type { CreateChannelTarget, EditProjectTarget } from './types';
 
 type SidebarDialogsProps = {
@@ -8,6 +9,7 @@ type SidebarDialogsProps = {
   createProjectOpen: boolean;
   onCloseCreateChannel: () => void;
   onCloseCreateProject: () => void;
+  onCreatedChannel: (channel: ChannelRecord) => void;
   editProjectTarget: EditProjectTarget | null;
   onCloseEditProject: () => void;
 };
@@ -17,6 +19,7 @@ export const SidebarDialogs = ({
   createProjectOpen,
   onCloseCreateChannel,
   onCloseCreateProject,
+  onCreatedChannel,
   editProjectTarget,
   onCloseEditProject,
 }: SidebarDialogsProps) => {
@@ -24,6 +27,7 @@ export const SidebarDialogs = ({
     <>
       <CreateChannelDialog
         onClose={onCloseCreateChannel}
+        onCreated={onCreatedChannel}
         open={createChannelTarget !== null}
         projectName={createChannelTarget?.projectName}
         scope={createChannelTarget?.scope}

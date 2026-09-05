@@ -2,6 +2,7 @@ import type { ChannelRecord } from '../../lib/api-client';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { channelHashClassName, renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
+import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { CreateChannelTarget } from './types';
 
@@ -45,6 +46,9 @@ export const SidebarChannelsSection = ({
       onToggle={toggleChannelsCollapsed}
       title="Shared channels"
     >
+      {standaloneChannels.length === 0 ? (
+        <SidebarEmptyNote>There are no shared channels yet.</SidebarEmptyNote>
+      ) : null}
       {standaloneChannels.map((channel) => {
         const isStarredChannel = starredChannelIds.has(channel.id);
         return (

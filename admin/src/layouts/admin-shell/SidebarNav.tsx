@@ -10,6 +10,7 @@ import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
+  RevealedChannel,
   SidebarAgentDm,
   SidebarGroupDm,
   SidebarMenu,
@@ -44,6 +45,7 @@ type SidebarNavProps = {
   personalAssistantChannelId?: string;
   personalAssistantUnreadCount: number;
   projectsCollapsed: boolean;
+  revealedChannel: RevealedChannel | null;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
   sidebarAgentDms: SidebarAgentDm[];
   sidebarGroupDms: SidebarGroupDm[];
@@ -96,6 +98,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     personalAssistantChannelId,
     personalAssistantUnreadCount,
     projectsCollapsed,
+    revealedChannel,
     setSidebarMenu,
     sidebarAgentDms,
     sidebarGroupDms,
@@ -190,6 +193,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onOpenEditProject={onOpenEditProject}
           onToggleStar={onToggleStar}
           projectsCollapsed={projectsCollapsed}
+          revealedChannel={revealedChannel}
           setSidebarMenu={setSidebarMenu}
           sidebarMenu={sidebarMenu}
           sidebarProjects={sidebarProjects}
