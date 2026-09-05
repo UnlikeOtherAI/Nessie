@@ -1,0 +1,22 @@
+-- Run-level executor fencing.
+--
+-- `claimRunForExecution` deliberately admits a run that is already `running`:
+-- with one worker, a re-delivered queue job meant the previous executor had
+-- crashed, so re-execution was the recovery path. With N workers that
+-- assumption is false — the previous executor may still be alive and merely
+-- slow — and two executors would then write the same run.
+--
+-- The run row becomes the authority. A claim mints `executor_token` and stamps
+-- `executor_heartbeat_at`; the executor refreshes the heartbeat while it works;
+-- every terminal or suspended status write it makes carries the token in its
+-- WHERE. A stale heartbeat is what still lets a genuinely crashed executor's
+-- run be taken over, and the fenced-out loser's write matches zero rows instead
+-- of overwriting the winner's outcome.
+--
+-- Both columns are nullable with no default: every existing run is unfenced,
+-- which is exactly the pre-migration behaviour (a run in flight across the
+-- deploy has a NULL heartbeat and is therefore immediately claimable, as it is
+-- today). No index — the claim and the heartbeat are both keyed by the primary
+-- key.
+ALTER TABLE "runs" ADD COLUMN "executor_token" UUID;
+ALTER TABLE "runs" ADD COLUMN "executor_heartbeat_at" TIMESTAMP(3);

@@ -17,6 +17,7 @@ import {
 } from '../tool-execution-errors.js'
 import type { DocumentStreamRecorder } from './document-stream.js'
 import { handleRunExecutionFailure } from './failure.js'
+import { RunFencedError } from './lifecycle.js'
 import { persistInvocationLedgerEvents } from '../inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
@@ -38,6 +39,13 @@ export const handleRunFailurePath = async (
     thinkingRecorder: ThinkingRecorder
   },
 ): Promise<never> => {
+  // Being fenced out is not this run failing — it is this executor losing it.
+  // Nothing is written: no terminal status, no in-channel failure notice, no
+  // ledger events, no handoff recovery marker. The executor that holds the run
+  // owns every one of those. Rethrown unchanged so the job handler can ack.
+  // (The recorders are closed by the run job's own `finally`.)
+  if (input.caughtError instanceof RunFencedError) throw input.caughtError
+
   await input.thinkingRecorder.close()
   await input.documentStream.finalizeOutstanding('run_failed')
   await input.documentStream.close()
