@@ -19,6 +19,7 @@ import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 type NativePhoneWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieNativeBack?: () => void
+  __nessieScreenBarAction?: (id: string, itemId?: string) => void
   __nessieScreenBarBack?: () => void
   __nessieSelectTab?: (path: string) => void
 }
@@ -97,6 +98,21 @@ export const NativePhoneNavigationBridge = () => {
         layerKey,
         title: bar?.title ?? '',
         back: bar?.back ? { label: bar.back.label } : null,
+        // Everything that decides what an action looks like; what it *does*
+        // stays behind `__nessieScreenBarAction`, because three of the four
+        // kinds do not simply call an `onSelect` (screen-bar-actions.ts).
+        actions: (bar?.actions ?? []).map((action) => ({
+          checked: action.checked,
+          disabled: action.disabled,
+          id: action.id,
+          items: action.items,
+          kind: action.kind,
+          label: action.label,
+          primary: action.primary,
+          priority: action.priority,
+          selected: action.selected,
+          tone: action.tone,
+        })),
       }),
     )
   }, [bar, layerKey, nativeIOSPhone])
@@ -110,7 +126,15 @@ export const NativePhoneNavigationBridge = () => {
   useEffect(() => {
     const target = window as NativePhoneWindow
     target.__nessieScreenBarBack = () => barRef.current?.back?.onBack()
-    return () => { delete target.__nessieScreenBarBack }
+    target.__nessieScreenBarAction = (id: string, itemId?: string) => {
+      const action = barRef.current?.actions.find((candidate) => candidate.id === id)
+      if (!action || action.disabled) return
+      action.perform(itemId)
+    }
+    return () => {
+      delete target.__nessieScreenBarAction
+      delete target.__nessieScreenBarBack
+    }
   }, [])
 
   // The native entry points are always present while the provider is mounted:

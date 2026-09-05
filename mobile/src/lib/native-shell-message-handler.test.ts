@@ -201,11 +201,13 @@ test('the native bar reads the admin\'s per-layer descriptor, not the screen mes
   const { input, state } = buildInput()
   handleNativeShellMessage({
     type: 'nessie:screen-bar',
+    actions: [],
     layerKey: 'channels:2:channels:channel',
     title: 'Design review',
     back: { label: 'Channels' },
   } as never, input)
   assert.deepEqual(state.screenBar, {
+    actions: [],
     back: { label: 'Channels' },
     layerKey: 'channels:2:channels:channel',
     title: 'Design review',
@@ -216,6 +218,7 @@ test('the native bar reads the admin\'s per-layer descriptor, not the screen mes
   // read as a root and show the team switcher over an open editor.
   handleNativeShellMessage({
     type: 'nessie:screen-bar',
+    actions: [],
     layerKey: 'knowledge:1:stage:knowledge:editor',
     title: 'Onboarding',
     back: { label: 'Back to folder' },

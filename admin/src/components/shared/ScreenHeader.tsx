@@ -4,9 +4,10 @@ import { useLocalBackSnapshot } from '../../layouts/admin-shell/local-back/Local
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 import { useScreenBarPublisher } from '../../navigation/useScreenBar'
 import type { ScreenBarBack } from '../../navigation/screen-bar'
+import { toScreenBarActions } from '../../navigation/screen-bar-actions'
 import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
 import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
-import { useNavigationLayout } from '../../lib/mobile-shell'
+import { useNativeIOSPhoneApp, useNavigationLayout } from '../../lib/mobile-shell'
 import { publishScreenTitle, retireScreenTitle } from '../../navigation/screen'
 import { surfaceParent } from '../../navigation/surface-lookup'
 import {
@@ -88,6 +89,11 @@ export const ScreenHeader = ({
   const layout = useNavigationLayout()
   const single = layout === 'single'
   const navigation = usePhoneNavigation()
+  // The iOS shell draws this bar natively, so the web must not draw a second
+  // one beneath it. Nothing else changes: mobile Safari at any width, the
+  // Android app, iPad and desktop all read false here and take the path below
+  // unchanged.
+  const nativeBar = useNativeIOSPhoneApp() && single
   // Subscribing re-runs the published Back when an owner registers or leaves,
   // exactly as the rendered doorway does.
   useLocalBackSnapshot()
@@ -112,7 +118,7 @@ export const ScreenHeader = ({
     : resolvedBack
       ? { label: resolvedBack.label, onBack: () => navigation?.performBack() }
       : null
-  useScreenBarPublisher({ actions: [], back: effectiveBack, title })
+  useScreenBarPublisher({ actions: toScreenBarActions(actions), back: effectiveBack, title })
 
   const pageBack = onBack && (flowOwnsBack || surfaceParent(pathname) !== null)
     ? (
@@ -124,6 +130,40 @@ export const ScreenHeader = ({
     : null
 
   if (singleLayoutOnly && !single) return null
+
+  if (nativeBar) {
+    // The heading stays, and stays an `h1`: the settle focuses it and the
+    // live region reads its text content (navigation/settle.ts), both by
+    // `querySelector('h1')`. `sr-only` keeps the element and its text while
+    // taking it out of the visual bar the native chrome now owns — removing
+    // it would break the announcement silently.
+    //
+    // `eyebrow` and `leading` have no lane in a native bar, so they stay with
+    // the page rather than being dropped: an agent's avatar and a "System
+    // managed" note are content, not chrome.
+    const below = eyebrow || leading || subtitle || tabs
+    return (
+      <>
+        <h1 className="sr-only" id={titleId}>{title}</h1>
+        {below ? (
+          <div className="flex min-w-0 flex-col gap-2 px-4 pb-2 pt-3">
+            {eyebrow || leading ? (
+              <div className="flex min-w-0 items-center gap-2">
+                {leading}
+                {eyebrow ? (
+                  <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-[color:var(--tx2)]">
+                    {eyebrow}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {subtitle ? <div className="min-w-0">{subtitle}</div> : null}
+            {tabs ? <div className="min-w-0">{tabs}</div> : null}
+          </div>
+        ) : null}
+      </>
+    )
+  }
 
   return (
     <ResponsivePageHeader

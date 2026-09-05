@@ -50,6 +50,7 @@ type Input = {
 export const handleNativeShellMessage = (message: NativeShellMessage, input: Input): void => {
   if (isScreenBarMessage(message)) {
     input.setScreenBar({
+      actions: message.actions,
       back: message.back ? { label: message.back.label } : null,
       layerKey: message.layerKey ?? null,
       title: message.title,

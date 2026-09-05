@@ -59,6 +59,7 @@ test('isAttentionMessage accepts only a nessie:attention message carrying a badg
 test('a screen-bar message carries a title and an optional named Back', () => {
   assert.equal(isScreenBarMessage({
     type: 'nessie:screen-bar',
+    actions: [{ id: 'star', kind: 'button', label: 'Star', priority: 40 }],
     layerKey: 'channels:2:channels:channel',
     title: 'Design review',
     back: { label: 'Channels' },
@@ -68,6 +69,7 @@ test('a screen-bar message carries a title and an optional named Back', () => {
   // root's team controls.
   assert.equal(isScreenBarMessage({
     type: 'nessie:screen-bar',
+    actions: [],
     layerKey: null,
     title: '',
     back: null,
@@ -83,11 +85,22 @@ test('a malformed screen-bar message is refused rather than half-rendered', () =
     type: 'nessie:screen-bar',
     title: 'x',
     layerKey: null,
+    back: null,
   } as never), false)
   assert.equal(isScreenBarMessage({
     type: 'nessie:screen-bar',
+    actions: [],
     title: 'Design review',
     back: { label: 7 },
+  } as never), false)
+  // One malformed action refuses the whole bar: a control silently dropped is
+  // the failure Rule zero names, and the bar would look complete without it.
+  assert.equal(isScreenBarMessage({
+    type: 'nessie:screen-bar',
+    actions: [{ id: 'star', kind: 'wat', label: 'Star', priority: 1 }],
+    layerKey: null,
+    title: 'Design review',
+    back: null,
   } as never), false)
   assert.equal(isScreenBarMessage({
     type: 'nessie:screen-bar',

@@ -65,7 +65,36 @@ export const DEFAULT_LAST_KNOWN_SCREEN: LastKnownScreen = {
  * `title` may be empty and `back` null — a layer that has not published yet
  * renders a bare band, never a root's team controls (see NativePhoneNavBar).
  */
+export type NativeScreenBarMenuItem = {
+  checked: boolean
+  disabled: boolean
+  id: string
+  label: string
+}
+
+/**
+ * One of the screen's own header actions. Everything here describes what the
+ * action looks like; what it *does* stays in the web, behind its id — three of
+ * the four kinds do not simply call an `onSelect` (a submit action's work is
+ * in its form, a toggle inverts itself, a link may leave through the shell),
+ * and reconstructing that natively would be a second implementation of the
+ * header's semantics.
+ */
+export type NativeScreenBarAction = {
+  checked: boolean | null
+  disabled: boolean
+  id: string
+  items: NativeScreenBarMenuItem[] | null
+  kind: 'button' | 'link' | 'menu' | 'toggle'
+  label: string
+  primary: boolean
+  priority: number
+  selected: boolean
+  tone: 'danger' | null
+}
+
 export type NativeScreenBar = {
+  actions: NativeScreenBarAction[]
   back: { label: string } | null
   layerKey: string | null
   title: string

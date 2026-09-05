@@ -31,6 +31,13 @@ export type ScreenBarAction = {
   items: ScreenBarMenuItem[] | null
   kind: 'button' | 'link' | 'menu' | 'toggle'
   label: string
+  // What the action does, kept here rather than re-derived natively. A header
+  // action is not always "call `onSelect`": a `submit` action's `onSelect` is
+  // a no-op and the work happens in its form's `onSubmit`, a toggle inverts
+  // its own state, and a link may have to leave through the shell. Serializing
+  // enough for the native side to reconstruct any of that would be a second
+  // implementation of the header's semantics; a closure is one.
+  perform: (itemId?: string) => void
   primary: boolean
   priority: number
   selected: boolean

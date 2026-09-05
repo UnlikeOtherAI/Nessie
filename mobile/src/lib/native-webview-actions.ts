@@ -21,6 +21,16 @@ export const createNativeWebviewActions = (runScript: RunScript) => ({
   runScreenBarBack: (): void => {
     runScript('window.__nessieScreenBarBack && window.__nessieScreenBarBack();')
   },
+  // What an action does stays in the web: a submit action's work is in its
+  // form, a toggle inverts itself, a link may leave through the shell. The bar
+  // sends the id back rather than re-implementing any of that.
+  runScreenBarAction: (id: string, itemId?: string): void => {
+    runScript(
+      `window.__nessieScreenBarAction && window.__nessieScreenBarAction(${JSON.stringify(id)}${
+        itemId === undefined ? '' : `, ${JSON.stringify(itemId)}`
+      });`,
+    )
+  },
   runToolbarAction: (action: ToolbarAction): void => {
     runScript(`window.__nessieToolbarAction && window.__nessieToolbarAction(${JSON.stringify(action)});`)
   },

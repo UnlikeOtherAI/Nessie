@@ -1,15 +1,23 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActionSheetIOS, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import {
+  nativeScreenBarDisabledIndices,
+  nativeScreenBarSheetLabels,
+  partitionNativeScreenBarActions,
+} from '../lib/native-screen-bar'
+import {
   getNativePhoneHeaderHeight,
   type NativeScreenBar,
+  type NativeScreenBarAction,
 } from '../lib/native-shell-layout'
 
 export type NativePhoneNavBarProps = {
+  accentColor: string
   headerSurface: string
   headerText: string
   landscape: boolean
+  onAction: (id: string, itemId?: string) => void
   onBack: () => void
   safeTop: number
   screenBar: NativeScreenBar | null
@@ -33,15 +41,56 @@ export type NativePhoneNavBarProps = {
  * above a conversation is worse than an empty band.
  */
 export const NativePhoneNavBar = ({
+  accentColor,
   headerSurface,
   headerText,
   landscape,
+  onAction,
   onBack,
   safeTop,
   screenBar,
 }: NativePhoneNavBarProps): React.JSX.Element => {
   const back = screenBar?.back ?? null
   const title = screenBar?.title ?? ''
+  const { overflow, primary } = partitionNativeScreenBarActions(screenBar?.actions ?? [])
+
+  // A menu opens a second sheet rather than being flattened into the first, so
+  // a reader never has to work out which group a row belonged to.
+  const openMenu = (action: NativeScreenBarAction): void => {
+    const items = action.items ?? []
+    ActionSheetIOS.showActionSheetWithOptions({
+      cancelButtonIndex: items.length,
+      disabledButtonIndices: items
+        .map((item, index) => (item.disabled ? index : -1))
+        .filter((index) => index !== -1),
+      options: [
+        ...items.map((item) => (item.checked ? `✓ ${item.label}` : item.label)),
+        'Cancel',
+      ],
+      title: action.label,
+    }, (index) => {
+      const item = items[index]
+      if (item) onAction(action.id, item.id)
+    })
+  }
+
+  const openOverflow = (): void => {
+    ActionSheetIOS.showActionSheetWithOptions({
+      cancelButtonIndex: overflow.length,
+      destructiveButtonIndex: overflow.findIndex((action) => action.tone === 'danger'),
+      disabledButtonIndices: nativeScreenBarDisabledIndices(overflow),
+      options: nativeScreenBarSheetLabels(overflow),
+      title: title || undefined,
+    }, (index) => {
+      const action = overflow[index]
+      if (!action) return
+      if (action.kind === 'menu') {
+        openMenu(action)
+        return
+      }
+      onAction(action.id)
+    })
+  }
 
   return (
     <View
@@ -85,12 +134,32 @@ export const NativePhoneNavBar = ({
           </Text>
         </View>
 
-        {/*
-          Reserved for the screen's own actions. Kept as a sized lane from the
-          start so the centred title is measured against the same geometry once
-          they arrive, rather than shifting when the first action appears.
-        */}
-        <View style={styles.trailing} pointerEvents="box-none" />
+        <View style={styles.trailing} pointerEvents="box-none">
+          {primary ? (
+            <Pressable
+              accessibilityLabel={primary.label}
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => (primary.kind === 'menu' ? openMenu(primary) : onAction(primary.id))}
+              style={({ pressed }) => [styles.primaryAction, pressed ? { opacity: 0.55 } : null]}
+            >
+              <Text numberOfLines={1} style={[styles.primaryLabel, { color: accentColor }]}>
+                {primary.label}
+              </Text>
+            </Pressable>
+          ) : null}
+          {overflow.length > 0 ? (
+            <Pressable
+              accessibilityLabel="More actions"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={openOverflow}
+              style={({ pressed }) => [styles.overflowButton, pressed ? { opacity: 0.55 } : null]}
+            >
+              <MaterialIcons color={headerText} name="more-horiz" size={22} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     </View>
   )
@@ -115,7 +184,18 @@ const styles = StyleSheet.create({
   // The two side lanes share a width so the title sits on the bar's centre
   // line rather than the centre of whatever is left over.
   leading: { alignItems: 'flex-start', flexBasis: 0, flexGrow: 1, minWidth: 0 },
+  overflowButton: { alignItems: 'center', height: 32, justifyContent: 'center', width: 32 },
+  primaryAction: { flexShrink: 1, minWidth: 0, paddingHorizontal: 4 },
+  primaryLabel: { fontSize: 17, fontWeight: '600' },
   title: { fontSize: 17, fontWeight: '700' },
   titleLane: { alignItems: 'center', flexShrink: 1, minWidth: 0, paddingHorizontal: 8 },
-  trailing: { alignItems: 'flex-end', flexBasis: 0, flexGrow: 1, minWidth: 0 },
+  trailing: {
+    alignItems: 'center',
+    flexBasis: 0,
+    flexDirection: 'row',
+    flexGrow: 1,
+    gap: 4,
+    justifyContent: 'flex-end',
+    minWidth: 0,
+  },
 })

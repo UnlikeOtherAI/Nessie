@@ -613,9 +613,11 @@ const Shell = (): React.JSX.Element => {
         />
       ) : showNativePhoneNavBar ? (
         <NativePhoneNavBar
+          accentColor={accent}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
           landscape={largePhoneLandscape}
+          onAction={nativeActions.runScreenBarAction}
           onBack={nativeActions.runScreenBarBack}
           safeTop={insets.top}
           screenBar={screenBar}
