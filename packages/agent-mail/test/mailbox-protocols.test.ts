@@ -538,6 +538,89 @@ describe('a hostile server cannot outgrow a bounded request', () => {
     session.close()
   })
 
+  /**
+   * The same flood packed into ONE logical response, sent one literal at a time
+   * and only continuing once the previous write has flushed. Charging the budget
+   * after a whole response was assembled left this open: `readResponse` loops
+   * over every `{n}` on the response, so a single FETCH announcing many literals
+   * buffered tens of megabytes before any check ran. Because the chain advances
+   * only on flush, `sent` records how far the server actually got before the
+   * client refused and dropped the socket.
+   */
+  const multiLiteralServer = async (
+    literals: number,
+    bytes: number,
+  ): Promise<{ port: number; sent: () => number }> => {
+    let sent = 0
+    const server = createServer((socket) => {
+      socket.on('error', () => undefined)
+      socket.write('* OK ready\r\n')
+      let buffer = Buffer.alloc(0)
+      let literalRemaining = 0
+      let tag = ''
+      const writeLiteral = (index: number): void => {
+        if (index >= literals || socket.destroyed) {
+          if (!socket.destroyed) socket.write(`)\r\n${tag} OK done\r\n`)
+          return
+        }
+        socket.write(` BODY[${index}] {${bytes}}\r\n`)
+        socket.write(Buffer.alloc(bytes, 0x61), (error) => {
+          if (error || socket.destroyed) return
+          sent += 1
+          writeLiteral(index + 1)
+        })
+      }
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk])
+        for (;;) {
+          if (literalRemaining > 0) {
+            if (buffer.byteLength < literalRemaining) return
+            buffer = buffer.subarray(literalRemaining)
+            literalRemaining = 0
+            continue
+          }
+          const index = buffer.indexOf('\r\n')
+          if (index < 0) return
+          const line = buffer.subarray(0, index).toString('utf8')
+          buffer = buffer.subarray(index + 2)
+          if (/^n\d+ /.test(line)) tag = line.split(' ')[0] as string
+          const literal = /\{(\d+)\}$/.exec(line)
+          if (literal) {
+            literalRemaining = Number(literal[1])
+            socket.write('+ go\r\n')
+            continue
+          }
+          if (/FETCH/i.test(line)) {
+            socket.write('* 1 FETCH (UID 13')
+            writeLiteral(0)
+            continue
+          }
+          socket.write(`${tag} OK done\r\n`)
+        }
+      })
+    })
+    servers.push(server)
+    await new Promise<void>((ready) => server.listen(0, '127.0.0.1', ready))
+    return { port: (server.address() as { port: number }).port, sent: () => sent }
+  }
+
+  test('many literals inside one response are refused before they are read', async () => {
+    const { port, sent } = await multiLiteralServer(40, 900_000)
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'),
+      { password: 'x', username: 'agent@example.com' }, { timeoutMs: 5_000 },
+    )
+    // 40 x 900_000 is 36 MB inside a single FETCH response.
+    await assert.rejects(
+      () => session.fetchBodySection(13, 'TEXT', 262_144),
+      /too much data/,
+    )
+    session.close()
+    // The refusal must land while the response is still arriving. Charging only
+    // the assembled response still rejected, but not before all 36 MB were read.
+    assert.ok(sent() < 10, `server flushed ${sent()} of 40 literals before refusal`)
+  })
+
   test('a section larger than the requested bound is refused', async () => {
     const port = await floodingServer(1, 500_000)
     const session = await ImapSession.handshake(

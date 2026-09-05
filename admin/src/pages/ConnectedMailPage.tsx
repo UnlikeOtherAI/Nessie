@@ -209,16 +209,27 @@ export const ConnectedMailPage = () => {
           mail surface under a subtitle that loaded forever. */}
       {accounts.isLoading
         ? <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">Loading connected accounts…</p></section>
-        : !account
-          ? <MailAccountMissing />
-          : unavailable
-            ? <MailUnavailable account={account} />
-            : layout === 'single' && threadId
-              ? reader
-              : <MailboxWorkspace conversation={reader} conversationList={list} layout={layout} />}
+        : accounts.isError
+          ? <MailAccountsUnreachable onRetry={() => void accounts.refetch()} />
+          : !account
+            ? <MailAccountMissing />
+            : unavailable
+              ? <MailUnavailable account={account} />
+              : layout === 'single' && threadId
+                ? reader
+                : <MailboxWorkspace conversation={reader} conversationList={list} layout={layout} />}
     </div>
   )
 }
+
+/** A transport failure is not an entitlement answer: saying "not available to
+ *  you" for a dropped request would misreport why the surface is empty. */
+const MailAccountsUnreachable = ({ onRetry }: { onRetry: () => void }) => (
+  <section className="px-[var(--page-gutter)] py-6">
+    <p className="text-sm text-[color:var(--tx2)]">Could not load your connected accounts.</p>
+    <button className="mt-3 admin-button admin-button-secondary" onClick={onRetry} type="button">Try again</button>
+  </section>
+)
 
 /** An account this viewer is not entitled to reads the same as one that never
  *  existed, so the surface says neither which it was. */

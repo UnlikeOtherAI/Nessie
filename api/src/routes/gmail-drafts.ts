@@ -29,7 +29,9 @@ import type { RouteDeps } from './types.js'
 
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
 
-const DraftStatusParamsSchema = z.object({ id: z.string().uuid() }).strict()
+/** Every draft route keys on a uuid; an unvalidated id reaches Prisma as P2023
+ *  and answers 500 where an unknown draft answers 404. */
+const DraftIdParamsSchema = z.object({ id: z.string().uuid() }).strict()
 
 const DraftUpdateSchema = z.object({
   to: z.array(z.string()).min(1).max(50),
@@ -139,7 +141,7 @@ export const registerGmailDraftRoutes = (
     // A non-uuid id would reach Prisma and raise P2023, answering 500 where an
     // unknown draft answers 404 — enough to distinguish "malformed" from
     // "not yours". Validate the shape so both collapse to DRAFT_NOT_FOUND.
-    const params = parseInput(DraftStatusParamsSchema, request.params, reply, 'params')
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
     if (!params) return reply
     const { id } = params
     const action = await prisma.gmailDraftAction.findFirst({
@@ -166,7 +168,9 @@ export const registerGmailDraftRoutes = (
   app.get('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     try {
       const draft = await readDraftForUser(
         prisma,
@@ -202,7 +206,9 @@ export const registerGmailDraftRoutes = (
   app.patch('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const body = parseInput(DraftUpdateSchema, request.body, reply)
     if (!body) return reply
     try {
@@ -229,7 +235,9 @@ export const registerGmailDraftRoutes = (
   app.post('/api/gmail/drafts/:id/send', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const body = parseInput(SendSchema, request.body ?? {}, reply)
     if (!body) return reply
     try {
@@ -268,7 +276,9 @@ export const registerGmailDraftRoutes = (
   app.post('/api/gmail/drafts/:id/undo', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext || !requireDraftUndoRequest(request, reply, deps)) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     try {
       const action = await undoHeldSend(prisma, {
         organizationId: actorContext.tenant.organizationId,
@@ -293,7 +303,9 @@ export const registerGmailDraftRoutes = (
   app.delete('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     try {
       const action = await discardDraftForUser(
         prisma,
@@ -454,7 +466,9 @@ export const registerGmailDraftRoutes = (
   app.delete('/api/gmail/send-grants/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const revoked = await revokeSendAuthorization(prisma, {
       organizationId: actorContext.tenant.organizationId,
       grantId: id,

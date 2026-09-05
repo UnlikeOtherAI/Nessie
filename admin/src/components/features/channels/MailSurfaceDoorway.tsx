@@ -176,6 +176,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const replyTo = doorway.mode === 'compose' && doorway.threadId
     ? conversation.data?.messages.at(-1)
     : undefined
+  const awaitingReplyTarget = doorway.mode === 'compose' && Boolean(doorway.threadId) && !replyTo
   const close = () => {
     try {
       if (openDoorwayMessageId === messageId) openDoorwayMessageId = null
@@ -201,7 +202,18 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
           {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} replyTo={replyTo} onOpenSettings={() => navigate(connectedMailSettingsPath(account))} onSent={close} onStartNewEmail={(id) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/compose?compose=${id}&new=1`) }} /> : null}
           {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} /> : null}
           {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
-          <button className="mt-3 admin-button admin-button-primary" onClick={() => void openMail()} type="button">Open full mail</button>
+          {/* A compose doorway naming a thread has no reply target until the
+              conversation resolves. Leaving this pressable meanwhile navigates
+              without `reply=`, and the compose page then starts a new thread —
+              the same defect this doorway was fixed for, only timing-dependent. */}
+          <button
+            className="mt-3 admin-button admin-button-primary"
+            disabled={awaitingReplyTarget}
+            onClick={() => void openMail()}
+            type="button"
+          >
+            {awaitingReplyTarget ? 'Loading email…' : 'Open full mail'}
+          </button>
         </div>
       </Dialog>
     </div>

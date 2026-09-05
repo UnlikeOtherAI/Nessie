@@ -140,13 +140,28 @@ export class ImapSession {
    * One logical response: a line, plus any literals it announced. A literal's
    * `{n}` is always the last thing on its line, so the read is unambiguous.
    */
-  private async readResponse(): Promise<ImapResponse> {
+  private async readResponse(remainingBytes: number): Promise<ImapResponse> {
     let text = ''
+    let spent = 0
     const literals: Buffer[] = []
     for (;;) {
       const line = await this.wire.readLine()
+      spent += line.length
       const match = LITERAL_HEADER.exec(line)
-      if (!match) return { literals, text: text + line }
+      if (!match) {
+        if (spent > remainingBytes) {
+          throw new ImapError('The mail server sent too much data for one request.', 'protocol')
+        }
+        return { literals, text: text + line }
+      }
+      // One response may announce many literals. Charge each against the
+      // command's remaining budget *before* reading it: checking only once the
+      // whole response is assembled still lets a server push tens of megabytes
+      // through a single multi-literal FETCH.
+      spent += Number(match[1])
+      if (spent > remainingBytes) {
+        throw new ImapError('The mail server sent too much data for one request.', 'protocol')
+      }
       text += line.slice(0, match.index)
       literals.push(await this.wire.readExact(Number(match[1])))
     }
@@ -181,7 +196,10 @@ export class ImapSession {
     const untagged: ImapResponse[] = []
     let responseBytes = 0
     for (;;) {
-      const response = await this.readResponse()
+      // The budget spans the whole command, so each response may only read what
+      // its predecessors left. That makes the ceiling hold both across many
+      // responses and within one response carrying many literals.
+      const response = await this.readResponse(MAX_COMMAND_RESPONSE_BYTES - responseBytes)
       if (response.text.startsWith(`${tag} `)) {
         const status = response.text.slice(tag.length + 1)
         if (!/^OK\b/i.test(status)) {
