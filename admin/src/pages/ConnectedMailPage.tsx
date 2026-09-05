@@ -209,7 +209,7 @@ export const ConnectedMailPage = () => {
           mail surface under a subtitle that loaded forever. */}
       {accounts.isLoading
         ? <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">Loading connected accounts…</p></section>
-        : accounts.isError
+        : accounts.isError && !account
           ? <MailAccountsUnreachable onRetry={() => void accounts.refetch()} />
           : !account
             ? <MailAccountMissing />

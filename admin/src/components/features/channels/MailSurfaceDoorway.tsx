@@ -176,7 +176,12 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const replyTo = doorway.mode === 'compose' && doorway.threadId
     ? conversation.data?.messages.at(-1)
     : undefined
-  const awaitingReplyTarget = doorway.mode === 'compose' && Boolean(doorway.threadId) && !replyTo
+  // Only while the conversation is still settling. A thread that resolves with
+  // no readable message (every member attachment-only) or fails to load has no
+  // reply target to wait for, and leaving the control disabled there would
+  // strand the doorway instead of merely delaying it.
+  const awaitingReplyTarget = doorway.mode === 'compose' && Boolean(doorway.threadId)
+    && !replyTo && !conversation.isSuccess && !conversation.isError
   const close = () => {
     try {
       if (openDoorwayMessageId === messageId) openDoorwayMessageId = null
