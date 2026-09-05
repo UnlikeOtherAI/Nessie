@@ -157,15 +157,17 @@ export const ConnectedMailCompose = ({
   // localStorage. It must recover the same held action after a reload too.
   const gmailActionId = heldGmailSend?.draftId ?? activeGmailDraftId ?? recoverableGmailDraftId ?? null
   const gmailActionStatus = useGmailDraftStatus(gmailActionId)
+  // `useDraft`/`useQuery` hand back a fresh result object every render, so the effects below take the stable callbacks.
+  const { clear: clearDraft, setDraft: setComposeDraft } = draft, refetchGmailAction = gmailActionStatus.refetch
 
   useEffect(() => {
     if (!newCompose || consumedNewComposeRef.current) return
     // The acknowledgement opens a fresh identity, then consumes its route
     // marker. Future visits to that identity must restore its own edits.
     consumedNewComposeRef.current = true
-    draft.clear()
+    clearDraft()
     onNewComposeReady?.()
-  }, [draft.clear, newCompose, onNewComposeReady])
+  }, [clearDraft, newCompose, onNewComposeReady])
 
   useEffect(() => {
     setActiveGmailDraftId(gmailDraftId)
@@ -181,35 +183,48 @@ export const ConnectedMailCompose = ({
   // A held action is never a resend instruction. Its timer only refreshes the
   // content-free action state: an overdue send stays locked until the server
   // says whether it dispatched, sent, or became delivery-unknown.
+  //
+  // The window is read from the status the server reports as well as from
+  // the locally held send, and the timer also bumps a tick: the outcome is
+  // derived from the clock at render time (`deriveMailSendOutcome`), and a
+  // refetch whose payload is structurally identical does not re-render on
+  // its own, so without the tick a queued send stayed "queued" after its
+  // window had passed. (It used to re-derive only because an unrelated 15 s
+  // session poll re-rendered the whole tree.)
+  const pendingSendAfter = gmailActionStatus.data?.sendAfter ?? heldGmailSend?.sendAfter
+  const [, setSendAfterTick] = useState(0)
   useEffect(() => {
-    if (!heldGmailSend) return
-    const delay = Date.parse(heldGmailSend.sendAfter) - Date.now()
-    if (delay <= 0) return
-    const timer = window.setTimeout(() => { void gmailActionStatus.refetch() }, delay)
+    if (!pendingSendAfter) return
+    const delay = Date.parse(pendingSendAfter) - Date.now()
+    if (!Number.isFinite(delay) || delay <= 0) return
+    const timer = window.setTimeout(() => {
+      setSendAfterTick((tick) => tick + 1)
+      void refetchGmailAction()
+    }, delay)
     return () => window.clearTimeout(timer)
-  }, [gmailActionStatus.refetch, heldGmailSend])
+  }, [pendingSendAfter, refetchGmailAction])
 
   useEffect(() => {
     const action = gmailActionStatus.data
     if (!action) return
     if (action.state === 'sending' && action.sendAfter && isFutureDate(action.sendAfter) && !heldGmailSend) {
-      draft.setDraft((current) => ({
+      setComposeDraft((current) => ({
         ...current, gmailHeldSend: { draftId: action.id, sendAfter: action.sendAfter! },
       }))
       return
     }
     if (action.state === 'draft' && heldGmailSend) {
-      draft.setDraft((current) => ({ ...current, gmailHeldSend: undefined }))
+      setComposeDraft((current) => ({ ...current, gmailHeldSend: undefined }))
       return
     }
     if (action.state === 'sent') {
-      draft.clear()
+      clearDraft()
       setSent({ id: action.id, status: 'sent' })
     }
     if (action.state === 'discarded') {
-      draft.clear()
+      clearDraft()
     }
-  }, [draft.clear, draft.setDraft, gmailActionStatus.data, heldGmailSend])
+  }, [clearDraft, gmailActionStatus.data, heldGmailSend, setComposeDraft])
 
   // Provider draft content is editable, but it is not a local unsent draft:
   // never copy it into localStorage when a doorway opens an existing Gmail draft.
@@ -226,16 +241,16 @@ export const ConnectedMailCompose = ({
       contentFingerprint: providerDraft.data.contentFingerprint,
       id: providerDraft.data.id,
     }
-    draft.setDraft({
+    setComposeDraft({
       bcc: providerDraft.data.bcc.join(', '), body: providerDraft.data.body,
       cc: providerDraft.data.cc.join(', '), subject: providerDraft.data.subject,
       to: providerDraft.data.to.join(', '),
     })
-  }, [draft.restored, draft.setDraft, providerDraft.data])
+  }, [activeGmailDraftId, draft.restored, providerDraft.data, setComposeDraft])
 
   const updateComposeDraft = (next: MailComposeDraft | ((current: MailComposeDraft) => MailComposeDraft)) => {
     editedProviderDraftRef.current = true
-    draft.setDraft((current) => {
+    setComposeDraft((current) => {
       const updated = typeof next === 'function' ? next(current) : next
       // A mailbox request key can already name a provider call whose browser
       // response was lost. Editing must not mint a fresh send identity.
@@ -286,7 +301,7 @@ export const ConnectedMailCompose = ({
       requestId ??= crypto.randomUUID()
       // Persist the action key before crossing the network boundary. The API
       // owns replay after this point, even if this tab crashes mid-request.
-      draft.setDraft({ ...current, requestId })
+      setComposeDraft({ ...current, requestId })
       await draft.flush()
     }
     try {
@@ -311,7 +326,7 @@ export const ConnectedMailCompose = ({
           // A create can succeed even when the following send loses its
           // response. Keep its durable action id in the local draft so retry
           // updates/reuses it instead of creating another Gmail draft.
-          draft.setDraft({ ...current, gmailDraftId: gmailAction.id, requestId })
+          setComposeDraft({ ...current, gmailDraftId: gmailAction.id, requestId })
           await draft.flush()
         }
         setRecreateGmailDraft(false)
@@ -331,18 +346,18 @@ export const ConnectedMailCompose = ({
       if (heldSend) {
         // Persist the action identity before rendering the confirmation. A
         // reload can only offer Undo; it cannot recreate or resend this draft.
-        draft.setDraft({ ...current, gmailDraftId: heldSend.draftId, gmailHeldSend: heldSend, requestId })
+        setComposeDraft({ ...current, gmailDraftId: heldSend.draftId, gmailHeldSend: heldSend, requestId })
         await draft.flush()
       } else if (address.source === 'mailbox' && result.status === 'dispatching' && result.actionId) {
-        draft.setDraft({ ...current, mailboxSendActionId: result.actionId, requestId })
+        setComposeDraft({ ...current, mailboxSendActionId: result.actionId, requestId })
         await draft.flush()
       } else {
-        draft.clear()
+        clearDraft()
       }
       setSent({ ...result, id: result.id || result.actionId || gmailAction?.id || '' })
     } catch (cause) {
       if (address.source === 'mailbox' && !(cause instanceof ApiClientError)) {
-        draft.setDraft({ ...current, mailboxSendNeedsCheck: true, requestId })
+        setComposeDraft({ ...current, mailboxSendNeedsCheck: true, requestId })
         await draft.flush()
         setError('We could not confirm whether this email was sent. It will not be resent automatically. Check the provider’s Sent mail before composing a new message.')
       } else if (cause instanceof ApiClientError && cause.code === 'DRAFT_CHANGED' && !providerDraftRef.current) {
@@ -355,7 +370,7 @@ export const ConnectedMailCompose = ({
           ? (details as { actionId: string }).actionId
           : undefined
         if (address.source === 'mailbox' && actionId) {
-          draft.setDraft({ ...current, mailboxSendActionId: actionId, requestId })
+          setComposeDraft({ ...current, mailboxSendActionId: actionId, requestId })
           await draft.flush()
         }
         setError('We could not confirm whether this email was sent. It will not be resent automatically. Check the provider’s Sent mail before composing a new message.')
@@ -369,7 +384,7 @@ export const ConnectedMailCompose = ({
 
   const startNewGmailDraft = () => {
     providerDraftRef.current = null
-    draft.setDraft((current) => ({
+    setComposeDraft((current) => ({
       ...current, gmailDraftId: undefined, requestId: crypto.randomUUID(),
     }))
     setRecreateGmailDraft(false)
@@ -379,7 +394,7 @@ export const ConnectedMailCompose = ({
   const startNewEmailAfterUnknownDelivery = () => {
     // This is an explicit acknowledgement, never a retry. The old action and
     // its content are forgotten before navigation opens a blank composer.
-    draft.clear()
+    clearDraft()
     onStartNewEmail?.(crypto.randomUUID())
   }
 
@@ -393,7 +408,7 @@ export const ConnectedMailCompose = ({
       return
     }
     if (heldGmailSend) {
-      draft.setDraft((current) => ({ ...current, gmailHeldSend: undefined }))
+      setComposeDraft((current) => ({ ...current, gmailHeldSend: undefined }))
       await draft.flush()
     }
     editedProviderDraftRef.current = false
@@ -408,7 +423,7 @@ export const ConnectedMailCompose = ({
         contentFingerprint: refreshed.data.contentFingerprint,
         id: refreshed.data.id,
       }
-      draft.setDraft({
+      setComposeDraft({
         bcc: refreshed.data.bcc.join(', '), body: refreshed.data.body,
         cc: refreshed.data.cc.join(', '), subject: refreshed.data.subject,
         to: refreshed.data.to.join(', '),
@@ -436,9 +451,7 @@ export const ConnectedMailCompose = ({
   // A persisted action is ambiguous until the owner-only status endpoint says
   // it is editable again. A network failure/404 must not reopen Send.
   const gmailActionLocked = Boolean(gmailActionId && (
-    gmailActionStatus.isPending
-    || gmailActionStatus.isError
-    || gmailActionStatus.data?.state !== 'draft'
+    gmailActionStatus.isPending || gmailActionStatus.isError || gmailActionStatus.data?.state !== 'draft'
   ))
 
   if (sentConfirmation) return <GmailSendOutcomePanel
@@ -479,7 +492,7 @@ export const ConnectedMailCompose = ({
         <textarea aria-label="Message" className="admin-input min-h-44 resize-y" onChange={(event) => updateComposeDraft((value) => ({ ...value, body: event.target.value }))} value={draft.draft.body} />
       </label>
       {replyTo ? <p className="text-xs text-[color:var(--tx3)]">Replying to {replyTo.from ?? 'this message'}. Previous messages are not saved in this draft.</p> : null}
-      {gmailActionStatus.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]" data-testid="gmail-action-status-error">We could not confirm this email’s delivery state. It will not be sent again. <button className="font-semibold text-[color:var(--accent)]" onClick={() => void gmailActionStatus.refetch()} type="button">Retry</button></p> : null}
+      {gmailActionStatus.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]" data-testid="gmail-action-status-error">We could not confirm this email’s delivery state. It will not be sent again. <button className="font-semibold text-[color:var(--accent)]" onClick={() => void refetchGmailAction()} type="button">Retry</button></p> : null}
       {mailboxAction.data?.state === 'delivery_unknown' ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]" data-testid="mailbox-delivery-unknown">Delivery is unconfirmed. Check the provider’s Sent mail before composing a new message; this action will not be resent.</p> : null}
       {error ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">{error}</p> : null}
       {recreateGmailDraft ? <button className="admin-button admin-button-secondary" onClick={startNewGmailDraft} type="button">Create a new Gmail draft</button> : null}

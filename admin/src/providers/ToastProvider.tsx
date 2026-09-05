@@ -9,7 +9,9 @@ import {
   type PropsWithChildren,
 } from 'react'
 import { CardViewport, type CardItem } from '../components/overlays/CardViewport'
-import './notifications.css'
+// The toast styles are imported by main.tsx beside styles.css: a CSS import
+// inside a component module would put it on the graph of every test that
+// mounts the shell, and node --test cannot load CSS.
 
 const TOAST_TTL_MS = 7_000
 const MAX_TOASTS = 3

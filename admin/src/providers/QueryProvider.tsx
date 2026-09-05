@@ -14,7 +14,7 @@ import { notifyMutationError } from './ToastProvider'
  * module-level sink `ToastProvider` registers on mount rather than through
  * context.
  */
-const adminQueryClient = createQueryClient({
+export const adminQueryClient = createQueryClient({
   onMutationError: (error) => {
     notifyMutationError(formErrorMessage(error, 'Something went wrong'))
   },

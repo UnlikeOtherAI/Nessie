@@ -33,6 +33,7 @@ change), **follow-up** (planned, see [fix-plan.md](fix-plan.md)), **decision**
 | [09-F3](audit/09-boundary-errors-tests.md) | high | 43 of 144 mutation-bearing components surface nothing on failure; no `MutationCache.onError`; six unhandled `void mutateAsync`. | default + gate fixed; 43-file cleanup follow-up |
 | [06-F11](audit/06-file-cap-seams.md) | medium | `lib/workflow-designer/serialization.ts` couples its load and save passes through a module-level mutable singleton. | fixed |
 | [07-F5](audit/07-providers-state.md) | medium | `eslint-plugin-react-hooks` is a declared dependency but never registered, so `rules-of-hooks`/`exhaustive-deps` never run. Verified. | fixed (wave 3) |
+| — (found by CI after 07-F7) | medium | `ConnectedMailCompose` derives a time-based outcome (`sendAfter` in the future → "queued") at render time and had no timer for the moment it elapses; it re-derived only because the 15 s `/me` poll republished a new object and re-rendered the whole tree. Stopping that churn (07-F7) exposed it: the connected-mail e2e stalled on "queued". | fixed (explicit timer; the suite passed on `main` by accident) |
 
 ## State and providers
 

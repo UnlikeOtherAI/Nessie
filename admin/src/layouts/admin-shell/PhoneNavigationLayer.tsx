@@ -1,5 +1,5 @@
 import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
-import { sharedQueryClient } from '@nessie/client-core'
+import { adminQueryClient } from '../../providers/QueryProvider'
 import { useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
@@ -14,7 +14,7 @@ import type { PhoneNavigationStackEntry } from './phone-navigation-stack'
 // the shared client directly, rather than `useQueryClient()`, keeps this
 // navigation-layer component renderable without a provider (its isolation tests
 // mount no data layer), and it is the very instance `QueryProvider` mounts.
-const refreshVisiblePage = (): Promise<unknown> => sharedQueryClient.refetchQueries({ type: 'active' })
+const refreshVisiblePage = (): Promise<unknown> => adminQueryClient.refetchQueries({ type: 'active' })
 
 // What a layer holds: a route's captured subtree, or a nested stage's
 // container that its page fills through a portal.
