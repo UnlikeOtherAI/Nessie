@@ -45,6 +45,12 @@ export const linearStateCategory = (
     case 'completed':
       return 'done'
     case 'canceled':
+    // Linear creates a `duplicate` state in every team it makes, so this is not
+    // an exotic case: without it every real workspace connects with an unmapped
+    // state and the source turns `misconfigured` on its first sync. A duplicate
+    // leaves the board for the same reason a cancellation does — the work is
+    // not done, it is not happening here — so it lands where cancellations do.
+    case 'duplicate':
       return 'archived'
     default:
       return null
