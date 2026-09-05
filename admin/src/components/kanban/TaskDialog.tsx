@@ -11,6 +11,8 @@ import { Dialog } from '../shared/Dialog'
 import { FieldLabel } from '../primitives/FieldLabel'
 import { FormActions } from '../shared/FormActions'
 import { FormField } from '../shared/FormField'
+import { TaskFieldsSection } from './TaskFieldsSection'
+import { useTaskFields } from '../../facades/task-fields/hooks'
 import { Input, Select, Textarea } from '../shared/FormControls'
 import { useAgents } from '../../facades/agents/queries'
 import { useProjects } from '../../facades/projects/hooks'
@@ -40,6 +42,7 @@ type TaskDraft = {
   assignee: AssigneeValue
   detail: string
   due: string
+  fieldValues: Record<string, unknown>
   formProjectId: string
   priority: TaskPriority
   purpose: string
@@ -55,6 +58,29 @@ type TaskDialogProps = {
   projectId?: string
   iterationId?: string
 }
+
+/**
+ * Only the fields that actually changed, with a cleared one sent as `null` so
+ * the server's merge removes it. Sending the whole bag would overwrite a value
+ * somebody else set while this dialog was open.
+ */
+const fieldValuesPatch = (
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, unknown> => {
+  const patch: Record<string, unknown> = {}
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const next = after[key]
+    if (JSON.stringify(next ?? null) === JSON.stringify(before[key] ?? null)) continue
+    patch[key] = next ?? null
+  }
+  return patch
+}
+
+const changedFieldValues = (
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean => Object.keys(fieldValuesPatch(before, after)).length > 0
 
 const priorityItems: ReadonlyArray<TabBarItem<TaskPriority>> = PRIORITY_ORDER.map((value) => ({
   icon: <FontAwesomeIcon className={`text-[11px] ${PRIORITY_SIGNAL[value]}`} icon={faSignal} />,
@@ -72,6 +98,11 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const assignTask = useAssignTask()
   const transition = useTransitionTask()
 
+  // Custom fields belong to the project, which for an existing task is the
+  // task's own and for a new one the project the dialog was opened in.
+  const fieldsProjectId = task?.projectId ?? projectId ?? null
+  const { data: fieldDefinitions = [] } = useTaskFields(fieldsProjectId ?? undefined)
+
   const titleRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
@@ -87,6 +118,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           : null,
       detail: task?.detail ?? '',
       due: toDateInputValue(task?.dueDate ?? null),
+      fieldValues: task?.fieldValues ?? {},
       formProjectId: '',
       priority: task?.priority ?? 'medium',
       purpose: task?.purpose ?? '',
@@ -102,7 +134,8 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     open ? draftKey('task', task?.id ?? 'new') : null,
     { initial: baseline },
   )
-  const { assignee, detail, due, formProjectId, priority, purpose, title } = taskDraft.draft
+  const { assignee, detail, due, fieldValues, formProjectId, priority, purpose, title } =
+    taskDraft.draft
   const setDraft = taskDraft.setDraft
   const patchDraft = useCallback(
     (patch: Partial<TaskDraft>) => setDraft((current) => ({ ...current, ...patch })),
@@ -161,6 +194,9 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           detail: trimmedDetail || null,
           priority,
           dueDate: fromDateInputValue(due),
+          ...(changedFieldValues(task.fieldValues ?? {}, fieldValues)
+            ? { fieldValues: fieldValuesPatch(task.fieldValues ?? {}, fieldValues) }
+            : {}),
         })
         const changed =
           (task.assigneeUserId ?? null) !== assigneeUserId ||
@@ -285,6 +321,20 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           <FormField label="Deadline">
             <Input onChange={(event) => patchDraft({ due: event.target.value })} type="date" value={due} />
           </FormField>
+
+          <TaskFieldsSection
+            definitions={fieldDefinitions}
+            manageHref={
+              fieldsProjectId
+                ? `/projects/${fieldsProjectId}/settings?section=fields`
+                : undefined
+            }
+            onChange={(fieldId, value) =>
+              patchDraft({ fieldValues: { ...fieldValues, [fieldId]: value } })
+            }
+            people={assignees}
+            values={fieldValues}
+          />
 
           {!isEdit && !projectId ? (
             <FormField label="Project">

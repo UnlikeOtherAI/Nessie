@@ -284,6 +284,18 @@ enum BoardStyle {
   scrum
 }
 
+/// The value vocabulary a project's custom task fields may use. Seven types,
+/// each one a validator and a renderer; deliberately not a type system.
+enum TaskFieldType {
+  text
+  number
+  date
+  url
+  select
+  multi_select
+  user
+}
+
 // The lifecycle categories a board column maps onto. These are the only
 // buckets the agent/worker lifecycle drives (inbox→todo, in_progress, review,
 // done); failed/cancelled stay Archive-only and never get a column.
@@ -1212,6 +1224,7 @@ model Organization {
   mcpOAuthClients                  McpOAuthClient[]
   boards                           Board[]
   boardColumns                     BoardColumn[]
+  taskFieldDefinitions             TaskFieldDefinition[]
   iterations                       Iteration[]
   realtimeEvents                   RealtimeEvent[]
   userPresences                    UserPresence[]
@@ -1456,6 +1469,7 @@ model Project {
   statusRules              UserStatusRule[]
   tasks                    Task[]
   boards                   Board[]
+  taskFieldDefinitions     TaskFieldDefinition[]
   iterations               Iteration[]
   knowledgeSpaces          KnowledgeSpace[]
   knowledgePages           KnowledgePage[]
@@ -1468,6 +1482,38 @@ model Project {
   @@unique([id, organizationId])
   @@index([avatarAttachmentId])
   @@map("projects")
+}
+
+/// A custom field a project's tasks may carry, beyond the built-in title,
+/// priority, deadline and story points. Project-scoped: it is what "custom
+/// fields per project" means, it is where an external source lands its fields,
+/// and it keeps a task's fields stable across every board of that project.
+model TaskFieldDefinition {
+  id             String        @id @default(uuid()) @db.Uuid
+  projectId      String        @map("project_id") @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  name           String
+  type           TaskFieldType
+  position       Int
+  showOnCard     Boolean       @default(false) @map("show_on_card")
+  /// TaskFieldOption[] for select / multi_select: [{ id, label, tone,
+  /// retiredAt? }]. Ids are stable and labels mutable, so a rename never
+  /// rewrites a value; a retired option stays readable and leaves every picker.
+  options        Json          @default("[]")
+  /// Per-type constraints: number `{ min?, max?, decimals? }`,
+  /// text `{ maxLength? }`. Strict per type, empty for the rest.
+  config         Json          @default("{}")
+
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+  @@index([projectId, position])
+  @@map("task_field_definitions")
 }
 
 /// A saved view over its project's task pool: a name, a style, an ordered set
@@ -3899,6 +3945,11 @@ model Task {
   organizationId      String               @map("organization_id") @db.Uuid
   projectId           String?              @map("project_id") @db.Uuid
   iterationId         String?              @map("iteration_id") @db.Uuid
+  /// `{ "<taskFieldDefinitionId>": <value> }` — an absent key is no value.
+  /// One JSONB column rather than an EAV table: the board already reads whole
+  /// tasks, and the only server-side filter (a board's select-option clause) is
+  /// served by the `tasks_field_values_gin` index.
+  fieldValues         Json                 @default("{}") @map("field_values")
   storyPoints         Int?                 @map("story_points")
   parentTaskId        String?              @map("parent_task_id") @db.Uuid
   status              TaskStatus           @default(inbox)

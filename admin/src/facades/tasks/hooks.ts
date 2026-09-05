@@ -19,6 +19,7 @@ export type TaskRecord = {
   projectId: string | null
   iterationId: string | null
   storyPoints: number | null
+  fieldValues: Record<string, unknown>
   status: TaskStatus
   priority: TaskPriority
   dueDate: string | null
@@ -93,6 +94,8 @@ export const useUpdateTask = () => {
       priority?: TaskPriority
       dueDate?: string | null
       archivedAt?: string | null
+      /** A partial merge of custom field values; `null` clears one. */
+      fieldValues?: Record<string, unknown>
     }) => {
       const { id, ...fields } = input
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)

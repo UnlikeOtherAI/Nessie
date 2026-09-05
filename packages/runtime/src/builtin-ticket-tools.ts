@@ -22,8 +22,8 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'ticket_board_read', category: 'projects', label: 'Read Ticket Board', personalAssistantOnly: true,
-    summary: 'List a project board’s columns and their IDs.', safe: true,
-    description: 'Read board columns before ticket_move. Use a returned columnId; do not guess UUIDs.',
+    summary: 'List a project’s boards and their columns.', safe: true,
+    description: 'Read a project’s boards before ticket_move. A project can have several boards over the same tickets; use a returned columnId, and do not guess UUIDs.',
     parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
   },
   {
@@ -36,7 +36,13 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'ticket_update', category: 'projects', label: 'Update Ticket', personalAssistantOnly: true,
     summary: 'Edit a ticket’s fields.', safe: false,
     description: 'Update one or more ticket fields. Use ticket_read first when you need its current values.',
-    parameters: { type: 'object', properties: { ticketId: UUID, title: { type: 'string' }, purpose: { type: ['string', 'null'] }, detail: { type: ['string', 'null'] }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: ['string', 'null'] }, storyPoints: { type: ['integer', 'null'] } }, required: ['ticketId'] },
+    parameters: { type: 'object', properties: { ticketId: UUID, title: { type: 'string' }, purpose: { type: ['string', 'null'] }, detail: { type: ['string', 'null'] }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: ['string', 'null'] }, storyPoints: { type: ['integer', 'null'] }, fieldValues: { type: 'object', description: 'Custom field values keyed by the field UUID from ticket_fields_read. A value of null clears that field.', additionalProperties: true } }, required: ['ticketId'] },
+  },
+  {
+    id: 'ticket_fields_read', category: 'projects', label: 'Read Ticket Fields', personalAssistantOnly: true,
+    summary: 'List a project’s custom ticket fields and their option IDs.', safe: true,
+    description: 'Read a project’s custom field definitions before setting fieldValues with ticket_update. Select fields answer with the option IDs to use; do not guess them.',
+    parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
   },
   {
     id: 'ticket_assign', category: 'projects', label: 'Assign Ticket', personalAssistantOnly: true,

@@ -4,6 +4,12 @@ import { isAgentAccessibleToActor } from './access-checks.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { dropStalePlacements } from './project-task-move.js'
+import {
+  applyFieldValuesPatch,
+  listTaskFieldDefinitions,
+  validateFieldValuesPatch,
+  type TaskFieldError,
+} from './task-fields.js'
 
 export type AssignableProjectTaskUser = { id: string; displayName: string }
 
@@ -249,17 +255,56 @@ export type ProjectTaskUpdateFields = {
   dueDate?: Date | null
   archivedAt?: Date | null
   storyPoints?: number | null
+  /** A partial merge of custom field values; `null` clears one. */
+  fieldValues?: Record<string, unknown>
 }
 
 export const updateProjectTask = async (
   prisma: PrismaClient,
   input: { taskId: string; organizationId: string; fields: ProjectTaskUpdateFields },
-): Promise<ProjectTaskRecord | { error: 'NOT_FOUND' }> => {
+): Promise<ProjectTaskRecord | { error: 'NOT_FOUND' } | TaskFieldError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
-    select: { id: true },
+    select: { id: true, projectId: true },
   })
   if (!existing) return { error: 'NOT_FOUND' }
+
+  // Custom field values are validated against the project's own definitions
+  // before anything is written, so the JSONB column cannot accumulate a key no
+  // definition explains.
+  const patch = input.fields.fieldValues
+  if (patch && Object.keys(patch).length > 0) {
+    if (!existing.projectId) return { error: 'FIELD_UNKNOWN', fieldId: Object.keys(patch)[0] ?? '' }
+    const definitions = await listTaskFieldDefinitions(prisma, existing.projectId)
+    // Only the values of `user` fields are candidate member ids. Every string
+    // in the patch is not: a `select` value is an option id and a `text` value
+    // is prose, and asking Postgres to cast either to a uuid is an error.
+    const userFieldIds = new Set(
+      definitions.filter((field) => field.type === 'user').map((field) => field.id),
+    )
+    const userIds = Object.entries(patch)
+      .filter(([fieldId, value]) => userFieldIds.has(fieldId) && typeof value === 'string')
+      .map(([, value]) => value as string)
+    const activeMembers = new Set(
+      (
+        await prisma.organizationMember.findMany({
+          // Liveness is on the membership, not the user: a deactivated member
+          // keeps their row so an owner can reactivate them.
+          where: {
+            organizationId: input.organizationId,
+            userId: { in: userIds },
+            deactivatedAt: null,
+          },
+          select: { userId: true },
+        })
+      ).map((member) => member.userId),
+    )
+    const failure = validateFieldValuesPatch(definitions, patch, (userId) =>
+      activeMembers.has(userId),
+    )
+    if (failure) return failure
+  }
+
   const data: Prisma.TaskUpdateInput = {}
   if (input.fields.title !== undefined) data.title = input.fields.title
   if (input.fields.purpose !== undefined) data.purpose = input.fields.purpose
@@ -268,7 +313,15 @@ export const updateProjectTask = async (
   if (input.fields.dueDate !== undefined) data.dueDate = input.fields.dueDate
   if (input.fields.archivedAt !== undefined) data.archivedAt = input.fields.archivedAt
   if (input.fields.storyPoints !== undefined) data.storyPoints = input.fields.storyPoints
-  return mapProjectTask(await prisma.task.update({ where: { id: existing.id }, data, include: projectTaskInclude }))
+
+  const task = await prisma.$transaction(async (tx) => {
+    if (Object.keys(data).length > 0) {
+      await tx.task.update({ where: { id: existing.id }, data })
+    }
+    if (patch) await applyFieldValuesPatch(tx, existing.id, patch)
+    return tx.task.findFirstOrThrow({ where: { id: existing.id }, include: projectTaskInclude })
+  })
+  return mapProjectTask(task)
 }
 
 export const setProjectTaskIteration = async (

@@ -7,8 +7,10 @@ import { PageBody } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
 import { useTabParam } from '../../navigation/useTabParam'
 import { BoardsSettingsSection } from './settings/BoardsSettingsSection'
+import { FieldsSettingsSection } from './settings/FieldsSettingsSection'
+import { TabBar } from '../../components/primitives/TabBar'
 
-const SECTIONS = ['boards'] as const
+const SECTIONS = ['boards', 'fields'] as const
 
 type ProjectSettingsPageProps = {
   projectId: string
@@ -25,7 +27,7 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
   const canAdminister = useCanAdministerProject(projectId)
   const boardsQuery = useProjectBoards(projectId)
   const boards = boardsQuery.data ?? []
-  const [section] = useTabParam('section', SECTIONS, 'boards')
+  const [section, selectSection] = useTabParam('section', SECTIONS, 'boards')
   const [searchParams, setSearchParams] = useSearchParams()
 
   const defaultBoardId = boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? ''
@@ -79,7 +81,27 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
               </p>
             ) : null}
 
-            {section === 'boards' ? (
+            <TabBar
+              ariaLabel="Project settings sections"
+              idPrefix="project-settings"
+              items={[
+                { label: 'Boards', value: 'boards' },
+                { label: 'Fields', value: 'fields' },
+              ]}
+              onChange={selectSection}
+              role="tablist"
+              size="sm"
+              value={section}
+            />
+
+            {section === 'fields' ? (
+              <FieldsSettingsSection
+                canAdminister={canAdminister}
+                onSaveError={(message) => setSaveState({ status: 'error', message })}
+                onSaved={() => setSaveState({ status: 'success' })}
+                projectId={projectId}
+              />
+            ) : (
               <BoardsSettingsSection
                 boards={boards}
                 canAdminister={canAdminister}
@@ -90,7 +112,7 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
                 selectedBoardId={selectedBoardId}
                 startWithNewBoard={startWithNewBoard}
               />
-            ) : null}
+            )}
           </>
         )}
       </QueryState>

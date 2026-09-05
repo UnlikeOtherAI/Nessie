@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
-import { type BoardRecord, statusToCategory } from '@nessie/schemas'
+import { type BoardFilter, type BoardRecord, statusToCategory } from '@nessie/schemas'
+import type { Prisma } from '@prisma/client'
 
 import {
   mapProjectTask,
@@ -92,6 +93,7 @@ export const listBoardTasks = async (
       ...(options.iterationId !== undefined
         ? { iterationId: options.iterationId }
         : {}),
+      ...boardFilterWhere(board.filter),
     },
     include: projectTaskInclude,
     orderBy: { updatedAt: 'desc' },
@@ -154,4 +156,33 @@ export const orderForRender = (tasks: BoardTaskRecord[]): BoardTaskRecord[] => {
     const unpositioned = group.filter((task) => task.position === null)
     return [...positioned, ...unpositioned]
   })
+}
+
+/**
+ * The board's filter as a Prisma `where` fragment.
+ *
+ * A `select` value is one option id and a `multi_select` value is an array of
+ * them, so one containment test covers both: `field_values @> {"<id>": "<opt>"}`
+ * matches the scalar and `field_values -> '<id>' ? '<opt>'` the array. Prisma's
+ * JSON filters express exactly these two, and the `tasks_field_values_gin`
+ * index serves them.
+ */
+export const boardFilterWhere = (filter: BoardFilter): Prisma.TaskWhereInput => {
+  const clauses: Prisma.TaskWhereInput[] = []
+
+  // `filter.sources` narrows to native or externally-mirrored work. Until a
+  // source can be attached there are no mirrored tasks, so every value of it
+  // selects the same set; the clause lands with `TaskExternalLink`.
+
+  if (filter.field) {
+    const { fieldId, optionIds } = filter.field
+    clauses.push({
+      OR: optionIds.flatMap((optionId) => [
+        { fieldValues: { path: [fieldId], equals: optionId } },
+        { fieldValues: { path: [fieldId], array_contains: optionId } },
+      ]),
+    })
+  }
+
+  return clauses.length === 0 ? {} : { AND: clauses }
 }

@@ -307,6 +307,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
       ...(body.archivedAt !== undefined ? { archivedAt: body.archivedAt } : {}),
       ...(body.storyPoints !== undefined ? { storyPoints: body.storyPoints } : {}),
+      ...(body.fieldValues !== undefined ? { fieldValues: body.fieldValues } : {}),
     }
     if (Object.keys(fields).length === 0) {
       sendApiError(reply, 400, 'NO_FIELDS', 'No updatable fields provided')
@@ -319,6 +320,16 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       fields,
     })
     if ('error' in result) {
+      // A refused custom field value says which field and why; anything else
+      // about a task the caller could reach is a missing task.
+      if (result.error === 'FIELD_UNKNOWN') {
+        sendApiError(reply, 400, 'FIELD_UNKNOWN', 'That field is not defined on this project')
+        return reply
+      }
+      if (result.error === 'FIELD_VALUE_INVALID') {
+        sendApiError(reply, 400, 'FIELD_VALUE_INVALID', `Field value refused: ${result.reason}`)
+        return reply
+      }
       sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
       return reply
     }

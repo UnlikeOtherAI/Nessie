@@ -6,6 +6,7 @@ import {
   getProjectTask,
   isProjectAccessibleToUser,
   listBoards,
+  listTaskFieldDefinitions,
   listProjectTasks,
   moveProjectTaskToColumn,
   setProjectTaskIteration,
@@ -201,6 +202,7 @@ const UpdateInput = z.object({
   priority: PrioritySchema.optional(),
   dueDate: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),
+  fieldValues: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const runTicketUpdateTool = async (
@@ -218,8 +220,55 @@ export const runTicketUpdateTool = async (
     organizationId: member.organizationId,
     fields,
   })
-  if ('error' in updated) throw new Error('Ticket not found.')
+  if ('error' in updated) {
+    // A refused custom field says which one and why, so the model can correct
+    // it rather than retry the same value.
+    if (updated.error === 'FIELD_UNKNOWN') {
+      throw new Error(
+        'That field is not defined on this project. Read ticket_fields_read first.',
+      )
+    }
+    if (updated.error === 'FIELD_VALUE_INVALID') {
+      throw new Error(`Field value refused: ${updated.reason}`)
+    }
+    throw new Error('Ticket not found.')
+  }
   return result('ticket_update', `ticketId=${ticketId}`, `Updated ticket\n${ticketLine(updated)}`)
+}
+
+const FieldsInput = z.object({ projectId: IdSchema })
+
+/**
+ * Mirrors `GET /api/projects/:projectId/fields`. A `select` field's value is an
+ * option id rather than its label, so the model has to be able to read the ids
+ * instead of guessing them from what a card shows.
+ */
+export const runTicketFieldsReadTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const { projectId } = FieldsInput.parse(input)
+  const member = await resolveActingMember(context)
+  await projectFor(context, member, projectId)
+  const definitions = await listTaskFieldDefinitions(context.prisma, projectId)
+  recordProjectRead(context, member, projectId)
+  const output = definitions.length
+    ? definitions
+        .map((definition) => {
+          const options = definition.options
+            .filter((option) => !option.retiredAt)
+            .map((option) => `${option.label}=${option.id}`)
+            .join(', ')
+          return [
+            `- ${definition.name} (${definition.type}) | fieldId=${definition.id}`,
+            options ? `  options: ${options}` : null,
+          ]
+            .filter(Boolean)
+            .join('\n')
+        })
+        .join('\n')
+    : 'This project has no custom ticket fields.'
+  return result('ticket_fields_read', `projectId=${projectId}`, output)
 }
 
 const AssignInput = z.object({

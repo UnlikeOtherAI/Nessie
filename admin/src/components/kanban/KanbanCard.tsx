@@ -4,7 +4,11 @@ import { CSS } from '@dnd-kit/utilities'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../facades/tasks/hooks'
+import { useMemo } from 'react'
 import { Pill } from '../primitives/Pill'
+import { TaskFieldChips } from './TaskFieldChips'
+import { useTaskFields } from '../../facades/task-fields/hooks'
+import { useTaskAssignees } from '../../facades/tasks/hooks'
 import { statusLabel } from './kanban-config'
 import { PRIORITY_LABEL, PRIORITY_SIGNAL, formatDueDate, isOverdue } from './task-meta'
 
@@ -34,6 +38,12 @@ const KanbanCardContent = ({
   archived,
 }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'> & { archived?: boolean }) => {
   const excerpt = buildCardExcerpt(task.detail ?? (task.title ? task.purpose : null))
+  const { data: fieldDefinitions = [] } = useTaskFields(task.projectId ?? undefined)
+  const { data: assignees = [] } = useTaskAssignees()
+  const peopleById = useMemo(
+    () => Object.fromEntries(assignees.map((person) => [person.id, person.displayName])),
+    [assignees],
+  )
 
   return (
     <>
@@ -51,6 +61,12 @@ const KanbanCardContent = ({
           {excerpt}
         </div>
       ) : null}
+
+      <TaskFieldChips
+        definitions={fieldDefinitions}
+        people={peopleById}
+        values={task.fieldValues ?? {}}
+      />
 
       <div className="flex items-center gap-1.5">
         <FontAwesomeIcon

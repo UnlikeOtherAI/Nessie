@@ -4,6 +4,7 @@ import {
   ProjectIdSchema,
   RunIdSchema,
   TaskIdSchema,
+  TaskFieldValuesPatchSchema,
   TaskStatusSchema,
   UserIdSchema,
 } from '@nessie/schemas'
@@ -22,6 +23,7 @@ export const TaskRecordSchema = z.object({
   projectId: ProjectIdSchema.nullable(),
   iterationId: z.string().uuid().nullable(),
   storyPoints: z.number().int().nullable(),
+  fieldValues: z.record(z.string().uuid(), z.unknown()),
   agentId: AgentIdSchema.nullable(),
   parentTaskId: TaskIdSchema.nullable(),
   runId: RunIdSchema.nullable(),
@@ -65,6 +67,8 @@ export const UpdateTaskBodySchema = z.object({
   dueDate: z.coerce.date().nullable().optional(),
   archivedAt: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),
+  // A partial merge of custom field values; a key set to `null` clears it.
+  fieldValues: TaskFieldValuesPatchSchema.optional(),
 })
 
 // Archive completed work from one explicit project. A board action must never
@@ -123,6 +127,15 @@ export {
   type BoardRecord,
   type BoardStyle,
   type ColumnCategory,
+} from '@nessie/schemas'
+
+export {
+  CreateTaskFieldBodySchema,
+  TaskFieldDefinitionRecordSchema,
+  TaskFieldTypeSchema,
+  UpdateTaskFieldBodySchema,
+  type TaskFieldDefinitionRecord,
+  type TaskFieldType,
 } from '@nessie/schemas'
 
 /** A task as one board renders it: the record plus its resolved placement. */

@@ -43,6 +43,7 @@ import {
   runTicketArchiveDoneTool,
   runTicketAssignTool,
   runTicketBoardReadTool,
+  runTicketFieldsReadTool,
   runTicketCreateTool,
   runTicketIterationSetTool,
   runTicketListTool,
@@ -265,6 +266,8 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runTicketReadTool(context, args))
     case 'ticket_board_read':
       return wrapTool(inputSummary, () => runTicketBoardReadTool(context, args))
+    case 'ticket_fields_read':
+      return wrapTool(inputSummary, () => runTicketFieldsReadTool(context, args))
     case 'ticket_create':
       return wrapTool(inputSummary, () => runTicketCreateTool(context, args))
     case 'ticket_update':
