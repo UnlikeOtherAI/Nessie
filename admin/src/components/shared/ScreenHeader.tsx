@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useLocalBackSnapshot } from '../../layouts/admin-shell/local-back/LocalBackContext'
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
+import { useScreenBarLayerKey } from '../../navigation/ScreenBarLayer'
 import { useScreenBarPublisher } from '../../navigation/useScreenBar'
 import type { ScreenBarBack } from '../../navigation/screen-bar'
 import { toScreenBarActions } from '../../navigation/screen-bar-actions'
@@ -94,6 +95,7 @@ export const ScreenHeader = ({
   // Android app, iPad and desktop all read false here and take the path below
   // unchanged.
   const nativeBar = useNativeIOSPhoneApp() && single
+  const barLayerKey = useScreenBarLayerKey()
   // Subscribing re-runs the published Back when an owner registers or leaves,
   // exactly as the rendered doorway does.
   useLocalBackSnapshot()
@@ -118,7 +120,9 @@ export const ScreenHeader = ({
     : resolvedBack
       ? { label: resolvedBack.label, onBack: () => navigation?.performBack() }
       : null
-  useScreenBarPublisher({ actions: toScreenBarActions(actions), back: effectiveBack, title })
+  // Only the iOS shell reads this, so only it pays for building it. Every
+  // other surface keeps the render it always had.
+  useScreenBarPublisher({ actions: toScreenBarActions(actions), back: effectiveBack, title }, nativeBar)
 
   const pageBack = onBack && (flowOwnsBack || surfaceParent(pathname) !== null)
     ? (
@@ -131,7 +135,9 @@ export const ScreenHeader = ({
 
   if (singleLayoutOnly && !single) return null
 
-  if (nativeBar) {
+  // A header with no layer beneath it — a screen rendered outside the stack —
+  // has nothing to publish to, so it keeps drawing rather than disappearing.
+  if (nativeBar && barLayerKey !== null) {
     // The heading stays, and stays an `h1`: the settle focuses it and the
     // live region reads its text content (navigation/settle.ts), both by
     // `querySelector('h1')`. `sr-only` keeps the element and its text while

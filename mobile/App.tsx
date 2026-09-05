@@ -477,12 +477,13 @@ const Shell = (): React.JSX.Element => {
   // The band and its contents are two decisions, not one. On iOS the band is
   // always drawn past the auth gate — that constant is what keeps the WebView
   // frame still while the stack animates — while the team and account lanes
-  // still belong to a tab root alone.
+  // follow the admin's published descriptor for the layer showing.
   const nativePhoneBarInput = {
     isIpad: IS_IPAD,
     isTabRoot,
     largePhoneLandscape,
     platform: Platform.OS,
+    screenBar,
     showBar,
   }
   const showNativePhoneNavBar = shouldShowNativePhoneNavBar(nativePhoneBarInput)

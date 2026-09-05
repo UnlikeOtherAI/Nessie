@@ -94,6 +94,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     isTabRoot: false,
     largePhoneLandscape: true,
     platform: 'ios',
+    screenBar: null,
     showBar: true,
   }), true)
   // Off that lane, only a tab root carries the team and account controls.
@@ -102,6 +103,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     isTabRoot: false,
     largePhoneLandscape: false,
     platform: 'ios',
+    screenBar: null,
     showBar: true,
   }), false)
   assert.equal(shouldShowNativePhoneRootLanes({
@@ -109,6 +111,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     isTabRoot: true,
     largePhoneLandscape: false,
     platform: 'ios',
+    screenBar: { actions: [], back: null, layerKey: 'channels:0:root:channels:/channels', title: '' },
     showBar: true,
   }), true)
   assert.equal(getNativePhoneHeaderHeight(true) < getNativePhoneHeaderHeight(false), true)
@@ -152,6 +155,7 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
       isTabRoot,
       largePhoneLandscape: false,
       platform: 'ios',
+      screenBar: null,
       showBar: true,
     }
     return getNativeWebviewFrameInsets({
@@ -174,6 +178,9 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
     isTabRoot,
     largePhoneLandscape: false,
     platform: 'android',
+    // Android never receives a descriptor — the bridge posts it only on the
+    // iOS shell — so its lanes must keep reading the screen type.
+    screenBar: null,
     showBar: true,
   })
   assert.equal(shouldShowNativePhoneNavBar(androidInput(true)), true)
@@ -189,6 +196,7 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
     isTabRoot: false,
     largePhoneLandscape: false,
     platform: 'ios',
+    screenBar: null,
     showBar: true,
   }
   assert.equal(shouldShowNativePhoneNavBar(iosDetail), true)
@@ -197,4 +205,53 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
   // Past the auth gate is the whole of the invariant: with no tab bar there is
   // no band, and that frame change is only ever crossed by a full page load.
   assert.equal(shouldShowNativePhoneNavBar({ ...iosDetail, showBar: false }), false)
+})
+
+test('the iOS lanes follow the published descriptor, never the screen type', () => {
+  // The defect the descriptor exists to prevent: `screenType` is the
+  // *pathname's* registry type, and a nested stage never changes the
+  // pathname. An open Knowledge editor over a space root reports `root`, and
+  // keying the lanes off that hands it a team switcher instead of its own
+  // title and Back.
+  const base = {
+    isIpad: false,
+    largePhoneLandscape: false,
+    platform: 'ios',
+    showBar: true,
+  }
+  const editorOverARoot = {
+    ...base,
+    isTabRoot: true,
+    screenBar: {
+      actions: [],
+      back: { label: 'Back to folder' },
+      layerKey: 'knowledge:1:stage:knowledge:editor',
+      title: 'Onboarding',
+    },
+  }
+  assert.equal(shouldShowNativePhoneRootLanes(editorOverARoot), false)
+
+  const trueRoot = {
+    ...base,
+    isTabRoot: true,
+    screenBar: { actions: [], back: null, layerKey: 'channels:0:root:channels:/channels', title: '' },
+  }
+  assert.equal(shouldShowNativePhoneRootLanes(trueRoot), true)
+
+  // A detail whose route still says root — and the reverse — both follow the
+  // descriptor.
+  assert.equal(shouldShowNativePhoneRootLanes({ ...editorOverARoot, isTabRoot: false }), false)
+  assert.equal(shouldShowNativePhoneRootLanes({ ...trueRoot, isTabRoot: false }), true)
+
+  // Before the first descriptor of a cold start: a bare band, never a team
+  // switcher flashing above a push notification's target.
+  assert.equal(shouldShowNativePhoneRootLanes({ ...base, isTabRoot: true, screenBar: null }), false)
+
+  // Android is unmoved by any of this.
+  assert.equal(shouldShowNativePhoneRootLanes({
+    ...base,
+    isTabRoot: true,
+    platform: 'android',
+    screenBar: null,
+  }), true)
 })

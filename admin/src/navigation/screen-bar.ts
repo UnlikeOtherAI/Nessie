@@ -73,6 +73,7 @@ type Entry = {
 }
 
 const layers = new Map<string, Entry[]>()
+const fallbacks = new Map<string, ScreenBar>()
 const listeners = new Set<() => void>()
 let revision = 0
 let currentLayerKey: string | null = null
@@ -132,7 +133,36 @@ export const unpublishScreenBar = (layerKey: string, handle: string): void => {
 export const screenBarFor = (layerKey: string | null): ScreenBar | null => {
   if (!layerKey) return null
   const entries = layers.get(layerKey)
-  return entries && entries.length > 0 ? entries[entries.length - 1]?.bar ?? null : null
+  if (entries && entries.length > 0) return entries[entries.length - 1]?.bar ?? null
+  return fallbacks.get(layerKey) ?? null
+}
+
+/**
+ * A layer's bar of last resort, used only while nothing in it has published.
+ *
+ * Not every screen draws a header. A nested stage may be a bare panel — the
+ * dashboard's add-widget and versions panels, the executor create panel — and
+ * on a phone those are full screens with a title and a way back that exist
+ * only in the stack, never in the DOM. Without this they would show an empty
+ * band with no way out but the edge swipe.
+ *
+ * It cannot be an ordinary publish: a stage's children run their effects
+ * before the stage's own, so a stage publishing normally would land *on top*
+ * of the header its child just published and win by mount order. A fallback is
+ * read only when the layer's stack is empty, so a child that does draw a
+ * header always wins.
+ */
+export const setLayerFallback = (layerKey: string, bar: ScreenBar | null): void => {
+  const previous = fallbacks.get(layerKey) ?? null
+  if (bar === null) {
+    if (previous === null) return
+    fallbacks.delete(layerKey)
+    notify()
+    return
+  }
+  fallbacks.set(layerKey, bar)
+  if (sameScreenBar(previous, bar)) return
+  notify()
 }
 
 // The viewport owns which layer is current; the bridge reads it here rather
@@ -202,6 +232,7 @@ export const useCurrentScreenBar = (): { bar: ScreenBar | null, layerKey: string
 
 /** Test seam only: the store is module state shared by every publisher. */
 export const resetScreenBars = (): void => {
+  fallbacks.clear()
   layers.clear()
   currentLayerKey = null
   notify()

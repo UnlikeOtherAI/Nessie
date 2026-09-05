@@ -107,9 +107,14 @@ export const isFullScreenTaskRoute = (path: string): boolean => path === '/chann
 
 export type NativePhoneBarInput = {
   isIpad: boolean
+  // Android's own answer for the root lanes, from the last `nessie:screen`.
+  // iOS does not use it: see `shouldShowNativePhoneRootLanes`.
   isTabRoot: boolean
   largePhoneLandscape: boolean
   platform: string
+  // The admin's published descriptor for the layer showing, or null before
+  // the first one of a cold start arrives.
+  screenBar: NativeScreenBar | null
   showBar: boolean
 }
 
@@ -144,9 +149,22 @@ export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean
  * with the next slice; until then the band is bare surface, which is honest
  * rather than showing a team switcher above a conversation.
  */
-export const shouldShowNativePhoneRootLanes = (input: NativePhoneBarInput): boolean =>
-  shouldShowNativePhoneNavBar(input)
-  && (input.largePhoneLandscape || input.isTabRoot)
+export const shouldShowNativePhoneRootLanes = (input: NativePhoneBarInput): boolean => {
+  if (!shouldShowNativePhoneNavBar(input)) return false
+  if (input.largePhoneLandscape) return true
+  // On iOS the lanes follow the **published descriptor**, never the screen
+  // type. They are not the same question: `screenType` is the *pathname's*
+  // registry type, and a nested stage never changes the pathname — so an open
+  // Knowledge editor over a space root reports `root` and would be given a
+  // team switcher instead of its own title and Back. A layer that published a
+  // Back is not a root, whatever the route says.
+  //
+  // No descriptor yet — a cold start, the frame after a forward push — is a
+  // bare band, deliberately. Falling back to the root lanes would flash a team
+  // switcher above a conversation on the way to a push notification's target.
+  if (input.platform === 'ios') return input.screenBar !== null && input.screenBar.back === null
+  return input.isTabRoot
+}
 
 export const getNativePhoneHeaderHeight = (landscape: boolean): number =>
   landscape ? NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT : NATIVE_PHONE_MENU_HEADER_HEIGHT

@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { ScreenBarLayerProvider } from './ScreenBarLayer'
+import { setLayerFallback } from './screen-bar'
 
 // A nested stage is how a state-driven screen joins the navigation stack: a
 // column browser's next column, a Knowledge folder → document → history →
@@ -60,6 +62,11 @@ export type NestedStageProps = {
   priority: number
   // Whether the edge swipe may close it. An editor mid-flush says false.
   swipeable?: boolean
+  // What the native navigation bar says while this stage is on top, for a
+  // stage that draws no header of its own (the dashboard panels, the executor
+  // create panel). It is used only when nothing inside the stage has published
+  // one, so a stage that does draw a header still wins (screen-bar.ts).
+  title?: string
 }
 
 const createContainer = (): HTMLElement | null => {
@@ -78,6 +85,7 @@ export const NestedStage = ({
   onBack,
   priority,
   swipeable,
+  title,
 }: NestedStageProps) => {
   const host = useContext(NestedStageHostContext)
   const [container] = useState(createContainer)
@@ -121,6 +129,22 @@ export const NestedStage = ({
   // unmount leave reads the latest host through a ref rather than
   // re-running — a cleanup on every commit would pop the stage it just
   // pushed.
+  // The stage's bar of last resort, for a stage that draws no header. Set
+  // only by the owning instance, and only while it is the stage on top, so a
+  // retained instance beneath cannot overwrite it.
+  const stageLayerKey = owned && host ? host.layerKeyOf(id) : null
+  const backRef = useRef(onBack)
+  backRef.current = onBack
+  useEffect(() => {
+    if (!stageLayerKey) return undefined
+    setLayerFallback(stageLayerKey, title === undefined ? null : {
+      actions: [],
+      back: { label, onBack: () => backRef.current() },
+      title,
+    })
+    return () => setLayerFallback(stageLayerKey, null)
+  }, [label, stageLayerKey, title])
+
   const hostRef = useRef(host)
   hostRef.current = host
   useLayoutEffect(() => () => {

@@ -114,11 +114,19 @@ export const NativePhoneNavBar = ({
               style={({ pressed }) => [styles.backButton, pressed ? { opacity: 0.55 } : null]}
             >
               <MaterialIcons color={headerText} name="arrow-back-ios-new" size={20} />
+              {/*
+                The published label is written for assistive technology — the
+                resolver's answers read "Back to channel info", "Back from
+                Design review" — so it is the accessibility label, not the
+                visible text. A UIKit bar shows the previous screen's name
+                there; until the transition descriptors can supply it, plain
+                "Back" is honest and never reads as a sentence.
+              */}
               <Text
                 numberOfLines={1}
                 style={[styles.backLabel, { color: headerText }]}
               >
-                {back.label}
+                Back
               </Text>
             </Pressable>
           ) : null}

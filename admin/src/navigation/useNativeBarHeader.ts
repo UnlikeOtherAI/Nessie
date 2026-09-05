@@ -1,4 +1,5 @@
 import { useNativeIOSPhoneApp, useNavigationLayout } from '../lib/mobile-shell'
+import { useScreenBarLayerKey } from './ScreenBarLayer'
 import { useScreenBarPublisher } from './useScreenBar'
 import type { ScreenBar } from './screen-bar'
 
@@ -23,7 +24,11 @@ import type { ScreenBar } from './screen-bar'
  */
 export const useNativeBarHeader = (bar: ScreenBar, active = true): { hidden: boolean } => {
   const single = useNavigationLayout() === 'single'
+  const layerKey = useScreenBarLayerKey()
   const nativeBar = useNativeIOSPhoneApp() && single
-  useScreenBarPublisher(bar, active)
-  return { hidden: nativeBar }
+  useScreenBarPublisher(bar, active && nativeBar)
+  // A header outside any stack layer has nothing to publish to, so hiding it
+  // would remove the only chrome on the screen. Hide only where the native bar
+  // is actually being fed.
+  return { hidden: nativeBar && active && layerKey !== null }
 }

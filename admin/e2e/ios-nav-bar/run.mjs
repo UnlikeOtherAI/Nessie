@@ -23,7 +23,7 @@ import { databaseUrl } from '../navigation/lib/config.mjs'
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
 import { seedTeam } from '../navigation/lib/seed.mjs'
 import { startAdmin, startApi, stopProcess } from '../navigation/lib/servers.mjs'
-import { edgeSwipe, gotoChannels, gotoPath } from '../navigation/lib/page.mjs'
+import { clickChannelRow, edgeSwipe, gotoChannels, gotoPath } from '../navigation/lib/page.mjs'
 
 const SHOTS = new URL('../screenshots/ios-nav-bar/', import.meta.url).pathname
 
@@ -92,6 +92,16 @@ const main = async () => {
     const safari = await webPage.page.evaluate(() => {
       const heading = document.querySelector('h1')
       return {
+        // The screen's own actions, read off the DOM, so the bar is measured
+        // against the real thing rather than a number written in a comment.
+        // The marker excludes the header chrome beside them — the overflow
+        // trigger and the account menu are not page actions. A narrow viewport
+        // may have folded some into the overflow popover, which is not in the
+        // DOM until opened, so this is a subset and the assertion below is
+        // "every one of these reached the bar", not an equality.
+        actionIds: [...document.querySelectorAll('header [data-page-header-action]')]
+          .map((node) => node.getAttribute('data-page-header-action'))
+          .filter((id) => typeof id === 'string' && id.length > 0),
         headingText: heading?.textContent?.trim() ?? '',
         // The web Back doorway the header has always drawn.
         hasDoorway: Boolean(document.querySelector('header button[aria-label], [aria-label^="Back"]')),
@@ -103,6 +113,12 @@ const main = async () => {
       'mobile Safari keeps its visible header and Back doorway',
       safari.headingVisible && safari.hasDoorway,
       JSON.stringify(safari),
+    )
+    const safariActionIds = [...new Set(safari.actionIds)].sort()
+    check(
+      'the Safari header exposes actions to compare the bar against',
+      safariActionIds.length > 0,
+      JSON.stringify(safariActionIds),
     )
     await webPage.close()
     await web.close()
@@ -118,14 +134,17 @@ const main = async () => {
     const rootBar = await lastBar(app.page)
     await app.page.screenshot({ path: `${SHOTS}shell-root.png` })
     check(
-      'a tab root publishes a bar with no Back',
-      rootBar !== null && rootBar.back === null,
+      'a tab root publishes a bar naming a layer, with no Back',
+      // Not merely `back === null`: the bridge posts that for *no* descriptor
+      // too, so without the layer key this passes when nothing published.
+      rootBar !== null && rootBar.back === null && typeof rootBar.layerKey === 'string',
       JSON.stringify(rootBar),
     )
 
-    await gotoPath(app.page, `/channels/${seed.channels[0].id}`)
-    await app.page.waitForSelector('h1')
-    await app.page.waitForTimeout(600)
+    // A real push from the root, not a second page load: the layer comparison
+    // below is only meaningful if both layers came from one document.
+    await clickChannelRow(app.page, seed.channels[0].label ?? seed.channels[0].slug)
+    await app.page.waitForTimeout(900)
     const detailBar = await lastBar(app.page)
     const detail = await app.page.evaluate(() => {
       const heading = document.querySelector('h1')
@@ -157,27 +176,20 @@ const main = async () => {
       String(detailBar?.layerKey),
     )
     check(
-      'the detail names a different layer than the root it was pushed from',
+      'the pushed detail names a different layer than the root beneath it',
       Boolean(rootBar && detailBar && rootBar.layerKey !== detailBar.layerKey),
       `${rootBar?.layerKey} vs ${detailBar?.layerKey}`,
     )
 
     // Rule zero: the header's actions are not decoration. Hiding the web
-    // header without carrying them across would make them unreachable.
-    const safariActionCount = 3 // star, overflow, account — visible in safari-detail.png
+    // header without carrying them across would make them unreachable. The
+    // count to beat is the same screen's own actions in Safari, read from the
+    // DOM there rather than written down here.
+    const barActionIds = (detailBar?.actions ?? []).map((entry) => entry.id).sort()
     check(
-      'every header action survives into the bar rather than being dropped',
-      Array.isArray(detailBar?.actions) && detailBar.actions.length >= safariActionCount,
-      JSON.stringify(detailBar?.actions?.map((action) => `${action.id}:${action.kind}`)),
-    )
-    check(
-      'each action carries the state the bar has to show',
-      (detailBar?.actions ?? []).every((action) => (
-        typeof action.label === 'string'
-        && typeof action.selected === 'boolean'
-        && typeof action.priority === 'number'
-      )),
-      JSON.stringify(detailBar?.actions?.[0]),
+      'every action the web header rendered survives into the bar',
+      safariActionIds.every((id) => barActionIds.includes(id)),
+      `safari ${JSON.stringify(safariActionIds)} vs bar ${JSON.stringify(barActionIds)}`,
     )
 
     // ---- 3. The reported gesture ----------------------------------------
@@ -186,9 +198,14 @@ const main = async () => {
     const afterSwipe = await lastBar(app.page)
     await app.page.screenshot({ path: `${SHOTS}shell-after-swipe.png` })
     check(
-      'a back swipe returns the bar to the root it revealed',
+      'a back swipe returns the bar to the root layer it revealed',
       Boolean(afterSwipe && afterSwipe.back === null && afterSwipe.layerKey === rootBar?.layerKey),
       JSON.stringify(afterSwipe),
+    )
+    check(
+      'the root it returns to carries no detail actions',
+      (afterSwipe?.actions ?? []).length === 0,
+      JSON.stringify(afterSwipe?.actions?.map((entry) => entry.id)),
     )
     if (app.errors.length > 0) console.log(`      page errors: ${app.errors.slice(0, 3).join(' | ')}`)
     await app.close()
