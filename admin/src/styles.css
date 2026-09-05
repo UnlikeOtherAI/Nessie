@@ -1855,6 +1855,12 @@ html[data-desktop-platform='linux'] #root {
   padding-left: 32px;
 }
 
+/* Third level: the boards inside a project's Board section. One more indent
+   step of the same size, so the tree reads as depth rather than as a new list. */
+.admin-sb-item.sidebar-grandchild {
+  padding-left: 44px;
+}
+
 .knowledge-sidebar-tree {
   margin-left: 20px;
   border-left: 1px solid var(--sep);
@@ -1898,6 +1904,10 @@ html[data-desktop-platform='linux'] #root {
 
 .touch-sidebar .admin-sb-item.sidebar-child {
   padding-left: 32px;
+}
+
+.touch-sidebar .admin-sb-item.sidebar-grandchild {
+  padding-left: 44px;
 }
 
 .touch-sidebar .sidebar-project-tile {

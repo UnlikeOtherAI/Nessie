@@ -6,7 +6,7 @@ import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { useProjectSources } from '../../../facades/board-sources/hooks'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
-import { BoardCreateDialog } from './BoardCreateDialog'
+import { BoardCreateDialog } from '../../../components/kanban/BoardCreateDialog'
 
 const errorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? cause.message : fallback

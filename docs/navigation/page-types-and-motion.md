@@ -120,6 +120,14 @@ folds all seven into one `tabHost` identity and they render the same element,
 so React reconciles one `ProjectView` across them: the switch swaps the section
 without remounting the page or animating a layer.
 
+The one section that holds a list is Board. A project's boards are tabs of that
+one screen — the choice rides in `?board=` written with `replace`, and the
+default board drops the param — so the sidebar draws them as rows *under*
+Board rather than as routes, and Board itself softens to the parent while one
+of them is selected. Every open/closed state of that tree is remembered:
+the two section headers, which projects have their sections open, and which
+projects have their boards open.
+
 **Transient radio strips are not tab hosts.** A compact form choice may render
 the shared `TabBar` in `radiogroup` mode so it gets the same sliding selection
 pill and keyboard behaviour without becoming a URL-backed page section.

@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { BoardCreateDialog } from '../../components/kanban/BoardCreateDialog'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useProjectBoards } from '../../facades/boards/hooks'
+import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
 import { getCookie, setCookie } from '../../lib/storage'
@@ -44,7 +46,13 @@ const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['projects']
 
 const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-${id}`
 
+// Every open/closed state of this menu is remembered, so the tree a person
+// left behind is the tree they come back to: the two section headers through
+// `useCookieBackedSidebarSections` and the shell's `starredCollapsed`, and
+// these two id sets — which projects have their sections open, and which
+// projects have the boards inside their Board section open.
 const EXPANDED_PROJECT_IDS_COOKIE = 'projectsNavExpandedIds'
+const EXPANDED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavExpandedBoardIds'
 
 export const parseExpandedProjectIds = (value: string | null): Set<string> => {
   if (!value) return new Set()
@@ -74,11 +82,16 @@ const currentProjectIdFromPathname = (pathname: string): string | undefined =>
   /^\/projects\/([^/?#]+)/.exec(pathname)?.[1]
 
 type ProjectSectionRowsProps = {
+  /** The raw `?board=` value, resolved against this project's boards below. */
+  activeBoardParam: string | null
   assignedWorkCount: number
+  boardsExpanded: boolean
   currentProjectId?: string
   currentSectionId: string
   knowledgeCount: number
   listId: ProjectListId
+  onCreateBoard: (projectId: string) => void
+  onToggleBoardsExpanded: (projectId: string) => void
   projectId: string
 }
 
@@ -88,39 +101,146 @@ type ProjectSectionRowsProps = {
  * sprints, and so whether Backlog and Insights belong in the list.
  */
 const ProjectSectionRows = ({
+  activeBoardParam,
   assignedWorkCount,
+  boardsExpanded,
   currentProjectId,
   currentSectionId,
   knowledgeCount,
   listId,
+  onCreateBoard,
+  onToggleBoardsExpanded,
   projectId,
 }: ProjectSectionRowsProps) => {
   const prewarm = usePrewarm()
   const { data: boards = [] } = useProjectBoards(projectId)
+  const canAdministerProject = useCanAdministerProject(projectId)
   const isScrum = boards.some((board) => board.style === 'scrum')
   const isCurrentProject = currentProjectId === projectId
+  const boardsId = `projects-nav-${listId}-${projectId}-boards`
+  // The board screen resolves an unknown or absent `?board=` to the project's
+  // default board (`useTabParam`), so the row highlighted here has to agree.
+  const defaultBoardId = boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null
+  const activeBoardId = boards.some((board) => board.id === activeBoardParam)
+    ? activeBoardParam
+    : defaultBoardId
 
   return (
     <>
       {projectSections({ assignedWorkCount, isScrum, knowledgeCount, projectId }).map(
         (section) => {
           const isActive = isCurrentProject && section.id === currentSectionId
+          // A project section is a tab, and a tab is never a history entry
+          // (docs/navigation/overview.md §1, "Tab hosts"): switching sections
+          // inside the project already on screen replaces the entry, so Back
+          // leaves the project rather than walking its sections. Arriving from
+          // outside the project is a real push.
+          const rowProps = {
+            replace: isCurrentProject,
+            to: section.to,
+            ...prewarmRowHandlers(prewarm, section.to),
+          }
+
+          if (section.id !== 'board') {
+            return (
+              <Link
+                aria-current={sidebarAriaCurrent(isActive)}
+                className={['admin-sb-item sidebar-child group', isActive ? 'active' : ''].join(' ')}
+                key={`${listId}-${projectId}-${section.id}`}
+                {...rowProps}
+              >
+                <span className="min-w-0 flex-1 truncate">{section.label}</span>
+              </Link>
+            )
+          }
+
+          // Board is the one section that holds a list. Its boards are tabs of
+          // the one board screen, so they are rows under it rather than routes
+          // of their own — and while one of them is selected, Board itself
+          // stays visible as the softer parent.
           return (
-            <Link
-              aria-current={sidebarAriaCurrent(isActive)}
-              className={['admin-sb-item sidebar-child group', isActive ? 'active' : ''].join(' ')}
-              key={`${listId}-${projectId}-${section.id}`}
-              // A project section is a tab, and a tab is never a history entry
-              // (docs/navigation/overview.md §1, "Tab hosts"): switching sections
-              // inside the project already on screen replaces the entry, so Back
-              // leaves the project rather than walking its sections. Arriving from
-              // outside the project is a real push.
-              replace={isCurrentProject}
-              to={section.to}
-              {...prewarmRowHandlers(prewarm, section.to)}
-            >
-              <span className="min-w-0 flex-1 truncate">{section.label}</span>
-            </Link>
+            <Fragment key={`${listId}-${projectId}-${section.id}`}>
+              <div
+                className={[
+                  'admin-sb-item sidebar-child group',
+                  isActive ? (boardsExpanded && boards.length > 0 ? 'active-parent' : 'active') : '',
+                ].join(' ')}
+              >
+                <Link
+                  aria-current={sidebarAriaCurrent(isActive && !boardsExpanded)}
+                  className="sidebar-project-link"
+                  {...rowProps}
+                >
+                  <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                </Link>
+                <button
+                  aria-controls={boardsId}
+                  aria-expanded={boardsExpanded}
+                  aria-label={`${boardsExpanded ? 'Collapse' : 'Expand'} boards`}
+                  className="admin-sidebar-more flex-shrink-0"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onToggleBoardsExpanded(projectId)
+                  }}
+                  type="button"
+                >
+                  <svg
+                    className={[
+                      'h-3 w-3 transition-transform',
+                      boardsExpanded ? '' : '-rotate-90',
+                    ].join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {canAdministerProject ? (
+                  <button
+                    aria-label="New board"
+                    className="admin-sidebar-more flex-shrink-0"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onCreateBoard(projectId)
+                    }}
+                    type="button"
+                  >
+                    +
+                  </button>
+                ) : null}
+              </div>
+
+              {boardsExpanded ? (
+                <div id={boardsId}>
+                  {boards.map((board) => {
+                    const isActiveBoard = isActive && board.id === activeBoardId
+                    // `?board=` is how the board screen reads its selection
+                    // (`useTabParam`), and it drops the param for the default
+                    // board so the common URL stays clean.
+                    const to = board.isDefault
+                      ? section.to
+                      : `${section.to}?board=${encodeURIComponent(board.id)}`
+                    return (
+                      <Link
+                        aria-current={sidebarAriaCurrent(isActiveBoard)}
+                        className={[
+                          'admin-sb-item sidebar-grandchild group',
+                          isActiveBoard ? 'active' : '',
+                        ].join(' ')}
+                        key={`${listId}-${projectId}-board-${board.id}`}
+                        replace={isCurrentProject}
+                        to={to}
+                        {...prewarmRowHandlers(prewarm, section.to)}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{board.name}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </Fragment>
           )
         },
       )}
@@ -137,6 +257,9 @@ export const ProjectsSidebarNav = ({
   toggleStarredCollapsed,
 }: ProjectsSidebarNavProps) => {
   const { token } = useAuthSession()
+  const navigate = useNavigate()
+  const { search } = useLocation()
+  const activeBoardParam = new URLSearchParams(search).get('board')
   const nativeTouchShell = isReactNativeWebView()
   const phoneLayout = usePhoneLayout()
   const prewarm = usePrewarm()
@@ -157,6 +280,10 @@ export const ProjectsSidebarNav = ({
   const [expandedProjectIds, setExpandedProjectIds] = useState(() =>
     parseExpandedProjectIds(getCookie(EXPANDED_PROJECT_IDS_COOKIE)),
   )
+  const [expandedBoardProjectIds, setExpandedBoardProjectIds] = useState(() =>
+    parseExpandedProjectIds(getCookie(EXPANDED_BOARD_PROJECT_IDS_COOKIE)),
+  )
+  const [boardCreateProjectId, setBoardCreateProjectId] = useState<string | null>(null)
 
   const currentProjectId = currentProjectIdFromPathname(pathname)
   const currentSectionId = projectSectionIdFromPathname(pathname)
@@ -166,9 +293,36 @@ export const ProjectsSidebarNav = ({
   // (`useSidebarTree.ts`), and one project drawn twice reads as two projects.
   const unstarredProjects = projects.filter((project) => !starredProjectIds.has(project.id))
 
+  // Already cached: the row that offers "New board" is inside an expanded
+  // project, and expanding one is what reads its boards.
+  const { data: boardCreateBoards = [] } = useProjectBoards(boardCreateProjectId ?? undefined)
+
   const persistExpandedProjectIds = useCallback((projectIds: ReadonlySet<string>) => {
     setCookie(EXPANDED_PROJECT_IDS_COOKIE, serializeExpandedProjectIds(projectIds))
   }, [])
+
+  const persistExpandedBoardProjectIds = useCallback((projectIds: ReadonlySet<string>) => {
+    setCookie(EXPANDED_BOARD_PROJECT_IDS_COOKIE, serializeExpandedProjectIds(projectIds))
+  }, [])
+
+  const expandBoards = useCallback((projectId: string) => {
+    setExpandedBoardProjectIds((current) => {
+      if (current.has(projectId)) return current
+      const next = new Set(current).add(projectId)
+      persistExpandedBoardProjectIds(next)
+      return next
+    })
+  }, [persistExpandedBoardProjectIds])
+
+  const toggleBoardsExpanded = useCallback((projectId: string) => {
+    setExpandedBoardProjectIds((current) => {
+      const next = new Set(current)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      persistExpandedBoardProjectIds(next)
+      return next
+    })
+  }, [persistExpandedBoardProjectIds])
 
   // Drop remembered expansions for projects that no longer exist, so the cookie
   // cannot grow without bound as projects come and go.
@@ -181,7 +335,13 @@ export const ProjectsSidebarNav = ({
       persistExpandedProjectIds(next)
       return next
     })
-  }, [persistExpandedProjectIds, projects])
+    setExpandedBoardProjectIds((current) => {
+      const next = retainExpandedProjectIds(current, projects)
+      if (next.size === current.size) return current
+      persistExpandedBoardProjectIds(next)
+      return next
+    })
+  }, [persistExpandedBoardProjectIds, persistExpandedProjectIds, projects])
 
   // Landing inside a project opens its sections, so a deep link never hides the
   // row the reader is standing on. It runs on entering a project and not again,
@@ -397,11 +557,15 @@ export const ProjectsSidebarNav = ({
         {isExpanded ? (
           <div id={sectionsId}>
             <ProjectSectionRows
+              activeBoardParam={activeBoardParam}
               assignedWorkCount={assignedWorkCount}
+              boardsExpanded={expandedBoardProjectIds.has(project.id)}
               currentProjectId={currentProjectId}
               currentSectionId={currentSectionId}
               knowledgeCount={knowledgeCount}
               listId={listId}
+              onCreateBoard={setBoardCreateProjectId}
+              onToggleBoardsExpanded={toggleBoardsExpanded}
               projectId={project.id}
             />
           </div>
@@ -484,6 +648,23 @@ export const ProjectsSidebarNav = ({
       </nav>
 
       <CreateProjectDialog onClose={() => setCreateOpen(false)} open={createOpen} />
+      {boardCreateProjectId ? (
+        <BoardCreateDialog
+          boards={boardCreateBoards}
+          onClose={() => setBoardCreateProjectId(null)}
+          onCreated={(boardId) => {
+            // A board nobody can see is not a board that was created: open the
+            // list if it was closed, and land on what was just made.
+            expandBoards(boardCreateProjectId)
+            void navigate(
+              `/projects/${boardCreateProjectId}/board?board=${encodeURIComponent(boardId)}`,
+              { replace: currentProjectId === boardCreateProjectId },
+            )
+          }}
+          open
+          projectId={boardCreateProjectId}
+        />
+      ) : null}
       {editTarget ? (
         <EditProjectDialog
           onClose={() => setEditTarget(null)}
