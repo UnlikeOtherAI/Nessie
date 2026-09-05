@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { useCanAdministerProject } from '../../facades/projects/administration'
 import { FormError, FormSuccess } from '../../components/shared/FormActions'
 import { PageBody } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
+import { useConsumedIntents } from '../../navigation/intent'
 import { useTabParam } from '../../navigation/useTabParam'
 import { BoardsSettingsSection } from './settings/BoardsSettingsSection'
 import { FieldsSettingsSection } from './settings/FieldsSettingsSection'
+import { SourcesSettingsSection } from './settings/SourcesSettingsSection'
 import { TabBar } from '../../components/primitives/TabBar'
 
-const SECTIONS = ['boards', 'fields'] as const
+const SECTIONS = ['boards', 'fields', 'sources'] as const
+
+/** Declared on the project surface row in `navigation/surfaces.ts`. */
+const PROJECT_SETTINGS_INTENTS = ['create', 'connect'] as const
 
 type ProjectSettingsPageProps = {
   projectId: string
@@ -28,26 +32,22 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
   const boardsQuery = useProjectBoards(projectId)
   const boards = boardsQuery.data ?? []
   const [section, selectSection] = useTabParam('section', SECTIONS, 'boards')
-  const [searchParams, setSearchParams] = useSearchParams()
 
   const defaultBoardId = boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? ''
   const boardIds: string[] = boards.map((board) => board.id)
   const [selectedBoardId, selectBoard] = useTabParam('board', boardIds, defaultBoardId)
 
-  // The board tab's "New board…" doorway arrives with `?new=board`; it is an
-  // intent, consumed once, not a piece of durable page state.
-  const startWithNewBoard = searchParams.get('new') === 'board'
-  useEffect(() => {
-    if (!startWithNewBoard) return
-    setSearchParams(
-      (current) => {
-        const params = new URLSearchParams(current)
-        params.delete('new')
-        return params
-      },
-      { replace: true },
-    )
-  }, [setSearchParams, startWithNewBoard])
+  // Which source the Sources section has open. A selection inside a section,
+  // so it is a param of its own rather than a second meaning for `section`.
+  const [selectedSourceId, selectSource] = useTabParam('source', [] as string[], '')
+
+  // Doorways arrive with an intent: `?create=board` from the board header,
+  // `?connect=…` from the App Store. Both go through the one intent hook, which
+  // captures the value and strips it from the URL — an intent says what to open
+  // on arrival, not what the page durably is.
+  const intents = useConsumedIntents(PROJECT_SETTINGS_INTENTS)
+  const startWithNewBoard = intents.values.create === 'board'
+  const startWithConnect = Boolean(intents.values.connect)
 
   const [saveState, setSaveState] = useState<{
     status: 'error' | 'idle' | 'success'
@@ -87,6 +87,7 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
               items={[
                 { label: 'Boards', value: 'boards' },
                 { label: 'Fields', value: 'fields' },
+                { label: 'Sources', value: 'sources' },
               ]}
               onChange={selectSection}
               role="tablist"
@@ -94,7 +95,17 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
               value={section}
             />
 
-            {section === 'fields' ? (
+            {section === 'sources' ? (
+              <SourcesSettingsSection
+                canAdminister={canAdminister}
+                onSaveError={(message) => setSaveState({ status: 'error', message })}
+                onSaved={() => setSaveState({ status: 'success' })}
+                onSelectSource={selectSource}
+                projectId={projectId}
+                selectedSourceId={selectedSourceId}
+                startWithConnect={startWithConnect}
+              />
+            ) : section === 'fields' ? (
               <FieldsSettingsSection
                 canAdminister={canAdminister}
                 onSaveError={(message) => setSaveState({ status: 'error', message })}

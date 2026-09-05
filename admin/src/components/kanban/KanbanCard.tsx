@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../facades/tasks/hooks'
 import { useMemo } from 'react'
 import { Pill } from '../primitives/Pill'
+import { ExternalKeyPill } from './ExternalKeyPill'
 import { TaskFieldChips } from './TaskFieldChips'
 import { useTaskFields } from '../../facades/task-fields/hooks'
 import { useTaskAssignees } from '../../facades/tasks/hooks'
@@ -47,7 +48,13 @@ const KanbanCardContent = ({
 
   return (
     <>
-      {showProject && projectName ? (
+      {task.externalLink ? (
+        <ExternalKeyPill
+          externalKey={task.externalLink.externalKey}
+          externalUrl={task.externalLink.externalUrl}
+          provider={task.externalLink.provider}
+        />
+      ) : showProject && projectName ? (
         <Pill className="justify-self-start" size="sm">
           {projectName}
         </Pill>
@@ -79,7 +86,9 @@ const KanbanCardContent = ({
           size="sm"
           uppercase={false}
         >
-          {task.assigneeName ?? 'Unassigned'}
+          {task.assigneeName ??
+            task.externalLink?.remoteAssigneeDisplay ??
+            'Unassigned'}
         </Pill>
         {task.dueDate || archived ? (
           <span className="ml-auto flex items-center gap-1.5">

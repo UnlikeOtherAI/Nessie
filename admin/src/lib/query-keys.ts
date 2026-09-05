@@ -425,6 +425,13 @@ export const projectKeys = {
   // Nested for the same reason as `boards`: a definition change alters what
   // every card of the project renders.
   fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
+  // Nested for the same reason: attaching or removing a source changes what
+  // the project's boards show.
+  sources: (projectId: string) => ['projects', projectId, 'sources'] as const,
+  // One attached source, with its mapping. Nested under the project's source
+  // list so attaching or removing one reaches the detail too.
+  source: (projectId: string, sourceId?: string) =>
+    ['projects', projectId, 'sources', sourceId ?? 'none'] as const,
   // Deliberately NOT nested (see the header). Insights is a velocity/burndown
   // report built from one query per completed iteration plus a task-event scan,
   // and nothing that invalidates `projects` — rename, delete, membership, board
@@ -433,6 +440,19 @@ export const projectKeys = {
   // Nested so the project mutations that already refresh `projects` reach the
   // membership list too.
   members: (projectId: string | null) => ['projects', projectId, 'members'] as const,
+}
+
+/**
+ * External board sources. The connection-side keys are their own family
+ * (they are a person's accounts, not a project's), while a project's attached
+ * sources nest under `projectKeys` so a project mutation reaches them.
+ */
+export const boardSourceKeys = {
+  all: ['board-sources'] as const,
+  providers: ['board-sources', 'providers'] as const,
+  connections: ['board-sources', 'connections'] as const,
+  containers: (connectionId?: string) =>
+    ['board-sources', 'connections', connectionId ?? 'none', 'containers'] as const,
 }
 
 export const runKeys = {

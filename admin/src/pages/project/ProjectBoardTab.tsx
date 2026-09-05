@@ -8,6 +8,8 @@ import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
+import { useProjectSources } from '../../facades/board-sources/hooks'
+import { SourceStatusStrip } from '../../components/kanban/SourceStatusStrip'
 import { EmptyState } from '../../components/shared/EmptyState'
 
 type ProjectBoardTabProps = {
@@ -18,6 +20,7 @@ type ProjectBoardTabProps = {
 export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
+  const { data: sources = [] } = useProjectSources(projectId)
   const moveTask = useMoveTask()
   useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
 
@@ -68,6 +71,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
+      <SourceStatusStrip projectId={projectId} sources={sources} />
       {tasksQuery.data?.truncated ? (
         <div className="text-xs text-[color:var(--tx3)]">
           Showing the 500 most recently updated cards.

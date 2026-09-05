@@ -116,7 +116,7 @@ export const ProjectView = () => {
                 label: 'New board…',
                 onSelect: () =>
                   void navigate(
-                    `/projects/${projectId}/settings?section=boards&new=board`,
+                    `/projects/${projectId}/settings?section=boards&create=board`,
                   ),
               },
             ],

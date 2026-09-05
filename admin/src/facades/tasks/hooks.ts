@@ -20,6 +20,17 @@ export type TaskRecord = {
   iterationId: string | null
   storyPoints: number | null
   fieldValues: Record<string, unknown>
+  /** Present only on a task mirrored from an external source. */
+  externalLink: {
+    sourceId: string
+    provider: 'jira' | 'linear' | 'trello' | 'github'
+    externalKey: string
+    externalUrl: string
+    remoteStateName: string | null
+    remoteAssigneeDisplay: string | null
+    lastInboundAt: string | null
+    writeMode: 'read_only' | 'read_write'
+  } | null
   status: TaskStatus
   priority: TaskPriority
   dueDate: string | null

@@ -11,6 +11,7 @@ import { Dialog } from '../shared/Dialog'
 import { FieldLabel } from '../primitives/FieldLabel'
 import { FormActions } from '../shared/FormActions'
 import { FormField } from '../shared/FormField'
+import { PROVIDER_LABEL } from '../../facades/board-sources/hooks'
 import { TaskFieldsSection } from './TaskFieldsSection'
 import { useTaskFields } from '../../facades/task-fields/hooks'
 import { Input, Select, Textarea } from '../shared/FormControls'
@@ -257,6 +258,28 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
       size="xl"
       title={isEdit ? 'Task details' : 'New task'}
     >
+      {task?.externalLink ? (
+        <Notice className="mb-4" size="sm" tone="info">
+          Linked to {PROVIDER_LABEL[task.externalLink.provider]}{' '}
+          <a
+            className="underline"
+            href={task.externalLink.externalUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {task.externalLink.externalKey}
+          </a>
+          {task.externalLink.remoteStateName
+            ? ` · ${task.externalLink.remoteStateName}`
+            : ''}
+          {task.externalLink.writeMode === 'read_only'
+            ? ` · ${PROVIDER_LABEL[task.externalLink.provider]} owns its status, assignee and
+               title here. Switch the source to read & write in Settings → Sources to change
+               them from Nessie.`
+            : ''}
+        </Notice>
+      ) : null}
+
       <form
         className="grid gap-5 md:grid-cols-[1.7fr_1fr]"
         onSubmit={(event) => {

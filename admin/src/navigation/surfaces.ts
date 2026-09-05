@@ -64,6 +64,17 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
   state: ['view'],
 }
 
+/**
+ * The project tab host consumes the knowledge intents its Docs section reads,
+ * plus the two doorways into its Settings section: `create` opens the new-board
+ * dialog, `connect` opens the source picker. Both say what to open on arrival
+ * rather than what the page durably is, which is what makes them intents.
+ */
+const PROJECT_INTENT: SurfaceIntent = {
+  consume: [...KNOWLEDGE_INTENT.consume ?? [], 'create', 'connect'],
+  state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source'],
+}
+
 export const SURFACES: Surface[] = [
   // ── Redirects ────────────────────────────────────────────────────────────
   // Listed first: several would otherwise be captured by a generic pattern
@@ -220,7 +231,7 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: (match) => `project:${match[1]}`,
     keyScope: () => 'project',
-    intent: KNOWLEDGE_INTENT,
+    intent: PROJECT_INTENT,
     parentOf: toProjects,
     pattern: /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
     root: PROJECTS_ROOT,
