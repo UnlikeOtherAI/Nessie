@@ -5516,6 +5516,12 @@ model Secret {
   provider       String?
   scopeType      SecretScopeType @map("scope_type")
   scopeId        String          @map("scope_id") @db.Uuid
+  /// Stops every narrower scope overriding this name, the same way a locked
+  /// `ScopedSetting` row does (docs/standards/scoped-settings.md). Resolution
+  /// walks organisation → team → project → personal and halts here; a lower
+  /// level still sees the secret, greyed out. Always false at `personal`,
+  /// which has nothing below it.
+  locked         Boolean         @default(false)
   vaultReference String          @unique @map("vault_reference")
   createdById    String          @map("created_by_id") @db.Uuid
   rotatedAt      DateTime?       @map("rotated_at")

@@ -39,12 +39,13 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     type: 'detail',
   },
   {
-    // The team roster is a direct sibling doorway of the organisation roster,
-    // not a tab nested inside `/settings/team`.
+    // The team roster and the team/organisation Secrets pages are direct
+    // sibling doorways of their organisation counterparts, not tabs nested
+    // inside `/settings/team` or `/settings/organization`.
     depth: 1,
     intent: { state: ['tab'] },
     parentOf: toAdmin,
-    pattern: /^\/settings\/team\/members$/,
+    pattern: /^\/settings\/(?:team\/(?:members|secrets)|organization\/secrets)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',
