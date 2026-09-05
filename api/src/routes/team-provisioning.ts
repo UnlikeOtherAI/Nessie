@@ -9,6 +9,7 @@ import { forgetUoaTeamDirectory } from '../services/uoa-directory-cache.js'
 import {
   checkUoaSlugAvailability,
   createUoaOrganisation,
+  resolveUoaTeamHost,
   createUoaTeamTeam,
   resolveUoaRosterTeam,
   UoaRosterIdentityError,
@@ -51,6 +52,38 @@ const CreateOrganizationBodySchema = z.object({
   // second organisation nobody asked for.
   idempotencyKey: z.string().trim().min(8).max(200),
 })
+
+const ResolveHostQuerySchema = z.object({
+  host: z.string().trim().min(1).max(253),
+})
+
+/**
+ * Split `<team>.<org>.<base>` into its two labels.
+ *
+ * Returns null unless the host sits exactly two labels under the configured
+ * base domain, so a hostname that merely *ends* with the base — a different
+ * registrable domain that happens to share the suffix — is never treated as
+ * one of ours.
+ */
+const parseTeamHost = (
+  host: string,
+  baseDomain: string | undefined,
+): { orgSlug: string; teamSlug: string } | null => {
+  if (!baseDomain) return null
+
+  const normalized = host.trim().toLowerCase().replace(/\.+$/, '').split(':')[0] ?? ''
+  const base = baseDomain.trim().toLowerCase()
+  if (!normalized.endsWith(`.${base}`)) return null
+
+  const labels = normalized.slice(0, -(base.length + 1)).split('.')
+  if (labels.length !== 2) return null
+
+  const [teamSlug, orgSlug] = labels
+  const legal = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+  if (!teamSlug || !orgSlug || !legal.test(teamSlug) || !legal.test(orgSlug)) return null
+
+  return { orgSlug, teamSlug }
+}
 
 const SlugAvailableQuerySchema = z.object({
   slug: z.string().trim().min(1).max(63),
@@ -250,7 +283,7 @@ export const registerTeamProvisioningRoutes = (
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
 ): void => {
-  const { prisma, requireActorContext, requireUserActor } = deps
+  const { prisma, requireActorContext, requireUserActor, teamHostBaseDomain } = deps
 
   /**
    * Found a new UOA organisation, owned by the caller.
@@ -329,6 +362,41 @@ export const registerTeamProvisioningRoutes = (
    * Blocking creation because a hint could not be fetched would be worse than
    * letting the authoritative write refuse.
    */
+  /**
+   * Which tenant a hostname means.
+   *
+   * The admin bundle is one artifact served on every team host, so on a cold
+   * load it has to ask which team it is looking at before it can switch onto
+   * it. Answering is a `/domain/*` read against UOA, relayed because only the
+   * server holds the domain hash.
+   *
+   * The `Host` header is deliberately not consulted: the hostname arrives as an
+   * explicit query parameter from the client that is asking about itself. This
+   * route resolves a name to ids and grants nothing — the caller still runs the
+   * ordinary team-switch, which is where authorization actually happens.
+   */
+  app.get('/api/hosts/resolve', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const query = parseInput(ResolveHostQuerySchema, request.query, reply)
+    if (!query) return reply
+
+    const labels = parseTeamHost(query.host, teamHostBaseDomain)
+    if (!labels) return createApiResponse({ team: null })
+
+    try {
+      const resolved = await resolveUoaTeamHost(labels, rosterDeps)
+      return createApiResponse({ team: resolved })
+    } catch (error) {
+      if (error instanceof UoaRosterUnavailableError) {
+        return createApiResponse({ team: null })
+      }
+      throw error
+    }
+  })
+
   app.get('/api/teams/slug-available', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply

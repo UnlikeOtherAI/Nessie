@@ -52,6 +52,7 @@ type AppMode = 'hosted' | 'local' | 'selfHosted'
 type CreateCorsOriginChecker = (input: {
   allowedOrigins: Set<string>
   mode: AppMode
+  teamHostBaseDomain?: string
 }) => CorsOriginChecker
 
 const { createCorsOriginChecker } = await import('../src/lib/server-context.js') as {
@@ -62,10 +63,12 @@ const checkOrigin = async (input: {
   allowedOrigins?: Set<string>
   mode: AppMode
   origin: string
+  teamHostBaseDomain?: string
 }): Promise<boolean> => {
   const checker = createCorsOriginChecker({
     allowedOrigins: input.allowedOrigins ?? new Set(),
     mode: input.mode,
+    ...(input.teamHostBaseDomain ? { teamHostBaseDomain: input.teamHostBaseDomain } : {}),
   })
 
   return new Promise((resolve, reject) => {
@@ -104,5 +107,82 @@ test('createCorsOriginChecker keeps configured allowed origins working', async (
       origin: 'https://admin.example.com',
     }),
     true,
+  )
+})
+
+const TEAM_HOST_BASE = 'nessie.works'
+
+test('a team hostname under the configured base domain is allowed', async () => {
+  assert.equal(
+    await checkOrigin({
+      mode: 'hosted',
+      origin: 'https://design.acme.nessie.works',
+      teamHostBaseDomain: TEAM_HOST_BASE,
+    }),
+    true,
+  )
+})
+
+test('a domain that merely ends with the base domain as a string is refused', async () => {
+  // The reason this is a label comparison and not endsWith: every one of these
+  // ends with "nessie.works" and none of them is ours.
+  for (const origin of [
+    'https://design.acme.evil-nessie.works',
+    'https://evil-nessie.works',
+    'https://nessie.works.attacker.test',
+  ]) {
+    assert.equal(
+      await checkOrigin({ mode: 'hosted', origin, teamHostBaseDomain: TEAM_HOST_BASE }),
+      false,
+      origin,
+    )
+  }
+})
+
+test('a team hostname needs exactly the team and organisation labels', async () => {
+  for (const origin of [
+    'https://nessie.works',
+    'https://acme.nessie.works',
+    'https://a.design.acme.nessie.works',
+  ]) {
+    assert.equal(
+      await checkOrigin({ mode: 'hosted', origin, teamHostBaseDomain: TEAM_HOST_BASE }),
+      false,
+      origin,
+    )
+  }
+})
+
+test('a team hostname must be https with no explicit port', async () => {
+  for (const origin of [
+    'http://design.acme.nessie.works',
+    'https://design.acme.nessie.works:8443',
+  ]) {
+    assert.equal(
+      await checkOrigin({ mode: 'hosted', origin, teamHostBaseDomain: TEAM_HOST_BASE }),
+      false,
+      origin,
+    )
+  }
+})
+
+test('labels that are not legal DNS labels are refused', async () => {
+  for (const origin of [
+    'https://-design.acme.nessie.works',
+    'https://design-.acme.nessie.works',
+    'https://des_ign.acme.nessie.works',
+  ]) {
+    assert.equal(
+      await checkOrigin({ mode: 'hosted', origin, teamHostBaseDomain: TEAM_HOST_BASE }),
+      false,
+      origin,
+    )
+  }
+})
+
+test('no base domain configured admits no team hostnames at all', async () => {
+  assert.equal(
+    await checkOrigin({ mode: 'hosted', origin: 'https://design.acme.nessie.works' }),
+    false,
   )
 })

@@ -228,6 +228,16 @@ when one changes, the same turn updates it, not this section.
   writing code here — the local model is still called `Team` and its
   `projectId` foreign key currently points the wrong way. The rule itself
   lives in `docs/brief.md` → "Current SSO identity invariant".
+- **A team is reachable at `<team>.<org>.<base domain>`, and Nessie stores
+  neither label.** The organisation slug is the tenant DNS key and the team slug
+  is unique only inside it, so a flat `<team>.<base>` is forbidden rather than
+  merely discouraged. Resolving a hostname is a lookup that grants nothing — the
+  team switch that follows is the authorization — and matching one is a
+  label comparison, never a suffix test, or `evil-nessie.works` passes. The edge
+  needs one DNS record and one wildcard certificate **per organisation**, and
+  why it is per organisation rather than per team is a rate limit with teeth:
+  read [docs/standards/team-hosts.md](docs/standards/team-hosts.md) before
+  touching host routing, CORS, or the edge.
 - **Automatic team access by verified email domain — Nessie holds the policy,
   UOA still authorizes every grant.** Every grant is a relay to `addTeamMember`
   carrying a fresh org-scoped subject assertion for the administrator who

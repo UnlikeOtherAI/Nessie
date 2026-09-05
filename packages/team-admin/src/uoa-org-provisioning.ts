@@ -2,6 +2,7 @@ import {
   orgPath,
   requireSettings,
   rosterRequest,
+  UoaRosterRejectedError,
   UoaRosterUnavailableError,
   type UoaRosterDeps,
   type UoaRosterTeam,
@@ -246,4 +247,39 @@ export const checkUoaSlugAvailability = async (
     ...(typeof record?.slug === 'string' ? { slug: record.slug } : {}),
     ...(typeof record?.reason === 'string' ? { reason: record.reason } : {}),
   }
+}
+
+/**
+ * Resolve a tenant hostname's two labels to UOA ids.
+ *
+ * Backend mode: this is a `/domain/*` read, and it happens while a cold page is
+ * rendering — before anybody has an active team — so there is no session to
+ * assert a subject from. The domain hash is the only credential involved, and
+ * only the server holds it.
+ *
+ * `null` means no such tenant on this product's domain. UOA answers the same
+ * generic 404 for an unknown organisation and for a known organisation with an
+ * unknown team, so this cannot be used to map a tenant's teams from outside it.
+ */
+export const resolveUoaTeamHost = async (
+  input: { orgSlug: string; teamSlug: string },
+  deps: UoaRosterDeps = {},
+): Promise<UoaProvisionedTeam | null> => {
+  let payload: unknown
+  try {
+    payload = await rosterRequest(
+      requireSettings(),
+      '/domain/teams/resolve',
+      { method: 'GET', query: { org: input.orgSlug, team: input.teamSlug } },
+      { ...deps, subjectAssertion: undefined },
+    )
+  } catch (error) {
+    if (error instanceof UoaRosterRejectedError) return null
+    throw error
+  }
+
+  const record = asRecord(payload)
+  const externalOrgId = trimString(record?.org_id)
+  const externalTeamId = trimString(record?.team_id)
+  return externalOrgId && externalTeamId ? { externalOrgId, externalTeamId } : null
 }
