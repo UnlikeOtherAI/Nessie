@@ -126,7 +126,7 @@ const resolveDefaultTeamId = async (
  * here because this function has no session to check.
  */
 export const createUoaOrganisation = async (
-  input: { name: string; ownerUoaSub: string },
+  input: { name: string; slug?: string; ownerUoaSub: string },
   deps: UoaRosterDeps = {},
 ): Promise<UoaProvisionedTeam> => {
   const settings = requireSettings()
@@ -135,7 +135,16 @@ export const createUoaOrganisation = async (
   const payload = await rosterRequest(
     settings,
     '/org/organisations',
-    { method: 'POST', body: { name: input.name, owner_user_id: input.ownerUoaSub } },
+    {
+      method: 'POST',
+      // `slug` omitted lets UOA derive the address from the name; supplied, UOA
+      // validates it and refuses with a reason. Nessie stores neither.
+      body: {
+        name: input.name,
+        ...(input.slug ? { slug: input.slug } : {}),
+        owner_user_id: input.ownerUoaSub,
+      },
+    },
     backendMode,
   )
 
@@ -171,7 +180,7 @@ export const createUoaOrganisation = async (
  */
 export const createUoaTeamTeam = async (
   team: UoaRosterTeam,
-  input: { name: string },
+  input: { name: string; slug?: string },
   deps: UoaRosterDeps = {},
 ): Promise<UoaProvisionedTeam> => {
   const payload = await rosterRequest(
@@ -184,7 +193,7 @@ export const createUoaTeamTeam = async (
       // every entry check — including the service-access confirm the switch
       // grant runs — requires an ACTIVE TeamMember, so the person would create
       // a team they could not open.
-      body: { name: input.name, join_creator: true },
+      body: { name: input.name, ...(input.slug ? { slug: input.slug } : {}), join_creator: true },
     },
     deps,
   )
@@ -196,4 +205,45 @@ export const createUoaTeamTeam = async (
     )
   }
   return { externalOrgId: team.externalOrgId, externalTeamId }
+}
+
+/**
+ * Whether an address is free, asked of UOA on behalf of somebody typing in a
+ * create dialog.
+ *
+ * Backend mode: this is a `/domain/*` read and the domain hash is the only
+ * credential it needs. Nessie holds that server-side, which is the whole reason
+ * this is relayed rather than called from the browser.
+ *
+ * Answers a reason, not a bare boolean, because the field has to say what is
+ * wrong. An unreachable UOA is deliberately NOT translated into "unavailable" —
+ * the caller treats it as unknown and lets the create attempt be the real
+ * answer, since blocking creation on a failed hint would be worse than letting
+ * the authoritative write refuse.
+ */
+export const checkUoaSlugAvailability = async (
+  input: { slug: string; scope: 'organisation' | 'team'; orgId?: string; reserved?: string[] },
+  deps: UoaRosterDeps = {},
+): Promise<{ available: boolean; slug?: string; reason?: string }> => {
+  const payload = await rosterRequest(
+    requireSettings(),
+    '/domain/slug-available',
+    {
+      method: 'GET',
+      query: {
+        slug: input.slug,
+        scope: input.scope,
+        ...(input.orgId ? { org_id: input.orgId } : {}),
+        ...(input.reserved?.length ? { reserved: input.reserved.join(',') } : {}),
+      },
+    },
+    { ...deps, subjectAssertion: undefined },
+  )
+
+  const record = asRecord(payload)
+  return {
+    available: record?.available === true,
+    ...(typeof record?.slug === 'string' ? { slug: record.slug } : {}),
+    ...(typeof record?.reason === 'string' ? { reason: record.reason } : {}),
+  }
 }

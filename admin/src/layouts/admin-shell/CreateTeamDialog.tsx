@@ -11,6 +11,7 @@ import { FormActions, FormError } from '../../components/shared/FormActions'
 import { FormField } from '../../components/shared/FormField'
 import { Input } from '../../components/shared/FormControls'
 import { TabBar } from '../../components/primitives/TabBar'
+import { TeamAddressField } from './TeamAddressField'
 
 /**
  * Creating an organisation, or a team inside the current one, in place.
@@ -45,6 +46,10 @@ export const CreateTeamDialog = ({
 }: CreateTeamDialogProps) => {
   const [scope, setScope] = useState<CreateScope>('organization')
   const [name, setName] = useState('')
+  const [slug, setSlug] = useState('')
+  // An address UOA would refuse must not be submittable; an empty one is fine,
+  // because UOA derives one from the name.
+  const [addressUsable, setAddressUsable] = useState(true)
   const [formError, setFormError] = useState<string | undefined>()
   // Held across retries so a second attempt is recognised as the same intent.
   const idempotencyKey = useRef(newIdempotencyKey())
@@ -58,6 +63,7 @@ export const CreateTeamDialog = ({
   const handleClose = () => {
     if (pending) return
     setName('')
+    setSlug('')
     setFormError(undefined)
     setScope('organization')
     idempotencyKey.current = newIdempotencyKey()
@@ -67,12 +73,17 @@ export const CreateTeamDialog = ({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed || pending) return
+    if (!trimmed || pending || !addressUsable) return
     setFormError(undefined)
     try {
-      await active.mutateAsync({ idempotencyKey: idempotencyKey.current, name: trimmed })
+      await active.mutateAsync({
+        idempotencyKey: idempotencyKey.current,
+        name: trimmed,
+        slug: slug.trim() || undefined,
+      })
       // The mutation has already switched and navigated; only the shell is left.
       setName('')
+      setSlug('')
       idempotencyKey.current = newIdempotencyKey()
       onClose()
     } catch (error) {
@@ -126,6 +137,15 @@ export const CreateTeamDialog = ({
             value={name}
           />
         </FormField>
+
+        <TeamAddressField
+          disabled={pending}
+          name={name}
+          onChange={setSlug}
+          onUsableChange={setAddressUsable}
+          scope={scope === 'organization' ? 'organisation' : 'team'}
+          value={slug}
+        />
 
         <p className="text-xs text-[color:var(--tx3)]">
           {scope === 'organization'

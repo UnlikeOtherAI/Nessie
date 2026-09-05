@@ -191,11 +191,23 @@ matter most:
   organisation's origin domain is deliberately not a predicate. This is the path
   for anything about the team the session is standing in.
 
-An assertion is pinned to the team it names: UOA requires
-`active.teamId` to equal the route's `:teamId`, so `/org/*` can only ever reach
-the current team. Reads of *another* team (the picker) therefore stay
-on `/domain/*`, backstopped by UOA's public team image. `/domain/*` keeps its
-local owner/admin backstop because it has no acting-person assertion. The
+An assertion is pinned to the **organisation** it names, not the team.
+`org-role-guard.ts` compares `active.orgId` to the route's `:orgId`, and
+separately requires `active.teamId` to be one of the caller's *live* teams in
+that organisation; the route's own `:teamId` is deliberately not compared, and
+UOA's contract says why — "the active team is caller provenance, not authority
+for a requested team". So `/org/*` **can** reach another team in the same
+organisation, and a service handling one must resolve the actor's capability
+for that exact target rather than trusting the provenance field.
+
+*(This paragraph previously said the opposite — that an assertion was pinned to
+the team it names and `/org/*` could only ever reach the current team. That was
+never true of the code, and reading it as true is what would push a
+same-organisation read onto `/domain/*` unnecessarily.)*
+
+Reads of a team in *another organisation* still stay on `/domain/*`, backstopped
+by UOA's public team image. `/domain/*` keeps its local owner/admin backstop
+because it has no acting-person assertion. The
 **Organization** section is different: Nessie declares
 `nessie.organisation.manage` in its signed UOA config, gives that capability to
 the configured organisation-admin role, and reads the caller's fresh
