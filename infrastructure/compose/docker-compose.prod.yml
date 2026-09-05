@@ -162,6 +162,15 @@ services:
       NESSIE_EMBEDDING_PROVIDER: openai-compatible
       NESSIE_EMBEDDING_SERVICE_ID: jina
       NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
+      # Chat default: Meta's muse-spark 1.3. Ledger's native `meta` service
+      # stops at 1.2, so 1.3 is reached through the OpenRouter service, where it
+      # is registered vendor-qualified. The service id names the `/v1/:serviceId`
+      # segment Ledger routes on; the host .env still supplies the provider,
+      # base URL and the Ledger app key. The `-contributor` tier is ~12x cheaper
+      # in and ~21x cheaper out, and its data is training-eligible upstream —
+      # a deliberate choice, not a default to inherit silently.
+      NESSIE_MODEL_SERVICE_ID: openrouter
+      NESSIE_MODEL_NAME: meta/muse-spark-1.3-contributor
       # Agent-avatar "Generate with AI" routes through this Ledger Purpose API
       # (Gemini image primary, OpenAI gpt-image-2 fallback), so the exhausted
       # OpenAI image key no longer 503s avatar generation. See docs/deployment.md.
@@ -243,6 +252,15 @@ services:
       NESSIE_EMBEDDING_PROVIDER: openai-compatible
       NESSIE_EMBEDDING_SERVICE_ID: jina
       NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
+      # Chat default: Meta's muse-spark 1.3. Ledger's native `meta` service
+      # stops at 1.2, so 1.3 is reached through the OpenRouter service, where it
+      # is registered vendor-qualified. The service id names the `/v1/:serviceId`
+      # segment Ledger routes on; the host .env still supplies the provider,
+      # base URL and the Ledger app key. The `-contributor` tier is ~12x cheaper
+      # in and ~21x cheaper out, and its data is training-eligible upstream —
+      # a deliberate choice, not a default to inherit silently.
+      NESSIE_MODEL_SERVICE_ID: openrouter
+      NESSIE_MODEL_NAME: meta/muse-spark-1.3-contributor
       # Agent-avatar "Generate with AI" routes through this Ledger Purpose API
       # (Gemini image primary, OpenAI gpt-image-2 fallback), so the exhausted
       # OpenAI image key no longer 503s avatar generation. See docs/deployment.md.
