@@ -44,11 +44,23 @@ export const DeviceLinkDialog = ({
   // without re-running the effect every time the phase changes.
   const stateTokenRef = useRef<string | null>(null)
   const startedRef = useRef(false)
+  // React Query builds a fresh result object on every render, so a mutation in
+  // a dependency array re-runs its effect on every render. That is what turned
+  // the abandon-on-unmount cleanup below into a cancel storm — it tombstoned
+  // the flow one render after starting it, and each cancel re-rendered into
+  // the next, until React gave up with "maximum update depth exceeded" and the
+  // whole page fell to the router's error boundary. The three effects here are
+  // lifecycle events — start once, poll while waiting, abandon on unmount — so
+  // they reach the mutations through this ref and depend on none of them.
+  const links = useRef({ cancel: cancelLink, poll: pollLink, start: startLink })
+  useEffect(() => {
+    links.current = { cancel: cancelLink, poll: pollLink, start: startLink }
+  })
 
   useEffect(() => {
     if (startedRef.current) return
     startedRef.current = true
-    startLink
+    links.current.start
       .mutateAsync({
         provider: provider.key,
         ...(subscriptionId ? { subscriptionId } : {}),
@@ -63,10 +75,10 @@ export const DeviceLinkDialog = ({
           message: error instanceof Error ? error.message : 'The sign-in could not be started.',
         })
       })
-  }, [provider.key, startLink, subscriptionId])
+  }, [provider.key, subscriptionId])
 
   const poll = useCallback(async (start: DeviceStart) => {
-    const result = await pollLink.mutateAsync(start.stateToken)
+    const result = await links.current.poll.mutateAsync(start.stateToken)
     if (result.status === 'awaiting_confirmation') {
       setPhase({
         accountId: result.accountId,
@@ -85,7 +97,7 @@ export const DeviceLinkDialog = ({
       return true
     }
     return false
-  }, [pollLink])
+  }, [])
 
   useEffect(() => {
     if (phase.kind !== 'waiting') return
@@ -121,8 +133,8 @@ export const DeviceLinkDialog = ({
   // tombstoned rather than left waiting for a confirmation that never comes.
   useEffect(() => () => {
     const token = stateTokenRef.current
-    if (token) void cancelLink.mutateAsync(token).catch(() => undefined)
-  }, [cancelLink])
+    if (token) void links.current.cancel.mutateAsync(token).catch(() => undefined)
+  }, [])
 
   const dismiss = () => {
     onClose()
