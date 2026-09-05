@@ -1,6 +1,9 @@
-// One place for every number, path and switch the navigation transition
-// suite depends on. Ports are the repo's fixed local-dev ports (CLAUDE.md →
-// "Ports — NON-NEGOTIABLE"); the viewports are the three widths §4.19 of
+// One place for every number, path and switch the browser suites depend on.
+// It is named for the navigation transition suite because that is where it
+// grew, but `executor-companion`, `page-header` and `connected-mail` all read
+// it too — the ports in particular are decided here for all four. Ports are
+// the repo's fixed local-dev ports (CLAUDE.md → "Ports — NON-NEGOTIABLE");
+// the viewports are the three widths §4.19 of
 // docs/done/2026-09-01-navigation-motion-system.md names.
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
