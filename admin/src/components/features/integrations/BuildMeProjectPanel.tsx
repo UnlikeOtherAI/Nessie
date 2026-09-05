@@ -14,7 +14,7 @@ import { Notice } from '../../primitives/Notice'
 
 const intentOptions: Array<{ label: string; value: BuildMeProjectHandoffIntent }> = [
   { label: 'Project definition', value: 'project_definition' },
-  { label: 'Dev team', value: 'development_workspace' },
+  { label: 'Dev workspace', value: 'development_workspace' },
   { label: 'Board source', value: 'board_source_discovery' },
 ]
 

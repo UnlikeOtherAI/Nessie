@@ -220,9 +220,9 @@ export const executorKeys = {
   pairing: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'pairing'] as const,
   workspacePromotion: (promotionId?: string) =>
-    ['executors', 'team-promotion', promotionId ?? 'none'] as const,
+    ['executors', 'workspace-promotion', promotionId ?? 'none'] as const,
   workspaceReviews: (executorId?: string) =>
-    ['executors', executorId ?? 'none', 'team-reviews'] as const,
+    ['executors', executorId ?? 'none', 'workspace-reviews'] as const,
 }
 
 export const favoriteKeys = {
@@ -390,8 +390,8 @@ export const organizationKeys = {
   memberRoster: (resource: 'members' | 'invitations') =>
     [...organizationMembersKey, resource] as const,
   members: organizationMembersKey,
-  memberWorkspaces: (uoaSub?: string) =>
-    [...organizationMembersKey, uoaSub ?? 'none', 'workspaces'] as const,
+  memberTeams: (uoaSub?: string) =>
+    [...organizationMembersKey, uoaSub ?? 'none', 'teams'] as const,
 }
 
 export const personalAssistantKeys = {

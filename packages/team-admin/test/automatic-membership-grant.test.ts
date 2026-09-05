@@ -57,7 +57,7 @@ let grants: GrantRow[]
 let rules: RuleRow[]
 /** Every upstream call this test made, so "never sends a role" is provable. */
 let addCalls: { team: unknown; input: Record<string, unknown> }[]
-let workspaceAccess: { id: string; name: string; hasAccess: boolean }[]
+let teamAccess: { id: string; name: string; hasAccess: boolean }[]
 let accessError: Error | null
 let addError: Error | null
 
@@ -123,7 +123,7 @@ beforeEach(() => {
   grants = []
   rules = [{ healthReason: null, healthRevision: 0, healthState: 'ok', id: RULE.id }]
   addCalls = []
-  workspaceAccess = [{ hasAccess: false, id: 'team-external', name: 'Engineering' }]
+  teamAccess = [{ hasAccess: false, id: 'team-external', name: 'Engineering' }]
   accessError = null
   addError = null
 })
@@ -136,9 +136,9 @@ const upstream = {
     addCalls.push({ input, team })
     if (addError) throw addError
   },
-  listWorkspaceAccess: async () => {
+  listTeamAccess: async () => {
     if (accessError) throw accessError
-    return { items: workspaceAccess, permissions: { changeWorkspaceAccess: true } }
+    return { items: teamAccess, permissions: { changeTeamAccess: true } }
   },
 } as unknown as Parameters<typeof grantAutomaticMembership>[5]
 
@@ -160,14 +160,14 @@ test('the upstream add NEVER carries a role', async () => {
 })
 
 test('an existing member is skipped, so a team owner is never demoted', async () => {
-  workspaceAccess = [{ hasAccess: true, id: 'team-external', name: 'Engineering' }]
+  teamAccess = [{ hasAccess: true, id: 'team-external', name: 'Engineering' }]
   const result = await grant('owner-sub', 'reconcile')
   assert.equal(result.outcome, 'skipped_existing')
   assert.equal(addCalls.length, 0, 'no upstream write at all for an existing member')
 })
 
 test('a team the rule points at that UOA does not offer is skipped, not failed', async () => {
-  workspaceAccess = [{ hasAccess: false, id: 'some-other-team', name: 'Other' }]
+  teamAccess = [{ hasAccess: false, id: 'some-other-team', name: 'Other' }]
   const result = await grant('person-1')
   assert.equal(result.outcome, 'skipped_no_such_team')
   assert.equal(addCalls.length, 0)
@@ -250,7 +250,7 @@ test('a 404 from UOA is a plain failure, not an authorization loss', async () =>
 })
 
 test('a team UOA does not offer stays retryable rather than burning the person', async () => {
-  workspaceAccess = [{ hasAccess: false, id: 'some-other-team', name: 'Other' }]
+  teamAccess = [{ hasAccess: false, id: 'some-other-team', name: 'Other' }]
   const first = await grant('person-1')
   assert.equal(first.outcome, 'skipped_no_such_team')
   // Not terminal: the pre-read answers within the authorizer's own authority
@@ -259,7 +259,7 @@ test('a team UOA does not offer stays retryable rather than burning the person',
   assert.equal(grants[0]?.outcome, 'attempted')
   assert.equal(grants[0]?.leaseExpiresAt, null)
 
-  workspaceAccess = [{ hasAccess: false, id: 'team-external', name: 'Engineering' }]
+  teamAccess = [{ hasAccess: false, id: 'team-external', name: 'Engineering' }]
   const retry = await grant('person-1')
   assert.equal(retry.outcome, 'granted')
 })

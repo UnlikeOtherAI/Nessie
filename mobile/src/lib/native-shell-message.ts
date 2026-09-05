@@ -48,6 +48,8 @@ export type NativeShellMessage = {
   voiceCall?: unknown
   muted?: boolean
   teamAvatarUrl?: string
+  /** LEGACY_NATIVE_SHELL: `nessie:workspace`'s spelling of `teamAvatarUrl`. */
+  workspaceAvatarUrl?: string
 }
 
 const SCREEN_SECTIONS: ReadonlySet<string> = new Set<ScreenSection>([

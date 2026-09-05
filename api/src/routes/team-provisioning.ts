@@ -95,6 +95,20 @@ const SlugAvailableQuerySchema = z.object({
 const ORG_CREATED_ACTION = 'organization.external_created'
 const TEAM_CREATED_ACTION = 'team.external_created'
 
+/**
+ * What `TEAM_CREATED_ACTION` was called before the workspace->team rename.
+ *
+ * Rows written under it are left as they were: an audit trail records what was
+ * done at the time, and rewriting it to tidy vocabulary is not a trade worth
+ * making. The consequence is that this one action spans two names, so anything
+ * reporting on team provisioning has to ask for both or it silently starts its
+ * history at the rename.
+ */
+export const LEGACY_TEAM_CREATED_ACTIONS = [
+  'workspace.external_created',
+  TEAM_CREATED_ACTION,
+] as const
+
 const NEEDS_UOA_SESSION =
   'Sign in with UnlikeOtherAI to create an organisation.'
 
