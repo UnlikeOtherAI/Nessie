@@ -281,6 +281,7 @@ export const buildApp = async (
       ],
       refreshTokenTtlSeconds: 3600,
     },
+    automaticMembership: { enabled: false },
     model: {},
   }
   const deps = {

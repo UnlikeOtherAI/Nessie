@@ -92,6 +92,7 @@ const makePrisma = (localTeams: LocalTeam[] = []) => ({
 
 const config = {
   auth: { autoRedirectToSso: true },
+  automaticMembership: { enabled: false },
   mode: 'hosted',
 } as Parameters<typeof buildMeResponse>[3]
 
