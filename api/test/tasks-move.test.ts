@@ -167,6 +167,11 @@ const makePrisma = (task: TaskFixture, columns: ColumnFixture[]) => {
 
   const prisma = {
     task: tx.task,
+    // These tasks are native, so the write-back path finds no link and returns
+    // before it reaches a provider. The fake models the query rather than
+    // omitting it: an unmodelled delegate is `undefined` at call time, not a
+    // type error.
+    taskExternalLink: { findUnique: async () => null },
     boardColumn: {
       findFirst: async ({
         where,

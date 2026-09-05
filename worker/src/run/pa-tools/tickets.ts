@@ -8,6 +8,7 @@ import {
   listBoards,
   listTaskFieldDefinitions,
   listProjectTasks,
+  createBoardSourceWriteBack,
   moveProjectTaskToColumn,
   setProjectTaskIteration,
   transitionProjectTask,
@@ -79,6 +80,32 @@ const result = (
   inputSummary: string,
   outputPreview: string,
 ): ToolExecutionResult => ({ toolName, inputSummary, outputPreview })
+
+/**
+ * The write-back collaborator, built from the same registry the API uses so the
+ * assistant reaches a provider exactly as a person's click does — and gets the
+ * same refusal (personal-assistant-tools.md: a tool that does what a person
+ * does by clicking calls the function that person's button calls).
+ */
+const writeBackFor = (context: BuiltinToolRuntimeContext) =>
+  context.boardSourceEncryptionSecret
+    ? createBoardSourceWriteBack({
+        prisma: context.prisma,
+        encryptionSecret: context.boardSourceEncryptionSecret,
+      })
+    : undefined
+
+/** A source refusal, said in words rather than as a code. */
+const throwIfSourceRefused = (outcome: { error?: string; detail?: string }): void => {
+  if (
+    outcome.error === 'SOURCE_READ_ONLY' ||
+    outcome.error === 'SOURCE_REJECTED' ||
+    outcome.error === 'ASSIGNEE_NOT_LINKED' ||
+    outcome.error === 'SOURCE_UNAVAILABLE'
+  ) {
+    throw new Error(outcome.detail ?? 'The source refused that change.')
+  }
+}
 
 const ListInput = z.object({ projectId: IdSchema, status: TicketStatusSchema.optional() })
 
@@ -215,12 +242,13 @@ export const runTicketUpdateTool = async (
   }
   const member = await resolveActingMember(context)
   await projectTicketFor(context, member, ticketId)
-  const updated = await updateProjectTask(context.prisma, {
-    taskId: ticketId,
-    organizationId: member.organizationId,
-    fields,
-  })
+  const updated = await updateProjectTask(
+    context.prisma,
+    { taskId: ticketId, organizationId: member.organizationId, fields },
+    writeBackFor(context),
+  )
   if ('error' in updated) {
+    throwIfSourceRefused(updated)
     // A refused custom field says which one and why, so the model can correct
     // it rather than retry the same value.
     if (updated.error === 'FIELD_UNKNOWN') {
@@ -284,15 +312,20 @@ export const runTicketAssignTool = async (
   const args = AssignInput.parse(input)
   const member = await resolveActingMember(context)
   await projectTicketFor(context, member, args.ticketId)
-  const assigned = await assignProjectTask(context.prisma, {
-    taskId: args.ticketId,
-    assigneeUserId: args.assigneeUserId,
-    assigneeAgentId: args.assigneeAgentId,
-    organizationId: member.organizationId,
-    actorContext: member.actorContext,
-    assignmentAttention: createProjectTaskAssignmentAttention,
-  })
+  const assigned = await assignProjectTask(
+    context.prisma,
+    {
+      taskId: args.ticketId,
+      assigneeUserId: args.assigneeUserId,
+      assigneeAgentId: args.assigneeAgentId,
+      organizationId: member.organizationId,
+      actorContext: member.actorContext,
+      assignmentAttention: createProjectTaskAssignmentAttention,
+    },
+    writeBackFor(context),
+  )
   if ('error' in assigned) {
+    throwIfSourceRefused(assigned)
     throw new Error(assigned.error === 'NOT_FOUND' ? 'Ticket not found.' : 'Assignee is not available to you.')
   }
   return result(
@@ -315,14 +348,19 @@ export const runTicketMoveTool = async (
   const args = MoveInput.parse(input)
   const member = await resolveActingMember(context)
   await projectTicketFor(context, member, args.ticketId)
-  const moved = await moveProjectTaskToColumn(context.prisma, {
-    taskId: args.ticketId,
-    columnId: args.columnId,
-    position: args.position,
-    organizationId: member.organizationId,
-    actorId: member.userId,
-  })
+  const moved = await moveProjectTaskToColumn(
+    context.prisma,
+    {
+      taskId: args.ticketId,
+      columnId: args.columnId,
+      position: args.position,
+      organizationId: member.organizationId,
+      actorId: member.userId,
+    },
+    writeBackFor(context),
+  )
   if ('error' in moved) {
+    throwIfSourceRefused(moved)
     if (moved.error === 'COLUMN_NOT_FOUND') {
       throw new Error('Column not found in this ticket’s project. Read the board first.')
     }

@@ -140,11 +140,14 @@ export const useUpdateColumn = (projectId: string, boardId: string) => {
       name?: string
       category?: ColumnCategory
       position?: number
-    }) =>
-      apiClient.patch<BoardColumnRecord>(
-        `/api/projects/${projectId}/boards/${boardId}/columns/${input.id}`,
-        { name: input.name, category: input.category, position: input.position },
-      ),
+      stateBindings?: { sourceId: string; externalStateId: string }[]
+    }) => {
+      const { id, ...body } = input
+      return apiClient.patch<BoardColumnRecord>(
+        `/api/projects/${projectId}/boards/${boardId}/columns/${id}`,
+        body,
+      )
+    },
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }

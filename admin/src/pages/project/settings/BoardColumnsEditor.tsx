@@ -4,6 +4,7 @@ import { useCreateColumn, useDeleteColumn, useUpdateColumn } from '../../../faca
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/kanban/kanban-config'
+import { Pill } from '../../../components/primitives/Pill'
 
 const errorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? cause.message : fallback
@@ -35,7 +36,17 @@ const CategorySelect = ({
   </Select>
 )
 
+/** The states of every source in the project whose category matches a column. */
+export type BindableState = {
+  sourceId: string
+  sourceName: string
+  externalStateId: string
+  externalStateName: string
+  category: ColumnCategory
+}
+
 type ColumnRowProps = {
+  bindableStates: BindableState[]
   boardId: string
   column: BoardColumnRecord
   isFirst: boolean
@@ -50,6 +61,7 @@ type ColumnRowProps = {
 }
 
 const ColumnRow = ({
+  bindableStates,
   boardId,
   column,
   isFirst,
@@ -85,6 +97,37 @@ const ColumnRow = ({
       {
         onError: (cause) =>
           onSaveError(errorMessage(cause, 'Could not change column category')),
+        onSuccess: onSaved,
+      },
+    )
+  }
+
+  const matching = bindableStates.filter((state) => state.category === column.category)
+
+  const toggleBinding = (state: BindableState) => {
+    const bound = column.stateBindings.some(
+      (binding) =>
+        binding.sourceId === state.sourceId &&
+        binding.externalStateId === state.externalStateId,
+    )
+    update.mutate(
+      {
+        id: column.id,
+        stateBindings: bound
+          ? column.stateBindings.filter(
+              (binding) =>
+                !(
+                  binding.sourceId === state.sourceId &&
+                  binding.externalStateId === state.externalStateId
+                ),
+            )
+          : [
+              ...column.stateBindings,
+              { sourceId: state.sourceId, externalStateId: state.externalStateId },
+            ],
+      },
+      {
+        onError: (cause) => onSaveError(errorMessage(cause, 'Could not change what this column shows')),
         onSuccess: onSaved,
       },
     )
@@ -144,6 +187,39 @@ const ColumnRow = ({
         </button>
       </div>
 
+      {/* Binding a column to specific external states is what lets "Code
+          review" and "QA" be two Review columns that mean different things
+          upstream — and it decides which state a move writes back. */}
+      {matching.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 pl-6">
+          <span className="text-xs text-[color:var(--tx3)]">Shows</span>
+          {matching.map((state) => {
+            const bound = column.stateBindings.some(
+              (binding) =>
+                binding.sourceId === state.sourceId &&
+                binding.externalStateId === state.externalStateId,
+            )
+            return (
+              <button
+                className="rounded-full"
+                key={`${state.sourceId}:${state.externalStateId}`}
+                onClick={() => toggleBinding(state)}
+                type="button"
+              >
+                <Pill size="sm" tone={bound ? 'accent' : 'outline'} uppercase={false}>
+                  {state.sourceName} · {state.externalStateName}
+                </Pill>
+              </button>
+            )
+          })}
+          {column.stateBindings.length === 0 ? (
+            <span className="text-xs text-[color:var(--tx3)]">
+              — everything in this stage
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <ConfirmDialog
         body="Cards in it move to the first column of the same stage. No work is deleted."
         confirmLabel="Delete"
@@ -161,6 +237,7 @@ const ColumnRow = ({
 }
 
 type BoardColumnsEditorProps = {
+  bindableStates: BindableState[]
   boardId: string
   columns: BoardColumnRecord[]
   onSaveError: (message: string) => void
@@ -175,6 +252,7 @@ type BoardColumnsEditorProps = {
  * how a "Review queue" board is built without any filter vocabulary.
  */
 export const BoardColumnsEditor = ({
+  bindableStates,
   boardId,
   columns,
   onSaveError,
@@ -204,6 +282,7 @@ export const BoardColumnsEditor = ({
         {ordered.map((column, index) => (
           <ColumnRow
             key={column.id}
+            bindableStates={bindableStates}
             boardId={boardId}
             column={column}
             isFirst={index === 0}

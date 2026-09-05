@@ -65,6 +65,7 @@ export const mapBoardSource = (source: SourceRow): BoardSourceRecord => ({
   connectionOwnerUserId: parseUserId(source.connection.ownerUserId),
   connectionOwnerDisplayName: source.connection.owner?.displayName ?? null,
   itemCount: source._count.links,
+  stateMapping: parseStateMapping(source.stateMapping),
 })
 
 export const listBoardSources = async (
@@ -106,7 +107,6 @@ export const getBoardSourceDetail = async (
 
   return {
     ...mapBoardSource(source),
-    stateMapping: parseStateMapping(source.stateMapping),
     fieldMappings: parseFieldMappings(source.fieldMappings),
     identityLinks: identityLinks.map((link) => ({
       id: link.id,

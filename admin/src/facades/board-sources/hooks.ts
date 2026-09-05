@@ -56,6 +56,10 @@ export const useBoardSourceConnections = () => {
 export const useConnectionContainers = (connectionId?: string) => {
   const apiClient = useApiClient()
   return useQuery<ContainerDescriptor[]>({
+    // Both connections are the viewer's own accounts, and the picker clears its
+    // choice when the connection changes, so replaying the previous list is a
+    // smoother wait rather than another account's data on screen.
+    placeholderData: keepPreviousData,
     queryKey: boardSourceKeys.containers(connectionId),
     queryFn: () =>
       apiClient.get(`/api/board-sources/connections/${connectionId}/containers`),
@@ -98,6 +102,7 @@ export const useProjectSources = (projectId?: string) => {
 export const useProjectSource = (projectId?: string, sourceId?: string) => {
   const apiClient = useApiClient()
   return useQuery<BoardSourceDetailRecord>({
+    placeholderData: keepPreviousData,
     queryKey: projectKeys.source(projectId ?? '', sourceId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/sources/${sourceId}`),
     enabled: Boolean(projectId && sourceId),

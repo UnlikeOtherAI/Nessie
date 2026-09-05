@@ -27,6 +27,49 @@ import {
 } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
+
+/**
+ * A source refusal, in words that name the remedy. Synchronous by design: the
+ * drag snaps back with the reason rather than a toast contradicting a board
+ * the reader has already moved on from.
+ */
+const sendWriteBackError = (
+  reply: Parameters<typeof sendApiError>[0],
+  result: { error: string; detail?: string; code?: string },
+): boolean => {
+  switch (result.error) {
+    case 'SOURCE_READ_ONLY':
+      sendApiError(reply, 409, 'SOURCE_READ_ONLY', result.detail ?? 'That source is read only.')
+      return true
+    case 'SOURCE_REJECTED':
+      sendApiError(
+        reply,
+        409,
+        'SOURCE_REJECTED',
+        result.detail ?? 'The provider refused that change.',
+      )
+      return true
+    case 'ASSIGNEE_NOT_LINKED':
+      sendApiError(
+        reply,
+        409,
+        'ASSIGNEE_NOT_LINKED',
+        result.detail ?? 'That assignee is not linked to a provider account.',
+      )
+      return true
+    case 'SOURCE_UNAVAILABLE':
+      sendApiError(
+        reply,
+        502,
+        'SOURCE_UNAVAILABLE',
+        result.detail ?? 'The provider could not be reached.',
+      )
+      return true
+    default:
+      return false
+  }
+}
+
 export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     prisma,
@@ -211,9 +254,10 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       assigneeUserId: body.assigneeUserId,
       assigneeAgentId: body.assigneeAgentId,
       actorContext,
-    })
+    }, deps.authSecret)
 
     if ('error' in result) {
+      if (sendWriteBackError(reply, result)) return reply
       if (result.error === 'NOT_FOUND') {
         sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
         return reply
@@ -241,9 +285,10 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       columnId: body.columnId,
       actorId: actorContext.actor.actorId,
       position: body.position,
-    })
+    }, deps.authSecret)
 
     if ('error' in result) {
+      if (sendWriteBackError(reply, result)) return reply
       if (result.error === 'NOT_FOUND') {
         sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
         return reply
@@ -252,11 +297,14 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         sendApiError(reply, 404, 'COLUMN_NOT_FOUND', 'Column not found in this task\'s project')
         return reply
       }
+      // Every source refusal was answered above, so what is left is the
+      // lifecycle one — and only that shape carries `from`.
+      const from = 'from' in result ? result.from : undefined
       sendApiError(
         reply,
         409,
         result.error,
-        `Cannot move task from ${result.from ?? 'unknown'} into that column`,
+        `Cannot move task from ${from ?? 'unknown'} into that column`,
       )
       return reply
     }
@@ -318,8 +366,9 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       organizationId: actorContext.tenant.organizationId,
       fields,
-    })
+    }, deps.authSecret)
     if ('error' in result) {
+      if (sendWriteBackError(reply, result)) return reply
       // A refused custom field value says which field and why; anything else
       // about a task the caller could reach is a missing task.
       if (result.error === 'FIELD_UNKNOWN') {

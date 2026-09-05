@@ -4,7 +4,8 @@ import { useDeleteBoard, useUpdateBoard } from '../../../facades/boards/hooks'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
-import { BoardColumnsEditor } from './BoardColumnsEditor'
+import { useProjectSources } from '../../../facades/board-sources/hooks'
+import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
 import { BoardCreateDialog } from './BoardCreateDialog'
 
 const errorMessage = (cause: unknown, fallback: string): string =>
@@ -38,6 +39,7 @@ export const BoardsSettingsSection = ({
   selectedBoardId,
   startWithNewBoard,
 }: BoardsSettingsSectionProps) => {
+  const { data: sources = [] } = useProjectSources(projectId)
   const updateBoard = useUpdateBoard(projectId)
   const deleteBoard = useDeleteBoard(projectId)
   const [createOpen, setCreateOpen] = useState(startWithNewBoard)
@@ -45,6 +47,24 @@ export const BoardsSettingsSection = ({
   const [renameDraft, setRenameDraft] = useState<Record<string, string>>({})
 
   const selected = boards.find((board) => board.id === selectedBoardId) ?? boards[0] ?? null
+
+  // Every mapped state of every source in this project, so a column can be
+  // bound to the specific ones it should show and write back to.
+  const bindableStates: BindableState[] = sources.flatMap((source) =>
+    source.stateMapping.flatMap((entry) =>
+      entry.category && entry.category !== 'archived'
+        ? [
+            {
+              sourceId: source.id,
+              sourceName: source.name,
+              externalStateId: entry.externalStateId,
+              externalStateName: entry.externalStateName,
+              category: entry.category,
+            },
+          ]
+        : [],
+    ),
+  )
 
   const commitRename = (board: BoardRecord) => {
     const trimmed = (renameDraft[board.id] ?? board.name).trim()
@@ -193,6 +213,7 @@ export const BoardsSettingsSection = ({
 
           {canAdminister ? (
             <BoardColumnsEditor
+              bindableStates={bindableStates}
               boardId={selected.id}
               columns={selected.columns}
               onSaveError={onSaveError}

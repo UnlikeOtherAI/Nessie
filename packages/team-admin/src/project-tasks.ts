@@ -5,6 +5,12 @@ import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './pr
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { dropStalePlacements } from './project-task-move.js'
 import {
+  resolveOutboundAssignee,
+  type BoardSourceWriteBack,
+  type BoardSourceWriteBackError,
+} from './board-source-writeback.js'
+import { externalTenantKeyFor } from './board-source-structure.js'
+import {
   applyFieldValuesPatch,
   listTaskFieldDefinitions,
   validateFieldValuesPatch,
@@ -183,7 +189,8 @@ export const assignProjectTask = async (
     actorContext: AuthorizedActionContext
     assignmentAttention?: ProjectTaskAssignmentAttention
   },
-): Promise<ProjectTaskRecord | ProjectTaskAssignError> => {
+  writeBack?: BoardSourceWriteBack,
+): Promise<ProjectTaskRecord | ProjectTaskAssignError | BoardSourceWriteBackError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
     select: { id: true, status: true, assigneeAgentId: true, assigneeUserId: true, projectId: true },
@@ -198,6 +205,45 @@ export const assignProjectTask = async (
     return task ? mapProjectTask(task) : { error: 'NOT_FOUND' }
   }
   const assigned = Boolean(userId || agentId)
+
+  // On a mirrored task the assignee is the source's, so it is written upstream
+  // first — and an assignee nobody has linked to a provider account is refused
+  // with the remedy rather than silently assigned only here.
+  if (writeBack) {
+    const link = await prisma.taskExternalLink.findUnique({
+      where: { taskId: input.taskId },
+      include: {
+        source: {
+          select: {
+            provider: true,
+            organizationId: true,
+            container: true,
+            connection: { select: { externalTenantId: true } },
+          },
+        },
+      },
+    })
+    if (link) {
+      const person = userId
+        ? await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } })
+        : null
+      const external = await resolveOutboundAssignee(prisma, {
+        organizationId: link.source.organizationId,
+        provider: link.source.provider,
+        externalTenantKey: externalTenantKeyFor(link.source),
+        userId,
+        agentId,
+        displayName: person?.displayName ?? null,
+      })
+      if (external !== null && typeof external === 'object') return external
+      const outcome = await writeBack.apply({
+        taskId: input.taskId,
+        change: { assigneeExternalUserId: external },
+      })
+      if (outcome && 'error' in outcome) return outcome
+    }
+  }
+
   const nextStatus = assigned && existing.status === 'inbox' ? 'assigned' : !assigned && existing.status === 'assigned' ? 'inbox' : undefined
   const task = await prisma.$transaction(async (tx) => {
     const { count } = await tx.task.updateMany({
@@ -262,7 +308,10 @@ export type ProjectTaskUpdateFields = {
 export const updateProjectTask = async (
   prisma: PrismaClient,
   input: { taskId: string; organizationId: string; fields: ProjectTaskUpdateFields },
-): Promise<ProjectTaskRecord | { error: 'NOT_FOUND' } | TaskFieldError> => {
+  writeBack?: BoardSourceWriteBack,
+): Promise<
+  ProjectTaskRecord | { error: 'NOT_FOUND' } | TaskFieldError | BoardSourceWriteBackError
+> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
     select: { id: true, projectId: true },
@@ -305,14 +354,40 @@ export const updateProjectTask = async (
     if (failure) return failure
   }
 
+  // Title, detail and deadline are source-owned on a mirrored task: the vendor
+  // is asked *after* everything local has been validated — so a rejected custom
+  // field cannot leave an upstream write already made — and its echo, not this
+  // request, becomes the mirror.
+  const fields = { ...input.fields }
+  if (writeBack) {
+    const change = {
+      ...(fields.title !== undefined ? { title: fields.title } : {}),
+      ...(fields.detail !== undefined ? { description: fields.detail } : {}),
+      ...(fields.dueDate !== undefined
+        ? { dueDate: fields.dueDate?.toISOString().slice(0, 10) ?? null }
+        : {}),
+    }
+    if (Object.keys(change).length > 0) {
+      const outcome = await writeBack.apply({ taskId: input.taskId, change })
+      if (outcome && 'error' in outcome) return outcome
+      // The echo already wrote those columns; writing them again from the
+      // request would overwrite whatever the provider actually stored.
+      if (outcome) {
+        delete fields.title
+        delete fields.detail
+        delete fields.dueDate
+      }
+    }
+  }
+
   const data: Prisma.TaskUpdateInput = {}
-  if (input.fields.title !== undefined) data.title = input.fields.title
-  if (input.fields.purpose !== undefined) data.purpose = input.fields.purpose
-  if (input.fields.detail !== undefined) data.detail = input.fields.detail
-  if (input.fields.priority !== undefined) data.priority = input.fields.priority
-  if (input.fields.dueDate !== undefined) data.dueDate = input.fields.dueDate
-  if (input.fields.archivedAt !== undefined) data.archivedAt = input.fields.archivedAt
-  if (input.fields.storyPoints !== undefined) data.storyPoints = input.fields.storyPoints
+  if (fields.title !== undefined) data.title = fields.title
+  if (fields.purpose !== undefined) data.purpose = fields.purpose
+  if (fields.detail !== undefined) data.detail = fields.detail
+  if (fields.priority !== undefined) data.priority = fields.priority
+  if (fields.dueDate !== undefined) data.dueDate = fields.dueDate
+  if (fields.archivedAt !== undefined) data.archivedAt = fields.archivedAt
+  if (fields.storyPoints !== undefined) data.storyPoints = fields.storyPoints
 
   const task = await prisma.$transaction(async (tx) => {
     if (Object.keys(data).length > 0) {

@@ -128,11 +128,14 @@ export const BoardSourceRecordSchema = z.object({
   connectionOwnerUserId: UserIdSchema,
   connectionOwnerDisplayName: z.string().nullable(),
   itemCount: z.number().int(),
+  // On the list rather than only the detail: a board's column editor needs
+  // every source's states to offer bindings, and a handful of states per source
+  // is far cheaper than one detail fetch per source.
+  stateMapping: BoardSourceStateMappingSchema.array(),
 })
 export type BoardSourceRecord = z.infer<typeof BoardSourceRecordSchema>
 
 export const BoardSourceDetailRecordSchema = BoardSourceRecordSchema.extend({
-  stateMapping: BoardSourceStateMappingSchema.array(),
   fieldMappings: BoardSourceFieldMappingSchema.array(),
   identityLinks: BoardSourceIdentityLinkRecordSchema.array(),
   /** The container as last described, so the mapping tables have rows to show. */

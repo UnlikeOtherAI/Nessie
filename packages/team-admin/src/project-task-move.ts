@@ -1,14 +1,20 @@
 import { Prisma, type PrismaClient, type TaskStatus } from '@prisma/client'
-import { CATEGORY_TO_STATUS, statusToCategory } from '@nessie/schemas'
+import {
+  BoardColumnStateBindingsSchema,
+  CATEGORY_TO_STATUS,
+  type BoardColumnStateBinding,
+  statusToCategory,
+} from '@nessie/schemas'
+
+import type { BoardSourceWriteBack, BoardSourceWriteBackError } from './board-source-writeback.js'
 
 import { resolveBoardPlacement } from './board-placement.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 
-export type ProjectTaskMoveError = {
-  error: 'NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_TRANSITION'
-  from?: TaskStatus
-}
+export type ProjectTaskMoveError =
+  | { error: 'NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_TRANSITION'; from?: TaskStatus }
+  | BoardSourceWriteBackError
 
 /**
  * Give every task currently rendered in this column on this board an explicit
@@ -86,6 +92,12 @@ export const moveProjectTaskToColumn = async (
     actorId: string
     position?: number
   },
+  /**
+   * Injected by the API and the worker alike. Absent means "no source can be
+   * involved" — the caller has none configured — and a mirrored task then moves
+   * locally only, which is the behaviour before sources existed.
+   */
+  writeBack?: BoardSourceWriteBack,
 ): Promise<ProjectTaskRecord | ProjectTaskMoveError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
@@ -107,6 +119,7 @@ export const moveProjectTaskToColumn = async (
     select: {
       id: true,
       category: true,
+      stateBindings: true,
       board: {
         select: {
           id: true,
@@ -122,6 +135,20 @@ export const moveProjectTaskToColumn = async (
   if (needsTransition && !isProjectTaskTransitionValid(existing.status, target)) {
     return { error: 'INVALID_TRANSITION', from: existing.status }
   }
+  // The vendor is asked first, and only a success reaches the database — so a
+  // refused Jira transition snaps the drag back with a reason rather than
+  // leaving the board disagreeing with the ticket.
+  if (writeBack && needsTransition) {
+    const bindings = parseStateBindings(column.stateBindings)
+    const outcome = await writeBack.apply({
+      taskId: existing.id,
+      change: {},
+      category: statusToCategory(target) ?? undefined,
+      boundStateId: bindings[0]?.externalStateId ?? null,
+    })
+    if (outcome && 'error' in outcome) return outcome
+  }
+
   const shouldAutoAssignActor =
     target === 'in_progress' && !existing.assigneeUserId && !existing.assigneeAgentId
   const assignmentData = shouldAutoAssignActor
@@ -221,4 +248,14 @@ export const dropStalePlacements = async (
         : {}),
     },
   })
+}
+
+/**
+ * The external states a column binds. A bound column places items in those
+ * states and writes back the first one, which is what lets "Code review" and
+ * "QA" be two Review columns that mean different things upstream.
+ */
+export const parseStateBindings = (value: unknown): BoardColumnStateBinding[] => {
+  const parsed = BoardColumnStateBindingsSchema.safeParse(value)
+  return parsed.success ? parsed.data : []
 }
