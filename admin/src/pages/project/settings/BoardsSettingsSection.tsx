@@ -174,7 +174,7 @@ export const BoardsSettingsSection = ({
       {selected ? (
         <Section
           description="Each column maps to a lifecycle stage so agents and approvals keep working.
-            A board with no column for a stage simply does not show that work."
+            Work at a stage this board has no column for shows in the nearest one it has."
           title={`“${selected.name}” columns`}
         >
           {canAdminister ? (
