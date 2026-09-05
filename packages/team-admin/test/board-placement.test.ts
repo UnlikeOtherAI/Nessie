@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client'
 
 import {
   createBoard,
+  deleteBoard,
   listBoardTasks,
   listBoards,
   moveProjectTaskToColumn,
@@ -49,14 +50,32 @@ test('an unpinned task falls to the first column of its category', () => {
   assert.deepEqual(placement, { columnId: 'todo-1', position: null })
 })
 
-test('a board with no column for the category does not show the task', () => {
+// A board owns its tickets, so "this board has no Review column" can no longer
+// mean "this ticket is on no board" — the card would exist nowhere. It falls
+// back to the nearest stage the board does model, earlier first, so a board
+// never claims work is further along than it is.
+test('a category the board has no column for falls back to the nearest earlier one', () => {
   const reviewless = columns.filter((column) => column.category !== 'review')
   const placement = resolveBoardPlacement(
     { status: 'review', archivedAt: null },
     reviewless,
     undefined,
   )
-  assert.equal(placement, null)
+  assert.deepEqual(placement, { columnId: 'doing-1', position: null })
+})
+
+test('with no earlier stage on the board the fallback looks forward', () => {
+  const doneOnly = columns.filter((column) => column.category === 'done')
+  const placement = resolveBoardPlacement(
+    { status: 'inbox', archivedAt: null },
+    doneOnly,
+    undefined,
+  )
+  assert.deepEqual(placement, { columnId: 'done-1', position: null })
+})
+
+test('a board with no columns at all places nothing', () => {
+  assert.equal(resolveBoardPlacement({ status: 'inbox', archivedAt: null }, [], undefined), null)
 })
 
 test('archived work belongs to no column on any board', () => {
@@ -110,7 +129,7 @@ const cleanup = async (prisma: PrismaClient, seeded: Seed): Promise<void> => {
   await prisma.user.deleteMany({ where: { id: seeded.userId } })
 }
 
-runDatabaseTest('two boards over one task pool remember their own placements', async () => {
+runDatabaseTest('a board shows only its own tickets', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
   try {
@@ -122,11 +141,55 @@ runDatabaseTest('two boards over one task pool remember their own placements', a
     const second = await createBoard(prisma, project, { name: 'Second' })
     assert.ok('columns' in second)
 
-    const firstTodo = defaultBoard.columns.find((column) => column.category === 'todo')
-    const secondDoing = second.columns.find((column) => column.category === 'in_progress')
-    assert.ok(firstTodo && secondDoing)
+    // The seeded task has no `boardId`, which is what every writer that knows
+    // nothing about boards produces — so it belongs to the default board.
+    const onDefault = await listBoardTasks(prisma, defaultBoard, { limit: 50 })
+    assert.deepEqual(
+      onDefault.tasks.map((task) => task.id),
+      [seeded.taskId],
+    )
+    assert.deepEqual((await listBoardTasks(prisma, second, { limit: 50 })).tasks, [])
 
-    // Move on the second board only.
+    // A ticket made on the second board is on the second board and nowhere
+    // else. This is the whole point of the change: before it, both boards drew
+    // both cards.
+    const own = await prisma.task.create({
+      data: {
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        boardId: second.id,
+        status: 'inbox',
+        title: 'Second-board work',
+      },
+    })
+    assert.deepEqual(
+      (await listBoardTasks(prisma, second, { limit: 50 })).tasks.map((task) => task.id),
+      [own.id],
+    )
+    assert.deepEqual(
+      (await listBoardTasks(prisma, defaultBoard, { limit: 50 })).tasks.map((task) => task.id),
+      [seeded.taskId],
+    )
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('dropping a ticket on another board’s column moves it there', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const project = { id: seeded.projectId, organizationId: seeded.organizationId }
+    const [defaultBoard] = await listBoards(prisma, project)
+    assert.ok(defaultBoard)
+    const second = await createBoard(prisma, project, { name: 'Second' })
+    assert.ok('columns' in second)
+    const secondDoing = second.columns.find((column) => column.category === 'in_progress')
+    assert.ok(secondDoing)
+
+    // A column names its board, so this is how a ticket changes boards — the
+    // personal assistant's `ticket_move` takes any columnId.
     const moved = await moveProjectTaskToColumn(prisma, {
       taskId: seeded.taskId,
       organizationId: seeded.organizationId,
@@ -138,13 +201,43 @@ runDatabaseTest('two boards over one task pool remember their own placements', a
 
     const onSecond = await listBoardTasks(prisma, second, { limit: 50 })
     assert.equal(onSecond.tasks[0]?.columnId, secondDoing.id)
+    // It left the default board rather than being drawn on both.
+    assert.deepEqual((await listBoardTasks(prisma, defaultBoard, { limit: 50 })).tasks, [])
+    assert.equal(
+      await prisma.taskBoardPlacement.count({
+        where: { taskId: seeded.taskId, boardId: defaultBoard.id },
+      }),
+      0,
+    )
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
 
-    // The first board has no placement of its own, so it shows the task
-    // wherever the (now `in_progress`) status says — not in its To do column.
-    const onFirst = await listBoardTasks(prisma, defaultBoard, { limit: 50 })
-    const firstDoing = defaultBoard.columns.find((column) => column.category === 'in_progress')
-    assert.equal(onFirst.tasks[0]?.columnId, firstDoing?.id)
-    assert.notEqual(onFirst.tasks[0]?.columnId, firstTodo.id)
+runDatabaseTest('deleting a board returns its tickets to the default board', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const project = { id: seeded.projectId, organizationId: seeded.organizationId }
+    const [defaultBoard] = await listBoards(prisma, project)
+    assert.ok(defaultBoard)
+    const second = await createBoard(prisma, project, { name: 'Second' })
+    assert.ok('columns' in second)
+    await prisma.task.update({
+      where: { id: seeded.taskId },
+      data: { boardId: second.id },
+    })
+
+    const deleted = await deleteBoard(prisma, seeded.projectId, second.id)
+    assert.ok(!('error' in deleted), JSON.stringify(deleted))
+
+    // ON DELETE SET NULL, never CASCADE: deleting a board has never deleted
+    // work, and its tickets land back where the project opens.
+    assert.deepEqual(
+      (await listBoardTasks(prisma, defaultBoard, { limit: 50 })).tasks.map((task) => task.id),
+      [seeded.taskId],
+    )
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()

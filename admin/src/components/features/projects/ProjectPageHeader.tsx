@@ -9,6 +9,10 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 type ProjectPageHeaderProps = {
   actions?: PageHeaderAction[]
   project: ProjectRecord | undefined
+  // What of the project is on screen — the board's name, when the project has
+  // more than one. The sidebar is where a board is chosen; this is how the
+  // screen says which choice it is showing.
+  subtitle?: ReactNode
   // A project is a Tab host: its section strip rides in the header's tabs
   // slot rather than in a bar beneath it.
   tabs?: ReactNode
@@ -22,6 +26,7 @@ type ProjectPageHeaderProps = {
 export const ProjectPageHeader = ({
   actions = [],
   project,
+  subtitle,
   tabs,
 }: ProjectPageHeaderProps) => {
   const isOwner = useIsOwner()
@@ -43,6 +48,7 @@ export const ProjectPageHeader = ({
     <>
       <ScreenHeader
         actions={projectActions}
+        subtitle={subtitle}
         tabs={tabs}
         title={project?.name ?? 'Project'}
       />

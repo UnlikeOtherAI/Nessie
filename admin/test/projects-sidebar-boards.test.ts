@@ -34,18 +34,32 @@ test('expanded project state removes deleted projects before persisting', () => 
 
 test('every open/closed state of the Projects menu is written to a store that outlives the tab', () => {
   // Two id sets of its own — which projects have their sections open, and which
-  // have the boards inside Board open — plus the two section headers, which go
-  // through the shared cookie-backed helper and the shell's starredCollapsed.
+  // have the boards inside Board *closed* — plus the two section headers, which
+  // go through the shared cookie-backed helper and the shell's starredCollapsed.
   assert.match(sidebar, /EXPANDED_PROJECT_IDS_COOKIE = 'projectsNavExpandedIds'/)
-  assert.match(sidebar, /EXPANDED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavExpandedBoardIds'/)
+  assert.match(sidebar, /COLLAPSED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavCollapsedBoardIds'/)
   assert.match(sidebar, /useCookieBackedSidebarSections\(/)
-  for (const cookie of ['EXPANDED_PROJECT_IDS_COOKIE', 'EXPANDED_BOARD_PROJECT_IDS_COOKIE']) {
+  for (const cookie of ['EXPANDED_PROJECT_IDS_COOKIE', 'COLLAPSED_BOARD_PROJECT_IDS_COOKIE']) {
     assert.match(sidebar, new RegExp(`getCookie\\(${cookie}\\)`), `${cookie} is read at mount`)
     assert.match(sidebar, new RegExp(`setCookie\\(\\s*${cookie}`), `${cookie} is written on change`)
   }
   // Both sets are pruned against the live project list, so neither store grows
   // without bound as projects come and go.
   assert.equal((sidebar.match(/retainExpandedProjectIds\(current, projects\)/g) ?? []).length, 2)
+})
+
+// On every layout that pins this sidebar the project header carries no board
+// strip, so this list is the only doorway to a board that is not the project's
+// default: it has to be open unless the reader closed it (AGENTS.md → "Rule
+// zero"). The single column, which has no pinned sidebar, keeps the strip.
+test('the boards under Board are open until the reader closes them', () => {
+  assert.match(sidebar, /boardsExpanded=\{!collapsedBoardProjectIds\.has\(project\.id\)\}/)
+})
+
+test('the header board strip is the single column’s doorway and nowhere else', () => {
+  const view = source('pages/project/ProjectView.tsx')
+  assert.match(view, /const singleColumn = usePhoneLayout\(\)/)
+  assert.match(view, /tab === 'board' && singleColumn \? \(\s*<BoardSwitcher/)
 })
 
 test('the Board section lists the project boards and creates one through a dialog', () => {

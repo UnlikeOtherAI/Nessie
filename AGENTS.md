@@ -271,13 +271,17 @@ when one changes, the same turn updates it, not this section.
   press is claimed once by a conditional UPDATE and writes a real user message.
   Read [`docs/standards/agent-cards.md`](docs/standards/agent-cards.md)
   before writing code here.
-- **Project boards are views, never containers.** A project has many
-  `Board`s over one task pool; `Task.status` stays the single lifecycle truth
-  and a board placement is a `TaskBoardPlacement` pin over it that is ignored
-  once its column's category no longer matches. Placement is resolved
-  server-side by `resolveBoardPlacement` (`@nessie/team-admin`) — never in the
-  client — and board/column/field/source administration is gated by
-  `canAdministerProject`, not organisation ownership.
+- **A board owns its tickets and its columns.** A project has many `Board`s,
+  and `Task.boardId` says which one a ticket is on — `null` meaning the
+  project's default board, which is where every writer that knows nothing about
+  boards (agent runs, triggers, inbound mail, source sync) lands. One board's
+  work never appears on another; `boardTaskPoolWhere` is the only place that
+  decides. `Task.status` stays the single lifecycle truth and a board placement
+  is a `TaskBoardPlacement` pin over it that is ignored once its column's
+  category no longer matches. Placement is resolved server-side by
+  `resolveBoardPlacement` (`@nessie/team-admin`) — never in the client — and
+  board/column/field/source administration is gated by `canAdministerProject`,
+  not organisation ownership.
   Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
   before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call

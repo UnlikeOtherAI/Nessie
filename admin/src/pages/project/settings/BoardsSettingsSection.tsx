@@ -100,8 +100,8 @@ export const BoardsSettingsSection = ({
   return (
     <>
       <Section
-        description="A board is a saved way of looking at this project's work. Every board sees
-          the same tasks; deleting one deletes no work."
+        description="Each board keeps its own tickets and its own columns. Deleting one
+          deletes no work — its tickets return to the project's default board."
         title="Boards"
       >
         <div className="grid gap-1">
@@ -174,7 +174,7 @@ export const BoardsSettingsSection = ({
       {selected ? (
         <Section
           description="Each column maps to a lifecycle stage so agents and approvals keep working.
-            A board with no column for a stage simply does not show that work."
+            Work at a stage this board has no column for shows in the nearest one it has."
           title={`“${selected.name}” columns`}
         >
           {canAdminister ? (

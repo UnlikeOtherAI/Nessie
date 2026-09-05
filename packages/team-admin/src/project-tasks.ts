@@ -4,6 +4,7 @@ import { isAgentAccessibleToActor } from './access-checks.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { dropStalePlacements } from './project-task-move.js'
+import { boardTaskPoolWhere } from './board-placement.js'
 import {
   resolveOutboundAssignee,
   type BoardSourceWriteBack,
@@ -118,6 +119,8 @@ export type CreateProjectTaskInput = {
   purpose?: string
   detail?: string
   projectId?: string
+  /** The board the task is created on; absent ⇒ the project's default board. */
+  boardId?: string
   iterationId?: string
   storyPoints?: number
   priority?: TaskPriority
@@ -129,7 +132,7 @@ export type CreateProjectTaskInput = {
 }
 
 export type ProjectTaskCreateError = {
-  error: 'ASSIGNEE_NOT_MEMBER' | 'ASSIGNEE_AGENT_NOT_FOUND' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' | 'ITERATION_NOT_FOUND'
+  error: 'ASSIGNEE_NOT_MEMBER' | 'ASSIGNEE_AGENT_NOT_FOUND' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' | 'ITERATION_NOT_FOUND' | 'BOARD_NOT_FOUND'
 }
 
 export const createProjectTask = async (
@@ -146,6 +149,16 @@ export const createProjectTask = async (
     })
     if (!input.projectId || !iteration) return { error: 'ITERATION_NOT_FOUND' }
   }
+  // A board id names the board the card lands on, and a board belongs to one
+  // project — so a board from another project is a refusal, not a cross-project
+  // create.
+  if (input.boardId) {
+    const board = await prisma.board.findFirst({
+      where: { id: input.boardId, projectId: input.projectId ?? undefined },
+      select: { id: true },
+    })
+    if (!input.projectId || !board) return { error: 'BOARD_NOT_FOUND' }
+  }
   if (input.assigneeUserId && !(await isOrganizationMember(prisma, input.organizationId, input.assigneeUserId))) return { error: 'ASSIGNEE_NOT_MEMBER' }
   if (input.assigneeAgentId && !(await isAgentAccessibleToActor(prisma, input.actorContext, input.assigneeAgentId))) return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   if (input.ownerUserId && !(await isOrganizationMember(prisma, input.organizationId, input.ownerUserId))) return { error: 'OWNER_NOT_MEMBER' }
@@ -154,6 +167,7 @@ export const createProjectTask = async (
     const created = await tx.task.create({
       data: {
         organizationId: input.organizationId, projectId: input.projectId ?? null,
+        boardId: input.boardId ?? null,
         iterationId: input.iterationId ?? null, storyPoints: input.storyPoints ?? null,
         priority: input.priority ?? 'medium', dueDate: input.dueDate ?? null,
         createdByUserId: input.createdByUserId, title: input.title,
@@ -426,17 +440,40 @@ export const setProjectTaskIteration = async (
   }))
 }
 
-/** Archives only a single project, never an organisation-wide implicit set. */
+/**
+ * Tuck completed work behind the Archived toggle. One explicit project, never
+ * an organisation-wide implicit set.
+ *
+ * `boardId` narrows further, to one board's own tickets — the Archive control
+ * lives on a board's Done column, and a board owns its tickets, so a click
+ * there must not reach another board's completed work. Omitted, it archives
+ * the whole project, which is what the personal assistant's
+ * `ticket_archive_done` asks for by naming a project and no board.
+ */
 export const archiveProjectDoneTasks = async (
   prisma: PrismaClient,
-  input: { organizationId: string; projectId: string; olderThanDays?: number | null },
-): Promise<{ count: number }> => {
+  input: {
+    organizationId: string
+    projectId: string
+    boardId?: string | null
+    olderThanDays?: number | null
+  },
+): Promise<{ count: number } | { error: 'BOARD_NOT_FOUND' }> => {
+  let pool: Prisma.TaskWhereInput = {}
+  if (input.boardId) {
+    const board = await prisma.board.findFirst({
+      where: { id: input.boardId, projectId: input.projectId },
+      select: { id: true, isDefault: true },
+    })
+    if (!board) return { error: 'BOARD_NOT_FOUND' }
+    pool = boardTaskPoolWhere(board)
+  }
   const now = new Date()
   const cutoff = input.olderThanDays && input.olderThanDays > 0
     ? new Date(now.getTime() - input.olderThanDays * 86_400_000)
     : null
   const { count } = await prisma.task.updateMany({
-    where: { organizationId: input.organizationId, projectId: input.projectId, status: 'done', archivedAt: null, ...(cutoff ? { updatedAt: { lt: cutoff } } : {}) },
+    where: { organizationId: input.organizationId, projectId: input.projectId, status: 'done', archivedAt: null, ...pool, ...(cutoff ? { updatedAt: { lt: cutoff } } : {}) },
     data: { archivedAt: now },
   })
   return { count }

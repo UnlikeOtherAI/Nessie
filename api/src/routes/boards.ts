@@ -30,10 +30,11 @@ import type { RouteDeps } from './types.js'
 /**
  * Boards, their columns, and the placed task list a board renders.
  *
- * Replaces the single-board `board.ts`: a project now has many boards, each a
- * saved view over the one task pool. Reads are entitlement-gated on project
- * access; writes need project administration (organisation owner, or the
- * project's own owner/admin) rather than organisation ownership.
+ * Replaces the single-board `board.ts`: a project now has many boards, each
+ * owning its own tickets (`Task.boardId`) and its own columns. Reads are
+ * entitlement-gated on project access; writes need project administration
+ * (organisation owner, or the project's own owner/admin) rather than
+ * organisation ownership.
  */
 export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } = deps

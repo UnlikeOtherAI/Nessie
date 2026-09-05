@@ -19,10 +19,10 @@ type BoardCreateDialogProps = {
 const DEFAULT_COLUMNS = 'defaults'
 
 /**
- * A new board over the same task pool. Starting from another board's columns
- * is the common case — a second board is usually a variation on the first, and
- * retyping four columns to get there is the kind of friction that stops people
- * making the board they wanted.
+ * A new board, with its own tickets and its own columns. Starting from another
+ * board's columns is the common case — a second board is usually a variation on
+ * the first, and retyping four columns to get there is the kind of friction
+ * that stops people making the board they wanted.
  */
 export const BoardCreateDialog = ({
   boards,
@@ -70,7 +70,7 @@ export const BoardCreateDialog = ({
 
   return (
     <Dialog
-      description="A board is a way of looking at this project's work — not a copy of it."
+      description="A board of its own: its own columns, and only the tickets put on it."
       onClose={close}
       open={open}
       title="New board"

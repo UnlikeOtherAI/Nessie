@@ -51,8 +51,10 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
   const { data: tasks, isError, isPending } = useTasks(projectId)
 
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
-  // Scoped exactly like ProjectBoardTab, so the chips count what the board button
-  // opens.
+  // The whole project's work, not one board's: this card sits on the project
+  // Overview and offers a link per board underneath, so a count that silently
+  // meant "the default board" would answer a question nobody asked. The scrum
+  // narrowing stays, because an iteration is a project-level time box.
   const scoped = scopeTasksToBoard(tasks ?? [], {
     activeIterationId: activeIteration?.id ?? null,
     isScrum: Boolean(isScrum),
