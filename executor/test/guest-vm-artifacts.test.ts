@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, chown, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, chown, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -18,7 +18,12 @@ import { verifyPrivateGuestVmFile } from '../src/guest-vm-artifacts.js'
  */
 const asRoot = process.getuid?.() === 0
 
-const stage = async (): Promise<string> => mkdtemp(join(tmpdir(), 'nessie-artifacts-'))
+/**
+ * The staging root is canonical because {@link verifyPrivateGuestVmFile} returns
+ * the canonical path: on macOS both `/tmp` and `/var/folders` are symbolic links
+ * into `/private`, so a raw `mkdtemp` path would never equal what it hands back.
+ */
+const stage = async (): Promise<string> => realpath(await mkdtemp(join(tmpdir(), 'nessie-artifacts-')))
 
 test('an owner-private artifact is accepted, and a shared one is not', async () => {
   const root = await stage()
@@ -39,6 +44,16 @@ test('an owner-private artifact is accepted, and a shared one is not', async () 
     await assert.rejects(verifyPrivateGuestVmFile(link, true), /ordinary file/)
 
     await assert.rejects(verifyPrivateGuestVmFile('relative/path', false), /must be absolute/)
+
+    // What comes back is the canonical path, never the one that was handed in:
+    // a symbolic link in a parent directory is resolved away, so the caller
+    // that stores or spawns the result cannot be pointed at an alias later.
+    const directory = join(root, 'artifacts')
+    await mkdir(directory, { mode: 0o700 })
+    const nested = join(directory, 'build-initrd')
+    await writeFile(nested, '#!/bin/sh\n', { mode: 0o700 })
+    await symlink(directory, join(root, 'alias'))
+    assert.equal(await verifyPrivateGuestVmFile(join(root, 'alias', 'build-initrd'), true), nested)
   } finally {
     await rm(root, { force: true, recursive: true })
   }
