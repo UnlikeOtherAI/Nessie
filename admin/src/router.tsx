@@ -9,6 +9,7 @@ import { SearchPage } from './pages/SearchPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentMailboxPage } from './pages/AgentMailboxPage'
+import { ConnectedMailPage } from './pages/ConnectedMailPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ExecutorsPage } from './pages/ExecutorsPage'
@@ -269,6 +270,10 @@ export const router = createBrowserRouter([
         path: '/agents/:agentId/mailbox',
         element: <AgentMailboxPage />,
       },
+      { path: '/mail', element: <ConnectedMailPage /> },
+      { path: '/mail/:source/:accountId', element: <ConnectedMailPage /> },
+      { path: '/mail/:source/:accountId/threads/:threadId', element: <ConnectedMailPage /> },
+      { path: '/mail/:source/:accountId/compose', element: <ConnectedMailPage /> },
       {
         // Dynamic agent id last: static siblings above outrank it in the
         // router's ranking, so `/agents/triggers` etc. still resolve to their

@@ -29,6 +29,10 @@ export const AGENT_CARD_MAX_BLOCKS = 12
 export const AGENT_CARD_MAX_ACTIONS = 4
 export const AGENT_CARD_MAX_FIELDS = 12
 export const AGENT_CARD_MAX_OPTIONS = 20
+/** The normal input limit; a textarea must opt into a larger bounded value. */
+export const AGENT_CARD_DEFAULT_INPUT_MAX_CHARS = 500
+/** Email-sized text is allowed only when the card declares its own bound. */
+export const AGENT_CARD_MAX_INPUT_CHARS = 100_000
 /** 60 seconds … 30 days. Below a minute nobody can answer; beyond a month is not a card. */
 export const AGENT_CARD_MIN_EXPIRY_SECONDS = 60
 export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
@@ -42,11 +46,64 @@ export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
  * `connector_credential` configures an installed app. A
  * `dashboard_source_credential` configures the HTTPS source the Dashboard
  * Designer just created. Both are Prisma-backed operations which commit with
- * the press. A vault destination is an external HTTP call that cannot join
- * that transaction, and no agent can read a vault value today.
+ * the press.
+ *
+ * `vault_secret` is the general destination: the person's own Secrets, for a
+ * credential that belongs to them rather than to one connector. It is the
+ * only one whose write is an external HTTP call and so cannot join the press
+ * transaction — the vault write is performed first and rolled back if the
+ * press does not commit, exactly as `POST /api/secrets` does. The agent names
+ * the secret so the form arrives pre-filled; it can never read the value back,
+ * and `scopeType` beyond `personal` is refused for anyone but an owner.
  */
 export const AgentCardSecretDestinationSchema = z
   .union([
+    z
+      .object({
+        kind: z.literal('vault_secret'),
+        /**
+         * The environment-variable-style name the form arrives pre-filled
+         * with. Same grammar as `POST /api/secrets`, so a card cannot create a
+         * secret the Secrets screen would have refused.
+         */
+        name: z
+          .string()
+          .trim()
+          .min(1)
+          .max(120)
+          .regex(/^[A-Z][A-Z0-9_]*$/, 'Use an environment-variable-style name.'),
+        description: z.string().trim().max(1_000).optional(),
+        provider: z.string().trim().max(120).optional(),
+        scopeType: z.enum(['personal', 'team', 'project', 'organization']).default('personal'),
+        scopeId: z.string().uuid().optional(),
+        /**
+         * A message in this card's own thread whose stored text still carries
+         * the credential — the "take it back out of the context" half.
+         *
+         * This is what a model-spotted secret needs and the scanner cannot
+         * give: an agent that recognises an in-house token format the patterns
+         * will never match points at the message, and the press rewrites it.
+         * The agent supplies only the id. The replacement text is computed by
+         * the server from the value the person actually typed, so an agent can
+         * neither choose the new wording nor edit a message by this route.
+         */
+        redactMessageId: z.string().uuid().optional(),
+      })
+      .strict()
+      .superRefine((destination, ctx) => {
+        // Without this the card renders, the person types their credential, and
+        // only then does the press refuse for a scope that could never resolve.
+        if (
+          (destination.scopeType === 'team' || destination.scopeType === 'project')
+          && !destination.scopeId
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A team or project secret needs scopeId.',
+            path: ['scopeId'],
+          })
+        }
+      }),
     z
       .object({
         kind: z.literal('connector_credential'),
@@ -141,6 +198,7 @@ const InputBlockSchema = z
     key: AgentCardKeySchema,
     label: z.string().trim().min(1).max(80),
     input: AgentCardInputKindSchema,
+    maxLength: z.number().int().min(1).max(AGENT_CARD_MAX_INPUT_CHARS).optional(),
     required: z.boolean().optional(),
     placeholder: z.string().trim().max(120).optional(),
     options: z
@@ -155,7 +213,7 @@ const InputBlockSchema = z
       .min(1)
       .max(AGENT_CARD_MAX_OPTIONS)
       .optional(),
-    default: z.union([z.string().max(500), z.number(), z.boolean()]).optional(),
+    default: z.union([z.string().max(AGENT_CARD_MAX_INPUT_CHARS), z.number(), z.boolean()]).optional(),
   })
   .strict()
   .superRefine((block, ctx) => {
@@ -169,6 +227,21 @@ const InputBlockSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `Input "${block.key}" only takes options when it is a select.`,
+      })
+    }
+    if (block.maxLength !== undefined && block.input !== 'text' && block.input !== 'textarea') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Input "${block.key}" only takes maxLength when it is text or textarea.`,
+      })
+    }
+    if (
+      typeof block.default === 'string'
+      && block.default.length > (block.maxLength ?? AGENT_CARD_DEFAULT_INPUT_MAX_CHARS)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Input "${block.key}" has a default longer than its maxLength.`,
       })
     }
   })

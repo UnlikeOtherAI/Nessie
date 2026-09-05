@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
+import { redactDetectedSecrets } from '@nessie/schemas'
 import { redactToolInputValue } from '../tool-util.js'
 
 const DEMONSTRATION_CONTROL_TOOLS = new Set([
@@ -15,10 +16,17 @@ const demonstrationMaxSteps = (): number => {
     : DEFAULT_DEMONSTRATION_MAX_STEPS
 }
 
+/**
+ * `redactToolInputValue` only knows key names, so a credential sitting under an
+ * ordinary key — `{ body: 'api_key=…' }`, `{ url: '…?token=…' }` — reached
+ * `agent_demonstration_steps.arguments_json` verbatim and stayed there.
+ * `summarizeToolInput` already runs both passes; this is the durable sink and
+ * needs the same pair.
+ */
 const toRedactedJson = (argumentsValue: Record<string, unknown>): string => {
   const serialized = JSON.stringify(redactToolInputValue(argumentsValue))
   if (serialized === undefined) throw new Error('Tool arguments could not be serialized.')
-  return serialized
+  return redactDetectedSecrets(serialized)
 }
 
 /**

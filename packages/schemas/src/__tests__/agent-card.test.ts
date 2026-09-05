@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   AgentCardSpecSchema,
   CardPostToolInputSchema,
+  AGENT_CARD_MAX_INPUT_CHARS,
   AGENT_CARD_MAX_EXPIRY_SECONDS,
   isAgentCardResponseMessage,
 } from '../agent-card.js'
@@ -136,6 +137,51 @@ test('a select needs options and a non-select refuses them', () => {
   )
 })
 
+test('large input values require a per-card textarea bound', () => {
+  const longDefault = 'x'.repeat(10_000)
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        default: longDefault,
+        input: 'textarea',
+        key: 'body',
+        label: 'Message',
+        maxLength: AGENT_CARD_MAX_INPUT_CHARS,
+        type: 'input',
+      }],
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        input: 'textarea',
+        key: 'body',
+        label: 'Message',
+        maxLength: AGENT_CARD_MAX_INPUT_CHARS + 1,
+        type: 'input',
+      }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        input: 'select',
+        key: 'choice',
+        label: 'Choice',
+        maxLength: 1_000,
+        options: [{ label: 'One', value: 'one' }],
+        type: 'input',
+      }],
+    }).success,
+    false,
+  )
+})
+
 test('a card link must be https — never a plain-http beacon', () => {
   assert.equal(
     AgentCardSpecSchema.safeParse({
@@ -222,4 +268,61 @@ test('a card-press message is recognised structurally, and nothing else is', () 
   // Forged shapes are not presses: the key must carry a real card pointer.
   assert.equal(isAgentCardResponseMessage({ agentCardResponse: { cardId: 'nope' } }), false)
   assert.equal(isAgentCardResponseMessage({ agentCardResponse: true }), false)
+})
+
+test('a vault secret block carries the pre-filled name and defaults to personal scope', () => {
+  const parsed = AgentCardSpecSchema.safeParse({
+    ...baseSpec,
+    blocks: [{
+      destination: { kind: 'vault_secret', name: 'STRIPE_API_KEY' },
+      key: 'api_key',
+      label: 'Stripe API key',
+      type: 'secret',
+    }],
+  })
+
+  assert.equal(parsed.success, true)
+  const destination = parsed.success && parsed.data.blocks[0]?.type === 'secret'
+    ? parsed.data.blocks[0].destination
+    : null
+  assert.equal(destination?.kind, 'vault_secret')
+  assert.equal(destination?.kind === 'vault_secret' && destination.name, 'STRIPE_API_KEY')
+  // Nothing wider than the presser's own scope unless the card asks for it.
+  assert.equal(destination?.kind === 'vault_secret' && destination.scopeType, 'personal')
+})
+
+test('a vault secret name must survive the Secrets screen it will appear on', () => {
+  for (const name of ['lowercase', '9LEADING_DIGIT', 'HAS SPACE', '']) {
+    const parsed = AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{
+        destination: { kind: 'vault_secret', name },
+        key: 'api_key',
+        label: 'API key',
+        type: 'secret',
+      }],
+    })
+    assert.equal(parsed.success, false, name)
+  }
+})
+
+test('an agent names the message to scrub but never the text that replaces it', () => {
+  const parsed = AgentCardSpecSchema.safeParse({
+    ...baseSpec,
+    blocks: [{
+      destination: {
+        kind: 'vault_secret',
+        name: 'STRIPE_API_KEY',
+        redactMessageId: '3f8a1c2e-9b7d-4e6f-a1b2-c3d4e5f6a7b8',
+        replacementContent: 'anything',
+      },
+      key: 'api_key',
+      label: 'API key',
+      type: 'secret',
+    }],
+  })
+
+  // `.strict()` is what keeps the replacement server-computed: an agent that
+  // tries to supply the new wording is refused outright.
+  assert.equal(parsed.success, false)
 })

@@ -52,6 +52,8 @@ export * from './call-realtime.js'
 export * from './call-start.js'
 export * from './comms-connection-management.js'
 export * from './comms-credential-coordinator.js'
+export * from './connected-mail.js'
+export * from './mailbox-send-actions.js'
 export * from './ledger-agent-model-catalog.js'
 export * from './policy-check.js'
 export * from './project-structure.js'
@@ -115,6 +117,9 @@ export {
   readDraftForUser,
   sendDraftForUser,
   dispatchClaimedDraft,
+  resolveStaleGmailDispatches,
+  resolveStaleGmailDraftValidations,
+  resolveStaleGmailDraftUpdates,
   undoHeldSend,
   discardDraftForUser,
   attachDraftMessage,
@@ -174,3 +179,9 @@ export {
   type MailboxAccessErrorCode,
   type ReachableMailbox,
 } from './mailbox-connection-access.js'
+
+export {
+  ConnectedMailPresentationError,
+  resolveConnectedMailPresentationAccess,
+  type ConnectedMailPresentationAccess,
+} from './connected-mail-presentation.js'

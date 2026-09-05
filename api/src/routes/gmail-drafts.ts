@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import {
   GmailDraftError,
   discardDraftForUser,
@@ -14,6 +14,7 @@ import {
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { isOriginAllowed } from '../lib/server-origin-policy.js'
 import { emitAuditEvent } from '../services/audit.js'
 import type { RouteDeps } from './types.js'
 
@@ -27,6 +28,10 @@ import type { RouteDeps } from './types.js'
  */
 
 const UNDO_WINDOW_MS = Number(process.env.NESSIE_GMAIL_UNDO_WINDOW_MS ?? 15_000)
+
+/** Every draft route keys on a uuid; an unvalidated id reaches Prisma as P2023
+ *  and answers 500 where an unknown draft answers 404. */
+const DraftIdParamsSchema = z.object({ id: z.string().uuid() }).strict()
 
 const DraftUpdateSchema = z.object({
   to: z.array(z.string()).min(1).max(50),
@@ -73,11 +78,42 @@ const FromApprovalSchema = z.object({
   { message: 'Deciding for you needs a note saying what you are happy with.' },
 )
 
+const FrozenGmailApprovalSchema = z.object({
+  args: z.object({
+    connectionId: z.string().uuid(),
+    draftId: z.string().uuid(),
+    expectedFingerprint: z.string().min(1),
+    reviewed: z.object({
+      bcc: z.array(z.string()), body: z.string(), cc: z.array(z.string()),
+      subject: z.string(), to: z.array(z.string()),
+    }).strict(),
+  }).strict(),
+}).passthrough()
+
 const statusForDraftError = (code: GmailDraftError['code']): number => {
   if (code === 'DRAFT_NOT_FOUND') return 404
-  if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE') return 409
+  if (code === 'DRAFT_CHANGED' || code === 'DRAFT_NOT_SENDABLE' || code === 'DELIVERY_UNKNOWN') return 409
   if (code === 'PROVIDER_FAILED') return 502
   return 400
+}
+
+const requireDraftUndoRequest = (
+  request: FastifyRequest,
+  reply: Parameters<typeof sendApiError>[0],
+  deps: RouteDeps,
+): boolean => {
+  const origin = deps.parseHeaderValue(request.headers.origin)
+  if (!origin || !isOriginAllowed({
+    allowedOrigins: deps.allowedCorsOrigins, mode: deps.config.mode, origin,
+  })) {
+    sendApiError(reply, 403, 'ORIGIN_FORBIDDEN', 'A permitted browser origin is required')
+    return false
+  }
+  if (!deps.isJsonContentType(request)) {
+    sendApiError(reply, 415, 'UNSUPPORTED_MEDIA_TYPE', 'Expected application/json')
+    return false
+  }
+  return true
 }
 
 export const registerGmailDraftRoutes = (
@@ -95,11 +131,46 @@ export const registerGmailDraftRoutes = (
     throw error
   }
 
+  // ── GET /api/gmail/drafts/:id/status ──────────────────────────────────────
+  // This is intentionally separate from the content-bearing draft read. It
+  // lets a reloaded composer settle an already-created action even after Gmail
+  // has deleted its source draft, without asking for recipients or body.
+  app.get('/api/gmail/drafts/:id/status', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    // A non-uuid id would reach Prisma and raise P2023, answering 500 where an
+    // unknown draft answers 404 — enough to distinguish "malformed" from
+    // "not yours". Validate the shape so both collapse to DRAFT_NOT_FOUND.
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
+    const action = await prisma.gmailDraftAction.findFirst({
+      where: {
+        id,
+        organizationId: actorContext.tenant.organizationId,
+        ownerUserId: actorContext.actor.actorId,
+      },
+      select: { id: true, sendAfter: true, state: true },
+    })
+    if (!action) {
+      sendApiError(reply, 404, 'DRAFT_NOT_FOUND', 'Draft not found')
+      return reply
+    }
+    reply.header('Cache-Control', 'private, no-store')
+    return createApiResponse({
+      id: action.id,
+      sendAfter: action.sendAfter?.toISOString() ?? null,
+      state: action.state,
+    })
+  })
+
   // ── GET /api/gmail/drafts/:id ─────────────────────────────────────────────
   app.get('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     try {
       const draft = await readDraftForUser(
         prisma,
@@ -110,9 +181,11 @@ export const registerGmailDraftRoutes = (
         },
         draftDeps,
       )
+      reply.header('Cache-Control', 'private, no-store')
       return createApiResponse({
         id: draft.action.id,
         state: draft.action.state,
+        sendAfter: draft.action.sendAfter?.toISOString() ?? null,
         revision: draft.action.revision,
         contentFingerprint: draft.action.contentFingerprint,
         to: draft.to,
@@ -121,6 +194,8 @@ export const registerGmailDraftRoutes = (
         subject: draft.subject,
         body: draft.body,
         attachments: draft.attachments,
+        editable: draft.editable,
+        unsupportedReason: draft.unsupportedReason,
       })
     } catch (error) {
       return fail(reply, error)
@@ -131,7 +206,9 @@ export const registerGmailDraftRoutes = (
   app.patch('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const body = parseInput(DraftUpdateSchema, request.body, reply)
     if (!body) return reply
     try {
@@ -158,7 +235,9 @@ export const registerGmailDraftRoutes = (
   app.post('/api/gmail/drafts/:id/send', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const body = parseInput(SendSchema, request.body ?? {}, reply)
     if (!body) return reply
     try {
@@ -177,7 +256,7 @@ export const registerGmailDraftRoutes = (
       )
       await emitAuditEvent(prisma, {
         actorContext,
-        action: 'gmail.draft.sent',
+        action: result.status === 'held' ? 'gmail.draft.held' : 'gmail.draft.sent',
         resourceType: 'gmail_draft_action',
         resourceId: id,
         outcome: 'success',
@@ -196,13 +275,23 @@ export const registerGmailDraftRoutes = (
   // ── POST /api/gmail/drafts/:id/undo ───────────────────────────────────────
   app.post('/api/gmail/drafts/:id/undo', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    if (!actorContext || !requireDraftUndoRequest(request, reply, deps)) return reply
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     try {
       const action = await undoHeldSend(prisma, {
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         draftActionId: id,
+      })
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'gmail.draft.undone',
+        resourceType: 'gmail_draft_action',
+        resourceId: id,
+        outcome: 'success',
+        metadata: { status: action.state },
       })
       return createApiResponse({ id: action.id, state: action.state })
     } catch (error) {
@@ -214,7 +303,9 @@ export const registerGmailDraftRoutes = (
   app.delete('/api/gmail/drafts/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     try {
       const action = await discardDraftForUser(
         prisma,
@@ -308,47 +399,45 @@ export const registerGmailDraftRoutes = (
 
     const approval = await prisma.approvalRequest.findFirst({
       where: {
+        expiresAt: { gt: new Date() },
         id: body.approvalId,
         organizationId: actorContext.tenant.organizationId,
         // Only the person the gate is pinned to may turn it off.
         requiredApproverUserId: actorContext.actor.actorId,
+        status: 'pending',
+        toolName: 'gmail_draft_send',
       },
-      select: { agentId: true },
+      select: { agentId: true, resumeState: true },
     })
     if (!approval) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply
     }
 
-    // One active Google account is unambiguous; two are not, and a grant is per
-    // mailbox, so guessing would spend consent on the wrong one.
-    const connections = await prisma.commsConnection.findMany({
+    const frozen = FrozenGmailApprovalSchema.safeParse(approval.resumeState)
+    if (!frozen.success) {
+      sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This approval is not bound to a Gmail draft')
+      return reply
+    }
+    // The approved account is server-frozen with the exact preview. Never
+    // infer consent from another active connection in the same account.
+    const action = await prisma.gmailDraftAction.findFirst({
       where: {
+        connectionId: frozen.data.args.connectionId,
+        id: frozen.data.args.draftId,
         organizationId: actorContext.tenant.organizationId,
         ownerUserId: actorContext.actor.actorId,
-        provider: 'google',
-        status: 'active',
       },
-      select: { id: true },
-      take: 2,
+      select: { connectionId: true },
     })
-    const connectionId = connections.length === 1 ? connections[0]?.id : undefined
-    if (!connectionId) {
-      sendApiError(
-        reply,
-        409,
-        'AMBIGUOUS_ACCOUNT',
-        connections.length === 0
-          ? 'No connected Google account'
-          : 'You have more than one Google account connected — choose one in '
-            + 'Connected accounts.',
-      )
+    if (!action) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply
     }
 
     const grant = await grantSendAuthorization(prisma, {
       organizationId: actorContext.tenant.organizationId,
-      connectionId,
+      connectionId: action.connectionId,
       agentId: approval.agentId,
       grantedByUserId: actorContext.actor.actorId,
       duration: body.duration,
@@ -377,7 +466,9 @@ export const registerGmailDraftRoutes = (
   app.delete('/api/gmail/send-grants/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { id } = request.params as { id: string }
+    const params = parseInput(DraftIdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const { id } = params
     const revoked = await revokeSendAuthorization(prisma, {
       organizationId: actorContext.tenant.organizationId,
       grantId: id,

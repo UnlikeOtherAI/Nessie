@@ -1,5 +1,5 @@
-import { Prisma } from '@prisma/client'
-import { getGoogleCapability, parseChannelId, parseThreadId } from '@nessie/schemas'
+import { createHash } from 'node:crypto'
+import { getGoogleCapability } from '@nessie/schemas'
 import {
   getGmailMessage,
   getGmailThread,
@@ -10,18 +10,25 @@ import {
   composeDraftForUser,
   loadUserGoogleCommsCredential,
   updateDraftForUser,
+  type GmailDraftActionRecord,
 } from '@nessie/team-admin'
 import { safeFetch } from '@nessie/runtime'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { buildRealtimeScopesForChannel } from './message-destination.js'
+import { createAgentMessage } from '../execute/agent-message.js'
+import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
+import { publishMessageCreated } from '../execute/realtime.js'
 import {
   explainGoogleFailure,
   recordGoogleRead,
   resolveGoogleActingUserId,
 } from './google-access.js'
 import { serializeMailboxResult } from './mailbox-overflow.js'
+import {
+  appendMailPresentationReferences,
+  mailPresentationReference,
+} from './mail-presentation-reference.js'
 
 /**
  * Gmail tools. Reads go live to Gmail rather than the `CommsEvent` store: the
@@ -35,6 +42,8 @@ const gmailFetch = async (
 ) => {
   const response = await safeFetch(url, init ?? {})
   return {
+    body: response.body,
+    headers: response.headers,
     ok: response.ok,
     status: response.status,
     json: () => response.json(),
@@ -56,18 +65,50 @@ const SearchSchema = z.object({
 const ThreadSchema = z.object({ threadId: z.string().min(1) }).strict()
 const MessageSchema = z.object({ messageId: z.string().min(1) }).strict()
 
-const DraftSchema = z.object({
+const GmailDraftCreateBaseSchema = z.object({
   to: z.array(z.string()).min(1).max(50),
   cc: z.array(z.string()).max(50).optional(),
   bcc: z.array(z.string()).max(50).optional(),
   subject: z.string().max(500),
   body: z.string().max(100_000),
   replyToThreadId: z.string().optional(),
+  replyToMessageId: z.string().min(1).max(1_000).optional(),
 }).strict()
 
-const DraftUpdateSchema = DraftSchema.omit({ replyToThreadId: true }).extend({
+export const GmailDraftCreateSchema = GmailDraftCreateBaseSchema.refine(
+  (input) => Boolean(input.replyToThreadId) === Boolean(input.replyToMessageId),
+  'A Gmail reply needs both its thread and RFC Message-ID.',
+)
+
+const DraftUpdateSchema = GmailDraftCreateBaseSchema.omit({ replyToMessageId: true, replyToThreadId: true }).extend({
   draftId: z.string().uuid(),
 }).strict()
+
+export const gmailReplyMessage = (args: z.infer<typeof GmailDraftCreateSchema>) => ({
+  to: args.to,
+  ...(args.cc ? { cc: args.cc } : {}),
+  ...(args.bcc ? { bcc: args.bcc } : {}),
+  subject: args.subject,
+  body: args.body,
+  ...(args.replyToMessageId
+    ? { inReplyTo: args.replyToMessageId, references: [args.replyToMessageId] }
+    : {}),
+})
+
+/**
+ * A provider draft is an external side effect. Replaying a durable run must
+ * name the same action, even after Gmail accepted the create while the worker
+ * died before persisting its returned draft id.
+ */
+export const gmailDraftCreateIdempotencyKey = (
+  context: Pick<BuiltinToolRuntimeContext, 'run' | 'toolCallId'>,
+  args: Record<string, unknown>,
+): string => {
+  if (context.toolCallId) return `gmail-draft:${context.run.id}:${context.toolCallId}`
+  const deterministicInput = JSON.stringify(args, Object.keys(args).sort())
+  const digest = createHash('sha256').update(deterministicInput).digest('hex')
+  return `gmail-draft:${context.run.id}:recovered:${digest}`
+}
 
 /** Load a scope-checked, refreshed credential, or refuse in words. */
 const credentialFor = async (
@@ -112,14 +153,21 @@ export const runGmailSearchTool = async (
       ...(args.maxResults ? { maxResults: args.maxResults } : {}),
     },
   )
+  const outputPreview = serializeMailboxResult(threads, {
+    what: 'search result',
+    delegateTask: `Search the mailbox for ${args.query ?? 'recent mail'} and `
+      + 'report back what matters: who, what they want, and anything needing '
+      + 'a reply. Do not quote messages in full.',
+  })
   return {
     inputSummary: `query=${args.query ?? '(recent)'}`,
-    outputPreview: serializeMailboxResult(threads, {
-      what: 'search result',
-      delegateTask: `Search the mailbox for ${args.query ?? 'recent mail'} and `
-        + 'report back what matters: who, what they want, and anything needing '
-        + 'a reply. Do not quote messages in full.',
-    }),
+    outputPreview: appendMailPresentationReferences(outputPreview, threads.map((thread) =>
+      mailPresentationReference({
+        accountId: credential.id,
+        mode: 'thread',
+        source: 'gmail',
+        threadId: thread.threadId,
+      }))),
     toolName: 'gmail_search',
   }
 }
@@ -137,14 +185,22 @@ export const runGmailThreadReadTool = async (
     credential.credential.accessToken,
     args.threadId,
   )
+  const outputPreview = serializeMailboxResult(messages, {
+    what: 'thread',
+    delegateTask: `Read Gmail thread ${args.threadId} with gmail_thread_read `
+      + 'and summarise the exchange: who said what, what was decided, and what '
+      + 'is still open.',
+  })
   return {
     inputSummary: `threadId=${args.threadId}`,
-    outputPreview: serializeMailboxResult(messages, {
-      what: 'thread',
-      delegateTask: `Read Gmail thread ${args.threadId} with gmail_thread_read `
-        + 'and summarise the exchange: who said what, what was decided, and what '
-        + 'is still open.',
-    }),
+    outputPreview: appendMailPresentationReferences(outputPreview, [
+      mailPresentationReference({
+        accountId: credential.id,
+        mode: 'thread',
+        source: 'gmail',
+        threadId: args.threadId,
+      }),
+    ]),
     toolName: 'gmail_thread_read',
   }
 }
@@ -162,69 +218,65 @@ export const runGmailMessageReadTool = async (
     credential.credential.accessToken,
     args.messageId,
   )
+  const outputPreview = serializeMailboxResult(message, {
+    what: 'message',
+    delegateTask: `Read Gmail message ${args.messageId} with `
+      + 'gmail_message_read and summarise what it says and what it asks for.',
+  })
   return {
     inputSummary: `messageId=${args.messageId}`,
-    outputPreview: serializeMailboxResult(message, {
-      what: 'message',
-      delegateTask: `Read Gmail message ${args.messageId} with `
-        + 'gmail_message_read and summarise what it says and what it asks for.',
-    }),
+    outputPreview: appendMailPresentationReferences(outputPreview, [
+      mailPresentationReference({
+        accountId: credential.id,
+        mode: 'thread',
+        source: 'gmail',
+        threadId: message.threadId,
+      }),
+    ]),
     toolName: 'gmail_message_read',
   }
 }
 
 /**
- * Post the draft card.
+ * Post the content-free draft doorway.
  *
- * Metadata carries identifiers only. Recipients and subject are fetched by the
- * viewer through an owner-gated route, because message metadata is readable by
- * everyone who can read the message — and a dictated draft involves no read at
- * all, so the run's basis would be empty and the message unrestricted. The card
- * therefore carries the owner's basis explicitly.
+ * A Gmail draft includes the recipient and message body, so this must follow
+ * the same disclosure-stamped write and restricted realtime path as a reply.
+ * The live Mail API, not durable chat content or metadata, renders the draft.
  */
-const postDraftCard = async (
+export const postGmailDraftDoorway = async (
   context: BuiltinToolRuntimeContext,
-  draftActionId: string,
-  ownerUserId: string,
-  summary: string,
+  action: GmailDraftActionRecord,
 ): Promise<string | null> => {
-  recordGoogleRead(context, ownerUserId)
-  const thread = await context.prisma.thread.findUnique({
-    where: { id: context.run.threadId },
-    select: { channel: { select: { id: true, systemChannelType: true } } },
-  })
-  if (!thread) return null
-  const message = await context.prisma.message.create({
-    data: {
-      content: summary,
-      role: 'assistant',
-      agentId: context.agentId,
-      threadId: parseThreadId(context.run.threadId),
-      metadata: {
-        card: { kind: 'gmail_draft', draftActionId },
-      } as Prisma.InputJsonValue,
-    },
-    select: { id: true },
-  })
-  await attachDraftMessage(context.prisma, draftActionId, message.id)
-  await context.realtimeTransport.publishWs(
-    buildRealtimeScopesForChannel({
-      channelId: thread.channel.id,
-      organizationId: context.channel.organizationId,
-      systemChannelType: thread.channel.systemChannelType,
-    }),
-    {
-      data: {
-        agentId: context.agentId,
-        channelId: parseChannelId(thread.channel.id),
-        contentPreview: summary.slice(0, 200),
-        messageId: message.id,
-        role: 'assistant',
-        threadId: parseThreadId(context.run.threadId),
+  recordGoogleRead(context, action.ownerUserId)
+  const runContext = context.runContext
+  if (!runContext) return null
+  const message = await createAgentMessage(context.prisma, runContext, {
+    agentId: context.agentId,
+    content: 'Draft ready. Open Mail to review and send it.',
+    metadata: {
+      mailSurfaceDoorway: {
+        accountId: action.connectionId,
+        draftId: action.id,
+        mode: 'compose',
+        source: 'gmail',
       },
-      event: 'message.new',
     },
-  )
+    role: 'assistant',
+    threadId: context.run.threadId,
+    ...(runContext.replyRootMessageId ? { rootMessageId: runContext.replyRootMessageId } : {}),
+  })
+  await attachDraftMessage(context.prisma, action.id, message.id)
+  const reply = runContext.replyRootMessageId
+    ? await applyRunReplyBookkeeping(context.prisma, runContext, message.createdAt)
+    : undefined
+  await publishMessageCreated(context.realtimeTransport, runContext, {
+    content: message.content,
+    messageId: message.id,
+    role: 'assistant',
+    ...(message.basis.length > 0 ? { restricted: true } : {}),
+    ...(reply ? { reply } : {}),
+  })
   return message.id
 }
 
@@ -232,37 +284,34 @@ export const runGmailDraftCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = DraftSchema.parse(input)
+  const args = GmailDraftCreateSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
   try {
     const action = await composeDraftForUser(
       context.prisma,
       {
         organizationId: context.channel.organizationId,
+        idempotencyKey: gmailDraftCreateIdempotencyKey(context, args),
         userId,
-        message: {
-          to: args.to,
-          ...(args.cc ? { cc: args.cc } : {}),
-          ...(args.bcc ? { bcc: args.bcc } : {}),
-          subject: args.subject,
-          body: args.body,
-        },
+        message: gmailReplyMessage(args),
         ...(args.replyToThreadId ? { providerThreadId: args.replyToThreadId } : {}),
       },
       { encryptionSecret: encryptionSecret() },
     )
-    await postDraftCard(
-      context,
-      action.id,
-      action.ownerUserId,
-      `Draft ready: “${args.subject}” to ${args.to.join(', ')}.`,
-    )
+    await postGmailDraftDoorway(context, action)
+    const presentation = mailPresentationReference({
+      accountId: action.connectionId,
+      draftId: action.id,
+      mode: 'compose',
+      source: 'gmail',
+    })
     return {
       inputSummary: `to=${args.to.length} subject=${args.subject.slice(0, 60)}`,
       outputPreview: JSON.stringify({
         draftId: action.id,
+        mailPresentation: presentation,
         state: action.state,
-        note: 'Draft card posted in the chat with a Send button. Do not send it '
+        note: 'A restricted Open Mail doorway is in the chat. Do not send it '
           + 'yourself unless the person asks you to.',
       }),
       toolName: 'gmail_draft_create',
@@ -299,8 +348,14 @@ export const runGmailDraftUpdateTool = async (
       inputSummary: `draftId=${args.draftId}`,
       outputPreview: JSON.stringify({
         draftId: action.id,
+        mailPresentation: mailPresentationReference({
+          accountId: action.connectionId,
+          draftId: action.id,
+          mode: 'compose',
+          source: 'gmail',
+        }),
         revision: action.revision,
-        note: 'The draft card in the chat now shows the new text. Any approval '
+        note: 'The existing Open Mail doorway now shows the new text. Any approval '
           + 'given for the previous version no longer applies.',
       }),
       toolName: 'gmail_draft_update',

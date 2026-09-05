@@ -1,12 +1,6 @@
 import { useState } from 'react'
 import { Pill } from '../../primitives/Pill'
-import {
-  useDiscardGmailDraft,
-  useGmailDraft,
-  useSendGmailDraft,
-  useUndoGmailSend,
-  type GmailDraftView,
-} from '../../../facades/gmail/hooks'
+import { useGmailDraft, type GmailDraftView } from '../../../facades/gmail/hooks'
 
 /**
  * The email draft card.
@@ -18,8 +12,9 @@ import {
  * everyone who can read the message, so putting the subject line there would
  * leak the one thing this is meant to protect.
  *
- * Two action modes share this one component: a person acting on their own
- * draft, and an approver resolving an agent's request to send it.
+ * This is a read-only compatibility view for historical message metadata.
+ * The shared Mail doorway is the only place a person can edit, send, discard,
+ * or undo a connected-mail draft.
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -50,18 +45,8 @@ const AddressRow = ({ label, values }: { label: string; values: string[] }) =>
  */
 export const GmailDraftCardView = ({
   data,
-  busy = false,
-  error = null,
-  onSend,
-  onUndo,
-  onDiscard,
 }: {
   data: GmailDraftView
-  busy?: boolean
-  error?: string | null
-  onSend?: () => void
-  onUndo?: () => void
-  onDiscard?: () => void
 }) => {
   const [expanded, setExpanded] = useState(false)
   return (
@@ -135,52 +120,6 @@ export const GmailDraftCardView = ({
         </div>
       ) : null}
 
-      {error ? (
-        <p className="mt-2 text-[11px] text-[color:var(--danger-text)]">{error}</p>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {data.state === 'draft' ? (
-          <>
-            <button
-              className="admin-button admin-button-primary"
-              data-testid="gmail-draft-send"
-              disabled={busy}
-              onClick={onSend}
-              type="button"
-            >
-              Send
-            </button>
-            <button
-              className="admin-button admin-button-secondary admin-button-danger"
-              disabled={busy}
-              onClick={onDiscard}
-              type="button"
-            >
-              Discard
-            </button>
-          </>
-        ) : null}
-
-        {data.state === 'sending' ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="admin-button admin-button-secondary"
-              data-testid="gmail-draft-undo"
-              disabled={busy}
-              onClick={onUndo}
-              type="button"
-            >
-              Undo
-            </button>
-            {/* No countdown digits: a ticking number is the anxiety pattern,
-                and Gmail's own undo shows none. */}
-            <span className="text-[11px] text-[color:var(--tx3)]">
-              Sending shortly — you can still stop it.
-            </span>
-          </div>
-        ) : null}
-      </div>
     </div>
   )
 }
@@ -193,10 +132,6 @@ export const GmailDraftCard = ({
 }) => {
   const card = readGmailDraftCard(metadata)
   const draft = useGmailDraft(card?.draftActionId ?? null)
-  const send = useSendGmailDraft()
-  const undo = useUndoGmailSend()
-  const discard = useDiscardGmailDraft()
-  const [error, setError] = useState<string | null>(null)
 
   if (!card) return null
 
@@ -228,45 +163,5 @@ export const GmailDraftCard = ({
     )
   }
 
-  const data = draft.data
-  const act = async (run: () => Promise<unknown>, message: string) => {
-    setError(null)
-    try {
-      await run()
-    } catch {
-      setError(message)
-    }
-  }
-
-  return (
-    <GmailDraftCardView
-      busy={send.isPending || undo.isPending || discard.isPending}
-      data={data}
-      error={error}
-      onDiscard={() =>
-        void act(
-          () => discard.mutateAsync(card.draftActionId),
-          'Could not discard the draft.',
-        )
-      }
-      onSend={() =>
-        void act(
-          () =>
-            send.mutateAsync({
-              id: card.draftActionId,
-              // Send back exactly what this card rendered, so a draft that
-              // changed since is refused rather than delivered.
-              expectedFingerprint: data.contentFingerprint,
-            }),
-          'Could not send. The draft may have changed — reload and check it.',
-        )
-      }
-      onUndo={() =>
-        void act(
-          () => undo.mutateAsync(card.draftActionId),
-          'Too late to undo — the email has gone.',
-        )
-      }
-    />
-  )
+  return <GmailDraftCardView data={draft.data} />
 }

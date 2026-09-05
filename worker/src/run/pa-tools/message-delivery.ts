@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { captureUserMessageMemory } from '@nessie/memory'
-import { CHAT_MESSAGE_MAX_CHARS, withActionContext } from '@nessie/schemas'
+import { CHAT_MESSAGE_MAX_CHARS, redactDetectedSecrets, withActionContext } from '@nessie/schemas'
 import {
   parseChannelId,
   parseThreadId,
@@ -49,7 +49,14 @@ export const runSendMessageTool = async (
   },
 ): Promise<ToolExecutionResult> => {
   const userId = requireActingUserId(context)
-  const content = input.content.trim()
+  // Every human ingress refuses a credential before persistence; `send_message`
+  // is the agent's ingress and had no such guard. Redacting rather than
+  // refusing, because the caller is a model mid-run with nowhere to put the
+  // refusal — the value is replaced and the post still lands. This one
+  // assignment covers all six sinks below: the message row, the memory
+  // capture, the realtime preview, the mention alerts, the orchestrate payload
+  // and the tool's own summary.
+  const content = redactDetectedSecrets(input.content.trim())
   const attachmentIds = attachmentIdsForMessage(input.attachmentIds)
   if (!content) {
     throw new Error('content is required.')

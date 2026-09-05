@@ -48,6 +48,55 @@ reports, notifications, summaries, or inter-agent messages.
 Humans can receive `reveal` only through a future step-up-authenticated flow.
 Agents can receive `use` only. An agent can never receive `reveal`.
 
+## How a secret is captured
+
+Two doorways, and both end at the same vault seam
+(`api/src/services/secret-vault-write.ts`):
+
+1. **The person types it.** The structural scanner
+   (`packages/schemas/src/secret-scan.ts`) runs in the composer and again at
+   every ingress route, which refuse with `422 SECRET_INTERCEPTED` so the value
+   never reaches PostgreSQL. The composer raises the capture dialog instead.
+2. **An agent asks for it, or spots one.** Every agent's system prompt carries
+   `AGENT_SECRET_SAFETY_INSTRUCTION`, which names the one thing it can do:
+   post a card with a `secret` block whose destination is `vault_secret`, with
+   the name pre-filled. This is the path for a credential the scanner cannot
+   recognise — an in-house token format, or a secret sitting in prose — because
+   the judgement is the model's rather than a pattern's.
+
+The second doorway is also the only one that can act after the fact. A model
+notices a credential *already stored*, so its card may name one message in its
+own thread (`redactMessageId`); pressing the card rewrites that message to the
+masked form in the same transaction, and deletes the `thoughts` rows captured
+from it, so the value is gone from every later context window — a message is
+copied into memory at send time, and rewriting the message alone would leave
+recall handing the credential straight back. The replacement is computed by the
+server from the value the person typed — an agent chooses the target, never the
+text — and the rewrite is floored at twelve characters so it cannot be used to
+scribble over a message rather than scrub one.
+
+Masking is a structural provider prefix plus twelve `•`: enough to recognise
+which credential it was, never enough to reconstruct it.
+
+## Where the scanner runs
+
+The scanner is not one gate but every sink a value can reach, because each is
+a different kind of leak:
+
+| Sink | Where |
+| --- | --- |
+| Human ingress (message, edit, upload, voice transcript) | `422 SECRET_INTERCEPTED`, before persistence |
+| Card press, plain `input` values | `422 SECRET_INTERCEPTED` |
+| Agent ingress (`send_message`) | Redacted, not refused — a model mid-run has nowhere to put a refusal |
+| Live SSE stream | Emission trails the stream so a key split across chunks is caught |
+| Provider boundary, loop context, tool results | Redacted |
+| Tool-call arguments | Redacted, because they are replayed on every later turn |
+| Demonstration capture | Redacted — key-name redaction alone missed values under ordinary keys |
+
+The live stream is the subtle one: it is a separate broadcast from the finished
+message, so masking the message alone still showed every viewer the key as the
+model typed it.
+
 ## Authority split
 
 Infisical is the vault and owns secret values, encryption, versions, rotation,

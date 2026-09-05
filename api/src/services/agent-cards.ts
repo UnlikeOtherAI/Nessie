@@ -157,6 +157,14 @@ export const presentAgentCard = async (
   const secretLabels: Record<string, string> = {}
   for (const block of spec.blocks) {
     if (block.type !== 'secret') continue
+    if (block.destination.kind === 'vault_secret') {
+      // Named, not described: the person is about to save this under a name
+      // they will see again on the Secrets screen, so the label is that name.
+      secretLabels[block.key] = block.destination.scopeType === 'personal'
+        ? `your Secrets, as ${block.destination.name}`
+        : `this ${block.destination.scopeType}'s Secrets, as ${block.destination.name}`
+      continue
+    }
     if (block.destination.kind === 'dashboard_source_credential') {
       const source = await prisma.dashboardDataSource.findFirst({
         select: { name: true },

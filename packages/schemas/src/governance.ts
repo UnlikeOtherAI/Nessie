@@ -330,7 +330,13 @@ export const AuditActionSchema = z.enum([
   'model_subscription.linked',
   'model_subscription.relinked',
   'model_subscription.disconnected',
+  // Gmail is a state machine: a held draft is not delivered, and a provider
+  // timeout is not evidence that delivery failed. Keep every transition
+  // explicit and content-free in the audit chain.
+  'gmail.draft.held',
+  'gmail.draft.undone',
   'gmail.draft.sent',
+  'gmail.draft.delivery_unknown',
   'gmail.send_grant.created',
   'gmail.send_grant.revoked',
   // Connected SMTP/IMAP mailboxes (agent email Model A). The address and the

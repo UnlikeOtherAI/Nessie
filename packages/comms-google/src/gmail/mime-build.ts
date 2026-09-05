@@ -49,6 +49,20 @@ const assertHeaderSafe = (label: string, value: string): void => {
   }
 }
 
+/** Emit one canonical RFC Message-ID pair, never a caller's nested brackets. */
+const formatMessageId = (label: string, value: string): string => {
+  assertHeaderSafe(label, value)
+  const bare = canonicalMessageId(value)
+  if (!bare || /[<>\s]/.test(bare)) {
+    throw new MimeBuildError(`${label} contains an invalid Message-ID`)
+  }
+  return `<${bare}>`
+}
+
+/** Match Gmail's bracketed readback with callers' bare Message-ID input. */
+const canonicalMessageId = (value: string): string =>
+  value.trim().replace(/^<+/, '').replace(/>+$/, '')
+
 // Deliberately permissive: full RFC 5322 addressing is not worth reimplementing,
 // and Gmail rejects what it dislikes. This only rules out the shapes that would
 // corrupt the envelope or inject a header.
@@ -131,14 +145,10 @@ export const buildRawMessage = (message: OutboundMessage): string => {
     'MIME-Version: 1.0',
   ]
   if (message.inReplyTo) {
-    assertHeaderSafe('In-Reply-To', message.inReplyTo)
-    headers.push(`In-Reply-To: ${message.inReplyTo}`)
+    headers.push(`In-Reply-To: ${formatMessageId('In-Reply-To', message.inReplyTo)}`)
   }
   if (message.references && message.references.length > 0) {
-    for (const reference of message.references) {
-      assertHeaderSafe('References', reference)
-    }
-    headers.push(`References: ${message.references.join(' ')}`)
+    headers.push(`References: ${message.references.map((reference) => formatMessageId('References', reference)).join(' ')}`)
   }
 
   const attachments = message.attachments ?? []
@@ -188,6 +198,9 @@ export const canonicalDraftFingerprintInput = (message: {
   bcc?: readonly string[]
   subject: string
   body: string
+  inReplyTo?: string
+  references?: readonly string[]
+  threadId?: string
   attachmentIds?: readonly string[]
 }): string => {
   const addresses = (values: readonly string[] | undefined): string[] =>
@@ -198,6 +211,9 @@ export const canonicalDraftFingerprintInput = (message: {
     bcc: addresses(message.bcc),
     subject: message.subject.trim(),
     body: message.body,
+    inReplyTo: message.inReplyTo ? canonicalMessageId(message.inReplyTo) : '',
+    references: (message.references ?? []).map(canonicalMessageId),
+    threadId: message.threadId ?? '',
     attachmentIds: [...(message.attachmentIds ?? [])].sort(),
   })
 }

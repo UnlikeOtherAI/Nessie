@@ -165,6 +165,9 @@ export const explainGoogleFailure = async (
         + 'to send it again and the person will be asked to confirm the new text.',
     )
   }
+  if (code === 'INVALID_MESSAGE') {
+    throw new Error('That email has invalid recipients or headers. Please correct it and try again.')
+  }
   if (code === 'DRAFT_NOT_SENDABLE') {
     throw new Error('That draft has already been sent or is being sent.')
   }

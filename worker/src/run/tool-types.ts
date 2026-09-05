@@ -51,6 +51,14 @@ export type BuiltinToolRuntimeContext = {
   agentKind: 'personal_assistant' | 'shared'
   actorContext: RunExecuteJobPayload['actorContext']
   /**
+   * Private execution capability added only by the authorizer after its
+   * one-time Gmail approval proof was consumed. A raw payload token is never
+   * authority for the send handler.
+   */
+  gmailDraftSendApproved?: true
+  /** Standing consent already resolved by the authorization chokepoint. */
+  gmailDraftSendStandingAuthorized?: true
+  /**
    * Keeps the run-local opt-in capture state in sync when the model starts or
    * stops a demonstration during this very run. Ordinary tool fixtures need
    * not provide it.

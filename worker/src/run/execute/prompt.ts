@@ -5,7 +5,11 @@ import {
   WITHHELD_MESSAGE_PLACEHOLDER,
   type DisclosureViewer,
 } from '@nessie/runtime'
-import { buildSpeakingStyleBlock, redactDetectedSecrets } from '@nessie/schemas'
+import {
+  AGENT_SECRET_SAFETY_INSTRUCTION,
+  buildSpeakingStyleBlock,
+  redactDetectedSecrets,
+} from '@nessie/schemas'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
 import {
   describeAttachments,
@@ -34,11 +38,7 @@ import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
-export const AGENT_SECRET_SAFETY_INSTRUCTION = [
-  'Never ask for, repeat, or put a secret in chat or model-visible tool arguments.',
-  'Secret-looking text is replaced by a secure form before you see it; masked text is only',
-  'notice that the secret was protected.',
-].join(' ')
+export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
 
 // A turn's text as the model sees it: what was written, plus the inventory of
 // any files that came with it. The note is what makes an image-only message a

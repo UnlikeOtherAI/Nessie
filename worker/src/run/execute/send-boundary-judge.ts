@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { summarizeToolInput } from '../tool-util.js'
+
 /**
  * The assistant deciding within a boundary its owner wrote.
  *
@@ -91,6 +93,28 @@ export const readSendBoundaryVerdict = (raw: string | null): SendBoundaryVerdict
       return { verdict: 'ask', reason: 'I could not check this against your note.' }
     }
     return parsed.data
+  } catch {
+    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  }
+}
+
+/** Run the one bounded boundary judgement; every failure asks the owner. */
+export const judgeSendBoundary = async (input: {
+  args: Record<string, unknown>
+  boundary: string
+  runUtility?: (prompt: string) => Promise<string | null>
+  toolName: string
+}): Promise<SendBoundaryVerdict> => {
+  if (!input.runUtility) {
+    return { verdict: 'ask', reason: 'I could not check this against your note.' }
+  }
+  try {
+    const raw = await input.runUtility(buildSendBoundaryPrompt({
+      boundary: input.boundary,
+      proposal: `${input.toolName} with ${summarizeToolInput(input.args)}`,
+      request: 'See the conversation this action came from.',
+    }))
+    return readSendBoundaryVerdict(raw)
   } catch {
     return { verdict: 'ask', reason: 'I could not check this against your note.' }
   }

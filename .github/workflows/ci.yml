@@ -378,10 +378,23 @@ jobs:
       - name: Run navigation transition suite
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
+      # Connected mail uses a deterministic provider boundary, but renders the
+      # production admin shell, mailbox and chat doorway in Chromium.
+      - name: Run connected mail browser suite
+        run: pnpm --filter @nessie/admin test:e2e:connected-mail
+
       - name: Upload transition frames
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: navigation-transition-frames
           path: e2e/screenshots/navigation
+          if-no-files-found: warn
+
+      - name: Upload connected mail screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connected-mail-screenshots
+          path: e2e/screenshots/connected-mail
           if-no-files-found: warn

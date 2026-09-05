@@ -55,6 +55,8 @@ export type DelegateExecuteContext = {
     args: Record<string, unknown>,
     toolCallId: string,
     toolActorContext: ToolActorContext,
+    gmailDraftSendApproved?: true,
+    gmailDraftSendStandingAuthorized?: true,
   ) => Promise<AgenticToolResult>
   /** Builtin descriptors the sub-agent is allowed to call (already filtered to exclude `delegate`). */
   builtinDescriptors: ToolSchemaDescriptor[]
@@ -157,7 +159,14 @@ export const runDelegate = async (
         return mcpView.dispatch(toolName, toolArgs, toolCallId)
       }
       if (ctx.builtinDescriptors.some((descriptor) => descriptor.toolName === toolName)) {
-        return ctx.executeBuiltinTool(toolName, toolArgs, toolCallId, authorization.toolActorContext)
+        return ctx.executeBuiltinTool(
+          toolName,
+          toolArgs,
+          toolCallId,
+          authorization.toolActorContext,
+          authorization.gmailDraftSendApproved,
+          authorization.gmailDraftSendStandingAuthorized,
+        )
       }
       return {
         inputSummary: summarizeToolInput(toolArgs),

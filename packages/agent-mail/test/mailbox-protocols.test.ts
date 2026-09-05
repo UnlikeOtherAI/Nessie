@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { connect, createServer, type Server, type Socket } from 'node:net'
 import { after, describe, test } from 'node:test'
 
-import { ImapSession } from '../src/imap.js'
+import { ImapSession, type ImapPart } from '../src/imap.js'
+import { MAX_MAILBOX_SEARCH_WINDOWS, searchMailboxUids } from '../src/mailbox-client.js'
 import { MailWire, MailWireError } from '../src/wire.js'
 import { closeSmtpSession, runSmtpHandshake, sendOverSmtp } from '../src/smtp.js'
 import { dialPlain, dialTls } from '../src/dial.js'
@@ -62,6 +63,24 @@ const endpoint = (security: MailEndpoint['security']): MailEndpoint => ({
 const options = { clientName: 'example.com', timeoutMs: 2_000 }
 
 describe('SMTP client', () => {
+  test('refuses envelope and greeting injection before writing an SMTP command', async () => {
+    const session = { wire: { write: () => undefined } } as never
+    await assert.rejects(
+      sendOverSmtp(session, {
+        from: 'agent@example.com\r\nRCPT TO:<attacker@example.com>',
+        mime: 'Subject: Hi\r\n\r\nHello',
+        recipients: ['person@example.com'],
+      }),
+      /line break/,
+    )
+    await assert.rejects(
+      runSmtpHandshake({} as Socket, endpoint('tls'), {
+        password: 'hunter2', username: 'agent@example.com',
+      }, { ...options, clientName: 'example.com\r\nMAIL FROM:<attacker@example.com>' }),
+      /client name is invalid/,
+    )
+  })
+
   test('greets, authenticates and delivers a message', async () => {
     const seen: string[] = []
     let body = ''
@@ -175,6 +194,7 @@ describe('IMAP client', () => {
       socket.write('* OK mail.example.com IMAP4rev1 ready\r\n')
       let buffer = Buffer.alloc(0)
       let literalRemaining = 0
+      let completingSelect = false
       let tag = ''
 
       const pump = (): void => {
@@ -198,15 +218,54 @@ describe('IMAP client', () => {
 
           const literal = /\{(\d+)\}$/.exec(line)
           if (literal) {
+            completingSelect = /\sSELECT\s+\{\d+\}$/i.test(line)
             literalRemaining = Number(literal[1])
             socket.write('+ ready\r\n')
+            continue
+          }
+          if (completingSelect) {
+            completingSelect = false
+            socket.write(`* 25000000 EXISTS\r\n${tag} OK SELECT completed\r\n`)
             continue
           }
           if (/UID SEARCH/i.test(line)) {
             socket.write(`* SEARCH 11 12 13\r\n${tag} OK SEARCH completed\r\n`)
             continue
           }
+          if (/UID THREAD/i.test(line)) {
+            socket.write(`* THREAD (13 12)\r\n${tag} OK THREAD completed\r\n`)
+            continue
+          }
           if (/UID FETCH/i.test(line)) {
+            const structure = '(("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "QUOTED-PRINTABLE" 12 1 NIL NIL NIL)("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 9000000 NIL ("ATTACHMENT" ("FILENAME" "invoice.pdf")) NIL NIL) "MIXED")'
+            if (/BODY\.PEEK\[TEXT\]</i.test(line)) {
+              const body = 'Body with )\r\nand more\r\n'
+              socket.write(
+                `* 1 FETCH (UID 13 BODY[TEXT]<0> {${Buffer.byteLength(body)}}\r\n${body})\r\n`
+                + `${tag} OK FETCH completed\r\n`,
+              )
+              continue
+            }
+            if (/BODY\.PEEK\[1\]</i.test(line)) {
+              const body = 'Hello=20world'
+              socket.write(
+                `* 1 FETCH (UID 13 BODY[1]<0> {${Buffer.byteLength(body)}}\r\n${body})\r\n`
+                + `${tag} OK FETCH completed\r\n`,
+              )
+              continue
+            }
+            if (/BODYSTRUCTURE/i.test(line) && !/HEADER\.FIELDS/i.test(line)) {
+              socket.write(`* 1 FETCH (UID 13 BODYSTRUCTURE ${structure})\r\n${tag} OK FETCH completed\r\n`)
+              continue
+            }
+            if (/BODYSTRUCTURE/i.test(line)) {
+              const headers = 'Subject: Ping\r\nFrom: a@b.test\r\n\r\n'
+              socket.write(
+                `* 1 FETCH (UID 13 BODY[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] {${Buffer.byteLength(headers)}}\r\n${headers} BODYSTRUCTURE ${structure})\r\n`
+                + `${tag} OK FETCH completed\r\n`,
+              )
+              continue
+            }
             const raw = 'Subject: Ping\r\nFrom: a@b.test\r\n\r\nBody with )\r\nand more\r\n'
             socket.write(
               `* 1 FETCH (UID 13 BODY[] {${Buffer.byteLength(raw)}}\r\n${raw})\r\n`
@@ -255,7 +314,7 @@ describe('IMAP client', () => {
     )
   })
 
-  test('reads a literal body containing the characters that end a response', async () => {
+  test('reads a bounded text literal containing the characters that end a response', async () => {
     const { port } = await imapServer()
     const session = await ImapSession.handshake(
       await openSocket(port),
@@ -267,14 +326,76 @@ describe('IMAP client', () => {
     const uids = await session.searchUids(['ALL'])
     assert.deepEqual(uids, [13, 12, 11], 'search results come back newest first')
 
-    const messages = await session.fetchMessages([13], 'full')
+    const body = await session.fetchBodySection(13, 'TEXT', 256 * 1024)
     session.close()
-    assert.equal(messages.length, 1)
-    assert.equal(messages[0]?.uid, 13)
     // The body contains ")" and CRLF, which would have ended the response had
     // the reader been line-based rather than length-prefixed.
-    assert.ok(messages[0]?.raw.toString('utf8').includes('Body with )'))
-    assert.ok(messages[0]?.raw.toString('utf8').includes('and more'))
+    assert.ok(body?.toString('utf8').includes('Body with )'))
+    assert.ok(body?.toString('utf8').includes('and more'))
+  })
+
+  test('uses SELECT EXISTS metadata for a huge mailbox without requesting its UID list', async () => {
+    const { port, seen } = await imapServer()
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
+    )
+    const selected = await session.selectFolder('INBOX')
+    session.close()
+
+    assert.equal(selected.messagesVisible, 25_000_000)
+    assert.ok(seen.some((line) => /SELECT/.test(line)))
+    assert.ok(!seen.some((line) => /UID SEARCH\s+ALL/i.test(line)), 'no mailbox-wide UID list was requested')
+    assert.ok(!seen.some((line) => /UID SEARCH/i.test(line)), 'connection metadata does not search at all')
+  })
+
+  test('bounds an empty PA search to recent UID windows instead of SEARCH ALL', async () => {
+    const requests: ImapPart[][] = []
+    const session = {
+      searchUids: async (criteria: ImapPart[]) => {
+        requests.push(criteria)
+        assert.ok(!criteria.includes('ALL'), 'the structural UID range replaces ALL')
+        return []
+      },
+    } as unknown as ImapSession
+
+    const result = await searchMailboxUids(session, ['ALL'], 1_000_001, 50)
+
+    assert.deepEqual(result, { truncated: true, uids: [] })
+    assert.equal(requests.length, MAX_MAILBOX_SEARCH_WINDOWS)
+    assert.equal(requests[0]?.[0], 'UID 999901:1000000')
+    assert.equal(requests.at(-1)?.[0], 'UID 998001:998100')
+  })
+
+  test('uses BODYSTRUCTURE and a bounded selected section without reading an attachment', async () => {
+    const { port, seen } = await imapServer()
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
+    )
+    const [header] = await session.fetchMessages([13])
+    const text = await session.fetchBodySection(13, '1', 262_144)
+    session.close()
+
+    assert.equal(header?.bodyStructure[0]?.contentType, 'text/plain')
+    assert.deepEqual(header?.bodyStructure[1], {
+      bytes: 9_000_000, charset: null, contentType: 'application/pdf', encoding: 'BASE64',
+      filename: 'invoice.pdf', section: '2', textKind: null,
+    })
+    assert.equal(text?.toString(), 'Hello=20world')
+    assert.ok(seen.some((line) => /BODYSTRUCTURE/.test(line)))
+    assert.ok(seen.some((line) => /BODY\.PEEK\[1\]<0\.262144>/.test(line)))
+    assert.ok(!seen.some((line) => /BODY\.PEEK\[2\]/.test(line)), 'the PDF was never requested')
+  })
+
+  test('uses US-ASCII for ASCII THREAD criteria and UTF-8 only for Unicode criteria', async () => {
+    const { port, seen } = await imapServer()
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'), { password: 'x', username: 'agent@example.com' }, { timeoutMs: 2_000 },
+    )
+    assert.deepEqual(await session.threadReferencesUids(['ALL']), [[13, 12]])
+    assert.deepEqual(await session.threadReferencesUids(['ALL'], 'UTF-8'), [[13, 12]])
+    session.close()
+    assert.ok(seen.some((line) => /UID THREAD REFERENCES US-ASCII ALL/.test(line)))
+    assert.ok(seen.some((line) => /UID THREAD REFERENCES UTF-8 ALL/.test(line)))
   })
 })
 
@@ -345,5 +466,171 @@ describe('the wire', () => {
     const wire = new MailWire(socket, { maxBufferBytes: 1_000, timeoutMs: 60 })
     await assert.rejects(wire.readLine(), /did not respond in time/)
     wire.close()
+  })
+})
+
+describe('a hostile server cannot outgrow a bounded request', () => {
+  /**
+   * Answers any UID FETCH with many individually-legal untagged responses. Each
+   * literal sits under the wire's per-buffer cap, and every literal is moved out
+   * of the buffer as it is read, so nothing here is refused by the wire itself —
+   * only the per-command budget stops it.
+   */
+  const floodingServer = async (literals: number, bytes: number): Promise<number> => {
+    const server = createServer((socket) => {
+      socket.on('error', () => undefined)
+      socket.write('* OK ready\r\n')
+      let buffer = Buffer.alloc(0)
+      let literalRemaining = 0
+      let tag = ''
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk])
+        for (;;) {
+          // LOGIN sends its username and password as synchronizing literals,
+          // so the fake has to consume them before the command line completes.
+          if (literalRemaining > 0) {
+            if (buffer.byteLength < literalRemaining) return
+            buffer = buffer.subarray(literalRemaining)
+            literalRemaining = 0
+            continue
+          }
+          const index = buffer.indexOf('\r\n')
+          if (index < 0) return
+          const line = buffer.subarray(0, index).toString('utf8')
+          buffer = buffer.subarray(index + 2)
+          if (/^n\d+ /.test(line)) tag = line.split(' ')[0] as string
+          const literal = /\{(\d+)\}$/.exec(line)
+          if (literal) {
+            literalRemaining = Number(literal[1])
+            socket.write('+ go\r\n')
+            continue
+          }
+          if (/FETCH/i.test(line)) {
+            for (let n = 0; n < literals; n += 1) {
+              socket.write(`* 1 FETCH (UID 13 BODY[TEXT] {${bytes}}\r\n`)
+              socket.write(Buffer.alloc(bytes, 0x61))
+              socket.write(')\r\n')
+            }
+            socket.write(`${tag} OK done\r\n`)
+            continue
+          }
+          socket.write(`${tag} OK done\r\n`)
+        }
+      })
+    })
+    servers.push(server)
+    await new Promise<void>((ready) => server.listen(0, '127.0.0.1', ready))
+    return (server.address() as { port: number }).port
+  }
+
+  test('a flood of untagged responses is refused instead of accumulated', async () => {
+    const port = await floodingServer(30, 900_000)
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'),
+      { password: 'x', username: 'agent@example.com' }, { timeoutMs: 5_000 },
+    )
+    // 30 x 900_000 is 25.7 MiB for a request bounded at 256 KiB. Before the
+    // per-command budget this resolved, returning a 900_000-byte literal.
+    await assert.rejects(
+      () => session.fetchBodySection(13, 'TEXT', 262_144),
+      /too much data/,
+    )
+    session.close()
+  })
+
+  /**
+   * The same flood packed into ONE logical response, sent one literal at a time
+   * and only continuing once the previous write has flushed. Charging the budget
+   * after a whole response was assembled left this open: `readResponse` loops
+   * over every `{n}` on the response, so a single FETCH announcing many literals
+   * buffered tens of megabytes before any check ran. Because the chain advances
+   * only on flush, `sent` records how far the server actually got before the
+   * client refused and dropped the socket.
+   */
+  const multiLiteralServer = async (
+    literals: number,
+    bytes: number,
+  ): Promise<{ port: number; sent: () => number }> => {
+    let sent = 0
+    const server = createServer((socket) => {
+      socket.on('error', () => undefined)
+      socket.write('* OK ready\r\n')
+      let buffer = Buffer.alloc(0)
+      let literalRemaining = 0
+      let tag = ''
+      const writeLiteral = (index: number): void => {
+        if (index >= literals || socket.destroyed) {
+          if (!socket.destroyed) socket.write(`)\r\n${tag} OK done\r\n`)
+          return
+        }
+        socket.write(` BODY[${index}] {${bytes}}\r\n`)
+        socket.write(Buffer.alloc(bytes, 0x61), (error) => {
+          if (error || socket.destroyed) return
+          sent += 1
+          writeLiteral(index + 1)
+        })
+      }
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk])
+        for (;;) {
+          if (literalRemaining > 0) {
+            if (buffer.byteLength < literalRemaining) return
+            buffer = buffer.subarray(literalRemaining)
+            literalRemaining = 0
+            continue
+          }
+          const index = buffer.indexOf('\r\n')
+          if (index < 0) return
+          const line = buffer.subarray(0, index).toString('utf8')
+          buffer = buffer.subarray(index + 2)
+          if (/^n\d+ /.test(line)) tag = line.split(' ')[0] as string
+          const literal = /\{(\d+)\}$/.exec(line)
+          if (literal) {
+            literalRemaining = Number(literal[1])
+            socket.write('+ go\r\n')
+            continue
+          }
+          if (/FETCH/i.test(line)) {
+            socket.write('* 1 FETCH (UID 13')
+            writeLiteral(0)
+            continue
+          }
+          socket.write(`${tag} OK done\r\n`)
+        }
+      })
+    })
+    servers.push(server)
+    await new Promise<void>((ready) => server.listen(0, '127.0.0.1', ready))
+    return { port: (server.address() as { port: number }).port, sent: () => sent }
+  }
+
+  test('many literals inside one response are refused before they are read', async () => {
+    const { port, sent } = await multiLiteralServer(40, 900_000)
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'),
+      { password: 'x', username: 'agent@example.com' }, { timeoutMs: 5_000 },
+    )
+    // 40 x 900_000 is 36 MB inside a single FETCH response.
+    await assert.rejects(
+      () => session.fetchBodySection(13, 'TEXT', 262_144),
+      /too much data/,
+    )
+    session.close()
+    // The refusal must land while the response is still arriving. Charging only
+    // the assembled response still rejected, but not before all 36 MB were read.
+    assert.ok(sent() < 10, `server flushed ${sent()} of 40 literals before refusal`)
+  })
+
+  test('a section larger than the requested bound is refused', async () => {
+    const port = await floodingServer(1, 500_000)
+    const session = await ImapSession.handshake(
+      await openSocket(port), endpoint('tls'),
+      { password: 'x', username: 'agent@example.com' }, { timeoutMs: 5_000 },
+    )
+    await assert.rejects(
+      () => session.fetchBodySection(13, 'TEXT', 262_144),
+      /more than the requested section/,
+    )
+    session.close()
   })
 })

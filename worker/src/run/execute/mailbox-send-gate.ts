@@ -26,7 +26,9 @@ import type { RunContext } from './types.js'
  */
 
 export type MailboxSendGateDecision = {
-  requiredApproverUserId: string | null
+  externalDisclosureSources: string[]
+  mailboxConnectionId: string
+  requiredApproverUserId: string
   reason: string
 }
 
@@ -74,15 +76,21 @@ export const evaluateMailboxSendGate = async (
     ...context.boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
   ]).map((scope) => `${scope.scopeType}:${scope.scopeId}`)
 
+  const requiredApproverUserId = await liveApproverOrNull(prisma, {
+    organizationId: context.channel.organizationId,
+    userId: mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId,
+  })
+  if (!requiredApproverUserId) {
+    throw new Error(
+      'This mailbox has no active accountable owner. Reconnect it before sending.',
+    )
+  }
+
   return {
+    externalDisclosureSources: externalSources,
+    mailboxConnectionId: mailbox.connection.id,
     reason: describe(mailbox, externalSources),
-    // The person accountable for the mailbox: its owner for a personal one, and
-    // whoever connected a shared one. Null falls back to ordinary approval
-    // visibility rather than pinning the request to somebody who has left.
-    requiredApproverUserId: await liveApproverOrNull(prisma, {
-      organizationId: context.channel.organizationId,
-      userId: mailbox.connection.ownerUserId ?? mailbox.connection.createdByUserId,
-    }),
+    requiredApproverUserId,
   }
 }
 
@@ -109,11 +117,9 @@ export const buildMailboxSendApprovalHook = (
       escalate: true as const,
       reason: decision.reason,
       requiredApproverUserId: decision.requiredApproverUserId,
-      // Address-free by the same rule the hosted mailbox follows: this row is
-      // readable through the approvals surface, and the message itself is shown
-      // to the pinned approver from the frozen tool arguments.
       contextExtra: {
-        mailboxConnectionId: connectionId,
+        externalDisclosureSources: decision.externalDisclosureSources,
+        mailboxConnectionId: decision.mailboxConnectionId,
       },
     }
   }

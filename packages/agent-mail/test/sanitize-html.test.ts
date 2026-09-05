@@ -77,3 +77,37 @@ test('buildSnippet collapses whitespace and truncates with an ellipsis', () => {
   assert.equal(long.length, 10)
   assert.match(long, /…$/)
 })
+
+// A tag whose quotes do not balance used to match no tag pattern at all and was
+// copied to the output verbatim. Combined with `'` surviving escapeAttr, the
+// dangling quote opened an attribute in the browser that swallowed the markup
+// after it, so a sender could land a working `onclick` on the rendered element.
+test('an unbalanced quote cannot smuggle an event handler past the allowlist', () => {
+  for (const payload of [
+    `<p x='><a href="https://e.com" title="'onclick='alert(1)'z">click</a>`,
+    `<div a='><img alt="'onmouseover='alert(1)'x">`,
+  ]) {
+    const { html } = sanitizeEmailHtml(payload)
+    // The dangling tag is escaped rather than emitted as markup, so its stray
+    // quote is inert text and cannot open an attribute.
+    assert.equal(/<p x='|<div a='/.test(html), false)
+    assert.match(html, /&lt;(p|div)/)
+    // No surviving attribute value carries a raw quote of either kind, so no
+    // value can be closed early to start a new attribute after it.
+    for (const [, value] of html.matchAll(/="([^"]*)"/g)) {
+      assert.equal(value.includes("'"), false, `raw quote survived in ${value}`)
+    }
+    // Nothing in the output parses as an event-handler attribute.
+    assert.equal(/[\s"']on[a-z]+\s*=/i.test(html), false)
+  }
+})
+
+test('a bare angle bracket in body text is escaped, never passed through', () => {
+  assert.equal(sanitizeEmailHtml('<p>2 < 3 and 5 > 4</p>').html, '<p>2 &lt; 3 and 5 > 4</p>')
+})
+
+test('a single quote in an ordinary attribute value is entity-encoded', () => {
+  const { html } = sanitizeEmailHtml(`<img alt="it's here" src="cid:x">`)
+  assert.match(html, /alt="it&#39;s here"/)
+  assert.equal(html.includes("it's"), false)
+})

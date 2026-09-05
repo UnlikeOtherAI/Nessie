@@ -24,6 +24,7 @@ import { registerAgentEmailDraftRoutes } from './routes/agent-email-draft.js'
 import { registerAgentEmailInboundRoutes } from './routes/agent-email-inbound.js'
 import { registerAgentMailboxRoutes } from './routes/agent-mailbox.js'
 import { registerMailboxConnectionRoutes } from './routes/mailbox-connections.js'
+import { registerConnectedMailRoutes } from './routes/connected-mail.js'
 import { registerModelSubscriptionRoutes } from './routes/model-subscriptions.js'
 import { registerGmailDraftRoutes } from './routes/gmail-drafts.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
@@ -122,6 +123,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentEmailDraftRoutes(app, deps)
   registerAgentMailboxRoutes(app, deps)
   registerMailboxConnectionRoutes(app, deps)
+  registerConnectedMailRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
