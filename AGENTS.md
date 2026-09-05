@@ -314,6 +314,13 @@ when one changes, the same turn updates it, not this section.
   the root `eslint.config.js` egress block bans global `fetch` as the ratchet.
   Read [`docs/standards/egress.md`](docs/standards/egress.md)
   before writing code that dials out.
+- **Nothing a second instance cannot see.** The API and the worker run as N
+  replicas: no module-scope mutable state, every periodic job claims its work
+  or takes `withSweepLock`, every run is fenced and resumable, `SIGTERM` drains
+  inside sixty seconds, and realtime persists and notifies in one transaction;
+  the horizontal-scaling block in the root `eslint.config.js` is the ratchet.
+  Read [`docs/standards/horizontal-scaling.md`](docs/standards/horizontal-scaling.md)
+  before writing code here.
 - **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
   reads a decision rather than re-deriving one, and connect orchestrates the
   existing OAuth/instance machinery.
