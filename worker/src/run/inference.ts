@@ -94,7 +94,15 @@ const buildDirectRoute = (
   },
   modelConfig: ModelConfig,
 ): ResolvedRoute => {
-  const providerKey = input.provider?.trim() || modelConfig.provider
+  // The provider key doubles as Ledger's `/v1/:serviceId` segment (see
+  // `resolveLedgerServiceBaseUrl`), which is why a configured service id wins
+  // over the compiled provider name: a deployment default on a Ledger service
+  // with no compiled adapter — Meta's `muse-spark-*`, say — must address
+  // `/v1/meta`, not `/v1/openai`. An agent's explicit selection still wins over
+  // both. `resolveRuntimeProvider` returns null for such a key and the stage
+  // falls back to the generic OpenAI-compatible connector.
+  const providerKey =
+    input.provider?.trim() || modelConfig.serviceId || modelConfig.provider
   const runtimeProvider = resolveRuntimeProvider(providerKey)
   const model =
     runtimeProvider
