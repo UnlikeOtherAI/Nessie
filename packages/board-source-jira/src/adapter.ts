@@ -60,90 +60,92 @@ export const createJiraAdapter = (config: JiraAdapterConfig): BoardSourceAdapter
   incrementalPollingIntervalMs: 5 * 60 * 1000,
   allowedHosts: JIRA_ALLOWED_HOSTS,
 
-  oauth: {
-    buildAuthorizeUrl: ({ state, redirectUri }) => {
-      const url = new URL(`https://${JIRA_AUTH_HOST}/authorize`)
-      url.searchParams.set('audience', JIRA_API_HOST)
-      url.searchParams.set('client_id', config.clientId)
-      url.searchParams.set('scope', SCOPES)
-      url.searchParams.set('redirect_uri', redirectUri)
-      url.searchParams.set('state', state)
-      url.searchParams.set('response_type', 'code')
-      // Atlassian only issues a refresh token when consent is prompted.
-      url.searchParams.set('prompt', 'consent')
-      return url.toString()
-    },
+  auth: {
+    oauth: {
+      buildAuthorizeUrl: ({ state, redirectUri }) => {
+        const url = new URL(`https://${JIRA_AUTH_HOST}/authorize`)
+        url.searchParams.set('audience', JIRA_API_HOST)
+        url.searchParams.set('client_id', config.clientId)
+        url.searchParams.set('scope', SCOPES)
+        url.searchParams.set('redirect_uri', redirectUri)
+        url.searchParams.set('state', state)
+        url.searchParams.set('response_type', 'code')
+        // Atlassian only issues a refresh token when consent is prompted.
+        url.searchParams.set('prompt', 'consent')
+        return url.toString()
+      },
 
-    exchange: async ({ code, redirectUri }: OAuthExchangeInput): Promise<ConnectResult> => {
-      const token = await sourceFetchJson<{
-        access_token: string
-        refresh_token?: string
-        expires_in?: number
-        scope?: string
-      }>({
-        url: `https://${JIRA_AUTH_HOST}/oauth/token`,
-        method: 'POST',
-        allowedHosts: JIRA_ALLOWED_HOSTS,
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          grant_type: 'authorization_code',
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          code,
-          redirect_uri: redirectUri,
-        }),
-      })
-      const scopes = (token.scope ?? '').split(/\s+/).filter(Boolean)
-      const me = await sourceFetchJson<{ account_id: string }>({
-        url: `https://${JIRA_API_HOST}/me`,
-        allowedHosts: JIRA_ALLOWED_HOSTS,
-        headers: { authorization: `Bearer ${token.access_token}` },
-      })
-      return {
-        externalAccountId: me.account_id,
-        // A 3LO token spans every site the person granted, so the tenant is not
-        // on the connection — each container carries its own `cloudId`.
-        externalTenantId: '',
-        credential: {
+      exchange: async ({ code, redirectUri }: OAuthExchangeInput): Promise<ConnectResult> => {
+        const token = await sourceFetchJson<{
+          access_token: string
+          refresh_token?: string
+          expires_in?: number
+          scope?: string
+        }>({
+          url: `https://${JIRA_AUTH_HOST}/oauth/token`,
+          method: 'POST',
+          allowedHosts: JIRA_ALLOWED_HOSTS,
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            grant_type: 'authorization_code',
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            code,
+            redirect_uri: redirectUri,
+          }),
+        })
+        const scopes = (token.scope ?? '').split(/\s+/).filter(Boolean)
+        const me = await sourceFetchJson<{ account_id: string }>({
+          url: `https://${JIRA_API_HOST}/me`,
+          allowedHosts: JIRA_ALLOWED_HOSTS,
+          headers: { authorization: `Bearer ${token.access_token}` },
+        })
+        return {
+          externalAccountId: me.account_id,
+          // A 3LO token spans every site the person granted, so the tenant is not
+          // on the connection — each container carries its own `cloudId`.
+          externalTenantId: '',
+          credential: {
+            accessToken: token.access_token,
+            ...(token.refresh_token ? { refreshToken: token.refresh_token } : {}),
+            ...(token.expires_in
+              ? { expiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString() }
+              : {}),
+            scopes,
+          },
+          grantedScopes: scopes,
+        }
+      },
+
+      refresh: async (credential: CredentialBundle): Promise<CredentialBundle> => {
+        if (!credential.refreshToken) return credential
+        const token = await sourceFetchJson<{
+          access_token: string
+          refresh_token?: string
+          expires_in?: number
+        }>({
+          url: `https://${JIRA_AUTH_HOST}/oauth/token`,
+          method: 'POST',
+          allowedHosts: JIRA_ALLOWED_HOSTS,
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            grant_type: 'refresh_token',
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            refresh_token: credential.refreshToken,
+          }),
+        })
+        return {
           accessToken: token.access_token,
-          ...(token.refresh_token ? { refreshToken: token.refresh_token } : {}),
+          // Atlassian rotates refresh tokens: keeping the old one would end the
+          // connection at the next refresh.
+          refreshToken: token.refresh_token ?? credential.refreshToken,
           ...(token.expires_in
             ? { expiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString() }
             : {}),
-          scopes,
-        },
-        grantedScopes: scopes,
-      }
-    },
-
-    refresh: async (credential: CredentialBundle): Promise<CredentialBundle> => {
-      if (!credential.refreshToken) return credential
-      const token = await sourceFetchJson<{
-        access_token: string
-        refresh_token?: string
-        expires_in?: number
-      }>({
-        url: `https://${JIRA_AUTH_HOST}/oauth/token`,
-        method: 'POST',
-        allowedHosts: JIRA_ALLOWED_HOSTS,
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          grant_type: 'refresh_token',
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          refresh_token: credential.refreshToken,
-        }),
-      })
-      return {
-        accessToken: token.access_token,
-        // Atlassian rotates refresh tokens: keeping the old one would end the
-        // connection at the next refresh.
-        refreshToken: token.refresh_token ?? credential.refreshToken,
-        ...(token.expires_in
-          ? { expiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString() }
-          : {}),
-        scopes: credential.scopes,
-      }
+          scopes: credential.scopes,
+        }
+      },
     },
   },
 

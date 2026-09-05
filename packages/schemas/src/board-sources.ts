@@ -20,6 +20,46 @@ export const BoardSourceConnectionStatusSchema = z.enum([
 ])
 export type BoardSourceConnectionStatus = z.infer<typeof BoardSourceConnectionStatusSchema>
 
+export const BoardSourceAuthMethodSchema = z.enum(['oauth', 'api_key'])
+export type BoardSourceAuthMethod = z.infer<typeof BoardSourceAuthMethodSchema>
+
+/**
+ * One field of a provider's pasted-credential form, as the adapter declares it.
+ * `secret` values are write-only — they go up and are never sent back.
+ */
+export const CredentialFieldSchema = z.object({
+  key: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  kind: z.enum(['secret', 'text', 'email', 'url']),
+  help: z.string().optional(),
+  placeholder: z.string().optional(),
+})
+
+export const CredentialFormSchema = z.object({
+  createUrl: z.string().url(),
+  createLabel: NonEmptyStringSchema,
+  fields: CredentialFieldSchema.array().min(1),
+})
+export type CredentialForm = z.infer<typeof CredentialFormSchema>
+
+/** What `GET /api/board-sources/providers` answers: the ways in, per provider. */
+export const BoardSourceProviderMethodsSchema = z.object({
+  provider: BoardSourceProviderSchema,
+  methods: BoardSourceAuthMethodSchema.array(),
+  apiKeyForm: CredentialFormSchema.nullable(),
+})
+export type BoardSourceProviderMethods = z.infer<typeof BoardSourceProviderMethodsSchema>
+
+/**
+ * The pasted values, keyed by the form's own field keys. Deliberately a loose
+ * record: which keys are required is the adapter's declaration, and duplicating
+ * it here would be two schemas to keep in step.
+ */
+export const ConnectApiKeyBodySchema = z.object({
+  values: z.record(z.string(), z.string()),
+})
+export type ConnectApiKeyBody = z.infer<typeof ConnectApiKeyBodySchema>
+
 export const BoardSourceWriteModeSchema = z.enum(['read_only', 'read_write'])
 export type BoardSourceWriteMode = z.infer<typeof BoardSourceWriteModeSchema>
 
@@ -98,6 +138,7 @@ export const BoardSourceConnectionRecordSchema = z.object({
   id: z.string().uuid(),
   provider: BoardSourceProviderSchema,
   status: BoardSourceConnectionStatusSchema,
+  authMethod: BoardSourceAuthMethodSchema,
   externalAccountId: z.string(),
   externalTenantId: z.string(),
   ownerUserId: UserIdSchema,

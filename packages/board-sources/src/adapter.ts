@@ -87,6 +87,68 @@ export type ConnectResult = {
   grantedScopes: string[]
 }
 
+/** How a credential was obtained. Persisted, because the remedies differ. */
+export type BoardSourceAuthMethodKind = 'oauth' | 'api_key'
+
+/**
+ * One field of a pasted credential. `secret` is write-only and never returned
+ * by any route; the rest are stored in the clear because they are addresses
+ * and identifiers, not secrets.
+ */
+export type CredentialField = {
+  key: string
+  label: string
+  kind: 'secret' | 'text' | 'email' | 'url'
+  /** Rendered under the field. Says where the value comes from, in words. */
+  help?: string
+  placeholder?: string
+}
+
+/**
+ * What the admin renders. Declared by the adapter rather than hand-written per
+ * provider, because the providers genuinely differ — one field for Linear, two
+ * for Trello, four for Jira Cloud — and a form per vendor is four ways to drift.
+ */
+export type CredentialForm = {
+  /** Where the person creates the credential. Linked from the form. */
+  createUrl: string
+  /** What that page is called, so the link can be a sentence rather than a URL. */
+  createLabel: string
+  fields: CredentialField[]
+}
+
+export type ApiKeyMethod = {
+  readonly form: CredentialForm
+  /**
+   * Prove the pasted values work and say whose account they are. The adapter
+   * composes the stored credential from the fields — Jira's is `email:token`,
+   * Linear's is the key itself — so no route ever learns a provider's shape.
+   *
+   * Throws `SourceCredentialRejectedError` when the provider refuses them.
+   */
+  verify(values: Record<string, string>): Promise<ConnectResult>
+}
+
+export type OAuthMethod = {
+  buildAuthorizeUrl(input: {
+    state: string
+    redirectUri: string
+    codeChallenge?: string
+  }): string
+  exchange(input: OAuthExchangeInput): Promise<ConnectResult>
+  refresh(credential: CredentialBundle): Promise<CredentialBundle>
+}
+
+/**
+ * At least one method, enforced by `registerBoardSourceAdapter`. Both optional
+ * rather than a discriminating flag: a route asks "is there an `apiKey`?" and
+ * branches on the answer, instead of every consumer switching on a kind.
+ */
+export type BoardSourceAuthMethods = {
+  oauth?: OAuthMethod
+  apiKey?: ApiKeyMethod
+}
+
 /**
  * The contract every provider adapter implements — strictly the connector
  * layer: authentication, retrieval, normalisation, webhooks and one write. No
@@ -107,15 +169,12 @@ export interface BoardSourceAdapter {
   /** Hosts this adapter may reach. Enforced by `sourceFetch`. */
   readonly allowedHosts: readonly string[]
 
-  readonly oauth: {
-    buildAuthorizeUrl(input: {
-      state: string
-      redirectUri: string
-      codeChallenge?: string
-    }): string
-    exchange(input: OAuthExchangeInput): Promise<ConnectResult>
-    refresh(credential: CredentialBundle): Promise<CredentialBundle>
-  }
+  /**
+   * How a person may connect this provider. At least one method is present;
+   * which ones depends on the vendor and on what the deployment configured.
+   * Nothing outside this object ever asks how a credential was born.
+   */
+  readonly auth: BoardSourceAuthMethods
 
   listContainers(ctx: ConnectionContext): Promise<ContainerDescriptor[]>
 
