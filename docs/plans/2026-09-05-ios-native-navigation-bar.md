@@ -140,12 +140,16 @@ So the admin publishes **bar descriptors per stack layer**, and within a layer
 they form a **stack, not a slot**.
 
 ```ts
-publishScreenBar(layerKey, {
+publishScreenBar(layerKey, handle, {
   title: string,
   back: { label: string, onBack: () => void } | null,
   actions: BarAction[],
 })
 ```
+
+`handle` is the publisher's own stable identity (a `useId()`), and it is not
+optional: without it "topmost wins" cannot tell a re-publish from a new
+publisher.
 
 Three rules make that work, and all three are load-bearing:
 
@@ -160,12 +164,23 @@ Three rules make that work, and all three are load-bearing:
    `layerKey` through a `PhoneNavigationLayerContext`; a stage's layerKey
    embeds a section and depth that `NestedStage` cannot compute for itself, so
    the stage host returns it from `activate` (or exposes `layerKeyOf(id)`).
-2. **Within a layer, the topmost publisher wins.** `publishScreenBar` pushes an
-   entry in mount order; the bridge reads the top of that layer's stack;
-   unpublishing restores the one beneath. This is the local-back registry's
-   model, and it lets `ChannelHeader` and a full-screen overlay coexist with no
-   special case — the overlay publishes over the channel and the channel comes
-   back when it closes.
+2. **Within a layer, the topmost publisher wins** — appended on first sight,
+   **updated in place** thereafter, and removed only by an unmount cleanup
+   keyed on `[layerKey, handle]`, with the live descriptor read from a ref.
+   The bridge reads the top of that layer's stack, so `ChannelHeader` and a
+   full-screen overlay coexist with no special case: the overlay publishes over
+   the channel and the channel comes back when it closes.
+
+   The update-in-place half is what makes it correct, and it is easy to get
+   wrong by copying the local-back registry. That registry survives re-ordering
+   only because precedence there is a numeric `priority` — its own comment says
+   "mount order … can never flip Back ownership". Here order *is* precedence,
+   and a publish hook that re-registers whenever its deps change runs its
+   cleanup first: the delete-then-append moves the entry to the top. `ChannelHeader`
+   takes ~20 live props and re-renders constantly under an open
+   `ConversationInfoFlow`, so a re-registering hook would put the channel back
+   over the overlay — the exact collision this rule exists to prevent. Hence:
+   one append, updates in place, cleanup only on unmount.
 3. **A stage publishes only from the instance that owns it.** §6 of the
    rulebook: a push over an open stage mounts the page again, so two instances
    render the same stage id, and only the one that pushed the entry may act on
@@ -176,7 +191,13 @@ Three rules make that work, and all three are load-bearing:
    is inert unless `owner`. (Route layers always own.) Note also that a header
    inside a stage reads the *route layer's* context, because the stage's
    content is portalled from the page's React position — the layerKey must come
-   from the stage, not from context lookup.
+   from the stage, not from context lookup. One consequence to implement
+   deliberately: a stage's children run their effects *before* `NestedStage`'s
+   own layout effect sets `owns`, so the first publish is inert. The
+   `{ layerKey, owner }` value the stage provides must therefore change
+   identity when ownership is taken — built fresh each render, or held in
+   state — or the re-render that would let the real publish through never
+   happens.
 
 Handlers inside a retained descriptor go stale, so a publisher re-registers on
 every render and the wire payload is compared by value before posting — exactly
@@ -384,6 +405,16 @@ So:
    snaps on `nessie:screen`, which is correct because nothing is animating.
 5. The post is gated on `layout === 'single'`, or the landscape `split`
    viewport would post its column pushes as if they were the bar's.
+6. **The bridge needs the current layer key, and today it cannot see one.**
+   The native reducer selects descriptors by `layerKey`, but `nessie:screen`
+   carries none and `PhoneNavigationProvider` exposes neither the stack nor the
+   current entry to the bridge. The viewport therefore publishes its current
+   `layerKey` into the same store the bridge subscribes to (as `useScreenTitle`
+   already does for titles), and `nessie:screen` gains `layerKey` beside its
+   existing fields. This is the first thing slice 2 hits.
+7. A tapped push posts `nessie:screen` **twice** — once with an empty title,
+   once when the incoming header publishes. Both are absorbed into the
+   in-flight target by rule 3; the native test asserts that explicitly.
 
 Natively, the bar renders two content layers — outgoing and incoming — and
 drives `opacity` and `translateX` with `Animated` (`useNativeDriver: true`):
@@ -498,8 +529,10 @@ because they are separately reviewable, not separately releasable.
   `useId()`-keyed form of a second `PageEditor` can be submitted over the
   first's edits.
 - A test that two publishers in one layer stack rather than overwrite
-  (`ChannelHeader` + `ConversationInfoFlow`), and that closing the overlay
-  restores the channel's descriptor.
+  (`ChannelHeader` + `ConversationInfoFlow`), that closing the overlay restores
+  the channel's descriptor, and — the case a re-registering hook would fail —
+  that re-publishing the channel header while the overlay is open leaves the
+  overlay on top.
 - `native-nav-bar.test.ts` pins the push wire order — `screen-transition`
   without a `to` descriptor, then `nessie:screen`, then the descriptor — and
   that the incoming lane stays blank rather than falling back to root lanes.
@@ -599,3 +632,30 @@ each verified against the code before acceptance:
 
 Adjudicated in the author's favour: §1's per-navigation-kind timing framing is
 correct, and `WorkflowToolbar` is a section header and stays out of scope.
+
+### Round three (Fable, 2026-09-05) — **GO**
+
+All six of round two's items verified closed against the code. Two changes
+folded in before implementation:
+
+- **`publishScreenBar` needed a publisher handle.** The signature carried none,
+  so "topmost wins" could not distinguish a re-publish from a new publisher,
+  and the plan's "re-registers on every render" would have run a cleanup-then-
+  append that lifts a re-rendering `ChannelHeader` back over an open overlay.
+  Now: stable handle, append once, update in place, unmount-only cleanup. The
+  local-back citation is corrected rather than kept — that registry tolerates
+  re-ordering only because its precedence is numeric, which is exactly what
+  this one's is not.
+- **The bridge cannot see a layer key today.** `nessie:screen` carries none and
+  the provider exposes no current entry; §8 item 6 names the store and the
+  field.
+
+Polish folded: the stage's ownership provider value must change identity when
+`owns` is taken, or the first inert publish never re-runs; and the double
+`nessie:screen` on a tapped push (empty title, then the real one) is asserted
+absorbed.
+
+Confirmed by review, not assumed: a pop leaves no blank frame — the retained
+target's header is still mounted with its descriptor when `currentIndex` moves,
+and the popped layer's publishers unpublish from a per-layer stack nobody reads
+any more.
