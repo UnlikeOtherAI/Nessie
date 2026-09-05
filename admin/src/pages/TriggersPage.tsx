@@ -21,6 +21,7 @@ export const TriggersPage = () => {
       isPending={state.isPending}
       key="triggers"
       leading={<PhoneNavigationButton />}
+      ownsScreen
       onCreate={() => state.setCreateDialogOpen(true)}
       onSearchChange={state.setSearchQuery}
       onSelect={state.setSelectedTriggerId}

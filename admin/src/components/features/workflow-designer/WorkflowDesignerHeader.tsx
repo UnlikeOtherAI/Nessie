@@ -5,6 +5,8 @@ import {
   ResponsivePageHeader,
   type PageHeaderAction,
 } from '../../shared/ResponsivePageHeader'
+import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
+import { toScreenBarActions } from '../../../navigation/screen-bar-actions'
 
 type WorkflowDesignerHeaderProps = {
   workflowName: string
@@ -109,18 +111,56 @@ export const WorkflowDesignerHeader = ({
       ]),
   ]
 
+  // The designer is a Flow that owns its Back — it returns to the list it was
+  // opened from, an address the route registry cannot name — so the bar
+  // publishes that handler rather than the resolver's answer.
+  const { hidden } = useNativeBarHeader({
+    actions: toScreenBarActions(actions),
+    back: { label: 'Back', onBack },
+    title: workflowName || DEFAULT_WORKFLOW_NAME,
+  })
+
+  const titleInput = {
+    ariaLabel: 'Workflow name',
+    onChange: onWorkflowNameChange,
+    placeholder: DEFAULT_WORKFLOW_NAME,
+    value: workflowName,
+  }
+
+  if (hidden) {
+    // A text field has no lane in a native bar, and the save status is content
+    // rather than chrome. Both stay with the page, under the bar. The heading
+    // stays too, and stays an `h1`: the settle focuses it and the live region
+    // reads it (navigation/settle.ts) by `querySelector('h1')`.
+    return (
+      <div className="flex min-w-0 flex-col gap-1 px-4 pb-2 pt-3">
+        <h1 className="sr-only">{workflowName || DEFAULT_WORKFLOW_NAME}</h1>
+        <input
+          aria-label={titleInput.ariaLabel}
+          className={[
+            'w-full min-w-0 truncate border-0 bg-transparent p-0 text-[17px] font-bold',
+            'text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]',
+          ].join(' ')}
+          onChange={(event) => titleInput.onChange(event.target.value)}
+          placeholder={titleInput.placeholder}
+          value={titleInput.value}
+        />
+        {status ? (
+          <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-[color:var(--tx2)]">
+            {status}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <ResponsivePageHeader
       actions={actions}
       eyebrow={status}
       onBack={onBack}
       title="Workflow Designer"
-      titleInput={{
-        ariaLabel: 'Workflow name',
-        onChange: onWorkflowNameChange,
-        placeholder: DEFAULT_WORKFLOW_NAME,
-        value: workflowName,
-      }}
+      titleInput={titleInput}
     />
   )
 }

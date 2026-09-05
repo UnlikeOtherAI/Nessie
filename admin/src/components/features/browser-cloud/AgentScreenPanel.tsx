@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
@@ -44,6 +45,29 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
     open: fullscreen,
   })
 
+  // One instance, two shapes: the modal full-screen layer and the side panel.
+  // Each publishes its own Back and its own action, and the store updates the
+  // entry in place, so switching between them swaps the bar with no extra
+  // coordination.
+  const { hidden: nativeBarOwnsHeader } = useNativeBarHeader({
+    actions: [{
+      checked: null,
+      disabled: false,
+      id: 'agent-screen-fullscreen-toggle',
+      items: null,
+      kind: 'button' as const,
+      label: overlay.mounted ? 'Exit full screen' : 'Full screen',
+      perform: overlay.mounted ? overlay.requestClose : () => setFullscreen(true),
+      primary: true,
+      priority: 100,
+      selected: overlay.mounted,
+      submit: false,
+      tone: null,
+    }],
+    back: { label: 'Back to channel', onBack: onClose },
+    title: 'Agent\u2019s screen',
+  })
+
   if (overlay.mounted) {
     return (
       <OverlayPortal>
@@ -56,6 +80,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
           style={overlay.layerStyle}
           tabIndex={-1}
         >
+          {nativeBarOwnsHeader ? null : (
           <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[color:var(--sep)] px-4 py-3">
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">Agent’s screen</h2>
             <div className="flex items-center gap-2">
@@ -75,6 +100,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
               </button>
             </div>
           </header>
+          )}
           <AgentScreenViewer agent={agent} sessionId={sessionId} variant="fullscreen" />
         </div>
       </OverlayPortal>
@@ -92,6 +118,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       resizePanelWithKeyboard={geometry.resizePanelWithKeyboard}
       viewportWidth={geometry.viewportWidth}
     >
+      {nativeBarOwnsHeader ? null : (
       <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
         {phoneLayout ? (
           <PhoneBackButton label="Back to channel" onBack={onClose} />
@@ -117,6 +144,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
           </button>
         )}
       </header>
+      )}
       <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
     </SidePanelShell>
   )

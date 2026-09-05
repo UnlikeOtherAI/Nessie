@@ -218,6 +218,75 @@ test('every page header in admin/src/pages is the one ScreenHeader', () => {
   assert.ok(headerPages.length >= 18, `expected the converted pages, found ${headerPages.length}`)
 })
 
+// The gate above walks `pages` only, which is how seven components outside it
+// grew screen-level phone chrome that published nothing — so on the iOS shell
+// the native bar kept naming the screen underneath them. This one walks all of
+// `admin/src` and fails on the signature that actually escaped: the phone Back
+// doorway, or a page header, rendered outside the shared header components.
+//
+// It deliberately does not gate `<header>` or `<h1>`: `MessageMarkdown`
+// renders an `h1` from user markdown, and dialogs and drawers have honest
+// headers of their own. Gating those would fail on legitimate code and teach
+// people to widen the allowlist.
+test('every screen-level phone header publishes the native bar', () => {
+  // Each of these draws a screen header outside `ScreenHeader` and publishes
+  // through `useNativeBarHeader` instead. The list only ever shrinks: a new
+  // entry means a new way to draw a header, which is the fork Rule zero names.
+  const PUBLISHERS = [
+    'components/features/browser-cloud/AgentScreenPanel.tsx',
+    'components/features/channels/ConversationInfoFlow.tsx',
+    'components/features/channels/thread-panel/ThreadReplyPanel.tsx',
+    'components/features/dashboards/DashboardWorkspacePanel.tsx',
+    'components/features/knowledge/KnowledgePane.tsx',
+    'components/features/workflow-designer/WorkflowDesignerHeader.tsx',
+    'components/shared/column-browser/ColumnBrowserColumn.tsx',
+  ]
+  const allowed = new Set([
+    ...PUBLISHERS,
+    // The shared headers themselves, and the doorway component.
+    'components/shared/ScreenHeader.tsx',
+    'components/shared/ResponsivePageHeader.tsx',
+    'layouts/admin-shell/PhoneNavigationButton.tsx',
+    'layouts/admin-shell/PhoneBackButton.tsx',
+    // A section header *inside* a page, not a screen header: `titleTone
+    //="section"` renders a `SectionLabel as="h2"` with no `h1` and no
+    // doorway, so it names a region rather than a screen and the native bar
+    // has nothing to say about it.
+    'components/features/workflow-designer/WorkflowToolbar.tsx',
+  ])
+
+  for (const relative of PUBLISHERS) {
+    const source = readFileSync(`${srcDir}/${relative}`, 'utf8')
+    assert.match(
+      source,
+      /useNativeBarHeader\(/,
+      `${relative} draws a screen header but publishes no native bar`,
+    )
+  }
+
+  for (const file of walk(srcDir)) {
+    const relative = file.slice(srcDir.length + 1)
+    if (allowed.has(relative)) continue
+    const source = readFileSync(file, 'utf8')
+    // A page whose column 0 is its own header hands the doorway to that column
+    // and says `ownsScreen`, which is the opt-in to the same mechanism.
+    if (!/ownsScreen/.test(source)) {
+      assert.doesNotMatch(
+        source,
+        /<(PhoneBackButton|PhoneNavigationButton)[\s/>]/,
+        `${relative} draws the phone Back doorway outside the shared headers; `
+        + 'publish through useNativeBarHeader and add it to the list above',
+      )
+    }
+    assert.doesNotMatch(
+      source,
+      /<ResponsivePageHeader[\s>]/,
+      `${relative} draws a page header outside ScreenHeader; `
+      + 'publish through useNativeBarHeader and add it to the list above',
+    )
+  }
+})
+
 test('ScreenHeader composes the measured partition rather than forking it', () => {
   const header = readSource('../src/components/shared/ScreenHeader.tsx')
   assert.match(header, /<ResponsivePageHeader/)

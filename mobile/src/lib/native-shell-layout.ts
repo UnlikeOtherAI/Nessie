@@ -60,24 +60,134 @@ export const DEFAULT_LAST_KNOWN_SCREEN: LastKnownScreen = {
   type: 'root',
 }
 
+/**
+ * The admin's description of the native navigation bar for the layer showing.
+ * `title` may be empty and `back` null — a layer that has not published yet
+ * renders a bare band, never a root's team controls (see NativePhoneNavBar).
+ */
+export type NativeScreenBarMenuItem = {
+  checked: boolean
+  disabled: boolean
+  id: string
+  label: string
+}
+
+/**
+ * One of the screen's own header actions. Everything here describes what the
+ * action looks like; what it *does* stays in the web, behind its id — three of
+ * the four kinds do not simply call an `onSelect` (a submit action's work is
+ * in its form, a toggle inverts itself, a link may leave through the shell),
+ * and reconstructing that natively would be a second implementation of the
+ * header's semantics.
+ */
+export type NativeScreenBarAction = {
+  checked: boolean | null
+  disabled: boolean
+  id: string
+  items: NativeScreenBarMenuItem[] | null
+  kind: 'button' | 'link' | 'menu' | 'toggle'
+  label: string
+  primary: boolean
+  priority: number
+  selected: boolean
+  tone: 'danger' | null
+}
+
+/** A stack transition the bar runs alongside — see native-shell-message.ts. */
+export type NativeScreenBarTransition = {
+  direction: 'back' | 'forward'
+  durationMs: number
+  from: string
+  to: string
+}
+
+export type NativeScreenBar = {
+  actions: NativeScreenBarAction[]
+  back: { label: string } | null
+  layerKey: string | null
+  title: string
+}
+
 export const isAuthGateRoute = (path: string): boolean =>
   path.startsWith('/login') || path.startsWith('/bootstrap')
 
 export const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
-// Portrait only needs the team and account controls at a tab root. The
-// admitted large-phone landscape lane has room for its compact toolbar on any
-// page, so it retains the header while a detail is shown beside the menu.
-// `isTabRoot` comes from the last-known screen's `type === 'root'`, not from
-// matching a path.
-export const shouldShowNativePhoneHeader = (input: {
+export type NativePhoneBarInput = {
   isIpad: boolean
+  // Android's own answer for the root lanes, from the last `nessie:screen`.
+  // iOS does not use it: see `shouldShowNativePhoneRootLanes`.
   isTabRoot: boolean
   largePhoneLandscape: boolean
+  platform: string
+  // The admin's published descriptor for the layer showing, or null before
+  // the first one of a cold start arrives.
+  screenBar: NativeScreenBar | null
+  // Whether the tab bar is showing. A full-screen task route hides it, which
+  // on iOS must not also remove the band — see `shouldShowNativePhoneNavBar`.
   showBar: boolean
-}): boolean => input.showBar
-  && !input.isIpad
-  && (input.largePhoneLandscape || input.isTabRoot)
+  // Past the login/bootstrap gate, whatever kind of screen this is. The band's
+  // constant height holds for exactly this long.
+  pastAuthGate: boolean
+}
+
+/**
+ * Whether the native navigation band is drawn at all.
+ *
+ * On iOS the answer is **the same for every screen**, and that is the whole
+ * point: the band's height feeds `getNativeWebviewFrameInsets`, so an answer
+ * that varied by screen type would make the WebView's own frame a function of
+ * navigation. That is what made a page jump 64pt when a back-swipe committed —
+ * the frame resized, one whole animation after the motion it belonged to. See
+ * docs/plans/2026-09-05-ios-native-navigation-bar.md §4.
+ *
+ * Android is unchanged: it still shows the band only where it shows the team
+ * and account controls. The same machinery can be turned on for it later by
+ * giving it the iOS answer here, but that is a separate decision.
+ */
+export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean => {
+  if (input.isIpad) return false
+  // On iOS the band spans everything past the auth gate — including a
+  // full-screen task route like the compose flow, which hides the tab bar but
+  // is entered and left through a real stack transition. Dropping the band
+  // there would resize the WebView frame across that push, which is the same
+  // defect in a second place.
+  //
+  // The auth gate itself keeps no chrome: it is only ever reached by a full
+  // document load or a logout that replaces the whole app, never by a stack
+  // transition, so that frame change is invisible and is accepted deliberately.
+  if (input.platform === 'ios') return input.pastAuthGate
+  return input.showBar && (input.largePhoneLandscape || input.isTabRoot)
+}
+
+/**
+ * Whether the band carries the team identity and account controls — the root
+ * lanes. Portrait only wants them at a tab root; the admitted large-phone
+ * landscape lane has room for its compact toolbar on any page, so it keeps
+ * them while a detail is shown beside the menu. `isTabRoot` comes from the
+ * last-known screen's `type === 'root'`, never from matching a path.
+ *
+ * A phone screen that is not a root gets the band without these lanes. What it
+ * carries instead — the back button, the title, the screen's actions — arrives
+ * with the next slice; until then the band is bare surface, which is honest
+ * rather than showing a team switcher above a conversation.
+ */
+export const shouldShowNativePhoneRootLanes = (input: NativePhoneBarInput): boolean => {
+  if (!shouldShowNativePhoneNavBar(input)) return false
+  if (input.largePhoneLandscape) return true
+  // On iOS the lanes follow the **published descriptor**, never the screen
+  // type. They are not the same question: `screenType` is the *pathname's*
+  // registry type, and a nested stage never changes the pathname — so an open
+  // Knowledge editor over a space root reports `root` and would be given a
+  // team switcher instead of its own title and Back. A layer that published a
+  // Back is not a root, whatever the route says.
+  //
+  // No descriptor yet — a cold start, the frame after a forward push — is a
+  // bare band, deliberately. Falling back to the root lanes would flash a team
+  // switcher above a conversation on the way to a push notification's target.
+  if (input.platform === 'ios') return input.screenBar !== null && input.screenBar.back === null
+  return input.isTabRoot
+}
 
 export const getNativePhoneHeaderHeight = (landscape: boolean): number =>
   landscape ? NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT : NATIVE_PHONE_MENU_HEADER_HEIGHT
@@ -103,13 +213,16 @@ export const getNativeWebviewFrameInsets = (input: {
   nativePhoneHeaderHeight: number
   platform: string
   safeArea: NativeSafeAreaInsets
-  showNativePhoneHeader: boolean
+  // `shouldShowNativePhoneNavBar`'s answer — the band, not its contents. On
+  // iOS this is constant past the auth gate, which is what keeps the frame
+  // still while the stack animates.
+  showNativePhoneNavBar: boolean
   showTabBar: boolean
 }): NativeSafeAreaInsets => {
   const top = input.isIpad && input.showTabBar
     ? getIpadContentTop(input.ipadChromeTop)
     : input.platform === 'ios' || input.platform === 'android'
-      ? input.safeArea.top + (input.showNativePhoneHeader ? input.nativePhoneHeaderHeight : 0)
+      ? input.safeArea.top + (input.showNativePhoneNavBar ? input.nativePhoneHeaderHeight : 0)
       : 0
   const bottom = input.platform === 'android' ? input.safeArea.bottom : 0
 
