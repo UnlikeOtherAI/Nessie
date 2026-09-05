@@ -27,7 +27,7 @@ import type { RouteDeps } from '../src/routes/types.js'
  *
  * Seed-scoped: every row is created under ids unique to this suite and
  * removed after each test, because these suites share one database and run
- * concurrently (AGENTS.md → Workflow).
+ * concurrently (docs/standards/testing.md).
  */
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
