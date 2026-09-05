@@ -1,5 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  BOARD_SOURCE_HEALTH_ALERT_TOPIC,
+  BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC,
+  BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
   COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
   COMMS_SYNC_INCREMENTAL_TOPIC,
   COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
@@ -59,3 +62,45 @@ export const enqueueCommsIncrementalSweep = async (
   payload,
   topic: COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
 })
+
+/**
+ * Board-source jobs. Each carries an idempotency key at its natural
+ * granularity: one sync per source (a slow provider must not pile up), one
+ * alert per health transition, and one renewal sweep per window.
+ */
+export const enqueueBoardSourceSync = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: { sourceId: string },
+  idempotencyKey?: string,
+): Promise<boolean> =>
+  enqueueQueueJob(prisma, {
+    idempotencyKey: idempotencyKey ?? `board-source:sync:${payload.sourceId}`,
+    payload,
+    topic: BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC,
+  })
+
+export const enqueueBoardSourceWebhook = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: {
+    provider: string
+    headers: Record<string, string>
+    rawBody: string
+    token?: string
+  },
+  idempotencyKey?: string,
+): Promise<boolean> =>
+  enqueueQueueJob(prisma, {
+    idempotencyKey,
+    payload,
+    topic: BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
+  })
+
+export const enqueueBoardSourceHealthAlert = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: { sourceId: string; revision: number },
+): Promise<boolean> =>
+  enqueueQueueJob(prisma, {
+    idempotencyKey: `board-source:health:${payload.sourceId}:${payload.revision}`,
+    payload,
+    topic: BOARD_SOURCE_HEALTH_ALERT_TOPIC,
+  })

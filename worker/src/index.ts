@@ -134,6 +134,24 @@ import {
   AgentEmailSendJobPayloadSchema,
 } from '@nessie/schemas'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
+import { registerBoardSourceAdaptersFromEnv } from '@nessie/board-source-providers'
+import {
+  BOARD_SOURCE_HEALTH_ALERT_TOPIC,
+  BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC,
+  BOARD_SOURCE_SYNC_INITIAL_TOPIC,
+  BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
+  BoardSourceSyncJobPayloadSchema,
+  BoardSourceWebhookJobPayloadSchema,
+  BoardSourceHealthAlertJobPayloadSchema,
+  parseOrganizationId,
+} from '@nessie/schemas'
+import {
+  executeBoardSourceSync,
+  sweepDueBoardSources,
+} from './control/board-source-sync.js'
+import { processBoardSourceWebhook } from './control/board-source-webhook.js'
+import { writeHealthAlerts } from './control/board-source-health.js'
+import { enqueueBoardSourceHealthAlert, enqueueBoardSourceSync } from './queue.js'
 import { listIncrementalPollingConnectors } from '@nessie/comms-connect'
 import {
   enqueueCommsIncrementalSweep,
@@ -648,6 +666,67 @@ export const startWorker = async (
     }`,
   )
 
+  // Board sources. Unset providers stay unregistered: their connect option is
+  // never offered and their jobs park with a reason, rather than failing in a
+  // way that reads like an outage.
+  const boardProviders = registerBoardSourceAdaptersFromEnv(process.env)
+  console.log(
+    `[worker] board-source adapters registered: ${
+      boardProviders.length > 0 ? boardProviders.join(', ') : 'none'
+    }`,
+  )
+
+  const boardSourceDeps = {
+    prisma,
+    encryptionSecret: config.auth.secret ?? '',
+    publicApiUrl: config.api.publicUrl ?? null,
+    enqueueHealthAlert: async (payload: { sourceId: string; revision: number }) => {
+      await enqueueBoardSourceHealthAlert(prisma, payload)
+    },
+    publishBoardUpdated: async (input: { organizationId: string; projectId: string }) => {
+      if (!realtimeTransport) return
+      const scope = {
+        kind: 'organization' as const,
+        organizationId: parseOrganizationId(input.organizationId),
+      }
+      await realtimeTransport
+        .publishWs([scope], {
+          event: 'board.updated',
+          data: { projectId: input.projectId },
+        })
+        .catch(() => undefined)
+    },
+  }
+
+  for (const topic of [BOARD_SOURCE_SYNC_INITIAL_TOPIC, BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC]) {
+    queueProvider.subscribe(
+      topic,
+      async (job) => {
+        const payload = BoardSourceSyncJobPayloadSchema.parse(job.payload)
+        await executeBoardSourceSync(boardSourceDeps, payload)
+      },
+      { signal: abortController.signal },
+    )
+  }
+
+  queueProvider.subscribe(
+    BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
+    async (job) => {
+      const payload = BoardSourceWebhookJobPayloadSchema.parse(job.payload)
+      await processBoardSourceWebhook(boardSourceDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    BOARD_SOURCE_HEALTH_ALERT_TOPIC,
+    async (job) => {
+      const payload = BoardSourceHealthAlertJobPayloadSchema.parse(job.payload)
+      await writeHealthAlerts(prisma, payload)
+    },
+    { signal: abortController.signal },
+  )
+
   queueProvider.subscribe(
     COMMS_SYNC_INITIAL_TOPIC,
     async (job) => {
@@ -818,6 +897,25 @@ export const startWorker = async (
       console.error('[worker.dashboard-sweep] failed', error)
     } finally {
       dashboardSweepInFlight = false
+    }
+  }, 30_000)
+
+  // Board-source sweep. The same claim shape as the dashboard sweep above, for
+  // the same reason: a conditional update on `claimedAt` is what stops two
+  // workers syncing one source at once.
+  let boardSourceSweepInFlight = false
+  const boardSourceSweepInterval = setInterval(async () => {
+    if (boardSourceSweepInFlight || abortController.signal.aborted) return
+    boardSourceSweepInFlight = true
+    try {
+      const claimed = await sweepDueBoardSources(prisma, { limit: 20 })
+      for (const source of claimed) {
+        await enqueueBoardSourceSync(prisma, { sourceId: source.sourceId })
+      }
+    } catch (error) {
+      console.error('[worker.board-source-sweep] failed', error)
+    } finally {
+      boardSourceSweepInFlight = false
     }
   }, 30_000)
 
@@ -1073,6 +1171,7 @@ export const startWorker = async (
     clearInterval(gmailSendSweepInterval)
     clearInterval(activeCallExpiryInterval)
     clearInterval(dashboardSweepInterval)
+    clearInterval(boardSourceSweepInterval)
     clearInterval(domainRevalidationInterval)
     clearInterval(workflowStepReapInterval)
     clearInterval(cloudBrowserReapInterval)

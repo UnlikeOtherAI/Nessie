@@ -284,6 +284,35 @@ enum BoardStyle {
   scrum
 }
 
+enum BoardSourceProvider {
+  jira
+  linear
+  trello
+  github
+}
+
+enum BoardSourceConnectionStatus {
+  active
+  needs_reauthorization
+  revoked
+}
+
+enum BoardSourceWriteMode {
+  read_only
+  read_write
+}
+
+/// Every state a source can be in names its own remedy — see
+/// docs/standards/capability-health-alerts.md.
+enum BoardSourceHealth {
+  active
+  paused
+  needs_reauthorization
+  owner_inactive
+  misconfigured
+  error
+}
+
 /// The value vocabulary a project's custom task fields may use. Seven types,
 /// each one a validator and a renderer; deliberately not a type system.
 enum TaskFieldType {
@@ -1034,7 +1063,9 @@ model User {
 
   resolvedAgentCards AgentCard[] @relation("AgentCardResolvedBy")
 
-  agentHandoffRequests AgentHandoffRequest[]
+  agentHandoffRequests     AgentHandoffRequest[]
+  boardSourceConnections   BoardSourceConnection[]   @relation("BoardSourceConnectionOwner")
+  boardSourceIdentityLinks BoardSourceIdentityLink[] @relation("BoardSourceIdentityLinkUser")
 
   @@map("users")
 }
@@ -1225,6 +1256,9 @@ model Organization {
   boards                           Board[]
   boardColumns                     BoardColumn[]
   taskFieldDefinitions             TaskFieldDefinition[]
+  boardSources                     BoardSource[]
+  boardSourceConnections           BoardSourceConnection[]
+  boardSourceIdentityLinks         BoardSourceIdentityLink[]
   iterations                       Iteration[]
   realtimeEvents                   RealtimeEvent[]
   userPresences                    UserPresence[]
@@ -1470,6 +1504,7 @@ model Project {
   tasks                    Task[]
   boards                   Board[]
   taskFieldDefinitions     TaskFieldDefinition[]
+  boardSources             BoardSource[]
   iterations               Iteration[]
   knowledgeSpaces          KnowledgeSpace[]
   knowledgePages           KnowledgePage[]
@@ -1586,6 +1621,211 @@ model TaskBoardPlacement {
   @@id([taskId, boardId])
   @@index([columnId, position])
   @@map("task_board_placements")
+}
+
+// ─── External board sources ────────────────────────────────────────────────
+//
+// An external system (Jira, Linear, Trello, GitHub) feeding a project's boards.
+// Items are mirrored into ordinary `Task` rows plus a `TaskExternalLink`, so
+// agents, assignments, approvals, search and the personal assistant's ticket
+// tools all work on them unchanged.
+//
+// See docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields.md §5.
+
+/// One person's delegated authority at one provider, reusable across projects.
+model BoardSourceConnection {
+  id                String                      @id @default(uuid()) @db.Uuid
+  organizationId    String                      @map("organization_id") @db.Uuid
+  ownerUserId       String                      @map("owner_user_id") @db.Uuid
+  provider          BoardSourceProvider
+  /// The provider's own stable account id — Atlassian accountId, Linear user
+  /// id, Trello member id, GitHub user id. Never a display name or an email.
+  externalAccountId String                      @map("external_account_id")
+  /// Linear organisation id, GitHub installation id. Empty for Jira (a 3LO
+  /// token spans sites, so the container carries the cloudId) and for Trello.
+  externalTenantId  String                      @default("") @map("external_tenant_id")
+  status            BoardSourceConnectionStatus @default(active)
+  grantedScopes     Json                        @default("[]") @map("granted_scopes")
+  lastVerifiedAt    DateTime?                   @map("last_verified_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+
+  organization Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User                             @relation("BoardSourceConnectionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  credential   BoardSourceConnectionCredential?
+  sources      BoardSource[]
+
+  @@unique([organizationId, ownerUserId, provider, externalAccountId, externalTenantId])
+  @@index([organizationId, ownerUserId])
+  @@map("board_source_connections")
+}
+
+/// Encrypted at rest through the same `@nessie/runtime` secret-crypto seam the
+/// comms connector and the MCP secret store use. Never returned by any route;
+/// decrypted only in `loadBoardSourceCredential`.
+model BoardSourceConnectionCredential {
+  id                     String    @id @default(uuid()) @db.Uuid
+  connectionId           String    @unique @map("connection_id") @db.Uuid
+  accessTokenCiphertext  String    @map("access_token_ciphertext")
+  refreshTokenCiphertext String?   @map("refresh_token_ciphertext")
+  expiresAt              DateTime? @map("expires_at")
+  keyVersion             Int       @default(1) @map("key_version")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  connection BoardSourceConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@map("board_source_connection_credentials")
+}
+
+/// Single-use OAuth state bound to (user, provider, organisation). Carries the
+/// PKCE verifier, the connection being re-authorized, and the account id a
+/// re-authorization must come back as — so a re-auth cannot silently re-point
+/// a connection at a different account.
+model BoardSourceOAuthState {
+  token          String              @id
+  organizationId String              @map("organization_id") @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  provider       BoardSourceProvider
+  payload        Json
+  expiresAt      DateTime            @map("expires_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("board_source_oauth_states")
+}
+
+/// One external container — a Jira project, a Linear team, a Trello board, a
+/// GitHub repository or Projects v2 board — feeding one Nessie project.
+model BoardSource {
+  id             String               @id @default(uuid()) @db.Uuid
+  projectId      String               @map("project_id") @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  connectionId   String               @map("connection_id") @db.Uuid
+  provider       BoardSourceProvider
+  name           String
+  /// Provider-specific and validated by the adapter's own container schema.
+  container      Json
+  /// The adapter's canonical string form of `container`, for the unique key.
+  containerKey   String               @map("container_key")
+  writeMode      BoardSourceWriteMode @default(read_only) @map("write_mode")
+  /// BoardSourceStateMapping[] — the container's states, each with the
+  /// lifecycle category it lands in and whether it is that category's default.
+  stateMapping   Json                 @default("[]") @map("state_mapping")
+  /// BoardSourceFieldMapping[] — external field → a native task field or a
+  /// `field:<taskFieldDefinitionId>`.
+  fieldMappings  Json                 @default("[]") @map("field_mappings")
+  /// Done and archived items older than this are not imported on a first sync.
+  syncWindowDays Int                  @default(30) @map("sync_window_days")
+
+  healthState         BoardSourceHealth @default(active) @map("health_state")
+  /// A stable code this codebase owns, never an upstream message — the surface
+  /// turns it into a sentence and a remedy.
+  healthReason        String?           @map("health_reason")
+  healthDetail        String?           @map("health_detail")
+  /// Bumped by the conditional UPDATE that claims a health transition, so one
+  /// transition alerts exactly once however many workers observe it.
+  healthRevision      Int               @default(0) @map("health_revision")
+  lastSyncStartedAt   DateTime?         @map("last_sync_started_at")
+  lastSyncCompletedAt DateTime?         @map("last_sync_completed_at")
+  lastErrorCode       String?           @map("last_error_code")
+  consecutiveFailures Int               @default(0) @map("consecutive_failures")
+  nextRunAt           DateTime?         @map("next_run_at")
+  claimedAt           DateTime?         @map("claimed_at")
+  /// SyncCheckpoint — { cursor?, since?, phase: 'initial' | 'incremental' }.
+  checkpoint          Json              @default("{}")
+
+  webhookExternalId String?   @map("webhook_external_id")
+  webhookExpiresAt  DateTime? @map("webhook_expires_at")
+  /// SHA-256 of the per-source callback token, for providers that do not sign
+  /// their deliveries (Jira).
+  webhookTokenHash  String?   @map("webhook_token_hash")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Restrict, not Cascade: removing a connection that sources still run under
+  /// is refused so a project's board never silently stops updating.
+  connection   BoardSourceConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  links        TaskExternalLink[]
+  healthAlerts UserAlert[]           @relation("BoardSourceHealthAlert")
+
+  @@unique([projectId, provider, containerKey])
+  @@index([nextRunAt, claimedAt])
+  @@index([organizationId, healthState])
+  @@index([connectionId])
+  @@map("board_sources")
+}
+
+/// The external identity of a mirrored task, and the fingerprints echo
+/// suppression compares.
+model TaskExternalLink {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  taskId         String @unique @map("task_id") @db.Uuid
+  sourceId       String @map("source_id") @db.Uuid
+  externalId     String @map("external_id")
+  externalKey    String @map("external_key")
+  externalUrl    String @map("external_url")
+
+  remoteStateId            String? @map("remote_state_id")
+  remoteStateName          String? @map("remote_state_name")
+  /// What the card shows for an assignee no identity link resolves — the
+  /// provider's own data about the provider's own user, never a Nessie person.
+  remoteAssigneeExternalId String? @map("remote_assignee_external_id")
+  remoteAssigneeDisplay    String? @map("remote_assignee_display")
+
+  externalUpdatedAt   DateTime? @map("external_updated_at")
+  remoteDeletedAt     DateTime? @map("remote_deleted_at")
+  inboundFingerprint  String?   @map("inbound_fingerprint")
+  outboundFingerprint String?   @map("outbound_fingerprint")
+  lastInboundAt       DateTime? @map("last_inbound_at")
+  lastOutboundAt      DateTime? @map("last_outbound_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  task   Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  source BoardSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, externalId])
+  @@index([organizationId])
+  @@map("task_external_links")
+}
+
+/// The only place a provider identity meets a Nessie identity. Scoped to the
+/// provider tenant rather than the source, so one mapping serves every project.
+///
+/// Under the UOA rule this is a binding key of the same kind as `User.uoaSub`:
+/// no row here is ever promoted to a `User`, and `externalDisplayName` is the
+/// provider's own data about its own user, kept only so the mapping table can
+/// name who is still unmapped.
+model BoardSourceIdentityLink {
+  id                  String              @id @default(uuid()) @db.Uuid
+  organizationId      String              @map("organization_id") @db.Uuid
+  provider            BoardSourceProvider
+  /// Jira cloudId, Linear organisation id, or the literal provider name where
+  /// the provider has no tenant of its own.
+  externalTenantKey   String              @map("external_tenant_key")
+  externalUserId      String              @map("external_user_id")
+  externalDisplayName String?             @map("external_display_name")
+  userId              String?             @map("user_id") @db.Uuid
+  agentId             String?             @map("agent_id") @db.Uuid
+  /// 'email' when auto-matched by exact address, 'manual' when a person chose.
+  matchedBy           String              @map("matched_by")
+  createdByUserId     String?             @map("created_by_user_id") @db.Uuid
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation("BoardSourceIdentityLinkUser", fields: [userId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation("BoardSourceIdentityLinkAgent", fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider, externalTenantKey, externalUserId])
+  @@index([organizationId, userId])
+  @@map("board_source_identity_links")
 }
 
 model Iteration {
@@ -1819,6 +2059,9 @@ enum UserAlertKind {
   // failure this alerts on is one that otherwise nobody sees until they happen
   // to open the tab.
   automatic_membership_health
+  // A project board's external source stopped syncing. Durable for the same
+  // reason: a board that quietly stops updating still looks like a board.
+  board_source_health
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1841,6 +2084,7 @@ model UserAlert {
   triggerId                 String?                  @map("trigger_id") @db.Uuid
   callId                    String?                  @map("call_id") @db.Uuid
   automaticMembershipRuleId String?                  @map("automatic_membership_rule_id") @db.Uuid
+  boardSourceId             String?                  @map("board_source_id") @db.Uuid
   approvalRequestId         String?                  @map("approval_request_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
@@ -1864,6 +2108,7 @@ model UserAlert {
   trigger                   AgentTrigger?            @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
   call                      Call?                    @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
   automaticMembershipRule   AutomaticMembershipRule? @relation("AutomaticMembershipHealthAlert", fields: [automaticMembershipRuleId], references: [id], onDelete: Cascade)
+  boardSource               BoardSource?             @relation("BoardSourceHealthAlert", fields: [boardSourceId], references: [id], onDelete: Cascade)
   actorUser                 User?                    @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent                Agent?                   @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -1873,6 +2118,7 @@ model UserAlert {
   @@index([userId, kind, projectId, readAt, createdAt])
   @@index([callId])
   @@index([automaticMembershipRuleId])
+  @@index([boardSourceId])
   @@map("user_alerts")
 }
 
@@ -2362,10 +2608,11 @@ model Agent {
   agentCards AgentCard[]
   mailbox    AgentMailbox?
 
-  cloudBrowserSessions    CloudBrowserSession[]
-  agentBrowsers           AgentBrowser[]
-  sendAuthorizationGrants SendAuthorizationGrant[]
-  mailboxAccess           MailboxConnectionAgentAccess[]
+  cloudBrowserSessions     CloudBrowserSession[]
+  agentBrowsers            AgentBrowser[]
+  sendAuthorizationGrants  SendAuthorizationGrant[]
+  mailboxAccess            MailboxConnectionAgentAccess[]
+  boardSourceIdentityLinks BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
 
   @@unique([organizationId, id])
   @@unique([organizationId, systemSlug])
@@ -3981,6 +4228,7 @@ model Task {
   pushAttentionAlerts UserAlert[]          @relation("PushAttentionAlertTask")
   workflowStepRuns    WorkflowStepRun[]    @relation("WorkflowTask")
   placements          TaskBoardPlacement[]
+  externalLink        TaskExternalLink?
 
   @@index([agentId, status])
   @@index([organizationId, status])

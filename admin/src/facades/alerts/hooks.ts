@@ -17,6 +17,7 @@ export type UserAlertRecord = {
     | 'team_invitation'
     | 'approval_requested'
     | 'automatic_membership_health'
+    | 'board_source_health'
   messageId: string | null
   rootMessageId: string | null
   threadId: string | null

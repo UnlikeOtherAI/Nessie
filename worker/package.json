@@ -44,7 +44,9 @@
     "cron-parser": "^5.5.0",
     "mammoth": "^1.12.0",
     "pdf-parse": "1.1.1",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@nessie/board-sources": "workspace:*",
+    "@nessie/board-source-providers": "workspace:*"
   },
   "devDependencies": {
     "@nessie/mock-llm": "workspace:*",
