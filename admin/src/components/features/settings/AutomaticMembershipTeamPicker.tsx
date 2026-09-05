@@ -8,7 +8,7 @@
  * workspace access, so the two read as the same control.
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type {
   AutomaticMembershipRuleRecord,
   AutomaticMembershipTeamOption,
@@ -39,14 +39,19 @@ export const AutomaticMembershipTeamPicker = ({
   rules,
 }: Props) => {
   const selectedFromServer = rules.map((rule) => rule.teamId)
-  const [selected, setSelected] = useState<string[]>(selectedFromServer)
-
   // Re-sync when the server's answer changes — after a save, or after another
-  // administrator edits the same domain.
-  useEffect(() => {
-    setSelected(rules.map((rule) => rule.teamId))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rules.map((rule) => rule.teamId).sort().join(','), domainId])
+  // administrator edits the same domain. Adjusting state during render against
+  // a remembered key is React's documented shape for this; an effect would run
+  // a frame late and needs a dependency the linter cannot check.
+  const serverKey = `${domainId}:${[...selectedFromServer].sort().join(',')}`
+  const [selection, setSelection] = useState({ ids: selectedFromServer, key: serverKey })
+  if (selection.key !== serverKey) {
+    setSelection({ ids: selectedFromServer, key: serverKey })
+  }
+  const selected = selection.ids
+  const setSelected = (next: (current: string[]) => string[]) => {
+    setSelection((current) => ({ ids: next(current.ids), key: current.key }))
+  }
 
   const dirty = !sameIds(selected, selectedFromServer)
 
@@ -96,7 +101,7 @@ export const AutomaticMembershipTeamPicker = ({
           <button
             className="admin-button admin-button-secondary admin-button-sm"
             disabled={pending}
-            onClick={() => setSelected(selectedFromServer)}
+            onClick={() => setSelection({ ids: selectedFromServer, key: serverKey })}
             type="button"
           >
             Discard
