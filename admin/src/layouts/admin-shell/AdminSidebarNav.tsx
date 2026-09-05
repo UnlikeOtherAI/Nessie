@@ -260,6 +260,21 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        // Writing a team secret is owner-gated, so the doorway is too: a member
+        // already sees what their team set on their own Secrets page, where it
+        // is the part of the cascade that reaches them.
+        path: '/settings/team/secrets',
+        label: 'Secrets',
+        ownerOnly: true,
+        icon: icon(
+          <>
+            <rect height="10" rx="2" width="14" x="5" y="11" />
+            <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 14v3" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/team/members',
         label: 'Members',
         // Same shape as Organization's Members entry: on a UOA session the
@@ -285,11 +300,29 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/settings/organization',
         label: 'Settings',
+        // Exact for the same reason Team's is: `/settings/organization/secrets`
+        // is its own doorway and must not light this one up as well.
+        exact: true,
         visibleTo: ({ canManageOrganization }) => canManageOrganization,
         icon: icon(
           <>
             <path d="M4 21V7l8-4 8 4v14" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M9 21v-6h6v6M9 11h.01M15 11h.01" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
+        // The base of the secret cascade. Owner-only for the same reason the
+        // team page is: `canManageSecretScope` refuses every scope above
+        // personal to anyone else.
+        path: '/settings/organization/secrets',
+        label: 'Secrets',
+        ownerOnly: true,
+        icon: icon(
+          <>
+            <rect height="10" rx="2" width="14" x="5" y="11" />
+            <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 14v3" strokeLinecap="round" />
           </>,
         ),
       },

@@ -6,7 +6,7 @@ import type {
   MailboxTransportSecurity,
 } from '../../../lib/api-client'
 import { connectionAnchorId } from '../../../lib/connection-anchor'
-import { useStartCommsConnection } from '../../../facades/connections/hooks'
+import { useCommsProviders, useStartCommsConnection } from '../../../facades/connections/hooks'
 import { useConnectMailbox, useDiscoverMailbox } from '../../../facades/mailbox-connections/hooks'
 import { useTeams } from '../../../facades/projects/hooks'
 import { Dialog } from '../../shared/Dialog'
@@ -81,6 +81,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   const connect = useConnectMailbox()
   const { mutateAsync: discoverMailbox } = useDiscoverMailbox()
   const startComms = useStartCommsConnection()
+  const commsProviders = useCommsProviders()
   const teams = useTeams()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<FormValues>(createFormValues)
@@ -94,6 +95,15 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
   const discovered = useRef<DiscoveryCacheEntry | null>(null)
   const inFlightDiscovery = useRef<DiscoveryInFlight | null>(null)
   const emailInput = useRef<HTMLInputElement>(null)
+
+  // Absent while the read is in flight or has failed, which leaves the rows
+  // enabled: a provider is only declared unavailable on the server's word.
+  const providerAvailability: Partial<Record<'google' | 'microsoft', boolean>> = {}
+  for (const entry of commsProviders.data?.providers ?? []) {
+    if (entry.provider === 'google' || entry.provider === 'microsoft') {
+      providerAvailability[entry.provider] = entry.available
+    }
+  }
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]): void =>
     setForm((current) => ({ ...current, [key]: value }))
@@ -353,6 +363,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
             else setError('A shared mailbox needs its secure server credential.')
           }}
           pending={isSubmittingDiscovery}
+          providerAvailability={providerAvailability}
         />
       ) : null}
 

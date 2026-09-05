@@ -365,6 +365,13 @@ export const AGENT_SECRET_SAFETY_INSTRUCTION = [
   SECRET_PROHIBITION,
   'When a credential is needed or you spot one, call card_post with a secret block',
   '(destination vault_secret, name it e.g. STRIPE_API_KEY) so it goes straight to Secrets.',
+  // A secret lands at exactly one level and the levels below inherit it, so a
+  // scope chosen by accident is either a credential nobody else can reach or
+  // one shared with an entire organisation. The card's default is `personal`;
+  // saying which level was picked is what lets the person correct it before
+  // they type the value, rather than after.
+  'Say which scope it goes to and why — personal (the default, that person alone)',
+  'or a shared team/project/organization scope, which is owner-only.',
 ].join(' ')
 
 /**
