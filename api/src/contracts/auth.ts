@@ -4,7 +4,6 @@ import { z } from 'zod'
 import { NonEmptyStringSchema } from './shared.js'
 
 export const SsoThemeSchema = z.enum([
-  'space-white',
   'nebula',
   'midnight',
   'daylight',

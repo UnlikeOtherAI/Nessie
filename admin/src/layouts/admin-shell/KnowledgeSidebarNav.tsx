@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { faBook, faChartColumn, faLayerGroup, faPlus, faUser } from '@fortawesome/free-solid-svg-icons'
+import { faBook, faChartColumn, faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
@@ -16,7 +16,6 @@ import {
   shouldHighlightKnowledgeSidebarSelection,
 } from './phone-navigation'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
-import { SidebarIconButton } from './SidebarIcons'
 import { sidebarAriaCurrent } from './SidebarRow'
 
 // Same cookie-backed persistence the channels, projects and admin rails use.
@@ -224,12 +223,14 @@ export const KnowledgeSidebarNav = () => {
 
         <SidebarMenuSection
           action={(
-            <SidebarIconButton
+            <button
               aria-label="Create space"
-              icon={faPlus}
+              className="admin-sidebar-plus"
               onClick={() => setCreateOpen(true)}
-              placement="section"
-            />
+              type="button"
+            >
+              +
+            </button>
           )}
           id="kb-spaces"
           isCollapsed={collapsedSections.spaces ?? false}
