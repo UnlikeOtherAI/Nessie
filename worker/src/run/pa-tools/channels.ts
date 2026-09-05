@@ -206,12 +206,21 @@ export const runChannelArchiveTool = async (
   }
 
   const archived = input.archived ?? true
-  const channel = await setChannelArchived(context.prisma, {
-    archived,
-    channelId: input.channelId,
-    organizationId,
-    userId,
-  })
+  let channel: ChannelRecord | null
+  try {
+    channel = await setChannelArchived(context.prisma, {
+      archived,
+      channelId: input.channelId,
+      organizationId,
+      userId,
+    })
+  } catch (error) {
+    // Unarchiving can collide: an archived channel does not hold its name.
+    if (error instanceof ChannelSlugConflictError) {
+      throw new Error(`${error.message}.`)
+    }
+    throw error
+  }
   if (!channel) {
     throw new Error('Channel not found or insufficient permissions to manage it.')
   }

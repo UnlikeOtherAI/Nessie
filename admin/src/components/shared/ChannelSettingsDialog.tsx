@@ -62,10 +62,22 @@ export const ChannelSettingsDialog = (
   }
 
   const handleArchiveToggle = async () => {
-    await archiveChannel.mutateAsync({
-      archived: !isArchived,
-      channelId: channel.id,
-    })
+    // Unarchiving can be refused: an archived channel does not hold its name,
+    // so somebody may have taken it while this one was away. The refusal says
+    // which channel to rename, and it belongs on the form rather than in a
+    // rejected promise nobody sees.
+    try {
+      await archiveChannel.mutateAsync({
+        archived: !isArchived,
+        channelId: channel.id,
+      })
+    } catch (error) {
+      setConfirmArchive(false)
+      setFormError(
+        error instanceof Error ? error.message : 'Unable to change the channel archive state.',
+      )
+      return
+    }
     setConfirmArchive(false)
     onClose()
   }
