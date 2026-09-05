@@ -4,8 +4,15 @@ import { test } from 'node:test'
 import { CommsConnectionStartRequestSchema } from '@nessie/schemas'
 
 import {
+  clearConnectors,
+  registerConnector,
+  type ConnectorFactory,
+} from '@nessie/comms-connect'
+
+import {
   buildAuthorizeUrl,
   getCommsOAuthConfig,
+  isCommsProviderConnectable,
 } from '../src/routes/comms/oauth-config.js'
 import {
   callbackErrorCode,
@@ -53,4 +60,34 @@ test('callback exposes only structural provider error states', () => {
   assert.equal(callbackQueryErrorCode('consent_required'), 'provider_access_blocked')
   assert.equal(callbackQueryErrorCode('access_denied'), 'access_denied')
   assert.equal(callbackQueryErrorCode('arbitrary_provider_error'), 'access_denied')
+})
+
+test('a provider is connectable only when both its adapter and its client id exist', (t) => {
+  const clientId = process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID
+  t.after(() => {
+    clearConnectors()
+    if (clientId === undefined) delete process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID
+    else process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID = clientId
+  })
+
+  // Registration is the whole signal; `hasConnector` never runs the factory.
+  const factory: ConnectorFactory = () => {
+    throw new Error('the availability check must not build a connector')
+  }
+
+  clearConnectors()
+  process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID = 'client-id'
+  // A client id alone builds an authorize URL but has nothing to exchange the
+  // returned code with, so the person would only fail on the way back.
+  assert.equal(isCommsProviderConnectable('google'), false)
+
+  registerConnector('google', factory)
+  assert.equal(isCommsProviderConnectable('google'), true)
+
+  delete process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID
+  assert.equal(isCommsProviderConnectable('google'), false)
+
+  // Slack has start configuration but no client id in this process; Apple has
+  // no start configuration at all and is not a comms provider.
+  assert.equal(isCommsProviderConnectable('slack'), false)
 })

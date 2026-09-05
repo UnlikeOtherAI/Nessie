@@ -39,7 +39,9 @@ import { ProjectView } from './pages/project/ProjectView'
 import { ConnectionsPage } from './pages/settings/ConnectionsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
+import { OrganizationSecretsPage } from './pages/settings/OrganizationSecretsPage'
 import { SecretsPage } from './pages/settings/SecretsPage'
+import { TeamSecretsPage } from './pages/settings/TeamSecretsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { TeamMembersPage } from './pages/settings/TeamMembersPage'
 import { TeamSettingsPage } from './pages/settings/TeamSettingsPage'
@@ -312,6 +314,14 @@ export const router = createBrowserRouter([
       {
         path: '/settings/team/members',
         element: <TeamMembersPage />,
+      },
+      {
+        path: '/settings/team/secrets',
+        element: <TeamSecretsPage />,
+      },
+      {
+        path: '/settings/organization/secrets',
+        element: <OrganizationSecretsPage />,
       },
       {
         path: '/settings/statuses',

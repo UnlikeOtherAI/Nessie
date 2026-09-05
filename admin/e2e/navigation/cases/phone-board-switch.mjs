@@ -4,7 +4,7 @@
 // project rather than at the board somebody just left
 // (docs/navigation/overview.md §1, "Tab hosts").
 import { hasPhoneViewport, waitForStackSettled, watchForMotion } from '../lib/freeze.mjs'
-import { gotoPath, shot } from '../lib/page.mjs'
+import { clickTab, gotoPath, selectedTab, shot } from '../lib/page.mjs'
 import { ensureSecondBoard } from '../lib/seed.mjs'
 import { createChecks } from '../lib/expect.mjs'
 
@@ -18,11 +18,10 @@ const sameRect = (before, after) => {
   )
 }
 
-const selectedBoardTab = (page) => page.evaluate(() => {
-  const strip = document.querySelector('[aria-label="Boards"]')
-  const selected = strip?.querySelector('[aria-selected="true"], [aria-checked="true"]')
-  return selected?.textContent?.trim() ?? null
-})
+// Reads the switcher through the shared helper, so a project with enough
+// boards to collapse the strip into a dropdown reports its selection the same
+// way rather than silently reading null.
+const selectedBoardTab = (page) => selectedTab(page, 'Boards')
 
 export const phoneBoardSwitch = {
   name: 'phone-board-switch',
@@ -40,7 +39,7 @@ export const phoneBoardSwitch = {
     const frames = [await shot(page, 'phone-board-switch', '00-default-board')]
 
     const motion = await watchForMotion(page, { selectors: REGIONS, windowMs: WATCH_MS })
-    const switched = page.getByRole('tab', { name: 'Review queue' }).click()
+    const switched = clickTab(page, 'Boards', 'Review queue')
     const observed = await watchForMotion(page, { selectors: REGIONS, windowMs: WATCH_MS })
     await switched
 

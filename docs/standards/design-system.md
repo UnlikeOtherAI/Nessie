@@ -52,6 +52,17 @@ summary and points here; **this file is the rule**.
   state lives in a URL param written with `replace`, never a history entry;
   transient form values do not. The navigation rule against another fork lives
   in [docs/navigation/overview.md](../navigation/overview.md).
+  **Below the width its labels need, the strip is a dropdown** naming the
+  current selection — not a row that scrolls, which hides the very options it
+  exists to offer. That is a measurement, never a breakpoint: the same strip
+  collapses inside a narrow side panel on a desktop and stays a strip on a
+  phone when it holds two short words, and only measuring tells those apart.
+  The decision is `components/primitives/tab-bar-fit.ts`, kept pure because a
+  `ResizeObserver` feeds it and browsers stop delivering one to a hidden tab.
+  A call site may pass `collapse="never"` only where the row is known to fit.
+  Full-width strips therefore floor each item at `min-width: max-content`:
+  without it a shortage is absorbed by crushing labels into each other and the
+  strip never reports the overflow that would turn it into a dropdown.
 - **One identity picture, one shape, one source.** Every avatar in the admin is
   `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
   for its kind; a call site says what it depicts and never assembles a tile. Its
