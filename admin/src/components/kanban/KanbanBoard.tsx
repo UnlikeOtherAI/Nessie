@@ -38,6 +38,8 @@ const TOUCH_ACTIVATION = { activationConstraint: { delay: 250, tolerance: 8 } }
 type ItemMap = Record<string, string[]>
 
 type KanbanBoardProps = {
+  /** The board being drawn; its Done column archives its own tickets only. */
+  boardId?: string
   columns: BoardColumnView[]
   projectId?: string
   // Already placed by the server: `columnId` is the column this board shows
@@ -51,6 +53,7 @@ type KanbanBoardProps = {
 }
 
 export const KanbanBoard = ({
+  boardId,
   columns,
   projectId,
   tasks,
@@ -311,7 +314,11 @@ export const KanbanBoard = ({
                     columnId={column.id}
                     count={ids.length}
                     dot={CATEGORY_DOT[column.category]}
-                    headerAction={column.category === 'done' && projectId ? <ArchiveDoneMenu projectId={projectId} /> : undefined}
+                    headerAction={
+                      column.category === 'done' && projectId && boardId ? (
+                        <ArchiveDoneMenu boardId={boardId} projectId={projectId} />
+                      ) : undefined
+                    }
                     itemIds={ids}
                     label={column.name}
                   >

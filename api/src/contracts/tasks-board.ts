@@ -78,10 +78,12 @@ export const UpdateTaskBodySchema = z.object({
   fieldValues: TaskFieldValuesPatchSchema.optional(),
 })
 
-// Archive completed work from one explicit project. A board action must never
-// silently affect another project in the same organisation.
+// Archive completed work from one explicit project, and — when the caller is a
+// board's own Done column — one explicit board. A board action must never
+// silently affect another board, or another project in the same organisation.
 export const ArchiveDoneTasksBodySchema = z.object({
   projectId: ProjectIdSchema,
+  boardId: z.string().uuid().optional(),
   olderThanDays: z.number().int().positive().nullable().optional(),
 })
 

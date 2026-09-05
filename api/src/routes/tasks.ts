@@ -171,8 +171,13 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const result = await archiveDoneTasks(prisma, {
       organizationId: actorContext.tenant.organizationId,
       projectId: body.projectId,
+      boardId: body.boardId,
       olderThanDays: body.olderThanDays,
     })
+    if ('error' in result) {
+      sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found in this project')
+      return reply
+    }
     return createApiResponse(result)
   })
 

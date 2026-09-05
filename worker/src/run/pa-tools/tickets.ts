@@ -449,6 +449,9 @@ export const runTicketArchiveDoneTool = async (
     ...args,
     organizationId: member.organizationId,
   })
+  // The only refusal is an unknown board, and this tool names none — it
+  // archives the whole project the caller asked for.
+  if ('error' in archived) throw new Error('Board not found.')
   return result(
     'ticket_archive_done',
     `projectId=${args.projectId}`,

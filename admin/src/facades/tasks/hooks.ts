@@ -126,8 +126,12 @@ export const useArchiveDoneTasks = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { projectId: string; olderThanDays?: number | null }) =>
-      apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
+    mutationFn: (input: {
+      projectId: string
+      /** The board whose Done column was clicked; its tickets only. */
+      boardId?: string
+      olderThanDays?: number | null
+    }) => apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
       void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
