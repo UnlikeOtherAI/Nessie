@@ -61,13 +61,15 @@ creating files, moving code, reusing logic, or widening an existing service.
   resource access, SSRF rejection, redaction, rate-limit identity, and build or
   deploy gates.
 - Admin route and team headers own their actions as typed
-  `PageHeaderAction` values and render them through
-  `ResponsivePageHeader`/`AdminPageHeader`. Give each action an explicit
-  priority, preserve one primary action where applicable, and let the shared
-  measured overflow menu decide what moves into **More**. Use the typed
-  `leading`, `eyebrow`, and `titleInput` options for the small number of headers
-  with navigation context or an editable title; do not add page-specific
-  breakpoint hiding or arbitrary React-node action slots.
+  `PageHeaderAction` values and render them through `ScreenHeader`, the one
+  entry point for a route's own header; `ResponsivePageHeader` is the
+  underlying primitive for bars that are not a route's screen header. Give
+  each action an explicit priority, preserve one primary action where
+  applicable, and let the shared measured overflow menu decide what moves
+  into **More**. Use the typed `leading`, `eyebrow`, and `titleInput` options
+  for the small number of headers with navigation context or an editable
+  title; do not add page-specific breakpoint hiding or arbitrary React-node
+  action slots.
 - Keep docs next to architecture changes. If behavior, topology, ports,
   deployment, MCP surface, or workflow changes, update the corresponding
   document before committing.

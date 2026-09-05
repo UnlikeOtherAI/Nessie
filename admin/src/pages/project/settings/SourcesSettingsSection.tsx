@@ -10,11 +10,9 @@ import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { EmptyState } from '../../../components/shared/EmptyState'
 import { Section } from '../../../components/shared/PageBody'
 import { Pill } from '../../../components/primitives/Pill'
+import { formErrorMessage } from '../../../facades/form-errors'
 import { ConnectSourceDialog } from './ConnectSourceDialog'
 import { SourceMappingPanel } from './SourceMappingPanel'
-
-const errorMessage = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
 
 /**
  * Each health state names the one thing that fixes it — the standard is
@@ -130,7 +128,7 @@ export const SourcesSettingsSection = ({
                           { id: source.id, action: remedy.action as 'sync' | 'pause' | 'resume' | 'retry' },
                           {
                             onError: (cause) =>
-                              onSaveError(errorMessage(cause, 'Could not change the source')),
+                              onSaveError(formErrorMessage(cause, 'Could not change the source')),
                             onSuccess: onSaved,
                           },
                         )
@@ -149,7 +147,7 @@ export const SourcesSettingsSection = ({
                             { id: source.id, action: 'sync' },
                             {
                               onError: (cause) =>
-                                onSaveError(errorMessage(cause, 'Could not start a sync')),
+                                onSaveError(formErrorMessage(cause, 'Could not start a sync')),
                               onSuccess: onSaved,
                             },
                           )
@@ -213,7 +211,7 @@ export const SourcesSettingsSection = ({
           setRemoveTarget(null)
           if (!target) return
           removeSource.mutate(target.id, {
-            onError: (cause) => onSaveError(errorMessage(cause, 'Could not remove the source')),
+            onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not remove the source')),
             onSuccess: onSaved,
           })
         }}

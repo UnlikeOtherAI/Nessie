@@ -34,7 +34,14 @@ test('every section-sidebar row file wires sidebarAriaCurrent alongside its acti
     '../src/layouts/admin-shell/SidebarNav.tsx',
     '../src/layouts/admin-shell/AdminSidebarNav.tsx',
     '../src/layouts/admin-shell/KnowledgeSidebarNav.tsx',
-    '../src/layouts/admin-shell/ProjectsSidebarNav.tsx',
+    // The Projects sidebar's own row rendering lives in ProjectRow.tsx (the
+    // project tile) and ProjectSectionRows.tsx (its sections and boards);
+    // ProjectsSidebarNav.tsx itself is the orchestrator and no longer
+    // renders a row directly (06-F5). ProjectSectionRows.tsx carries the
+    // plain `? 'active' :` toggle this check looks for; ProjectRow.tsx's own
+    // tile uses a nested `'active-parent' : 'active'` ternary instead (its
+    // aria-current pairing is asserted directly in project-channel-parity.test.ts).
+    '../src/layouts/admin-shell/ProjectSectionRows.tsx',
     '../src/layouts/admin-shell/SidebarChannelsSection.tsx',
     '../src/layouts/admin-shell/SidebarDmSection.tsx',
     '../src/layouts/admin-shell/SidebarProjectsSection.tsx',

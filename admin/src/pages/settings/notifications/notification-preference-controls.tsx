@@ -1,5 +1,5 @@
-import { Switch } from '../../components/primitives/Switch'
-import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { Switch } from '../../../components/primitives/Switch'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 type PushPreferenceCardProps = {
   disabled: boolean

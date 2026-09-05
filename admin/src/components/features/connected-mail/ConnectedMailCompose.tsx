@@ -292,7 +292,7 @@ export const ConnectedMailCompose = ({
     try {
       // Gmail always creates the reviewed provider draft before its held send;
       // IMAP/SMTP intentionally keeps this local and uses the explicit send route.
-      const providerAction = address.source === 'gmail'
+      const gmailAction = address.source === 'gmail'
         ? providerDraftRef.current
           ? await updateDraft.mutateAsync({ draftId: providerDraftRef.current.id, input: validInput })
           : existingActionId
@@ -302,36 +302,36 @@ export const ConnectedMailCompose = ({
             idempotencyKey: requestId!,
           })
         : null
-      if (providerAction) {
+      if (gmailAction) {
         providerDraftRef.current = {
-          contentFingerprint: providerAction.contentFingerprint ?? '',
-          id: providerAction.id,
+          contentFingerprint: gmailAction.contentFingerprint ?? '',
+          id: gmailAction.id,
         }
         if (!activeGmailDraftId) {
           // A create can succeed even when the following send loses its
           // response. Keep its durable action id in the local draft so retry
           // updates/reuses it instead of creating another Gmail draft.
-          draft.setDraft({ ...current, gmailDraftId: providerAction.id, requestId })
+          draft.setDraft({ ...current, gmailDraftId: gmailAction.id, requestId })
           await draft.flush()
         }
         setRecreateGmailDraft(false)
       }
-      const result = address.source === 'gmail'
+      const result = gmailAction
         ? await send.mutateAsync({
-          draftId: providerAction!.id,
-          expectedFingerprint: providerAction!.contentFingerprint,
+          draftId: gmailAction.id,
+          expectedFingerprint: gmailAction.contentFingerprint,
         })
         : await send.mutateAsync({
           ...validInput,
           idempotencyKey: requestId!,
         })
-      const heldSend = address.source === 'gmail' && result.status === 'sending' && result.sendAfter
-        ? { draftId: providerAction!.id, sendAfter: result.sendAfter }
+      const heldSend = gmailAction && result.status === 'sending' && result.sendAfter
+        ? { draftId: gmailAction.id, sendAfter: result.sendAfter }
         : undefined
       if (heldSend) {
         // Persist the action identity before rendering the confirmation. A
         // reload can only offer Undo; it cannot recreate or resend this draft.
-        draft.setDraft({ ...current, gmailDraftId: providerAction!.id, gmailHeldSend: heldSend, requestId })
+        draft.setDraft({ ...current, gmailDraftId: heldSend.draftId, gmailHeldSend: heldSend, requestId })
         await draft.flush()
       } else if (address.source === 'mailbox' && result.status === 'dispatching' && result.actionId) {
         draft.setDraft({ ...current, mailboxSendActionId: result.actionId, requestId })
@@ -339,7 +339,7 @@ export const ConnectedMailCompose = ({
       } else {
         draft.clear()
       }
-      setSent({ ...result, id: result.id || result.actionId || providerAction?.id || '' })
+      setSent({ ...result, id: result.id || result.actionId || gmailAction?.id || '' })
     } catch (cause) {
       if (address.source === 'mailbox' && !(cause instanceof ApiClientError)) {
         draft.setDraft({ ...current, mailboxSendNeedsCheck: true, requestId })

@@ -15,9 +15,7 @@ import { EmptyState } from '../../../components/shared/EmptyState'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { Pill } from '../../../components/primitives/Pill'
-
-const errorMessage = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
+import { formErrorMessage } from '../../../facades/form-errors'
 
 const TYPE_LABEL: Record<TaskFieldType, string> = {
   text: 'Text',
@@ -63,7 +61,7 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
 
   const save = (input: Parameters<typeof update.mutate>[0], failure: string) =>
     update.mutate(input, {
-      onError: (cause) => onSaveError(errorMessage(cause, failure)),
+      onError: (cause) => onSaveError(formErrorMessage(cause, failure)),
       onSuccess: onSaved,
     })
 
@@ -181,7 +179,7 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
         onConfirm={() => {
           setDeleteOpen(false)
           remove.mutate(definition.id, {
-            onError: (cause) => onSaveError(errorMessage(cause, 'Could not delete the field')),
+            onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not delete the field')),
             onSuccess: onSaved,
           })
         }}
@@ -220,7 +218,7 @@ export const FieldsSettingsSection = ({
     create.mutate(
       { name, type: newType },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not add the field')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not add the field')),
         onSuccess: () => {
           setNewName('')
           onSaved()

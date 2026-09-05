@@ -2,6 +2,7 @@ import {
   Children,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
@@ -14,6 +15,25 @@ import {
   useLocalBack,
   type ColumnStageReport,
 } from '../../../layouts/admin-shell/local-back/LocalBackContext'
+
+type ReportBack = ((index: number, report: ColumnStageReport | null) => void) | null
+
+// `ColumnBackProvider`'s value is a fresh object literal at every call site
+// (07-F8 item 5): a per-column wrapper memoises it on the two things that
+// actually vary, so a re-render of the viewport that changes neither does not
+// re-render every column's `useColumnBackContext()` consumer.
+const ColumnStageScope = ({
+  children,
+  index,
+  reportBack,
+}: {
+  children: ReactNode
+  index: number | null
+  reportBack: ReportBack
+}) => {
+  const value = useMemo(() => ({ index, reportBack }), [index, reportBack])
+  return <ColumnBackProvider value={value}>{children}</ColumnBackProvider>
+}
 
 type ColumnBrowserViewportProps = {
   activeColumn: number
@@ -106,9 +126,9 @@ export const ColumnBrowserViewport = ({
   if (stacked) {
     return (
       <div className="h-full w-full overflow-clip">
-        <ColumnBackProvider value={{ index: 0, reportBack }}>
+        <ColumnStageScope index={0} reportBack={reportBack}>
           {normalizedColumns[0]}
-        </ColumnBackProvider>
+        </ColumnStageScope>
         {normalizedColumns.slice(1).map((column, offset) => {
           const index = offset + 1
           const report = reports[index]
@@ -121,9 +141,9 @@ export const ColumnBrowserViewport = ({
               onBack={report?.onBack ?? noop}
               priority={columnBackPriority(index)}
             >
-              <ColumnBackProvider value={{ index, reportBack }}>
+              <ColumnStageScope index={index} reportBack={reportBack}>
                 {column}
-              </ColumnBackProvider>
+              </ColumnStageScope>
             </NestedStage>
           )
         })}
@@ -173,9 +193,9 @@ export const ColumnBrowserViewport = ({
                   : `${columnWidthPercent * slots}%`,
               }}
             >
-              <ColumnBackProvider value={{ index, reportBack: null }}>
+              <ColumnStageScope index={index} reportBack={null}>
                 {column}
-              </ColumnBackProvider>
+              </ColumnStageScope>
             </div>
           )
         })}

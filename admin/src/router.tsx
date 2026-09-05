@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
 import { createBrowserRouter, useLocation } from 'react-router-dom'
 import { resolveRootLandingPath } from './facades/billing/checkout-return'
 import { consumeDesktopPendingPath } from './lib/desktop'
@@ -5,53 +6,147 @@ import { readNativePendingPushPath, usePhoneLayout } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { RedirectRoute } from './navigation/RedirectRoute'
-import { SearchPage } from './pages/SearchPage'
-import { AlertsPage } from './pages/AlertsPage'
-import { AgentDesignerPage } from './pages/AgentDesignerPage'
-import { AgentMailboxPage } from './pages/AgentMailboxPage'
-import { ConnectedMailPage } from './pages/ConnectedMailPage'
-import { AgentDetailPage } from './pages/AgentDetailPage'
-import { AgentsPage } from './pages/AgentsPage'
-import { ExecutorsPage } from './pages/ExecutorsPage'
-import { ApprovalsPage } from './pages/ApprovalsPage'
-import { AuditLogPage } from './pages/AuditLogPage'
+import { Skeleton, type SkeletonVariant } from './components/primitives/Skeleton'
 import { BootstrapPage } from './pages/BootstrapPage'
-import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
-import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { ExternalAuthCompletionPage } from './pages/ExternalAuthCompletionPage'
-import { ThreadsPage } from './pages/ThreadsPage'
-import { UnreadMessagesPage } from './pages/UnreadMessagesPage'
-import { FeedbackPage } from './pages/FeedbackPage'
-import { IntegrationsPage } from './pages/IntegrationsPage'
-import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
-import { DashboardsPage } from './pages/DashboardsPage'
-import { DashboardDetailPage } from './pages/DashboardDetailPage'
 import { LoginRoute } from './pages/LoginRoute'
-import { AppDetailPage } from './pages/AppDetailPage'
-import { AppsPage } from './pages/AppsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { OperationalTelemetryPage } from './pages/OperationalTelemetryPage'
-import { OpsHealthPage } from './pages/OpsHealthPage'
-import { PolicyPage } from './pages/PolicyPage'
-import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
-import { ProjectView } from './pages/project/ProjectView'
-import { ConnectionsPage } from './pages/settings/ConnectionsPage'
-import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
-import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
-import { OrganizationSecretsPage } from './pages/settings/OrganizationSecretsPage'
-import { SecretsPage } from './pages/settings/SecretsPage'
-import { TeamSecretsPage } from './pages/settings/TeamSecretsPage'
-import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
-import { TeamMembersPage } from './pages/settings/TeamMembersPage'
-import { TeamSettingsPage } from './pages/settings/TeamSettingsPage'
-import { UserSettingsPage } from './pages/settings/UserSettingsPage'
-import { StatusesPage } from './pages/settings/StatusesPage'
-import { ToolsPage } from './pages/ToolsPage'
-import { TokenUsagePage } from './pages/TokenUsagePage'
-import { TriggersPage } from './pages/TriggersPage'
-import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
-import { WorkflowsPage } from './pages/WorkflowsPage'
+
+// Every route below is imported eagerly except the seven names above: the
+// shell/layout roots, the auth gate (`LoginRoute`, `BootstrapPage`,
+// `ExternalAuthCompletionPage`), the catch-all, and `ChannelsPage` — the
+// first screen almost every session lands on. Everything else is behind
+// `React.lazy`, so the entry chunk stops shipping the workflow designer, the
+// agent designer, every settings tab and every governance page before a
+// reader ever opens a channel
+// (docs/plans/2026-09-05-admin-architecture-review/audit/05-pages-routing.md
+// F1, audit/09-boundary-errors-tests.md F5). `lazyElement` is the one
+// Suspense boundary: it lives here, not in `RootLayout`/`AdminShellLayout`,
+// so a suspended screen still lands inside the same container the settle
+// (docs/navigation/verification-and-settle.md §12) measures for its `h1`,
+// and the fallback is the shared `Skeleton` so a loading chunk reads like a
+// loading screen, never a jump in the push/pop motion (§3).
+const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactElement => (
+  <Suspense fallback={<Skeleton variant={variant} />}>
+    <Component />
+  </Suspense>
+)
+
+const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })))
+const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
+const AgentDesignerPage = lazy(() =>
+  import('./pages/AgentDesignerPage').then((m) => ({ default: m.AgentDesignerPage })),
+)
+const AgentMailboxPage = lazy(() =>
+  import('./pages/AgentMailboxPage').then((m) => ({ default: m.AgentMailboxPage })),
+)
+const ConnectedMailPage = lazy(() =>
+  import('./pages/ConnectedMailPage').then((m) => ({ default: m.ConnectedMailPage })),
+)
+const AgentDetailPage = lazy(() =>
+  import('./pages/AgentDetailPage').then((m) => ({ default: m.AgentDetailPage })),
+)
+const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
+const ExecutorsPage = lazy(() =>
+  import('./pages/ExecutorsPage').then((m) => ({ default: m.ExecutorsPage })),
+)
+const ApprovalsPage = lazy(() =>
+  import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
+)
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
+const ChannelProjectOverviewPage = lazy(() =>
+  import('./pages/channels/ChannelProjectOverviewPage').then((m) => ({
+    default: m.ChannelProjectOverviewPage,
+  })),
+)
+const ChannelConversationComposePage = lazy(() =>
+  import('./pages/ChannelConversationComposePage').then((m) => ({
+    default: m.ChannelConversationComposePage,
+  })),
+)
+const ThreadsPage = lazy(() => import('./pages/ThreadsPage').then((m) => ({ default: m.ThreadsPage })))
+const UnreadMessagesPage = lazy(() =>
+  import('./pages/UnreadMessagesPage').then((m) => ({ default: m.UnreadMessagesPage })),
+)
+const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })))
+const IntegrationsPage = lazy(() =>
+  import('./pages/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
+)
+const KnowledgeBasePage = lazy(() =>
+  import('./pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })),
+)
+const DashboardsPage = lazy(() =>
+  import('./pages/DashboardsPage').then((m) => ({ default: m.DashboardsPage })),
+)
+const DashboardDetailPage = lazy(() =>
+  import('./pages/DashboardDetailPage').then((m) => ({ default: m.DashboardDetailPage })),
+)
+const AppDetailPage = lazy(() =>
+  import('./pages/AppDetailPage').then((m) => ({ default: m.AppDetailPage })),
+)
+const AppsPage = lazy(() => import('./pages/AppsPage').then((m) => ({ default: m.AppsPage })))
+const OperationalTelemetryPage = lazy(() =>
+  import('./pages/OperationalTelemetryPage').then((m) => ({ default: m.OperationalTelemetryPage })),
+)
+const OpsHealthPage = lazy(() =>
+  import('./pages/OpsHealthPage').then((m) => ({ default: m.OpsHealthPage })),
+)
+const PolicyPage = lazy(() => import('./pages/PolicyPage').then((m) => ({ default: m.PolicyPage })))
+const ProjectsIndexPage = lazy(() =>
+  import('./pages/ProjectsIndexPage').then((m) => ({ default: m.ProjectsIndexPage })),
+)
+const ProjectView = lazy(() =>
+  import('./pages/project/ProjectView').then((m) => ({ default: m.ProjectView })),
+)
+const ConnectionsPage = lazy(() =>
+  import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
+)
+const OrganizationSettingsPage = lazy(() =>
+  import('./pages/settings/OrganizationSettingsPage').then((m) => ({
+    default: m.OrganizationSettingsPage,
+  })),
+)
+const PushCredentialsPage = lazy(() =>
+  import('./pages/settings/PushCredentialsPage').then((m) => ({ default: m.PushCredentialsPage })),
+)
+const OrganizationSecretsPage = lazy(() =>
+  import('./pages/settings/OrganizationSecretsPage').then((m) => ({
+    default: m.OrganizationSecretsPage,
+  })),
+)
+const SecretsPage = lazy(() =>
+  import('./pages/settings/SecretsPage').then((m) => ({ default: m.SecretsPage })),
+)
+const TeamSecretsPage = lazy(() =>
+  import('./pages/settings/TeamSecretsPage').then((m) => ({ default: m.TeamSecretsPage })),
+)
+const SettingsMembersPage = lazy(() =>
+  import('./pages/settings/SettingsMembersPage').then((m) => ({ default: m.SettingsMembersPage })),
+)
+const TeamMembersPage = lazy(() =>
+  import('./pages/settings/TeamMembersPage').then((m) => ({ default: m.TeamMembersPage })),
+)
+const TeamSettingsPage = lazy(() =>
+  import('./pages/settings/TeamSettingsPage').then((m) => ({ default: m.TeamSettingsPage })),
+)
+const UserSettingsPage = lazy(() =>
+  import('./pages/settings/UserSettingsPage').then((m) => ({ default: m.UserSettingsPage })),
+)
+const StatusesPage = lazy(() =>
+  import('./pages/settings/StatusesPage').then((m) => ({ default: m.StatusesPage })),
+)
+const ToolsPage = lazy(() => import('./pages/ToolsPage').then((m) => ({ default: m.ToolsPage })))
+const TokenUsagePage = lazy(() =>
+  import('./pages/TokenUsagePage').then((m) => ({ default: m.TokenUsagePage })),
+)
+const TriggersPage = lazy(() => import('./pages/TriggersPage').then((m) => ({ default: m.TriggersPage })))
+const WorkflowDesignerPage = lazy(() =>
+  import('./pages/WorkflowDesignerPage').then((m) => ({ default: m.WorkflowDesignerPage })),
+)
+const WorkflowsPage = lazy(() =>
+  import('./pages/WorkflowsPage').then((m) => ({ default: m.WorkflowsPage })),
+)
 
 const RootRouteRedirect = () => {
   const { search } = useLocation()
@@ -140,11 +235,11 @@ export const router = createBrowserRouter([
   {
     element: <AdminShellLayout />,
     children: [
-      { path: '/threads', element: <ThreadsPage /> },
-      { path: '/unread-messages', element: <UnreadMessagesPage /> },
+      { path: '/threads', element: lazyElement(ThreadsPage, 'list') },
+      { path: '/unread-messages', element: lazyElement(UnreadMessagesPage, 'list') },
       {
         path: '/channels/projects/:projectId',
-        element: <ChannelProjectOverviewPage />,
+        element: lazyElement(ChannelProjectOverviewPage, 'detail'),
       },
       {
         // The Channels team stays mounted when a new-message sheet opens,
@@ -155,7 +250,7 @@ export const router = createBrowserRouter([
           { index: true },
           {
             path: 'new',
-            element: <ChannelConversationComposePage />,
+            element: lazyElement(ChannelConversationComposePage, 'list'),
           },
           {
             // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
@@ -176,47 +271,47 @@ export const router = createBrowserRouter([
       },
       {
         path: '/projects',
-        element: <ProjectsIndexPage />,
+        element: lazyElement(ProjectsIndexPage, 'list'),
       },
       {
         path: '/projects/:projectId',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/projects/:projectId/board',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/projects/:projectId/backlog',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/projects/:projectId/insights',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/projects/:projectId/docs',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/projects/:projectId/executors',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/projects/:projectId/settings',
-        element: <ProjectView />,
+        element: lazyElement(ProjectView, 'board'),
       },
       {
         path: '/dashboards',
-        element: <DashboardsPage />,
+        element: lazyElement(DashboardsPage, 'board'),
       },
       {
         path: '/dashboards/:dashboardId',
-        element: <DashboardDetailPage />,
+        element: lazyElement(DashboardDetailPage, 'board'),
       },
       {
         path: '/agents',
-        element: <AgentsPage />,
+        element: lazyElement(AgentsPage, 'list'),
       },
       {
         // /work folded into the project Kanban menu; redirect kept for the
@@ -226,70 +321,73 @@ export const router = createBrowserRouter([
       },
       {
         path: '/knowledge-base',
-        element: <KnowledgeBasePage />,
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
         path: '/knowledge-base/spaces/:spaceId',
-        element: <KnowledgeBasePage />,
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
         path: '/knowledge-base/views/:productView',
-        element: <KnowledgeBasePage />,
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
         path: '/agents/designer',
-        element: <AgentDesignerPage />,
+        element: lazyElement(AgentDesignerPage, 'detail'),
       },
       {
         path: '/agents/designer/:agentId',
-        element: <AgentDesignerPage />,
+        element: lazyElement(AgentDesignerPage, 'detail'),
       },
       {
         path: '/agents/workflow-designer',
-        element: <WorkflowDesignerPage />,
+        element: lazyElement(WorkflowDesignerPage, 'detail'),
       },
       {
         path: '/agents/workflow-designer/:workflowTemplateId',
-        element: <WorkflowDesignerPage />,
+        element: lazyElement(WorkflowDesignerPage, 'detail'),
       },
       {
         path: '/agents/triggers',
-        element: <TriggersPage />,
+        element: lazyElement(TriggersPage, 'list'),
       },
       {
         path: '/agents/workflows',
-        element: <WorkflowsPage />,
+        element: lazyElement(WorkflowsPage, 'list'),
       },
       {
         path: '/agents/tools',
-        element: <ToolsPage />,
+        element: lazyElement(ToolsPage, 'list'),
       },
       {
         path: '/agents/executors',
-        element: <ExecutorsPage />,
+        element: lazyElement(ExecutorsPage, 'list'),
       },
       {
         path: '/agents/:agentId/mailbox',
-        element: <AgentMailboxPage />,
+        element: lazyElement(AgentMailboxPage, 'feed'),
       },
-      { path: '/mail', element: <ConnectedMailPage /> },
-      { path: '/mail/:source/:accountId', element: <ConnectedMailPage /> },
-      { path: '/mail/:source/:accountId/threads/:threadId', element: <ConnectedMailPage /> },
-      { path: '/mail/:source/:accountId/compose', element: <ConnectedMailPage /> },
+      { path: '/mail', element: lazyElement(ConnectedMailPage, 'feed') },
+      { path: '/mail/:source/:accountId', element: lazyElement(ConnectedMailPage, 'feed') },
+      {
+        path: '/mail/:source/:accountId/threads/:threadId',
+        element: lazyElement(ConnectedMailPage, 'feed'),
+      },
+      { path: '/mail/:source/:accountId/compose', element: lazyElement(ConnectedMailPage, 'feed') },
       {
         // Dynamic agent id last: static siblings above outrank it in the
         // router's ranking, so `/agents/triggers` etc. still resolve to their
         // own pages while a real agent id lands on the detail page.
         path: '/agents/:agentId',
-        element: <AgentDetailPage />,
+        element: lazyElement(AgentDetailPage, 'detail'),
       },
       {
         path: '/apps',
-        element: <AppsPage />,
+        element: lazyElement(AppsPage, 'board'),
       },
       {
         path: '/apps/:slug',
-        element: <AppDetailPage />,
+        element: lazyElement(AppDetailPage, 'detail'),
       },
       {
         path: '/settings',
@@ -297,91 +395,91 @@ export const router = createBrowserRouter([
       },
       {
         path: '/settings/account',
-        element: <UserSettingsPage />,
+        element: lazyElement(UserSettingsPage, 'detail'),
       },
       {
         path: '/settings/secrets',
-        element: <SecretsPage />,
+        element: lazyElement(SecretsPage, 'list'),
       },
       {
         path: '/settings/organization',
-        element: <OrganizationSettingsPage />,
+        element: lazyElement(OrganizationSettingsPage, 'detail'),
       },
       {
         path: '/settings/team',
-        element: <TeamSettingsPage />,
+        element: lazyElement(TeamSettingsPage, 'detail'),
       },
       {
         path: '/settings/team/members',
-        element: <TeamMembersPage />,
+        element: lazyElement(TeamMembersPage, 'list'),
       },
       {
         path: '/settings/team/secrets',
-        element: <TeamSecretsPage />,
+        element: lazyElement(TeamSecretsPage, 'list'),
       },
       {
         path: '/settings/organization/secrets',
-        element: <OrganizationSecretsPage />,
+        element: lazyElement(OrganizationSecretsPage, 'list'),
       },
       {
         path: '/settings/statuses',
-        element: <StatusesPage />,
+        element: lazyElement(StatusesPage, 'list'),
       },
       {
         path: '/settings/statuses/:statusId',
-        element: <StatusesPage />,
+        element: lazyElement(StatusesPage, 'list'),
       },
       {
         path: '/settings/connections',
-        element: <ConnectionsPage />,
+        element: lazyElement(ConnectionsPage, 'list'),
       },
       {
         path: '/settings/integrations',
-        element: <IntegrationsPage />,
+        element: lazyElement(IntegrationsPage, 'board'),
       },
       {
         path: '/settings/members',
-        element: <SettingsMembersPage />,
+        element: lazyElement(SettingsMembersPage, 'list'),
       },
       {
         path: '/settings/push',
-        element: <PushCredentialsPage />,
+        element: lazyElement(PushCredentialsPage, 'list'),
       },
       {
         path: '/audit',
-        element: <AuditLogPage />,
+        element: lazyElement(AuditLogPage, 'list'),
       },
       {
         path: '/approvals',
-        element: <ApprovalsPage />,
+        element: lazyElement(ApprovalsPage, 'list'),
       },
       {
         path: '/alerts',
-        element: <AlertsPage />,
+        element: lazyElement(AlertsPage, 'list'),
       },
       {
         path: '/tokens',
-        element: <TokenUsagePage />,
+        element: lazyElement(TokenUsagePage, 'detail'),
       },
       {
         path: '/policy',
-        element: <PolicyPage />,
+        element: lazyElement(PolicyPage, 'detail'),
       },
       {
         path: '/ops',
-        element: <OpsHealthPage />,
+        element: lazyElement(OpsHealthPage, 'detail'),
       },
       {
         path: '/ops/usage',
-        element: <OperationalTelemetryPage />,
+        element: lazyElement(OperationalTelemetryPage, 'detail'),
       },
       {
         path: '/search',
-        element: <SearchPage />,
+        element: lazyElement(SearchPage, 'list'),
       },
       {
         path: '/feedback',
-        element: <FeedbackPage />,
+        element: lazyElement(FeedbackPage, 'detail'),
       },
     ],
   },

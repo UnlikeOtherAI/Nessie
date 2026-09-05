@@ -16,6 +16,7 @@ import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
 import { Skeleton } from '../components/primitives/Skeleton'
 import { DashboardCanvas } from '../components/features/dashboards/DashboardCanvas'
@@ -87,7 +88,9 @@ export const DashboardDetailPage = () => {
       { layout, ...(revision === undefined ? {} : { revision }) },
       {
         onError: (error) => {
-          const details = (error as { details?: { currentRevision?: number } }).details
+          const details = error instanceof ApiClientError
+            ? (error.details as { currentRevision?: number } | undefined)
+            : undefined
           setConflictRevision(
             typeof details?.currentRevision === 'number' ? details.currentRevision : null,
           )
@@ -195,7 +198,7 @@ export const DashboardDetailPage = () => {
             <button
               className="rounded px-2.5 py-1 font-medium"
               onClick={() => saveArrangement()}
-              style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
+              style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               type="button"
             >
               Keep mine

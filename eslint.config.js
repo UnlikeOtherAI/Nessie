@@ -127,7 +127,6 @@ export default [
       'admin/src/providers/ThemeProvider.tsx',
       'admin/src/lib/mobile-shell.ts',
       'admin/src/layouts/admin-shell/ResizableSidebar.tsx',
-      'admin/src/pages/channels/useReplyThread.ts',
       // The same drag geometry, lifted out of useReplyThread so the reply
       // panel and the agent-screen panel cannot disagree about clamping.
       'admin/src/hooks/useSidePanelGeometry.ts',
@@ -146,28 +145,9 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            {
-              name: '../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-          ],
+          // A `patterns` group entry already matches `../hooks/useMediaQuery`
+          // at every relative depth (F15) — the four depth-spelled `paths`
+          // entries this used to carry were exact duplicates of it.
           patterns: [
             {
               group: ['**/hooks/useMediaQuery'],
@@ -283,6 +263,31 @@ export default [
           message:
             'useNavigate() belongs to admin/src/navigation/** — use the controller '
             + '(push/back/redirect) once it exists. See docs/navigation/overview.md §4.2.',
+        },
+      ],
+    },
+  },
+  {
+    // Error-shape reading ratchet (F4): one local `errorMessage` helper after
+    // another hand-rolled `error instanceof Error ? error.message : fallback`,
+    // throwing away the `ApiClientError.details` field errors a validation
+    // failure carries. `facades/form-errors.ts` exports `formErrorMessage` for
+    // exactly this — import it instead of re-declaring the same helper.
+    // Same files/ignores as the navigate() admission block above, so this
+    // does not reintroduce FORWARDED_HEADER_RESTRICTED_SYNTAX or
+    // SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX for files where the block
+    // above already turns 'no-restricted-syntax' off — see the file-top
+    // comment on FORWARDED_HEADER_RESTRICTED_SYNTAX for why that matters.
+    files: ['admin/src/**/*.ts', 'admin/src/**/*.tsx'],
+    ignores: ['admin/src/navigation/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "VariableDeclarator[id.name='errorMessage'] > ArrowFunctionExpression",
+          message:
+            "A local 'errorMessage' helper duplicates facades/form-errors.ts — import "
+            + 'formErrorMessage(error, fallback) instead of hand-rolling error.message reading.',
         },
       ],
     },

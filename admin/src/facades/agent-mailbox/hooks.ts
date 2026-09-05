@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type {
   AgentMailboxRecord,
   AgentMailboxSendPolicy,
@@ -56,7 +57,7 @@ export const useAgentMailbox = (agentId: string | undefined) => {
         return await apiClient.get<AgentMailboxRecord>(`/api/agents/${agentId}/mailbox`)
       } catch (error) {
         // No mailbox is a legitimate steady state, not an error to surface.
-        if ((error as { status?: number }).status === 404) return null
+        if (error instanceof ApiClientError && error.status === 404) return null
         throw error
       }
     },

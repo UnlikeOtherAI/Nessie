@@ -34,7 +34,6 @@ import {
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
 import { useTabParam } from '../navigation/useTabParam'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 /**
  * `/agents/tools` — the single, canonical tool surface.
@@ -198,35 +197,41 @@ export const ToolsPage = () => {
   )
 
   const columns = [
-    <ColumnBrowserColumn leading={<PhoneNavigationButton />} key="list" title={`Tools (${sortedTools.length})`}>
-      <div className="grid gap-3">
-        <input
-          autoComplete="off"
-          className="admin-input"
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search by name, id or description…"
-          type="search"
-          value={searchQuery}
-        />
-        <ToolFilterBar
-          onSourceChange={setSourceSegment}
-          onStatusChange={setStatus}
-          onTagChange={setTag}
-          source={sourceSegment}
-          status={status}
-          tag={tag}
-          tagOptions={tagOptions}
-        />
-        <ToolReviewBar
-          onClearSelection={() => setSelectedForReview(new Set())}
-          onSelectAllShown={() =>
-            setSelectedForReview(new Set(reviewableShown.map((tool) => tool.id)))
-          }
-          reviewableCount={reviewableShown.length}
-          selectedIds={selectedReviewIds}
-        />
-        {listBody}
-      </div>
+    // The header is always rendered: a refusal is a state of this screen, not
+    // a screen of its own, so Back — and the h1 the settle focuses — never
+    // disappears with it (docs/navigation/deep-links-and-headers.md §9). Only
+    // the body underneath is owner-gated.
+    <ColumnBrowserColumn key="list" screen title={`Tools (${sortedTools.length})`}>
+      <OwnerGate>
+        <div className="grid gap-3">
+          <input
+            autoComplete="off"
+            className="admin-input"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search by name, id or description…"
+            type="search"
+            value={searchQuery}
+          />
+          <ToolFilterBar
+            onSourceChange={setSourceSegment}
+            onStatusChange={setStatus}
+            onTagChange={setTag}
+            source={sourceSegment}
+            status={status}
+            tag={tag}
+            tagOptions={tagOptions}
+          />
+          <ToolReviewBar
+            onClearSelection={() => setSelectedForReview(new Set())}
+            onSelectAllShown={() =>
+              setSelectedForReview(new Set(reviewableShown.map((tool) => tool.id)))
+            }
+            reviewableCount={reviewableShown.length}
+            selectedIds={selectedReviewIds}
+          />
+          {listBody}
+        </div>
+      </OwnerGate>
     </ColumnBrowserColumn>,
   ]
 
@@ -279,13 +284,11 @@ export const ToolsPage = () => {
   }
 
   return (
-    <OwnerGate>
-      <div className="h-full w-full">
-        <ColumnBrowserViewport
-          activeColumn={phoneLayout && selectedToolId && selectedTool ? 1 : 0}
-          columns={columns}
-        />
-      </div>
-    </OwnerGate>
+    <div className="h-full w-full">
+      <ColumnBrowserViewport
+        activeColumn={phoneLayout && selectedToolId && selectedTool ? 1 : 0}
+        columns={columns}
+      />
+    </div>
   )
 }

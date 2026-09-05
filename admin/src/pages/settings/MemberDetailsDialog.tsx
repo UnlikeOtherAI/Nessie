@@ -5,6 +5,7 @@ import { Checkbox } from '../../components/primitives/Checkbox'
 import { Dialog } from '../../components/shared/Dialog'
 import { FormActions, FormError } from '../../components/shared/FormActions'
 import { Select } from '../../components/shared/FormControls'
+import { formErrorMessage } from '../../facades/form-errors'
 import {
   useMemberTeamAccess,
   useUpdateMemberTeamAccess,
@@ -19,9 +20,6 @@ type MemberDetailsDialogProps = {
   permissions: MemberRosterPermissions | undefined
   scope: MemberRosterScope
 }
-
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Unable to save member access.'
 
 const sameIds = (first: string[], second: string[]) =>
   first.length === second.length && first.every((id) => second.includes(id))
@@ -82,7 +80,7 @@ export const MemberDetailsDialog = ({
       }
       onClose()
     } catch (caught) {
-      setError(errorMessage(caught))
+      setError(formErrorMessage(caught, 'Unable to save member access.'))
     }
   }
 

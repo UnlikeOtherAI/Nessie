@@ -5,15 +5,15 @@ import {
   useThreadReplies,
 } from '../../facades/threads/hooks'
 import {
-  readThreadPanelWidth,
-  clampThreadPanelWidth,
   THREAD_PANEL_CLOSE_MS,
   THREAD_PANEL_WIDTH_STORAGE_KEY,
   type ThreadParticipant,
 } from '../../components/features/channels/thread-panel/thread-panel-helpers'
+import { useSidePanelGeometry } from '../../hooks/useSidePanelGeometry'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../lib/api-client'
 import { usePhoneLayout } from '../../lib/mobile-shell'
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
+import { useReducedMotion } from '../../navigation/reduced-motion'
 import { useAgentIdentityLookup } from '../../providers/AgentIdentityProvider'
 
 interface UseReplyThreadParams {
@@ -34,6 +34,7 @@ export const useReplyThread = ({
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
+  const reducedMotion = useReducedMotion()
   const { channelId, threadId, rootMessageId } = useParams()
   // The route carries the container thread; on plain channel routes the
   // channel's default thread is the container.
@@ -93,7 +94,7 @@ export const useReplyThread = ({
       return
     }
     // Somebody who has asked for less motion gets no dead pause either.
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (reducedMotion) {
       navigate(`/channels/${channelId}`)
       return
     }
@@ -102,7 +103,7 @@ export const useReplyThread = ({
       closeTimer.current = null
       navigate(`/channels/${channelId}`)
     }, THREAD_PANEL_CLOSE_MS)
-  }, [channelId, navigate, phoneLayout, phoneNavigation])
+  }, [channelId, navigate, phoneLayout, phoneNavigation, reducedMotion])
 
   // Tapping back into the conversation column dismisses the thread, the way
   // the tablet scrim already does — at desktop widths the column is the only
@@ -119,45 +120,13 @@ export const useReplyThread = ({
     closeThread()
   }, [closeThread, openRootMessageId])
 
-  // Continuous drag geometry is on the plan's geometry allowlist
-  // (docs/plans/2026-08-13-responsive-coherence.md §C.5): the 50vw maximum
-  // moves continuously with the window, so the band store cannot carry it.
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
-  // The stored value is the person's *preferred* width; the rendered width is
-  // that preference derived against the current bounds, so a temporary
-  // viewport shrink never destroys what they chose.
-  const [preferredWidth, setPreferredWidth] = useState(() =>
-    readThreadPanelWidth(
-      window.localStorage.getItem(THREAD_PANEL_WIDTH_STORAGE_KEY),
-      window.innerWidth,
-    ),
-  )
-  const panelWidth = clampThreadPanelWidth(preferredWidth, viewportWidth)
-
-  useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  // Mid-gesture updates only move the preference; persistence happens once,
-  // when the interaction ends (persistPanelWidth / resizePanelWithKeyboard).
-  const resizePanel = useCallback((next: number) => {
-    setPreferredWidth(clampThreadPanelWidth(next, window.innerWidth))
-  }, [])
-
-  const persistPanelWidth = useCallback(() => {
-    setPreferredWidth((current) => {
-      window.localStorage.setItem(THREAD_PANEL_WIDTH_STORAGE_KEY, String(current))
-      return current
-    })
-  }, [])
-
-  const resizePanelWithKeyboard = useCallback((next: number) => {
-    const clamped = clampThreadPanelWidth(next, window.innerWidth)
-    setPreferredWidth(clamped)
-    window.localStorage.setItem(THREAD_PANEL_WIDTH_STORAGE_KEY, String(clamped))
-  }, [])
+  const {
+    panelWidth,
+    persistPanelWidth,
+    resizePanel,
+    resizePanelWithKeyboard,
+    viewportWidth,
+  } = useSidePanelGeometry(THREAD_PANEL_WIDTH_STORAGE_KEY)
 
   const rootQuery = useThreadMessage(activeThreadId, openRootMessageId ?? undefined)
   const repliesQuery = useThreadReplies(activeThreadId, openRootMessageId ?? undefined)

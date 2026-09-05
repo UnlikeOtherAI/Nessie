@@ -27,7 +27,6 @@ import {
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { IdentityTile } from '../components/primitives/IdentityTile'
 
 type SurfacePlan = {
@@ -459,11 +458,7 @@ export const IntegrationsPage = () => {
   )
 
   const columns = [
-    <ColumnBrowserColumn
-      key="list"
-      leading={<PhoneNavigationButton />}
-      title={`Integrations (${products.length})`}
-    >
+    <ColumnBrowserColumn key="list" screen title={`Integrations (${products.length})`}>
       {listBody}
     </ColumnBrowserColumn>,
   ]

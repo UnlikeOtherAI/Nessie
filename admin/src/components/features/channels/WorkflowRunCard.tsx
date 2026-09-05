@@ -42,12 +42,11 @@ export const WorkflowRunCard = ({
 
   const openRun = (event: { stopPropagation: () => void }) => {
     event.stopPropagation()
-    navigate('/workflows', {
-      state: {
-        selectedInstallationId: card.installationId,
-        selectedRunId: card.workflowRunId,
-      },
+    const params = new URLSearchParams({
+      installation: card.installationId,
+      run: card.workflowRunId,
     })
+    navigate(`/workflows?${params.toString()}`)
   }
 
   return (

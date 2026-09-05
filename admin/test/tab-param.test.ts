@@ -226,7 +226,9 @@ test('a project section switch replaces and reconciles the view in place', async
 })
 
 test('the project section switch is written with replace, and lives in the sidebar', () => {
-  const sidebar = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+  // The per-project section rows (and their `replace`/`projectSections` wiring)
+  // live in ProjectSectionRows.tsx, rendered by ProjectsSidebarNav.tsx (06-F5).
+  const sidebar = readSource('../src/layouts/admin-shell/ProjectSectionRows.tsx')
   const view = readSource('../src/pages/project/ProjectView.tsx')
 
   // The sections are the project's sidebar subpages. Switching between them
@@ -261,6 +263,37 @@ const tabBarElements = (content: string): string[] => {
     cursor = content.indexOf('<TabBar', cursor + 1)
   }
   return elements
+}
+
+/**
+ * A plain `const identifier = <expr>` declaration's right-hand side, on its
+ * own line — never the tuple form `const [identifier, setIdentifier] =
+ * useTabParam(…)`, which has no bracket-free `const identifier =` spelling
+ * for this to match. That asymmetry is deliberate: it is exactly what lets
+ * the check below tell a `useTabParam` value apart from one hand-rolled from
+ * `useSearchParams` (08-F5/05-F5) without understanding either call.
+ */
+const plainDeclarationRhs = (content: string, identifier: string): string | undefined =>
+  new RegExp(`const ${identifier}\\b[^=\\n]*=\\s*([^\\n;]+)`).exec(content)?.[1]
+
+/**
+ * True when a `<TabBar value={identifier}>` traces back to
+ * `searchParams.get(` — directly, or one hop through another plain
+ * `const` this identifier's own expression names (`MembersRosterPanel`'s
+ * `tab` read through an intermediate `requestedTab`). A tuple-destructured
+ * `useTabParam` result never matches `plainDeclarationRhs` at all, so this
+ * only ever flags the ladder the hook exists to replace.
+ */
+const derivesFromSearchParams = (content: string, identifier: string): boolean => {
+  const rhs = plainDeclarationRhs(content, identifier)
+  if (!rhs) return false
+  if (rhs.includes('searchParams.get(')) return true
+  const referenced = new Set(rhs.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [])
+  referenced.delete(identifier)
+  for (const name of referenced) {
+    if (plainDeclarationRhs(content, name)?.includes('searchParams.get(')) return true
+  }
+  return false
 }
 
 // Transient overlays, where the strip picks a branch of a form the person is
@@ -299,13 +332,17 @@ test('no tab strip keeps its selection in component state', () => {
 
     // The strip's value is either owned here through the one hook, or handed
     // in as a prop by the host that owns it. What it must never be is a
-    // useState in the same file. Only the TabBar element's own `value` counts —
-    // a <select> beside it is a form field, not a tab.
+    // useState in the same file, or a value read straight off
+    // `useSearchParams` without going through the hook's validate/fallback/
+    // replace contract. Only the TabBar element's own `value` counts — a
+    // <select> beside it is a form field, not a tab.
     for (const start of tabBarElements(content)) {
       const identifier = /value=\{([A-Za-z0-9_]+)/.exec(start)?.[1]
       if (!identifier) continue
-      const declared = new RegExp(`const \\[${identifier}, [A-Za-z0-9_]+\\] = useState`)
-      if (declared.test(content)) violations.push(`${file} (${identifier})`)
+      const declaredUseState = new RegExp(`const \\[${identifier}, [A-Za-z0-9_]+\\] = useState`)
+      if (declaredUseState.test(content) || derivesFromSearchParams(content, identifier)) {
+        violations.push(`${file} (${identifier})`)
+      }
     }
   }
 
@@ -339,6 +376,9 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/components/features/knowledge/KnowledgeWorkspace.tsx', 'view'],
     ['../src/pages/project/ProjectView.tsx', 'board'],
     ['../src/pages/project/ProjectSettingsPage.tsx', 'section'],
+    ['../src/pages/triggers/useTriggersPageState.ts', 'type'],
+    ['../src/pages/settings/MembersRosterPanel.tsx', 'membersTab'],
+    ['../src/pages/ConnectedMailPage.tsx', 'filter'],
   ]
 
   for (const [file, param] of hosts) {

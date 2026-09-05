@@ -48,6 +48,21 @@
         document.documentElement.dataset.theme =
           applied && themes.indexOf(applied) >= 0 ? applied : 'sandstone'
       }
+
+      // Same idea for reading size. All type is rem-based, so the root
+      // font-size is the whole page's scale: without this a "Large" reader
+      // gets one full paint at 16px and a reflow once React mounts.
+      // This map is ROOT_FONT_SIZE in src/providers/FontScaleProvider.tsx —
+      // the provider is the only writer of `nessie.fontScale`, this is the
+      // only pre-paint reader, and the two maps must be changed together.
+      var fontScales = { small: '14px', medium: '16px', large: '18px' }
+      var fontScale = null
+      try {
+        fontScale = localStorage.getItem('nessie.fontScale')
+      } catch (e) {}
+      if (fontScale && fontScales[fontScale]) {
+        document.documentElement.style.fontSize = fontScales[fontScale]
+      }
     </script>
   </head>
   <body>

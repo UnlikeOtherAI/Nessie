@@ -7,6 +7,7 @@ import { Dialog } from '../../components/shared/Dialog'
 import { FormActions, FormError } from '../../components/shared/FormActions'
 import { Input, Select } from '../../components/shared/FormControls'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
+import { useFormSubmit } from '../../facades/form-errors'
 import {
   useAddTeamMember,
   useInvitationTargets,
@@ -24,21 +25,20 @@ type MemberInvitationDialogProps = {
   scope: MemberRosterScope
 }
 
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Unable to complete the invitation.'
-
 /** One invite dialog for both roster scopes; only teams can add an existing person. */
 export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitationDialogProps) => {
   const { token } = useAuthSession()
   const [, setSearchParams] = useSearchParams()
   const invite = useInviteMember(scope)
   const addMember = useAddTeamMember()
+  const inviteForm = useFormSubmit(invite.mutateAsync)
+  const addCandidateForm = useFormSubmit(addMember.mutateAsync)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [targetId, setTargetId] = useState('')
+  const [targetError, setTargetError] = useState<string | null>(null)
   const [candidateQuery, setCandidateQuery] = useState('')
   const [debouncedCandidateQuery, setDebouncedCandidateQuery] = useState('')
-  const [error, setError] = useState<string | null>(null)
   // This selects a branch of one transient form. It resets when the dialog
   // closes; a URL parameter would outlive the dialog and collide with the page.
   const [mode, setMode] = useState<InviteMode>('existing')
@@ -54,46 +54,42 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
     return () => window.clearTimeout(timer)
   }, [candidateQuery])
 
+  const resetInviteForm = inviteForm.reset
+  const resetAddCandidateForm = addCandidateForm.reset
+
   useEffect(() => {
     if (!open) return
-    setError(null)
+    setTargetError(null)
+    resetInviteForm()
+    resetAddCandidateForm()
     setCandidateQuery('')
     setDebouncedCandidateQuery('')
     setMode('existing')
-  }, [open])
+  }, [open, resetAddCandidateForm, resetInviteForm])
 
   const selectMode = (next: InviteMode) => setMode(next)
 
   const submitInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError(null)
+    setTargetError(null)
     if (scope === 'organization' && !targetId) {
-      setError('Choose the workspace receiving this invitation.')
+      setTargetError('Choose the workspace receiving this invitation.')
       return
     }
-    try {
-      await invite.mutateAsync({
-        email: email.trim(),
-        ...(name.trim() ? { name: name.trim() } : {}),
-        ...(scope === 'organization' ? { teamId: targetId } : {}),
-      })
-      onClose()
-    } catch (caught) {
-      setError(errorMessage(caught))
-    }
+    const result = await inviteForm.submit({
+      email: email.trim(),
+      ...(name.trim() ? { name: name.trim() } : {}),
+      ...(scope === 'organization' ? { teamId: targetId } : {}),
+    })
+    if (result) onClose()
   }
 
   const addCandidate = async (uoaSub: string) => {
-    setError(null)
-    try {
-      await addMember.mutateAsync({ uoaSub })
-      onClose()
-    } catch (caught) {
-      setError(errorMessage(caught))
-    }
+    const result = await addCandidateForm.submit({ uoaSub })
+    if (result) onClose()
   }
 
-  const busy = invite.isPending || addMember.isPending
+  const busy = inviteForm.isPending || addCandidateForm.isPending
   const targetItems = targets.items
   const candidateItems = candidates.data?.data.items ?? []
 
@@ -189,7 +185,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                 </button>
               ))}
             </div>
-            <FormError>{error}</FormError>
+            <FormError>{addCandidateForm.formError}</FormError>
           </div>
         ) : (
           <form className="space-y-4" onSubmit={(event) => void submitInvite(event)}>
@@ -231,7 +227,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-name">Name (optional)</label>
               <Input id="invite-name" onChange={(event) => setName(event.target.value)} value={name} />
             </div>
-            <FormError>{error}</FormError>
+            <FormError>{targetError ?? inviteForm.formError}</FormError>
             <FormActions>
               <button className="admin-button admin-button-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
               <button className="admin-button admin-button-primary" disabled={busy} type="submit">Send invitation</button>

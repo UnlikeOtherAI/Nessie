@@ -32,8 +32,9 @@ type FormFieldProps = {
   className?: string
   /**
    * A message from a rejected submit or a failed mutation. Field-level
-   * messages from the API arrive here through `useFormSubmit`, which maps the
-   * `VALIDATION_ERROR` envelope's `details.fieldErrors` onto field names.
+   * messages from the API arrive here through `useFormSubmit`
+   * (`facades/form-errors.ts`), which maps the `VALIDATION_ERROR` envelope's
+   * `details.fieldErrors` onto field names.
    */
   error?: string
   /**

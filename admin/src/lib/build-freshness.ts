@@ -86,5 +86,8 @@ export const installBuildFreshnessCheck = () => {
   window.addEventListener('focus', checkWhenVisible)
   window.addEventListener('pageshow', checkWhenVisible)
   document.addEventListener('visibilitychange', checkWhenVisible)
+  // Installed once for the tab's whole lifetime (guarded above), so the
+  // interval is meant to outlive any component — there is nothing to unmount
+  // it against.
   window.setInterval(checkWhenVisible, BUILD_CHECK_INTERVAL_MS)
 }

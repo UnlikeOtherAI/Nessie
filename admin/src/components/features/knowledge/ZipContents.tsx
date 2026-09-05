@@ -42,7 +42,11 @@ export const ZipContents = ({ pageId, versionId }: ZipContentsProps) => {
         }}
       >
         {() => {
-          const entries = [...listing.data!.entries].sort((a, b) => {
+          // QueryState only calls this once `isError` is false, and `isError`
+          // above already covers "not loading and no data" — so this is
+          // unreachable in practice, but `data` still needs narrowing here.
+          if (!listing.data) return null
+          const entries = [...listing.data.entries].sort((a, b) => {
             if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
             return a.name.localeCompare(b.name)
           })

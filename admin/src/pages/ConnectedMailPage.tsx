@@ -12,8 +12,10 @@ import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { mailPath, type MailAddress, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../facades/mail/hooks'
 import { connectedMailSettingsPath } from '../facades/mail/settings-path'
 import { useNavigationLayout } from '../lib/mobile-shell'
+import { useTabParam } from '../navigation/useTabParam'
 
 const PAGE_SIZES = [10, 25, 50, 100] as const
+const MAIL_FILTERS = ['all', 'unread'] as const
 
 const sourceOf = (value: string | undefined): ConnectedMailSource | null =>
   value === 'gmail' || value === 'mailbox' ? value : null
@@ -53,7 +55,7 @@ export const ConnectedMailPage = () => {
   const accounts = useConnectedMailAccounts()
   const account = accounts.data?.find((item) => item.source === source && item.id === accountId)
   const isCompose = Boolean(address && routeLocation.pathname.endsWith('/compose'))
-  const filter = searchParams.get('filter') === 'unread' ? 'unread' : 'all'
+  const [filter, setFilter] = useTabParam('filter', MAIL_FILTERS, 'all')
   const replyThreadId = searchParams.get('threadId') ?? undefined
   const replyMessageId = searchParams.get('reply') ?? undefined
   const composeId = searchParams.get('compose') ?? undefined
@@ -169,7 +171,7 @@ export const ConnectedMailPage = () => {
         <input aria-label="Search mail" className="admin-input min-w-0 flex-1" onChange={(event) => updateSearchDraft(event.target.value)} placeholder="Search mail" value={searchDraft} />
         <button className="admin-button admin-button-secondary" type="submit">Search</button>
       </form>
-      <TabBar ariaLabel="Mail filter" fullWidth items={[{ label: 'All', value: 'all' }, { label: 'Unread', value: 'unread' }]} onChange={(value) => setState({ filter: value === 'unread' ? 'unread' : null })} role="radiogroup" size="sm" value={filter} />
+      <TabBar ariaLabel="Mail filter" fullWidth items={[{ label: 'All', value: 'all' }, { label: 'Unread', value: 'unread' }]} onChange={setFilter} role="radiogroup" size="sm" value={filter} />
       <QueryState emptyLabel="No matching conversations." errorLabel="Could not load this mailbox. Check its settings, then refresh." isEmpty={threads.length === 0} loadingLabel="Loading mail…" query={threadQuery}>
         {() => <MailboxThreadList ariaLabel="Mail conversations" onSelect={openThread} selectedId={threadId} threads={threads.map(asMailboxThread)} />}
       </QueryState>

@@ -132,7 +132,7 @@ export const FileNodeViewer = ({
             />
           ) : previewKind === 'pdf' && previewUrl ? (
             <iframe
-              className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-white"
+              className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-[var(--surface-inverse)]"
               // previewUrl's blob MIME is pinned to application/pdf (above), so a
               // file with an attacker-controlled content-type (e.g. text/html
               // named "x.pdf") renders as a failed PDF, never executable HTML.
@@ -144,7 +144,7 @@ export const FileNodeViewer = ({
             />
           ) : previewKind === 'video' && previewUrl ? (
             <video
-              className="mx-auto max-h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-black"
+              className="mx-auto max-h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-strong)]"
               controls
               src={previewUrl}
             >

@@ -82,15 +82,17 @@ export const DashboardWorkspacePanel = ({
             {dashboard.data ? `Revision ${dashboard.data.revision} · ${realtime}` : 'Loading dashboard'}
           </p>
         </div>
-        {dashboard.data ? (
-          editing ? (
+        {(() => {
+          const dashboardData = dashboard.data
+          if (!dashboardData) return null
+          return editing ? (
             <button
               className="admin-button admin-button-primary text-xs"
               disabled={saveLayout.isPending}
               onClick={() => saveLayout.mutate(
                 {
-                  layout: draftLayout ?? dashboard.data!.layout,
-                  revision: baseRevision.current ?? dashboard.data!.revision,
+                  layout: draftLayout ?? dashboardData.layout,
+                  revision: baseRevision.current ?? dashboardData.revision,
                 },
                 {
                   // Refetch before offering a retry: no stale revision is
@@ -107,8 +109,8 @@ export const DashboardWorkspacePanel = ({
             <button
               className="admin-button admin-button-secondary text-xs"
               onClick={() => {
-                baseRevision.current = dashboard.data!.revision
-                setDraftLayout(dashboard.data!.layout)
+                baseRevision.current = dashboardData.revision
+                setDraftLayout(dashboardData.layout)
                 setEditing(true)
               }}
               type="button"
@@ -116,7 +118,7 @@ export const DashboardWorkspacePanel = ({
               Edit layout
             </button>
           )
-        ) : null}
+        })()}
         {phoneLayout ? null : (
           <button
             aria-label="Close dashboard workspace"

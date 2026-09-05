@@ -4,6 +4,9 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
   collectRouterPaths,
+  findDeadPatterns,
+  findShadowedPaths,
+  SHADOWED_PATHS,
   toSamplePathname,
 } from '../../scripts/lint-navigation-surfaces.mjs'
 import { surfaceParent, surfaceScreen } from '../src/navigation/surface-lookup'
@@ -29,6 +32,23 @@ test('every route in router.tsx resolves to a surface row', () => {
     (routerPath) => matchSurface(toSamplePathname(routerPath)) === null,
   )
   assert.deepEqual(unclassified, [])
+})
+
+test('every surface row matches at least one router path (no dead rows)', () => {
+  const patterns = SURFACES.map((surface) => surface.pattern)
+  const dead = findDeadPatterns(patterns, routerPaths)
+  assert.deepEqual(dead.map((pattern) => pattern.source), [])
+})
+
+test('a router path matched by more than one surface row is a seeded shadow', () => {
+  // `matchSurface` is first-match-wins: a route matched by two rows depends
+  // on array order alone. SHADOWED_PATHS in the lint script is the allowlist
+  // of intentional ones; this fails if a new overlap appears unseeded, or if
+  // a seeded entry no longer overlaps (the list should only shrink).
+  const patterns = SURFACES.map((surface) => surface.pattern)
+  const outside = new Set(OUTSIDE_STACK_PATHS)
+  const shadowed = findShadowedPaths(routerPaths, patterns, outside)
+  assert.deepEqual([...shadowed.keys()].sort(), [...SHADOWED_PATHS].sort())
 })
 
 test('the routes outside the stack are exactly the unauthenticated ones and not-found', () => {

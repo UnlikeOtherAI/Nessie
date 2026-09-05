@@ -6,11 +6,15 @@ the one motion spec every push and pop runs.
 
 ## 1. Page types
 
-Every screen is exactly one of six types, and the type decides its container,
-its motion and its Back rule. The type is **declared**, not inferred: every
-route names its own in the surface registry (§4). **Built** (step 3) for the
-five route types; Overlay, and the state-driven stages that register as Nested
-details, arrive with steps 6 and 8.
+Every screen is exactly one of six types, and the type is the vocabulary the
+shell and the native bridge read from — the classification `navigation/screen.ts`
+publishes, and the eligibility `PhoneNavigationLayer.tsx` checks for
+pull-to-refresh (§13). It is **declared**, not inferred: every route names its
+own in the surface registry (§4). Direction (push vs. pop) is decided from
+`depth` alone, and a sibling swap (channel A → B) from `identityOf`/`keyScope`
+rather than from the type — see the table below for what each type actually
+changes. **Built** (step 3) for the five route types; Overlay, and the
+state-driven stages that register as Nested details, arrive with steps 6 and 8.
 
 | type | what it is | motion | Back |
 | --- | --- | --- | --- |
@@ -62,12 +66,15 @@ being watched the param no longer validates and the viewer snaps back to the
 first one instead of pointing at a dead frame.
 
 The exception is a strip that is a **form field** rather than a section of a
-screen — the app-connect and app-secret scope choosers, and the in-thread
-approval gate's Approve/Reject. Their answer is submitted and thrown away, and
-a feed renders one approval gate per pending approval, so a single param has
-nowhere to put N independent answers and would outlive the thing it decided.
-Those three keep `useState`, each saying so where it stands, and
-`admin/test/tab-param.test.ts` holds the list — which only ever shrinks.
+screen. Six today: the app-connect and app-secret scope choosers, and the
+in-thread approval gate's Approve/Reject, whose answer is submitted and thrown
+away (a feed renders one approval gate per pending approval, so a single param
+has nowhere to put N independent answers and would outlive the thing it
+decided) — plus the create-team dialog, the member-invitation dialog, and the
+organisation appearance form's Light/Dark choice, three more of the same
+shape. Each keeps `useState` with its own comment saying so where it stands.
+`admin/test/tab-param.test.ts` holds the list of record — which only ever
+shrinks.
 
 | host | param | values |
 | --- | --- | --- |
@@ -86,6 +93,8 @@ Those three keep `useState`, each saying so where it stands, and
 | an agent's screen (`AgentScreenViewer`) | `browserTab` | one per tab the agent's cloud browser has open |
 | a project board (`ProjectView`) | `board` | one per board of the project (default: the project's default board) |
 | project settings (`ProjectSettingsPage`) | `section` | `boards`; `board` selects which board inside it |
+| the members roster (`MembersRosterPanel`) | `membersTab` | `active` · `pending` · `deactivated` · `automatic` (as the org offers) |
+| connected mail (`ConnectedMailPage`) | `filter` | `all` · `unread` |
 
 A conversation offers a different half of that list depending on what it is.
 Messaging one agent is a conversation with a subject, so it carries that

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import {
   buildToolPolicy,
@@ -63,18 +63,37 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
   const dirty = sortedPolicy(savedPolicy) !== sortedPolicy(nextPolicy)
 
   const save = () => {
-    void updateAgent.mutateAsync({ agentId: agent.id, toolPolicy: nextPolicy })
+    // No local onError: the switches simply stay at their pending state on
+    // failure, and the app-wide mutation default (providers/QueryProvider.tsx)
+    // surfaces the failure as a toast. `.catch` here only stops an unhandled
+    // promise rejection — it does not silence the failure.
+    void updateAgent.mutateAsync({ agentId: agent.id, toolPolicy: nextPolicy }).catch(() => undefined)
   }
 
+  // The assistant can stagger many toggles across a batch (`index * 650` in
+  // `handleAssistantAction` below); every scheduled timer is tracked here so
+  // a tab switch away from this agent before they fire cancels them instead
+  // of revealing/toggling a control that is no longer on screen.
+  const toolChangeTimers = useRef<number[]>([])
+
+  useEffect(() => () => {
+    for (const timer of toolChangeTimers.current) {
+      window.clearTimeout(timer)
+    }
+    toolChangeTimers.current = []
+  }, [])
+
   const changeTool = useCallback((toolId: string, enabled: boolean, delay = 0) => {
-    window.setTimeout(() => {
+    const revealTimer = window.setTimeout(() => {
       revealDesignerControl(`agent-tool-${toolId}`)
       // Let the smooth reveal begin before changing the same switch a person
       // would click. This preserves the visible cause-and-effect relationship.
-      window.setTimeout(() => {
+      const toggleTimer = window.setTimeout(() => {
         setToolState((previous) => ({ ...previous, [toolId]: enabled }))
       }, 180)
+      toolChangeTimers.current.push(toggleTimer)
     }, delay)
+    toolChangeTimers.current.push(revealTimer)
   }, [])
 
   const handleAssistantAction = useCallback((name: string, args: Record<string, unknown>) => {

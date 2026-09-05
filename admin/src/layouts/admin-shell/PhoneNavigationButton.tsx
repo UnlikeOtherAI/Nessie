@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
 import { useLocalBackSnapshot } from './local-back/LocalBackContext';
-import { useMobileNav } from './MobileNavContext';
+import { useMobileNav } from './ShellStateContext';
 import { PhoneBackButton } from './PhoneBackButton';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 

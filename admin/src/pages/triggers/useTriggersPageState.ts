@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { useTriggers } from '../../facades/triggers/hooks'
 import { useAgents } from '../../facades/agents/hooks'
@@ -43,6 +44,18 @@ export const TRIGGER_STATUS_FILTERS: readonly TriggerStatusFilter[] = [
   'error',
 ]
 export type TriggerTypeFilter = 'all' | AgentTriggerRecord['type']
+
+// The type select's own segments, and what `?type=` is validated against —
+// mirrors `TRIGGER_STATUS_FILTERS` beside it, so an unknown or absent value
+// reads as All rather than emptying the list.
+export const TRIGGER_TYPE_FILTERS: readonly TriggerTypeFilter[] = [
+  'all',
+  'manual',
+  'scheduled',
+  'interval',
+  'webhook',
+  'event',
+]
 
 export type TriggerStatusCounts = Record<TriggerStatusFilter, number>
 
@@ -101,12 +114,28 @@ export const useTriggersPageState = (): TriggersPageState => {
   const createForAgent = useConsumedIntent('create')
   const [createTargetAgentId, setCreateTargetAgentId] = useState<string | undefined>(undefined)
   const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
-  const [searchQuery, setSearchQuery] = useState('')
-  // The status narrowing is part of what the list shows, so it lives in the
-  // URL: `/triggers?status=error` is linkable and survives a refresh, and
-  // Back leaves the page rather than undoing the filter.
+  // The search phrase and the status/type narrowing are all part of what the
+  // list shows, so they live in the URL: `/agents/triggers?status=error` is
+  // linkable and survives a refresh, and Back leaves the page rather than
+  // undoing the filter (docs/navigation/overview.md §1).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const searchQuery = searchParams.get('search') ?? ''
+  const setSearchQuery = useCallback(
+    (next: string) => {
+      setSearchParams(
+        (current) => {
+          const params = new URLSearchParams(current)
+          if (next) params.set('search', next)
+          else params.delete('search')
+          return params
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
   const [statusFilter, setStatusFilter] = useTabParam('status', TRIGGER_STATUS_FILTERS, 'all')
-  const [typeFilter, setTypeFilter] = useState<TriggerTypeFilter>('all')
+  const [typeFilter, setTypeFilter] = useTabParam('type', TRIGGER_TYPE_FILTERS, 'all')
 
   // Soonest-to-fire first, so the list itself answers "what runs next" and no
   // separate queue section is needed; triggers with nothing scheduled follow

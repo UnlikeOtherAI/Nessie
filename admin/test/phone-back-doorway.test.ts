@@ -115,6 +115,9 @@ test('every stateful column-browser detail column owns exactly one Back action',
   }
 
   const workflows = readSource('../src/pages/WorkflowsPage.tsx')
-  // Failed runs, template, installation, and run columns each own one Back.
-  assert.equal((workflows.match(/^        showBack$/gm) ?? []).length, 4, workflows)
+  // Template, installation, and run columns each own one Back; the
+  // failed-runs column extracted to its own file (06-F7) owns the fourth.
+  assert.equal((workflows.match(/^        showBack$/gm) ?? []).length, 3, workflows)
+  const failedRunsColumn = readSource('../src/components/features/workflows/WorkflowFailedRunsColumn.tsx')
+  assert.match(failedRunsColumn, /showBack/)
 })

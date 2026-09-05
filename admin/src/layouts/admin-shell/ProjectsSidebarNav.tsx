@@ -1,27 +1,23 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { BoardCreateDialog } from '../../components/kanban/BoardCreateDialog'
-import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
-import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
-import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
-import { ProjectAvatar } from '../../components/primitives/ProjectAvatar'
+import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useProjectBoards } from '../../facades/boards/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
 import { getCookie, setCookie } from '../../lib/storage'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
-import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
+import { projectSectionIdFromPathname } from '../../navigation/project-sections'
+import { useToasts } from '../../providers/ToastProvider'
+import { ProjectRow } from './ProjectRow'
+import { ProjectsNavDialogs } from './ProjectsNavDialogs'
+import type { ProjectListId } from './ProjectSectionRows'
 import {
-  projectSectionIdFromPathname,
-  projectSections,
-} from '../../navigation/project-sections'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+  parseExpandedProjectIds,
+  retainExpandedProjectIds,
+  serializeExpandedProjectIds,
+} from './projects-nav-expansion'
 import { SidebarEmptyNote } from './SidebarEmptyNote'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
-import { sidebarAriaCurrent } from './SidebarRow'
 import type { StarredItem } from './types'
 
 type ProjectsSidebarNavProps = {
@@ -35,14 +31,6 @@ type ProjectsSidebarNavProps = {
 
 type ProjectNavSectionId = 'projects'
 
-type ProjectMenuPosition = {
-  left: number
-  top: number
-}
-
-/** Which list a row belongs to, so Starred and Projects can show one project twice. */
-type ProjectListId = 'starred' | 'projects'
-
 const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['projects']
 
 const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-${id}`
@@ -55,199 +43,9 @@ const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-
 const EXPANDED_PROJECT_IDS_COOKIE = 'projectsNavExpandedIds'
 const EXPANDED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavExpandedBoardIds'
 
-export const parseExpandedProjectIds = (value: string | null): Set<string> => {
-  if (!value) return new Set()
-
-  try {
-    const parsed: unknown = JSON.parse(value)
-    if (!Array.isArray(parsed)) return new Set()
-    return new Set(parsed.filter((id): id is string => typeof id === 'string'))
-  } catch {
-    return new Set()
-  }
-}
-
-export const retainExpandedProjectIds = (
-  expandedProjectIds: ReadonlySet<string>,
-  projects: readonly ProjectRecord[],
-): Set<string> => {
-  const projectIds = new Set(projects.map((project) => project.id))
-  return new Set([...expandedProjectIds].filter((projectId) => projectIds.has(projectId)))
-}
-
-export const serializeExpandedProjectIds = (expandedProjectIds: ReadonlySet<string>): string =>
-  JSON.stringify([...expandedProjectIds])
-
 /** The project a projects-section pathname is standing in, if any. */
 const currentProjectIdFromPathname = (pathname: string): string | undefined =>
   /^\/projects\/([^/?#]+)/.exec(pathname)?.[1]
-
-type ProjectSectionRowsProps = {
-  /** The raw `?board=` value, resolved against this project's boards below. */
-  activeBoardParam: string | null
-  assignedWorkCount: number
-  boardsExpanded: boolean
-  currentProjectId?: string
-  currentSectionId: string
-  knowledgeCount: number
-  listId: ProjectListId
-  onCreateBoard: (projectId: string) => void
-  onToggleBoardsExpanded: (projectId: string) => void
-  projectId: string
-}
-
-/**
- * A project's sections as sidebar children. The boards read only happens for an
- * expanded project — that one query is what says whether the project runs
- * sprints, and so whether Backlog and Insights belong in the list.
- */
-const ProjectSectionRows = ({
-  activeBoardParam,
-  assignedWorkCount,
-  boardsExpanded,
-  currentProjectId,
-  currentSectionId,
-  knowledgeCount,
-  listId,
-  onCreateBoard,
-  onToggleBoardsExpanded,
-  projectId,
-}: ProjectSectionRowsProps) => {
-  const prewarm = usePrewarm()
-  const { data: boards = [] } = useProjectBoards(projectId)
-  const canAdministerProject = useCanAdministerProject(projectId)
-  const isScrum = boards.some((board) => board.style === 'scrum')
-  const isCurrentProject = currentProjectId === projectId
-  const boardsId = `projects-nav-${listId}-${projectId}-boards`
-  // The board screen resolves an unknown or absent `?board=` to the project's
-  // default board (`useTabParam`), so the row highlighted here has to agree.
-  const defaultBoardId = boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null
-  const activeBoardId = boards.some((board) => board.id === activeBoardParam)
-    ? activeBoardParam
-    : defaultBoardId
-
-  return (
-    <>
-      {projectSections({ assignedWorkCount, isScrum, knowledgeCount, projectId }).map(
-        (section) => {
-          const isActive = isCurrentProject && section.id === currentSectionId
-          // A project section is a tab, and a tab is never a history entry
-          // (docs/navigation/overview.md §1, "Tab hosts"): switching sections
-          // inside the project already on screen replaces the entry, so Back
-          // leaves the project rather than walking its sections. Arriving from
-          // outside the project is a real push.
-          const rowProps = {
-            replace: isCurrentProject,
-            to: section.to,
-            ...prewarmRowHandlers(prewarm, section.to),
-          }
-
-          if (section.id !== 'board') {
-            return (
-              <Link
-                aria-current={sidebarAriaCurrent(isActive)}
-                className={['admin-sb-item sidebar-child group', isActive ? 'active' : ''].join(' ')}
-                key={`${listId}-${projectId}-${section.id}`}
-                {...rowProps}
-              >
-                <span className="min-w-0 flex-1 truncate">{section.label}</span>
-              </Link>
-            )
-          }
-
-          // Board is the one section that holds a list. Its boards are tabs of
-          // the one board screen, so they are rows under it rather than routes
-          // of their own — and while one of them is selected, Board itself
-          // stays visible as the softer parent.
-          return (
-            <Fragment key={`${listId}-${projectId}-${section.id}`}>
-              <div
-                className={[
-                  'admin-sb-item sidebar-child group',
-                  isActive ? (boardsExpanded && boards.length > 0 ? 'active-parent' : 'active') : '',
-                ].join(' ')}
-              >
-                <Link
-                  aria-current={sidebarAriaCurrent(isActive && !boardsExpanded)}
-                  className="sidebar-project-link"
-                  {...rowProps}
-                >
-                  <span className="min-w-0 flex-1 truncate">{section.label}</span>
-                </Link>
-                <button
-                  aria-controls={boardsId}
-                  aria-expanded={boardsExpanded}
-                  aria-label={`${boardsExpanded ? 'Collapse' : 'Expand'} boards`}
-                  className="admin-sidebar-more flex-shrink-0"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onToggleBoardsExpanded(projectId)
-                  }}
-                  type="button"
-                >
-                  <svg
-                    className={[
-                      'h-3 w-3 transition-transform',
-                      boardsExpanded ? '' : '-rotate-90',
-                    ].join(' ')}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                {canAdministerProject ? (
-                  <button
-                    aria-label="New board"
-                    className="admin-sidebar-more flex-shrink-0"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onCreateBoard(projectId)
-                    }}
-                    type="button"
-                  >
-                    +
-                  </button>
-                ) : null}
-              </div>
-
-              {boardsExpanded ? (
-                <div id={boardsId}>
-                  {boards.map((board) => {
-                    const isActiveBoard = isActive && board.id === activeBoardId
-                    // `?board=` is how the board screen reads its selection
-                    // (`useTabParam`), and it drops the param for the default
-                    // board so the common URL stays clean.
-                    const to = board.isDefault
-                      ? section.to
-                      : `${section.to}?board=${encodeURIComponent(board.id)}`
-                    return (
-                      <Link
-                        aria-current={sidebarAriaCurrent(isActiveBoard)}
-                        className={[
-                          'admin-sb-item sidebar-grandchild group',
-                          isActiveBoard ? 'active' : '',
-                        ].join(' ')}
-                        key={`${listId}-${projectId}-board-${board.id}`}
-                        replace={isCurrentProject}
-                        to={to}
-                        {...prewarmRowHandlers(prewarm, section.to)}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{board.name}</span>
-                      </Link>
-                    )
-                  })}
-                </div>
-              ) : null}
-            </Fragment>
-          )
-        },
-      )}
-    </>
-  )
-}
 
 export const ProjectsSidebarNav = ({
   isOwner,
@@ -257,23 +55,19 @@ export const ProjectsSidebarNav = ({
   starredProjectIds,
   toggleStarredCollapsed,
 }: ProjectsSidebarNavProps) => {
-  const { token } = useAuthSession()
   const navigate = useNavigate()
   const { search } = useLocation()
   const activeBoardParam = new URLSearchParams(search).get('board')
   const nativeTouchShell = isReactNativeWebView()
   const phoneLayout = usePhoneLayout()
-  const prewarm = usePrewarm()
   const { data: projects = [] } = useProjects()
   const { data: attention } = useAttentionSummary()
   const deleteProject = useDeleteProject()
+  const { pushToast } = useToasts()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null)
-  const [menuRowId, setMenuRowId] = useState<string | null>(null)
-  const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null)
-  const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
     PROJECT_NAV_SECTION_IDS,
     projectNavCookieName,
@@ -371,41 +165,9 @@ export const ProjectsSidebarNav = ({
     })
   }, [persistExpandedProjectIds])
 
-  const closeMenu = useCallback(() => {
-    setMenuRowId(null)
-    setMenuPosition(null)
-  }, [])
-
-  const openMenu = useCallback((rowId: string) => {
-    const rect = menuButtonRefs.current.get(rowId)?.getBoundingClientRect()
-    if (!rect) return
-    setMenuRowId(rowId)
-    setMenuPosition({ left: rect.left, top: rect.bottom + 4 })
-  }, [])
-
-  useLayoutEffect(() => {
-    if (!menuPosition) return undefined
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        closeMenu()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    window.addEventListener('scroll', closeMenu, true)
-    window.addEventListener('resize', closeMenu)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('scroll', closeMenu, true)
-      window.removeEventListener('resize', closeMenu)
-    }
-  }, [closeMenu, menuPosition])
-
   // Opening the confirm is the whole of the menu action. The mutation lives in
   // `runDelete`, which nothing but the dialog's confirm control can reach.
   const handleDelete = (project: ProjectRecord) => {
-    closeMenu()
     setDeleteTarget(project)
   }
 
@@ -413,165 +175,50 @@ export const ProjectsSidebarNav = ({
     setDeleteTarget(null)
     deleteProject.mutate(project.id, {
       onError: (error) =>
-        window.alert(error instanceof Error ? error.message : 'Failed to delete project'),
+        pushToast({
+          body: error instanceof Error ? error.message : 'Failed to delete project',
+          title: 'Could not delete project',
+        }),
     })
   }
 
+  const handleBoardCreated = (boardId: string) => {
+    if (!boardCreateProjectId) return
+    // A board nobody can see is not a board that was created: open the
+    // list if it was closed, and land on what was just made.
+    expandBoards(boardCreateProjectId)
+    void navigate(
+      `/projects/${boardCreateProjectId}/board?board=${encodeURIComponent(boardId)}`,
+      { replace: currentProjectId === boardCreateProjectId },
+    )
+  }
+
   const renderProjectRow = (project: ProjectRecord, listId: ProjectListId) => {
-    const rowId = `${listId}:${project.id}`
-    const isStarred = starredProjectIds.has(project.id)
     const isExpanded = expandedProjectIds.has(project.id)
-    const isMenuOpen = menuRowId === rowId
-    const isActive = currentProjectId === project.id
-    const sectionsId = `projects-nav-${listId}-${project.id}-sections`
-    // On a phone the project row is the push into the project, and its first
-    // screen is the board; on desktop the row lands on the project's Overview.
     const projectPath = phoneLayout ? `/projects/${project.id}/board` : `/projects/${project.id}`
-    const assignedWorkCount = attention?.assignedWork.projects[project.id] ?? 0
-    const knowledgeCount = attention?.knowledge.projects[project.id] ?? 0
 
     return (
-      <div className="mt-1" key={rowId}>
-        <div
-          className={[
-            'admin-sb-item sidebar-project-tile group',
-            isActive ? (isExpanded && currentSectionId !== 'overview' ? 'active-parent' : 'active') : '',
-          ].join(' ')}
-        >
-          <Link
-            aria-current={sidebarAriaCurrent(isActive && currentSectionId === 'overview')}
-            className="sidebar-project-link"
-            to={projectPath}
-            {...prewarmRowHandlers(prewarm, projectPath)}
-          >
-            <ProjectAvatar
-              avatarAttachmentId={project.avatarAttachmentId}
-              avatarEmoji={project.avatarEmoji}
-              size={18}
-              token={token}
-            />
-            <span className="min-w-0 flex-1 truncate">{project.name}</span>
-          </Link>
-          <button
-            aria-controls={sectionsId}
-            aria-expanded={isExpanded}
-            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${project.name} sections`}
-            className="admin-sidebar-more flex-shrink-0"
-            onClick={(event) => {
-              event.stopPropagation()
-              toggleProjectExpanded(project.id)
-            }}
-            type="button"
-          >
-            <svg
-              className={['h-3 w-3 transition-transform', isExpanded ? '' : '-rotate-90'].join(' ')}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
-            >
-              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <span
-            className={[
-              'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
-              isStarred
-                ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
-                : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
-            ].join(' ')}
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleStar('project', project.id)
-            }}
-          >
-            {isStarred ? '★' : '☆'}
-          </span>
-          {isOwner ? (
-            <span className="relative ml-1 flex-shrink-0">
-              <button
-                aria-label={`Project actions for ${project.name}`}
-                aria-expanded={isMenuOpen}
-                aria-haspopup="menu"
-                className="admin-sidebar-more"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (isMenuOpen) {
-                    closeMenu()
-                    return
-                  }
-                  openMenu(rowId)
-                }}
-                ref={(element) => {
-                  if (element) {
-                    menuButtonRefs.current.set(rowId, element)
-                  } else {
-                    menuButtonRefs.current.delete(rowId)
-                  }
-                }}
-                type="button"
-              >
-                ⋯
-              </button>
-              {isMenuOpen && menuPosition
-                ? createPortal(
-                    <>
-                      <button
-                        aria-hidden="true"
-                        className="fixed inset-0 z-[60] cursor-default"
-                        onClick={closeMenu}
-                        tabIndex={-1}
-                        type="button"
-                      />
-                      <div
-                        className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[61]"
-                        role="menu"
-                        style={menuPosition}
-                      >
-                        <button
-                          onClick={() => {
-                            closeMenu()
-                            setEditTarget(project)
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="admin-sidebar-menu-danger"
-                          onClick={() => handleDelete(project)}
-                          role="menuitem"
-                          type="button"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>,
-                    document.body,
-                  )
-                : null}
-            </span>
-          ) : null}
-        </div>
-
-        {isExpanded ? (
-          <div id={sectionsId}>
-            <ProjectSectionRows
-              activeBoardParam={activeBoardParam}
-              assignedWorkCount={assignedWorkCount}
-              boardsExpanded={expandedBoardProjectIds.has(project.id)}
-              currentProjectId={currentProjectId}
-              currentSectionId={currentSectionId}
-              knowledgeCount={knowledgeCount}
-              listId={listId}
-              onCreateBoard={setBoardCreateProjectId}
-              onToggleBoardsExpanded={toggleBoardsExpanded}
-              projectId={project.id}
-            />
-          </div>
-        ) : null}
-      </div>
+      <ProjectRow
+        activeBoardParam={activeBoardParam}
+        assignedWorkCount={attention?.assignedWork.projects[project.id] ?? 0}
+        boardsExpanded={expandedBoardProjectIds.has(project.id)}
+        currentProjectId={currentProjectId}
+        currentSectionId={currentSectionId}
+        isExpanded={isExpanded}
+        isOwner={isOwner}
+        isStarred={starredProjectIds.has(project.id)}
+        key={`${listId}:${project.id}`}
+        knowledgeCount={attention?.knowledge.projects[project.id] ?? 0}
+        listId={listId}
+        onCreateBoard={setBoardCreateProjectId}
+        onDelete={handleDelete}
+        onEdit={setEditTarget}
+        onToggleBoardsExpanded={toggleBoardsExpanded}
+        onToggleExpanded={toggleProjectExpanded}
+        onToggleStar={onToggleStar}
+        project={project}
+        projectPath={projectPath}
+      />
     )
   }
 
@@ -634,42 +281,19 @@ export const ProjectsSidebarNav = ({
         </SidebarMenuSection>
       </nav>
 
-      <CreateProjectDialog onClose={() => setCreateOpen(false)} open={createOpen} />
-      {boardCreateProjectId ? (
-        <BoardCreateDialog
-          boards={boardCreateBoards}
-          onClose={() => setBoardCreateProjectId(null)}
-          onCreated={(boardId) => {
-            // A board nobody can see is not a board that was created: open the
-            // list if it was closed, and land on what was just made.
-            expandBoards(boardCreateProjectId)
-            void navigate(
-              `/projects/${boardCreateProjectId}/board?board=${encodeURIComponent(boardId)}`,
-              { replace: currentProjectId === boardCreateProjectId },
-            )
-          }}
-          open
-          projectId={boardCreateProjectId}
-        />
-      ) : null}
-      {editTarget ? (
-        <EditProjectDialog
-          onClose={() => setEditTarget(null)}
-          open
-          project={editTarget}
-        />
-      ) : null}
-      {deleteTarget ? (
-        <ConfirmDialog
-          body="This cannot be undone."
-          confirmLabel="Delete"
-          destructive
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => runDelete(deleteTarget)}
-          open
-          title={`Delete project "${deleteTarget.name}"?`}
-        />
-      ) : null}
+      <ProjectsNavDialogs
+        boardCreateBoards={boardCreateBoards}
+        boardCreateProjectId={boardCreateProjectId}
+        createOpen={createOpen}
+        deleteTarget={deleteTarget}
+        editTarget={editTarget}
+        onBoardCreated={handleBoardCreated}
+        onCancelDelete={() => setDeleteTarget(null)}
+        onCloseBoardCreate={() => setBoardCreateProjectId(null)}
+        onCloseCreate={() => setCreateOpen(false)}
+        onCloseEdit={() => setEditTarget(null)}
+        onConfirmDelete={runDelete}
+      />
     </aside>
   )
 }

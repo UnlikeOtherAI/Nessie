@@ -19,8 +19,10 @@ export const PhoneBackButton = ({ label, onBack }: PhoneBackButtonProps) => {
         'flex h-9 w-9 flex-shrink-0 items-center justify-center transition-colors',
         nativeIOSPhone
           ? [
-              'rounded-full border border-white/35 bg-white/65 text-[color:var(--tx)] shadow-sm',
-              'backdrop-blur-xl active:bg-white/85 dark:border-white/20 dark:bg-black/25',
+              'rounded-full border border-[color-mix(in_srgb,var(--surface-inverse)_35%,transparent)]',
+              'bg-[color-mix(in_srgb,var(--surface-inverse)_65%,transparent)] text-[color:var(--tx)] shadow-sm',
+              'backdrop-blur-xl active:bg-[color-mix(in_srgb,var(--surface-inverse)_85%,transparent)]',
+              'dark:border-[var(--overlay-strong)] dark:bg-[var(--scrim)]',
             ].join(' ')
           : 'rounded-full text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
       ].join(' ')}

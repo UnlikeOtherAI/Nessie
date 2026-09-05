@@ -1,5 +1,6 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
+import { ChoiceGroup, type ChoiceOption } from '../../shared/ChoiceGroup'
 import { TRIGGER_TYPE_ICONS } from './trigger-presentation'
 
 /**
@@ -14,71 +15,46 @@ type TriggerTypePickerProps = {
   value: TriggerType
 }
 
-const TYPE_OPTIONS: Array<{ description: string; label: string; value: TriggerType }> = [
+const TYPE_OPTIONS: Array<ChoiceOption<TriggerType>> = [
   {
     value: 'manual',
     label: 'Manual',
     description: 'Fires only when you press “Run now”.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.manual} />,
   },
   {
     value: 'scheduled',
     label: 'Schedule',
     description: 'Runs on a cron schedule or once at a set time.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.scheduled} />,
   },
   {
     value: 'interval',
     label: 'Interval',
     description: 'Repeats every N minutes.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.interval} />,
   },
   {
     value: 'webhook',
     label: 'Webhook',
     description: 'Fires when an external system calls an endpoint.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.webhook} />,
   },
   {
     value: 'event',
     label: 'Event',
     description: 'Reacts to internal system events.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.event} />,
   },
 ]
 
 export const TriggerTypePicker = ({ onChange, value }: TriggerTypePickerProps) => (
-  <div
-    aria-label="Trigger type"
-    className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
-    role="radiogroup"
-  >
-    {TYPE_OPTIONS.map((option) => {
-      const selected = option.value === value
-      return (
-        <button
-          aria-checked={selected}
-          className={[
-            'rounded-xl border p-3 text-left transition',
-            selected
-              ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-              : 'border-[color:var(--sep)] bg-[var(--scrim-weak)] hover:bg-[var(--scrim)]',
-          ].join(' ')}
-          key={option.value}
-          onClick={() => onChange(option.value)}
-          role="radio"
-          type="button"
-        >
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon
-              className={[
-                'h-3.5 w-3.5',
-                selected ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
-              ].join(' ')}
-              icon={TRIGGER_TYPE_ICONS[option.value]}
-            />
-            <span className="text-sm font-semibold text-[var(--tx)]">{option.label}</span>
-          </div>
-          <div className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
-            {option.description}
-          </div>
-        </button>
-      )
-    })}
-  </div>
+  <ChoiceGroup
+    label="Trigger type"
+    labelHidden
+    onChange={onChange}
+    options={TYPE_OPTIONS}
+    value={value}
+    variant="card"
+  />
 )

@@ -302,7 +302,7 @@ test('shares the phone Back control across route headers and channel flows', () 
   assert.doesNotMatch(channelHeader, /PhoneNavigationButton/)
   assert.match(composePage, /backLabel="Back to Channels"/)
   assert.match(composePage, /onBack=\{phoneLayout \? close : undefined\}/)
-  assert.match(infoFlow, /<PhoneNavigationButton \/>/)
+  assert.match(infoFlow, /<ScreenHeader/)
 })
 
 test('mounts the transition viewport only in the shell phone branch', () => {

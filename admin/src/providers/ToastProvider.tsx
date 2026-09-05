@@ -14,6 +14,23 @@ import './notifications.css'
 const TOAST_TTL_MS = 7_000
 const MAX_TOASTS = 3
 
+// `QueryProvider` builds the app's `QueryClient` — and wires its mutation
+// error default — above where `ToastProvider` mounts (inside
+// `AdminShellLayout`, well below the router). A `MutationCache.onError`
+// cannot reach `useToasts()`, so it calls this module-level sink instead.
+// Registered on mount, cleared on unmount; a mutation that fails before the
+// shell (and its toasts) exist is dropped rather than queued — a toast about
+// a screen the person can no longer see would be a surprise, not a signal.
+let mutationErrorSink: ((message: string) => void) | null = null
+
+export const registerMutationErrorSink = (sink: ((message: string) => void) | null): void => {
+  mutationErrorSink = sink
+}
+
+export const notifyMutationError = (message: string): void => {
+  mutationErrorSink?.(message)
+}
+
 export type ToastInput = {
   body: string
   title: string
@@ -79,6 +96,11 @@ export const ToastProvider = ({ children }: PropsWithChildren) => {
     }
     toastTimersRef.current = []
   }, [])
+
+  useEffect(() => {
+    registerMutationErrorSink((message) => pushToast({ body: message, title: 'Something went wrong' }))
+    return () => registerMutationErrorSink(null)
+  }, [pushToast])
 
   const api = useMemo<ToastApi>(() => ({ pushToast }), [pushToast])
 

@@ -104,15 +104,24 @@ test('secondary sidebar menus do not repeat the active tab title above their ite
 
 test('project action menus render in the document overlay layer instead of the clipped sidebar', () => {
   const sidebarProjects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
-  const projectNavigation = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+  // The Projects sidebar's row (and its menu) live in ProjectRow.tsx now;
+  // ProjectsSidebarNav.tsx is the orchestrator (06-F5).
+  const projectRow = readSource('../src/layouts/admin-shell/ProjectRow.tsx')
+  // Both files' menu positioning + Escape/scroll/resize dismiss now go
+  // through the one shared hook instead of each re-implementing it.
+  const rowMenuHook = readSource('../src/layouts/admin-shell/useSidebarRowMenu.ts')
 
   assert.match(sidebarProjects, /createPortal\(/)
   assert.match(sidebarProjects, /document\.body/)
-  assert.match(sidebarProjects, /admin-sidebar-menu-project fixed z-\[61\]/)
-  assert.match(sidebarProjects, /setMenuPosition\(\{ left: rect\.left, top: rect\.bottom \}\)/)
-  assert.match(sidebarProjects, /window\.addEventListener\('scroll', closeOnViewportChange, true\)/)
-  assert.match(projectNavigation, /createPortal\(/)
-  assert.match(projectNavigation, /document\.body/)
+  assert.match(sidebarProjects, /admin-sidebar-menu-project fixed z-\[var\(--layer-popover\)\]/)
+  assert.match(sidebarProjects, /from '\.\/useSidebarRowMenu'/)
+  assert.match(sidebarProjects, /openAt\(e\.currentTarget\.getBoundingClientRect\(\)\)/)
+  assert.match(projectRow, /createPortal\(/)
+  assert.match(projectRow, /document\.body/)
+  assert.match(projectRow, /from '\.\/useSidebarRowMenu'/)
+  assert.match(rowMenuHook, /window\.addEventListener\('scroll', onClose, true\)/)
+  assert.match(rowMenuHook, /window\.addEventListener\('resize', onClose\)/)
+  assert.match(rowMenuHook, /document\.addEventListener\('keydown', onKeyDown\)/)
 })
 
 test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
@@ -338,6 +347,6 @@ test('sidebar action menus have room to read and tap their choices', () => {
 test('an open project action menu dismisses when the person taps outside it', () => {
   const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
 
-  assert.match(projects, /className="fixed inset-0 z-\[60\] cursor-default"/)
+  assert.match(projects, /className="fixed inset-0 z-\[var\(--layer-popover\)\] cursor-default"/)
   assert.match(projects, /closeProjectMenu\(\)/)
 })

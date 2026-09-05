@@ -10,9 +10,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 
 import { LocalBackProvider } from '../src/layouts/admin-shell/local-back/LocalBackContext.js'
-import { MobileNavProvider } from '../src/layouts/admin-shell/MobileNavContext.js'
+import { ShellStateProvider } from '../src/layouts/admin-shell/ShellStateContext.js'
 import { PhoneNavigationProvider } from '../src/layouts/admin-shell/PhoneNavigationProvider.js'
 import { ScreenHeader } from '../src/components/shared/ScreenHeader.js'
+import { ColumnBrowserColumn } from '../src/components/shared/column-browser/ColumnBrowserColumn.js'
 import {
   applyScreen,
   describeScreen,
@@ -54,8 +55,17 @@ const renderHeader = (
         LocalBackProvider,
         null,
         createElement(
-          MobileNavProvider,
-          { value: { openDrawer: () => {} } },
+          ShellStateProvider,
+          {
+            value: {
+              onCreateAgent: () => {},
+              onCreateChannel: () => {},
+              onLogout: () => {},
+              onSelectAgent: () => {},
+              openDrawer: () => {},
+              showHeaderAccountMenu: false,
+            },
+          },
           createElement(
             PhoneNavigationProvider,
             null,
@@ -188,7 +198,36 @@ test('the bridge posts nessie:screen with its six fields off the registry, the r
   assert.match(shellBridge, /type: 'nessie:route'/)
 })
 
-test('every page header in admin/src/pages is the one ScreenHeader', () => {
+/**
+ * Every remaining `<header>` outside `ScreenHeader`/`ResponsivePageHeader`
+ * that is not a route's own screen, and why it is not one — a card's own
+ * heading row, an overlay panel's bar, persistent shell chrome (08-F2/F3: a
+ * second screen-header shape reappeared one layer down, in
+ * `components/shared/column-browser` and `components/features/channels`,
+ * exactly where this gate's old `pages/**`-only walk could not see it).
+ * Self-checking below, so this list only ever shrinks
+ * (docs/navigation/deep-links-and-headers.md §9).
+ */
+const HAND_ROLLED_HEADER_ALLOWLIST = new Map<string, string>([
+  ['components/shared/ResponsivePageHeader.tsx', 'the one sanctioned <header> element ScreenHeader composes'],
+  ['components/features/settings/AutomaticMembershipDomainRow.tsx', "a roster row's own header grouping a domain and its status pill, not a screen"],
+  ['components/features/browser-cloud/AgentScreenPanel.tsx', "the agent-screen side panel's own h2 bar (an overlay panel, not a route screen)"],
+  ['components/features/projects/DashboardSectionCard.tsx', "a dashboard card's own header row (h2 SectionLabel), sectioning content inside the card"],
+  ['components/features/agents/AgentDetailDrawer.tsx', "a drawer's own header row; the drawer is an overlay, not a route screen"],
+  ['components/features/dashboards/DashboardWorkspacePanel.tsx', "the dashboard workspace side panel's own h2 bar (an overlay panel, not a route screen)"],
+  ['components/features/dashboards/WidgetFrame.tsx', "a widget's own title row (h3), sectioning content inside the card"],
+  ['components/features/channels/ThoughtProcessDialog.tsx', "a dialog's own header row; the dialog is an overlay, not a route screen"],
+  ['components/features/channels/AgentCardMessage.tsx', "a chat message card's own header row, sectioning content inside the bubble"],
+  ['components/features/channels/DocumentStreamDialog.tsx', "a dialog's own header row (h2); the dialog is an overlay, not a route screen"],
+  ['components/features/channels/ChannelUserInfoDrawer.tsx', "a drawer's own header row; the drawer is an overlay, not a route screen"],
+  ['components/features/channels/thread-panel/ThreadReplyPanel.tsx', "the reply-thread side panel's own header row (the §4 overlay carve-out), not a route screen"],
+  ['components/features/channels/ChannelAgentInfoDrawer.tsx', "two drawer header rows; the drawer is an overlay, not a route screen"],
+  ['components/shared/AttachmentViewer.tsx', "a dialog's own header row (h2); the dialog is an overlay, not a route screen"],
+  ['layouts/admin-shell/TopBar.tsx', "the desktop shell's persistent top bar, chrome above every route rather than a screen"],
+  ['layouts/admin-shell/MobileWebHomeHeader.tsx', "the mobile web root's own chrome header, not a route screen"],
+])
+
+test('every page header in admin/src is the one ScreenHeader', () => {
   // `AdminPageHeader` and `MobileSectionHeader` are gone, not deprecated: a
   // second header shape is the defect Rule zero names.
   assert.equal(existsSync(`${srcDir}/components/shared/AdminPageHeader.tsx`), false)
@@ -204,18 +243,88 @@ test('every page header in admin/src/pages is the one ScreenHeader', () => {
     )
   }
 
-  // No page paints its own header element any more: a page-level header is
-  // `<ScreenHeader`, and section headings inside a body are plain headings.
-  const pages = walk(`${srcDir}/pages`)
-  assert.ok(pages.length > 20, 'the page tree was found')
-  for (const file of pages) {
+  // No file paints its own `<header>` element any more unless the allowlist
+  // above names it and says why — widened from `pages/**` to all of
+  // `admin/src`, since the defect this test exists to catch (a hand-rolled
+  // header the §9 gate cannot see) reappeared one layer down, not inside a
+  // page file.
+  for (const file of walk(srcDir)) {
     const source = readFileSync(file, 'utf8')
-    assert.doesNotMatch(source, /<header[\s>]/, `${file} renders a hand-rolled header`)
+    if (!source.includes('<header')) continue
+    const relative = file.slice(srcDir.length + 1)
+    assert.ok(
+      HAND_ROLLED_HEADER_ALLOWLIST.has(relative),
+      `${file} renders a hand-rolled <header> not in HAND_ROLLED_HEADER_ALLOWLIST`,
+    )
+  }
+  for (const relative of HAND_ROLLED_HEADER_ALLOWLIST.keys()) {
+    const source = readFileSync(`${srcDir}/${relative}`, 'utf8')
+    assert.ok(
+      source.includes('<header'),
+      `${relative} no longer renders <header> — shrink HAND_ROLLED_HEADER_ALLOWLIST`,
+    )
   }
 
   // And the pages that own a screen title render it through the one header.
+  const pages = walk(`${srcDir}/pages`)
+  assert.ok(pages.length > 20, 'the page tree was found')
   const headerPages = pages.filter((file) => /<ScreenHeader/.test(readFileSync(file, 'utf8')))
   assert.ok(headerPages.length >= 18, `expected the converted pages, found ${headerPages.length}`)
+})
+
+test('a column-browser screen column renders exactly one h1, and a section column keeps its h3', () => {
+  // 08-F2/05-F2: the four column-browser routes (Tools, Triggers, Workflows,
+  // Integrations) render their real screen through `ColumnBrowserColumn`'s
+  // `screen` column rather than through a page-level `<ScreenHeader>` call —
+  // this pins the shared primitive's two shapes directly, since none of
+  // those four page files literally write `<ScreenHeader`.
+  resetScreenTitles()
+  const renderColumn = (props: Parameters<typeof ColumnBrowserColumn>[0]): string =>
+    renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ['/agents/tools'] },
+        createElement(
+          LocalBackProvider,
+          null,
+          createElement(
+            ShellStateProvider,
+            {
+              value: {
+                onCreateAgent: () => {},
+                onCreateChannel: () => {},
+                onLogout: () => {},
+                onSelectAgent: () => {},
+                openDrawer: () => {},
+                showHeaderAccountMenu: false,
+              },
+            },
+            createElement(
+              PhoneNavigationProvider,
+              null,
+              createElement(ColumnBrowserColumn, props),
+            ),
+          ),
+        ),
+      ),
+    )
+
+  const screen = renderColumn({
+    children: createElement('p', null, 'body'),
+    screen: true,
+    title: 'Tools (3)',
+  })
+  assert.equal(screen.match(/<h1[\s>]/g)?.length, 1, 'exactly one h1 for the screen column')
+  assert.doesNotMatch(screen, /<h3[\s>]/, 'the screen column does not also paint the section bar')
+
+  const section = renderColumn({
+    children: createElement('p', null, 'body'),
+    onBack: () => {},
+    showBack: true,
+    title: 'Detail',
+  })
+  assert.doesNotMatch(section, /<h1[\s>]/, 'a deeper column is sectioning content, not the screen')
+  assert.equal(section.match(/<h3[\s>]/g)?.length, 1)
 })
 
 test('ScreenHeader composes the measured partition rather than forking it', () => {

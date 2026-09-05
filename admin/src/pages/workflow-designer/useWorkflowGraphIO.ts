@@ -23,10 +23,10 @@ import {
 import {
   buildWorkflowGraph,
   buildWorkflowTriggers,
-  parseWorkflowTemplate,
   WorkflowCanvasStructureError,
-} from '../../lib/workflow-designer/serialization'
-import type { WorkflowPreservedStep } from '../../lib/workflow-designer/serialization'
+} from '../../lib/workflow-designer/graph-serialization'
+import type { WorkflowPreservedStep } from '../../lib/workflow-designer/graph-serialization'
+import { parseWorkflowTemplate } from '../../lib/workflow-designer/template-parsing'
 import type {
   WorkflowCanvasNode,
   WorkflowConnection,
@@ -75,6 +75,11 @@ export const useWorkflowGraphIo = ({
   // W10: steps the canvas cannot render, kept verbatim and spliced back into
   // the graph at their original position on save.
   const preservedStepsRef = useRef<WorkflowPreservedStep[]>([])
+  // Original step order of the graph this designer hydrated from — set by
+  // `parseWorkflowTemplate`, threaded explicitly into `buildWorkflowGraph` so
+  // preserved and loaded-but-unconnected steps keep their original position
+  // on save (W10). Empty for a brand-new, never-loaded graph.
+  const loadedStepOrderRef = useRef<string[]>([])
   const lastSavedWorkflowSignatureRef = useRef<string | null>(null)
   // The template version this designer hydrated from, advanced on every save it
   // makes. Sent as `If-Match` so a second editor's save is refused rather than
@@ -200,6 +205,7 @@ export const useWorkflowGraphIo = ({
       canvasRef.current,
     )
     preservedStepsRef.current = parsedWorkflow.preservedSteps
+    loadedStepOrderRef.current = parsedWorkflow.loadedStepOrder
     hydratedWorkflowIdRef.current = workflowTemplateId
     expectedVersionRef.current = workflowTemplate.version
     setVersionConflict(false)
@@ -230,7 +236,12 @@ export const useWorkflowGraphIo = ({
       let payload
       try {
         payload = {
-          graph: buildWorkflowGraph(nodes, connections, preservedStepsRef.current),
+          graph: buildWorkflowGraph(
+            nodes,
+            connections,
+            preservedStepsRef.current,
+            loadedStepOrderRef.current,
+          ),
           name: workflowName.trim(),
           triggers: buildWorkflowTriggers(nodes, connections),
         }

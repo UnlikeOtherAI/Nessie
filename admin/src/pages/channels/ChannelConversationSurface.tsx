@@ -475,11 +475,12 @@ export const ChannelConversationSurface = ({
                 disabled={!activeChannel || !activeThreadId || !selectedRoutineAgentId || startDemonstration.isPending}
                 onClick={() => {
                   if (!activeChannel || !activeThreadId || !selectedRoutineAgentId) return
+                  // The app-wide mutation default surfaces a failure as a toast.
                   void startDemonstration.mutateAsync({
                     agentId: selectedRoutineAgentId,
                     channelId: activeChannel.id,
                     threadId: activeThreadId,
-                  }).then(() => setRecordRoutineOpen(false))
+                  }).then(() => setRecordRoutineOpen(false)).catch(() => undefined)
                 }}
                 type="button"
               >

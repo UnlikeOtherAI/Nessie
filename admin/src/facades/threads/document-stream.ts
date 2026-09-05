@@ -94,6 +94,8 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
   // which changes what a bootstrap may do with buffered frames.
   const snapshotSessionsRef = useRef(new Set<string>())
   const cancelledRef = useRef(false)
+  // Pending `requestDetail` retries, keyed by session, cancelled on thread switch.
+  const retryTimersRef = useRef(new Map<string, number>())
 
   const notify = useCallback((sessionId: string) => {
     for (const listener of listenersRef.current.get(sessionId) ?? []) {
@@ -188,7 +190,10 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
           }
           setEntry(merged.entry, true)
           if (merged.needsRefetch) {
-            window.setTimeout(() => requestDetail(sessionId), DETAIL_RETRY_MS)
+            retryTimersRef.current.set(sessionId, window.setTimeout(() => {
+              retryTimersRef.current.delete(sessionId)
+              requestDetail(sessionId)
+            }, DETAIL_RETRY_MS))
           }
         })
         .catch(() => {
@@ -444,9 +449,11 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     detailAttemptsRef.current = new Map()
     pendingDetailRef.current = new Set()
     startedAtRef.current = new Map()
+    retryTimersRef.current = new Map()
     setDocumentSessions([])
     return () => {
       cancelledRef.current = true
+      for (const timer of retryTimersRef.current.values()) window.clearTimeout(timer)
     }
   }, [threadId])
 

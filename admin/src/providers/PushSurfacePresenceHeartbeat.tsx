@@ -98,6 +98,9 @@ export const PushSurfacePresenceHeartbeat = () => {
       heartbeatSequence.current + 1,
       Date.now() * 1_000,
     )
+    // Raw fetch: `keepalive` is the point — the background signal is sent from
+    // `pagehide`, which the api client cannot carry (it has no `keepalive`), so
+    // a closing page's request would be cancelled with the document.
     return fetch(`${getBaseUrl()}/api/push-surfaces/heartbeat`, {
       body: JSON.stringify({
         clientId,

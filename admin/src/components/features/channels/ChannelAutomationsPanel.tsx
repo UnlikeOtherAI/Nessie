@@ -108,7 +108,7 @@ const InstallationAutomationRow = ({
         <button
           className="rounded-md px-2 py-1.5 text-xs font-semibold text-[color:var(--tx3)] hover:text-[var(--tx)]"
           onClick={() =>
-            navigate('/workflows', { state: { selectedInstallationId: installationId } })
+            navigate(`/workflows?installation=${encodeURIComponent(installationId)}`)
           }
           type="button"
         >

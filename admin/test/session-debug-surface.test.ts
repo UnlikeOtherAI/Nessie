@@ -51,6 +51,8 @@ test('imported bearer sessions stay nonrenewable and never register native push'
   const authProvider = readSource('../src/providers/AuthSessionProvider.tsx')
   const nativeBridge = readSource('../src/providers/NativeShellBridge.tsx')
   const renewal = readSource('../src/providers/useAccessTokenRenewal.ts')
+  // The re-scoping refusal lives with the team switches it guards.
+  const teamRecovery = readSource('../src/providers/useTeamSessionRecovery.ts')
 
   assert.match(authProvider, /sessionMutations\.run\(/)
   assert.match(authProvider, /resolveImportedSession\(accessToken, authApi\.fetchSession\)/)
@@ -59,7 +61,7 @@ test('imported bearer sessions stay nonrenewable and never register native push'
   assert.match(authProvider, /importedMutationsInFlightRef\.current > 0/)
   assert.match(authProvider, /performTerminalSessionLogout\(/)
   assert.match(authProvider, /ending\.mode === 'imported'/)
-  assert.match(authProvider, /IMPORTED_SESSION_SCOPE_MESSAGE/)
+  assert.match(teamRecovery, /IMPORTED_SESSION_SCOPE_MESSAGE/)
   assert.match(renewal, /getAccessTokenExpiresAtMs\(token\)/)
   assert.match(
     nativeBridge,

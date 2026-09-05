@@ -20,11 +20,19 @@ import {
   AutomaticMembershipRulesPanel,
 } from '../../components/features/settings/AutomaticMembershipRulesPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useTabParam } from '../../navigation/useTabParam'
 import { SettingsPanel } from './settings-shared'
 import { MemberInvitationDialog } from './MemberInvitationDialog'
 import { MemberDetailsDialog } from './MemberDetailsDialog'
 
 type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
+
+// Every value the strip can hold, regardless of whether `canSeeAutomatic`
+// currently renders that pill — `?membersTab=automatic` must keep validating
+// while the permissions read that would confirm it is still in flight (see
+// `canSeeAutomatic` below), the same way the ladder this replaced accepted it
+// unconditionally.
+const ROSTER_TAB_VALUES: readonly RosterTab[] = ['active', 'pending', 'deactivated', 'automatic']
 
 const ROSTER_TABS = [
   { label: 'Active users', value: 'active' },
@@ -102,17 +110,12 @@ const invitationColumns = (scope: MemberRosterScope): DataTableColumn<TeamInvita
 /** The single Members page used at organization and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const { me, token } = useAuthSession()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [, setSearchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMemberRecord | null>(null)
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
   const [revokeError, setRevokeError] = useState<string | null>(null)
-  const requestedTab = searchParams.get('membersTab')
-  const tab: RosterTab = requestedTab === 'pending'
-    || requestedTab === 'deactivated'
-    || requestedTab === 'automatic'
-    ? requestedTab
-    : 'active'
+  const [tab] = useTabParam('membersTab', ROSTER_TAB_VALUES, 'active')
 
   // The roster read also carries UOA's live verdict on what this person may do,
   // which is what decides whether the Automatic logins tab exists at all — so
@@ -138,13 +141,19 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     && (permissions?.addMember === true || tab === 'automatic')
   const tabs = canSeeAutomatic ? [...ROSTER_TABS, AUTOMATIC_TAB] : ROSTER_TABS
 
+  // A different tab is a different list, so its cursor means nothing here —
+  // cleared alongside the write rather than left to point at the wrong page.
+  // `useTabParam`'s own setter carries every other param over unchanged, so
+  // this stays a hand-written `setSearchParams` call (one replace, not two)
+  // rather than a second call chained after `useTabParam`'s.
   const setTab = (next: RosterTab) => {
     setSearchParams((currentParams) => {
       const updated = new URLSearchParams(currentParams)
       updated.delete('cursor')
       updated.delete('direction')
       updated.delete('page')
-      updated.set('membersTab', next)
+      if (next === 'active') updated.delete('membersTab')
+      else updated.set('membersTab', next)
       return updated
     }, { replace: true })
   }
