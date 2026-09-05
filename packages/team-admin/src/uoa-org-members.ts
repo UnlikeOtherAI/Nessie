@@ -1,7 +1,7 @@
 import { createUoaSubjectAssertion } from '@nessie/runtime'
 import type {
   MemberInvitationTarget,
-  MemberWorkspaceAccess,
+  MemberTeamAccess,
   MemberRosterPermissions,
   TeamInvitationRecord,
   UoaSessionIdentity,
@@ -57,9 +57,9 @@ export type UoaInvitationPage = {
   permissions: InvitationPermissions
 }
 
-export type UoaMemberWorkspaceAccess = {
-  items: MemberWorkspaceAccess[]
-  permissions: { changeWorkspaceAccess: boolean }
+export type UoaMemberTeamAccess = {
+  items: MemberTeamAccess[]
+  permissions: { changeTeamAccess: boolean }
 }
 
 /**
@@ -187,17 +187,17 @@ export const listOrganisationMemberInvitations = async (
 }
 
 /**
- * Live, editable workspace memberships for one organisation member. A UOA
- * team is the workspace; omitted teams are outside this caller's authority.
+ * Live, editable team memberships for one organisation member. Omitted
+ * teams are outside this caller's authority.
  */
-export const listOrganisationMemberWorkspaceAccess = async (
+export const listOrganisationMemberTeamAccess = async (
   orgId: string,
   uoaSub: string,
   deps: UoaRosterDeps = {},
-): Promise<UoaMemberWorkspaceAccess> => {
+): Promise<UoaMemberTeamAccess> => {
   const payload = await rosterRequest(
     requireSettings(),
-    `${orgPath({ externalOrgId: orgId })}/members/${encodeURIComponent(uoaSub)}/workspaces`,
+    `${orgPath({ externalOrgId: orgId })}/members/${encodeURIComponent(uoaSub)}/teams`,
     { method: 'GET' },
     deps,
   )
@@ -218,7 +218,7 @@ export const listOrganisationMemberWorkspaceAccess = async (
       }]
     }),
     permissions: {
-      changeWorkspaceAccess: asRecord(body?.permissions)?.changeWorkspaceAccess === true,
+      changeTeamAccess: asRecord(body?.permissions)?.changeTeamAccess === true,
     },
   }
 }

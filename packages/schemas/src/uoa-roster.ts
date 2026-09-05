@@ -71,8 +71,8 @@ export type MemberInvitationTarget = {
   avatarImageUrl?: string
 }
 
-/** An editable team membership at organisation scope; a UOA team is a workspace. */
-export type MemberWorkspaceAccess = {
+/** An editable team membership at organisation scope. */
+export type MemberTeamAccess = {
   id: string
   name: string
   slug?: string
@@ -80,9 +80,9 @@ export type MemberWorkspaceAccess = {
   hasAccess: boolean
 }
 
-export type MemberWorkspaceAccessResponse = {
-  items: MemberWorkspaceAccess[]
-  permissions: { changeWorkspaceAccess: boolean }
+export type MemberTeamAccessResponse = {
+  items: MemberTeamAccess[]
+  permissions: { changeTeamAccess: boolean }
 }
 
 export type TeamInvitationRecord = {

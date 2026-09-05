@@ -20,14 +20,14 @@
  *     is given, and UOA's member add is becoming an upsert, so passing
  *     `'member'` would silently demote an existing team owner. Membership is
  *     read first and the add is skipped entirely when the person is already
- *     there, exactly as the manual workspace-access route does.
+ *     there, exactly as the manual team-access route does.
  */
 
 import type { PrismaClient } from '@prisma/client'
 import { createUoaSubjectAssertion } from '@nessie/runtime'
 
 import { addTeamMember } from './uoa-org-roster-pages.js'
-import { listOrganisationMemberWorkspaceAccess } from './uoa-org-members.js'
+import { listOrganisationMemberTeamAccess } from './uoa-org-members.js'
 import {
   delegatedSettings,
   UoaRosterRejectedError,
@@ -43,7 +43,7 @@ const GRANT_LEASE_MS = 2 * 60 * 1000
  * production passes nothing.
  */
 export type AutomaticGrantUpstream = {
-  listWorkspaceAccess: typeof listOrganisationMemberWorkspaceAccess
+  listTeamAccess: typeof listOrganisationMemberTeamAccess
   addTeamMember: typeof addTeamMember
   /**
    * Awaited before EVERY upstream request. One grant makes two — the
@@ -55,7 +55,7 @@ export type AutomaticGrantUpstream = {
 
 export const defaultAutomaticGrantUpstream: AutomaticGrantUpstream = {
   addTeamMember,
-  listWorkspaceAccess: listOrganisationMemberWorkspaceAccess,
+  listTeamAccess: listOrganisationMemberTeamAccess,
 }
 
 export type AutomaticGrantOutcome =
@@ -259,7 +259,7 @@ export const grantAutomaticMembership = async (
   try {
     const assertionDeps = assertionDepsFor(rule, deps)
     await upstream.pace?.()
-    const access = await upstream.listWorkspaceAccess(
+    const access = await upstream.listTeamAccess(
       rule.externalOrgId,
       uoaSub,
       assertionDeps,
@@ -267,7 +267,7 @@ export const grantAutomaticMembership = async (
     const target = access.items.find((team) => team.id === rule.externalTeamId)
 
     if (!target) {
-      // Deliberately NOT terminal. `listOrganisationMemberWorkspaceAccess`
+      // Deliberately NOT terminal. `listOrganisationMemberTeamAccess`
       // answers within the authorizer's own authority and drops rows missing a
       // field, so a temporary scope reduction or a partial response would
       // otherwise burn this (rule, person) pair permanently. The lease is

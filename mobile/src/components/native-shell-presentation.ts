@@ -85,6 +85,8 @@ export const isNativeShellPresentationMessage = (message: NativeShellMessage): b
   || message.type === 'nessie:attention'
   || message.type === 'nessie:toolbar-state'
   || message.type === 'nessie:team'
+  // LEGACY_NATIVE_SHELL: an admin bundle predating the workspace->team rename.
+  || message.type === 'nessie:workspace'
 
 export const reduceNativeShellPresentation = (
   current: NativeShellPresentation,
@@ -136,10 +138,12 @@ export const reduceNativeShellPresentation = (
       },
     }
   }
-  if (message.type === 'nessie:team') {
+  // The legacy type carries the same pair under the old field name. A current
+  // admin sends both, so whichever arrives second writes the same values.
+  if (message.type === 'nessie:team' || message.type === 'nessie:workspace') {
     return {
       ...current,
-      teamAvatarUrl: optionalText(message.teamAvatarUrl),
+      teamAvatarUrl: optionalText(message.teamAvatarUrl ?? message.workspaceAvatarUrl),
       teamName: optionalText(message.name),
     }
   }

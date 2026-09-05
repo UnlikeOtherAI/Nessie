@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   CreateMemberInvitationRequest,
   MemberInvitationTarget,
-  MemberWorkspaceAccessResponse,
+  MemberTeamAccessResponse,
   MemberRosterPermissions,
   TeamInvitationRecord,
   TeamMemberCandidate,
@@ -76,14 +76,14 @@ export const useTeamMemberCandidates = (query: string, enabled: boolean) => {
   })
 }
 
-export const useMemberWorkspaceAccess = (uoaSub: string | null, enabled: boolean) => {
+export const useMemberTeamAccess = (uoaSub: string | null, enabled: boolean) => {
   const api = useApiClient()
   return useQuery({
     enabled: enabled && uoaSub !== null,
-    queryFn: () => api.getPage<MemberWorkspaceAccessResponse>(
-      `/api/organization/members/${encodeURIComponent(uoaSub!)}/workspaces`,
+    queryFn: () => api.getPage<MemberTeamAccessResponse>(
+      `/api/organization/members/${encodeURIComponent(uoaSub!)}/teams`,
     ),
-    queryKey: organizationKeys.memberWorkspaces(uoaSub ?? undefined),
+    queryKey: organizationKeys.memberTeams(uoaSub ?? undefined),
   })
 }
 
@@ -125,13 +125,13 @@ export const useUpdateTeamMemberRole = () => {
   })
 }
 
-export const useUpdateMemberWorkspaceAccess = () => {
+export const useUpdateMemberTeamAccess = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { uoaSub: string; workspaceIds: string[] }) =>
-      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/workspaces`, {
-        workspaceIds: input.workspaceIds,
+    mutationFn: (input: { uoaSub: string; teamIds: string[] }) =>
+      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/teams`, {
+        teamIds: input.teamIds,
       }),
     onSuccess: () => invalidateRosters(queryClient),
   })

@@ -6,8 +6,8 @@ import { Dialog } from '../../components/shared/Dialog'
 import { FormActions, FormError } from '../../components/shared/FormActions'
 import { Select } from '../../components/shared/FormControls'
 import {
-  useMemberWorkspaceAccess,
-  useUpdateMemberWorkspaceAccess,
+  useMemberTeamAccess,
+  useUpdateMemberTeamAccess,
   useUpdateTeamMemberRole,
   type MemberRosterScope,
 } from '../../facades/users/member-roster'
@@ -28,7 +28,7 @@ const sameIds = (first: string[], second: string[]) =>
 
 const EMPTY_WORKSPACES: never[] = []
 
-/** The one row-detail flow for team role and organisation workspace access. */
+/** The one row-detail flow for team role and organisation team access. */
 export const MemberDetailsDialog = ({
   member,
   onClose,
@@ -37,19 +37,19 @@ export const MemberDetailsDialog = ({
   scope,
 }: MemberDetailsDialogProps) => {
   const roleMutation = useUpdateTeamMemberRole()
-  const workspaceMutation = useUpdateMemberWorkspaceAccess()
-  const workspaceAccess = useMemberWorkspaceAccess(
+  const teamMutation = useUpdateMemberTeamAccess()
+  const teamAccess = useMemberTeamAccess(
     member?.uoaSub ?? null,
     open && scope === 'organization' && member !== null,
   )
   const [role, setRole] = useState('')
-  const [workspaceIds, setWorkspaceIds] = useState<string[]>([])
+  const [teamIds, setTeamIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const workspaces = workspaceAccess.data?.data.items ?? EMPTY_WORKSPACES
-  const initialWorkspaceIds = useMemo(
-    () => workspaces.filter((workspace) => workspace.hasAccess).map((workspace) => workspace.id),
-    [workspaces],
+  const teams = teamAccess.data?.data.items ?? EMPTY_WORKSPACES
+  const initialTeamIds = useMemo(
+    () => teams.filter((team) => team.hasAccess).map((team) => team.id),
+    [teams],
   )
   const roleOptions = useMemo(() => {
     const options = permissions?.teamRoleOptions ?? []
@@ -58,8 +58,8 @@ export const MemberDetailsDialog = ({
       : options
   }, [member?.teamRole, permissions?.teamRoleOptions])
   const canChangeRole = permissions?.changeMemberRole === true && roleOptions.length > 0
-  const canChangeWorkspaces = workspaceAccess.data?.data.permissions.changeWorkspaceAccess === true
-  const busy = roleMutation.isPending || workspaceMutation.isPending
+  const canChangeTeams = teamAccess.data?.data.permissions.changeTeamAccess === true
+  const busy = roleMutation.isPending || teamMutation.isPending
 
   useEffect(() => {
     setError(null)
@@ -67,8 +67,8 @@ export const MemberDetailsDialog = ({
   }, [member?.teamRole, member?.uoaSub])
 
   useEffect(() => {
-    setWorkspaceIds(initialWorkspaceIds)
-  }, [initialWorkspaceIds])
+    setTeamIds(initialTeamIds)
+  }, [initialTeamIds])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -78,7 +78,7 @@ export const MemberDetailsDialog = ({
       if (scope === 'team') {
         await roleMutation.mutateAsync({ role, uoaSub: member.uoaSub })
       } else {
-        await workspaceMutation.mutateAsync({ uoaSub: member.uoaSub, workspaceIds })
+        await teamMutation.mutateAsync({ uoaSub: member.uoaSub, teamIds })
       }
       onClose()
     } catch (caught) {
@@ -86,22 +86,22 @@ export const MemberDetailsDialog = ({
     }
   }
 
-  const toggleWorkspace = (workspaceId: string, checked: boolean) => {
-    setWorkspaceIds((current) => checked
-      ? [...current, workspaceId]
-      : current.filter((id) => id !== workspaceId))
+  const toggleTeam = (teamId: string, checked: boolean) => {
+    setTeamIds((current) => checked
+      ? [...current, teamId]
+      : current.filter((id) => id !== teamId))
   }
 
   const name = member?.displayName ?? member?.email ?? 'Member'
   const hasChanges = scope === 'team'
     ? role !== (member?.teamRole ?? '')
-    : !sameIds(workspaceIds, initialWorkspaceIds)
+    : !sameIds(teamIds, initialTeamIds)
 
   return (
     <Dialog
       description={scope === 'team'
-        ? 'Change this member’s role in the current workspace.'
-        : 'Select the workspaces this member can access.'}
+        ? 'Change this member’s role in the current team.'
+        : 'Select the teams this member can access.'}
       dismissDisabled={busy}
       onClose={onClose}
       open={open && member !== null}
@@ -128,26 +128,26 @@ export const MemberDetailsDialog = ({
         ) : (
           <div className="space-y-3">
             <div>
-              <p className="text-sm font-medium text-[color:var(--tx)]">Workspace access</p>
-              <p className="text-xs text-[color:var(--tx3)]">Only workspaces you can manage are shown.</p>
+              <p className="text-sm font-medium text-[color:var(--tx)]">Team access</p>
+              <p className="text-xs text-[color:var(--tx3)]">Only teams you can manage are shown.</p>
             </div>
-            {workspaceAccess.isLoading ? <p className="text-sm text-[color:var(--tx3)]">Loading workspaces…</p> : null}
-            {!workspaceAccess.isLoading && workspaces.length === 0 ? (
-              <p className="text-sm text-[color:var(--tx3)]">No editable workspace access is available.</p>
+            {teamAccess.isLoading ? <p className="text-sm text-[color:var(--tx3)]">Loading teams…</p> : null}
+            {!teamAccess.isLoading && teams.length === 0 ? (
+              <p className="text-sm text-[color:var(--tx3)]">No editable team access is available.</p>
             ) : null}
             <div className="grid max-h-64 gap-1 overflow-y-auto rounded-lg border border-[color:var(--sep)] p-2">
-              {workspaces.map((workspace) => (
-                <div className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]" key={workspace.id}>
+              {teams.map((team) => (
+                <div className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]" key={team.id}>
                   <Checkbox
-                    checked={workspaceIds.includes(workspace.id)}
-                    disabled={!canChangeWorkspaces || busy}
-                    label={workspace.name}
-                    onChange={(checked) => toggleWorkspace(workspace.id, checked)}
+                    checked={teamIds.includes(team.id)}
+                    disabled={!canChangeTeams || busy}
+                    label={team.name}
+                    onChange={(checked) => toggleTeam(team.id, checked)}
                   />
                 </div>
               ))}
             </div>
-            {!workspaceAccess.isLoading && !canChangeWorkspaces && workspaces.length > 0 ? (
+            {!teamAccess.isLoading && !canChangeTeams && teams.length > 0 ? (
               <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change this access.</p>
             ) : null}
           </div>
@@ -160,7 +160,7 @@ export const MemberDetailsDialog = ({
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={busy || !hasChanges || (scope === 'team' ? !canChangeRole : !canChangeWorkspaces)}
+            disabled={busy || !hasChanges || (scope === 'team' ? !canChangeRole : !canChangeTeams)}
             type="submit"
           >
             {busy ? 'Saving…' : 'Save changes'}

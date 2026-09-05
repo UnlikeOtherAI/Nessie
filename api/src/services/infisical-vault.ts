@@ -30,6 +30,27 @@ export type InfisicalSecretNamespace = {
 export const infisicalSecretPath = (namespace: InfisicalSecretNamespace): string =>
   `/nessie/${namespace.organizationId}/${namespace.scopeType}/${namespace.scopeId}`
 
+/**
+ * Where an org-scoped secret written before the workspace->team rename still
+ * lives.
+ *
+ * The folder is derived from the scope type, and that enum value was
+ * `workspace` until migration 20260903150000 renamed it to `organization`.
+ * The migration moves database rows, not vault folders, so every secret
+ * stored under the old name would otherwise become unreachable: rotate and
+ * revoke would 404 and surface as "the vault could not complete this
+ * operation", leaving the secret impossible to retire through the product.
+ *
+ * Only the two operations that address an *existing* secret consult this;
+ * `put` always writes at the current path, so nothing new lands in the old
+ * folder and the fallback drains as secrets are rotated. Null for every other
+ * scope, whose folder name the rename never touched.
+ */
+const legacyInfisicalSecretPath = (namespace: InfisicalSecretNamespace): string | null =>
+  namespace.scopeType === 'organization'
+    ? `/nessie/${namespace.organizationId}/workspace/${namespace.scopeId}`
+    : null
+
 const infisicalNamespaceFolders = (namespace: InfisicalSecretNamespace): Array<{
   name: string
   path: string
@@ -171,6 +192,26 @@ export class InfisicalVault {
     return this.referenceFor(input)
   }
 
+  /**
+   * Address an existing secret, retrying once at the pre-rename folder when
+   * the current one holds nothing under that name. Only a 404 retries: any
+   * other failure is the vault's own and is reported as-is.
+   */
+  async #atExistingPath(
+    namespace: InfisicalSecretNamespace,
+    send: (secretPath: string) => Promise<Response>,
+  ): Promise<void> {
+    const response = await send(infisicalSecretPath(namespace))
+    if (response.ok) return
+    const legacyPath = legacyInfisicalSecretPath(namespace)
+    if (response.status !== 404 || !legacyPath) {
+      await responseOk(response)
+      return
+    }
+    await response.body?.cancel().catch(() => undefined)
+    await responseOk(await send(legacyPath))
+  }
+
   async replace(input: {
     name: string
     value: string
@@ -178,12 +219,12 @@ export class InfisicalVault {
     namespace: InfisicalSecretNamespace
   }): Promise<void> {
     const url = new URL(`/api/v4/secrets/${encodeURIComponent(input.name)}`, this.#settings.apiUrl)
-    const response = await fetchInfisical(url, {
+    await this.#atExistingPath(input.namespace, (secretPath) => fetchInfisical(url, {
       body: JSON.stringify({
         environment: this.#settings.environment,
         projectId: this.#settings.projectId,
         secretComment: input.description ?? '',
-        secretPath: infisicalSecretPath(input.namespace),
+        secretPath,
         secretValue: input.value,
         type: 'shared',
       }),
@@ -194,17 +235,16 @@ export class InfisicalVault {
       },
       method: 'PATCH',
       signal: AbortSignal.timeout(10_000),
-    })
-    await responseOk(response)
+    }))
   }
 
   async remove(input: { name: string; namespace: InfisicalSecretNamespace }): Promise<void> {
     const url = new URL(`/api/v4/secrets/${encodeURIComponent(input.name)}`, this.#settings.apiUrl)
-    const response = await fetchInfisical(url, {
+    await this.#atExistingPath(input.namespace, (secretPath) => fetchInfisical(url, {
       body: JSON.stringify({
         environment: this.#settings.environment,
         projectId: this.#settings.projectId,
-        secretPath: infisicalSecretPath(input.namespace),
+        secretPath,
         type: 'shared',
       }),
       headers: {
@@ -214,7 +254,6 @@ export class InfisicalVault {
       },
       method: 'DELETE',
       signal: AbortSignal.timeout(10_000),
-    })
-    await responseOk(response)
+    }))
   }
 }

@@ -23,6 +23,8 @@ import { useTransientMenu } from './TransientMenuContext'
 type NativeTeamWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieToggleTeamMenu?: (left?: unknown) => void
+  /** LEGACY_NATIVE_SHELL: pre-rename installed builds. Drop once none remain. */
+  __nessieToggleWorkspaceMenu?: (left?: unknown) => void
 }
 
 /**
@@ -206,25 +208,35 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined
     const target = window as NativeTeamWindow
-    target.__nessieToggleTeamMenu = (left?: unknown) => {
+    const toggle = (left?: unknown) => {
       if (typeof left === 'number' && Number.isFinite(left)) {
         setNativeAnchorLeft(Math.max(8, left))
       }
       toggleMenu()
     }
+    target.__nessieToggleTeamMenu = toggle
+    // The app injects this call by name, and an installed build older than the
+    // workspace->team rename still injects the old one. The admin is loaded
+    // into that build remotely, so without the alias its team button silently
+    // does nothing until the user updates the app. See LEGACY_NATIVE_SHELL.
+    target.__nessieToggleWorkspaceMenu = toggle
     return () => {
       delete target.__nessieToggleTeamMenu
+      delete target.__nessieToggleWorkspaceMenu
     }
   }, [busyTeamId, variant])
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return
-    ;(window as NativeTeamWindow).ReactNativeWebView?.postMessage(
-      JSON.stringify({
-        name: active?.label ?? null,
-        type: 'nessie:team',
-        teamAvatarUrl: active?.avatarImageUrl ?? null,
-      }),
+    const bridge = (window as NativeTeamWindow).ReactNativeWebView
+    const name = active?.label ?? null
+    const avatarImageUrl = active?.avatarImageUrl ?? null
+    bridge?.postMessage(JSON.stringify({ name, type: 'nessie:team', teamAvatarUrl: avatarImageUrl }))
+    // Same reason, in the other direction: an older build recognises only the
+    // old message type and field, and drops anything else, so it would stop
+    // updating its identity bar the moment this deploy lands.
+    bridge?.postMessage(
+      JSON.stringify({ name, type: 'nessie:workspace', workspaceAvatarUrl: avatarImageUrl }),
     )
   }, [active?.avatarImageUrl, active?.label, variant])
 
