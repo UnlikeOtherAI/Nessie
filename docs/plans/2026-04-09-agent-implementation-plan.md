@@ -482,7 +482,7 @@ Agents activate automatically — on schedule, via webhook, or in response to in
 1. **Prisma migration**: Create first-class trigger tables instead of embedding trigger config on `agents`. Create `agent_triggers`, `agent_trigger_deliveries`, `agent_webhooks`, and `resource_scope_bindings`. `agent_triggers` includes `agent_id`, `scope_type`, `scope_id`, `trigger_type`, `enabled`, `config`, `last_fired_at`, `next_run_at`, and audit fields. Trigger payloads and outcomes are recorded in `agent_trigger_deliveries`.
 2. **Scheduler service** (`worker/src/scheduler/`):
    - 15-second evaluation loop
-   - `pg_advisory_lock` for leader election in multi-instance deployments
+   - Per-trigger lease claim under `FOR UPDATE SKIP LOCKED` (stamping `scheduler_claim_id`/`scheduler_claimed_at`) so every instance can sweep — no leader election; as built in `worker/src/control/trigger-scheduler.ts`
    - Cron expression parsing (5-field + timezone, handles DST transitions)
    - Concurrency guard (skip if agent already has active run, log with `status: skipped`)
    - 10-consecutive-failure auto-disable with alert
