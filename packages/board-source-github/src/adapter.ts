@@ -86,87 +86,89 @@ export const createGitHubAdapter = (config: GitHubAdapterConfig): BoardSourceAda
   incrementalPollingIntervalMs: 5 * 60 * 1000,
   allowedHosts: GITHUB_ALLOWED_HOSTS,
 
-  oauth: {
-    buildAuthorizeUrl: ({ state, redirectUri }) => {
-      const url = new URL(`https://${GITHUB_WEB_HOST}/login/oauth/authorize`)
-      url.searchParams.set('client_id', config.clientId)
-      url.searchParams.set('redirect_uri', redirectUri)
-      url.searchParams.set('state', state)
-      url.searchParams.set('scope', 'repo read:project read:org')
-      return url.toString()
-    },
+  auth: {
+    oauth: {
+      buildAuthorizeUrl: ({ state, redirectUri }) => {
+        const url = new URL(`https://${GITHUB_WEB_HOST}/login/oauth/authorize`)
+        url.searchParams.set('client_id', config.clientId)
+        url.searchParams.set('redirect_uri', redirectUri)
+        url.searchParams.set('state', state)
+        url.searchParams.set('scope', 'repo read:project read:org')
+        return url.toString()
+      },
 
-    exchange: async ({ code, redirectUri }: OAuthExchangeInput): Promise<ConnectResult> => {
-      const token = await sourceFetchJson<{
-        access_token: string
-        refresh_token?: string
-        expires_in?: number
-        scope?: string
-      }>({
-        url: `https://${GITHUB_WEB_HOST}/login/oauth/access_token`,
-        method: 'POST',
-        allowedHosts: GITHUB_ALLOWED_HOSTS,
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          code,
-          redirect_uri: redirectUri,
-        }),
-      })
-      const scopes = (token.scope ?? '').split(/[\s,]+/).filter(Boolean)
-      const me = await sourceFetchJson<{ id: number; login: string }>({
-        url: `https://${GITHUB_API_HOST}/user`,
-        allowedHosts: GITHUB_ALLOWED_HOSTS,
-        headers: {
-          authorization: `Bearer ${token.access_token}`,
-          accept: 'application/vnd.github+json',
-          'user-agent': 'nessie-board-source',
-        },
-      })
-      return {
-        externalAccountId: String(me.id),
-        externalTenantId: '',
-        credential: {
+      exchange: async ({ code, redirectUri }: OAuthExchangeInput): Promise<ConnectResult> => {
+        const token = await sourceFetchJson<{
+          access_token: string
+          refresh_token?: string
+          expires_in?: number
+          scope?: string
+        }>({
+          url: `https://${GITHUB_WEB_HOST}/login/oauth/access_token`,
+          method: 'POST',
+          allowedHosts: GITHUB_ALLOWED_HOSTS,
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            code,
+            redirect_uri: redirectUri,
+          }),
+        })
+        const scopes = (token.scope ?? '').split(/[\s,]+/).filter(Boolean)
+        const me = await sourceFetchJson<{ id: number; login: string }>({
+          url: `https://${GITHUB_API_HOST}/user`,
+          allowedHosts: GITHUB_ALLOWED_HOSTS,
+          headers: {
+            authorization: `Bearer ${token.access_token}`,
+            accept: 'application/vnd.github+json',
+            'user-agent': 'nessie-board-source',
+          },
+        })
+        return {
+          externalAccountId: String(me.id),
+          externalTenantId: '',
+          credential: {
+            accessToken: token.access_token,
+            ...(token.refresh_token ? { refreshToken: token.refresh_token } : {}),
+            ...(token.expires_in
+              ? { expiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString() }
+              : {}),
+            scopes,
+          },
+          grantedScopes: scopes,
+        }
+      },
+
+      refresh: async (credential: CredentialBundle): Promise<CredentialBundle> => {
+        // A classic OAuth token does not expire; only a GitHub App's
+        // user-to-server token does, and only that one carries a refresh token.
+        if (!credential.refreshToken) return credential
+        const token = await sourceFetchJson<{
+          access_token: string
+          refresh_token?: string
+          expires_in?: number
+        }>({
+          url: `https://${GITHUB_WEB_HOST}/login/oauth/access_token`,
+          method: 'POST',
+          allowedHosts: GITHUB_ALLOWED_HOSTS,
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            grant_type: 'refresh_token',
+            refresh_token: credential.refreshToken,
+          }),
+        })
+        return {
           accessToken: token.access_token,
-          ...(token.refresh_token ? { refreshToken: token.refresh_token } : {}),
+          refreshToken: token.refresh_token ?? credential.refreshToken,
           ...(token.expires_in
             ? { expiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString() }
             : {}),
-          scopes,
-        },
-        grantedScopes: scopes,
-      }
-    },
-
-    refresh: async (credential: CredentialBundle): Promise<CredentialBundle> => {
-      // A classic OAuth token does not expire; only a GitHub App's
-      // user-to-server token does, and only that one carries a refresh token.
-      if (!credential.refreshToken) return credential
-      const token = await sourceFetchJson<{
-        access_token: string
-        refresh_token?: string
-        expires_in?: number
-      }>({
-        url: `https://${GITHUB_WEB_HOST}/login/oauth/access_token`,
-        method: 'POST',
-        allowedHosts: GITHUB_ALLOWED_HOSTS,
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          grant_type: 'refresh_token',
-          refresh_token: credential.refreshToken,
-        }),
-      })
-      return {
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token ?? credential.refreshToken,
-        ...(token.expires_in
-          ? { expiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString() }
-          : {}),
-        scopes: credential.scopes,
-      }
+          scopes: credential.scopes,
+        }
+      },
     },
   },
 

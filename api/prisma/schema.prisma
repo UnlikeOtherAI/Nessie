@@ -297,6 +297,14 @@ enum BoardSourceConnectionStatus {
   revoked
 }
 
+/// How a connection's credential was obtained. Persisted because the remedies
+/// differ: an OAuth grant is re-authorized by signing in again, a pasted key is
+/// replaced by pasting a new one, and offering the wrong button is a dead end.
+enum BoardSourceAuthMethod {
+  oauth
+  api_key
+}
+
 enum BoardSourceWriteMode {
   read_only
   read_write
@@ -1654,6 +1662,7 @@ model BoardSourceConnection {
   /// token spans sites, so the container carries the cloudId) and for Trello.
   externalTenantId  String                      @default("") @map("external_tenant_id")
   status            BoardSourceConnectionStatus @default(active)
+  authMethod        BoardSourceAuthMethod        @default(oauth) @map("auth_method")
   grantedScopes     Json                        @default("[]") @map("granted_scopes")
   lastVerifiedAt    DateTime?                   @map("last_verified_at")
   createdAt         DateTime                    @default(now()) @map("created_at")

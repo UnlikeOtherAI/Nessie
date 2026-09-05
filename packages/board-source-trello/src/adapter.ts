@@ -63,39 +63,41 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
     incrementalPollingIntervalMs: 5 * 60 * 1000,
     allowedHosts: TRELLO_ALLOWED_HOSTS,
 
-    oauth: {
-      buildAuthorizeUrl: ({ state, redirectUri }) => {
-        const url = new URL(`https://${TRELLO_WEB_HOST}/1/authorize`)
-        url.searchParams.set('key', config.apiKey)
-        url.searchParams.set('name', 'Nessie')
-        url.searchParams.set('scope', 'read,write')
-        url.searchParams.set('expiration', 'never')
-        url.searchParams.set('response_type', 'token')
-        // Trello returns the token in the fragment, so the callback page reads
-        // it client-side and posts it once to `/complete`; `state` rides along
-        // so that submission is still bound to this request.
-        url.searchParams.set('return_url', `${redirectUri}#state=${state}`)
-        return url.toString()
-      },
+    auth: {
+      oauth: {
+        buildAuthorizeUrl: ({ state, redirectUri }) => {
+          const url = new URL(`https://${TRELLO_WEB_HOST}/1/authorize`)
+          url.searchParams.set('key', config.apiKey)
+          url.searchParams.set('name', 'Nessie')
+          url.searchParams.set('scope', 'read,write')
+          url.searchParams.set('expiration', 'never')
+          url.searchParams.set('response_type', 'token')
+          // Trello returns the token in the fragment, so the callback page reads
+          // it client-side and posts it once to `/complete`; `state` rides along
+          // so that submission is still bound to this request.
+          url.searchParams.set('return_url', `${redirectUri}#state=${state}`)
+          return url.toString()
+        },
 
-      // There is no code to exchange: `code` carries the token the callback
-      // page submitted, and this call proves it by asking who it belongs to.
-      exchange: async ({ code }): Promise<ConnectResult> => {
-        const me = await sourceFetchJson<{ id: string; username: string }>({
-          url: `https://${TRELLO_API_HOST}/1/members/me?key=${encodeURIComponent(config.apiKey)}&token=${encodeURIComponent(code)}`,
-          allowedHosts: TRELLO_ALLOWED_HOSTS,
-        })
-        return {
-          externalAccountId: me.id,
-          externalTenantId: '',
-          credential: { accessToken: code, scopes: ['read', 'write'] },
-          grantedScopes: ['read', 'write'],
-        }
-      },
+        // There is no code to exchange: `code` carries the token the callback
+        // page submitted, and this call proves it by asking who it belongs to.
+        exchange: async ({ code }): Promise<ConnectResult> => {
+          const me = await sourceFetchJson<{ id: string; username: string }>({
+            url: `https://${TRELLO_API_HOST}/1/members/me?key=${encodeURIComponent(config.apiKey)}&token=${encodeURIComponent(code)}`,
+            allowedHosts: TRELLO_ALLOWED_HOSTS,
+          })
+          return {
+            externalAccountId: me.id,
+            externalTenantId: '',
+            credential: { accessToken: code, scopes: ['read', 'write'] },
+            grantedScopes: ['read', 'write'],
+          }
+        },
 
-      // A never-expiring token has nothing to refresh; pretending otherwise
-      // would turn a healthy connection into a failing one.
-      refresh: async (credential: CredentialBundle): Promise<CredentialBundle> => credential,
+        // A never-expiring token has nothing to refresh; pretending otherwise
+        // would turn a healthy connection into a failing one.
+        refresh: async (credential: CredentialBundle): Promise<CredentialBundle> => credential,
+      },
     },
 
     listContainers: async (ctx: ConnectionContext): Promise<ContainerDescriptor[]> => {

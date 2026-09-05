@@ -40,6 +40,19 @@ fact. Read this before treating any section above as a description of the code.
   30-second interval claims due sources directly, exactly as the dashboard
   refresher does, so there is no second scheduler.
 
+### Superseded
+
+- **§5.1 "Auth (deployment ↔ person)" is no longer OAuth-only for Linear.**
+  `BoardSourceAdapter.oauth` is now `auth: { oauth?, apiKey? }`, and Linear
+  declares both: a personal API key that needs nothing registered on the
+  deployment, and the OAuth grant where an app exists. Linear therefore
+  registers unconditionally, and `GET /api/board-sources/providers` answers
+  which ways in each provider offers here rather than a bare list of names.
+  `BoardSourceConnection.authMethod` records which one made a connection, so
+  the remedy offered is the one that can actually work. Jira, GitHub and Trello
+  are unchanged and still OAuth-only; the design for their key paths is
+  [2026-09-05-api-key-board-source-connectors](../2026-09-05-api-key-board-source-connectors/overview.md).
+
 ### Not yet verified against a live vendor
 
 Every adapter is unit-tested on its normalisation, its state mapping and its
@@ -53,6 +66,13 @@ The specific assumptions to check on first connect:
 - **Linear** — that app-level webhooks fire for every authorised workspace, and
   that `Linear-Signature` is an HMAC-SHA256 of the raw body. A wrong assumption
   here costs freshness only: the adapter declares a five-minute poll.
+- **Linear, API key** — that `Authorization: <key>` without a `Bearer` prefix is
+  accepted (the shared `linearGraphQl` helper has always sent the token bare,
+  so the OAuth path has the same assumption), and that `VIEWER_QUERY` returns
+  `organization { id }` under a personal key as it does under a grant. Both are
+  what `verify()` depends on to identify the workspace. A personal key's own
+  scopes are **not** readable, so a key created without Write connects, syncs,
+  and refuses the first drag with `LINEAR_UPDATE_REFUSED`.
 - **Jira** — that `/rest/api/3/search/jql` paginates by `nextPageToken` as
   documented, and that the developer console permits this deployment's callback
   domain for webhook registration.

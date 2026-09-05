@@ -1,5 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
+  BoardSourceProviderMethods,
+  CredentialForm,
   BoardSourceConnectionRecord,
   BoardSourceDetailRecord,
   BoardSourceFieldMapping,
@@ -12,6 +14,8 @@ import { boardSourceKeys, projectKeys, taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type {
+  BoardSourceProviderMethods,
+  CredentialForm,
   BoardSourceConnectionRecord,
   BoardSourceDetailRecord,
   BoardSourceFieldMapping,
@@ -35,13 +39,39 @@ export const PROVIDER_LABEL: Record<BoardSourceProvider, string> = {
   github: 'GitHub',
 }
 
-/** The providers this deployment actually has credentials for. */
+/**
+ * Every provider that can be connected here, and how. A provider whose OAuth
+ * app this deployment never registered still appears when it offers a pasted
+ * key — with `methods: ['api_key']` and the form to render.
+ */
 export const useBoardSourceProviders = () => {
   const apiClient = useApiClient()
-  return useQuery<{ provider: BoardSourceProvider }[]>({
+  return useQuery<BoardSourceProviderMethods[]>({
     queryKey: boardSourceKeys.providers,
     queryFn: () => apiClient.get('/api/board-sources/providers'),
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * Connect by pasting a credential. The values are the form's own field keys;
+ * nothing is kept on this side once the request is made.
+ */
+export const useConnectWithApiKey = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      provider: BoardSourceProvider
+      values: Record<string, string>
+    }) =>
+      apiClient.post<{ connectionId: string }>(
+        `/api/board-sources/connections/${input.provider}/api-key`,
+        { values: input.values },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: boardSourceKeys.connections })
+    },
   })
 }
 
