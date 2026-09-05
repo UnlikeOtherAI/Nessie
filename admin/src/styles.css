@@ -2919,6 +2919,29 @@ button.reaction-pill-active:focus-visible {
   color: var(--danger);
 }
 
+/* Header actions are bare glyphs in the row, so the tile they fill on hover is
+   the only thing that says they are controls at all. Shape it here rather than
+   in the hover rule so the fill never changes the box, only its colour. */
+.admin-page-action {
+  border-radius: var(--radius-md);
+}
+
+/* The neutral header treatment the rule above refers to, and the reason it is
+   worth naming: the record action tinted its mark red under the pointer while
+   every other action in the row answered a hover with nothing. This is the
+   icon-tile hover the rail and the message actions already use — a soft fill
+   under the glyph, brightened to full text colour. Primary actions are left
+   out because they carry their own fill, and the selectors stay at the same
+   specificity as the theme overrides further down so a theme that repaints
+   these buttons still wins. */
+.admin-page-action-secondary:hover:not(:disabled),
+.admin-page-action-selected:hover:not(:disabled),
+.admin-page-action-secondary:focus-visible:not(:disabled),
+.admin-page-action-selected:focus-visible:not(:disabled) {
+  background: var(--overlay-weak);
+  color: var(--tx);
+}
+
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
    `font: inherit` reset claims font-family for every control. */
 .admin-input.admin-input-mono {
