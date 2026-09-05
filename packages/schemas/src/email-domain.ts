@@ -16,7 +16,26 @@
  * community feed so that every entry is in the diff and reviewable.
  */
 
-import { domainToASCII } from 'node:url'
+/**
+ * IDNA/UTS-46 folding to ASCII, via the WHATWG `URL` parser.
+ *
+ * Node's `domainToASCII` would be the obvious choice and is not usable here:
+ * this package is also consumed by `@nessie/client-core`, which targets the
+ * browser and has no `node:` module resolution at all. `new URL()` performs the
+ * same UTS-46 mapping in both runtimes, so one implementation serves the api,
+ * the worker and the admin — which matters, because a domain accepted at claim
+ * time and folded differently at grant time is a check-vs-use mismatch.
+ *
+ * The caller has already rejected `@`, `/`, `:`, `?`, `#`, backslashes and
+ * whitespace, so the parser cannot be handed userinfo, a port or a path here.
+ */
+const toAsciiDomain = (value: string): string => {
+  try {
+    return new URL(`http://${value}`).hostname
+  } catch {
+    return ''
+  }
+}
 
 /** Why a domain may not be used for automatic team access. */
 export type DomainRejection =
@@ -149,10 +168,10 @@ export const normaliseDomain = (input: string): DomainDecision => {
   if (isIpLiteral(rootless)) return { ok: false, reason: 'ip_literal' }
   if (/[\s@/:\\?#]/.test(rootless)) return { ok: false, reason: 'malformed' }
 
-  const ascii = domainToASCII(rootless.toLowerCase())
+  const ascii = toAsciiDomain(rootless.toLowerCase())
   if (ascii.length === 0) return { ok: false, reason: 'malformed' }
-  // `domainToASCII` maps some non-hostname input through without complaint, so
-  // the shape is asserted here rather than assumed.
+  // The parser maps some non-hostname input through without complaint (an
+  // underscore, for one), so the shape is asserted here rather than assumed.
   if (!/^[a-z0-9.-]+$/.test(ascii)) return { ok: false, reason: 'malformed' }
   if (isIpLiteral(ascii)) return { ok: false, reason: 'ip_literal' }
   if (isLocalName(ascii)) return { ok: false, reason: 'localhost' }

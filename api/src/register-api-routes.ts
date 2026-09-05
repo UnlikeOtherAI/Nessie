@@ -53,6 +53,7 @@ import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerMeetingLinkRoutes } from './routes/meeting-links.js'
 import { registerOrganizationMembersRoutes } from './routes/organization-members.js'
+import { registerAutomaticMembershipRoutes } from './routes/automatic-membership.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
@@ -139,6 +140,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
   registerOrganizationMembersRoutes(app, deps)
+  registerAutomaticMembershipRoutes(app, deps)
   registerTeamAvatarRoutes(app, deps)
   registerProfileAvatarRoutes(app, deps)
   registerTeamMembersRoutes(app, deps)

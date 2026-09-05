@@ -282,6 +282,20 @@ when one changes, the same turn updates it, not this section.
   therefore scope per UOA organisation. Model, migration, and verification:
   `docs/plans/2026-08-15-uoa-org-tenancy.md`; the rule itself lives in
   `docs/brief.md` → "Current SSO identity invariant".
+- **Automatic team access by verified email domain — Nessie holds the policy,
+  UOA still authorizes every grant.** An administrator proves an email domain
+  by DNS TXT and names the teams it places people into; matching people are
+  added as ordinary **members** when they sign in. Every grant is a relay to
+  `addTeamMember` carrying a fresh org-scoped subject assertion for the
+  administrator who authorized the rule, so UOA re-resolves their live role on
+  every call — never backend mode, which applies no role check, and never a
+  local membership write. No call names a role (UOA's add is becoming an
+  upsert, so naming one would demote an existing team owner), and no path
+  removes a membership: narrowing, suspending, revoking or losing DNS stops
+  future grants only.
+  Read
+  [docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md](docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md)
+  before writing code here.
 - **Personal-assistant tools and route mirroring.** A PA tool that does what a
   person does by clicking calls the same function that person's button calls,
   and mirrors that route's authorization exactly.

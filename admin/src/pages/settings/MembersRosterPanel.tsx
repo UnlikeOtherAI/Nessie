@@ -16,17 +16,21 @@ import {
   useRevokeMemberInvitation,
   type MemberRosterScope,
 } from '../../facades/users/member-roster'
+import {
+  AutomaticMembershipRulesPanel,
+} from '../../components/features/settings/AutomaticMembershipRulesPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SettingsPanel } from './settings-shared'
 import { MemberInvitationDialog } from './MemberInvitationDialog'
 import { MemberDetailsDialog } from './MemberDetailsDialog'
 
-type RosterTab = 'active' | 'pending' | 'deactivated'
+type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 
 const rosterTabs = [
   { label: 'Active users', value: 'active' },
   { label: 'Pending invitations', value: 'pending' },
   { label: 'Deactivated users', value: 'deactivated' },
+  { label: 'Automatic logins', value: 'automatic' },
 ] as const
 
 const dateLabel = (value: string | undefined) => {
@@ -103,19 +107,26 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
   const [revokeError, setRevokeError] = useState<string | null>(null)
   const requestedTab = searchParams.get('membersTab')
-  const tab: RosterTab = requestedTab === 'pending' || requestedTab === 'deactivated'
+  const tab: RosterTab = requestedTab === 'pending'
+    || requestedTab === 'deactivated'
+    || requestedTab === 'automatic'
     ? requestedTab
     : 'active'
+  // Each tab enables only its own query: the roster fetch must not fire on the
+  // Automatic logins tab, whose panel owns its own data.
+  const isRosterTab = tab === 'active' || tab === 'deactivated'
   const roster = useMemberRoster(
     scope,
     tab === 'deactivated' ? 'DEACTIVATED' : 'ACTIVE',
-    tab !== 'pending',
+    isRosterTab,
   )
   const invitations = useMemberInvitations(scope, tab === 'pending')
   const revokeInvitation = useRevokeMemberInvitation(scope)
-  const current = tab === 'pending' ? invitations : roster
-  const permissions = current.query.data?.data.permissions
-  const canInvite = permissions?.addMember === true
+  // `null` on the Automatic logins tab, so its body is not gated on a roster
+  // fetch that never ran and its footer does not page an empty list.
+  const current = tab === 'automatic' ? null : tab === 'pending' ? invitations : roster
+  const permissions = current?.query.data?.data.permissions
+  const canInvite = permissions?.addMember === true && tab !== 'automatic'
 
   const setTab = (next: RosterTab) => {
     setSearchParams((currentParams) => {
@@ -174,10 +185,12 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
           value={tab}
         />
         <section aria-labelledby={`members-${scope}-tab-${tab}`} id={tabPanelId} role="tabpanel">
+          {tab === 'automatic' ? <AutomaticMembershipRulesPanel scope={scope} /> : (
+            <>
           <QueryState
             errorLabel="Members could not be loaded."
             loadingLabel="Loading members…"
-            query={current.query}
+            query={(current ?? roster).query}
           >
             {() => tab === 'pending' ? (
               <DataTable
@@ -206,18 +219,22 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
               />
             )}
           </QueryState>
-          <PaginationFooter
-            canNext={current.canNext}
-            canPrevious={current.canPrevious}
-            className="mt-4"
-            hideWhenSinglePage
-            label={current.label}
-            onPageChange={current.onPageChange}
-            onPageSizeChange={current.onPageSizeChange}
-            page={current.page}
-            pageCount={current.pageCount}
-            pageSize={current.pageSize}
-          />
+          {current ? (
+            <PaginationFooter
+              canNext={current.canNext}
+              canPrevious={current.canPrevious}
+              className="mt-4"
+              hideWhenSinglePage
+              label={current.label}
+              onPageChange={current.onPageChange}
+              onPageSizeChange={current.onPageSizeChange}
+              page={current.page}
+              pageCount={current.pageCount}
+              pageSize={current.pageSize}
+            />
+          ) : null}
+            </>
+          )}
         </section>
       </div>
       <MemberInvitationDialog onClose={() => setInviteOpen(false)} open={inviteOpen} scope={scope} />

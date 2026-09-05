@@ -132,6 +132,13 @@ export const auditLogKeys = {
   forAction: (action: string) => ['audit-log', action] as const,
 }
 
+// Automatic team access after sign-in. Scoped by surface, because the
+// organisation and team reads return different subsets of the same shape.
+export const automaticMembershipKeys = {
+  all: ['automatic-membership'] as const,
+  forScope: (scope: 'organization' | 'team') => ['automatic-membership', scope] as const,
+}
+
 export const authKeys = {
   myAvatarRevision: ['auth', 'me', 'avatar', 'revision'] as const,
   providers: ['auth', 'providers'] as const,

@@ -1,5 +1,6 @@
 import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
+import { enqueueAutomaticMembershipProvisioning } from './automatic-membership/signin.js'
 import { lockExternalOrganization } from './external-organization.js'
 import { seedDefaultPolicies } from './policy.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
@@ -286,6 +287,19 @@ export const ensureTeamPrincipal = async (
     // denies by default — seed the same defaults the bootstrap org gets, once,
     // attributed to the first member (idempotent; also self-healed at startup).
     await seedDefaultPolicies(transaction, input.organizationId, user.id)
+  }
+  // Automatic team access: the domain match happens HERE, with the address the
+  // token just asserted, in memory — only rule ids travel onward. `queue_jobs`
+  // rows are never purged, so an email in a payload would be a permanent local
+  // copy of UOA identity data. Enqueued inside this transaction (the queue
+  // helper needs only `$executeRaw`) so the job cannot exist without the
+  // principal; sign-in never waits for it and never fails because of it.
+  if (input.uoaSub) {
+    await enqueueAutomaticMembershipProvisioning(transaction, {
+      email: input.email,
+      organizationId: input.organizationId,
+      uoaSub: input.uoaSub,
+    })
   }
   return {
     id: user.id,

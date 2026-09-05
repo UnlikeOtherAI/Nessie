@@ -343,3 +343,36 @@ export const TriggerEventDispatchJobPayloadSchema = z.object({
   source: z.string().min(1),
 })
 export type TriggerEventDispatchJobPayload = z.infer<typeof TriggerEventDispatchJobPayloadSchema>
+
+/**
+ * Automatic team access after sign-in
+ * (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
+ *
+ * None of these payloads carries an email address. The match is computed in the
+ * login path from the address the token just asserted, in memory, and only rule
+ * ids travel — `queue_jobs` rows are never purged, so a payload email would be
+ * a permanent local copy of UOA identity data.
+ */
+export const AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC = 'automatic-membership.provision'
+export const AutomaticMembershipProvisionJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  ruleIds: z.array(z.string().uuid()).min(1).max(200),
+  uoaSub: NonEmptyStringSchema,
+})
+export type AutomaticMembershipProvisionJobPayload =
+  z.infer<typeof AutomaticMembershipProvisionJobPayloadSchema>
+
+export const AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC = 'automatic-membership.reconcile'
+export const AutomaticMembershipReconcileJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  reconciliationId: z.string().uuid(),
+})
+export type AutomaticMembershipReconcileJobPayload =
+  z.infer<typeof AutomaticMembershipReconcileJobPayloadSchema>
+
+export const AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC = 'automatic-membership.revalidate'
+export const AutomaticMembershipRevalidateJobPayloadSchema = z.object({
+  domainId: z.string().uuid(),
+})
+export type AutomaticMembershipRevalidateJobPayload =
+  z.infer<typeof AutomaticMembershipRevalidateJobPayloadSchema>
