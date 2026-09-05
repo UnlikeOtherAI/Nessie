@@ -9,6 +9,7 @@
     "dev:api": "pnpm --filter @nessie/api dev",
     "dev:admin": "pnpm --filter @nessie/admin dev",
     "dev:mcp-fixture": "pnpm --filter @nessie/mcp-client start:fixture",
+    "dev:multi": "docker compose -f infrastructure/compose/docker-compose.yml -f infrastructure/compose/docker-compose.multi.yml up --build",
     "verify:billing-protocol": "node scripts/verify-billing-protocol-vendor.mjs",
     "lint": "pnpm verify:billing-protocol && node scripts/lint-markdown-structure.mjs && node scripts/lint-breakpoints.mjs && node scripts/lint-navigation-surfaces.mjs && node scripts/lint-layers.mjs && node scripts/lint-test-globs.mjs && pnpm lint:migrations && turbo run lint",
     "lint:markdown-structure": "node scripts/lint-markdown-structure.mjs",
