@@ -1,3 +1,7 @@
+/* The surface's display voice, self-hosted (fontsource), so it does not
+   depend on the host's theme fonts or on a Google Fonts request. */
+@import '@fontsource/dm-serif-display/index.css';
+
 /* The sign-in surface, shared by the admin login (/login) and the nessie.works
    landing. Geometry, type and motion live here; every colour is a token the
    host provides — the admin through its themes in admin/src/styles.css, the
@@ -16,6 +20,7 @@
   padding: var(--page-gutter, 16px);
   padding-top: calc(env(safe-area-inset-top, 0px) + var(--page-gutter, 16px));
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--page-gutter, 16px));
+  --signin-font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
   background: var(--rail);
   color: var(--tx);
   font-family: var(--font-family-body);
@@ -104,8 +109,8 @@
   gap: 10px;
   margin-bottom: 28px;
   color: var(--tx);
-  font-family: var(--font-family-display);
-  font-size: 22px;
+  font-family: var(--signin-font-display);
+  font-size: 24px;
   letter-spacing: -0.01em;
   line-height: 1;
 }
@@ -144,11 +149,11 @@
 .signin-title {
   margin: 0;
   color: var(--tx);
-  font-family: var(--font-family-display);
-  font-size: 38px;
+  font-family: var(--signin-font-display);
+  font-size: 40px;
   font-weight: 400;
-  letter-spacing: -0.005em;
-  line-height: 1.15;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
   text-wrap: balance;
 }
 
@@ -179,9 +184,9 @@
   padding: 0 20px;
   border: 0;
   border-radius: var(--radius-sm, 7px);
-  font-family: var(--font-family-display);
-  font-size: 17px;
-  font-weight: 400;
+  font-family: var(--font-family-body);
+  font-size: 16px;
+  font-weight: 500;
   line-height: 1;
   text-decoration: none;
   cursor: pointer;
@@ -659,10 +664,11 @@
 
 .signin-showcase-title {
   margin: 0;
-  font-family: var(--font-family-display);
-  font-size: 30px;
+  font-family: var(--signin-font-display);
+  font-size: 32px;
   font-weight: 400;
-  line-height: 1.2;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 
 .signin-showcase-body {
@@ -701,7 +707,7 @@
   }
 
   .signin-title {
-    font-size: 34px;
+    font-size: 36px;
   }
 
   .signin-lede {
