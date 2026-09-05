@@ -51,6 +51,7 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  boardSourceId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),

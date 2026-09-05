@@ -16,6 +16,7 @@ import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
+import { ProjectToolConnections } from './connections/ProjectToolConnections'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
 
 const callbackErrorCopy: Record<string, string> = {
@@ -167,6 +168,9 @@ export const ConnectionsPage = () => {
           </QueryState>
           <MailboxConnectionsPanel embedded scope="user" showConnectAction={false} />
         </section>
+
+        <div className="h-px bg-[color:var(--bd1)]" />
+        <ProjectToolConnections />
 
         <div className="h-px bg-[color:var(--bd1)]" />
         <ModelSubscriptionSection />

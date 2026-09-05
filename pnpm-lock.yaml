@@ -774,6 +774,9 @@ importers:
 
   packages/mcp-manage:
     dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../mcp-client

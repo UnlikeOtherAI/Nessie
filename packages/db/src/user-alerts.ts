@@ -64,6 +64,22 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // A project board's source that stopped syncing. Revalidated against the
+      // source's live health exactly as trigger_health revalidates its trigger:
+      // the moment somebody reconnects, resumes or re-maps it, the bell item
+      // stops surfacing without anything having to remember to delete it.
+      // `paused` is deliberately absent — a person pausing a source is not a
+      // fault, and does not ring a bell.
+      kind: 'board_source_health',
+      boardSource: {
+        is: {
+          healthState: {
+            in: ['needs_reauthorization', 'owner_inactive', 'misconfigured', 'error'],
+          },
+        },
+      },
+    },
+    {
       // An agent waiting on this person. Revalidated against the request's live
       // status exactly as trigger_health revalidates its trigger: once the
       // person approves, rejects, or it expires, the bell item stops surfacing
