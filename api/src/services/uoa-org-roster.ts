@@ -16,6 +16,7 @@ export {
   removeTeamMember,
   resendTeamInvitation,
   resolveLocalUserIdsByUoaSub,
+  resolveUoaOrgHost,
   resolveUoaTeamHost,
   resolveUoaRosterTeam,
   revokeTeamInvitation,
