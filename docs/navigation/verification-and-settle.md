@@ -54,6 +54,12 @@ while all three fractions are measured inside one synchronous `evaluate`,
 far inside that window. Frames land in `e2e/screenshots/navigation/<case>/`
 (`00-start`, `01-midway`, `02-settled`) for the eyeball rule in `AGENTS.md`.
 
+"Settled" in the suite (`lib/freeze.mjs` `waitForStackSettled`) means the
+current layer exists, no layer animation is running, **and** the layer holds
+no `[data-route-loading]` element — the marker `router.tsx` puts on a lazily
+loaded route's Skeleton fallback. The layer lands before the chunk arrives, so
+a check that read the screen at animation end would read the fallback.
+
 Where it runs:
 
 - **CI** — the `navigation-e2e` job in `.github/workflows/ci.yml`: Postgres 16

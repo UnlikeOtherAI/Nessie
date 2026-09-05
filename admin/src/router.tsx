@@ -28,8 +28,18 @@ import { NotFoundPage } from './pages/NotFoundPage'
 // (docs/navigation/verification-and-settle.md §12) measures for its `h1`,
 // and the fallback is the shared `Skeleton` so a loading chunk reads like a
 // loading screen, never a jump in the push/pop motion (§3).
+// The fallback is marked so the navigation e2e suite's "settled" wait can
+// tell a loading chunk from a landed screen: the layer animation finishes
+// before the chunk arrives, and a check that reads the screen at that moment
+// would read the Skeleton (e2e/navigation/lib/freeze.mjs).
+const routeLoading = (variant: SkeletonVariant): ReactElement => (
+  <div data-route-loading="">
+    <Skeleton variant={variant} />
+  </div>
+)
+
 const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactElement => (
-  <Suspense fallback={<Skeleton variant={variant} />}>
+  <Suspense fallback={routeLoading(variant)}>
     <Component />
   </Suspense>
 )

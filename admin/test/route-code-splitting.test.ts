@@ -130,6 +130,11 @@ test('the Suspense fallback renders Skeleton and never a second <h1>', () => {
   const fallbackMatch = source.match(/const lazyElement[\s\S]*?\n\)\n/)
   assert.ok(fallbackMatch, 'lazyElement wrapper definition not found in router.tsx')
   const body = fallbackMatch[0]
-  assert.match(body, /<Suspense fallback=\{<Skeleton variant=\{variant\} \/>\}>/)
+  assert.match(body, /<Suspense fallback=\{routeLoading\(variant\)\}>/)
+  const loadingMatch = source.match(/const routeLoading[\s\S]*?\n\)\n/)
+  assert.ok(loadingMatch, 'routeLoading fallback definition not found in router.tsx')
+  assert.match(loadingMatch[0], /data-route-loading=""/)
+  assert.match(loadingMatch[0], /<Skeleton variant=\{variant\} \/>/)
+  assert.doesNotMatch(loadingMatch[0], /<h1/)
   assert.doesNotMatch(body, /<h1/)
 })
