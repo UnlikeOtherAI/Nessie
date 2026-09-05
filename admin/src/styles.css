@@ -1851,6 +1851,18 @@ html[data-desktop-platform='linux'] #root {
   color: var(--tx);
 }
 
+/* An empty section's one line of explanation. It is a row for geometry only:
+   nothing to click, nothing to hover, and quieter than a real row so the list
+   reads as empty rather than as holding one odd item. */
+.admin-sb-empty {
+  cursor: default;
+  color: var(--tx3);
+}
+
+.admin-sb-empty:hover {
+  background: transparent;
+}
+
 .admin-sb-item.sidebar-child {
   padding-left: 32px;
 }

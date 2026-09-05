@@ -11,10 +11,12 @@ import { getCookie, setCookie } from '../../lib/storage';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
+import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
+  RevealedChannel,
   SidebarMenu,
   SidebarProject,
 } from './types';
@@ -49,6 +51,21 @@ export const retainCollapsedProjectIds = (
 export const serializeCollapsedProjectIds = (collapsedProjectIds: ReadonlySet<string>): string =>
   JSON.stringify([...collapsedProjectIds]);
 
+/**
+ * The collapsed set with one project opened. Returns the set it was given when
+ * that project is already open, so the caller can skip the state write and the
+ * cookie: a new Set every render is a re-render every render.
+ */
+export const expandCollapsedProject = (
+  collapsedProjectIds: ReadonlySet<string>,
+  projectId: string,
+): ReadonlySet<string> => {
+  if (!collapsedProjectIds.has(projectId)) return collapsedProjectIds;
+  const next = new Set(collapsedProjectIds);
+  next.delete(projectId);
+  return next;
+};
+
 type SidebarProjectsSectionProps = {
   attentionCountByProjectId: Map<string, number>;
   currentChannelId?: string;
@@ -60,6 +77,7 @@ type SidebarProjectsSectionProps = {
   onOpenEditProject: (target: EditProjectTarget) => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
   projectsCollapsed: boolean;
+  revealedChannel: RevealedChannel | null;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
   sidebarMenu: SidebarMenu;
   sidebarProjects: SidebarProject[];
@@ -82,6 +100,7 @@ export const SidebarProjectsSection = ({
   onOpenEditProject,
   onToggleStar,
   projectsCollapsed,
+  revealedChannel,
   setSidebarMenu,
   sidebarMenu,
   sidebarProjects,
@@ -127,6 +146,22 @@ export const SidebarProjectsSection = ({
     });
   }, [persistCollapsedProjectIds]);
 
+  // A channel nobody can see is not a channel that was created: a channel added
+  // to a project whose list is closed opens that list. Keyed by the new
+  // channel's id, so collapsing the project and adding another one opens it
+  // again — and so this never fights a collapse the person performs afterwards.
+  useEffect(() => {
+    const projectId = revealedChannel?.projectId;
+    if (!projectId) return;
+
+    setCollapsedProjectIds((current) => {
+      const next = expandCollapsedProject(current, projectId);
+      if (next === current) return current;
+      persistCollapsedProjectIds(next);
+      return next as Set<string>;
+    });
+  }, [persistCollapsedProjectIds, revealedChannel]);
+
   const closeProjectMenu = useCallback(() => {
     setMenuPosition(null);
     setSidebarMenu(() => null);
@@ -162,17 +197,7 @@ export const SidebarProjectsSection = ({
       title="Projects"
     >
       {visibleSidebarProjects.length === 0 ? (
-        <button
-          className={[
-            'mx-2 flex w-[calc(100%-1rem)] rounded-md border border-dashed',
-            'border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-3',
-            'text-left text-sm text-[color:var(--tx3)] hover:bg-[var(--overlay)]',
-          ].join(' ')}
-          onClick={onOpenCreateProject}
-          type="button"
-        >
-          Create your first project.
-        </button>
+        <SidebarEmptyNote>There are no projects in this team yet.</SidebarEmptyNote>
       ) : visibleSidebarProjects.map((project) => {
         const isStarredProject = starredProjectIds.has(project.id);
         const isProjectCollapsed = collapsedProjectIds.has(project.id);
@@ -325,6 +350,9 @@ export const SidebarProjectsSection = ({
 
             {!isProjectCollapsed ? (
               <div id={projectChannelsId}>
+                {project.channels.length === 0 ? (
+                  <SidebarEmptyNote nested>There are no channels yet.</SidebarEmptyNote>
+                ) : null}
                 {project.channels.map((channel) => {
                   const isStarredChannel = starredChannelIds.has(channel.id);
                   return (
