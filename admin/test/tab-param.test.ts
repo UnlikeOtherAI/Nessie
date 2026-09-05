@@ -273,6 +273,10 @@ const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/channels/RunApprovalGate.tsx',
   'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
   'admin/src/pages/settings/MemberInvitationDialog.tsx',
+  // Light/Dark on the organisation theme form: one field of an unsaved draft,
+  // on a page that IS `/settings/organization?tab=appearance`. A `tab` param
+  // here would collide with the one the organisation screen already owns.
+  'admin/src/pages/settings/organization/OrganizationAppearancePage.tsx',
 ]
 
 test('no tab strip keeps its selection in component state', () => {

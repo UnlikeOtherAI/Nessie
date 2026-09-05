@@ -164,6 +164,11 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
                     sidebar must match this."
                   label="Appearance"
                 >
+                  {/* One field of an unsaved draft, so its value is component
+                      state rather than a URL param: this page is already
+                      `?tab=appearance`, and a second `tab` would collide with
+                      the one the organisation screen owns. Allowlisted in
+                      admin/test/tab-param.test.ts. */}
                   <div className="flex">
                     <TabBar
                       ariaLabel="Appearance"
