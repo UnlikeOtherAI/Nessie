@@ -22,6 +22,26 @@ import type { ProvisionedTeam } from './provisioning'
  *   a failed switch leaves the person where they are rather than retrying
  *   forever against a team they cannot reach.
  */
+/**
+ * Whether a hostname could possibly be a team host.
+ *
+ * A team host is `<team>.<org>.<base>`, so it always carries at least three
+ * labels. Anything shorter — `localhost`, a bare IP, a single-label dev host —
+ * cannot be one, and asking the server about it would be a request that can
+ * only ever answer "no". Local development and the browser end-to-end suites
+ * run on `localhost`, so without this they would each carry a pointless call.
+ *
+ * This is a cheap negative filter, not the actual test: the server still
+ * decides, against its configured base domain, and answers null for a
+ * three-label host like `app.nessie.works`.
+ */
+const couldBeTeamHost = (hostname: string): boolean => {
+  if (!hostname || hostname === 'localhost') return false
+  // Bare IPv4, and anything bracketed is IPv6.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.startsWith('[')) return false
+  return hostname.split('.').filter(Boolean).length >= 3
+}
+
 export const useTeamHostSync = (): void => {
   const apiClient = useApiClient()
   const { switchUoaTeam, token } = useAuthSession()
@@ -31,7 +51,7 @@ export const useTeamHostSync = (): void => {
     if (!token) return
 
     const host = window.location.hostname
-    if (!host || attempted.current === host) return
+    if (!couldBeTeamHost(host) || attempted.current === host) return
     attempted.current = host
 
     void (async () => {

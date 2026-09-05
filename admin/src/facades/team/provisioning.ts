@@ -1,6 +1,7 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
+import { teamProvisioningKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -62,11 +63,16 @@ export const useSlugAvailability = (input: {
   const apiClient = useApiClient()
 
   return useQuery({
-    queryKey: ['slug-available', input.scope, input.orgId ?? '', input.slug],
+    queryKey: teamProvisioningKeys.slugAvailability(input.scope, input.orgId ?? '', input.slug),
     enabled: input.enabled && input.slug.length > 0,
     // The field debounces by not asking until typing pauses; this keeps a
     // recently-answered label from being asked again on every render.
     staleTime: 30_000,
+    // Hold the previous answer while the next one is in flight, so the status
+    // line under the field does not blank out between keystrokes. Nothing
+    // private is replayed — the answer is a yes/no about a label the person is
+    // currently typing.
+    placeholderData: keepPreviousData,
     retry: false,
     queryFn: () => {
       const query = new URLSearchParams({ slug: input.slug, scope: input.scope })

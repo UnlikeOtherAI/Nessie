@@ -554,3 +554,15 @@ export const browserCloudKeys = {
   agentBrowser: (agentId?: string) => ['browser-cloud', 'agents', agentId] as const,
   myLogins: ['browser-cloud', 'my-logins'] as const,
 }
+
+export const teamProvisioningKeys = {
+  /**
+   * Availability of an address being typed into a create dialog.
+   *
+   * Scoped by destination as well as by label: `design` may be free in one
+   * organisation and taken in the next, so an organisation-scoped answer must
+   * never be served from another organisation's cache entry.
+   */
+  slugAvailability: (scope: 'organisation' | 'team', orgId: string, slug: string) =>
+    ['slug-available', scope, orgId, slug] as const,
+}
