@@ -343,7 +343,7 @@ test('the API accepts UOA administration even when the local projection says vie
   })
 })
 
-test('workspace access is read from UOA and only writes the selected exact teams', async () => {
+test('team access is read from UOA and only writes the selected exact teams', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const access = {
@@ -351,7 +351,7 @@ test('workspace access is read from UOA and only writes the selected exact teams
         { id: 'team_product', name: 'Product', hasAccess: true },
         { id: 'team_design', name: 'Design', hasAccess: false },
       ],
-      permissions: { changeWorkspaceAccess: true },
+      permissions: { changeTeamAccess: true },
     }
     const app = await makeApp(
       actorContextFor(['viewer']),
@@ -361,24 +361,24 @@ test('workspace access is read from UOA and only writes the selected exact teams
     try {
       const read = await app.inject({
         method: 'GET',
-        url: '/api/organization/members/usr_grace/workspaces',
+        url: '/api/organization/members/usr_grace/teams',
       })
       assert.equal(read.statusCode, 200)
       assert.deepEqual(read.json().data.items, access.data)
 
       const update = await app.inject({
         method: 'PUT',
-        url: '/api/organization/members/usr_grace/workspaces',
-        payload: { workspaceIds: ['team_design'] },
+        url: '/api/organization/members/usr_grace/teams',
+        payload: { teamIds: ['team_design'] },
       })
       assert.equal(update.statusCode, 200)
       assert.deepEqual(
         calls.map((call) => `${call.method} ${call.url} ${call.body ?? ''}`.trim()),
         [
           `GET https://uoa.test/org/me${query}`,
-          `GET ${base}/members/usr_grace/workspaces${query}`,
+          `GET ${base}/members/usr_grace/teams${query}`,
           `GET https://uoa.test/org/me${query}`,
-          `GET ${base}/members/usr_grace/workspaces${query}`,
+          `GET ${base}/members/usr_grace/teams${query}`,
           `POST ${base}/teams/team_design/members${query} {"user_id":"usr_grace"}`,
           `DELETE ${base}/teams/team_product/members/usr_grace${query}`,
         ],
@@ -389,22 +389,22 @@ test('workspace access is read from UOA and only writes the selected exact teams
   })
 })
 
-test('workspace access never writes a team UOA did not authorize for the caller', async () => {
+test('team access never writes a team UOA did not authorize for the caller', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
       actorContextFor(['viewer']),
       rosterDeps(calls, () => json({
         data: [{ id: 'team_product', name: 'Product', hasAccess: true }],
-        permissions: { changeWorkspaceAccess: true },
+        permissions: { changeTeamAccess: true },
       })),
     )
 
     try {
       const response = await app.inject({
         method: 'PUT',
-        url: '/api/organization/members/usr_grace/workspaces',
-        payload: { workspaceIds: ['team_secret'] },
+        url: '/api/organization/members/usr_grace/teams',
+        payload: { teamIds: ['team_secret'] },
       })
 
       assert.equal(response.statusCode, 400)
