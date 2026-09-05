@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UserRecord } from '../../lib/api-client'
-import { userKeys } from '../../lib/query-keys'
+import { userKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useUsers = (enabled = true) => {

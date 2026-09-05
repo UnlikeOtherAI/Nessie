@@ -13,7 +13,7 @@ import {
 } from '@tanstack/react-query'
 import type { ApiResponse } from '@nessie/schemas'
 import type { ApiClient, ThreadMessageRecord } from '../../lib/api-client'
-import { threadKeys } from '../../lib/query-keys'
+import { threadKeys } from './keys'
 
 export type ThreadMessagePage = ApiResponse<ThreadMessageRecord[]>
 export type ThreadMessagePages = InfiniteData<ThreadMessagePage, string | undefined>

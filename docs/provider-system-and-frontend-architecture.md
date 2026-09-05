@@ -188,12 +188,18 @@ The shape a facade actually takes, in this order:
    `invitations.ts`, `provisioning.ts`, `host-sync.ts`. Splitting a small
    facade into `api.ts`/`queries.ts`/`mutations.ts` scatters one resource over
    four files and is the shape to avoid.
-3. **`keys.ts` per facade.** A facade's query keys belong to the facade that
-   reads and invalidates them (`facades/agent-todos/keys.ts` is the pattern).
-   Until every domain has moved, the keys live centrally in
-   `admin/src/lib/query-keys.ts`, which `admin/test/query-key-invariants.test.ts`
-   pins — the key families move directory by directory, and no key is ever
-   written as a raw literal at a call site either way.
+3. **`keys.ts` per facade.** A facade's query keys live in
+   `facades/<domain>/keys.ts`, beside the hooks that read and invalidate them,
+   and a family a second facade needs is imported across the boundary rather
+   than re-declared (`facades/agent-todos/keys.ts` builds on `agentKeys.all`;
+   `facades/mail` imports `gmailKeys`). `admin/src/lib/query-keys.ts` keeps only
+   what belongs to no domain — `paginationKeys`, plus the few families whose
+   surface has no facade yet. `admin/test/query-key-invariants.test.ts` walks
+   every `keys.ts` under `src/facades` and holds the union to three rules: a
+   family root prefixes its members, no two facades declare the same key, and
+   no key is ever written as a raw literal at a call site. A `*Keys` object
+   exported from anywhere but a `keys.ts` fails the same test — that is how
+   five private factories stayed invisible to it.
 4. **Non-React domain logic belongs to the facade, not to the component that
    calls it.** `facades/apps/connect-flow.ts`, `facades/designer/types.ts` and
    `facades/tools/deep-water-tool-filter.ts` are facade files with no React in

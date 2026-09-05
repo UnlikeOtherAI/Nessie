@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { webPushKeys } from '../../lib/query-keys'
+import { webPushKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type WebPushConfig = {

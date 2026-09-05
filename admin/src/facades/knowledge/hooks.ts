@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { KnowledgeSpaceResponse } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
-import { knowledgeKeys } from '../../lib/query-keys'
+import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { usePagedList } from '../pagination/usePagedList'
 

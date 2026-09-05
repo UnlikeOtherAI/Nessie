@@ -2,7 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type { AgentMention } from '@nessie/schemas'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
-import { channelKeys, threadKeys } from '../../lib/query-keys'
+import { channelKeys } from '../channels/keys'
+import { threadKeys } from '../threads/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 

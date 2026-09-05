@@ -10,22 +10,13 @@ import type {
 } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { agentMailboxKeys } from './keys'
 
 /**
  * The hosted mailbox surface. Every read is entitlement-scoped server-side by
  * the shared agent-visibility predicate, so these hooks pass an agent id and
  * nothing else — no ambient project/team narrowing.
  */
-
-export const agentMailboxKeys = {
-  config: () => ['agent-email', 'config'] as const,
-  conversation: (agentId: string | undefined, conversationId: string | undefined) =>
-    ['agent-email', 'conversation', agentId, conversationId] as const,
-  conversations: (agentId: string | undefined, filter: string, cursor?: string) =>
-    ['agent-email', 'conversations', agentId, filter, cursor ?? null] as const,
-  draft: (approvalId: string | undefined) => ['agent-email', 'draft', approvalId] as const,
-  mailbox: (agentId: string | undefined) => ['agent-email', 'mailbox', agentId] as const,
-}
 
 export type AgentEmailConfig = {
   available: boolean

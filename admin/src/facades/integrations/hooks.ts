@@ -18,8 +18,9 @@ import type {
 import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { channelKeys } from '../channels/keys'
+import { threadKeys } from '../threads/keys'
 import {
-  channelKeys,
   deepWaterAgentAccessKey,
   deepWaterAgentAccessKeyPrefix,
   deepWaterResearchRunsKey,
@@ -27,11 +28,10 @@ import {
   integratedProductsKey,
   integratedProductsKeyPrefix,
   integrationManifestKey,
-  mcpKeys,
-  threadKeys,
-  toolPolicyTargetsKeyPrefix,
   type IntegrationQueryScope,
-} from '../../lib/query-keys'
+  mcpKeys,
+  toolPolicyTargetsKeyPrefix,
+} from './keys'
 import { isExternalAgentChannel } from '../personal-assistant/hooks'
 
 const useIntegrationQueryScope = (): IntegrationQueryScope | null => {

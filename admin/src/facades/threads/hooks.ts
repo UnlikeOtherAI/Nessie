@@ -9,7 +9,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
-import { channelKeys, threadKeys } from '../../lib/query-keys'
+import { channelKeys } from '../channels/keys'
+import { threadKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {

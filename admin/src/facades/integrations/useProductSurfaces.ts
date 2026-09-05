@@ -8,7 +8,7 @@ import type {
   ProductSurface,
   ProductSurfaceRequirement,
 } from '@nessie/schemas'
-import { integrationManifestKey } from '../../lib/query-keys'
+import { integrationManifestKey } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useIntegratedProducts } from './hooks'
 

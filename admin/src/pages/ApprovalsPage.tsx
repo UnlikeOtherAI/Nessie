@@ -11,7 +11,7 @@ import {
   useResolveApproval,
   type ApprovalRequest,
 } from '../facades/approvals/hooks'
-import { approvalKeys } from '../lib/query-keys'
+import { approvalKeys } from '../facades/approvals/keys'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { usePagedList } from '../facades/pagination/usePagedList'
 

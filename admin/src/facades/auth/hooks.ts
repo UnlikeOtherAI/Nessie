@@ -4,10 +4,11 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import type { MeResponse, SessionSummary, UserPreferences } from '@nessie/schemas'
 import type { AuthProviderDescriptor } from '../../lib/api-client'
 import { uploadMyUoaAvatar } from '../../lib/uploads'
-import { authKeys } from '../../lib/query-keys'
+import { authKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -52,14 +53,61 @@ export const useAuthProviders = () => {
   })
 }
 
+/**
+ * The signed-in session, re-read on a cadence the query cache owns.
+ *
+ * Focus mode and the starred list are preferences a person changes on another
+ * device, so the session has to notice. This used to be a `setInterval` plus a
+ * `focus`/`visibilitychange` pair inside `FocusModeProvider`, with a hand-rolled
+ * request-version counter to stop a late response overwriting a local change.
+ * React Query already owns all three: one query deduped across every caller,
+ * paused while the tab is hidden (`refetchIntervalInBackground` is false by
+ * default), refetched on focus, and cancellable by the preference mutation
+ * below. The provider bails on a structurally identical response, so an
+ * unchanged poll re-renders none of the ~115 `useAuthSession()` readers.
+ */
+export const useSessionMe = () => {
+  const apiClient = useApiClient()
+  const { applyMeResponse, me } = useAuthSession()
+
+  const query = useQuery<MeResponse>({
+    queryKey: authKeys.me,
+    queryFn: () => apiClient.get<MeResponse>('/api/auth/me'),
+    enabled: Boolean(me),
+    // The session provider has already read `/me` to get here, so seeding the
+    // entry with it — fresh for one interval — keeps this from firing a second
+    // identical request on the mount that follows sign-in. It also bounds the
+    // focus refetch: a burst of tab switches inside the window costs nothing.
+    initialData: me ?? undefined,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+  })
+
+  const { data } = query
+  useEffect(() => {
+    if (data) applyMeResponse(data)
+  }, [applyMeResponse, data])
+
+  return query
+}
+
 export const useUpdatePreferences = () => {
   const apiClient = useApiClient()
+  const queryClient = useQueryClient()
   const { applyMeResponse } = useAuthSession()
 
   return useMutation<MeResponse, Error, UserPreferences>({
     mutationFn: (preferences) =>
       apiClient.patch<MeResponse>('/api/auth/me/preferences', preferences),
+    // A `/me` read that started before this write must not land after it and
+    // republish the preference the person just changed. Cancelling it is what
+    // the provider's bespoke request-version counter used to do by hand.
+    onMutate: () => queryClient.cancelQueries({ queryKey: authKeys.me }),
     onSuccess: (me) => {
+      // The echo is newer than anything the poll holds, so it seeds the entry
+      // rather than waiting to be overwritten by the next interval.
+      queryClient.setQueryData(authKeys.me, me)
       applyMeResponse(me)
     },
   })

@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { iterationKeys, taskKeys } from '../../lib/query-keys'
+import { iterationKeys } from '../iterations/keys'
+import { taskKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type TaskStatus =

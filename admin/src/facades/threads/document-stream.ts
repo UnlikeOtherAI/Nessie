@@ -18,7 +18,7 @@ import type {
   DocumentStreamListResponse,
   DocumentStreamRetargetBody,
 } from '@nessie/schemas'
-import { threadKeys } from '../../lib/query-keys'
+import { threadKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import {
   applyDocumentDelta,

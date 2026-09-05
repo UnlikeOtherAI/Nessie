@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { knowledgeKeys } from '../../lib/query-keys'
+import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type KnowledgeBacklink = {

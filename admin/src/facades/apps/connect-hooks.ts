@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
-import { appKeys } from '../../lib/query-keys'
+import { appKeys } from './keys'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AppDetailRecord, McpServerScopeType } from '@nessie/schemas'
 

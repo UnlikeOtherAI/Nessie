@@ -29,7 +29,7 @@ import {
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
-import { dashboardKeys } from '../lib/query-keys'
+import { dashboardKeys } from '../facades/dashboards/keys'
 import { draftKey, useDraft } from '../navigation/useDraft'
 import { NestedStage } from '../navigation/NestedStage'
 

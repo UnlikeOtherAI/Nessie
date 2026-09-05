@@ -23,7 +23,7 @@ import {
   mcpToolRegistryKey,
   toolPolicyTargetsKey,
   toolPolicyTargetsKeyPrefix,
-} from '../../lib/query-keys'
+} from '../integrations/keys'
 
 /**
  * Domain facade for the tool registry surface (`/api/mcp/tools`) and its grant

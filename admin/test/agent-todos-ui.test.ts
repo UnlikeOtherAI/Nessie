@@ -24,7 +24,7 @@ import type {
   AgentDesignerActions,
   AgentFormState,
 } from '../src/facades/designer/types.js'
-import { agentTodoKeys } from '../src/lib/query-keys.js'
+import { agentTodoKeys } from '../src/facades/agent-todos/keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React

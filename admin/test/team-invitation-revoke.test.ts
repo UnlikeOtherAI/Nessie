@@ -4,7 +4,7 @@ import test from 'node:test'
 import { ApiClientError, type ApiClient } from '@nessie/client-core'
 import { JSDOM } from 'jsdom'
 
-import { teamKeys } from '../src/lib/query-keys.js'
+import { teamKeys } from '../src/facades/team/keys.js'
 
 /**
  * The Revoke action on a pending team invitation: it exists where an

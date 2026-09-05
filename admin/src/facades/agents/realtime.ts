@@ -2,17 +2,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentStatusResponse } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
-import {
-  agentCardKeys,
-  agentKeys,
-  agentTodoKeys,
-  approvalKeys,
-  channelKeys,
-  dashboardKeys,
-  projectKeys,
-  taskKeys,
-  threadKeys,
-} from '../../lib/query-keys'
+import { agentCardKeys } from '../agent-cards/keys'
+import { agentTodoKeys } from '../agent-todos/keys'
+import { approvalKeys } from '../approvals/keys'
+import { channelKeys } from '../channels/keys'
+import { dashboardKeys } from '../dashboards/keys'
+import { projectKeys } from '../projects/keys'
+import { taskKeys } from '../tasks/keys'
+import { threadKeys } from '../threads/keys'
+import { agentKeys } from './keys'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   subscribeAgentActivity,

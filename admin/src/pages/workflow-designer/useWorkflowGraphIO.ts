@@ -8,7 +8,7 @@ import {
   useWorkflowTemplate,
 } from '../../facades/workflows/hooks'
 import { useIsOwner } from '../../facades/auth/hooks'
-import { workflowKeys } from '../../lib/query-keys'
+import { workflowKeys } from '../../facades/workflows/keys'
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 import {
   CANVAS_NODE_INSERT_OFFSET,

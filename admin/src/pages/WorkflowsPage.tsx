@@ -12,7 +12,7 @@ import {
 } from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { usePagedList } from '../facades/pagination/usePagedList'
-import { workflowKeys } from '../lib/query-keys'
+import { workflowKeys } from '../facades/workflows/keys'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../facades/auth/hooks'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
