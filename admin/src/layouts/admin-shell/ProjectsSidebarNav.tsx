@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BoardCreateDialog } from '../../components/kanban/BoardCreateDialog'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
@@ -15,6 +16,7 @@ import { getCookie, setCookie } from '../../lib/storage'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
 import {
+  BOARD_ICON,
   projectSectionIdFromPathname,
   projectSections,
 } from '../../navigation/project-sections'
@@ -39,6 +41,19 @@ type ProjectMenuPosition = {
   left: number
   top: number
 }
+
+/**
+ * A subordinate row's glyph, at the size and dimness the channel `#` already
+ * uses. `.admin-sb-item.active svg` lifts it to the readable foreground when
+ * the row is selected, so nothing here has to know about selection.
+ */
+const rowIcon = (icon: typeof BOARD_ICON) => (
+  <FontAwesomeIcon
+    className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
+    fixedWidth
+    icon={icon}
+  />
+)
 
 /** Which list a row belongs to, so Starred and Projects can show one project twice. */
 type ProjectListId = 'starred' | 'projects'
@@ -150,6 +165,7 @@ const ProjectSectionRows = ({
                 key={`${listId}-${projectId}-${section.id}`}
                 {...rowProps}
               >
+                {rowIcon(section.icon)}
                 <span className="min-w-0 flex-1 truncate">{section.label}</span>
               </Link>
             )
@@ -172,6 +188,7 @@ const ProjectSectionRows = ({
                   className="sidebar-project-link"
                   {...rowProps}
                 >
+                  {rowIcon(section.icon)}
                   <span className="min-w-0 flex-1 truncate">{section.label}</span>
                 </Link>
                 <button
@@ -215,6 +232,12 @@ const ProjectSectionRows = ({
 
               {boardsExpanded ? (
                 <div id={boardsId}>
+                  {boards.length === 0 ? (
+                    // The same quiet line every other empty sidebar section
+                    // shows, on the grid its board rows would stand on. The
+                    // "+" on the Boards row beside it is the way in.
+                    <SidebarEmptyNote indent="grandchild">There are no boards yet.</SidebarEmptyNote>
+                  ) : null}
                   {boards.map((board) => {
                     const isActiveBoard = isActive && board.id === activeBoardId
                     // `?board=` is how the board screen reads its selection
@@ -235,6 +258,7 @@ const ProjectSectionRows = ({
                         to={to}
                         {...prewarmRowHandlers(prewarm, section.to)}
                       >
+                        {rowIcon(BOARD_ICON)}
                         <span className="min-w-0 flex-1 truncate">{board.name}</span>
                       </Link>
                     )
@@ -639,12 +663,17 @@ export const ProjectsSidebarNav = ({
         <BoardCreateDialog
           boards={boardCreateBoards}
           onClose={() => setBoardCreateProjectId(null)}
-          onCreated={(boardId) => {
+          onCreated={(board) => {
             // A board nobody can see is not a board that was created: open the
-            // list if it was closed, and land on what was just made.
+            // list if it was closed, and land on what was just made. The very
+            // first board of a project is its default, and a default board is
+            // spelled without the param — the same link its row carries.
             expandBoards(boardCreateProjectId)
+            const boardPath = `/projects/${boardCreateProjectId}/board`
             void navigate(
-              `/projects/${boardCreateProjectId}/board?board=${encodeURIComponent(boardId)}`,
+              board.isDefault
+                ? boardPath
+                : `${boardPath}?board=${encodeURIComponent(board.id)}`,
               { replace: currentProjectId === boardCreateProjectId },
             )
           }}

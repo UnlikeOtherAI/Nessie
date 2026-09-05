@@ -73,10 +73,18 @@ test('an empty section says so on the row grid, not in a box of its own', () => 
 
 test('a note inside a project keeps the indent its channels have', () => {
   const html = renderToStaticMarkup(
-    createElement(SidebarEmptyNote, { nested: true }, 'There are no channels yet.'),
+    createElement(SidebarEmptyNote, { indent: 'child' }, 'There are no channels yet.'),
   )
 
   assert.match(html, /class="[^"]*sidebar-child[^"]*"/)
+})
+
+test('a note one level deeper keeps the indent the boards it stands in for have', () => {
+  const html = renderToStaticMarkup(
+    createElement(SidebarEmptyNote, { indent: 'grandchild' }, 'There are no boards yet.'),
+  )
+
+  assert.match(html, /class="[^"]*sidebar-grandchild[^"]*"/)
 })
 
 test('Shared channels with nothing in it explains itself', () => {

@@ -235,7 +235,7 @@ export const BoardsSettingsSection = ({
       <BoardCreateDialog
         boards={boards}
         onClose={() => setCreateOpen(false)}
-        onCreated={onSelectBoard}
+        onCreated={(board) => onSelectBoard(board.id)}
         open={createOpen}
         projectId={projectId}
       />

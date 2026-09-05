@@ -10,7 +10,8 @@ import { FormField } from '../shared/FormField'
 type BoardCreateDialogProps = {
   boards: BoardRecord[]
   onClose: () => void
-  onCreated: (boardId: string) => void
+  /** The board as the server made it — the caller needs `isDefault` to link to it. */
+  onCreated: (board: BoardRecord) => void
   open: boolean
   projectId: string
 }
@@ -60,7 +61,7 @@ export const BoardCreateDialog = ({
         onError: (cause) =>
           setError(cause instanceof Error ? cause.message : 'Could not create the board'),
         onSuccess: (board) => {
-          onCreated(board.id)
+          onCreated(board)
           close()
         },
       },
