@@ -4,10 +4,12 @@ import {
   useProjectSource,
   usePutSourceMappings,
   useUpdateProjectSource,
+  type BoardSourceFieldMapping,
   type BoardSourceStateMapping,
   type BoardSourceWriteMode,
 } from '../../../facades/board-sources/hooks'
 import { useTaskAssignees } from '../../../facades/tasks/hooks'
+import { useTaskFields } from '../../../facades/task-fields/hooks'
 import { ChoiceGroup } from '../../../components/shared/ChoiceGroup'
 import { Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
@@ -43,15 +45,18 @@ export const SourceMappingPanel = ({
 }: SourceMappingPanelProps) => {
   const { data: source } = useProjectSource(projectId, sourceId)
   const { data: assignees = [] } = useTaskAssignees()
+  const { data: definitions = [] } = useTaskFields(projectId)
   const putMappings = usePutSourceMappings(projectId)
   const updateSource = useUpdateProjectSource(projectId)
 
   const [stateMapping, setStateMapping] = useState<BoardSourceStateMapping[]>([])
+  const [fieldMappings, setFieldMappings] = useState<BoardSourceFieldMapping[]>([])
   const [identity, setIdentity] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (!source) return
     setStateMapping(source.stateMapping)
+    setFieldMappings(source.fieldMappings)
     setIdentity(
       Object.fromEntries(
         source.identityLinks
@@ -63,12 +68,16 @@ export const SourceMappingPanel = ({
 
   if (!source) return null
 
-  const save = (next: BoardSourceStateMapping[], people: Record<string, string>) => {
+  const save = (
+    next: BoardSourceStateMapping[],
+    people: Record<string, string>,
+    fields: BoardSourceFieldMapping[] = fieldMappings,
+  ) => {
     putMappings.mutate(
       {
         id: sourceId,
         stateMapping: next,
-        fieldMappings: source.fieldMappings,
+        fieldMappings: fields,
         identityLinks: source.members.map((member) => ({
           externalUserId: member.externalUserId,
           externalDisplayName: member.displayName,
@@ -162,6 +171,65 @@ export const SourceMappingPanel = ({
           {stateMapping.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">
               Waiting for the first sync to read this container&rsquo;s states.
+            </div>
+          ) : null}
+        </div>
+      </Section>
+
+      <Section
+        description={`Where each ${PROVIDER_LABEL[source.provider]} field lands. Seeded on connect from what the container actually has; a field set to "Not imported" is left alone on both sides.`}
+        title="Fields"
+      >
+        <div className="grid gap-2">
+          {source.fields.map((field) => {
+            const mapped = fieldMappings.find((entry) => entry.externalKey === field.key)
+            return (
+              <div className="flex items-center gap-2" key={field.key}>
+                <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
+                  {field.label}
+                  <span className="ml-2 text-xs text-[color:var(--tx3)]">{field.type}</span>
+                </span>
+                <Select
+                  aria-label={`Target for ${field.label}`}
+                  className="max-w-[240px]"
+                  disabled={!canAdminister}
+                  onChange={(event) => {
+                    const target = event.target.value
+                    const next = [
+                      ...fieldMappings.filter((entry) => entry.externalKey !== field.key),
+                      ...(target
+                        ? [
+                            {
+                              externalKey: field.key,
+                              externalLabel: field.label,
+                              target,
+                            } as BoardSourceFieldMapping,
+                          ]
+                        : []),
+                    ]
+                    setFieldMappings(next)
+                    save(stateMapping, identity, next)
+                  }}
+                  size="compact"
+                  value={mapped?.target ?? ''}
+                >
+                  <option value="">Not imported</option>
+                  <option value="native:priority">Priority</option>
+                  <option value="native:dueDate">Deadline</option>
+                  <option value="native:storyPoints">Story points</option>
+                  <option value="native:detail">Detail</option>
+                  {definitions.map((definition) => (
+                    <option key={definition.id} value={`field:${definition.id}`}>
+                      {definition.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )
+          })}
+          {source.fields.length === 0 ? (
+            <div className="text-sm text-[color:var(--tx3)]">
+              Waiting for the first sync to read this container&rsquo;s fields.
             </div>
           ) : null}
         </div>

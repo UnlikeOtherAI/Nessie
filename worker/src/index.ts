@@ -139,8 +139,10 @@ import {
   BOARD_SOURCE_HEALTH_ALERT_TOPIC,
   BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC,
   BOARD_SOURCE_SYNC_INITIAL_TOPIC,
+  BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
   BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
   BoardSourceSyncJobPayloadSchema,
+  BoardSourceWebhooksRenewJobPayloadSchema,
   BoardSourceWebhookJobPayloadSchema,
   BoardSourceHealthAlertJobPayloadSchema,
   parseOrganizationId,
@@ -150,8 +152,13 @@ import {
   sweepDueBoardSources,
 } from './control/board-source-sync.js'
 import { processBoardSourceWebhook } from './control/board-source-webhook.js'
+import { renewBoardSourceWebhooks } from './control/board-source-webhooks-renew.js'
 import { writeHealthAlerts } from './control/board-source-health.js'
-import { enqueueBoardSourceHealthAlert, enqueueBoardSourceSync } from './queue.js'
+import {
+  enqueueBoardSourceHealthAlert,
+  enqueueBoardSourceSync,
+  enqueueQueueJob,
+} from './queue.js'
 import { listIncrementalPollingConnectors } from '@nessie/comms-connect'
 import {
   enqueueCommsIncrementalSweep,
@@ -719,6 +726,15 @@ export const startWorker = async (
   )
 
   queueProvider.subscribe(
+    BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
+    async (job) => {
+      const payload = BoardSourceWebhooksRenewJobPayloadSchema.parse(job.payload)
+      await renewBoardSourceWebhooks(boardSourceDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
     BOARD_SOURCE_HEALTH_ALERT_TOPIC,
     async (job) => {
       const payload = BoardSourceHealthAlertJobPayloadSchema.parse(job.payload)
@@ -912,6 +928,13 @@ export const startWorker = async (
       for (const source of claimed) {
         await enqueueBoardSourceSync(prisma, { sourceId: source.sourceId })
       }
+      // A webhook due inside three days is renewed now. The idempotency key is
+      // bucketed by day, so ticking every 30 seconds still queues one job.
+      await enqueueQueueJob(prisma, {
+        idempotencyKey: `board-source:webhooks-renew:${new Date().toISOString().slice(0, 10)}`,
+        payload: { withinMs: 3 * 24 * 60 * 60 * 1000 },
+        topic: BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
+      })
     } catch (error) {
       console.error('[worker.board-source-sweep] failed', error)
     } finally {

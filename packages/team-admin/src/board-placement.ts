@@ -170,9 +170,13 @@ export const orderForRender = (tasks: BoardTaskRecord[]): BoardTaskRecord[] => {
 export const boardFilterWhere = (filter: BoardFilter): Prisma.TaskWhereInput => {
   const clauses: Prisma.TaskWhereInput[] = []
 
-  // `filter.sources` narrows to native or externally-mirrored work. Until a
-  // source can be attached there are no mirrored tasks, so every value of it
-  // selects the same set; the clause lands with `TaskExternalLink`.
+  // `native` is "has no external link"; a list of ids is "linked to one of
+  // these". `all` narrows nothing, which is why it is the default.
+  if (filter.sources === 'native') {
+    clauses.push({ externalLink: { is: null } })
+  } else if (Array.isArray(filter.sources)) {
+    clauses.push({ externalLink: { is: { sourceId: { in: filter.sources } } } })
+  }
 
   if (filter.field) {
     const { fieldId, optionIds } = filter.field
