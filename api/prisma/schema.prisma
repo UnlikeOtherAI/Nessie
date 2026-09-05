@@ -1630,7 +1630,7 @@ model TaskBoardPlacement {
 // agents, assignments, approvals, search and the personal assistant's ticket
 // tools all work on them unchanged.
 //
-// See docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields.md §5.
+// See docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md §5.
 
 /// One person's delegated authority at one provider, reusable across projects.
 model BoardSourceConnection {

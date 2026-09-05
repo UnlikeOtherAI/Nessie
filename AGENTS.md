@@ -268,7 +268,7 @@ when one changes, the same turn updates it, not this section.
   server-side by `resolveBoardPlacement` (`@nessie/team-admin`) — never in the
   client — and board/column/field/source administration is gated by
   `canAdministerProject`, not organisation ownership.
-  Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields.md)
+  Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
   before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call
   arguments; the live lane never touches durable storage, and editing is deltas

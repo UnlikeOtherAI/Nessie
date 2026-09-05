@@ -235,7 +235,7 @@ should be exposed through remote MCP runners instead of direct cloud callbacks.
 ### Project board sources (Jira, Linear, Trello, GitHub)
 
 A project's boards can mirror work from another system
-([the design](../plans/2026-09-05-project-boards-external-sources-and-custom-fields.md)).
+([the design](../plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)).
 Each provider needs an app registered with the vendor **once per deployment**;
 a person then connects their own account to it.
 
