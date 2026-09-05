@@ -127,29 +127,72 @@ This is the structural correction that makes everything else work.
   column-browser column. (Today's `App.tsx` has the same blind spot in
   `isTabRoot`, which is why a Knowledge stage keeps the team bar on iPhone
   right now.)
-- **Two headers can share one pathname.** `/channels/:id/info` is a real route:
-  `ChannelConversationSurface` mounts the channel's `ScreenHeader` *and*
-  `ChannelsPage` mounts `ConversationInfoFlow`, which draws its own header. The
-  channel's title is published under the info pathname, so the bar would read
-  "#design" with the channel's call/search/settings actions while the screen
-  says "Conversation info".
+- **Two headers can share one pathname, and two screens can share one layer.**
+  `/channels/:id/info` is a real route, but its layer renders the whole
+  `ChannelsPage`: the channel's `ScreenHeader` *and* `ConversationInfoFlow`,
+  which is `fixed inset-0 z-[80]` over it. The channel's header re-publishes
+  whenever its title settles, so last-writer-wins puts "#design" and the
+  channel's call/search/settings in the bar while the screen says
+  "Conversation info". `ThreadReplyPanel` — a real depth-2 route rendered as a
+  full-screen overlay from `ChannelOverlays` — has the identical shape.
 
-So the admin publishes a **bar descriptor per stack layer**, keyed by the
-layer key the stack already stamps (`PhoneNavigationLayer`'s
-`data-phone-navigation-route`; a stage's key is `stage:<id>`):
+So the admin publishes **bar descriptors per stack layer**, and within a layer
+they form a **stack, not a slot**.
 
 ```ts
 publishScreenBar(layerKey, {
   title: string,
-  back: { label: string, owner: 'page' | 'route' } | null,
+  back: { label: string, onBack: () => void } | null,
   actions: BarAction[],
 })
 ```
 
-`PhoneNavigationViewport` knows which entry is current and is what the bridge
-reads. `NestedStage` gains a `title` prop and publishes under its own key, so a
-stage finally names itself. `publishScreenTitle` stays exactly as it is for
-`document.title` — that is a per-pathname fact and is not changing.
+Three rules make that work, and all three are load-bearing:
+
+1. **Key by `layerKey`, never by the route key.** The stack entry carries both:
+   `key` is the classifier's `section:keyScope`, and `layerKey` is
+   `section:depth:key` (`phone-navigation-stack.ts`). They differ for exactly
+   the case that matters — `/channels/:id` and `/channels/:id/info` are both
+   `channels:channel` and both alive in the stack at once, which is why the
+   stack's own comment says identity "is section+depth+key … never the bare
+   route key". The DOM attribute `data-phone-navigation-route` is the bare
+   `key`, so it is **not** the handle to use. `PhoneNavigationLayer` provides
+   `layerKey` through a `PhoneNavigationLayerContext`; a stage's layerKey
+   embeds a section and depth that `NestedStage` cannot compute for itself, so
+   the stage host returns it from `activate` (or exposes `layerKeyOf(id)`).
+2. **Within a layer, the topmost publisher wins.** `publishScreenBar` pushes an
+   entry in mount order; the bridge reads the top of that layer's stack;
+   unpublishing restores the one beneath. This is the local-back registry's
+   model, and it lets `ChannelHeader` and a full-screen overlay coexist with no
+   special case — the overlay publishes over the channel and the channel comes
+   back when it closes.
+3. **A stage publishes only from the instance that owns it.** §6 of the
+   rulebook: a push over an open stage mounts the page again, so two instances
+   render the same stage id, and only the one that pushed the entry may act on
+   it. Without that gate, instance B's descriptor overwrites A's — and since
+   `PageEditor`'s form id comes from `useId()`, a native Save would submit B's
+   pristine draft over A's edits. `NestedStage` therefore provides
+   `{ layerKey, owner }` from its existing ownership ref, and the publish hook
+   is inert unless `owner`. (Route layers always own.) Note also that a header
+   inside a stage reads the *route layer's* context, because the stage's
+   content is portalled from the page's React position — the layerKey must come
+   from the stage, not from context lookup.
+
+Handlers inside a retained descriptor go stale, so a publisher re-registers on
+every render and the wire payload is compared by value before posting — exactly
+what `sameScreen` already does for `nessie:screen`, so a re-render that changes
+nothing posts nothing.
+
+`publishScreenTitle` stays exactly as it is for `document.title`: that is a
+per-pathname fact and is not changing.
+
+`layerKey` is stable where it needs to be: `refreshPhoneNavigationRoute`
+replaces the payload only; seeded cold-start layers keep their identity and a
+later real navigation refreshes under the same key;
+`dropPhoneNavigationEntriesAboveCurrent` only removes, and a dropped layer
+retires its own key on unmount. The one reuse is a same-depth sibling swap
+(channel A → B), which is harmless: the header re-publishes the new title under
+the same key and no transition runs.
 
 ### 5.2 The lanes
 
@@ -191,7 +234,8 @@ compose. A resolver-driven chevron would pop to `/channels` instead of the
 project the compose was opened from.
 
 So the descriptor publishes the **effective** Back — the one the header would
-render — and the native tap invokes that published handler by layer key. The
+render, as a label and the handler itself — and the native tap invokes that
+published handler by layer key. The
 resolver remains the source for everything else (`hasBack`, Android hardware
 Back, the edge swipe); it is just no longer what the chevron calls.
 
@@ -211,23 +255,41 @@ On the iOS phone shell **and the `single` layout only**, a screen header:
 Everywhere else — mobile Safari at any width, the Android app, iPad, the
 landscape `split` lane, desktop — the untouched path.
 
-**This is not one file.** Four components draw a screen-level header outside
-`ScreenHeader` today, and none of them publishes anything:
+**This is not one file.** Seven components draw screen-level phone chrome
+outside `ScreenHeader` today, and none of them publishes anything:
 
 | component | what it draws | fix |
 | --- | --- | --- |
-| `ConversationInfoFlow` `FlowHeader` | 58px `<header>` + `<h1>` + `PhoneNavigationButton` | convert to `ScreenHeader` (trivial) |
-| `KnowledgePane` | `ResponsivePageHeader` with `onBack` | publish per stage key (§5.1); Cancel/Save become bar actions |
+| `ConversationInfoFlow` `FlowHeader` | 58px `<header>` + `<h1>` + `PhoneNavigationButton` | convert to `ScreenHeader` |
+| `ThreadReplyPanel` | a real depth-2 route drawn as a full-screen overlay, own `<header>` + `PhoneBackButton` | publish over its layer (§5.1 rule 2) |
+| `AgentScreenPanel` | `fixed inset-0` local-back owner, own `<header>` + `PhoneBackButton` | publish over its layer |
+| `DashboardWorkspacePanel` | `fixed inset-0` local-back owner, own `<header>` + `PhoneBackButton` | publish over its layer |
+| `KnowledgePane` | `ResponsivePageHeader` with `onBack` | publish per stage key; Cancel/Save become bar actions |
 | `WorkflowDesignerHeader` | `ResponsivePageHeader` with `titleInput` | see below |
 | `ColumnBrowserColumn` | 50px row + `PhoneNavigationButton` + `h3` | publish per column stage key |
 
-`WorkflowToolbar` also renders a `ResponsivePageHeader`, but as
-`titleTone="section"` — a section header inside a page, not a screen header.
-It is out of scope and stays.
+The three full-screen overlays are why §5.1's within-layer stack exists: they
+are not stages and not routes of their own layer, so a slot would leave the bar
+showing the conversation beneath them.
 
-`admin/test/screen-header.test.ts`'s source gate walks `admin/src/pages` only,
-which is exactly how these four escaped. The gate widens to `admin/src` and
-fails on any new `<header>` or `<h1>` outside the shared header.
+`WorkflowToolbar` also renders a `ResponsivePageHeader`, but as
+`titleTone="section"` — a `SectionLabel as="h2"` inside a page, no `h1` and no
+doorway. It is a section header, out of scope, and stays.
+
+**The source gate targets the signature that actually escaped**, not a blanket
+sweep. `admin/test/screen-header.test.ts` walks `admin/src/pages` only, which is
+how all seven escaped; widening it to any `<header>` or `<h1>` under `admin/src`
+would fail on legitimate code — `MessageMarkdown` renders an `h1` from user
+markdown, and `PagePreview`, `FileNodeViewer`, `BootstrapPage` and `NotFoundPage`
+each have honest ones. The gate instead fails on:
+
+- `PhoneNavigationButton` or `PhoneBackButton` rendered outside `ScreenHeader`
+  and `ResponsivePageHeader`, and
+- `ResponsivePageHeader` rendered outside `ScreenHeader` without
+  `titleTone="section"`,
+
+against an allowlist that only ever shrinks. That catches exactly the seven and
+nothing legitimate.
 
 **`titleInput`** (`WorkflowDesignerHeader`) has no native equivalent. On the
 iOS phone shell the designer renders the input as the first row of the page
@@ -256,12 +318,21 @@ BarAction {
 }
 ```
 
-- A **`submit`** tap posts back and the web calls `form.requestSubmit()` on the
-  named form — not `onSelect`.
+- A **`submit`** tap posts back and the web calls `requestSubmit()` on the
+  named form — not `onSelect`. It is looked up with `getElementById`, never a
+  `querySelector`: those ids come from `useId()` and contain colons, which are
+  not valid in a CSS selector. One caveat travels with this: Notifications'
+  save relies on the submit being a **user gesture** to ask for notification
+  permission (Safari rejects off-gesture requests), and a `requestSubmit()`
+  driven from a bridge message has no transient activation. Native push
+  registration is the shell's own path anyway, so that call is gated on
+  `!isReactNativeWebView()` and the comment there says why.
 - **`selected`/`pressed`** render as a filled bar button, so a live call or an
   open search still reads as on.
 - A **`link`** with `target: '_blank'` goes through the existing
   `nessie:open-external` path, never a native `href` follow.
+- **`tone`** and **`priority`** survive only as ordering and emphasis in the
+  sheet; in a text-first bar they decide nothing else.
 - **`leading`** (agent avatar, app icon) and **`eyebrow`** ("System managed",
   the designer's save status) have no bar home and stay in the page's first
   row, beside the `below` slot. Stated deliberately rather than lost.
@@ -289,11 +360,29 @@ So:
 1. `nessie:screen-transition { from, to, direction, durationMs }` is posted
    from `PhoneNavigationViewport`'s `startTransition` — a layout effect, which
    runs before the bridge's passive effect — for route pushes and pops and for
-   stage pushes and pops. `from`/`to` are the two layer keys; the bar already
-   holds their descriptors.
-2. The native bar treats a `nessie:screen` arriving **while a transition is in
+   stage pushes and pops. `from`/`to` are layer keys.
+2. **The bar will not always have the incoming descriptor when the transition
+   starts.** On a forward push the children of the new layer are captured in
+   that same layout effect, so the `to` layer has not mounted and its header
+   has not published yet. The real wire order on every tapped push is
+   `screen-transition(to: no descriptor yet)` → `nessie:screen` →
+   `descriptor(to)`, all inside one JS task and before the web's first
+   animation frame. The native reducer is designed for exactly that: a
+   descriptor arriving for the in-flight `to` key **fills the incoming layer
+   without restarting the animation**, and an incoming layer with no descriptor
+   yet renders blank — never root lanes. A pop is the easy direction: the
+   target is retained, so its descriptor already exists, which is why the
+   reported case works by construction.
+3. The native bar treats a `nessie:screen` arriving **while a transition is in
    flight** as the transition's target, never as a reason to snap.
-3. The post is gated on `layout === 'single'`, or the landscape `split`
+4. **`startTransition` does not cover everything.** It is not called for a
+   swipe-committed pop (the viewport suppresses the animation it already ran),
+   for an in-place sibling swap, for a cross-section reset, or when there are
+   not two layers. So: slice 4 hands the `from`/`to` layer keys into
+   `usePhoneBackSwipeGesture` — which today knows only DOM layers — so the
+   settle can post its own `screen-transition`; and every no-transition case
+   snaps on `nessie:screen`, which is correct because nothing is animating.
+5. The post is gated on `layout === 'single'`, or the landscape `split`
    viewport would post its column pushes as if they were the bar's.
 
 Natively, the bar renders two content layers — outgoing and incoming — and
@@ -305,6 +394,11 @@ solver is the Android and iPad focus-mode curve and is not touched.
 
 Reduced motion is read natively from `AccessibilityInfo.isReduceMotionEnabled()`
 and its change event. The web does not publish it and never did.
+
+Whether the two-layer animated bar is worth its complexity is decided **on
+device, in slice 4**: if the bar's contents cannot be kept in visible sync with
+the layers, §10's web-drawn fallback is the answer and this machinery comes
+out. The check is named there rather than left to taste.
 
 **Interactive swipe tracking is deferred to a follow-up, deliberately.** Every
 message goes through `App.tsx`'s `onMessage` → `handleNativeShellMessage` →
@@ -365,7 +459,10 @@ because they are separately reviewable, not separately releasable.
    lane and today's answer for Android; `getNativeWebviewFrameInsets` becomes
    constant on iOS phone. The band renders as **bare surface** on non-roots —
    not root lanes, which would put a team switcher and an account avatar above
-   every conversation. The jump is gone and measurable at this point.
+   every conversation. The surface is `phoneHeaderSurface`, not the page
+   background: the status-bar style is derived from the header surface while a
+   header shows, so a differently coloured band would trade the geometry jump
+   for a colour snap at the same moment. The jump is gone and measurable here.
 2. **Descriptors and bar contents.** `publishScreenBar` keyed by layer key;
    `NestedStage` gains `title`; the four stray headers convert; the source gate
    widens; the native bar renders back + title; the web stops drawing its bar
@@ -395,6 +492,17 @@ because they are separately reviewable, not separately releasable.
   from the layout effect, before the screen message, on `single` only.
 - A test that a `NestedStage` publishes its own descriptor and that the bar
   therefore leaves root lanes — the defect §5.1 names.
+- `admin/test/nested-stage-viewport.test.ts` — the **two-instance** case, which
+  it does not cover today: a route pushed over an open stage mounts the page
+  again, and only the owning instance's descriptor may stand. Without this the
+  `useId()`-keyed form of a second `PageEditor` can be submitted over the
+  first's edits.
+- A test that two publishers in one layer stack rather than overwrite
+  (`ChannelHeader` + `ConversationInfoFlow`), and that closing the overlay
+  restores the channel's descriptor.
+- `native-nav-bar.test.ts` pins the push wire order — `screen-transition`
+  without a `to` descriptor, then `nessie:screen`, then the descriptor — and
+  that the incoming lane stays blank rather than falling back to root lanes.
 - `admin/e2e/navigation/cases/phone-back.mjs`, `phone-edge-swipe.mjs` — stay
   green unchanged; they pin the web stack, which this does not alter.
 
@@ -448,3 +556,46 @@ Reviewed by Fable on 2026-09-05 (GO WITH CHANGES). Folded in:
   FontAwesome→MaterialIcons table (text-first bar, overflow sheet).
 - Corrected: reduced motion is not published by the web (§8); cold start must
   show a blank bar, not root lanes (§5.2); VoiceOver additions (§13).
+
+### Round two (Fable, 2026-09-05) — GO WITH CHANGES, folded in
+
+Round one's findings verified as genuinely closed except the pathname
+collision, which was closed in the wrong place. Round two's blocking items,
+each verified against the code before acceptance:
+
+- **The layer key named in §5.1 was the wrong one.** `data-phone-navigation-route`
+  is the classifier's bare `key` (`section:keyScope`), which `/channels/:id`
+  and `/channels/:id/info` *share* while both are alive; the stack's own
+  identity is `layerKey` (`section:depth:key`) and its comment says never to
+  use the bare key. Keying by the attribute would have reproduced exactly the
+  collision the section was written to fix.
+- **The collision is inside one layer, not across two.** `ChannelsPage` renders
+  the channel's header and a `fixed inset-0` overlay in the same layer, so
+  per-layer keying alone changes nothing. Publication within a layer is now a
+  stack with the topmost publisher winning (§5.1 rule 2).
+- **Stage descriptors need the instance-ownership gate**, or a second mounted
+  instance overwrites the first's — and with `useId()` form ids, a native Save
+  submits the wrong form (§5.1 rule 3).
+- **The incoming descriptor does not exist when a forward push starts.** §8 now
+  states the real wire order and requires the native reducer to fill the
+  incoming lane late without restarting the animation, and to render blank
+  rather than root lanes meanwhile.
+- **`startTransition` does not fire for swipe-committed pops, sibling swaps,
+  cross-section resets, or single-layer cases** — named in §8 with what each
+  does instead.
+- **Three more stray headers**: `ThreadReplyPanel` (a real depth-2 route drawn
+  as a full-screen overlay) and the `AgentScreenPanel` / `DashboardWorkspacePanel`
+  local-back owners. Four became seven (§6).
+- **The widened source gate would have failed on legitimate code** —
+  `MessageMarkdown` renders an `h1` from user markdown. The gate now targets
+  the Back-button and header components rather than `<header>`/`<h1>` (§6).
+- **`requestSubmit()` from a bridge message has no transient activation**, and
+  Notifications' save depends on the gesture to request notification
+  permission; that call is gated off the native shell (§7). Form lookup uses
+  `getElementById` because `useId()` ids contain colons.
+- Slice 1's bare band must use `phoneHeaderSurface`, or the geometry jump is
+  traded for a status-bar colour snap at the same moment (§11).
+- Cut: `back.owner`, which nothing native consumed.
+
+Adjudicated in the author's favour: §1's per-navigation-kind timing framing is
+correct, and `WorkflowToolbar` is a section header and stays out of scope.
