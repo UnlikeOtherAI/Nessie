@@ -6,9 +6,9 @@ import type { PageHeaderAction } from '../../components/shared/ResponsivePageHea
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { BoardSwitcher } from '../../components/kanban/BoardSwitcher'
 import { useTabParam } from '../../navigation/useTabParam'
+import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useState } from 'react'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
@@ -23,7 +23,6 @@ export const ProjectView = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const { data: boards = [] } = useProjectBoards(projectId)
-  const { data: attention } = useAttentionSummary()
 
   // Which board is on screen. A tab, so it rides in `?board=` written with
   // `replace`; an unknown or absent value reads as the project's default
@@ -42,58 +41,13 @@ export const ProjectView = () => {
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
-  const tab = location.pathname.endsWith('/settings')
-    ? 'settings'
-    : location.pathname.endsWith('/docs')
-      ? 'docs'
-      : location.pathname.endsWith('/backlog')
-        ? 'backlog'
-    : location.pathname.endsWith('/insights')
-      ? 'insights'
-      : location.pathname.endsWith('/executors')
-        ? 'executors'
-          : location.pathname.endsWith('/board')
-            ? 'board'
-            : 'overview'
+  // A project's sections are chosen in the Projects sidebar, which draws them
+  // as the project's subpages (`navigation/project-sections.ts`). The header
+  // carries no section dropdown: two doorways to the same seven routes only
+  // made the reader guess which one moved them.
+  const tab = projectSectionIdFromPathname(location.pathname)
 
-  const assignedWorkCount = attention?.assignedWork.projects[projectId] ?? 0
-  const knowledgeCount = attention?.knowledge.projects[projectId] ?? 0
-  const withCount = (label: string, count: number): string => count > 0 ? `${label} (${count})` : label
-  const tabs = [
-    { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
-    { id: 'board', label: withCount('Board', assignedWorkCount), to: `/projects/${projectId}/board` },
-    ...(isScrum
-      ? [
-          { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
-          { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
-        ]
-      : []),
-    { id: 'docs', label: withCount('Docs', knowledgeCount), to: `/projects/${projectId}/docs` },
-    { id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
-    { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
-  ]
-  const activeTab = tabs.find((item) => item.id === tab)
   const headerActions: PageHeaderAction[] = [
-    {
-      id: 'project-section',
-      items: tabs.map((item) => ({
-        checked: item.id === tab,
-        id: item.id,
-        label: item.label,
-        // A project section is a tab, and a tab is never a history entry
-        // (docs/navigation/overview.md §1, "Tab hosts"). The seven sections stay real
-        // routes so each is linkable, but the header switches them with
-        // `replace` so Back leaves the project rather than walking the
-        // sections the reader passed through. The registry folds all seven
-        // into one tabHost identity, so ProjectView is reconciled in place —
-        // the switch never remounts the page or animates a layer.
-        onSelect: () => void navigate(item.to, { replace: true }),
-      })),
-      kind: 'menu',
-      label: activeTab?.label ?? 'Section',
-      priority: 80,
-      title: 'Choose project section',
-    },
     // The doorways to board administration, from the screen a person is
     // standing on when they want them — not only from Settings.
     ...(tab === 'board'
@@ -121,9 +75,8 @@ export const ProjectView = () => {
               },
             ],
             kind: 'menu',
-            // Not "Board": the section menu beside it is already labelled with
-            // the active section, which on this tab is "Board". Two adjacent
-            // menus with one label name no decision between them.
+            // Not "Board": the board switcher already sits in the header's tab
+            // slot on this section, so a second "Board" would name no decision.
             label: 'Configure',
             priority: 60,
             title: 'Configure boards',

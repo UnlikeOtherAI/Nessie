@@ -227,7 +227,14 @@ const AuthenticatedAdminShellLayout = () => {
   const secNavElement = shell.isKnowledgeRoute ? (
     <KnowledgeSidebarNav />
   ) : shell.isProjectsRoute ? (
-    <ProjectsSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
+    <ProjectsSidebarNav
+      isOwner={shell.isOwner}
+      onToggleStar={shell.toggleStar}
+      pathname={shell.pathname}
+      starredCollapsed={shell.starredCollapsed}
+      starredProjectIds={shell.starredProjectIds}
+      toggleStarredCollapsed={shell.toggleStarredCollapsed}
+    />
   ) : shell.isAdminRoute ? (
     <AdminSidebarNav
       canManageOrganization={shell.canManageOrganization}
