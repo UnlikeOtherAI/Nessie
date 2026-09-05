@@ -163,6 +163,10 @@ export const ProjectsSidebarNav = ({
   const currentProjectId = currentProjectIdFromPathname(pathname)
   const currentSectionId = projectSectionIdFromPathname(pathname)
   const starredProjects = projects.filter((project) => starredProjectIds.has(project.id))
+  // Starring promotes a project out of the list rather than copying it: the
+  // Channels sidebar lifts a starred channel or project the same way
+  // (`useSidebarTree.ts`), and one project drawn twice reads as two projects.
+  const unstarredProjects = projects.filter((project) => !starredProjectIds.has(project.id))
 
   const persistExpandedProjectIds = useCallback((projectIds: ReadonlySet<string>) => {
     setCookie(EXPANDED_PROJECT_IDS_COOKIE, serializeExpandedProjectIds(projectIds))
@@ -450,7 +454,9 @@ export const ProjectsSidebarNav = ({
               <div className="px-5 py-2 text-[13px] text-[color:var(--tx3)]">No projects yet.</div>
             )
           ) : (
-            projects.map((project) => renderProjectRow(project, 'projects'))
+            // Empty when every project is starred — they are all in Starred
+            // above, so there is nothing left to say here.
+            unstarredProjects.map((project) => renderProjectRow(project, 'projects'))
           )}
         </SidebarMenuSection>
       </nav>
