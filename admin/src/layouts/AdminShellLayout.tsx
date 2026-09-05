@@ -11,7 +11,6 @@ import {
   useNativePhoneApp,
   useNavigationLayout,
 } from '../lib/mobile-shell';
-import { useTeamHostSync } from '../facades/team/host-sync';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
@@ -70,11 +69,6 @@ export type { AdminShellOutletContext } from './admin-shell/types';
 
 export const AdminShellLayout = () => {
   const { me, sessionState } = useAuthSession();
-
-  // A cold load on a team hostname lands in that team. Mounted before the
-  // early returns below so it runs while the session is still settling —
-  // hooks cannot be called conditionally, and this one no-ops without a token.
-  useTeamHostSync();
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;
