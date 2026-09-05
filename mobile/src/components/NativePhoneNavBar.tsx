@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
+import Svg, { Path } from 'react-native-svg'
 
 import { withOpacity } from '../lib/ipad-native-chrome'
 import {
@@ -40,6 +41,29 @@ export type NativePhoneNavBarProps = {
   onTransitionEnd: () => void
   safeTop: number
 }
+
+/**
+ * The Back chevron, drawn rather than taken from an icon font.
+ *
+ * An icon font's glyph carries its own bearing, so centring it in the circle
+ * means compensating for a number nobody wrote down — and the compensation is
+ * wrong the moment the glyph or its size changes. This is the same path the
+ * web's `PhoneBackButton` draws, shifted so it is symmetric about the
+ * viewBox's centre line: x runs 8.5 to 15.5 about 12, y runs 5 to 19 about 12.
+ * Centred by construction, at any size.
+ */
+const BackChevron = ({ color, size }: { color: string, size: number }): React.JSX.Element => (
+  <Svg height={size} viewBox="0 0 24 24" width={size}>
+    <Path
+      d="m15.5 19-7-7 7-7"
+      fill="none"
+      stroke={color}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2.1}
+    />
+  </Svg>
+)
 
 // The stack's own curve and duration (admin/src/navigation/motion.ts). The bar
 // travels on the layers' curve or it is visibly a separate thing bolted above
@@ -164,12 +188,7 @@ const NavBarLanes = ({
                 pressed ? { opacity: 0.55 } : null,
               ]}
             >
-              <MaterialIcons
-                color={headerText}
-                name="arrow-back-ios-new"
-                size={18}
-                style={styles.backChevron}
-              />
+              <BackChevron color={headerText} size={20} />
             </Pressable>
           ) : null}
         </View>
@@ -381,8 +400,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 38,
   },
-  // The glyph's own bearing sits it right of centre in the circle.
-  backChevron: { marginLeft: 3 },
   bar: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 30 },
   content: {
     alignItems: 'center',
