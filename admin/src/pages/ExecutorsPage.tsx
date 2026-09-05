@@ -219,7 +219,9 @@ export const ExecutorsPage = () => {
             id: 'pair-executor',
             label: showCreate ? 'Close pairing' : 'Pair executor',
             onSelect: () => setShowCreate((open) => !open),
-            primary: true,
+            // Primary while it opens the pairing form; closing that form is
+            // not the action this screen exists for.
+            primary: !showCreate,
             priority: 100,
           },
         ]}

@@ -2911,6 +2911,97 @@ button.reaction-pill-active:focus-visible {
   color: var(--danger-text);
 }
 
+/* Page-header actions (`ResponsivePageHeader`). The header is where a screen
+   states what a person can do here, so its controls have to read as controls.
+   Only Space White ever drew them, which left every other theme rendering a
+   row of naked text where the buttons belonged — "New task" looked exactly
+   like the page title beside it. The role the call site already declares now
+   decides the fill everywhere:
+
+     - **primary** — the one action the screen exists for. Creating the thing
+       the screen lists is always this, as is committing an edit in progress
+       (Save, Publish, Done). One per header: two filled buttons name no
+       decision.
+     - **selected / pressed / open** — a toggle that is currently on, or a
+       menu that is currently down. Tinted, not filled, so an active toggle
+       never outranks the primary.
+     - **secondary** — everything else.
+
+   Geometry lives here; the call site's utilities own height, width and gap
+   only. Padding is deliberately *not* claimed: `.admin-page-action` is
+   unlayered and would beat the `px-2.5` / `px-0` utilities that size a
+   labelled action against an icon-only one. */
+.admin-page-action {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.admin-page-action-secondary {
+  border-color: var(--sep);
+  background: var(--overlay-weak);
+  color: var(--tx2);
+}
+
+.admin-page-action-secondary:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--overlay);
+  color: var(--tx);
+}
+
+/* An icon-only action is a toolbar mark, not a labelled button: a channel
+   header carries six of them, and six bordered boxes in a row read as a
+   toolbar of equals beside the action that actually matters. It keeps the
+   same box and gains the secondary fill under the pointer. `[aria-label]` is
+   what `compact` renders (the label moves off the face and into the
+   accessible name), which is also how Space White finds them. */
+.admin-page-action-secondary[aria-label] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--tx2);
+}
+
+.admin-page-action-secondary[aria-label]:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--overlay);
+  color: var(--tx);
+}
+
+/* On, and down. Ordered after the secondary rules so a selected toggle keeps
+   its tint under the pointer, and before the primary so a primary that opens
+   a menu stays filled. */
+.admin-page-action-selected,
+.admin-page-action-open,
+.admin-page-action[aria-pressed='true'] {
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-page-action-selected:hover:not(:disabled),
+.admin-page-action-open:hover:not(:disabled),
+.admin-page-action[aria-pressed='true']:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-page-action-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.admin-page-action-primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.admin-page-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* A header action whose mark turns red under the pointer: the channel's
    routine-recording control, where red is what a record button means. Only
    the icon is tinted — the box keeps the neutral header treatment every
@@ -3847,10 +3938,10 @@ button.reaction-pill-active:focus-visible {
   color: #ffffff;
 }
 
-[data-theme='space-white'] .admin-page-action-primary:hover,
-[data-theme='space-white'] .admin-page-action-selected:hover,
-[data-theme='space-white'] .admin-page-action-open:hover,
-[data-theme='space-white'] .admin-page-action[aria-pressed='true']:hover {
+[data-theme='space-white'] .admin-page-action-primary:hover:not(:disabled),
+[data-theme='space-white'] .admin-page-action-selected:hover:not(:disabled),
+[data-theme='space-white'] .admin-page-action-open:hover:not(:disabled),
+[data-theme='space-white'] .admin-page-action[aria-pressed='true']:hover:not(:disabled) {
   background: #1a1a1a;
 }
 
@@ -3859,7 +3950,7 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx);
 }
 
-[data-theme='space-white'] .admin-page-action-secondary:hover {
+[data-theme='space-white'] .admin-page-action-secondary:hover:not(:disabled) {
   background: #e9ecf1;
 }
 

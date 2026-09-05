@@ -12,6 +12,7 @@
     "test:e2e:executor-companion": "node e2e/executor-companion/run.mjs",
     "test:e2e:connected-mail": "node e2e/connected-mail/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
+    "test:e2e:page-header": "node e2e/page-header/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

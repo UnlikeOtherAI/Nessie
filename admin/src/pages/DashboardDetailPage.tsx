@@ -12,6 +12,7 @@
  * (docs/navigation/overview.md → "Drafts").
  */
 
+import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -145,8 +146,11 @@ export const DashboardDetailPage = () => {
               priority: 30,
             },
             ...(editing ? [{
+              // The plus is the icon slot's job: a label that draws its own
+              // mark reads as a typo the moment the action is a real button.
+              icon: faPlus,
               id: 'dashboard-add-widget',
-              label: '+ Add widget',
+              label: 'Add widget',
               onSelect: () => setShowAddWidget(true),
               priority: 60,
             }] : []),
