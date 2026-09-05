@@ -78,6 +78,25 @@ scribble over a message rather than scrub one.
 Masking is a structural provider prefix plus twelve `•`: enough to recognise
 which credential it was, never enough to reconstruct it.
 
+## Where the scanner runs
+
+The scanner is not one gate but every sink a value can reach, because each is
+a different kind of leak:
+
+| Sink | Where |
+| --- | --- |
+| Human ingress (message, edit, upload, voice transcript) | `422 SECRET_INTERCEPTED`, before persistence |
+| Card press, plain `input` values | `422 SECRET_INTERCEPTED` |
+| Agent ingress (`send_message`) | Redacted, not refused — a model mid-run has nowhere to put a refusal |
+| Live SSE stream | Emission trails the stream so a key split across chunks is caught |
+| Provider boundary, loop context, tool results | Redacted |
+| Tool-call arguments | Redacted, because they are replayed on every later turn |
+| Demonstration capture | Redacted — key-name redaction alone missed values under ordinary keys |
+
+The live stream is the subtle one: it is a separate broadcast from the finished
+message, so masking the message alone still showed every viewer the key as the
+model typed it.
+
 ## Authority split
 
 Infisical is the vault and owns secret values, encryption, versions, rotation,

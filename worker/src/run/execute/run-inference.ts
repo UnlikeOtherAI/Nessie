@@ -23,6 +23,7 @@ import type { UtilityModel } from './utility-model.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
 import type { RunSubscriptionBinding } from './subscription-binding.js'
 import { runReplyIsRestricted } from './agent-message.js'
+import { createStreamRedactor } from './stream-redaction.js'
 
 const runtimeModelConfig = loadConfig().model
 
@@ -111,6 +112,8 @@ export const createRunInference = (
       })
       : null
 
+    const streamRedactor = createStreamRedactor()
+
     try {
       const mpr = await runInferenceGraph(deps.prisma, {
         actorContext: payload.actorContext,
@@ -151,8 +154,12 @@ export const createRunInference = (
           // its remaining text is withheld from the live lane entirely and read
           // back through the disclosure predicate instead.
           if (runReplyIsRestricted(context)) return
+          // Emission trails the stream so a credential split across chunks is
+          // never broadcast before the scanner has seen all of it.
+          const safe = streamRedactor.push(chunk)
+          if (!safe) return
           await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-            content: chunk,
+            content: safe,
             runId: parseRunId(context.run.id),
           })
         },
@@ -164,6 +171,15 @@ export const createRunInference = (
         // tool array, so the whole tool block is omitted instead.
         ...(tools.length > 0 ? { toolChoice: 'auto' as const, tools } : {}),
       })
+      // The stream trails by a held-back tail; release it now the provider is
+      // done, or the live lane ends short of the message it was previewing.
+      const tail = streamRedactor.flush()
+      if (tail && streaming && !runReplyIsRestricted(context)) {
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+          content: tail,
+          runId: parseRunId(context.run.id),
+        })
+      }
       if (
         mpr.status !== 'completed'
         || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
