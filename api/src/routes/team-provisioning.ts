@@ -7,7 +7,9 @@ import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { forgetUoaTeamDirectory } from '../services/uoa-directory-cache.js'
 import {
+  checkUoaSlugAvailability,
   createUoaOrganisation,
+  resolveUoaTeamHost,
   createUoaTeamTeam,
   resolveUoaRosterTeam,
   UoaRosterIdentityError,
@@ -35,12 +37,59 @@ import type { RouteDeps } from './types.js'
  * are on the service functions in `@nessie/team-admin`.
  */
 
+// Shared by both routes: an organisation's address and a team's address are
+// different things, but the field they arrive in has the same shape and the
+// same rules, and UOA validates each against the right scope.
 const CreateOrganizationBodySchema = z.object({
   name: z.string().trim().min(1).max(100),
+  // The address the person chose. Omitted lets UOA derive one from the name;
+  // supplied, UOA validates it and refuses with a reason rather than storing
+  // something else. Nessie never derives or stores a slug of its own — the
+  // labels belong to UOA.
+  slug: z.string().trim().min(2).max(63).optional(),
   // Distinguishes a retry of one intent from a second intent. See the ledger
   // note below: without it, a retry after an ambiguous network failure mints a
   // second organisation nobody asked for.
   idempotencyKey: z.string().trim().min(8).max(200),
+})
+
+const ResolveHostQuerySchema = z.object({
+  host: z.string().trim().min(1).max(253),
+})
+
+/**
+ * Split `<team>.<org>.<base>` into its two labels.
+ *
+ * Returns null unless the host sits exactly two labels under the configured
+ * base domain, so a hostname that merely *ends* with the base — a different
+ * registrable domain that happens to share the suffix — is never treated as
+ * one of ours.
+ */
+const parseTeamHost = (
+  host: string,
+  baseDomain: string | undefined,
+): { orgSlug: string; teamSlug: string } | null => {
+  if (!baseDomain) return null
+
+  const normalized = host.trim().toLowerCase().replace(/\.+$/, '').split(':')[0] ?? ''
+  const base = baseDomain.trim().toLowerCase()
+  if (!normalized.endsWith(`.${base}`)) return null
+
+  const labels = normalized.slice(0, -(base.length + 1)).split('.')
+  if (labels.length !== 2) return null
+
+  const [teamSlug, orgSlug] = labels
+  const legal = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+  if (!teamSlug || !orgSlug || !legal.test(teamSlug) || !legal.test(orgSlug)) return null
+
+  return { orgSlug, teamSlug }
+}
+
+const SlugAvailableQuerySchema = z.object({
+  slug: z.string().trim().min(1).max(63),
+  scope: z.enum(['organisation', 'team']),
+  // Required for a team address: availability is per organisation, never global.
+  orgId: z.string().trim().min(1).optional(),
 })
 
 const ORG_CREATED_ACTION = 'organization.external_created'
@@ -135,6 +184,7 @@ const provisionOnce = async (
     userId: string
     idempotencyKey: string
     name: string
+    slug?: string
     resourceType: string
   },
   create: () => Promise<UoaProvisionedTeam>,
@@ -164,6 +214,7 @@ const provisionOnce = async (
       metadata: {
         idempotencyKey: input.idempotencyKey,
         name: input.name,
+        slug: input.slug ?? null,
         externalOrgId: team.externalOrgId,
         externalTeamId: team.externalTeamId,
       },
@@ -232,7 +283,7 @@ export const registerTeamProvisioningRoutes = (
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
 ): void => {
-  const { prisma, requireActorContext, requireUserActor } = deps
+  const { prisma, requireActorContext, requireUserActor, teamHostBaseDomain } = deps
 
   /**
    * Found a new UOA organisation, owned by the caller.
@@ -275,9 +326,10 @@ export const registerTeamProvisioningRoutes = (
           userId: actorContext.actor.actorId,
           idempotencyKey: body.idempotencyKey,
           name: body.name,
+          slug: body.slug,
           resourceType: 'organization',
         },
-        () => createUoaOrganisation({ name: body.name, ownerUoaSub }, rosterDeps),
+        () => createUoaOrganisation({ name: body.name, slug: body.slug, ownerUoaSub }, rosterDeps),
       )
       return createApiResponse(team)
     } catch (error) {
@@ -299,6 +351,81 @@ export const registerTeamProvisioningRoutes = (
    * backend mode has no upstream gate at all, so its local one is the whole
    * authorization.
    */
+  /**
+   * Whether an address is free, for the create dialog's address field.
+   *
+   * Relayed rather than called from the browser because the check is a
+   * `/domain/*` read authenticated by the domain hash, which only the server
+   * holds. Nessie stores no slug of its own and answers purely from UOA.
+   *
+   * A failure upstream answers `available: null` — unknown, not unavailable.
+   * Blocking creation because a hint could not be fetched would be worse than
+   * letting the authoritative write refuse.
+   */
+  /**
+   * Which tenant a hostname means.
+   *
+   * The admin bundle is one artifact served on every team host, so on a cold
+   * load it has to ask which team it is looking at before it can switch onto
+   * it. Answering is a `/domain/*` read against UOA, relayed because only the
+   * server holds the domain hash.
+   *
+   * The `Host` header is deliberately not consulted: the hostname arrives as an
+   * explicit query parameter from the client that is asking about itself. This
+   * route resolves a name to ids and grants nothing — the caller still runs the
+   * ordinary team-switch, which is where authorization actually happens.
+   */
+  app.get('/api/hosts/resolve', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const query = parseInput(ResolveHostQuerySchema, request.query, reply)
+    if (!query) return reply
+
+    const labels = parseTeamHost(query.host, teamHostBaseDomain)
+    if (!labels) return createApiResponse({ team: null })
+
+    try {
+      const resolved = await resolveUoaTeamHost(labels, rosterDeps)
+      return createApiResponse({ team: resolved })
+    } catch (error) {
+      if (error instanceof UoaRosterUnavailableError) {
+        return createApiResponse({ team: null })
+      }
+      throw error
+    }
+  })
+
+  app.get('/api/teams/slug-available', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const query = parseInput(SlugAvailableQuerySchema, request.query, reply)
+    if (!query) return reply
+
+    try {
+      const result = await checkUoaSlugAvailability(
+        {
+          slug: query.slug,
+          scope: query.scope,
+          ...(query.orgId ? { orgId: query.orgId } : {}),
+        },
+        rosterDeps,
+      )
+      return createApiResponse(result)
+    } catch (error) {
+      if (
+        error instanceof UoaRosterUnavailableError ||
+        error instanceof UoaRosterRejectedError
+      ) {
+        return createApiResponse({ available: null })
+      }
+      throw error
+    }
+  })
+
   app.post('/api/teams/teams', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -339,11 +466,12 @@ export const registerTeamProvisioningRoutes = (
           userId: actorContext.actor.actorId,
           idempotencyKey: body.idempotencyKey,
           name: body.name,
+          slug: body.slug,
           resourceType: 'team',
         },
         () => createUoaTeamTeam(
           team,
-          { name: body.name },
+          { name: body.name, slug: body.slug },
           withUoaRosterSubjectAssertion(
             team,
             actorContext.actionContext.uoaIdentity,

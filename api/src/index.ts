@@ -68,6 +68,7 @@ const {
   databaseUrl,
   authSecret,
   allowedCorsOrigins,
+  teamHostBaseDomain,
   resolveBootstrapState,
   logBootstrapUrl,
   authenticateRequest,
@@ -213,6 +214,7 @@ export const buildApp = async () => {
     origin: createCorsOriginChecker({
       allowedOrigins: allowedCorsOrigins,
       mode: config.mode,
+      teamHostBaseDomain,
     }),
   })
   await app.register(cookie)

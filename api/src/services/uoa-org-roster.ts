@@ -4,6 +4,7 @@
 // The routes keep importing it from here.
 export {
   acceptTeamInvitation,
+  checkUoaSlugAvailability,
   createUoaOrganisation,
   createUoaTeamTeam,
   createTeamInvitation,
@@ -15,6 +16,7 @@ export {
   removeTeamMember,
   resendTeamInvitation,
   resolveLocalUserIdsByUoaSub,
+  resolveUoaTeamHost,
   resolveUoaRosterTeam,
   revokeTeamInvitation,
   reviewTeamInvitation,

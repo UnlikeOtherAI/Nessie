@@ -20,6 +20,13 @@ export default defineConfig({
     port: 5455,
     strictPort: true,
     proxy: apiProxy,
+    // Team hostnames in dev. Vite refuses a Host header it does not recognise,
+    // and team hosts are created by people rather than listed in config, so the
+    // whole `.localhost` tree is allowed rather than enumerated: opening
+    // `http://design.acme.localhost:5455` then exercises the same host-mode
+    // path production uses. Chrome and Firefox resolve `*.localhost` to
+    // loopback on their own; Safari does not, and needs an /etc/hosts entry.
+    allowedHosts: ['.localhost'],
     // The repo lives under /System/Volumes/Data/.internal/… (a macOS data-volume
     // firmlink path) where fsevents does not deliver change events, so Vite's
     // native watcher never fires and HMR appears dead. Poll instead so every
