@@ -1,6 +1,7 @@
 import type { AppDetailRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
 import { Pill } from '../../primitives/Pill'
+import { AppBoardSourceAction } from './AppBoardSourceAction'
 import { AppIcon } from './AppIcon'
 import { AppTrustBadge } from './AppTrustBadge'
 import { appCardStatus, appUnavailableExplanation } from './app-card-presentation'
@@ -126,6 +127,7 @@ export const AppDetailHero = ({
                 {cta.label}
               </button>
             ) : null}
+            <AppBoardSourceAction setupSurface={app.setupSurface} />
             {blocked ? (
               <div className="flex flex-col gap-0.5" data-testid="app-detail-blocked">
                 {blocked.label ? (

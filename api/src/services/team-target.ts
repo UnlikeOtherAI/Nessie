@@ -1,6 +1,6 @@
 import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
-import { defaultColumnCreateData } from './board.js'
+import { seedDefaultBoard } from '@nessie/team-admin'
 import {
   resolveExternalTeamSelection,
   type ExternalAuthTeam,
@@ -129,12 +129,7 @@ const createTeamEnvironment = async (
   const project = await transaction.project.create({
     data: { name, organizationId: input.organizationId },
   })
-  await transaction.boardColumn.createMany({
-    data: defaultColumnCreateData(input.organizationId).map((column) => ({
-      ...column,
-      projectId: project.id,
-    })),
-  })
+  await seedDefaultBoard(transaction, project)
   const team = await transaction.team.create({
     data: {
       name,

@@ -124,7 +124,7 @@ test('team materialization refuses before it reads or writes anything', async ()
     throw new Error('materialization must not touch the database for an unresolved claim')
   }
   const tx = {
-    boardColumn: { createMany: forbidden },
+    board: { count: forbidden, create: forbidden },
     channel: { create: forbidden, findFirst: forbidden },
     project: { create: forbidden },
     team: { create: forbidden, findUnique: forbidden },

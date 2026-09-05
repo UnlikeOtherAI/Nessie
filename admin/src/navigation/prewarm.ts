@@ -34,7 +34,7 @@ import {
 import { useApiClient } from '../providers/ApiClientProvider'
 import { fetchAgentStatus } from '../facades/agents/queries'
 import { fetchApp } from '../facades/apps/hooks'
-import { fetchProjectBoard } from '../facades/board/hooks'
+import { fetchProjectBoards } from '../facades/boards/hooks'
 import { fetchDashboard } from '../facades/dashboards/hooks'
 import {
   fetchKnowledgeSpace,
@@ -106,8 +106,8 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     // one tabHost identity), and every one of them reads the board.
     pattern: /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
     run: (projectId, context) => {
-      prefetch(context, projectKeys.board(projectId), () =>
-        fetchProjectBoard(context.apiClient, projectId))
+      prefetch(context, projectKeys.boards(projectId), () =>
+        fetchProjectBoards(context.apiClient, projectId))
     },
   },
   {

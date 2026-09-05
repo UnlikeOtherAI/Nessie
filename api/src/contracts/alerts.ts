@@ -20,6 +20,10 @@ export const UserAlertKindSchema = z.enum([
   // trigger_health: otherwise it is visible only to whoever happens to open the
   // Automatic logins tab.
   'automatic_membership_health',
+  // A project board's external source stopped syncing. Durable for the same
+  // reason as the two above: a board that has quietly stopped updating still
+  // looks exactly like a board.
+  'board_source_health',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -47,6 +51,7 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  boardSourceId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),

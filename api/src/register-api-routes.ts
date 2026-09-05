@@ -15,7 +15,11 @@ import { registerApprovalRoutes } from './routes/approvals.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBillingRoutes } from './routes/billing.js'
-import { registerBoardRoutes } from './routes/board.js'
+import { registerBoardRoutes } from './routes/boards.js'
+import { registerTaskFieldRoutes } from './routes/task-fields.js'
+import { registerBoardSourceConnectionRoutes } from './routes/board-sources/connections.js'
+import { registerBoardSourceRoutes } from './routes/board-sources/sources.js'
+import { registerBoardSourceWebhookRoutes } from './routes/board-sources/webhooks.js'
 import { registerCallRoutes } from './routes/calls.js'
 import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChannelRoutes } from './routes/channels.js'
@@ -158,6 +162,10 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerExternalAgentRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerBoardRoutes(app, deps)
+  registerTaskFieldRoutes(app, deps)
+  registerBoardSourceConnectionRoutes(app, deps)
+  registerBoardSourceRoutes(app, deps)
+  registerBoardSourceWebhookRoutes(app, deps)
   registerIterationRoutes(app, deps)
   registerTeamRoutes(app, deps)
   registerEventRoutes(app, deps)

@@ -418,11 +418,20 @@ export const projectKeys = {
   all: ['projects'] as const,
   // Nested so the family rule holds. The cost is that create/rename/delete
   // project and add/remove member, which already invalidate `projects`, now
-  // also refetch a mounted board — one cheap `GET /api/projects/:id/board`
-  // column read. The board payload is `{ style, columns }` and carries no
-  // project name, so this is about reachability, not about a rename showing
-  // through.
-  board: (projectId: string) => ['projects', projectId, 'board'] as const,
+  // also refetch a mounted board — one cheap `GET /api/projects/:id/boards`
+  // read. The payload is the boards with their columns and carries no project
+  // name, so this is about reachability, not about a rename showing through.
+  boards: (projectId: string) => ['projects', projectId, 'boards'] as const,
+  // Nested for the same reason as `boards`: a definition change alters what
+  // every card of the project renders.
+  fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
+  // Nested for the same reason: attaching or removing a source changes what
+  // the project's boards show.
+  sources: (projectId: string) => ['projects', projectId, 'sources'] as const,
+  // One attached source, with its mapping. Nested under the project's source
+  // list so attaching or removing one reaches the detail too.
+  source: (projectId: string, sourceId?: string) =>
+    ['projects', projectId, 'sources', sourceId ?? 'none'] as const,
   // Deliberately NOT nested (see the header). Insights is a velocity/burndown
   // report built from one query per completed iteration plus a task-event scan,
   // and nothing that invalidates `projects` — rename, delete, membership, board
@@ -431,6 +440,19 @@ export const projectKeys = {
   // Nested so the project mutations that already refresh `projects` reach the
   // membership list too.
   members: (projectId: string | null) => ['projects', projectId, 'members'] as const,
+}
+
+/**
+ * External board sources. The connection-side keys are their own family
+ * (they are a person's accounts, not a project's), while a project's attached
+ * sources nest under `projectKeys` so a project mutation reaches them.
+ */
+export const boardSourceKeys = {
+  all: ['board-sources'] as const,
+  providers: ['board-sources', 'providers'] as const,
+  connections: ['board-sources', 'connections'] as const,
+  containers: (connectionId?: string) =>
+    ['board-sources', 'connections', connectionId ?? 'none', 'containers'] as const,
 }
 
 export const runKeys = {
@@ -467,6 +489,11 @@ export const taskKeys = {
   // Aggregate and per-project boards share the family root, so one invalidate
   // or optimistic write reaches every board at once.
   forProject: (projectId?: string) => ['tasks', projectId ?? 'all'] as const,
+  // One board's placed task list. Nested under the project's own key so a
+  // move, an archive or a realtime nudge reaches every board of that project
+  // with one invalidate, rather than needing the board ids to hand.
+  forBoard: (projectId?: string, boardId?: string) =>
+    ['tasks', projectId ?? 'all', 'board', boardId ?? 'none'] as const,
 }
 
 export const teamKeys = {

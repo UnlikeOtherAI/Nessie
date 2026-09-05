@@ -20,6 +20,10 @@ export const RunIdSchema = createUuidBrandSchema<'RunId'>()
 export type RunId = z.infer<typeof RunIdSchema>
 export const TaskIdSchema = createUuidBrandSchema<'TaskId'>()
 export type TaskId = z.infer<typeof TaskIdSchema>
+export const BoardIdSchema = createUuidBrandSchema<'BoardId'>()
+export type BoardId = z.infer<typeof BoardIdSchema>
+export const BoardColumnIdSchema = createUuidBrandSchema<'BoardColumnId'>()
+export type BoardColumnId = z.infer<typeof BoardColumnIdSchema>
 export const ThoughtIdSchema = createUuidBrandSchema<'ThoughtId'>()
 export type ThoughtId = z.infer<typeof ThoughtIdSchema>
 export const ThoughtRecallIdSchema = createUuidBrandSchema<'ThoughtRecallId'>()
@@ -61,6 +65,9 @@ export const parseAgentId = (value: string): AgentId => AgentIdSchema.parse(valu
 export const parseThreadId = (value: string): ThreadId => ThreadIdSchema.parse(value)
 export const parseRunId = (value: string): RunId => RunIdSchema.parse(value)
 export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
+export const parseBoardId = (value: string): BoardId => BoardIdSchema.parse(value)
+export const parseBoardColumnId = (value: string): BoardColumnId =>
+  BoardColumnIdSchema.parse(value)
 export const parseThoughtId = (value: string): ThoughtId => ThoughtIdSchema.parse(value)
 export const parseThoughtRecallId = (value: string): ThoughtRecallId =>
   ThoughtRecallIdSchema.parse(value)

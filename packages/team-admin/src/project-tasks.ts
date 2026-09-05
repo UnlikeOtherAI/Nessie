@@ -2,7 +2,20 @@ import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/cli
 import { parseUserId, type AuthorizedActionContext } from '@nessie/schemas'
 import { isAgentAccessibleToActor } from './access-checks.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
-import { isArchivedProjectTaskStatus, isProjectTaskTransitionValid } from './project-task-status.js'
+import { isProjectTaskTransitionValid } from './project-task-status.js'
+import { dropStalePlacements } from './project-task-move.js'
+import {
+  resolveOutboundAssignee,
+  type BoardSourceWriteBack,
+  type BoardSourceWriteBackError,
+} from './board-source-writeback.js'
+import { externalTenantKeyFor } from './board-source-structure.js'
+import {
+  applyFieldValuesPatch,
+  listTaskFieldDefinitions,
+  validateFieldValuesPatch,
+  type TaskFieldError,
+} from './task-fields.js'
 
 export type AssignableProjectTaskUser = { id: string; displayName: string }
 
@@ -66,7 +79,7 @@ export const listProjectTasks = async (
       ...projectTaskVisibilityWhere(visibility),
     },
     include: projectTaskInclude,
-    orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
+    orderBy: { updatedAt: 'desc' },
     take: 200,
   })
   return tasks.map(mapProjectTask)
@@ -176,7 +189,8 @@ export const assignProjectTask = async (
     actorContext: AuthorizedActionContext
     assignmentAttention?: ProjectTaskAssignmentAttention
   },
-): Promise<ProjectTaskRecord | ProjectTaskAssignError> => {
+  writeBack?: BoardSourceWriteBack,
+): Promise<ProjectTaskRecord | ProjectTaskAssignError | BoardSourceWriteBackError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
     select: { id: true, status: true, assigneeAgentId: true, assigneeUserId: true, projectId: true },
@@ -191,6 +205,45 @@ export const assignProjectTask = async (
     return task ? mapProjectTask(task) : { error: 'NOT_FOUND' }
   }
   const assigned = Boolean(userId || agentId)
+
+  // On a mirrored task the assignee is the source's, so it is written upstream
+  // first — and an assignee nobody has linked to a provider account is refused
+  // with the remedy rather than silently assigned only here.
+  if (writeBack) {
+    const link = await prisma.taskExternalLink.findUnique({
+      where: { taskId: input.taskId },
+      include: {
+        source: {
+          select: {
+            provider: true,
+            organizationId: true,
+            container: true,
+            connection: { select: { externalTenantId: true } },
+          },
+        },
+      },
+    })
+    if (link) {
+      const person = userId
+        ? await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } })
+        : null
+      const external = await resolveOutboundAssignee(prisma, {
+        organizationId: link.source.organizationId,
+        provider: link.source.provider,
+        externalTenantKey: externalTenantKeyFor(link.source),
+        userId,
+        agentId,
+        displayName: person?.displayName ?? null,
+      })
+      if (external !== null && typeof external === 'object') return external
+      const outcome = await writeBack.apply({
+        taskId: input.taskId,
+        change: { assigneeExternalUserId: external },
+      })
+      if (outcome && 'error' in outcome) return outcome
+    }
+  }
+
   const nextStatus = assigned && existing.status === 'inbox' ? 'assigned' : !assigned && existing.status === 'assigned' ? 'inbox' : undefined
   const task = await prisma.$transaction(async (tx) => {
     const { count } = await tx.task.updateMany({
@@ -226,17 +279,14 @@ export const transitionProjectTask = async (
   const task = await prisma.$transaction(async (tx) => {
     const { count } = await tx.task.updateMany({
       where: { id: input.taskId, organizationId: input.organizationId, status: existing.status },
-      // An archived ticket has no board placement. Clear a legacy placement
-      // when restoring as well, so the restored status selects its proper
-      // board column instead of reviving a stale one.
-      data: {
-        status: input.status,
-        ...(isArchivedProjectTaskStatus(existing.status) || isArchivedProjectTaskStatus(input.status)
-          ? { columnId: null }
-          : {}),
-      },
+      data: { status: input.status },
     })
     if (count === 0) return null
+    // A transition can move the task out of its pinned column's category —
+    // into Archived, back out of it, or straight across. `resolveBoardPlacement`
+    // ignores a stale pin, but leaving one behind would mean board-written data
+    // that disagrees with the board, so it goes here on every board.
+    await dropStalePlacements(tx, input.taskId)
     await tx.taskEvent.create({ data: { taskId: input.taskId, eventType: 'status_changed', payload: { by: input.actorId, from: existing.status, to: input.status } } })
     return tx.task.findFirst({ where: { id: input.taskId }, include: projectTaskInclude })
   })
@@ -251,26 +301,102 @@ export type ProjectTaskUpdateFields = {
   dueDate?: Date | null
   archivedAt?: Date | null
   storyPoints?: number | null
+  /** A partial merge of custom field values; `null` clears one. */
+  fieldValues?: Record<string, unknown>
 }
 
 export const updateProjectTask = async (
   prisma: PrismaClient,
   input: { taskId: string; organizationId: string; fields: ProjectTaskUpdateFields },
-): Promise<ProjectTaskRecord | { error: 'NOT_FOUND' }> => {
+  writeBack?: BoardSourceWriteBack,
+): Promise<
+  ProjectTaskRecord | { error: 'NOT_FOUND' } | TaskFieldError | BoardSourceWriteBackError
+> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
-    select: { id: true },
+    select: { id: true, projectId: true },
   })
   if (!existing) return { error: 'NOT_FOUND' }
+
+  // Custom field values are validated against the project's own definitions
+  // before anything is written, so the JSONB column cannot accumulate a key no
+  // definition explains.
+  const patch = input.fields.fieldValues
+  if (patch && Object.keys(patch).length > 0) {
+    if (!existing.projectId) return { error: 'FIELD_UNKNOWN', fieldId: Object.keys(patch)[0] ?? '' }
+    const definitions = await listTaskFieldDefinitions(prisma, existing.projectId)
+    // Only the values of `user` fields are candidate member ids. Every string
+    // in the patch is not: a `select` value is an option id and a `text` value
+    // is prose, and asking Postgres to cast either to a uuid is an error.
+    const userFieldIds = new Set(
+      definitions.filter((field) => field.type === 'user').map((field) => field.id),
+    )
+    const userIds = Object.entries(patch)
+      .filter(([fieldId, value]) => userFieldIds.has(fieldId) && typeof value === 'string')
+      .map(([, value]) => value as string)
+    const activeMembers = new Set(
+      (
+        await prisma.organizationMember.findMany({
+          // Liveness is on the membership, not the user: a deactivated member
+          // keeps their row so an owner can reactivate them.
+          where: {
+            organizationId: input.organizationId,
+            userId: { in: userIds },
+            deactivatedAt: null,
+          },
+          select: { userId: true },
+        })
+      ).map((member) => member.userId),
+    )
+    const failure = validateFieldValuesPatch(definitions, patch, (userId) =>
+      activeMembers.has(userId),
+    )
+    if (failure) return failure
+  }
+
+  // Title, detail and deadline are source-owned on a mirrored task: the vendor
+  // is asked *after* everything local has been validated — so a rejected custom
+  // field cannot leave an upstream write already made — and its echo, not this
+  // request, becomes the mirror.
+  const fields = { ...input.fields }
+  if (writeBack) {
+    const change = {
+      ...(fields.title !== undefined ? { title: fields.title } : {}),
+      ...(fields.detail !== undefined ? { description: fields.detail } : {}),
+      ...(fields.dueDate !== undefined
+        ? { dueDate: fields.dueDate?.toISOString().slice(0, 10) ?? null }
+        : {}),
+    }
+    if (Object.keys(change).length > 0) {
+      const outcome = await writeBack.apply({ taskId: input.taskId, change })
+      if (outcome && 'error' in outcome) return outcome
+      // The echo already wrote those columns; writing them again from the
+      // request would overwrite whatever the provider actually stored.
+      if (outcome) {
+        delete fields.title
+        delete fields.detail
+        delete fields.dueDate
+      }
+    }
+  }
+
   const data: Prisma.TaskUpdateInput = {}
-  if (input.fields.title !== undefined) data.title = input.fields.title
-  if (input.fields.purpose !== undefined) data.purpose = input.fields.purpose
-  if (input.fields.detail !== undefined) data.detail = input.fields.detail
-  if (input.fields.priority !== undefined) data.priority = input.fields.priority
-  if (input.fields.dueDate !== undefined) data.dueDate = input.fields.dueDate
-  if (input.fields.archivedAt !== undefined) data.archivedAt = input.fields.archivedAt
-  if (input.fields.storyPoints !== undefined) data.storyPoints = input.fields.storyPoints
-  return mapProjectTask(await prisma.task.update({ where: { id: existing.id }, data, include: projectTaskInclude }))
+  if (fields.title !== undefined) data.title = fields.title
+  if (fields.purpose !== undefined) data.purpose = fields.purpose
+  if (fields.detail !== undefined) data.detail = fields.detail
+  if (fields.priority !== undefined) data.priority = fields.priority
+  if (fields.dueDate !== undefined) data.dueDate = fields.dueDate
+  if (fields.archivedAt !== undefined) data.archivedAt = fields.archivedAt
+  if (fields.storyPoints !== undefined) data.storyPoints = fields.storyPoints
+
+  const task = await prisma.$transaction(async (tx) => {
+    if (Object.keys(data).length > 0) {
+      await tx.task.update({ where: { id: existing.id }, data })
+    }
+    if (patch) await applyFieldValuesPatch(tx, existing.id, patch)
+    return tx.task.findFirstOrThrow({ where: { id: existing.id }, include: projectTaskInclude })
+  })
+  return mapProjectTask(task)
 }
 
 export const setProjectTaskIteration = async (

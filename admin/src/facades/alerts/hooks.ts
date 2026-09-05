@@ -17,6 +17,7 @@ export type UserAlertRecord = {
     | 'team_invitation'
     | 'approval_requested'
     | 'automatic_membership_health'
+    | 'board_source_health'
   messageId: string | null
   rootMessageId: string | null
   threadId: string | null
@@ -26,6 +27,7 @@ export type UserAlertRecord = {
   taskId: string | null
   knowledgePageId: string | null
   triggerId: string | null
+  boardSourceId: string | null
   metadata: {
     inviteId: string
     organizationId: string
@@ -180,6 +182,13 @@ export const getAlertLink = (
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
     return { to: `/agents/triggers#${alert.triggerId}` }
+  }
+  if (alert.kind === 'board_source_health' && alert.projectId && alert.boardSourceId) {
+    // Straight to the source that stopped, with its remedy on screen — not to
+    // a settings page the reader then has to search.
+    return {
+      to: `/projects/${alert.projectId}/settings?section=sources&source=${alert.boardSourceId}`,
+    }
   }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }

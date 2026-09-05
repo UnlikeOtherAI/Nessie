@@ -386,6 +386,21 @@ export const DashboardUpdatedEventSchema = z.object({
 })
 export type DashboardUpdatedEvent = z.infer<typeof DashboardUpdatedEventSchema>
 
+/**
+ * A project's boards have new or changed work — an external source finished a
+ * sync, or a write-back came back.
+ *
+ * Content-free on purpose: it carries a project id and nothing else, on the
+ * organisation scope (there is no project scope), and the client's refetch is
+ * entitlement-checked. A project id reaching somebody who is not a member
+ * therefore reveals nothing they can read. Same reasoning as
+ * `dashboard.updated`.
+ */
+export const BoardUpdatedEventSchema = z.object({
+  projectId: z.string().uuid(),
+})
+export type BoardUpdatedEvent = z.infer<typeof BoardUpdatedEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -412,6 +427,7 @@ export const WsEventNameSchema = z.enum([
   'call.invite.updated',
   'call.updated',
   'dashboard.updated',
+  'board.updated',
 ])
 
 export const WsScopeSchema = z.union([
@@ -642,6 +658,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('dashboard.updated'),
     data: DashboardUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('board.updated'),
+    data: BoardUpdatedEventSchema,
     ts: TimestampSchema,
   }),
 ])

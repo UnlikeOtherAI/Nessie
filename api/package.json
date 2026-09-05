@@ -55,7 +55,9 @@
     "fastify": "^5.8.4",
     "markdown-it": "^14.2.0",
     "pg": "^8.16.3",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@nessie/board-sources": "workspace:*",
+    "@nessie/board-source-providers": "workspace:*"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
