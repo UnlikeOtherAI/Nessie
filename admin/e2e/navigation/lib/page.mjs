@@ -44,9 +44,54 @@ export const pushPath = (page, path) => page.evaluate((next) => {
   window.dispatchEvent(new PopStateEvent('popstate'))
 }, path)
 
+// The shared selection strip (components/primitives/TabBar) becomes a dropdown
+// when its labels stop fitting the width it is given — which on a phone is
+// exactly what the channel's six sections do. Both shapes carry the same
+// accessible name, so a test names the strip and lets these helpers drive
+// whichever one is mounted, instead of encoding a shape that depends on how
+// wide the labels happen to render.
+const stripItems = (label) => `[aria-label="${label}"] button`
+const stripTrigger = (label) => `button.tabbar-trigger[aria-label="${label}"]`
+const menuOptions = (label) => `[role="listbox"][aria-label="${label}"] .tabbar-option`
+
+export const waitForTabBar = (page, label) => page.waitForSelector(
+  `${stripItems(label)}, ${stripTrigger(label)}`,
+  { timeout: 60_000 },
+)
+
+export const selectedTab = (page, label) => page.evaluate((name) => {
+  // The trigger is itself the element carrying the name, so it must be read
+  // before the strip lookup — which would otherwise match the trigger and find
+  // no selected item inside it.
+  const trigger = document.querySelector(`button.tabbar-trigger[aria-label="${name}"]`)
+  if (trigger) return trigger.querySelector('.tabbar-trigger-label')?.textContent?.trim() ?? null
+  const strip = document.querySelector(`[aria-label="${name}"]`)
+  const selected = strip?.querySelector('[aria-selected="true"], [aria-checked="true"]')
+  return selected?.textContent?.trim() ?? null
+}, label)
+
+export const clickTab = async (page, label, text) => {
+  await waitForTabBar(page, label)
+  const trigger = await page.$(stripTrigger(label))
+  if (!trigger) {
+    const tab = await elementWithText(page, stripItems(label), text)
+    if (!tab) throw new Error(`no "${label}" tab named "${text}"`)
+    await tab.click()
+    return
+  }
+  await trigger.click()
+  await page.waitForSelector(menuOptions(label), { timeout: 30_000 })
+  const option = await elementWithText(page, menuOptions(label), text)
+  if (!option) throw new Error(`no "${label}" option named "${text}"`)
+  await option.click()
+  // The menu closes through the shared overlay's closing motion, so the tab
+  // switch is not settled the moment the option is released.
+  await page.waitForSelector(menuOptions(label), { state: 'hidden', timeout: 30_000 })
+}
+
 export const gotoChannel = async (page, channelId) => {
   await gotoStable(page, `${ADMIN_URL}/channels/${channelId}`)
-  await page.waitForSelector('[aria-label="Channel sections"] button', { timeout: 60_000 })
+  await waitForTabBar(page, 'Channel sections')
 }
 
 const elementWithText = async (page, selector, text) => {
@@ -80,22 +125,9 @@ export const clickBackTo = async (page, label) => {
   await page.click(selector)
 }
 
-export const clickChannelTab = async (page, label) => {
-  await page.waitForSelector('[aria-label="Channel sections"] button', { timeout: 30_000 })
-  const tab = await elementWithText(page, '[aria-label="Channel sections"] button', label)
-  if (!tab) throw new Error(`no channel tab named "${label}"`)
-  await tab.click()
-}
+export const clickChannelTab = (page, label) => clickTab(page, 'Channel sections', label)
 
-export const selectedChannelTab = (page) => page.evaluate(() => {
-  const strip = document.querySelector('[aria-label="Channel sections"]')
-  if (!strip) return null
-  const selected = [...strip.querySelectorAll('button')].find(
-    (button) => button.getAttribute('aria-selected') === 'true'
-      || button.getAttribute('aria-checked') === 'true',
-  )
-  return selected?.textContent?.trim() ?? null
-})
+export const selectedChannelTab = (page) => selectedTab(page, 'Channel sections')
 
 export const shot = async (page, caseName, frame) => {
   const directory = join(SCREENSHOT_ROOT, caseName)
