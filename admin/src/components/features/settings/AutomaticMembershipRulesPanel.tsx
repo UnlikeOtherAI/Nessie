@@ -113,12 +113,19 @@ export const AutomaticMembershipRulesPanel = ({
               >
                 {permissions.manageDomains ? (
                   <div className="grid gap-2">
-                    <Switch
-                      checked={data.provisioningEnabled}
-                      disabled={pending}
-                      label="Add people automatically"
-                      onChange={(enabled) => run(setEnabled, { enabled })}
-                    />
+                    {/* The switch carries an aria-label, which a sighted person
+                        cannot read — so the state is named beside it too. */}
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={data.provisioningEnabled}
+                        disabled={pending}
+                        label="Add people automatically"
+                        onChange={(enabled) => run(setEnabled, { enabled })}
+                      />
+                      <span className="text-sm font-medium text-[color:var(--tx)]">
+                        Add people automatically
+                      </span>
+                    </div>
                     <p className="text-xs text-[color:var(--tx3)]">
                       {data.provisioningEnabled
                         ? 'Turning this off stops new people being added. Nobody is removed.'

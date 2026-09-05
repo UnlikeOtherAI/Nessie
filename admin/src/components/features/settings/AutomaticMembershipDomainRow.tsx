@@ -82,13 +82,18 @@ export const AutomaticMembershipDomainRow = ({
         </div>
         {canManageDomains && (domain.status === 'active' || domain.status === 'verified'
           || domain.status === 'suspended') ? (
-            <Switch
-              checked={domain.status === 'active'}
-              disabled={pending}
-              label={`Add people from ${domain.domain} automatically`}
-              onChange={(checked) =>
-                actions.onSetStatus(domain.id, checked ? 'active' : 'suspended')}
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[color:var(--tx3)]">
+                {domain.status === 'active' ? 'Adding people' : 'Not adding people'}
+              </span>
+              <Switch
+                checked={domain.status === 'active'}
+                disabled={pending}
+                label={`Add people from ${domain.domain} automatically`}
+                onChange={(checked) =>
+                  actions.onSetStatus(domain.id, checked ? 'active' : 'suspended')}
+              />
+            </div>
           ) : null}
       </header>
 
@@ -143,12 +148,17 @@ export const AutomaticMembershipDomainRow = ({
         />
       ) : (
         <div className="grid gap-2">
-          <Switch
-            checked={attached}
-            disabled={!canManageRules || pending}
-            label={`Add people from ${domain.domain} to this team`}
-            onChange={(checked) => actions.onToggleTeam(domain.id, checked)}
-          />
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={attached}
+              disabled={!canManageRules || pending}
+              label={`Add people from ${domain.domain} to this team`}
+              onChange={(checked) => actions.onToggleTeam(domain.id, checked)}
+            />
+            <span className="text-sm font-medium text-[color:var(--tx)]">
+              Add people from this domain to this team
+            </span>
+          </div>
           <p className="text-xs text-[color:var(--tx3)]">
             {attached
               ? 'People signing in with this domain are added to this team as members.'
