@@ -418,7 +418,22 @@ export const registerTeamProvisioningRoutes = (
    * route resolves a name to ids and grants nothing — the caller still runs the
    * ordinary team-switch, which is where authorization actually happens.
    */
-  app.get('/api/hosts/resolve', async (request, reply) => {
+  /**
+   * PUBLIC, and it has to be: this is what a branded landing page renders from,
+   * and that page exists for somebody who is not signed in yet. `public: true`
+   * opts the route out of the API-wide auth gate, which is otherwise
+   * fail-closed for everything.
+   *
+   * It answers about the ORGANISATION only, and never about a team. That is a
+   * structural guarantee rather than a careful branch: this handler has no
+   * access to a team id, so no future edit can make it leak one. A client that
+   * needs to enter a team asks `/api/hosts/team`, which is authenticated.
+   *
+   * What it does disclose is that an organisation of a given name exists on
+   * this domain, with its display name and mark. That is inherent in giving a
+   * tenant a public branded address at all.
+   */
+  app.get('/api/hosts/resolve', { config: { public: true } }, async (request, reply) => {
     const query = parseInput(ResolveHostQuerySchema, request.query, reply)
     if (!query) return reply
 
@@ -426,8 +441,6 @@ export const registerTeamProvisioningRoutes = (
     if (!parsed) return createApiResponse({ kind: null })
 
     try {
-      // Both shapes need the organisation: an org host IS one, and a team host
-      // renders its organisation's brand while signing somebody in.
       const organisation = await resolveUoaOrgHost({ orgSlug: parsed.orgSlug }, rosterDeps)
       if (!organisation) return createApiResponse({ kind: null })
 
@@ -438,27 +451,47 @@ export const registerTeamProvisioningRoutes = (
       const signInOrigin =
         process.env.NESSIE_ADMIN_PUBLIC_URL ?? process.env.NESSIE_ADMIN_ORIGIN ?? null
 
-      if (parsed.kind === 'organisation') {
-        return createApiResponse({ kind: 'organisation', organisation, signInOrigin })
+      return createApiResponse({ kind: parsed.kind, organisation, signInOrigin })
+    } catch (error) {
+      if (error instanceof UoaRosterUnavailableError) {
+        return createApiResponse({ kind: null })
       }
+      throw error
+    }
+  })
 
-      // A team host. The organisation's name and mark are public — the label is
-      // guessable, so a branded page discloses nothing the hostname did not —
-      // but the ids that let a client SWITCH INTO a team go only to a signed-in
-      // caller. An anonymous visitor gets enough to brand the page and hand off
-      // to sign-in, and nothing that says whether that team exists.
-      if (!request.actorContext) {
-        return createApiResponse({ kind: 'team', organisation, team: null, signInOrigin })
-      }
+  /**
+   * The ids behind a team hostname, for a caller who is signed in.
+   *
+   * Split from the public resolver deliberately: knowing that
+   * `design.acme.nessie.works` maps to a particular team is not something an
+   * anonymous visitor needs, and keeping it on an authenticated route means the
+   * public one cannot grow into leaking it.
+   *
+   * Resolving is still not authorization. These ids only let the client run the
+   * ordinary team switch, which re-checks live membership and fails closed for
+   * a team this person is not in.
+   */
+  app.get('/api/hosts/team', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
 
+    const query = parseInput(ResolveHostQuerySchema, request.query, reply)
+    if (!query) return reply
+
+    const parsed = parseTenantHost(query.host, teamHostBaseDomain)
+    if (!parsed || parsed.kind !== 'team') return createApiResponse({ team: null })
+
+    try {
       const team = await resolveUoaTeamHost(
         { orgSlug: parsed.orgSlug, teamSlug: parsed.teamSlug },
         rosterDeps,
       )
-      return createApiResponse({ kind: 'team', organisation, team, signInOrigin })
+      return createApiResponse({ team })
     } catch (error) {
       if (error instanceof UoaRosterUnavailableError) {
-        return createApiResponse({ kind: null })
+        return createApiResponse({ team: null })
       }
       throw error
     }
