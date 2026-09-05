@@ -76,3 +76,37 @@ test('an unassigned issue with no due date carries nulls, not empty strings', ()
   assert.equal(item.dueDate, null)
   assert.deepEqual(item.labels, [])
 })
+
+// Every state type a real Linear workspace was observed to use. `duplicate` is
+// the one the documented list omits: Linear creates a Duplicate state in every
+// team it makes, so a workspace where no team has one is the exception, not the
+// rule. Leaving it unmapped meant every real team connected with an unmapped
+// state and turned the source `misconfigured` on its first sync.
+test('every state type Linear actually issues has a category', () => {
+  for (const type of [
+    'triage',
+    'backlog',
+    'unstarted',
+    'started',
+    'completed',
+    'canceled',
+    'duplicate',
+  ]) {
+    assert.notEqual(
+      linearStateCategory(type),
+      null,
+      `${type} has no category, so a team using it would not map`,
+    )
+  }
+})
+
+test('a duplicate leaves the board the way a cancellation does', () => {
+  assert.equal(linearStateCategory('duplicate'), 'archived')
+  assert.equal(linearStateCategory('canceled'), 'archived')
+})
+
+// A type nobody has seen still returns null rather than being guessed at: an
+// unmapped state is a question for a person, and `null` is how it gets asked.
+test('an unknown state type is left for a person to map', () => {
+  assert.equal(linearStateCategory('something_new'), null)
+})

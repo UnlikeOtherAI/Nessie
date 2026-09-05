@@ -1,8 +1,10 @@
+import { Prisma } from '@prisma/client'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
   type AuthorizedActionContext,
+  evaluateOrganizationTheme,
   OrganizationSummarySchema,
   UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
@@ -179,6 +181,7 @@ export const registerOrganizationRoutes = (
         stripImageMetadata: organization.stripImageMetadata,
         nameManagedExternally: organization.externalOrgId !== null,
         administration,
+        theme: organization.theme ?? null,
       }),
     )
   })
@@ -210,6 +213,20 @@ export const registerOrganizationRoutes = (
 
     const body = parseInput(UpdateOrganizationRequestSchema, request.body, reply)
     if (!body) return reply
+
+    // The seeds are re-evaluated here, not trusted from the client: the admin
+    // screen disables Save on a blocking check, but a palette whose text
+    // cannot be read must not exist in the database whatever sent it. Checked
+    // before the rename relay so an invalid palette never costs an upstream
+    // round-trip.
+    if (body.theme) {
+      const evaluated = evaluateOrganizationTheme(body.theme)
+      const blocking = evaluated.checks.find((check) => check.level === 'blocking')
+      if (blocking) {
+        sendApiError(reply, 400, 'INVALID_THEME', blocking.message, 'theme')
+        return reply
+      }
+    }
 
     if (body.logoAttachmentId) {
       const attachment = await prisma.attachment.findUnique({
@@ -265,6 +282,9 @@ export const registerOrganizationRoutes = (
         ...(body.stripImageMetadata !== undefined
           ? { stripImageMetadata: body.stripImageMetadata }
           : {}),
+        // `Prisma.DbNull` writes a SQL NULL — `null` on a Json column would
+        // store the JSON literal `null`, which reads back as a palette.
+        ...(body.theme !== undefined ? { theme: body.theme ?? Prisma.DbNull } : {}),
       },
     })
 
@@ -277,6 +297,7 @@ export const registerOrganizationRoutes = (
         stripImageMetadata: organization.stripImageMetadata,
         nameManagedExternally: organization.externalOrgId !== null,
         administration,
+        theme: organization.theme ?? null,
       }),
     )
   })

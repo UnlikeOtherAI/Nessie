@@ -63,6 +63,12 @@
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The sign-in showcase (packages/sign-in-surface) is a dark stage with a
+     white thread card in every theme; the theme does not restyle it. */
+  --signin-stage: #0a0a0a;
+  --signin-on-stage: #ffffff;
+  --signin-stage-card: #ffffff;
+  --signin-stage-card-fg: #0a0a0a;
   /* The aura: the one place chroma touches an ordinary surface. A blurred
      pastel wash behind the sign-in column and the showcase panel
      (packages/sign-in-surface); never a text, button or border colour. */
@@ -2873,6 +2879,37 @@ button.reaction-pill-active:focus-visible {
 
 .admin-input.admin-input-compact {
   width: auto;
+}
+
+/* The swatch half of `ColourField`. A native `<input type="color">` paints its
+   value in its content box, so `.admin-input`'s 10px padding leaves a sliver of
+   colour and reads as a broken text field. Stated here rather than as
+   utilities at the call site because these rules are unlayered — a Tailwind
+   `p-1` loses to `.admin-input-compact`'s padding, which is how the swatch
+   came out four pixels wide the first time. */
+.admin-input.admin-input-colour {
+  width: 2.25rem;
+  height: 30px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.admin-input.admin-input-colour:disabled {
+  cursor: not-allowed;
+}
+
+.admin-input.admin-input-colour::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.admin-input.admin-input-colour::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.admin-input.admin-input-colour::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
 }
 
 /* `.admin-button-secondary` carries a 1px border and `.admin-button-primary`

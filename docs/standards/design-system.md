@@ -12,11 +12,44 @@ summary and points here; **this file is the rule**.
   **no** raw hex or Tailwind named-color utilities; they reference tokens via
   `var(--x)` / `bg-[var(--x)]`.
 - Switcher: `ThemeProvider` (`admin/src/providers/`) + Appearance page
-  (`/settings/appearance`); choice persists in `localStorage["nessie.theme"]`
-  for logged-out screens and on `User.preferences.theme` for signed-in users, so
-  web, desktop, and mobile use the same account theme.
+  (`/settings/appearance`); the choice persists on `User.preferences.theme` for
+  signed-in users, so web, desktop, and mobile use the same account theme, and
+  in **three** `localStorage` keys for the logged-out screen and for a themed
+  first paint — `nessie.theme.choice` (what the person picked, written only by
+  the picker), `nessie.theme.applied` (what was last on screen) and
+  `nessie.theme.css` (the organisation palette's rule, a hint the API's answer
+  replaces on every load). They replaced the single `nessie.theme`, which
+  conflated a choice with a default: the apply effect wrote its own default
+  back as though it were a pick, and first sign-in copied it onto the account,
+  so every row read `'sandstone'` and no organisation default could ever reach
+  an existing person.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+- **One theme is data, not CSS: the organisation's own.** An organisation
+  administrator authors a palette on `/settings/organization?tab=appearance`; it
+  appears as one more card on the per-user Colours panel, labelled with the
+  organisation's name, and is the default for anyone who has not chosen. It is
+  **colours only** — type, radii, spacing, motion and `--aura-wash` are `:root`
+  in `styles.css` and are not authorable, which the `.strict()` four-field seed
+  schema enforces at the wire. The admin authors four seeds
+  (appearance, accent, surface, optional sidebar) and `@nessie/schemas`
+  `organization-theme.ts` derives the other forty-eight tokens; that derivation
+  lives in the shared package for the `secret-precedence.ts` reason — the API
+  refuses a palette that fails a contrast floor and the admin previews the same
+  one, so two derivations would be two themes. `ThemeProvider` keeps the result
+  in one runtime-filled `<style id="nessie-organization-theme">` declaring
+  `[data-theme="organization"]`, so switching stays a single `data-theme` write
+  and picking a built-in makes it inert — inline custom properties on the root
+  element would instead beat every `[data-theme]` block until removed by hand.
+  `THEME_TOKENS` is pinned against the stylesheet by
+  `admin/test/organization-theme-tokens.test.ts`: a token added to the built-ins
+  without a derivation rule fails CI rather than rendering as the `@property`
+  registration's black. The palette is tenant state and deliberately does not
+  reach `/login`, which is instance state (the `instanceBrand` doctrine).
+  There is no lock — an organisation theme is a default, never a mandate, since
+  forcing one takes High Contrast away from the person who needs it. Full
+  design, formulas and contrast floors:
+  [docs/plans/2026-09-05-organisation-custom-theme.md](../plans/2026-09-05-organisation-custom-theme.md).
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
   validation, feedback, loading/empty/error states, chips, key-value views and
   confirm flows were audited across every content page; the primitives mostly

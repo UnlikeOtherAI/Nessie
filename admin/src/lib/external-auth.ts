@@ -1,5 +1,5 @@
 import type { PendingExternalAuthTarget } from '@nessie/client-core'
-import type { AppliedTheme } from '../providers/ThemeProvider'
+import type { SignInTheme } from '../providers/ThemeProvider'
 import { isDesktopApp } from './desktop'
 import { isReactNativeWebView } from './mobile-shell'
 import {
@@ -60,7 +60,7 @@ const openAuthorizeUrl = async (authorizeUrl: string, state: string | undefined)
  */
 export const startExternalSignIn = async (
   providerId: string,
-  theme: AppliedTheme,
+  theme: SignInTheme,
   options: ExternalSignInOptions = {},
 ): Promise<void> => {
   const redirectUri = externalAuthRedirectUri()
@@ -96,7 +96,7 @@ export const startExternalSignIn = async (
 export const startTeamSwitchReauthorization = async (input: {
   providerId: string
   targetTeam: PendingExternalAuthTarget
-  theme: AppliedTheme
+  theme: SignInTheme
 }): Promise<void> =>
   startExternalSignIn(input.providerId, input.theme, {
     returnPath: window.location.pathname + window.location.search,

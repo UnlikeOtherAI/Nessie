@@ -11,6 +11,7 @@ const base = {
   stripImageMetadata: true,
   conversationalSetupEnabled: false,
   administration: { status: 'allowed' },
+  theme: null,
 }
 
 /**
@@ -45,4 +46,38 @@ test('an SSO-bound organisation is marked, a local one is not', () => {
     OrganizationSummarySchema.parse({ ...base, nameManagedExternally: false }).nameManagedExternally,
     false,
   )
+})
+
+/**
+ * Same class of failure as `nameManagedExternally` above, one field along: the
+ * palette is REQUIRED on the wire because every member's shell renders from it,
+ * and a construction site that forgets it would 500 the one endpoint every
+ * signed-in screen calls.
+ */
+test('an organisation summary must carry its palette, even when there is none', () => {
+  const { theme: _theme, ...withoutTheme } = base
+  assert.throws(
+    () => OrganizationSummarySchema.parse({ ...withoutTheme, nameManagedExternally: false }),
+    'a summary built without theme must be rejected, not defaulted',
+  )
+})
+
+test('a palette on the wire is seeds only — colours, never derived tokens', () => {
+  const theme = {
+    appearance: 'dark' as const,
+    accent: '#0f766e',
+    surface: '#0b1416',
+    sidebar: null,
+  }
+  assert.deepEqual(
+    OrganizationSummarySchema.parse({ ...base, nameManagedExternally: false, theme }).theme,
+    theme,
+  )
+  // `.strict()` is what keeps type, radii and spacing off this contract.
+  assert.throws(() =>
+    OrganizationSummarySchema.parse({
+      ...base,
+      nameManagedExternally: false,
+      theme: { ...theme, fontFamily: 'Comic Sans' },
+    }))
 })

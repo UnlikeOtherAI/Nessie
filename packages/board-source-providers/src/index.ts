@@ -14,30 +14,32 @@ import { createTrelloAdapter } from '@nessie/board-source-trello'
  * and worker startup — the same seam `registerCommsConnectorsFromEnv` is for
  * the communications connectors.
  *
- * A provider with no credentials configured on this deployment stays
- * unregistered on purpose: the connect picker offers only what can actually
- * complete an OAuth round trip, and a job naming an unregistered provider parks
- * with a reason rather than failing in a way that reads like an outage.
+ * A provider stays unregistered when nothing on this deployment could complete
+ * a connection for it — a job naming it then parks with a reason rather than
+ * failing in a way that reads like an outage. That is now a narrower condition
+ * than it was: a provider whose adapter offers a pasted API key needs no app
+ * registered here at all, and registers regardless.
  *
- * Each provider needs an app registered with the vendor once per deployment.
  * See docs/deployment.md → "Project board sources".
  */
 export const registerBoardSourceAdaptersFromEnv = (
   env: NodeJS.ProcessEnv,
 ): BoardSourceProvider[] => {
+  // Linear registers unconditionally: its adapter always offers a personal API
+  // key, which needs nothing configured here. The OAuth half appears only when
+  // this deployment registered an app, and `listProviderMethods` reports which
+  // of the two the picker may offer.
   const linearClientId = env.NESSIE_BOARD_LINEAR_CLIENT_ID
   const linearClientSecret = env.NESSIE_BOARD_LINEAR_CLIENT_SECRET
-  if (linearClientId && linearClientSecret) {
-    registerBoardSourceAdapter('linear', () =>
-      createLinearAdapter({
-        clientId: linearClientId,
-        clientSecret: linearClientSecret,
-        ...(env.NESSIE_BOARD_LINEAR_WEBHOOK_SECRET
-          ? { webhookSecret: env.NESSIE_BOARD_LINEAR_WEBHOOK_SECRET }
-          : {}),
-      }),
-    )
-  }
+  registerBoardSourceAdapter('linear', () =>
+    createLinearAdapter({
+      ...(linearClientId ? { clientId: linearClientId } : {}),
+      ...(linearClientSecret ? { clientSecret: linearClientSecret } : {}),
+      ...(env.NESSIE_BOARD_LINEAR_WEBHOOK_SECRET
+        ? { webhookSecret: env.NESSIE_BOARD_LINEAR_WEBHOOK_SECRET }
+        : {}),
+    }),
+  )
 
   const jiraClientId = env.NESSIE_BOARD_JIRA_CLIENT_ID
   const jiraClientSecret = env.NESSIE_BOARD_JIRA_CLIENT_SECRET

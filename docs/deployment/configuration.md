@@ -239,16 +239,24 @@ A project's boards can mirror work from another system
 Each provider needs an app registered with the vendor **once per deployment**;
 a person then connects their own account to it.
 
-**A provider with no credentials here is not registered.** It is absent from
-the connect picker rather than offered and broken, and any queued job naming it
-parks with `PROVIDER_NOT_CONFIGURED` instead of failing in a way that reads like
-an outage. Configuring one is the only thing that turns it on — there is no
-per-organisation switch.
+**Linear needs nothing here.** Its adapter offers a personal API key, which a
+person creates in their own Linear account and pastes into a project's
+Settings → Sources, so it is registered on every deployment. Setting
+`NESSIE_BOARD_LINEAR_CLIENT_ID` / `_SECRET` adds *sign in with Linear* beside
+the key; it does not gate Linear being available.
+
+**A provider that can only be signed in to, and has no credentials here, is not
+registered.** Jira, GitHub and Trello are absent from the connect picker rather
+than offered and broken, and any queued job naming one parks with
+`PROVIDER_NOT_CONFIGURED` instead of failing in a way that reads like an outage.
+Configuring one is the only thing that turns it on — there is no
+per-organisation switch. Asking for a sign-in on a provider registered without
+an app is refused by name, `PROVIDER_OAUTH_NOT_CONFIGURED`.
 
 | Variable | Provider | Where it comes from |
 | --- | --- | --- |
-| `NESSIE_BOARD_LINEAR_CLIENT_ID` / `_SECRET` | Linear | An OAuth application in Linear's workspace settings. Redirect URI: `<NESSIE_API_PUBLIC_URL>/api/board-sources/connections/linear/callback` |
-| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | The signing secret of the app's webhook, if one is configured. Without it Linear syncs on its five-minute poll only. |
+| `NESSIE_BOARD_LINEAR_CLIENT_ID` / `_SECRET` | Linear | **Optional.** An OAuth application in Linear's workspace settings, to offer *sign in with Linear* as well as the API key. Redirect URI: `<NESSIE_API_PUBLIC_URL>/api/board-sources/connections/linear/callback` |
+| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | The signing secret of the app's webhook, if one is configured. Without it Linear syncs on its five-minute poll only — which is what an API-key connection always does, since an app-level webhook belongs to an app nobody registered. |
 | `NESSIE_BOARD_JIRA_CLIENT_ID` / `_SECRET` | Jira Cloud | An OAuth 2.0 (3LO) app in the Atlassian developer console, with `read:jira-work write:jira-work read:jira-user offline_access`. Same callback path with `/jira/`. |
 | `NESSIE_BOARD_GITHUB_CLIENT_ID` / `_SECRET` | GitHub | An OAuth app or GitHub App. Scopes `repo read:project read:org`. Same callback path with `/github/`. |
 | `NESSIE_BOARD_GITHUB_WEBHOOK_SECRET` | GitHub | The app's webhook secret, for `X-Hub-Signature-256` verification. |

@@ -198,7 +198,12 @@ export const ToolsPage = () => {
   )
 
   const columns = [
-    <ColumnBrowserColumn leading={<PhoneNavigationButton />} key="list" title={`Tools (${sortedTools.length})`}>
+    <ColumnBrowserColumn
+      key="list"
+      leading={<PhoneNavigationButton />}
+      ownsScreen
+      title={`Tools (${sortedTools.length})`}
+    >
       <div className="grid gap-3">
         <input
           autoComplete="off"

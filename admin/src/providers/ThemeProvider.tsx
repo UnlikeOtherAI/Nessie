@@ -8,26 +8,37 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import {
+  evaluateOrganizationTheme,
+  organizationThemeCss,
+  type EvaluatedTheme,
+} from '@nessie/schemas'
 import { useUpdatePreferences } from '../facades/auth/hooks'
+import { useCurrentOrganization } from '../facades/organization/hooks'
 import { useAuthSession } from './AuthSessionProvider'
+import { DEFAULT_THEME, resolveThemeChoice } from './theme-resolution'
+import {
+  forgetLegacyTheme,
+  ORGANIZATION_THEME_STYLE_ID,
+  readThemeChoice,
+  writeAppliedTheme,
+  writeOrganizationThemeCss,
+  writeThemeChoice,
+  type Theme,
+} from './theme-storage'
 
-const STORAGE_KEY = 'nessie.theme'
 const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)'
 
-export type Theme =
-  | 'nebula'
-  | 'midnight'
-  | 'daylight'
-  | 'forest'
-  | 'ocean'
-  | 'sunset'
-  | 'rose'
-  | 'graphite'
-  | 'sandstone'
-  | 'contrast'
-  | 'system'
+export type { AppliedTheme } from './theme-resolution'
+export type { Theme } from './theme-storage'
 
-export type AppliedTheme = Exclude<Theme, 'system'>
+/**
+ * The theme ids UnlikeOtherAI's hosted sign-in page understands
+ * (`SsoThemeSchema`, `api/src/contracts/auth.ts`). `organization` is ours
+ * alone: that page has no access to a tenant's palette, and before sign-in
+ * there is no tenant to ask.
+ */
+export type SignInTheme = Exclude<Theme, 'organization' | 'system'>
 
 type ThemeOption = {
   description: string
@@ -36,12 +47,21 @@ type ThemeOption = {
 }
 
 type ThemeContextValue = {
+  /** The palette in force, when an organisation theme is applied or previewed. */
+  organizationTheme: EvaluatedTheme | null
+  /**
+   * Paint a draft palette on the real shell. The organisation Appearance page
+   * is the only caller; `null` restores the resolved state. A preview never
+   * touches the account's choice or the first-paint cache.
+   */
+  setPreview: (evaluated: EvaluatedTheme | null) => void
   setTheme: (theme: Theme) => void
+  signInTheme: SignInTheme
   theme: Theme
   themes: readonly ThemeOption[]
 }
 
-const THEMES = [
+const BUILT_IN_THEMES = [
   {
     description: 'Warm sand surfaces with terracotta controls.',
     id: 'sandstone',
@@ -99,122 +119,142 @@ const THEMES = [
   },
 ] as const satisfies readonly ThemeOption[]
 
-const THEME_IDS = new Set<Theme>(THEMES.map((theme) => theme.id))
-
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
-const isTheme = (value: string | null): value is Theme =>
-  value !== null && THEME_IDS.has(value as Theme)
-
-const getLocalTheme = (): Theme | null => {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const storedTheme = window.localStorage.getItem(STORAGE_KEY)
-    return isTheme(storedTheme) ? storedTheme : null
-  } catch {
-    return null
-  }
+const systemPrefersDark = (mediaQuery?: MediaQueryList): boolean => {
+  if (mediaQuery) return mediaQuery.matches
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia(SYSTEM_THEME_QUERY).matches
 }
 
-const writeLocalTheme = (theme: Theme): void => {
-  if (typeof window === 'undefined') {
+/**
+ * The one `[data-theme="organization"]` rule, kept in `<head>`.
+ *
+ * A rule keyed on `data-theme` rather than inline custom properties on the root
+ * element: picking a built-in makes this inert, where inline root properties
+ * would beat every `[data-theme]` block in the stylesheet until removed by hand.
+ */
+const writeOrganizationStyle = (css: string | null): void => {
+  if (typeof document === 'undefined') return
+  const existing = document.getElementById(ORGANIZATION_THEME_STYLE_ID)
+  if (css === null) {
+    existing?.remove()
     return
   }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEY, theme)
-  } catch {
-    // Storage can be unavailable in private or constrained browser contexts.
-  }
+  const style = existing ?? document.createElement('style')
+  style.id = ORGANIZATION_THEME_STYLE_ID
+  style.textContent = css
+  if (!existing) document.head.appendChild(style)
 }
-
-const getStoredTheme = (serverTheme?: Theme): Theme =>
-  serverTheme ?? getLocalTheme() ?? 'sandstone'
-
-const getSystemTheme = (mediaQuery?: MediaQueryList): AppliedTheme => {
-  if (mediaQuery) {
-    return mediaQuery.matches ? 'nebula' : 'daylight'
-  }
-
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return 'daylight'
-  }
-
-  return window.matchMedia(SYSTEM_THEME_QUERY).matches ? 'nebula' : 'daylight'
-}
-
-export const resolveAppliedTheme = (theme: Theme): AppliedTheme =>
-  theme === 'system' ? getSystemTheme() : theme
 
 export const ThemeProvider = ({ children }: PropsWithChildren) => {
-  const { me } = useAuthSession()
+  const { me, sessionState } = useAuthSession()
   const { mutate: updatePreferences } = useUpdatePreferences()
-  const serverTheme = me?.user.preferences?.theme
-  const [theme, setThemeState] = useState<Theme>(() => getStoredTheme(serverTheme))
+  const { data: organization } = useCurrentOrganization()
+  const serverChoice = me?.user.preferences?.theme
+  const [localChoice, setLocalChoice] = useState<Theme | null>(() => readThemeChoice())
+  const [preview, setPreview] = useState<EvaluatedTheme | null>(null)
+  const [systemDark, setSystemDark] = useState<boolean>(() => systemPrefersDark())
 
   useEffect(() => {
-    const nextTheme = getStoredTheme(serverTheme)
-    setThemeState((currentTheme) => (currentTheme === nextTheme ? currentTheme : nextTheme))
-  }, [serverTheme])
+    forgetLegacyTheme()
+  }, [])
 
-  // Transfer a pre-login theme choice (made on the login page, stored locally)
-  // to the account the first time the user signs in without a server-side theme.
-  const transferredTheme = useRef(false)
+  // The organisation's saved palette. `undefined` (still loading) is a
+  // different answer from `null` (there is none): treating the first as the
+  // second would repaint Sandstone for one round-trip on every warm load.
+  const savedTheme = organization?.theme ?? null
+  const savedEvaluated = useMemo(
+    () => (savedTheme ? evaluateOrganizationTheme(savedTheme) : null),
+    [savedTheme],
+  )
+  const signedIn = sessionState === 'authenticated'
+  // Hold the first-paint palette only while a palette may still arrive. Signed
+  // out there is none to wait for — the sign-in screen is instance state, not
+  // tenant state (§4.3) — so the block is cleared rather than held.
+  const awaitingOrganization = sessionState === 'loading'
+    || (signedIn && organization === undefined)
+  const organizationHasTheme = preview !== null || savedEvaluated !== null
+
+  const { applied, choice } = resolveThemeChoice({
+    localChoice,
+    organizationHasTheme,
+    serverChoice,
+    signedIn,
+    systemDark,
+  })
+
+  const effective = preview ?? savedEvaluated
+
   useEffect(() => {
-    if (!me || transferredTheme.current || serverTheme !== undefined) {
-      return
-    }
+    if (typeof document === 'undefined') return
 
-    const localTheme = getLocalTheme()
-    if (localTheme) {
-      transferredTheme.current = true
-      updatePreferences({ theme: localTheme })
-    }
-  }, [me, serverTheme, updatePreferences])
+    if (awaitingOrganization && preview === null) return
+
+    writeOrganizationStyle(effective ? organizationThemeCss(effective) : null)
+    // The cache is the SAVED palette, never the draft: a preview is this
+    // screen's, and a reload must come back to what the organisation actually
+    // has. Written independently of the preview so that saving and reloading
+    // without leaving the page still paints from cache.
+    writeOrganizationThemeCss(savedEvaluated ? organizationThemeCss(savedEvaluated) : null)
+
+    document.documentElement.dataset.theme = applied
+    writeAppliedTheme(applied)
+  }, [applied, awaitingOrganization, effective, preview, savedEvaluated])
 
   useEffect(() => {
-    writeLocalTheme(theme)
-
-    if (typeof document === 'undefined') {
-      return
-    }
-
-    document.documentElement.dataset.theme = resolveAppliedTheme(theme)
-
-    if (theme !== 'system' || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return
-    }
+    if (choice !== 'system' || typeof window === 'undefined') return undefined
+    if (typeof window.matchMedia !== 'function') return undefined
 
     const mediaQuery = window.matchMedia(SYSTEM_THEME_QUERY)
-    const resolveSystemTheme = () => {
-      document.documentElement.dataset.theme = getSystemTheme(mediaQuery)
-    }
-    mediaQuery.addEventListener('change', resolveSystemTheme)
+    const sync = (): void => setSystemDark(mediaQuery.matches)
+    sync()
+    mediaQuery.addEventListener('change', sync)
+    return () => mediaQuery.removeEventListener('change', sync)
+  }, [choice])
 
-    return () => {
-      mediaQuery.removeEventListener('change', resolveSystemTheme)
+  // Carry a pre-login pick onto the account the first time this person signs in
+  // without one. Only `nessie.theme.choice` is read, and only the picker writes
+  // it, so a default is never mirrored as a choice.
+  const transferredTheme = useRef(false)
+  useEffect(() => {
+    if (!me || transferredTheme.current || serverChoice !== undefined) return
+    const stored = readThemeChoice()
+    if (stored) {
+      transferredTheme.current = true
+      updatePreferences({ theme: stored })
     }
-  }, [theme])
+  }, [me, serverChoice, updatePreferences])
 
   const setTheme = useCallback((nextTheme: Theme) => {
-    setThemeState(nextTheme)
-    writeLocalTheme(nextTheme)
-
-    if (me) {
-      updatePreferences({ theme: nextTheme })
-    }
+    setLocalChoice(nextTheme)
+    writeThemeChoice(nextTheme)
+    if (me) updatePreferences({ theme: nextTheme })
   }, [me, updatePreferences])
 
-  const value = useMemo(
+  const value = useMemo<ThemeContextValue>(
     () => ({
+      organizationTheme: effective,
+      setPreview,
       setTheme,
-      theme,
-      themes: THEMES,
+      // An organisation palette has no counterpart on UOA's page, so hand it
+      // the built-in of the same appearance — the pair `system` already uses.
+      signInTheme: applied === 'organization'
+        ? (effective?.colorScheme === 'light' ? 'daylight' : 'nebula')
+        : applied,
+      theme: choice,
+      themes: savedEvaluated
+        ? [
+          {
+            description: "Your organisation's colours.",
+            id: 'organization' as const,
+            label: organization?.name ?? 'Organisation',
+          },
+          ...BUILT_IN_THEMES,
+        ]
+        : BUILT_IN_THEMES,
     }),
-    [setTheme, theme],
+    [applied, choice, effective, organization?.name, savedEvaluated, setTheme],
   )
 
   return (
@@ -233,3 +273,5 @@ export const useTheme = () => {
 
   return context
 }
+
+export { DEFAULT_THEME }

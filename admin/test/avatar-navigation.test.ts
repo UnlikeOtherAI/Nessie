@@ -97,7 +97,7 @@ test('UOA team rows switch inside Nessie while Add Team keeps hosted sign-in', (
   )
   assert.match(
     switcher,
-    /startExternalSignIn\(providerId, resolveAppliedTheme\(theme\)\)/,
+    /startExternalSignIn\(providerId, signInTheme\)/,
   )
   assert.doesNotMatch(switcher, /startExternalSignIn\([\s\S]{0,200}team\.teamId/)
   assert.match(menu, /role="alert"/)

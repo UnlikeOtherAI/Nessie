@@ -32,6 +32,38 @@ if [ -n "$NESSIE_IMAGE_TAG" ]; then
   echo "==> Using prebuilt images at tag ${NESSIE_IMAGE_TAG}"
 fi
 
+# --- One-time migration: services renamed api/admin/web/worker/infisical ->
+# nessie-*. Compose tracks a container by its project+service LABEL, not by the
+# image or the container name, so after the rename it no longer recognises the
+# running generation as belonging to these services.
+#
+# Two distinct consequences, handled in two places:
+#   * worker and infisical pin container_name, and those names are still held
+#     by the pre-rename containers — Compose would fail outright with "container
+#     name already in use". They are freed here, before anything is created.
+#   * api/admin/web have no pinned name, so Compose simply starts a second
+#     generation and never retires the first. Those are retired AFTER the new
+#     replicas pass their health checks, further down, so the swap stays
+#     zero-downtime.
+#
+# The project label is still "compose" (the directory name) and deliberately
+# stays that way — see the note in docker-compose.prod.yml about volumes.
+# Safe to delete this block, and its sibling below, once every environment has
+# deployed past the rename.
+legacy_service_containers() {
+  docker ps -aq \
+    --filter "label=com.docker.compose.project=compose" \
+    --filter "label=com.docker.compose.service=$1"
+}
+
+for legacy in worker infisical; do
+  legacy_ids="$(legacy_service_containers "$legacy")"
+  if [ -n "$legacy_ids" ]; then
+    echo "==> Removing pre-rename '$legacy' container(s); it now runs as nessie-$legacy"
+    echo "$legacy_ids" | xargs docker rm -f >/dev/null
+  fi
+done
+
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 
@@ -45,16 +77,16 @@ df -h / | tail -1
 
 if [ -n "$NESSIE_IMAGE_TAG" ]; then
   echo "==> Pulling prebuilt images"
-  $COMPOSE pull api admin web
+  $COMPOSE pull nessie-api nessie-admin nessie-web
 else
   # Local-build fallback (manual deploys / first deploy). ONE AT A TIME:
   # Compose builds in parallel by default and each image runs a full monorepo
   # install+compile — measured at load average 340 on this 8-core box with 0%
   # idle, which made the live site time out for everyone while it built.
   echo "==> No image tag supplied — building locally (api, then admin, then web)"
-  $COMPOSE build api
-  $COMPOSE build admin
-  $COMPOSE build web
+  $COMPOSE build nessie-api
+  $COMPOSE build nessie-admin
+  $COMPOSE build nessie-web
 fi
 
 # The migrate step runs with --no-deps, which bypasses the nessie-postgres
@@ -105,12 +137,12 @@ for migration in "${RESOLVABLE_FAILED_MIGRATIONS[@]}"; do
   )"
   if [ "$failed" = "1" ]; then
     echo "==> Marking failed migration $migration for retry"
-    $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api run prisma:migrate:resolve-rolled-back "$migration"
+    $COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api run prisma:migrate:resolve-rolled-back "$migration"
   fi
 done
 
 echo "==> Applying database migrations"
-$COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
+$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api prisma:migrate:deploy
 
 # The App Store's first-party rows are seeded by migration, but their curated
 # copy, categories, trust and Featured flags — and the two curated connectors
@@ -121,8 +153,8 @@ $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
 # rows as uncategorised "Other" cards. The ~5,500 registry apps are NOT seeded
 # here — that is the worker's scheduled sync (heavy, external, 6-hourly).
 echo "==> Seeding App Store catalogue (first-party + curated connectors)"
-$COMPOSE run --rm --no-deps api pnpm --filter @nessie/api seed:connectors
-$COMPOSE run --rm --no-deps api pnpm --filter @nessie/api seed:apps
+$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api seed:connectors
+$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api seed:apps
 
 # Zero-downtime rollout for the services Caddy fronts. Instead of the
 # stop-then-start recreate (which took the site down for the whole API boot,
@@ -211,14 +243,30 @@ rollout() {
 }
 
 echo "==> Rolling out api (health-gated blue-green swap)"
-rollout api 240
+rollout nessie-api 240
 
 echo "==> Rolling out admin + web"
-rollout admin 90
-rollout web 90
+rollout nessie-admin 90
+rollout nessie-web 90
+
+# Second half of the rename migration: the pre-rename api/admin/web generation
+# is still running and still carries the nessie-api/-admin/-web aliases, so it
+# would keep taking a share of live traffic forever. The new replicas are healthy
+# by this point, so retiring the old ones now costs no downtime.
+for legacy in api admin web; do
+  legacy_ids="$(legacy_service_containers "$legacy")"
+  if [ -n "$legacy_ids" ]; then
+    echo "==> Retiring pre-rename '$legacy' replica(s) now that nessie-$legacy serves"
+    for legacy_id in $legacy_ids; do
+      docker network disconnect edge "$legacy_id" >/dev/null 2>&1 || true
+      sleep 1
+      docker rm -f "$legacy_id" >/dev/null
+    done
+  fi
+done
 
 echo "==> Recreating worker + reconciling remaining services"
-$COMPOSE up -d --no-deps worker
+$COMPOSE up -d --no-deps nessie-worker
 $COMPOSE up -d --no-recreate
 
 # Final gate: prove the whole path (Caddy -> new containers) actually serves.
@@ -279,6 +327,6 @@ df -h / | tail -1
 cat <<'NOTE'
 
 If this is the first deploy (no users yet), grab the one-time owner bootstrap URL:
-  docker compose -f infrastructure/compose/docker-compose.prod.yml logs api 2>&1 | grep bootstrap
+  docker compose -f infrastructure/compose/docker-compose.prod.yml logs nessie-api 2>&1 | grep bootstrap
 Then open https://app.nessie.works/bootstrap?token=<token>
 NOTE

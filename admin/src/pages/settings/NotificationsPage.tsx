@@ -3,6 +3,7 @@ import type { PushQuietHours, UserPreferences } from '@nessie/schemas'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { useChannels, useSetChannelMute } from '../../facades/channels/hooks'
 import { requestNotificationPermission } from '../../facades/notifications/permission'
+import { isReactNativeWebView } from '../../lib/mobile-shell'
 import {
   useSubscribeWebPush,
   useUnsubscribeWebPush,
@@ -260,7 +261,13 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
     // Submitting the form is a user gesture, so this is a safe point to ask for
     // native notification permission when push is on (Safari rejects off-gesture
     // requests). No-op once permission is already granted or denied.
-    if (pushEnabled) {
+    //
+    // Not inside the native shell: there the save is a bar button, and the
+    // submit is driven by `requestSubmit()` from a bridge message, which
+    // carries no transient activation — so the request would be refused rather
+    // than shown. The shell registers for push through its own native path
+    // (`nessie:request-push-registration`), which is where that belongs.
+    if (pushEnabled && !isReactNativeWebView()) {
       requestNotificationPermission()
     }
     setPreferenceFeedback(null)
@@ -376,6 +383,8 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
             setPushTriggerHealth={setPushTriggerHealth}
             setPushEnabled={(next) => {
               setPushEnabled(next)
+              // A real tap on the switch, so this one keeps its gesture on
+              // every surface.
               if (next) {
                 requestNotificationPermission()
               }
