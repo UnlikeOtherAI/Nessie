@@ -100,11 +100,19 @@ test('a specific provider outranks the generic rule that also matches it', () =>
 test('credentials wearing the shapes tool results actually carry are detected', () => {
   // HTTP headers, JSON config and .env dumps are what reaches a run through a
   // tool result; each of these went undetected while the separator grammar
-  // demanded bare whitespace or an unquoted value.
+  // demanded bare whitespace or an unquoted value, and every name below went
+  // undetected while `\b` sat in front of the keyword — `_` is a word
+  // character, so a real key name never matched.
   for (const sample of [
     'Authorization: Bearer abcdefghijklmnopqrstuvwx',
     'password = "hunter2hunter2hunter2"',
     '{"api_key": "abcdefghijklmnopqr"}',
+    'JWT_SECRET=abcdefghijklmnop123',
+    'OPENAI_API_KEY=abcdefghijklmnopqrst',
+    'DATABASE_PASSWORD=hunter2hunter2hunter2',
+    'aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+    'client_secret=abcdefghijklmnopqrst',
+    '{"refresh_token":"abcdefghijklmnopqrst"}',
   ]) {
     assert.equal(detectSecrets(sample).length, 1, sample)
     assert.doesNotMatch(redactDetectedSecrets(sample), /hunter2hunter2|abcdefghijklmnopqr/, sample)
@@ -125,4 +133,53 @@ test('the assignment grammar stays linear on a pathological whitespace run', () 
   const started = Date.now()
   detectSecrets(`password${' '.repeat(120_000)}`)
   assert.ok(Date.now() - started < 500, 'scanning a whitespace run must not backtrack quadratically')
+})
+
+test('a credential that lives in a URL is caught wherever the URL puts it', () => {
+  // The document-id exclusion must not become a hiding place: a webhook's whole
+  // secret IS its path, userinfo is a credential by definition, and a run long
+  // enough to be a key is one wherever it sits.
+  // Assembled rather than written out, for the same reason the fixtures above
+  // are: a literal webhook URL here is indistinguishable from a real one, and
+  // push protection rejects the commit. That it does is the point of the test.
+  const slack = ['https://hooks.slack.com/services', 'T00000000', 'B00000000', 'aB1cD2eF3gH4iJ5kL6mN7oP8'].join('/')
+  const discord = ['https://discord.com/api/webhooks', '1234567890', 'AbCdEf-GhIjKl_MnOpQrStUvWxYz0123456789abcdef'].join('/')
+  const telegram = ['https://api.telegram.org/bot123456789', 'AAHfiqksKZ8WmR2zSjiQ7_v4TMAKdiHm9T0'].join(':')
+  const cases = [
+    discord,
+    `${telegram}/sendMessage`,
+    slack,
+    'https://AbCdEf1234567890AbCdEf1234567890xyz:x@api.example.com/v1',
+    `http://example.com/${'9f8e7d6c5b4a39281706f5e4d3c2b1a0'.repeat(2)}/verify`,
+  ]
+
+  for (const sample of cases) assert.ok(detectSecrets(sample).length > 0, sample)
+})
+
+test('an identifier keeps its bytes even when it is shaped like a key', () => {
+  // Masking a digest or a request id in a tool result defeats the debugging it
+  // was pasted for, and `sec_…` is the reference this feature itself emits.
+  const hex = '9f8e7d6c5b4a39281706f5e4d3c2b1a0'
+  const safe = [
+    `sha256sum ${hex}${hex} release.tgz`,
+    `"sha256": "${hex}${hex}"`,
+    `X-Request-Id: ${hex}`,
+    `trace_id=${hex}`,
+    `ETag: "${hex}"`,
+    `saved as sec_${hex}`,
+    'class="css-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"',
+  ]
+
+  for (const sample of safe) assert.deepEqual(detectSecrets(sample), [], sample)
+})
+
+test('the widened key grammar stays linear on adversarial input', () => {
+  for (const sample of [
+    `${'A'.repeat(30)}_secret${' '.repeat(60_000)}`,
+    `secret${'_ab'.repeat(3)}${' '.repeat(60_000)}`,
+  ]) {
+    const started = Date.now()
+    detectSecrets(sample)
+    assert.ok(Date.now() - started < 500, 'prefix and suffix groups must not backtrack')
+  }
 })

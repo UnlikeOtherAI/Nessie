@@ -104,7 +104,20 @@ afterwards. Spec:
   `resolutionValues`, to the response message, to realtime and into the agent's
   next context, so a credential typed into one is refused at the press with
   `SECRET_INTERCEPTED` — the same interception the composer and message routes
-  use. An agent that needs a credential uses a `secret` block or gets nothing. Both run inside the press
+  use. An agent that needs a credential uses a `secret` block or gets nothing.
+- **A scrubbed message says so, and memory forgets with it.** The rewrite sets
+  `editedAt` and publishes `message.updated`, because viewers holding the thread
+  open would otherwise keep rendering the plaintext, and a silent edit of
+  somebody else's words is worse than the leak it fixes. It also deletes the
+  `thoughts` rows captured from that message (`forgetMessageThoughts`) — a
+  person's message is copied into memory at send time, so rewriting
+  `messages.content` alone leaves recall serving the credential straight back.
+  Deletion rather than rewriting, because the row carries an embedding of the
+  plaintext and there is no way to un-embed a value. Both the save and the
+  scrub emit audit events (`secret.created`, `message.redacted`), never a
+  value. The rewrite is floored at twelve characters: it replaces every
+  occurrence of the submitted string, so a shorter one would be a defacement
+  tool rather than a redaction. Both run inside the press
   transaction and are absent from the row, message, audit metadata (key names
   only), realtime payload, presenter and model. `secretOutcomes[key]` keeps
   only the destination kind and its safe id/placement — never a value, ref,

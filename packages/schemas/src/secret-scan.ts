@@ -24,6 +24,19 @@ type SecretPattern = Omit<DetectedSecret, 'prefix' | 'start' | 'end'> & {
   expression: RegExp
 }
 
+/**
+ * How a credential's key is actually named in the wild: an optional product
+ * prefix (`OPENAI_API_KEY`), the keyword, then up to three qualifying segments
+ * (`AWS_SECRET_ACCESS_KEY`). A plain `\b` in front of the keyword matched none
+ * of them, because `_` is a word character.
+ */
+const KEY_NAME_SOURCE = '(?:[A-Za-z0-9]{1,30}[_-])?'
+  + '(?:api[_-]?key|token|password|passwd|pwd|secret|authorization|credential)'
+  + '(?:[_-][A-Za-z0-9]{1,30}){0,3}'
+
+/** Separator between a key name and its value, in every shape config uses. */
+const KEY_SEPARATOR_SOURCE = '["\']?(?:\\s*[=:]\\s*["\']?|(?:\\s*[=:])?\\s+bearer\\s+)'
+
 const PATTERNS: SecretPattern[] = [
   { type: 'pem_private_key', expression: /-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----/g },
   { type: 'stripe_api_key', expression: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g },
@@ -35,9 +48,20 @@ const PATTERNS: SecretPattern[] = [
   { type: 'token_assignment', expression: /\b(?:hf|npm)_[A-Za-z0-9_-]{20,}\b/g },
   { type: 'token_assignment', expression: /\bAIza[A-Za-z0-9_-]{30,}\b/g },
   { type: 'aws_access_key', expression: /\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g },
-  { type: 'database_url', expression: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:]+:[^\s@/]+@[^\s/]+/gi },
+  { type: 'database_url', expression: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?|https?):\/\/[^\s/:]+:[^\s@/]+@[^\s/]+/gi },
   { type: 'jwt', expression: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
-  { type: 'token_assignment', expression: /\b(?:api[_-]?key|token|password|secret|authorization)["']?(?:\s*[=:]\s*["']?|(?:\s*[=:])?\s+bearer\s+)[^\s"'`]{12,}/gi },
+  // A webhook URL whose secret IS its path. Structural, so these beat the
+  // entropy runs and are not subject to the URL-path exclusion below.
+  { type: 'token_assignment', expression: /\bhttps?:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[A-Za-z0-9]{16,}/gi },
+  { type: 'token_assignment', expression: /\bhttps?:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]{20,}/gi },
+  { type: 'token_assignment', expression: /(?<![A-Za-z0-9_-])(?:bot)?\d{6,}:AA[A-Za-z0-9_-]{30,}/gi },
+  {
+    type: 'token_assignment',
+    expression: new RegExp(
+      `(?<![A-Za-z0-9])${KEY_NAME_SOURCE}${KEY_SEPARATOR_SOURCE}[^\\s"'\`]{12,}`,
+      'gi',
+    ),
+  },
 ]
 
 const SECRET_MASK = '•'.repeat(12)
@@ -73,17 +97,27 @@ const prefixFor = (value: string, type: DetectedSecret['type']): string => {
     }
     case 'token_assignment': {
       return value.match(
-        /^(?:api[_-]?key|token|password|secret|authorization)["']?(?:\s*[=:]\s*["']?|(?:\s*[=:])?\s+bearer\s+)/i,
+        new RegExp(`^${KEY_NAME_SOURCE}${KEY_SEPARATOR_SOURCE}`, 'i'),
       )?.[0] ?? providerPrefixForValue(value)
     }
   }
 }
 
-/** A display-safe value: structural provider prefix plus a fixed bullet mask. */
+/**
+ * A display-safe value: structural provider prefix plus a fixed bullet mask.
+ *
+ * `high_entropy_token` keeps a blind first-four, which is proportionate for the
+ * 32-character minimum the entropy runs enforce. A caller holding a shorter
+ * value — the card capture accepts anything from twelve characters — must pass
+ * `revealPrefix: false`, or a third of a twelve-character password stays
+ * legible.
+ */
 export const maskSecretValue = (
   value: string,
   type: DetectedSecret['type'],
-): string => `${prefixFor(value, type)}${SECRET_MASK}`
+  options?: { revealPrefix?: boolean },
+): string =>
+  options?.revealPrefix === false ? SECRET_MASK : `${prefixFor(value, type)}${SECRET_MASK}`
 
 /** Return only the credential bytes represented by a structural match. */
 export const extractDetectedSecretValue = (
@@ -93,7 +127,7 @@ export const extractDetectedSecretValue = (
   const matched = content.slice(detected.start, detected.end)
   if (detected.type !== 'token_assignment') return matched
   return matched.match(
-    /^(?:api[_-]?key|token|password|secret|authorization)["']?(?:\s*[=:]\s*["']?|(?:\s*[=:])?\s+bearer\s+)(.+)$/i,
+    new RegExp(`^${KEY_NAME_SOURCE}${KEY_SEPARATOR_SOURCE}(.+)$`, 'i'),
   )?.[1] ?? matched
 }
 
@@ -143,42 +177,91 @@ const characterClassCount = (value: string): number =>
  *   in would redact every link. `+` or `=` is what a URL path does not carry,
  *   so one of them is required rather than optional.
  */
-const ENTROPY_RUNS: { accept: (value: string) => boolean; expression: RegExp }[] = [
+/**
+ * Text that names an identifier rather than a credential, checked immediately
+ * before a candidate. The run itself cannot tell the two apart — a digest and
+ * a key are both 64 random-looking hex characters — so the label around it is
+ * the only available signal. A request or trace id is the single most common
+ * thing a person pastes while debugging, and masking it in the tool result the
+ * agent then reads defeats the debugging it was pasted for.
+ */
+const IDENTIFIER_LABEL = new RegExp(
+  '(?:sha(?:1|256|384|512)(?:sum)?|md5(?:sum)?|blake3|etag|checksum|digest|integrity'
+  + '|(?:request|trace|span|session|correlation|commit|revision|build|run)[-_ ]?id)'
+  + '["\'\\s:=_-]{0,4}$',
+  'i',
+)
+
+/**
+ * Prefixes that make a run an identifier this product itself emits: `sec_` is a
+ * Nessie secret reference (the Secrets screen and `secretOutcomes` both show
+ * it), and a hashed CSS class is everywhere in rendered markup. Both are
+ * `prefix_hex`, which the general alphabet now joins into one run.
+ */
+const IDENTIFIER_PREFIX = /^(?:sec|ref|run|req|job|evt|msg|css|obj|txn|nessie)[_-]/i
+
+/** A run this long is opaque enough to be a credential wherever it appears. */
+const ALWAYS_CREDENTIAL_LENGTH = 48
+
+type RunPosition = { content: string; index: number }
+
+const precededByIdentifierLabel = (at: RunPosition): boolean =>
+  IDENTIFIER_LABEL.test(at.content.slice(Math.max(0, at.index - 64), at.index))
+
+const ENTROPY_RUNS: {
+  accept: (value: string, at: RunPosition) => boolean
+  expression: RegExp
+}[] = [
   {
-    accept: (value) =>
-      !UUID_SHAPE.test(value) && characterClassCount(value) >= 3 && entropy(value) >= 4,
+    accept: (value, at) =>
+      !UUID_SHAPE.test(value)
+      && !IDENTIFIER_PREFIX.test(value)
+      && !precededByIdentifierLabel(at)
+      && characterClassCount(value) >= 3
+      && entropy(value) >= 4,
     expression: /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g,
   },
   {
-    accept: (value) => !GIT_OBJECT_SHAPE.test(value) && entropy(value) >= 3.5,
-    expression: new RegExp(
-      '(?<!\\b(?:sha1|sha256|sha384|sha512|md5|blake3)[:-])'
-      + '(?<![A-Za-z0-9_-])(?:[0-9a-f]{32,}|[0-9A-F]{32,})(?![A-Za-z0-9_-])',
-      'g',
-    ),
+    accept: (value, at) =>
+      !GIT_OBJECT_SHAPE.test(value)
+      && !precededByIdentifierLabel(at)
+      && entropy(value) >= 3.5,
+    expression: /(?<![A-Za-z0-9_-])(?:[0-9a-f]{32,}|[0-9A-F]{32,})(?![A-Za-z0-9_-])/g,
   },
   {
-    accept: (value) =>
-      /[+=]/.test(value) && characterClassCount(value) >= 3 && entropy(value) >= 4,
+    accept: (value, at) =>
+      /[+=]/.test(value)
+      && !precededByIdentifierLabel(at)
+      && characterClassCount(value) >= 3
+      && entropy(value) >= 4,
     expression: /(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/])/g,
   },
 ]
 
 /**
- * Path spans of `http(s)://…` URLs.
+ * Path spans of `http(s)://…` URLs whose segments are names rather than keys.
  *
- * A long opaque path segment is a document id — a Google Docs key, a Drive file
- * id, an S3 object key — not a credential, and masking it destroys the very
- * links the system prompt tells every agent to produce. Only the path is
- * excluded: a credential handed over *in* a URL rides in the query string, so
- * everything from `?` or `#` onwards stays in scope.
+ * A long opaque path segment is usually a document id — a Google Docs key, a
+ * Drive file id, an S3 object key — and masking it destroys the very links the
+ * system prompt tells every agent to produce. Three things are deliberately
+ * NOT excluded, because in a URL they are credentials and not names: the
+ * userinfo before `@`, the query string and fragment, and a run long enough to
+ * be a credential wherever it sits. A webhook whose secret IS its path is
+ * matched by its own structural pattern above, which never consults this list.
  */
 const urlPathSpans = (content: string): [number, number][] => {
   const spans: [number, number][] = []
-  const expression = /\bhttps?:\/\/[^\s<>"'`]+/gi
+  const expression = /\bhttps?:\/\/[^\s<>"\'`]+/gi
   for (let match = expression.exec(content); match; match = expression.exec(content)) {
-    const queryAt = match[0].search(/[?#]/)
-    spans.push([match.index, match.index + (queryAt === -1 ? match[0].length : queryAt)])
+    const url = match[0]
+    const authorityAt = url.indexOf('://') + 3
+    const pathAt = url.indexOf('/', authorityAt)
+    const userinfoAt = url.slice(authorityAt, pathAt === -1 ? url.length : pathAt).lastIndexOf('@')
+    const queryAt = url.search(/[?#]/)
+    spans.push([
+      match.index + authorityAt + (userinfoAt === -1 ? 0 : userinfoAt + 1),
+      match.index + (queryAt === -1 ? url.length : queryAt),
+    ])
   }
   return spans
 }
@@ -190,8 +273,11 @@ const highEntropyTokens = (content: string): DetectedSecret[] => {
     run.expression.lastIndex = 0
     for (let match = run.expression.exec(content); match; match = run.expression.exec(content)) {
       const value = match[0]
-      if (!run.accept(value)) continue
-      if (urlPaths.some(([from, to]) => match.index >= from && match.index < to)) continue
+      if (!run.accept(value, { content, index: match.index })) continue
+      if (
+        value.length < ALWAYS_CREDENTIAL_LENGTH
+        && urlPaths.some(([from, to]) => match.index >= from && match.index < to)
+      ) continue
       candidates.push({
         type: 'high_entropy_token',
         prefix: prefixFor(value, 'high_entropy_token'),
@@ -270,9 +356,25 @@ export const redactDetectedSecrets = (content: string): string => {
  * into a capture. Masked text (`sk_live_••••`) is a scanner replacement, never
  * something to echo, complete, or ask a person to resend.
  */
-export const AGENT_SECRET_SAFETY_INSTRUCTION = [
+const SECRET_PROHIBITION = [
   'Never ask for, repeat, or put a secret in chat, a plain card input, or tool arguments;',
   'masked text (••••) is already-protected and must not be echoed or resent.',
+].join(' ')
+
+export const AGENT_SECRET_SAFETY_INSTRUCTION = [
+  SECRET_PROHIBITION,
   'When a credential is needed or you spot one, call card_post with a secret block',
   '(destination vault_secret, name it e.g. STRIPE_API_KEY) so it goes straight to Secrets.',
+].join(' ')
+
+/**
+ * The same rule for a live call, which has no `card_post`: its tools are
+ * web_search, conversation_history and pa_send. Naming a tool the model cannot
+ * call is worse than naming none — it resolves the contradiction by inventing
+ * the capability or by asking the person to read the secret out loud.
+ */
+export const VOICE_SECRET_SAFETY_INSTRUCTION = [
+  SECRET_PROHIBITION,
+  'Never ask anyone to read a credential aloud; hand the task to your longer-running',
+  'work with pa_send, which can raise a secure form in the chat, and say you have done so.',
 ].join(' ')

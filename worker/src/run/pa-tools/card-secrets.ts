@@ -36,7 +36,9 @@ export const assertCardSecretDestinations = async (
       validated.push({
         destination: block.destination,
         key: block.key,
-        label: `your Secrets, as ${block.destination.name}`,
+        label: block.destination.scopeType === 'personal'
+          ? `your Secrets, as ${block.destination.name}`
+          : `this ${block.destination.scopeType}'s Secrets, as ${block.destination.name}`,
       })
       continue
     }

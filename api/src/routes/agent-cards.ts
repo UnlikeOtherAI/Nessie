@@ -10,6 +10,7 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
+import { forgetMessageThoughts } from '@nessie/memory'
 import { applyReplyBookkeeping } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -184,6 +185,7 @@ export const registerAgentCardRoutes = (
       resumedRunId: string | null
       rootMessageId: string | null
       replyMetadata: Awaited<ReturnType<typeof applyReplyBookkeeping>> | null
+      secretOutcomes: Record<string, unknown>
     }
     try {
       outcome = await prisma.$transaction(async (tx) => {
@@ -281,6 +283,7 @@ export const registerAgentCardRoutes = (
               responseMessageId: responseMessage.id,
               resumedRunId: resumed.runId,
               rootMessageId,
+              secretOutcomes,
             }
           }
         }
@@ -309,12 +312,24 @@ export const registerAgentCardRoutes = (
           responseMessageId: responseMessage.id,
           resumedRunId: null,
           rootMessageId,
+          secretOutcomes,
         }
       })
     } catch (error) {
       // A vault write is the one placement that already happened by now, so
       // a press that did not commit must not leave it behind.
       await rollbackAgentCardSecretPlacements(secretPlacements)
+      // A secret name is unique per scope. Without this the person sees a bare
+      // 500 on a card that stays open, and every retry repeats the same wall.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        sendApiError(
+          reply,
+          409,
+          'SECRET_NAME_TAKEN',
+          'A secret with that name already exists in this scope. Rename or replace it in Secrets.',
+        )
+        return reply
+      }
       if (error instanceof ResumeRollback) {
         sendApiError(
           reply,
@@ -346,6 +361,56 @@ export const registerAgentCardRoutes = (
       { channelId: parseChannelId(card.channelId), kind: 'channel' as const },
       { kind: 'organization' as const, organizationId: parseOrganizationId(organizationId) },
     ]
+
+    for (const [key, value] of Object.entries(outcome.secretOutcomes)) {
+      const stored = value as { kind?: string; redactedMessageId?: string; reference?: string
+        scopeType?: string }
+      if (stored.kind !== 'vault_secret') continue
+
+      // A secret saved through a card belongs in the same audit trail as one
+      // saved on the Secrets screen, or that trail is silently incomplete.
+      await emitAuditEvent(prisma, {
+        action: 'secret.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+        actorContext,
+        metadata: { cardId: card.id, fieldKey: key, scopeType: stored.scopeType },
+        outcome: 'success',
+        resourceId: stored.reference ?? card.id,
+        resourceType: 'secret',
+      })
+
+      if (!stored.redactedMessageId) continue
+
+      // The message row is clean, but a person's message was copied into
+      // memory at send time and recall would hand the credential straight
+      // back. Deliberately outside the transaction: the memory store is a
+      // separate pool, and forgetting a secret is safe even if nothing else
+      // committed.
+      if (deps.messageMemoryCaptureConfig) {
+        await forgetMessageThoughts(
+          { messageId: stored.redactedMessageId, organizationId },
+          deps.messageMemoryCaptureConfig.pool,
+        ).catch(() => undefined)
+      }
+      await emitAuditEvent(prisma, {
+        action: 'message.redacted' as Parameters<typeof emitAuditEvent>[1]['action'],
+        actorContext,
+        metadata: { cardId: card.id, fieldKey: key },
+        outcome: 'success',
+        resourceId: stored.redactedMessageId,
+        resourceType: 'message',
+      })
+      // Viewers with the thread open keep rendering the plaintext until they
+      // reload otherwise — the leak would outlive its own fix on screen.
+      await realtimeHub.publishWs(scopes, {
+        data: {
+          editedAt: new Date().toISOString(),
+          messageId: stored.redactedMessageId,
+          threadId: parseThreadId(card.threadId),
+        },
+        event: 'message.updated',
+      })
+    }
+
     await realtimeHub.publishWs(scopes, {
       data: {
         cardId: card.id,

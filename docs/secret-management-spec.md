@@ -67,9 +67,13 @@ Two doorways, and both end at the same vault seam
 The second doorway is also the only one that can act after the fact. A model
 notices a credential *already stored*, so its card may name one message in its
 own thread (`redactMessageId`); pressing the card rewrites that message to the
-masked form in the same transaction, and the value is gone from every later
-context window. The replacement is computed by the server from the value the
-person typed — an agent chooses the target, never the text.
+masked form in the same transaction, and deletes the `thoughts` rows captured
+from it, so the value is gone from every later context window — a message is
+copied into memory at send time, and rewriting the message alone would leave
+recall handing the credential straight back. The replacement is computed by the
+server from the value the person typed — an agent chooses the target, never the
+text — and the rewrite is floored at twelve characters so it cannot be used to
+scribble over a message rather than scrub one.
 
 Masking is a structural provider prefix plus twelve `•`: enough to recognise
 which credential it was, never enough to reconstruct it.

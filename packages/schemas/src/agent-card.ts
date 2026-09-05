@@ -85,7 +85,21 @@ export const AgentCardSecretDestinationSchema = z
          */
         redactMessageId: z.string().uuid().optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((destination, ctx) => {
+        // Without this the card renders, the person types their credential, and
+        // only then does the press refuse for a scope that could never resolve.
+        if (
+          (destination.scopeType === 'team' || destination.scopeType === 'project')
+          && !destination.scopeId
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A team or project secret needs scopeId.',
+            path: ['scopeId'],
+          })
+        }
+      }),
     z
       .object({
         kind: z.literal('connector_credential'),

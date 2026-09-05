@@ -17,12 +17,7 @@ import {
   storeInstanceSecret,
   type SecretStore,
 } from '@nessie/mcp-manage'
-import {
-  detectSecrets,
-  maskSecretValue,
-  redactDetectedSecrets,
-  type AgentCardSpec,
-} from '@nessie/schemas'
+import { detectSecrets, maskSecretValue, type AgentCardSpec } from '@nessie/schemas'
 import { InfisicalVaultError, type InfisicalSecretNamespace } from './infisical-vault.js'
 import {
   canManageSecretScope,
@@ -118,163 +113,172 @@ export const resolveAgentCardSecretPlacements = async (
   const connector: ConnectorPlacement[] = []
   const dashboardSource: DashboardSourcePlacement[] = []
   const vault: VaultPlacement[] = []
+  try {
 
-  for (const block of input.spec.blocks) {
-    if (block.type !== 'secret') continue
-    const value = input.secrets[block.key]
-    if (value === undefined) continue
+    for (const block of input.spec.blocks) {
+      if (block.type !== 'secret') continue
+      const value = input.secrets[block.key]
+      if (value === undefined) continue
 
-    if (block.destination.kind === 'vault_secret') {
-      const destination = block.destination
-      const scope = await canManageSecretScope({
-        actorId: input.userId,
-        isOwner: input.isOwner,
-        organizationId: input.organizationId,
-        prisma,
-        ...(destination.scopeId === undefined ? {} : { scopeId: destination.scopeId }),
-        scopeType: destination.scopeType,
-      })
-      if (!scope.allowed) {
-        throw new AgentCardSecretPlacementError(
-          403,
-          'SECRET_SCOPE_DENIED',
-          'You cannot manage secrets in this scope.',
-        )
-      }
-      const namespace: InfisicalSecretNamespace = {
-        organizationId: input.organizationId,
-        scopeId: scope.scopeId,
-        scopeType: destination.scopeType,
-      }
-      // The vault write cannot join the press transaction, so it happens here
-      // and `rollbackAgentCardSecretPlacements` undoes it if the press loses
-      // its claim. Resolving before the claim also means an instance with no
-      // vault configured refuses while the card is still answerable.
-      try {
-        vault.push({
-          description: destination.description,
-          key: block.key,
-          name: destination.name,
-          provider: destination.provider,
-          redactMessageId: destination.redactMessageId,
-          scopeId: scope.scopeId,
+      if (block.destination.kind === 'vault_secret') {
+        const destination = block.destination
+        const scope = await canManageSecretScope({
+          actorId: input.userId,
+          isOwner: input.isOwner,
+          organizationId: input.organizationId,
+          prisma,
+          ...(destination.scopeId === undefined ? {} : { scopeId: destination.scopeId }),
           scopeType: destination.scopeType,
-          value,
-          written: await putSecretInVault({
-            ...(destination.description === undefined
-              ? {}
-              : { description: destination.description }),
-            namespace,
-            value,
-          }),
         })
-      } catch (error) {
-        if (error instanceof InfisicalVaultError) {
+        if (!scope.allowed) {
           throw new AgentCardSecretPlacementError(
-            error.code === 'NOT_CONFIGURED' ? 503 : 502,
-            error.code === 'NOT_CONFIGURED' ? 'SECRETS_NOT_CONFIGURED' : 'VAULT_UNAVAILABLE',
-            error.message,
+            403,
+            'SECRET_SCOPE_DENIED',
+            'You cannot manage secrets in this scope.',
           )
         }
-        throw error
-      }
-      continue
-    }
-
-    if (block.destination.kind === 'dashboard_source_credential') {
-      const actor = await resolveDashboardActor(prisma, {
-        organizationId: input.organizationId,
-        userId: input.userId,
-      })
-      if (!actor) {
-        throw new AgentCardSecretPlacementError(
-          403,
-          'CARD_SECRET_REFUSED',
-          'Your membership is no longer active in this organisation.',
-        )
-      }
-      const source = await prisma.dashboardDataSource.findFirst({
-        select: { id: true },
-        where: {
-          archivedAt: null,
-          id: block.destination.sourceId,
+        const namespace: InfisicalSecretNamespace = {
           organizationId: input.organizationId,
-        },
-      })
-      if (!source) {
+          scopeId: scope.scopeId,
+          scopeType: destination.scopeType,
+        }
+        // The vault write cannot join the press transaction, so it happens here
+        // and `rollbackAgentCardSecretPlacements` undoes it if the press loses
+        // its claim. Resolving before the claim also means an instance with no
+        // vault configured refuses while the card is still answerable.
+        try {
+          vault.push({
+            description: destination.description,
+            key: block.key,
+            name: destination.name,
+            provider: destination.provider,
+            redactMessageId: destination.redactMessageId,
+            scopeId: scope.scopeId,
+            scopeType: destination.scopeType,
+            value,
+            written: await putSecretInVault({
+              ...(destination.description === undefined
+                ? {}
+                : { description: destination.description }),
+              namespace,
+              value,
+            }),
+          })
+        } catch (error) {
+          if (error instanceof InfisicalVaultError) {
+            throw new AgentCardSecretPlacementError(
+              error.code === 'NOT_CONFIGURED' ? 503 : 502,
+              error.code === 'NOT_CONFIGURED' ? 'SECRETS_NOT_CONFIGURED' : 'VAULT_UNAVAILABLE',
+              error.message,
+            )
+          }
+          throw error
+        }
+        continue
+      }
+
+      if (block.destination.kind === 'dashboard_source_credential') {
+        const actor = await resolveDashboardActor(prisma, {
+          organizationId: input.organizationId,
+          userId: input.userId,
+        })
+        if (!actor) {
+          throw new AgentCardSecretPlacementError(
+            403,
+            'CARD_SECRET_REFUSED',
+            'Your membership is no longer active in this organisation.',
+          )
+        }
+        const source = await prisma.dashboardDataSource.findFirst({
+          select: { id: true },
+          where: {
+            archivedAt: null,
+            id: block.destination.sourceId,
+            organizationId: input.organizationId,
+          },
+        })
+        if (!source) {
+          throw new AgentCardSecretPlacementError(
+            409,
+            'CARD_SECRET_REFUSED',
+            'That dashboard source no longer exists.',
+          )
+        }
+        dashboardSource.push({
+          actor,
+          headerName: block.destination.headerName,
+          key: block.key,
+          mode: block.destination.mode,
+          sourceId: source.id,
+          value,
+        })
+        continue
+      }
+
+      const instance = await getInstance(
+        prisma,
+        input.organizationId,
+        block.destination.instanceId,
+      )
+      if (!instance) {
         throw new AgentCardSecretPlacementError(
           409,
           'CARD_SECRET_REFUSED',
-          'That dashboard source no longer exists.',
+          'That connector no longer exists.',
         )
       }
-      dashboardSource.push({
-        actor,
-        headerName: block.destination.headerName,
+      if (await isManagedIntegrationInstance(prisma, input.organizationId, instance.id)) {
+        throw new AgentCardSecretPlacementError(
+          409,
+          'INTEGRATION_MANAGED_CREDENTIAL',
+          'This first-party connector manages its own credentials.',
+        )
+      }
+      const access = await resolveMcpUserAccess(prisma, input.organizationId, input.userId)
+      mcpAccess = access
+      const manageable = canManageInstanceScope(
+        access,
+        input.userId,
+        instance.scopeType,
+        instance.scopeId,
+      )
+      if (!manageable) {
+        const visible = await listInstancesVisibleToUser(prisma, input.organizationId, input.userId)
+        if (!visible.some((row) => row.id === instance.id)) {
+          throw new AgentCardSecretPlacementError(
+            403,
+            'CARD_SECRET_REFUSED',
+            'You do not have access to that connector.',
+          )
+        }
+      }
+      const catalogEntry = await getCatalogEntry(prisma, input.organizationId, instance.catalogEntryId)
+      if (!catalogEntry) {
+        throw new AgentCardSecretPlacementError(
+          409,
+          'CARD_SECRET_REFUSED',
+          'That connector is not set up.',
+        )
+      }
+      connector.push({
+        authConfig: catalogEntry.authConfig,
+        authMethod: catalogEntry.authMethod,
+        instance,
         key: block.key,
-        mode: block.destination.mode,
-        sourceId: source.id,
+        shared: block.destination.shared,
         value,
       })
-      continue
     }
 
-    const instance = await getInstance(
-      prisma,
-      input.organizationId,
-      block.destination.instanceId,
-    )
-    if (!instance) {
-      throw new AgentCardSecretPlacementError(
-        409,
-        'CARD_SECRET_REFUSED',
-        'That connector no longer exists.',
-      )
-    }
-    if (await isManagedIntegrationInstance(prisma, input.organizationId, instance.id)) {
-      throw new AgentCardSecretPlacementError(
-        409,
-        'INTEGRATION_MANAGED_CREDENTIAL',
-        'This first-party connector manages its own credentials.',
-      )
-    }
-    const access = await resolveMcpUserAccess(prisma, input.organizationId, input.userId)
-    mcpAccess = access
-    const manageable = canManageInstanceScope(
-      access,
-      input.userId,
-      instance.scopeType,
-      instance.scopeId,
-    )
-    if (!manageable) {
-      const visible = await listInstancesVisibleToUser(prisma, input.organizationId, input.userId)
-      if (!visible.some((row) => row.id === instance.id)) {
-        throw new AgentCardSecretPlacementError(
-          403,
-          'CARD_SECRET_REFUSED',
-          'You do not have access to that connector.',
-        )
-      }
-    }
-    const catalogEntry = await getCatalogEntry(prisma, input.organizationId, instance.catalogEntryId)
-    if (!catalogEntry) {
-      throw new AgentCardSecretPlacementError(
-        409,
-        'CARD_SECRET_REFUSED',
-        'That connector is not set up.',
-      )
-    }
-    connector.push({
-      authConfig: catalogEntry.authConfig,
-      authMethod: catalogEntry.authMethod,
-      instance,
-      key: block.key,
-      shared: block.destination.shared,
-      value,
-    })
+    return { connector, dashboardSource, mcpAccess, vault }
+  } catch (error) {
+    // A card may carry several secret blocks, and a vault write already
+    // happened for every one resolved before the refusal. Without this, a
+    // second block denied for scope would strand the first block's value in
+    // Infisical with no Nessie row: unreachable, unrotatable, undeletable.
+    for (const placement of vault) await placement.written.rollback()
+    throw error
   }
-
-  return { connector, dashboardSource, mcpAccess, vault }
 }
 
 /** Store validated secrets inside the press transaction, then return safe facts only. */
@@ -324,18 +328,22 @@ export const storeAgentCardSecrets = async (
         where: { id: placement.redactMessageId, threadId: input.threadId },
       })
       if (message?.content?.includes(placement.value)) {
+        // Only the credential's own spans are rewritten. Running the scanner
+        // across the whole message would let one press mangle unrelated text in
+        // somebody else's message on a single false positive.
+        const recognised = detectSecrets(placement.value)[0]
+        const mask = recognised
+          // A recognised credential keeps `sk_live_`, which is what makes the
+          // replacement legible as "a Stripe key was here".
+          ? maskSecretValue(placement.value, recognised.type)
+          : maskSecretValue(placement.value, 'high_entropy_token', { revealPrefix: false })
         await tx.message.update({
+          // `editedAt` is what tells every later render that this text is not
+          // what its author wrote. A silent rewrite would be worse than the
+          // leak it fixes.
           data: {
-            content: redactDetectedSecrets(
-              message.content.split(placement.value).join(
-                // Let the scanner name the credential when it recognises it, so
-                // the replacement keeps `sk_live_` rather than a blind first-4.
-                maskSecretValue(
-                  placement.value,
-                  detectSecrets(placement.value)[0]?.type ?? 'high_entropy_token',
-                ),
-              ),
-            ),
+            content: message.content.split(placement.value).join(mask),
+            editedAt: new Date(),
           },
           where: { id: message.id },
         })
