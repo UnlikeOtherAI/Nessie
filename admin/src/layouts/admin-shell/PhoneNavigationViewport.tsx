@@ -21,12 +21,14 @@ import {
   dropPhoneNavigationEntriesAboveCurrent,
   hasPhoneNavigationStage,
   isPhoneNavigationStageEntry,
+  STAGE_KEY_PREFIX,
   popPhoneNavigationStage,
   pushPhoneNavigationStage,
   refreshPhoneNavigationRoute,
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
 import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { publishCurrentLayerKey } from '../../navigation/screen-bar'
 import { beginStackTransition } from '../../navigation/transition-state'
 import { useReducedMotion } from '../../navigation/reduced-motion'
 import type { NavigationLayout } from '../../navigation/layout'
@@ -267,6 +269,17 @@ export const PhoneNavigationViewport = ({
     startTransition('back', outgoing.layerKey, currentPhoneNavigationEntry(next).layerKey)
   }, [commitStack, commitTransition, finishTransition, startTransition])
 
+  // Every live stage entry's layer key, by stage id.
+  const stageLayerKeys = useMemo(() => {
+    const keys = new Map<string, string>()
+    for (const entry of stack.entries) {
+      if (isPhoneNavigationStageEntry(entry)) {
+        keys.set(entry.key.slice(STAGE_KEY_PREFIX.length), entry.layerKey)
+      }
+    }
+    return keys
+  }, [stack])
+
   const stageIds = useMemo(
     () => stack.entries
       .filter((entry, index) => index <= stack.currentIndex && isPhoneNavigationStageEntry(entry))
@@ -281,9 +294,17 @@ export const PhoneNavigationViewport = ({
   )
   const stageHost = useMemo<NestedStageHost | null>(
     () => (layout === 'single'
-      ? { activate: activateStage, deactivate: deactivateStage, retainedIds, stageIds }
+      ? {
+        activate: activateStage,
+        deactivate: deactivateStage,
+        // A stage's layer key embeds the section and depth it was pushed at,
+        // which the stage component cannot know for itself.
+        layerKeyOf: (id: string) => stageLayerKeys.get(id) ?? null,
+        retainedIds,
+        stageIds,
+      }
       : null),
-    [activateStage, deactivateStage, layout, retainedIds, stageIds],
+    [activateStage, deactivateStage, layout, retainedIds, stageIds, stageLayerKeys],
   )
 
   useEffect(() => {
@@ -361,6 +382,17 @@ export const PhoneNavigationViewport = ({
   // stage on top of this stack and allows the gesture.
   const backAction = navigation?.resolveBackAction(pathname) ?? null
   const topEntry = currentPhoneNavigationEntry(stack)
+
+  // Which layer the native bar should be reading. The bridge cannot derive
+  // this: `nessie:screen` carries a pathname, and a pathname cannot name a
+  // layer — a stage does not change it, and a channel and its info route
+  // share a classifier key. Only `single` publishes: a split layout's detail
+  // column is not the phone's one bar (screen-bar.ts).
+  useEffect(() => {
+    if (layout !== 'single') return undefined
+    publishCurrentLayerKey(topEntry.layerKey)
+    return () => publishCurrentLayerKey(null)
+  }, [layout, topEntry.layerKey])
   const gestureArmed = backAction?.kind === 'route'
     || (backAction?.kind === 'owner' && backAction.swipeable && topEntry.key === backAction.id)
 

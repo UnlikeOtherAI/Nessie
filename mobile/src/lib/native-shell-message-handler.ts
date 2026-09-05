@@ -10,8 +10,8 @@ import {
 } from './connector-authorization'
 import { isHapticMessage } from './haptics'
 import { isVoiceCallControlMessage, isVoiceCallStartMessage } from './native-voice-call'
-import { isAuthGateRoute, type LastKnownScreen } from './native-shell-layout'
-import { isScreenMessage } from './native-shell-message'
+import { isAuthGateRoute, type LastKnownScreen, type NativeScreenBar } from './native-shell-layout'
+import { isScreenBarMessage, isScreenMessage } from './native-shell-message'
 import type { NativeVoiceCallProvisioning } from '../../modules/nessie-voice-call'
 import type { HapticKind, NativeShellMessage } from './native-shell-message'
 import { nativePushPathScript } from './native-shell'
@@ -42,11 +42,20 @@ type Input = {
   setCurrentPath: (path: string) => void
   setIndex: (value: number | ((current: number) => number)) => void
   setLastKnownScreen: (screen: LastKnownScreen) => void
+  setScreenBar: (bar: NativeScreenBar | null) => void
   triggerHaptic: (kind: HapticKind) => void
 }
 
 /** Owns typed WebView-to-native bridge messages so the shell stays a layout. */
 export const handleNativeShellMessage = (message: NativeShellMessage, input: Input): void => {
+  if (isScreenBarMessage(message)) {
+    input.setScreenBar({
+      back: message.back ? { label: message.back.label } : null,
+      layerKey: message.layerKey ?? null,
+      title: message.title,
+    })
+    return
+  }
   if (isScreenMessage(message)) {
     input.screenActiveRef.current = true
     input.setLastKnownScreen({

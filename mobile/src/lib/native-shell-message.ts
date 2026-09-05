@@ -10,6 +10,8 @@ export type ScreenType = 'root' | 'detail' | 'nested' | 'tabHost' | 'flow'
 /** Messages emitted by the hosted admin across the persistent WebView bridge. */
 export type NativeShellMessage = {
   accent?: string
+  back?: { label?: unknown } | null
+  layerKey?: string | null
   accentStrong?: string
   active?: boolean
   authorizationUrl?: string
@@ -104,3 +106,34 @@ export const isAttentionMessage = (message: NativeShellMessage): message is Atte
   message.type === 'nessie:attention'
   && typeof message.badges === 'object'
   && message.badges !== null
+
+/**
+ * `nessie:screen-bar` — what the native navigation bar shows for the layer the
+ * reader is standing on.
+ *
+ * Keyed by the admin's stack layer, not by a pathname: a nested stage never
+ * changes the pathname, and a channel and its info route are two screens on
+ * one route. `back` is the Back the screen's own header would run — a Flow
+ * that owns its Back returns somewhere the route registry cannot name — so the
+ * chevron calls back into the page rather than resolving anything here.
+ *
+ * `title` is allowed to be empty: a layer that has not published yet (a cold
+ * start, the frame after a forward push) renders a bare band rather than
+ * falling back to a root's team controls.
+ */
+export type ScreenBarMessage = NativeShellMessage & {
+  back: { label: string } | null
+  layerKey: string | null
+  title: string
+  type: 'nessie:screen-bar'
+}
+
+export const isScreenBarMessage = (message: NativeShellMessage): message is ScreenBarMessage =>
+  message.type === 'nessie:screen-bar'
+  && typeof message.title === 'string'
+  // Every field is required even when empty. The bridge always sends all
+  // three, so an absent one is a malformed message rather than a bar with
+  // nothing to say — and a bar rendered from a half-message would sit there
+  // until the next navigation.
+  && (message.layerKey === null || typeof message.layerKey === 'string')
+  && (message.back === null || typeof message.back?.label === 'string')

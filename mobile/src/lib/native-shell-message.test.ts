@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { isAttentionMessage, isScreenMessage } from './native-shell-message'
+import { isAttentionMessage, isScreenBarMessage, isScreenMessage } from './native-shell-message'
 import type { NativeShellMessage } from './native-shell-message'
 
 const VALID_SCREEN: NativeShellMessage = {
@@ -54,4 +54,45 @@ test('isAttentionMessage accepts only a nessie:attention message carrying a badg
     isAttentionMessage({ type: 'nessie:attention', badges: null } as unknown as NativeShellMessage),
     false,
   )
+})
+
+test('a screen-bar message carries a title and an optional named Back', () => {
+  assert.equal(isScreenBarMessage({
+    type: 'nessie:screen-bar',
+    layerKey: 'channels:2:channels:channel',
+    title: 'Design review',
+    back: { label: 'Channels' },
+  }), true)
+  // A layer that has not published yet: an empty title and no Back is a
+  // legitimate bar, and the band renders bare rather than falling back to a
+  // root's team controls.
+  assert.equal(isScreenBarMessage({
+    type: 'nessie:screen-bar',
+    layerKey: null,
+    title: '',
+    back: null,
+  }), true)
+})
+
+test('a malformed screen-bar message is refused rather than half-rendered', () => {
+  assert.equal(isScreenBarMessage({ type: 'nessie:screen-bar' } as never), false)
+  // Every field is required even when empty: a half-message would leave a
+  // stale bar sitting over the new screen until the next navigation.
+  assert.equal(isScreenBarMessage({ type: 'nessie:screen-bar', title: 'x' } as never), false)
+  assert.equal(isScreenBarMessage({
+    type: 'nessie:screen-bar',
+    title: 'x',
+    layerKey: null,
+  } as never), false)
+  assert.equal(isScreenBarMessage({
+    type: 'nessie:screen-bar',
+    title: 'Design review',
+    back: { label: 7 },
+  } as never), false)
+  assert.equal(isScreenBarMessage({
+    type: 'nessie:screen-bar',
+    title: 'Design review',
+    layerKey: 12,
+  } as never), false)
+  assert.equal(isScreenBarMessage({ type: 'nessie:screen', title: 'x' } as never), false)
 })

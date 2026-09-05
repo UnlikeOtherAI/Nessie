@@ -103,6 +103,7 @@ import {
   isAuthGateRoute,
   isFullScreenTaskRoute,
   type LastKnownScreen,
+  type NativeScreenBar,
   shouldShowNativePhoneNavBar,
   shouldShowNativePhoneRootLanes,
 } from './src/lib/native-shell-layout'
@@ -186,6 +187,10 @@ const Shell = (): React.JSX.Element => {
   // bookkeeping (boot recovery, notification/push registration), which is a
   // separate concern from tab selection and root-ness.
   const [lastKnownScreen, setLastKnownScreen] = useState<LastKnownScreen>(DEFAULT_LAST_KNOWN_SCREEN)
+  // What the native navigation bar shows, straight from the admin's own
+  // per-layer descriptor. Null until the first `nessie:screen-bar` of a cold
+  // start arrives, which is why the band renders bare rather than guessing.
+  const [screenBar, setScreenBar] = useState<NativeScreenBar | null>(null)
   // Once a `nessie:screen` message has arrived it is authoritative for
   // hardware Back consumption; a `nessie:back-state` kept around during the
   // admin's transition no longer overrides it (native-shell-message-handler.ts).
@@ -432,6 +437,7 @@ const Shell = (): React.JSX.Element => {
       setCurrentPath,
       setIndex,
       setLastKnownScreen,
+      setScreenBar,
       triggerHaptic,
     })
   }
@@ -608,8 +614,11 @@ const Shell = (): React.JSX.Element => {
       ) : showNativePhoneNavBar ? (
         <NativePhoneNavBar
           headerSurface={phoneHeaderSurface}
+          headerText={phoneHeaderText}
           landscape={largePhoneLandscape}
+          onBack={nativeActions.runScreenBarBack}
           safeTop={insets.top}
+          screenBar={screenBar}
         />
       ) : null}
 

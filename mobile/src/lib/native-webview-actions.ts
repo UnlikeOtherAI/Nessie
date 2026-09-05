@@ -16,6 +16,11 @@ export const createNativeWebviewActions = (runScript: RunScript) => ({
   openSearchOverlay: (): void => {
     runScript("window.dispatchEvent(new Event('nessie:open-search-overlay'));")
   },
+  // The bar's Back is the screen header's own, not the route resolver's: a
+  // Flow that owns its Back returns to an address the registry cannot name.
+  runScreenBarBack: (): void => {
+    runScript('window.__nessieScreenBarBack && window.__nessieScreenBarBack();')
+  },
   runToolbarAction: (action: ToolbarAction): void => {
     runScript(`window.__nessieToolbarAction && window.__nessieToolbarAction(${JSON.stringify(action)});`)
   },

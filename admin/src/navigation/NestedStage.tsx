@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { ScreenBarLayerProvider } from './ScreenBarLayer'
 
 // A nested stage is how a state-driven screen joins the navigation stack: a
 // column browser's next column, a Knowledge folder → document → history →
@@ -29,6 +30,9 @@ export type NestedStageHost = {
   // change) re-asserts itself instead of rendering into a container nothing
   // shows.
   stageIds: readonly string[]
+  // A stage's layer key (`section:depth:key`), which the stage itself cannot
+  // compute: the section and the depth it was pushed at belong to the stack.
+  layerKeyOf: (id: string) => string | null
   // Every stage entry the stack still holds, including one sliding out
   // above the current position: its page keeps rendering it until the
   // stack releases the layer, so the Back slide never plays empty.
@@ -93,16 +97,23 @@ export const NestedStage = ({
   // one id; only the instance that pushed the entry may pop it, or the
   // second instance's unmount would close the first one's open stage.
   const owns = useRef(false)
+  // Ownership decides whether this instance may publish the native bar for
+  // the stage, and the children's own effects run before this layout effect —
+  // so the first publish from a fresh instance is inert and needs a render to
+  // follow. State, not a ref read, is what guarantees that render happens.
+  const [owned, setOwned] = useState(false)
   useLayoutEffect(() => {
     if (!host || !container) return
     if (active) {
       if (!host.stageIds.includes(id)) {
         host.activate(id, container)
         owns.current = true
+        setOwned(true)
       }
     } else if (owns.current && host.stageIds.includes(id)) {
       host.deactivate(id, { animate: true })
       owns.current = false
+      setOwned(false)
     }
   }, [active, container, host, id])
 
@@ -118,7 +129,17 @@ export const NestedStage = ({
 
   if (hosted) {
     const shown = active || host.retainedIds.includes(id)
-    return shown ? createPortal(children, container) : null
+    // The children are portalled from this component's React position, so a
+    // header inside the stage would otherwise read the *route* layer's key
+    // from context and publish its bar over the page beneath it.
+    return shown
+      ? createPortal(
+        <ScreenBarLayerProvider layerKey={owned ? host.layerKeyOf(id) : null}>
+          {children}
+        </ScreenBarLayerProvider>,
+        container,
+      )
+      : null
   }
   return active ? <>{children}</> : null
 }

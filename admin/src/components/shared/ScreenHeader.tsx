@@ -1,5 +1,9 @@
 import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
+import { useLocalBackSnapshot } from '../../layouts/admin-shell/local-back/LocalBackContext'
+import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
+import { useScreenBarPublisher } from '../../navigation/useScreenBar'
+import type { ScreenBarBack } from '../../navigation/screen-bar'
 import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
 import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
 import { useNavigationLayout } from '../../lib/mobile-shell'
@@ -83,6 +87,10 @@ export const ScreenHeader = ({
   const location = useLocation()
   const layout = useNavigationLayout()
   const single = layout === 'single'
+  const navigation = usePhoneNavigation()
+  // Subscribing re-runs the published Back when an owner registers or leaves,
+  // exactly as the rendered doorway does.
+  useLocalBackSnapshot()
 
   // Published under this header's own pathname: retained and seeded layers
   // stay mounted under their own location, so several headers publish at
@@ -92,6 +100,19 @@ export const ScreenHeader = ({
     publishScreenTitle(pathname, title)
     return () => { retireScreenTitle(pathname, title) }
   }, [pathname, title])
+
+  // What the native bar publishes as Back is the Back this header would
+  // actually run — not the resolver's answer. A Flow that owns its Back
+  // returns to an address the registry cannot know (a compose's `returnTo`,
+  // a designer's edit origin); running the resolver there pops to the section
+  // root instead of where the reader came from.
+  const resolvedBack = navigation?.resolveBackAction(pathname) ?? null
+  const effectiveBack: ScreenBarBack | null = flowOwnsBack && onBack
+    ? { label: backLabel ?? `Back from ${title}`, onBack }
+    : resolvedBack
+      ? { label: resolvedBack.label, onBack: () => navigation?.performBack() }
+      : null
+  useScreenBarPublisher({ actions: [], back: effectiveBack, title })
 
   const pageBack = onBack && (flowOwnsBack || surfaceParent(pathname) !== null)
     ? (

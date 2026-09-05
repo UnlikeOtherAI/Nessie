@@ -60,6 +60,17 @@ export const DEFAULT_LAST_KNOWN_SCREEN: LastKnownScreen = {
   type: 'root',
 }
 
+/**
+ * The admin's description of the native navigation bar for the layer showing.
+ * `title` may be empty and `back` null — a layer that has not published yet
+ * renders a bare band, never a root's team controls (see NativePhoneNavBar).
+ */
+export type NativeScreenBar = {
+  back: { label: string } | null
+  layerKey: string | null
+  title: string
+}
+
 export const isAuthGateRoute = (path: string): boolean =>
   path.startsWith('/login') || path.startsWith('/bootstrap')
 
