@@ -604,3 +604,16 @@ turn, additive migrations only.
    `agents_system_managed_invariants_chk` DB CHECK does not permit, and an
    `extagent:` dmKey shape the PA-channel CHECK appears to forbid — a latent
    inconsistency to verify and fix on its own branch.
+
+   **Resolved 2026-09-02**, before this question was re-read. Migration
+   `20260902170000_external_agent_surface_invariants` added the fourth agent
+   tuple (`system_managed`, `shared`, `dm_only`, `act_as_requesting_user`) and
+   the `external_agent`/`extagent:%` channel arm; both survive the later
+   rebuilds of those CHECKs in `20260902180000_agent_email_channel_surface`,
+   `20260902190100_global_agent_foundation` and
+   `20260902230000_global_agents_bindable_to_channels`. Re-verified on
+   2026-09-05 by applying the whole migration chain to a clean pgvector
+   database and running `ensureExternalAgentBootstrap` against it. The standing
+   guard is `api/test/external-agent-bootstrap-db.test.ts`, which drives the
+   real service against Postgres because the cast-fake sibling suite is what
+   hid the defect originally.
