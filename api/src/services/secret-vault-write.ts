@@ -12,6 +12,7 @@
 
 import crypto from 'node:crypto'
 
+import { findSecretLockAbove } from '@nessie/schemas'
 import { z } from 'zod'
 
 import {
@@ -57,6 +58,129 @@ export const canManageSecretScope = async (input: {
     where: { id: input.scopeId, project: { organizationId } },
   })
   return { allowed: isOwner && Boolean(team), scopeId: input.scopeId }
+}
+
+/**
+ * Every scope id a person stands inside, for the scopes above `personal`.
+ *
+ * A lock binds the whole subtree beneath it, and a person is in many teams, so
+ * "which locks could bind me" is never answerable from the session's *active*
+ * team alone. Team and project membership are read separately rather than
+ * derived from one another: the `Team.projectId` foreign key points the
+ * opposite way to the model this product is written for
+ * (docs/standards/team-model.md), so joining through it would silently drop
+ * one of the two.
+ */
+const scopeIdsForActor = async (input: {
+  actorId: string
+  organizationId: string
+  prisma: Pick<PrismaClient, 'projectMember' | 'teamMember'>
+}): Promise<{ projectIds: string[]; teamIds: string[] }> => {
+  const [teams, projects] = await Promise.all([
+    input.prisma.teamMember.findMany({
+      select: { teamId: true },
+      where: { userId: input.actorId, team: { project: { organizationId: input.organizationId } } },
+    }),
+    input.prisma.projectMember.findMany({
+      select: { projectId: true },
+      where: { userId: input.actorId, project: { organizationId: input.organizationId } },
+    }),
+  ])
+  return {
+    projectIds: projects.map((row) => row.projectId),
+    teamIds: teams.map((row) => row.teamId),
+  }
+}
+
+/**
+ * The secrets a person may see the *metadata* of: their own, everything
+ * explicitly granted to them, and — because a cascade a person cannot see is
+ * not a cascade they can work with — the organisation's plus every team and
+ * project they belong to.
+ *
+ * Widening this to the levels above was the price of showing precedence and
+ * locks on a member's own Secrets page: without it a person's personal secret
+ * silently stopped applying and the screen had nothing to say about why. No
+ * value, ciphertext or vault path is exposed by any of it — a `Secret` row
+ * holds none (docs/secret-management-spec.md → "Authority split") — and use of
+ * a secret still runs through `SecretGrant`, which this does not touch.
+ */
+export const secretsVisibleToActor = async (input: {
+  actorId: string
+  isOwner: boolean
+  organizationId: string
+  prisma: Pick<PrismaClient, 'projectMember' | 'secret' | 'teamMember'>
+}) => {
+  const where = input.isOwner
+    ? { organizationId: input.organizationId }
+    : await (async () => {
+      const { projectIds, teamIds } = await scopeIdsForActor(input)
+      return {
+        organizationId: input.organizationId,
+        OR: [
+          { scopeType: 'organization' as const },
+          { scopeType: 'personal' as const, scopeId: input.actorId },
+          ...(teamIds.length ? [{ scopeType: 'team' as const, scopeId: { in: teamIds } }] : []),
+          ...(projectIds.length
+            ? [{ scopeType: 'project' as const, scopeId: { in: projectIds } }]
+            : []),
+          {
+            grants: {
+              some: {
+                principalType: 'user' as const,
+                principalId: input.actorId,
+                OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+              },
+            },
+          },
+        ],
+      }
+    })()
+  return input.prisma.secret.findMany({ where, orderBy: { createdAt: 'desc' } })
+}
+
+/**
+ * The broadest active lock on `name` sitting strictly above the scope being
+ * written, or null when the write is free to proceed.
+ *
+ * The candidate set is deliberately every scope the *actor* stands in rather
+ * than the one chain their session happens to be pointed at: a person writing
+ * a personal secret is bound by a lock in any of their teams, and an owner
+ * writing into one team is bound by the organisation's.
+ */
+export const findLockAboveScope = async (input: {
+  actorId: string
+  name: string
+  organizationId: string
+  prisma: Pick<PrismaClient, 'projectMember' | 'secret' | 'teamMember'>
+  scopeType: SecretScope
+}): Promise<{ reference: string; scopeType: SecretScope } | null> => {
+  if (input.scopeType === 'organization') return null
+  // Nothing sits above a team but the organisation, which every write consults
+  // anyway; only a personal or project write has to ask about memberships.
+  const { projectIds, teamIds } = input.scopeType === 'team'
+    ? { projectIds: [], teamIds: [] }
+    : await scopeIdsForActor(input)
+  const candidateScopes = [
+    { scopeType: 'organization' as const },
+    ...(teamIds.length ? [{ scopeType: 'team' as const, scopeId: { in: teamIds } }] : []),
+    ...(projectIds.length ? [{ scopeType: 'project' as const, scopeId: { in: projectIds } }] : []),
+  ]
+  const rows = await input.prisma.secret.findMany({
+    select: { locked: true, name: true, reference: true, scopeId: true, scopeType: true },
+    where: {
+      locked: true,
+      name: input.name,
+      organizationId: input.organizationId,
+      status: 'active',
+      OR: candidateScopes,
+    },
+  })
+  const lock = findSecretLockAbove(
+    { name: input.name, scopeType: input.scopeType },
+    rows.map((row) => ({ ...row, status: 'active' as const })),
+  )
+  return lock ? { reference: lock.reference, scopeType: lock.scopeType } : null
 }
 
 export type VaultSecretWrite = {
