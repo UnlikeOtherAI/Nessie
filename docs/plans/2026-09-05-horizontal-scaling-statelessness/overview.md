@@ -3,6 +3,14 @@
 > Status: plan, 2026-09-05. Findings with `file:line` evidence are in
 > [audit.md](audit.md); this page is the decision and the work order.
 
+## Table of Contents
+
+- **[audit.md](audit.md)** — the consolidated findings: what is already
+  multi-instance safe, then every BLOCKER, DEGRADED and INFO item per area
+  with `file:line` evidence. The plan tables below cite its numbering.
+- This page — target topology, the nine invariants, Phases 0–5, cutover and
+  delivery mechanics.
+
 ## The one-paragraph version
 
 Nessie is closer to horizontally scalable than its single-container
