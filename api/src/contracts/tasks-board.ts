@@ -4,6 +4,8 @@ import {
   ProjectIdSchema,
   RunIdSchema,
   TaskIdSchema,
+  TaskExternalLinkRecordSchema,
+  TaskFieldValuesPatchSchema,
   TaskStatusSchema,
   UserIdSchema,
 } from '@nessie/schemas'
@@ -20,10 +22,10 @@ export const TaskRecordSchema = z.object({
   id: TaskIdSchema,
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.nullable(),
-  columnId: z.string().uuid().nullable(),
-  position: z.number().int(),
   iterationId: z.string().uuid().nullable(),
   storyPoints: z.number().int().nullable(),
+  fieldValues: z.record(z.string().uuid(), z.unknown()),
+  externalLink: TaskExternalLinkRecordSchema.nullable(),
   agentId: AgentIdSchema.nullable(),
   parentTaskId: TaskIdSchema.nullable(),
   runId: RunIdSchema.nullable(),
@@ -67,6 +69,8 @@ export const UpdateTaskBodySchema = z.object({
   dueDate: z.coerce.date().nullable().optional(),
   archivedAt: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),
+  // A partial merge of custom field values; a key set to `null` clears it.
+  fieldValues: TaskFieldValuesPatchSchema.optional(),
 })
 
 // Archive completed work from one explicit project. A board action must never
@@ -103,44 +107,45 @@ export const MoveTaskBodySchema = z.object({
   position: z.number().int().nonnegative().optional(),
 })
 
-// ─── Boards (per-project columns + style) ─────────────────────────────────
+// ─── Boards ───────────────────────────────────────────────────────────────
+//
+// Board shapes live in `@nessie/schemas` (`boards.ts`, `board-lifecycle.ts`)
+// because the worker's ticket tools and the admin read them too. Re-exported
+// here so route modules keep one contract import.
 
-export const BoardStyleSchema = z.enum(['kanban', 'scrum'])
-export type BoardStyle = z.infer<typeof BoardStyleSchema>
+export {
+  BOARD_TASK_LIMIT,
+  BoardColumnRecordSchema,
+  BoardFilterSchema,
+  BoardRecordSchema,
+  BoardStyleSchema,
+  ColumnCategorySchema,
+  CreateBoardBodySchema,
+  CreateBoardColumnBodySchema,
+  UpdateBoardBodySchema,
+  UpdateBoardColumnBodySchema,
+  type BoardColumnRecord,
+  type BoardFilter,
+  type BoardRecord,
+  type BoardStyle,
+  type ColumnCategory,
+} from '@nessie/schemas'
 
-export const ColumnCategorySchema = z.enum(['todo', 'in_progress', 'review', 'done'])
-export type ColumnCategory = z.infer<typeof ColumnCategorySchema>
+export {
+  CreateTaskFieldBodySchema,
+  TaskFieldDefinitionRecordSchema,
+  TaskFieldTypeSchema,
+  UpdateTaskFieldBodySchema,
+  type TaskFieldDefinitionRecord,
+  type TaskFieldType,
+} from '@nessie/schemas'
 
-export const BoardColumnRecordSchema = z.object({
-  id: z.string().uuid(),
-  projectId: ProjectIdSchema,
-  name: NonEmptyStringSchema,
-  category: ColumnCategorySchema,
-  position: z.number().int(),
+/** A task as one board renders it: the record plus its resolved placement. */
+export const BoardTaskRecordSchema = TaskRecordSchema.extend({
+  columnId: z.string().uuid().nullable(),
+  position: z.number().int().nullable(),
 })
-export type BoardColumnRecord = z.infer<typeof BoardColumnRecordSchema>
-
-export const ProjectBoardRecordSchema = z.object({
-  style: BoardStyleSchema,
-  columns: BoardColumnRecordSchema.array(),
-})
-export type ProjectBoardRecord = z.infer<typeof ProjectBoardRecordSchema>
-
-export const UpdateBoardBodySchema = z.object({
-  style: BoardStyleSchema,
-})
-
-export const CreateColumnBodySchema = z.object({
-  name: NonEmptyStringSchema,
-  category: ColumnCategorySchema,
-  position: z.number().int().optional(),
-})
-
-export const UpdateColumnBodySchema = z.object({
-  name: NonEmptyStringSchema.optional(),
-  category: ColumnCategorySchema.optional(),
-  position: z.number().int().optional(),
-})
+export type BoardTaskRecord = z.infer<typeof BoardTaskRecordSchema>
 
 // ─── Iterations (scrum sprints) ───────────────────────────────────────────
 

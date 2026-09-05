@@ -88,7 +88,7 @@ test('every compact form selector reaches the shared sliding strip', () => {
     ['../src/components/features/integrations/DeepTestSecurityPanel.tsx', '<ChoiceGroup'],
     ['../src/components/features/integrations/DeepWaterResearchCustomControls.tsx', '<ChoiceGroup'],
     ['../src/components/features/knowledge/VersionHistory.tsx', '<ChoiceGroup'],
-    ['../src/pages/project/ProjectSettingsPage.tsx', '<ChoiceGroup'],
+    ['../src/pages/project/settings/BoardCreateDialog.tsx', '<ChoiceGroup'],
   ]
 
   for (const [file, expected] of hosts) {

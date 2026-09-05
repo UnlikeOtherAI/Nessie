@@ -53,6 +53,7 @@ import {
 import { registerApiRoutes } from './register-api-routes.js'
 import type { RouteDeps } from './routes/types.js'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
+import { registerBoardSourceAdaptersFromEnv } from '@nessie/board-source-providers'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
@@ -316,6 +317,16 @@ export const buildApp = async () => {
   console.log(
     `[api] comms connectors registered: ${
       commsProviders.length > 0 ? commsProviders.join(', ') : 'none'
+    }`,
+  )
+
+  // Board-source adapters, into the same shared registry the worker uses, so
+  // the OAuth start/callback and the container picker resolve the same
+  // adapters that run the sync.
+  const boardProviders = registerBoardSourceAdaptersFromEnv(process.env)
+  console.log(
+    `[api] board-source adapters registered: ${
+      boardProviders.length > 0 ? boardProviders.join(', ') : 'none'
     }`,
   )
 

@@ -2,18 +2,6 @@ import { useEffect } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
-import {
-  faBold,
-  faCode,
-  faFileLines,
-  faItalic,
-  faLink,
-  faListOl,
-  faListUl,
-  faQuoteLeft,
-} from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { Wikilink } from './wikilink/wikilink-node'
 import { WidgetEmbedEditing } from './widget-embed/WidgetEmbedView'
 import { WikilinkSuggestion } from './wikilink/wikilink-suggestion'
@@ -27,15 +15,13 @@ type RichTextEditorProps = {
 
 type ToolbarButtonProps = {
   active?: boolean
-  icon?: IconDefinition
-  label?: string
+  label: string
   onClick: () => void
   title: string
 }
 
-const ToolbarButton = ({ active, icon, label, onClick, title }: ToolbarButtonProps) => (
+const ToolbarButton = ({ active, label, onClick, title }: ToolbarButtonProps) => (
   <button
-    aria-label={title}
     className={[
       'min-w-[28px] rounded px-2 py-1 text-xs font-semibold',
       active
@@ -48,7 +34,7 @@ const ToolbarButton = ({ active, icon, label, onClick, title }: ToolbarButtonPro
     title={title}
     type="button"
   >
-    {icon ? <FontAwesomeIcon aria-hidden="true" className="h-3.5 w-3.5" icon={icon} /> : label}
+    {label}
   </button>
 )
 
@@ -68,13 +54,13 @@ const Toolbar = ({ editor }: { editor: Editor }) => {
     <div className="kb-editor-toolbar flex flex-wrap items-center gap-1 border-b border-[color:var(--sep)] py-2">
       <ToolbarButton
         active={editor.isActive('bold')}
-        icon={faBold}
+        label="B"
         onClick={() => editor.chain().focus().toggleBold().run()}
         title="Bold"
       />
       <ToolbarButton
         active={editor.isActive('italic')}
-        icon={faItalic}
+        label="I"
         onClick={() => editor.chain().focus().toggleItalic().run()}
         title="Italic"
       />
@@ -94,43 +80,43 @@ const Toolbar = ({ editor }: { editor: Editor }) => {
       <span className="mx-1 h-4 w-px bg-[color:var(--sep)]" />
       <ToolbarButton
         active={editor.isActive('bulletList')}
-        icon={faListUl}
+        label="•"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         title="Bullet list"
       />
       <ToolbarButton
         active={editor.isActive('orderedList')}
-        icon={faListOl}
+        label="1."
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
         title="Numbered list"
       />
       <ToolbarButton
         active={editor.isActive('blockquote')}
-        icon={faQuoteLeft}
+        label="❝"
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
         title="Quote"
       />
       <span className="mx-1 h-4 w-px bg-[color:var(--sep)]" />
       <ToolbarButton
         active={editor.isActive('code')}
-        icon={faCode}
+        label="‹›"
         onClick={() => editor.chain().focus().toggleCode().run()}
         title="Inline code"
       />
       <ToolbarButton
         active={editor.isActive('codeBlock')}
-        icon={faCode}
+        label="{ }"
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         title="Code block"
       />
       <ToolbarButton
         active={editor.isActive('link')}
-        icon={faLink}
+        label="🔗"
         onClick={setLink}
         title="Link"
       />
       <ToolbarButton
-        icon={faFileLines}
+        label="[[ ]]"
         onClick={() => editor.chain().focus().insertContent('[[').run()}
         title="Link page"
       />

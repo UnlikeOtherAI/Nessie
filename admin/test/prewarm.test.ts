@@ -92,7 +92,7 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
 
   assert.deepEqual(calls, [
     'GET /api/threads/thread-9/messages',
-    'GET /api/projects/proj-1/board',
+    'GET /api/projects/proj-1/boards',
     'GET /api/agents/agent-1/status',
     'GET /api/dashboards/dash-1',
     'GET /api/knowledge-base/spaces/space-1',
@@ -104,7 +104,7 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
   // would fetch it all again on arrival.
   for (const key of [
     threadKeys.messages('thread-9'),
-    projectKeys.board('proj-1'),
+    projectKeys.boards('proj-1'),
     agentKeys.status('agent-1'),
     dashboardKeys.detail('dash-1'),
     knowledgeKeys.space('space-1'),

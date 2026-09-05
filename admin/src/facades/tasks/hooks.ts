@@ -17,10 +17,20 @@ export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskRecord = {
   id: string
   projectId: string | null
-  columnId: string | null
-  position: number
   iterationId: string | null
   storyPoints: number | null
+  fieldValues: Record<string, unknown>
+  /** Present only on a task mirrored from an external source. */
+  externalLink: {
+    sourceId: string
+    provider: 'jira' | 'linear' | 'trello' | 'github'
+    externalKey: string
+    externalUrl: string
+    remoteStateName: string | null
+    remoteAssigneeDisplay: string | null
+    lastInboundAt: string | null
+    writeMode: 'read_only' | 'read_write'
+  } | null
   status: TaskStatus
   priority: TaskPriority
   dueDate: string | null
@@ -95,6 +105,8 @@ export const useUpdateTask = () => {
       priority?: TaskPriority
       dueDate?: string | null
       archivedAt?: string | null
+      /** A partial merge of custom field values; `null` clears one. */
+      fieldValues?: Record<string, unknown>
     }) => {
       const { id, ...fields } = input
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)

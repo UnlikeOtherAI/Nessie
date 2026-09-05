@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useProjectBoard } from '../../../facades/board/hooks'
+import { useProjectBoards } from '../../../facades/boards/hooks'
 import { useIterations } from '../../../facades/iterations/hooks'
 import { useTasks } from '../../../facades/tasks/hooks'
 import { SkeletonBlock } from '../../primitives/Skeleton'
@@ -43,13 +43,16 @@ const formatEndDate = (value: string | null): string | null => {
  * that appears (beyond the `Open` anchor) is an exception worth acting on.
  */
 export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionProps) => {
-  const { data: board } = useProjectBoard(projectId)
-  const isScrum = board?.style === 'scrum'
+  const { data: boards = [] } = useProjectBoards(projectId)
+  // Backlog and Insights are project-level, so they show when *any* board of
+  // this project runs sprints.
+  const isScrum = boards.some((board) => board.style === 'scrum')
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const { data: tasks, isError, isPending } = useTasks(projectId)
 
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
-  // Scoped exactly like ProjectBoardTab, so the chips count what "Board →" shows.
+  // Scoped exactly like ProjectBoardTab, so the chips count what the board button
+  // opens.
   const scoped = scopeTasksToBoard(tasks ?? [], {
     activeIterationId: activeIteration?.id ?? null,
     isScrum: Boolean(isScrum),
@@ -57,13 +60,22 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
   const counts = summarizeWork(scoped)
 
   const boardHref = `/projects/${projectId}/board`
-  const links: SectionLink[] = isScrum
-    ? [
-        { label: 'Board', to: boardHref },
-        { label: 'Backlog', to: `/projects/${projectId}/backlog` },
-        { label: 'Insights', to: `/projects/${projectId}/insights` },
-      ]
-    : [{ label: 'Board', to: boardHref }]
+  // One link per board, named, so a project's second and third boards are
+  // reachable from the place a person is standing when they wonder about them
+  // — not only from inside the board tab's own switcher.
+  const boardLinks: SectionLink[] = boards.map((board) => ({
+    label: board.name,
+    to: board.isDefault ? boardHref : `${boardHref}?board=${board.id}`,
+  }))
+  const links: SectionLink[] = [
+    ...(boardLinks.length > 0 ? boardLinks : [{ label: 'Board', to: boardHref }]),
+    ...(isScrum
+      ? [
+          { label: 'Backlog', to: `/projects/${projectId}/backlog` },
+          { label: 'Insights', to: `/projects/${projectId}/insights` },
+        ]
+      : []),
+  ]
 
   const allChips: Chip[] = [
     { key: 'open', label: 'Open', tone: 'anchor', value: counts.open },

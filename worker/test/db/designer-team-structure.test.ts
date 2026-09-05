@@ -224,25 +224,34 @@ runDatabaseTest('the Designer stands up a project, a team and a channel in it', 
     organizationId: team.organizationId,
     userId: team.ownerId,
   })
+  const projectShape = {
+    channelRoot: true,
+    organizationId: true,
+    boards: {
+      select: {
+        isDefault: true,
+        name: true,
+        style: true,
+        columns: { select: { category: true, name: true }, orderBy: { position: 'asc' } },
+      },
+    },
+    _count: { select: { members: true } },
+  } as const
   const [viaTool, clicked] = await Promise.all([
-    prisma.project.findUniqueOrThrow({
-      where: { id: projectId },
-      select: {
-        channelRoot: true,
-        organizationId: true,
-        _count: { select: { boardColumns: true, members: true } },
-      },
-    }),
-    prisma.project.findUniqueOrThrow({
-      where: { id: viaRoute.id },
-      select: {
-        channelRoot: true,
-        organizationId: true,
-        _count: { select: { boardColumns: true, members: true } },
-      },
-    }),
+    prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: projectShape }),
+    prisma.project.findUniqueOrThrow({ where: { id: viaRoute.id }, select: projectShape }),
   ])
   assert.deepEqual(viaTool, clicked)
+  // Not just equal to each other — actually the default board with its four
+  // lifecycle columns, so the assertion cannot pass by both being empty.
+  assert.equal(viaTool.boards.length, 1)
+  assert.equal(viaTool.boards[0]?.isDefault, true)
+  assert.deepEqual(viaTool.boards[0]?.columns.map((column) => column.category), [
+    'todo',
+    'in_progress',
+    'review',
+    'done',
+  ])
 })
 
 runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) => {

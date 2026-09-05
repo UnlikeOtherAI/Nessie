@@ -73,11 +73,23 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
               + '"destination":{"kind":"dashboard_source_credential","sourceId":"<uuid>",'
               + '"mode":"bearer"}} (header mode also needs headerName); '
               + 'or {"type":"secret","key":"api_key","label":"Stripe API key",'
-              + '"destination":{"kind":"vault_secret","name":"STRIPE_API_KEY"}} — the '
-              + 'general destination, saving to the person\'s own Secrets under the '
-              + 'NAME you supply, which is what the form arrives pre-filled with. Use '
-              + 'this one whenever a credential is not being attached to a specific '
-              + 'connector or dashboard source.',
+              + '"destination":{"kind":"vault_secret","name":"STRIPE_API_KEY",'
+              + '"scopeType":"personal"}} — the general destination, saving to Secrets '
+              + 'under the NAME you supply, which is what the form arrives pre-filled '
+              + 'with. Use this one whenever a credential is not being attached to a '
+              + 'specific connector or dashboard source. Choose scopeType deliberately '
+              + 'and say in your message which level you picked and why, because it '
+              + 'decides who the credential serves and who can see that it exists: '
+              + '"personal" (the default) is this one person\'s and reaches nobody '
+              + 'else; "team", "project" and "organization" are shared by everyone at '
+              + 'that level and each needs that level\'s id in scopeId. Every scope '
+              + 'above personal is refused for anyone but an owner, so ask for a shared '
+              + 'one only when the credential really is shared. A narrower scope '
+              + 'overrides a broader one — personal beats project beats team beats '
+              + 'organisation — and a level may lock its key, which refuses every '
+              + 'narrower write: a SECRET_LOCKED_ABOVE refusal means that key is '
+              + 'already settled above and the person should bind the existing secret '
+              + 'rather than save a copy of their own.',
             items: { type: 'object' },
           },
           actions: {

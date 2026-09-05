@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ARCHIVED_STATUSES, statusLabel } from '../../components/kanban/kanban-config'
+import { isArchivedStatus, statusLabel } from '../../components/kanban/kanban-config'
 import { NewTaskButton } from '../../components/kanban/NewTaskButton'
 import { taskStatusTone } from '../../components/kanban/task-status-presentation'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
@@ -200,7 +200,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   )
   const moveTargets = planning.map((i) => ({ id: i.id, name: i.name }))
 
-  const visibleTasks = tasks.filter((task) => !ARCHIVED_STATUSES.includes(task.status))
+  const visibleTasks = tasks.filter((task) => !isArchivedStatus(task.status))
   const backlogTasks = visibleTasks.filter((task) => !task.iterationId)
   const tasksByIteration = (iterationId: string) =>
     visibleTasks.filter((task) => task.iterationId === iterationId)

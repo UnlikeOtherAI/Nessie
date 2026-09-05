@@ -105,6 +105,13 @@ export type BuiltinToolRuntimeContext = {
   /** Deployment secret used only to decrypt an acknowledged executor receipt
    * while preparing a user-owned continuation. It is never model-visible. */
   executorCommandEncryptionSecret?: string
+  /**
+   * Deployment secret used only to decrypt a board source's stored credential
+   * when a ticket tool writes a change back to its provider. Never
+   * model-visible. Optional so partial test fixtures keep compiling; a mirrored
+   * ticket then moves locally only, exactly as it did before sources existed.
+   */
+  boardSourceEncryptionSecret?: string
   ledgerIdentity: LedgerIdentityService | null
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any

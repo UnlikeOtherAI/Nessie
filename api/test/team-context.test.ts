@@ -186,10 +186,14 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         return { id: row.id }
       },
     },
-    boardColumn: {
-      createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
-        boardColumns.push(...data)
-        return { count: data.length }
+    board: {
+      count: async () => 0,
+      // The default board is one nested create, so the columns arrive under
+      // `columns.create` rather than as their own `createMany`.
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const columns = (data.columns as { create?: Array<Record<string, unknown>> })?.create
+        if (columns) boardColumns.push(...columns)
+        return { id: `board-${boardColumns.length}` }
       },
     },
     team: {

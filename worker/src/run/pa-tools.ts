@@ -98,6 +98,7 @@ export {
   runTicketAssignTool,
   runTicketBoardReadTool,
   runTicketCreateTool,
+  runTicketFieldsReadTool,
   runTicketIterationSetTool,
   runTicketListTool,
   runTicketMoveTool,

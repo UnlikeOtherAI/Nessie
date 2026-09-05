@@ -275,6 +275,21 @@ export const AppDetailRecordSchema = AppSummaryRecordSchema.extend({
   capabilities: AppCapabilitiesSchema,
   connections: z.array(AppConnectionSummaryRecordSchema),
   agentsWithAccess: z.array(AppAgentAccessRecordSchema),
+  /**
+   * A second, non-MCP way this app is used, when it has one — decided
+   * server-side from the registered adapters rather than inferred from the
+   * slug, so the store reads a decision instead of re-deriving one. Today the
+   * only kind is a project board source: Linear, Jira, Trello and GitHub are
+   * each one app with two install modes, never two catalogue entries.
+   */
+  setupSurface: z
+    .object({
+      kind: z.literal('project_sources'),
+      provider: z.enum(['jira', 'linear', 'trello', 'github']),
+      label: NonEmptyStringSchema,
+    })
+    .nullable()
+    .default(null),
 })
 export type AppDetailRecord = z.infer<typeof AppDetailRecordSchema>
 

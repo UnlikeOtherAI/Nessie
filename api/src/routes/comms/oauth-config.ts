@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 
 import type { FastifyRequest } from 'fastify'
 import type { CommsProvider } from '@nessie/schemas'
+import { hasConnector } from '@nessie/comms-connect'
 
 import { resolvePublicOrigin } from '../../lib/public-origin.js'
 
@@ -97,6 +98,23 @@ const COMMS_OAUTH_CONFIG: Partial<Record<CommsProvider, CommsOAuthProviderConfig
 export const getCommsOAuthConfig = (
   provider: CommsProvider,
 ): CommsOAuthProviderConfig | undefined => COMMS_OAUTH_CONFIG[provider]
+
+/**
+ * Whether this deployment can carry a connect for `provider` all the way
+ * through, asked as one question so no surface answers half of it.
+ *
+ * Both halves are required and neither implies the other: `hasConnector`
+ * proves startup registered the adapter that performs the code→token exchange
+ * (which is where a client *secret* is needed), and the client id proves the
+ * authorization URL this module builds can be built at all. A UI that offers a
+ * provider button must ask this first — otherwise the person clicks, `/start`
+ * refuses on deployment config, and the refusal reads as a fault.
+ */
+export const isCommsProviderConnectable = (provider: CommsProvider): boolean => {
+  const config = getCommsOAuthConfig(provider)
+  if (!config) return false
+  return hasConnector(provider) && Boolean(process.env[config.clientIdEnv])
+}
 
 /** A generated PKCE pair; the verifier is persisted in the OAuth state row. */
 export type PkcePair = { codeVerifier: string; codeChallenge: string }

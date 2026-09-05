@@ -54,12 +54,28 @@ type DataTableProps<T> = {
   /** Names the table for assistive tech and titles the expand dialog. */
   label: string
   loading?: boolean
-  /** Keeps real columns readable on a narrow viewport; the viewport scrolls. */
+  /**
+   * Keeps real columns readable on a narrow viewport; the viewport scrolls.
+   *
+   * Applied as `max(<value>, 100%)` because the scroll viewport's own
+   * `min-width: 100%` (styles.css, `.admin-expandable-table__viewport > table`)
+   * is a stylesheet rule an inline `min-width` silently outranks — so every
+   * table that passed one shrink-wrapped its content and left its header rule
+   * and zebra rows stopping short of the frame drawn around them.
+   */
   minWidth?: string
   onRowClick?: (row: T) => void
   /** Adds the standard trailing disclosure action for a row-level detail view. */
   rowActionLabel?: (row: T) => string
   onSortChange?: (next: SortState) => void
+  /**
+   * Per-row presentation, for a row the surface must show but must not present
+   * as live — the Secrets table's rows pinned by a lock a level above, which
+   * `ScopedSettingGate` renders the same way for a single control. It is a
+   * class rather than a boolean because "dimmed" is one of the shapes this
+   * takes, not the only one; it is never used to encode a row's data.
+   */
+  rowClassName?: (row: T) => string | undefined
   rowKey: (row: T) => string
   rows: T[]
   skeletonRows?: number
@@ -86,6 +102,7 @@ export const DataTable = <T,>({
   onRowClick,
   rowActionLabel,
   onSortChange,
+  rowClassName,
   rowKey,
   rows,
   skeletonRows = 5,
@@ -94,7 +111,7 @@ export const DataTable = <T,>({
   const body = (
     <table
       className="admin-table w-full border-collapse"
-      style={minWidth ? { minWidth } : undefined}
+      style={minWidth ? { minWidth: `max(${minWidth}, 100%)` } : undefined}
     >
       <caption className="sr-only">{label}</caption>
       <thead>
@@ -158,7 +175,9 @@ export const DataTable = <T,>({
           ))
           : rows.map((row) => (
             <tr
-              className={onRowClick ? 'cursor-pointer' : undefined}
+              className={[onRowClick ? 'cursor-pointer' : '', rowClassName?.(row) ?? '']
+                .filter(Boolean)
+                .join(' ') || undefined}
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               onKeyDown={onRowClick

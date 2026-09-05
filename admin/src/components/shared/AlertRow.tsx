@@ -49,6 +49,11 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // No actor: nobody did this, a schedule stopped being able to run.
     return 'A scheduled task stopped running'
   }
+  if (alert.kind === 'board_source_health') {
+    // Also no actor, and deliberately without the provider's name: what is
+    // wrong belongs on the source's own page, where the remedy is a button.
+    return 'A board source stopped syncing'
+  }
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
     // waiting for approval is exactly the thing that must not travel there.

@@ -214,6 +214,12 @@ export type AppDetailContext = AppPresentationContext & {
   agentsWithAccess: AppAgentAccessRecord[]
   capabilities: AppCapabilities
   connections: AppConnectionSummaryRecord[]
+  /**
+   * The non-MCP way this app is also used, when it has one. Decided by the
+   * caller from the live adapter registry, so the store renders a decision
+   * rather than inferring one from a slug.
+   */
+  setupSurface?: AppDetailRecord['setupSurface']
 }
 
 /**
@@ -240,4 +246,5 @@ export const presentAppDetail = (
   capabilities: context.capabilities,
   connections: context.connections,
   agentsWithAccess: context.agentsWithAccess,
+  setupSurface: context.setupSurface ?? null,
 })

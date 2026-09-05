@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { hasBoardSourceAdapter } from '@nessie/board-sources'
 import type { AppDetailRecord, AuthorizedActionContext } from '@nessie/schemas'
 
 import { listInstancesVisibleToUser, resolveMcpUserAccess } from '../mcp-instances.js'
@@ -123,6 +124,7 @@ export const getStoreApp = async (
   const appName = row.displayName ?? row.label
 
   return presentAppDetail(row, {
+    setupSurface: boardSourceSetupSurface(row.name ?? '', row.displayName ?? row.label),
     connectionStatuses: instances.map((instance) =>
       deriveConnectionStatus(instance.lifecycleState),
     ),
@@ -149,4 +151,32 @@ export const getStoreApp = async (
       projections,
     ),
   })
+}
+
+/**
+ * Linear, Jira, Trello and GitHub are one app each with two ways in: the MCP
+ * connector an agent talks to in a run, and a project board source that keeps a
+ * board fresh. This answers whether the second one is available *on this
+ * deployment* — the registry is the authority, not the catalogue name — so the
+ * detail page offers it only when it can actually complete.
+ */
+const BOARD_SOURCE_SLUGS: Record<string, 'jira' | 'linear' | 'trello' | 'github'> = {
+  linear: 'linear',
+  atlassian: 'jira',
+  jira: 'jira',
+  github: 'github',
+  trello: 'trello',
+}
+
+const boardSourceSetupSurface = (
+  name: string,
+  label: string,
+): AppDetailRecord['setupSurface'] => {
+  const provider = BOARD_SOURCE_SLUGS[name.toLowerCase()]
+  if (!provider || !hasBoardSourceAdapter(provider)) return null
+  return {
+    kind: 'project_sources',
+    provider,
+    label: `Use ${label} as a project board source`,
+  }
 }

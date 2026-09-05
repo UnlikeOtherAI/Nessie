@@ -331,7 +331,12 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         return row
       },
     },
-    boardColumn: { createMany: async () => (record('boardColumn.createMany'), { count: 0 }) },
+    // A project's default board is created nested, so the fake needs the
+    // `board` delegate `seedDefaultBoard` reaches for, not `boardColumn`.
+    board: {
+      count: async () => (record('board.count'), 0),
+      create: async () => (record('board.create'), { id: 'board-1' }),
+    },
     team: {
       create: async ({ data }: { data: Row }) => {
         record('team.create')

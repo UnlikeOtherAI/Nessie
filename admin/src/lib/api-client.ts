@@ -55,6 +55,8 @@ export type {
   CommsConnectionStatus,
   CommsConnectionSummary,
   CommsProvider,
+  CommsProviderAvailability,
+  CommsProvidersResponse,
   CommsResourceRecord,
   CommsResourcesPatchRequest,
   CommsResourceToggle,

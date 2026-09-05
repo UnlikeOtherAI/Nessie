@@ -64,6 +64,9 @@ export const createBuiltinToolExecutor = ({
     consumedSources: context.consumedSources,
     documentStream: deps.documentStream,
     executorCommandEncryptionSecret: deps.executorCommandEncryptionSecret,
+    // The same deployment secret; named separately so its one purpose is
+    // legible at the call sites that use it.
+    boardSourceEncryptionSecret: deps.executorCommandEncryptionSecret,
     ledgerIdentity: deps.ledgerIdentity ?? null,
     mcpSecrets: deps.mcpSecrets,
     memoryCaptureConfig: {

@@ -21,6 +21,7 @@ import { detectSecrets, maskSecretValue, type AgentCardSpec } from '@nessie/sche
 import { InfisicalVaultError, type InfisicalSecretNamespace } from './infisical-vault.js'
 import {
   canManageSecretScope,
+  findLockAboveScope,
   putSecretInVault,
   type VaultSecretWrite,
 } from './secret-vault-write.js'
@@ -135,6 +136,25 @@ export const resolveAgentCardSecretPlacements = async (
             403,
             'SECRET_SCOPE_DENIED',
             'You cannot manage secrets in this scope.',
+          )
+        }
+        // The same refusal `POST /api/secrets` makes. A card is the other door
+        // to one vault seam, so a lock a level above has to close both — an
+        // agent asking for a personal STRIPE_API_KEY the organisation has
+        // pinned would otherwise write a row the resolver never consults.
+        const lock = await findLockAboveScope({
+          actorId: input.userId,
+          name: destination.name,
+          organizationId: input.organizationId,
+          prisma,
+          scopeType: destination.scopeType,
+        })
+        if (lock) {
+          throw new AgentCardSecretPlacementError(
+            409,
+            'SECRET_LOCKED_ABOVE',
+            `"${destination.name}" is locked at the ${lock.scopeType} level and cannot be `
+            + 'overridden here.',
           )
         }
         const namespace: InfisicalSecretNamespace = {
