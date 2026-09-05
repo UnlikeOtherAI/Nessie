@@ -19,8 +19,10 @@
   --accent-hover: #1a1a1a;
   --accent-soft: rgba(10, 10, 10, 0.08);
   --on-accent: #ffffff;
-  --surface-inverse: #000000;
-  --surface-inverse-2: #222222;
+  --signin-stage: #0a0a0a;
+  --signin-on-stage: #ffffff;
+  --signin-stage-card: #ffffff;
+  --signin-stage-card-fg: #0a0a0a;
   --scrim: rgba(10, 10, 10, 0.18);
   --scrim-strong: rgba(10, 10, 10, 0.42);
   --danger-soft: rgba(214, 59, 59, 0.1);

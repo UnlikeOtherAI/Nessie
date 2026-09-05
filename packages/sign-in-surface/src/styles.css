@@ -453,14 +453,18 @@
   padding: 20px 20px 20px 0;
 }
 
+/* The showcase is a dark stage in every theme. `--surface-inverse` is not
+   that: it is the light counterpart of the dark app chrome, so on a light
+   theme it left white type on a cream panel. The stage colours are their
+   own tokens, with the design's values as the fallback. */
 .signin-showcase-panel {
   position: relative;
   height: 100%;
   min-height: 0;
   overflow: hidden;
   border-radius: 18px;
-  background: var(--surface-inverse);
-  color: var(--panel);
+  background: var(--signin-stage, #0a0a0a);
+  color: var(--signin-on-stage, #ffffff);
 }
 
 .signin-showcase-aura {
@@ -477,9 +481,9 @@
   inset: 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--surface-inverse) 5%, transparent) 0%,
-    color-mix(in srgb, var(--surface-inverse) 35%, transparent) 55%,
-    color-mix(in srgb, var(--surface-inverse) 92%, transparent) 100%
+    color-mix(in srgb, var(--signin-stage, #0a0a0a) 5%, transparent) 0%,
+    color-mix(in srgb, var(--signin-stage, #0a0a0a) 35%, transparent) 55%,
+    color-mix(in srgb, var(--signin-stage, #0a0a0a) 92%, transparent) 100%
   );
   pointer-events: none;
 }
@@ -519,8 +523,8 @@
   margin: 0 auto;
   overflow: hidden;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--panel) 96%, transparent);
-  color: var(--tx);
+  background: var(--signin-stage-card, #ffffff);
+  color: var(--signin-stage-card-fg, #0a0a0a);
   box-shadow: var(--shadow-float, 0 20px 60px var(--scrim-strong));
   animation: signin-slide-enter 800ms var(--easing-standard, ease) both;
   text-align: left;
@@ -653,13 +657,13 @@
   padding: 0;
   border: 0;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--panel) 35%, transparent);
+  background: color-mix(in srgb, var(--signin-on-stage, #ffffff) 35%, transparent);
   cursor: pointer;
   transition: background 300ms var(--easing-standard, ease);
 }
 
 .signin-dot[aria-selected='true'] {
-  background: var(--panel);
+  background: var(--signin-on-stage, #ffffff);
 }
 
 .signin-showcase-title {
@@ -674,7 +678,7 @@
 .signin-showcase-body {
   max-width: 560px;
   margin: 12px 0 0;
-  color: color-mix(in srgb, var(--panel) 80%, transparent);
+  color: color-mix(in srgb, var(--signin-on-stage, #ffffff) 80%, transparent);
   font-size: 15px;
   line-height: 1.6;
   text-wrap: pretty;
