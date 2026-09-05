@@ -1,6 +1,8 @@
 # Automatic team access after sign-in, by DNS-verified email domain
 
-**Status:** Proposed — revision 2, after adversarial review. Plan only.
+**Status:** Implemented (2026-09-05), behind `NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED`
+(default off). Revision 2 after plan review; §18 records what the code does
+differently from this document after the code review.
 **Supersedes:** `docs/plans/2026-08-20-nessie-corporate-domain-auto-enrolment-surface.md`
 (it waited on UOA endpoints that were never shipped; none of it exists in code).
 **Owning surfaces:** Organization → Members and Team → Members — an **Automatic
@@ -902,8 +904,10 @@ controls.
    sentence in `AGENTS.md` → Architecture and in
    `docs/standards/team-model.md` naming this as the one place Nessie policy
    decides team placement while UOA still owns and authorizes the membership;
-   `docs/functionality.md` updated; this plan moved to `docs/done/` when
-   complete.
+   `docs/functionality.md` updated. This plan stays in `docs/plans/` while the
+   flag is off by default — it is the routed reference `AGENTS.md` points at,
+   and moving it to `docs/done/` belongs with the rollout that turns the flag
+   on.
 
 Every step is backward-compatible: new tables are unread until step 4, the flag
 is off until an operator turns it on, and the migration infers, creates and
@@ -921,3 +925,54 @@ activates nothing.
 - No surface for local/no-IdP installs or generic-OIDC tenants.
 - No broad list of matching people is shown to an administrator — counters only.
 - No new tab framework, table, chip, dialog, progress or realtime primitive.
+
+## 18. As-built deltas
+
+What the code does differently from the plan above, each found in the code
+review and fixed rather than papered over.
+
+- **Reconciliation runs carry a monotonic `step`**, and every queue job for a
+  run is keyed on it. The plan keyed retries on `attempts` and pages on the
+  cursor; `attempts` is reset after each successful page and a stale-cursor
+  restart re-walks pages, so both reuse keys — and the queue's unique
+  idempotency index is permanent with an `ON CONFLICT DO NOTHING` insert that
+  nothing purges. A reused key enqueued nothing and stalled the run in
+  `running` for good. The enqueue's boolean result is now checked, and a
+  five-minute sweep re-enqueues a run whose job never landed.
+- **The instance flag reaches the grant path.** The plan gated it in the routes
+  only, which 404 when it is off — taking the per-organisation emergency stop
+  with them — while sign-in and the workers kept granting on existing rules.
+- **A lapsed rule writes `UserAlert` rows** for the organisation's owners and
+  admins, once per `healthRevision`, linked to the rule so the alert clears
+  itself on re-authorization. The plan described the state and the audit entry
+  but no alert, which is the exact failure
+  `docs/standards/capability-health-alerts.md` was written after.
+- **The team surface lists every proven domain**, not only those already
+  granting that team. Filtering to attached domains made the toggle one-way and
+  left the attach path with no doorway. Domain names are not the secret; the
+  challenge is, and it is still stripped for this reader. Team owners/admins
+  also have their own re-authorize route — the organisation one is
+  organisation-admin gated, so the button they were shown could only have 403'd.
+- **The sign-in enqueue runs inside a `SAVEPOINT`.** It sits in
+  `ensureTeamPrincipal`'s transaction, so a SQL-level failure would abort the
+  whole transaction and fail the login that the surrounding `catch` was there
+  to protect.
+- **Detaching a team disables its rule rather than deleting it**, so the grant
+  ledger survives and a re-attach does not re-walk everybody.
+- **`skipped_no_such_team` is retryable, not terminal.** The per-subject
+  pre-read answers within the authorizer's own authority, so a temporary scope
+  reduction would otherwise have burned that person for that rule permanently.
+- **Every upstream request is paced**, not one per grant: a grant makes two
+  (the pre-read and the add), so the rate limit was effectively double.
+- **Activation is confirmed and starts reconciliation**, naming the domain and
+  the teams — §13 leans on that confirmation as the mitigation for the residual
+  "domain hosts third-party mailboxes" risk in §6. Pausing the organisation is
+  confirmed too.
+- **A re-check no longer lifts a suspension.** §7's table has no
+  `suspended → verified` transition; resuming stays an explicit act.
+- **`grant_issued` is audited only for an actual grant**, never for a skip, and
+  reconciliation audits its grants too.
+- **The route module is three files.** It reached 543 lines, past the 500-line
+  cap, and split along the seam already there: the team surface answers to a
+  different gate, and the shared feature gate, error mapping and rule-change
+  audit are a small support module.
