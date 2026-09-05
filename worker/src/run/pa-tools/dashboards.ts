@@ -63,6 +63,17 @@ const explain = (error: unknown): string => {
     const detail = formatZodIssues(error, { emptyPathLabel: 'definition', separator: ' — ' })
     return `That widget definition is not valid: ${detail}`
   }
+  // Prisma P2023 — an id argument that is not a UUID at all (an empty string, a
+  // title, a placeholder the model invented). Left alone it comes back as
+  // "Invalid `prisma.dashboard.findFirst()` invocation: Inconsistent column
+  // data: Error creating UUID", which names our query rather than the model's
+  // mistake and reads as a crash, so the model retries the same call instead of
+  // resolving the id.
+  if ((error as { code?: unknown } | null)?.code === 'P2023') {
+    return 'That is not a dashboard, widget or source id. Ids come from '
+      + 'dashboard_list, dashboard_source_list or dashboard_read — never guess '
+      + 'or reuse a title.'
+  }
   const message = error instanceof Error ? error.message : 'unknown error'
   return message
 }
