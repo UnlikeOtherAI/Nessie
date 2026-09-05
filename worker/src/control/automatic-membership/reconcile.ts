@@ -28,6 +28,7 @@ import { enqueueQueueJob } from '@nessie/db'
 import { createUoaSubjectAssertion } from '@nessie/runtime'
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
 import {
+  defaultAutomaticGrantUpstream,
   grantAutomaticMembership,
   isAutomaticMembershipEnabledForOrganization,
   listOrganisationMembers,
@@ -40,12 +41,42 @@ import {
 } from '@nessie/team-admin'
 
 import { writeAutomaticMembershipAudit } from './audit.js'
+import { alertAutomaticMembershipHealth } from './health-alert.js'
 import { awaitUpstreamSlot } from './rate-limit.js'
 import type { AutomaticMembershipDeps } from './provision.js'
 
 const PAGE_SIZE = 50
 const BATCH_PAUSE_MS = 1_000
 const MAX_ATTEMPTS = 5
+
+/**
+ * Enqueue the next unit of this run, keyed on a counter that only ever goes up.
+ *
+ * The first cut keyed retries on `attempts` (which is reset after every
+ * successful page) and pages on the cursor (which a restart re-walks). Both
+ * reuse keys, and `queue_jobs.idempotency_key` is uniquely indexed with an
+ * ON CONFLICT DO NOTHING insert that nothing ever purges — so a reused key
+ * enqueues nothing at all and leaves the run `running` for good. The boolean is
+ * checked here for the same reason: silently enqueueing nothing is exactly the
+ * failure being fixed.
+ */
+const enqueueNextStep = async (
+  prisma: PrismaClient,
+  payload: AutomaticMembershipReconcileJobPayload,
+  delayMs?: number,
+): Promise<boolean> => {
+  const advanced = await prisma.automaticMembershipReconciliation.update({
+    data: { step: { increment: 1 } },
+    select: { step: true },
+    where: { id: payload.reconciliationId },
+  })
+  return enqueueQueueJob(prisma, {
+    ...(delayMs === undefined ? {} : { delayMs }),
+    idempotencyKey: `auto-membership:reconcile:${payload.reconciliationId}:${advanced.step}`,
+    payload,
+    topic: AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
+  })
+}
 
 const finish = async (
   prisma: PrismaClient,
@@ -90,6 +121,7 @@ export const executeAutomaticMembershipReconcileJob = async (
   payload: AutomaticMembershipReconcileJobPayload,
 ): Promise<void> => {
   const { prisma } = deps
+  if (!deps.enabled) return
 
   const run = await prisma.automaticMembershipReconciliation.findUnique({
     where: { id: payload.reconciliationId },
@@ -107,6 +139,7 @@ export const executeAutomaticMembershipReconcileJob = async (
       scanned: true,
       skipped: true,
       status: true,
+      step: true,
       domain: {
         select: {
           domain: true,
@@ -165,17 +198,14 @@ export const executeAutomaticMembershipReconcileJob = async (
         data: { attempts: { increment: 1 }, lastError: error.message.slice(0, 500) },
         where: { id: payload.reconciliationId },
       })
-      await enqueueQueueJob(prisma, {
-        delayMs: exponentialBackoffMs({
-          attempt: run.attempts,
-          baseMs: 30_000,
-          capMs: 30 * 60_000,
-        }),
-        idempotencyKey:
-          `auto-membership:reconcile:${payload.reconciliationId}:${run.attempts + 1}`,
+      const queued = await enqueueNextStep(
+        prisma,
         payload,
-        topic: AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
-      })
+        exponentialBackoffMs({ attempt: run.attempts, baseMs: 30_000, capMs: 30 * 60_000 }),
+      )
+      if (!queued) {
+        await finish(prisma, payload.reconciliationId, 'failed', 'Could not queue the next batch.')
+      }
       return
     }
     if (error instanceof UoaRosterRejectedError && error.statusCode === 400 && run.cursor) {
@@ -186,12 +216,10 @@ export const executeAutomaticMembershipReconcileJob = async (
         data: { attempts: { increment: 1 }, cursor: null },
         where: { id: payload.reconciliationId },
       })
-      await enqueueQueueJob(prisma, {
-        idempotencyKey:
-          `auto-membership:reconcile:${payload.reconciliationId}:restart:${run.attempts + 1}`,
-        payload,
-        topic: AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
-      })
+      const queued = await enqueueNextStep(prisma, payload)
+      if (!queued) {
+        await finish(prisma, payload.reconciliationId, 'failed', 'Could not queue the next batch.')
+      }
       return
     }
     const message = error instanceof Error ? error.message : 'unknown error'
@@ -219,15 +247,33 @@ export const executeAutomaticMembershipReconcileJob = async (
     matched += 1
 
     for (const rule of rules) {
-      await awaitUpstreamSlot(run.domain.organizationId)
-      const result = await grantAutomaticMembership(
+        const result = await grantAutomaticMembership(
         prisma,
         rule,
         member.uoaSub,
         'reconcile',
         deps.rosterDeps ?? {},
+        {
+          ...defaultAutomaticGrantUpstream,
+          pace: () => awaitUpstreamSlot(run.domain.organizationId),
+        },
       )
-      if (result.outcome === 'granted') granted += 1
+      if (result.outcome === 'granted') {
+        granted += 1
+        await writeAutomaticMembershipAudit(prisma, {
+          action: 'organization.automatic_membership.grant_issued',
+          metadata: {
+            authorizedByUoaSub: rule.authorizedByUoaSub,
+            source: 'reconcile',
+            teamId: rule.teamId,
+            uoaSub: member.uoaSub,
+          },
+          organizationId: run.domain.organizationId,
+          outcome: 'success',
+          resourceId: rule.id,
+          resourceType: 'automatic_membership_rule',
+        })
+      }
       else if (
         result.outcome === 'skipped_existing'
         || result.outcome === 'skipped_no_such_team'
@@ -238,6 +284,15 @@ export const executeAutomaticMembershipReconcileJob = async (
       if (result.outcome === 'unauthorized') {
         // The run's principal no longer holds access. Stop the whole run rather
         // than grinding through thousands of refusals.
+        if (result.healthTransition) {
+          await alertAutomaticMembershipHealth(prisma, {
+            healthRevision: result.healthTransition.healthRevision,
+            organizationId: run.domain.organizationId,
+            reason: result.reason ?? 'UnlikeOtherAI refused the authorizing administrator.',
+            ruleId: rule.id,
+            teamName: rule.teamName,
+          })
+        }
         await writeAutomaticMembershipAudit(prisma, {
           action: 'organization.automatic_membership.rule_needs_reauthorization',
           metadata: { teamId: rule.teamId },
@@ -276,13 +331,10 @@ export const executeAutomaticMembershipReconcileJob = async (
   })
 
   if (page.meta.hasMore && page.meta.nextCursor) {
-    await enqueueQueueJob(prisma, {
-      delayMs: BATCH_PAUSE_MS,
-      idempotencyKey:
-        `auto-membership:reconcile:${payload.reconciliationId}:page:${page.meta.nextCursor}`,
-      payload,
-      topic: AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
-    })
+    const queued = await enqueueNextStep(prisma, payload, BATCH_PAUSE_MS)
+    if (!queued) {
+      await finish(prisma, payload.reconciliationId, 'failed', 'Could not queue the next batch.')
+    }
     return
   }
 

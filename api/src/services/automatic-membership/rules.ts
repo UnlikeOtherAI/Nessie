@@ -84,24 +84,45 @@ export const setDomainTeams = async (
   await assertTeamsBelong(prisma, input.organizationId, input.teamIds)
 
   const existing = await prisma.automaticMembershipRule.findMany({
-    select: { id: true, teamId: true },
+    select: { enabled: true, id: true, teamId: true },
     where: { domainId: input.domainId },
   })
   const wanted = new Set(input.teamIds)
-  const present = new Set(existing.map((rule) => rule.teamId))
+  const present = new Map(existing.map((rule) => [rule.teamId, rule]))
 
-  const removed = existing.filter((rule) => !wanted.has(rule.teamId))
+  const removed = existing.filter((rule) => rule.enabled && !wanted.has(rule.teamId))
   const toAdd = [...wanted].filter((teamId) => !present.has(teamId))
+  const toReEnable = [...wanted].filter((teamId) => present.get(teamId)?.enabled === false)
 
   if (removed.length > 0) {
-    // Detaching a team stops future grants for it. It never removes anybody
-    // who was already placed there — removal stays an explicit, manual act.
-    await prisma.automaticMembershipRule.deleteMany({
+    // Detaching DISABLES rather than deletes. Deleting cascades the grant
+    // ledger, which would lose the record of who was placed and make a
+    // re-attach re-walk everybody. Nobody is removed from the team either way —
+    // removal stays an explicit, manual act.
+    await prisma.automaticMembershipRule.updateMany({
+      data: { enabled: false },
       where: { id: { in: removed.map((rule) => rule.id) } },
     })
   }
 
   const added: { id: string; teamId: string }[] = []
+  for (const teamId of toReEnable) {
+    const rule = present.get(teamId)
+    if (!rule) continue
+    await prisma.automaticMembershipRule.update({
+      data: {
+        authorizedAt: new Date(),
+        authorizedByUoaSub: input.authorization.authorizedByUoaSub,
+        authorizedTeamId: input.authorization.authorizedTeamId,
+        authorizedTokenVersion: input.authorization.authorizedTokenVersion,
+        enabled: true,
+        healthReason: null,
+        healthState: 'ok',
+      },
+      where: { id: rule.id },
+    })
+    added.push({ id: rule.id, teamId })
+  }
   for (const teamId of toAdd) {
     const created = await prisma.automaticMembershipRule.create({
       data: {
@@ -142,14 +163,18 @@ export const setTeamRule = async (
   await assertTeamsBelong(prisma, input.organizationId, [input.teamId])
 
   const existing = await prisma.automaticMembershipRule.findUnique({
-    select: { id: true, teamId: true },
+    select: { enabled: true, id: true, teamId: true },
     where: { domainId_teamId: { domainId: input.domainId, teamId: input.teamId } },
   })
 
   if (!input.enabled) {
-    if (!existing) return { added: [], removed: [] }
-    await prisma.automaticMembershipRule.delete({ where: { id: existing.id } })
-    return { added: [], removed: [existing] }
+    if (!existing?.enabled) return { added: [], removed: [] }
+    // Disabled, not deleted — see `setDomainTeams`.
+    await prisma.automaticMembershipRule.update({
+      data: { enabled: false },
+      where: { id: existing.id },
+    })
+    return { added: [], removed: [{ id: existing.id, teamId: existing.teamId }] }
   }
 
   if (existing) {
@@ -161,12 +186,15 @@ export const setTeamRule = async (
         authorizedByUoaSub: input.authorization.authorizedByUoaSub,
         authorizedTeamId: input.authorization.authorizedTeamId,
         authorizedTokenVersion: input.authorization.authorizedTokenVersion,
+        enabled: true,
         healthReason: null,
         healthState: 'ok',
       },
       where: { id: existing.id },
     })
-    return { added: [], removed: [] }
+    return existing.enabled
+      ? { added: [], removed: [] }
+      : { added: [{ id: existing.id, teamId: existing.teamId }], removed: [] }
   }
 
   if (domain.status === 'pending') {

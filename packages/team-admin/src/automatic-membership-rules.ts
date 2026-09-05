@@ -105,7 +105,7 @@ export const loadAutomaticGrantRule = async (
       authorizedTokenVersion: true,
       domain: { select: { domain: true } },
       id: true,
-      team: { select: { externalOrgId: true, externalTeamId: true, id: true } },
+      team: { select: { externalOrgId: true, externalTeamId: true, id: true, name: true } },
     },
   })
   if (!rule?.team.externalOrgId || !rule.team.externalTeamId) return null
@@ -121,5 +121,6 @@ export const loadAutomaticGrantRule = async (
     externalTeamId: rule.team.externalTeamId,
     id: rule.id,
     teamId: rule.team.id,
+    teamName: rule.team.name,
   }
 }

@@ -10,6 +10,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AutomaticMembershipProvisionJobPayload } from '@nessie/schemas'
 import {
+  defaultAutomaticGrantUpstream,
   grantAutomaticMembership,
   isAutomaticMembershipEnabledForOrganization,
   loadAutomaticGrantRule,
@@ -17,10 +18,18 @@ import {
 } from '@nessie/team-admin'
 
 import { writeAutomaticMembershipAudit } from './audit.js'
+import { alertAutomaticMembershipHealth } from './health-alert.js'
 import { awaitUpstreamSlot } from './rate-limit.js'
 
 export type AutomaticMembershipDeps = {
   prisma: PrismaClient
+  /**
+   * The instance rollout flag. Checked here and not only in the routes: the
+   * routes 404 when it is off, which also hides the per-organisation emergency
+   * stop, so an operator who switches the feature off at the instance level
+   * would otherwise have no way to stop workers granting on existing rules.
+   */
+  enabled: boolean
   rosterDeps?: UoaRosterDeps
 }
 
@@ -29,6 +38,7 @@ export const executeAutomaticMembershipProvisionJob = async (
   payload: AutomaticMembershipProvisionJobPayload,
 ): Promise<void> => {
   const { prisma } = deps
+  if (!deps.enabled) return
 
   // The organisation's emergency stop, re-read here and not cached: turning it
   // off must stop work already queued, not only work not yet queued.
@@ -42,21 +52,22 @@ export const executeAutomaticMembershipProvisionJob = async (
     const rule = await loadAutomaticGrantRule(prisma, ruleId, payload.organizationId)
     if (!rule) continue
 
-    await awaitUpstreamSlot(payload.organizationId)
     const result = await grantAutomaticMembership(
       prisma,
       rule,
       payload.uoaSub,
       'signin',
       deps.rosterDeps ?? {},
+      { ...defaultAutomaticGrantUpstream, pace: () => awaitUpstreamSlot(payload.organizationId) },
     )
 
-    if (result.outcome === 'granted' || result.outcome === 'skipped_existing') {
+    // `grant_issued` is written only when a grant actually happened. Auditing a
+    // skip under that name would claim membership changed when it did not.
+    if (result.outcome === 'granted') {
       await writeAutomaticMembershipAudit(prisma, {
         action: 'organization.automatic_membership.grant_issued',
         metadata: {
           authorizedByUoaSub: rule.authorizedByUoaSub,
-          outcome: result.outcome,
           source: 'signin',
           teamId: rule.teamId,
           uoaSub: payload.uoaSub,
@@ -68,8 +79,18 @@ export const executeAutomaticMembershipProvisionJob = async (
       })
       continue
     }
+    if (result.outcome === 'skipped_existing') continue
 
     if (result.outcome === 'unauthorized') {
+      if (result.healthTransition) {
+        await alertAutomaticMembershipHealth(prisma, {
+          healthRevision: result.healthTransition.healthRevision,
+          organizationId: payload.organizationId,
+          reason: result.reason ?? 'UnlikeOtherAI refused the authorizing administrator.',
+          ruleId: rule.id,
+          teamName: rule.teamName,
+        })
+      }
       await writeAutomaticMembershipAudit(prisma, {
         action: 'organization.automatic_membership.rule_needs_reauthorization',
         metadata: { authorizedByUoaSub: rule.authorizedByUoaSub, teamId: rule.teamId },

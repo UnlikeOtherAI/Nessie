@@ -62,8 +62,9 @@ export const AutomaticMembershipDnsPanel = ({
   return (
     <div className="grid gap-3 border-t border-[color:var(--border)] pt-3">
       <p className="text-sm text-[color:var(--tx2)]">
-        Add this TXT record to your DNS, then check it. We look twice, a few minutes apart,
-        before switching anything on — one lookup is not proof.
+        Add this TXT record to your DNS, then check it. We need to see it twice, at least ten
+        minutes apart, before switching anything on — one lookup is not proof. Check again
+        yourself after the wait; nothing re-checks an unproven domain on its own.
       </p>
       <dl className="grid gap-2">
         <Row label="Name" value={domain.recordName} />
@@ -71,7 +72,7 @@ export const AutomaticMembershipDnsPanel = ({
       </dl>
       {waitingForSecond ? (
         <Notice role="status" size="sm" tone="info">
-          Found once. We will confirm again shortly — check back in about ten minutes.
+          Found once. Check again in about ten minutes to confirm it.
         </Notice>
       ) : null}
       {domain.lastCheckOutcome && domain.lastCheckOutcome !== 'match' && domain.lastCheckDetail ? (

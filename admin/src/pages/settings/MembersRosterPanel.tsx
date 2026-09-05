@@ -26,12 +26,13 @@ import { MemberDetailsDialog } from './MemberDetailsDialog'
 
 type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 
-const rosterTabs = [
+const ROSTER_TABS = [
   { label: 'Active users', value: 'active' },
   { label: 'Pending invitations', value: 'pending' },
   { label: 'Deactivated users', value: 'deactivated' },
-  { label: 'Automatic logins', value: 'automatic' },
 ] as const
+
+const AUTOMATIC_TAB = { label: 'Automatic logins', value: 'automatic' } as const
 
 const dateLabel = (value: string | undefined) => {
   if (!value) return '—'
@@ -100,7 +101,7 @@ const invitationColumns = (scope: MemberRosterScope): DataTableColumn<TeamInvita
 
 /** The single Members page used at organization and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
-  const { token } = useAuthSession()
+  const { me, token } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMemberRecord | null>(null)
@@ -112,21 +113,30 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     || requestedTab === 'automatic'
     ? requestedTab
     : 'active'
-  // Each tab enables only its own query: the roster fetch must not fire on the
-  // Automatic logins tab, whose panel owns its own data.
-  const isRosterTab = tab === 'active' || tab === 'deactivated'
+
+  // The roster read also carries UOA's live verdict on what this person may do,
+  // which is what decides whether the Automatic logins tab exists at all — so
+  // it runs on that tab too, cheaply. What must NOT happen is the rules panel
+  // being gated on it: `current` is null there, so no `QueryState` wraps the
+  // panel and no pagination footer sits under it.
   const roster = useMemberRoster(
     scope,
     tab === 'deactivated' ? 'DEACTIVATED' : 'ACTIVE',
-    isRosterTab,
+    tab !== 'pending',
   )
   const invitations = useMemberInvitations(scope, tab === 'pending')
   const revokeInvitation = useRevokeMemberInvitation(scope)
-  // `null` on the Automatic logins tab, so its body is not gated on a roster
-  // fetch that never ran and its footer does not page an empty list.
   const current = tab === 'automatic' ? null : tab === 'pending' ? invitations : roster
-  const permissions = current?.query.data?.data.permissions
+  const permissions = (current ?? roster).query.data?.data.permissions
   const canInvite = permissions?.addMember === true && tab !== 'automatic'
+
+  // The tab exists only where it can do something: the instance flag is on and
+  // this person may administer members. A tab whose every request 404s or 403s
+  // is a doorway to nothing. It also stays visible once selected, so a slow
+  // permissions read cannot make it vanish under the person using it.
+  const canSeeAutomatic = me?.features?.automaticMembership === true
+    && (permissions?.addMember === true || tab === 'automatic')
+  const tabs = canSeeAutomatic ? [...ROSTER_TABS, AUTOMATIC_TAB] : ROSTER_TABS
 
   const setTab = (next: RosterTab) => {
     setSearchParams((currentParams) => {
@@ -180,7 +190,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
         <TabBar
           ariaLabel="Member status"
           idPrefix={`members-${scope}`}
-          items={rosterTabs}
+          items={tabs}
           onChange={setTab}
           value={tab}
         />

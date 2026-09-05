@@ -47,6 +47,7 @@ const RULE = {
   authorizedTeamId: 'team-external',
   authorizedTokenVersion: 3,
   externalOrgId: 'org-external',
+  teamName: 'Engineering',
   externalTeamId: 'team-external',
   id: 'rule-1',
   teamId: 'team-local',
@@ -102,6 +103,8 @@ const fakePrisma = {
     },
   },
   automaticMembershipRule: {
+    findUnique: async ({ where }: { where: { id: string } }) =>
+      rules.find((entry) => entry.id === where.id) ?? null,
     updateMany: async ({ data, where }: { data: Record<string, unknown>; where: Record<string, unknown> }) => {
       const row = rules.find((entry) =>
         entry.id === where.id && entry.healthState === where.healthState)
@@ -244,4 +247,58 @@ test('a 404 from UOA is a plain failure, not an authorization loss', async () =>
   const result = await grant('person-1')
   assert.equal(result.outcome, 'failed')
   assert.equal(rules[0]?.healthState, 'ok')
+})
+
+test('a team UOA does not offer stays retryable rather than burning the person', async () => {
+  workspaceAccess = [{ hasAccess: false, id: 'some-other-team', name: 'Other' }]
+  const first = await grant('person-1')
+  assert.equal(first.outcome, 'skipped_no_such_team')
+  // Not terminal: the pre-read answers within the authorizer's own authority
+  // and drops incomplete rows, so a temporary scope reduction must not cost
+  // this person the rule forever.
+  assert.equal(grants[0]?.outcome, 'attempted')
+  assert.equal(grants[0]?.leaseExpiresAt, null)
+
+  workspaceAccess = [{ hasAccess: false, id: 'team-external', name: 'Engineering' }]
+  const retry = await grant('person-1')
+  assert.equal(retry.outcome, 'granted')
+})
+
+test('the health transition is reported to the caller exactly once', async () => {
+  accessError = new UoaRosterRejectedError('[uoa] no role', 403)
+  const first = await grant('person-1')
+  assert.equal(first.outcome, 'unauthorized')
+  assert.deepEqual(first.healthTransition, { healthRevision: 1 })
+
+  // A long reconciliation hitting the same refusal must not alert per person.
+  const second = await grant('person-2', 'reconcile')
+  assert.equal(second.outcome, 'unauthorized')
+  assert.equal(second.healthTransition, undefined)
+})
+
+test('every upstream request is paced, not just one per grant', async () => {
+  let paced = 0
+  await grantAutomaticMembership(
+    fakePrisma, RULE, 'person-1', 'signin', {},
+    { ...upstream, pace: async () => { paced += 1 } } as typeof upstream,
+  )
+  // The per-subject pre-read and the add are two requests, so pacing once per
+  // grant would let through twice the intended rate.
+  assert.equal(paced, 2)
+})
+
+test('a non-unique database fault is not mistaken for a peer holding the lease', async () => {
+  const brokenPrisma = {
+    ...(fakePrisma as unknown as Record<string, unknown>),
+    automaticMembershipGrant: {
+      ...(fakePrisma as unknown as { automaticMembershipGrant: Record<string, unknown> })
+        .automaticMembershipGrant,
+      create: async () => { throw Object.assign(new Error('connection lost'), { code: 'P1001' }) },
+      findUnique: async () => null,
+    },
+  } as unknown as typeof fakePrisma
+  await assert.rejects(
+    grantAutomaticMembership(brokenPrisma, RULE, 'person-1', 'signin', {}, upstream),
+    /connection lost/,
+  )
 })

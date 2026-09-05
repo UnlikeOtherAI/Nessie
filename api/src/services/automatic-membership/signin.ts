@@ -19,7 +19,8 @@
  *    is the idempotency mechanism.
  */
 
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import { loadConfig } from '@nessie/config'
 import { enqueueQueueJob } from '@nessie/db'
 import { AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC } from '@nessie/schemas'
 import {
@@ -28,6 +29,18 @@ import {
 } from '@nessie/team-admin'
 
 const BUCKET_MS = 60_000
+
+/**
+ * The instance rollout flag, read once at first use — the same shape the api's
+ * `ServerContext` uses, which also calls `loadConfig()` once at startup.
+ * Checked here as well as in the routes, because the routes 404 when it is off
+ * and that takes the per-organisation emergency stop with them.
+ */
+let featureEnabled: boolean | null = null
+const automaticMembershipEnabled = (): boolean => {
+  featureEnabled ??= loadConfig().automaticMembership.enabled
+  return featureEnabled
+}
 
 export const enqueueAutomaticMembershipProvisioning = async (
   transaction: Prisma.TransactionClient,
@@ -43,8 +56,15 @@ export const enqueueAutomaticMembershipProvisioning = async (
     now?: Date
   },
 ): Promise<string[]> => {
+  if (!automaticMembershipEnabled()) return []
+
   // A failure here must never fail a sign-in. Automatic placement is a
-  // convenience layered on top of authentication, not part of it.
+  // convenience layered on top of authentication, not part of it — and a
+  // caught JS error is not enough on its own: this runs inside
+  // `ensureTeamPrincipal`'s transaction, and a SQL-level failure (a constraint,
+  // a lock timeout, a serialization error) aborts the whole transaction, so the
+  // very next statement in the login path would fail with "current transaction
+  // is aborted". The savepoint below is what keeps that contained.
   try {
     if (!(await isAutomaticMembershipEnabledForOrganization(transaction, input.organizationId))) {
       return []
@@ -57,13 +77,22 @@ export const enqueueAutomaticMembershipProvisioning = async (
     if (ruleIds.length === 0) return []
 
     const bucket = Math.floor((input.now?.getTime() ?? Date.now()) / BUCKET_MS)
-    await enqueueQueueJob(transaction, {
-      idempotencyKey:
-        `auto-membership:provision:${input.organizationId}:${input.uoaSub}:${bucket}`,
-      payload: { organizationId: input.organizationId, ruleIds, uoaSub: input.uoaSub },
-      topic: AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
-    })
-    return ruleIds
+    await transaction.$executeRaw(Prisma.sql`SAVEPOINT automatic_membership_enqueue`)
+    try {
+      await enqueueQueueJob(transaction, {
+        idempotencyKey:
+          `auto-membership:provision:${input.organizationId}:${input.uoaSub}:${bucket}`,
+        payload: { organizationId: input.organizationId, ruleIds, uoaSub: input.uoaSub },
+        topic: AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
+      })
+      await transaction.$executeRaw(Prisma.sql`RELEASE SAVEPOINT automatic_membership_enqueue`)
+      return ruleIds
+    } catch (error) {
+      await transaction.$executeRaw(
+        Prisma.sql`ROLLBACK TO SAVEPOINT automatic_membership_enqueue`,
+      )
+      throw error
+    }
   } catch (error) {
     console.error('automatic membership: sign-in enqueue failed', error)
     return []

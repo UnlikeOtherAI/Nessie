@@ -184,9 +184,12 @@ export const verifyDomain = async (
   }
 
   if (verdict.kind === 'verified') {
-    // Already proven and live? A re-check on an active domain is a
-    // revalidation, not a re-verification, and must not demote it.
-    if (row.status === 'active' || row.status === 'verified') {
+    // Already proven? A re-check on a proven domain is a revalidation, not a
+    // re-verification: it must not demote an active one, and — the case missed
+    // first time — it must not silently lift a suspension either. Resuming is
+    // an explicit administrator act (§7's table has no suspended → verified
+    // transition), so the check only clears the failure counter.
+    if (row.status === 'active' || row.status === 'verified' || row.status === 'suspended') {
       await prisma.automaticMembershipDomain.update({
         data: { ...auditable, revalidationFailures: 0 },
         where: { id: domainId },

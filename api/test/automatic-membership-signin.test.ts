@@ -16,7 +16,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { enqueueAutomaticMembershipProvisioning } from '../src/services/automatic-membership/signin.js'
+// The instance rollout flag defaults off, and the module reads it once, so it
+// is set before the import rather than after.
+process.env.NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED = 'true'
+
+const { enqueueAutomaticMembershipProvisioning } = await import(
+  '../src/services/automatic-membership/signin.js'
+)
 
 const ORG = '00000000-0000-4000-8000-0000000000c1'
 const RULE_A = '00000000-0000-4000-8000-0000000000d1'
@@ -34,7 +40,9 @@ const makeTransaction = (options: {
   enqueued: Enqueued[]
 }) => ({
   $executeRaw: async (query: { strings: string[]; values: unknown[] }) => {
-    options.enqueued.push({ sql: query.strings.join('?'), values: query.values })
+    const sql = query.strings.join('?')
+    // The savepoint statements around the insert are bookkeeping, not jobs.
+    if (!/SAVEPOINT/i.test(sql)) options.enqueued.push({ sql, values: query.values })
     return 1
   },
   automaticMembershipRule: {
@@ -190,7 +198,11 @@ test('an explicitly unverified email is refused', async () => {
 
 test('sign-in is never broken by a failure in this path', async () => {
   const exploding = {
-    $executeRaw: async () => { throw new Error('queue is down') },
+    $executeRaw: async (query: { strings: string[] }) => {
+      // The savepoint itself must succeed; the insert inside it is what fails.
+      if (/SAVEPOINT/i.test(query.strings.join('?'))) return 1
+      throw new Error('queue is down')
+    },
     automaticMembershipRule: { findMany: async () => [{ id: RULE_A }] },
     scopedSetting: { findMany: async () => [] },
   }

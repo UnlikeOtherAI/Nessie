@@ -11,6 +11,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import {
+  AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
   AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
   type AutomaticMembershipRevalidateJobPayload,
 } from '@nessie/schemas'
@@ -38,8 +39,10 @@ const SWEEP_LIMIT = 100
  */
 export const sweepDueDomainRevalidations = async (
   prisma: PrismaClient,
+  enabled: boolean,
   now = new Date(),
 ): Promise<number> => {
+  if (!enabled) return 0
   const due = await prisma.automaticMembershipDomain.findMany({
     orderBy: { lastCheckedAt: 'asc' },
     select: { id: true },
@@ -64,6 +67,50 @@ export const sweepDueDomainRevalidations = async (
   return due.length
 }
 
+/** A run whose next job never landed is stranded after this long. */
+const STRANDED_RUN_MS = 10 * 60 * 1000
+
+/**
+ * Re-enqueue reconciliation runs that lost their job.
+ *
+ * A crash between persisting a cursor and enqueueing the next page — or any
+ * enqueue that did not land — otherwise leaves a run `running` forever with
+ * Stop as the only way out. The run's own `step` keys the replacement job, so
+ * this cannot collide with a job that is merely slow.
+ */
+export const sweepStrandedReconciliations = async (
+  prisma: PrismaClient,
+  enabled: boolean,
+  now = new Date(),
+): Promise<number> => {
+  if (!enabled) return 0
+  const stranded = await prisma.automaticMembershipReconciliation.findMany({
+    select: { domain: { select: { organizationId: true } }, id: true, step: true },
+    take: SWEEP_LIMIT,
+    where: {
+      status: { in: ['queued', 'running'] },
+      updatedAt: { lt: new Date(now.getTime() - STRANDED_RUN_MS) },
+    },
+  })
+
+  for (const run of stranded) {
+    const advanced = await prisma.automaticMembershipReconciliation.update({
+      data: { step: { increment: 1 } },
+      select: { step: true },
+      where: { id: run.id },
+    })
+    await enqueueQueueJob(prisma, {
+      idempotencyKey: `auto-membership:reconcile:${run.id}:${advanced.step}`,
+      payload: {
+        organizationId: run.domain.organizationId,
+        reconciliationId: run.id,
+      },
+      topic: AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
+    })
+  }
+  return stranded.length
+}
+
 /**
  * Re-check one domain's TXT record.
  *
@@ -72,10 +119,11 @@ export const sweepDueDomainRevalidations = async (
  * cost people the teams they are already working in.
  */
 export const executeAutomaticMembershipRevalidateJob = async (
-  deps: { prisma: PrismaClient; dns?: DomainVerificationDns },
+  deps: { prisma: PrismaClient; enabled: boolean; dns?: DomainVerificationDns },
   payload: AutomaticMembershipRevalidateJobPayload,
 ): Promise<void> => {
   const { prisma } = deps
+  if (!deps.enabled) return
   const domain = await prisma.automaticMembershipDomain.findUnique({
     where: { id: payload.domainId },
     select: {

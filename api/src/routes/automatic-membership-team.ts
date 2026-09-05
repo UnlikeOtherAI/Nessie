@@ -9,8 +9,10 @@
  * Two properties are the point, and both are enforced here rather than in the
  * client:
  *
- *  - The read returns only domains that already grant this team, so the team
- *    surface cannot be used to enumerate the organisation's domain inventory.
+ *  - The read returns only PROVEN domains, so an organisation-level claim still
+ *    in progress is not visible here — and it lists them all rather than only
+ *    the ones already granting this team, or attaching a team would have no
+ *    doorway at all.
  *  - `includeChallenge` is false, so the DNS proof of domain control — an
  *    organisation-level secret — never reaches a team administrator.
  */
@@ -28,7 +30,8 @@ import {
   resolveRuleAuthorization,
 } from '../services/automatic-membership/access.js'
 import { buildAutomaticMembershipResponse } from '../services/automatic-membership/read-model.js'
-import { setTeamRule } from '../services/automatic-membership/rules.js'
+import { reauthorizeRule, setTeamRule } from '../services/automatic-membership/rules.js'
+import { emitAuditEvent } from '../services/audit.js'
 import {
   actorUserId,
   auditRuleChange,
@@ -85,6 +88,60 @@ export const registerTeamAutomaticMembershipRoutes = (
         scope: { kind: 'team', teamId: context.teamId },
       }),
     )
+  })
+
+  /**
+   * A team administrator repairs their own team's rule.
+   *
+   * The organisation route exists too, but it is organisation-admin gated, so
+   * without this the Re-authorize button the team surface renders could only
+   * ever 403. The rule is pinned to the caller's own team before anything is
+   * re-stamped, and what is stamped is the caller's own live identity — nobody
+   * can be made to authorize something they did not click.
+   */
+  app.post('/api/team/automatic-membership/rules/:id/reauthorize', async (request, reply) => {
+    const context = await teamContext(request, reply)
+    if (!context) return reply
+    const params = parseInput(IdParamSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const authorization = resolveRuleAuthorization(context.actorContext, reply)
+    if (!authorization) return reply
+    const owned = await prisma.automaticMembershipRule.findFirst({
+      select: { id: true },
+      where: {
+        domain: { organizationId: context.actorContext.tenant.organizationId },
+        id: params.id,
+        teamId: context.teamId,
+      },
+    })
+    if (!owned) {
+      sendApiError(
+        reply,
+        404,
+        'AUTOMATIC_MEMBERSHIP_NOT_FOUND',
+        'No such rule for this team.',
+      )
+      return reply
+    }
+    try {
+      const rule = await reauthorizeRule(prisma, {
+        authorization,
+        organizationId: context.actorContext.tenant.organizationId,
+        ruleId: params.id,
+      })
+      await emitAuditEvent(prisma, {
+        action: 'organization.automatic_membership.rule_reauthorized',
+        actorContext: context.actorContext,
+        metadata: { scope: 'team', teamId: rule.teamId },
+        outcome: 'success',
+        resourceId: params.id,
+        resourceType: 'automatic_membership_rule',
+      })
+      return createApiResponse({ ok: true })
+    } catch (error) {
+      if (sendDomainError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.put('/api/team/automatic-membership/domains/:id', async (request, reply) => {

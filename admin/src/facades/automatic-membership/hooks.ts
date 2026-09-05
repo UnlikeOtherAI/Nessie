@@ -119,9 +119,18 @@ export const useSetTeamAutomaticMembership = () =>
       }),
   )
 
-export const useReauthorizeAutomaticMembershipRule = () =>
+/**
+ * Scoped, unlike the other mutations: a team administrator repairs their own
+ * team's rule through the team route, because the organisation one is
+ * organisation-admin gated and would only ever refuse them.
+ */
+export const useReauthorizeAutomaticMembershipRule = (scope: AutomaticMembershipScope) =>
   useAutomaticMembershipMutation<{ ruleId: string }, { ok: boolean }>(
-    (apiClient, input) => apiClient.post(`${ORG_PATH}/rules/${input.ruleId}/reauthorize`),
+    (apiClient, input) => apiClient.post(
+      scope === 'organization'
+        ? `${ORG_PATH}/rules/${input.ruleId}/reauthorize`
+        : `/api/team/automatic-membership/rules/${input.ruleId}/reauthorize`,
+    ),
   )
 
 export const useStartAutomaticMembershipReconciliation = () =>

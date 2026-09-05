@@ -81,6 +81,7 @@ import { executeAutomaticMembershipReconcileJob } from './control/automatic-memb
 import {
   executeAutomaticMembershipRevalidateJob,
   sweepDueDomainRevalidations,
+  sweepStrandedReconciliations,
   REVALIDATION_SWEEP_INTERVAL_MS,
 } from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
@@ -502,11 +503,18 @@ export const startWorker = async (
 
   // Automatic team access after sign-in
   // (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
+  // The instance flag reaches every handler and the sweep, so switching it off
+  // stops provisioning on rules that already exist — the routes alone cannot,
+  // because they 404 when it is off and take the emergency stop with them.
+  const automaticMembershipEnabled = config.automaticMembership.enabled
   queueProvider.subscribe(
     AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
     async (job) => {
       const payload = AutomaticMembershipProvisionJobPayloadSchema.parse(job.payload)
-      await executeAutomaticMembershipProvisionJob({ prisma }, payload)
+      await executeAutomaticMembershipProvisionJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
     },
     { signal: abortController.signal },
   )
@@ -515,7 +523,10 @@ export const startWorker = async (
     AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
     async (job) => {
       const payload = AutomaticMembershipReconcileJobPayloadSchema.parse(job.payload)
-      await executeAutomaticMembershipReconcileJob({ prisma }, payload)
+      await executeAutomaticMembershipReconcileJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
     },
     { signal: abortController.signal },
   )
@@ -524,7 +535,10 @@ export const startWorker = async (
     AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
     async (job) => {
       const payload = AutomaticMembershipRevalidateJobPayloadSchema.parse(job.payload)
-      await executeAutomaticMembershipRevalidateJob({ prisma }, payload)
+      await executeAutomaticMembershipRevalidateJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
     },
     { signal: abortController.signal },
   )
@@ -816,7 +830,8 @@ export const startWorker = async (
     if (domainRevalidationSweepInFlight || abortController.signal.aborted) return
     domainRevalidationSweepInFlight = true
     try {
-      await sweepDueDomainRevalidations(prisma)
+      await sweepDueDomainRevalidations(prisma, automaticMembershipEnabled)
+      await sweepStrandedReconciliations(prisma, automaticMembershipEnabled)
     } catch (error) {
       console.error('[worker.automatic-membership-revalidation] failed', error)
     } finally {

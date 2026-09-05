@@ -238,6 +238,10 @@ export const MeResponseSchema = z.object({
   context: MeContextSchema,
   auth: MeAuthSchema,
   memberships: z.array(MeMembershipSchema).optional(),
+  // Instance-level feature gates the admin needs in order to decide whether a
+  // surface exists at all. A flag-off feature must leave no doorway behind —
+  // a tab whose every request 404s is worse than no tab.
+  features: z.object({ automaticMembership: z.boolean() }).optional(),
   uoaTeams: z.array(UoaTeamDirectoryEntrySchema).optional(),
   // Present (including as []) only when this process has a verified UOA
   // directory response. A cold-cache local fallback has no invite knowledge.

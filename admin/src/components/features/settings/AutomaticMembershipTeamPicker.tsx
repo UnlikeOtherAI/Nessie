@@ -74,7 +74,10 @@ export const AutomaticMembershipTeamPicker = ({
         <legend className="text-xs uppercase tracking-wide text-[color:var(--tx3)]">
           Teams to add people to
         </legend>
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-[color:var(--border)] p-3">
+        {/* No second frame: the domain card is already a bordered box, and
+            docs/standards/design-system.md forbids nesting one inside another.
+            Depth here is spacing and a divider, not another border. */}
+        <div className="max-h-64 overflow-y-auto border-t border-[color:var(--border)] pt-3">
           <div className="grid gap-2">
             {options.map((team) => (
               <Checkbox

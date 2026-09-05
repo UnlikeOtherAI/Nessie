@@ -45,9 +45,15 @@ const GRANT_LEASE_MS = 2 * 60 * 1000
 export type AutomaticGrantUpstream = {
   listWorkspaceAccess: typeof listOrganisationMemberWorkspaceAccess
   addTeamMember: typeof addTeamMember
+  /**
+   * Awaited before EVERY upstream request. One grant makes two — the
+   * per-subject pre-read and the add — so pacing once per grant would let
+   * through twice the intended rate.
+   */
+  pace?: () => Promise<void>
 }
 
-const defaultUpstream: AutomaticGrantUpstream = {
+export const defaultAutomaticGrantUpstream: AutomaticGrantUpstream = {
   addTeamMember,
   listWorkspaceAccess: listOrganisationMemberWorkspaceAccess,
 }
@@ -70,6 +76,8 @@ export type AutomaticGrantPrisma = Pick<
 export type AutomaticGrantRule = {
   id: string
   teamId: string
+  /** For the health alert's message; never used for authorization. */
+  teamName: string
   externalOrgId: string
   externalTeamId: string
   authorizedByUoaSub: string
@@ -80,6 +88,12 @@ export type AutomaticGrantRule = {
 export type AutomaticGrantResult = {
   outcome: AutomaticGrantOutcome
   reason?: string
+  /**
+   * Set only on the call that actually moved the rule into
+   * `needs_reauthorization`, so the caller alerts exactly once per transition
+   * rather than once per person in a long reconciliation.
+   */
+  healthTransition?: { healthRevision: number }
 }
 
 /**
@@ -166,9 +180,12 @@ const claimGrant = async (
       data: { attempts: 1, leaseExpiresAt: lease, outcome: 'attempted', ruleId, source, uoaSub },
     })
     return 'claimed'
-  } catch {
-    // Lost the unique race; the winner owns this grant.
-    return 'in_flight'
+  } catch (error) {
+    // Only a unique violation means a peer won the race. Anything else — a
+    // dropped connection, a constraint fault — must not be reported as
+    // somebody else's lease, or the job would "succeed" having done nothing.
+    if ((error as { code?: string }).code === 'P2002') return 'in_flight'
+    throw error
   }
 }
 
@@ -199,7 +216,7 @@ export const markRuleNeedsReauthorization = async (
   prisma: AutomaticGrantPrisma,
   ruleId: string,
   reason: string,
-): Promise<boolean> => {
+): Promise<{ healthRevision: number } | null> => {
   const moved = await prisma.automaticMembershipRule.updateMany({
     where: { id: ruleId, healthState: 'ok' },
     data: {
@@ -208,7 +225,14 @@ export const markRuleNeedsReauthorization = async (
       healthState: 'needs_reauthorization',
     },
   })
-  return moved.count === 1
+  if (moved.count !== 1) return null
+  // Read back the revision the transition produced: it is what makes the
+  // caller's alert exactly-once, through `user_alerts (user_id, event_key)`.
+  const rule = await prisma.automaticMembershipRule.findUnique({
+    select: { healthRevision: true },
+    where: { id: ruleId },
+  })
+  return rule ? { healthRevision: rule.healthRevision } : null
 }
 
 /**
@@ -225,7 +249,7 @@ export const grantAutomaticMembership = async (
   uoaSub: string,
   source: AutomaticGrantSource,
   deps: UoaRosterDeps = {},
-  upstream: AutomaticGrantUpstream = defaultUpstream,
+  upstream: AutomaticGrantUpstream = defaultAutomaticGrantUpstream,
 ): Promise<AutomaticGrantResult> => {
   const claim = await claimGrant(prisma, rule.id, uoaSub, source)
   if (claim !== 'claimed') {
@@ -234,6 +258,7 @@ export const grantAutomaticMembership = async (
 
   try {
     const assertionDeps = assertionDepsFor(rule, deps)
+    await upstream.pace?.()
     const access = await upstream.listWorkspaceAccess(
       rule.externalOrgId,
       uoaSub,
@@ -242,7 +267,19 @@ export const grantAutomaticMembership = async (
     const target = access.items.find((team) => team.id === rule.externalTeamId)
 
     if (!target) {
-      await settleGrant(prisma, rule.id, uoaSub, 'skipped_no_such_team')
+      // Deliberately NOT terminal. `listOrganisationMemberWorkspaceAccess`
+      // answers within the authorizer's own authority and drops rows missing a
+      // field, so a temporary scope reduction or a partial response would
+      // otherwise burn this (rule, person) pair permanently. The lease is
+      // released instead, so the next pass re-asks.
+      await prisma.automaticMembershipGrant.update({
+        where: { ruleId_uoaSub: { ruleId: rule.id, uoaSub } },
+        data: {
+          failureReason: 'UnlikeOtherAI did not offer this team for this person.',
+          leaseExpiresAt: null,
+          outcome: 'attempted',
+        },
+      })
       return { outcome: 'skipped_no_such_team' }
     }
     if (target.hasAccess) {
@@ -254,6 +291,7 @@ export const grantAutomaticMembership = async (
 
     // No `teamRole`: see the header. An ordinary member is what UOA's own
     // default produces, and naming a role here is what would demote someone.
+    await upstream.pace?.()
     await upstream.addTeamMember(
       { externalOrgId: rule.externalOrgId, externalTeamId: rule.externalTeamId },
       { uoaSub },
@@ -265,8 +303,12 @@ export const grantAutomaticMembership = async (
     const reason = error instanceof Error ? error.message : 'unknown error'
     if (isAuthorizationLoss(error)) {
       await settleGrant(prisma, rule.id, uoaSub, 'unauthorized', reason)
-      await markRuleNeedsReauthorization(prisma, rule.id, reason)
-      return { outcome: 'unauthorized', reason }
+      const transition = await markRuleNeedsReauthorization(prisma, rule.id, reason)
+      return {
+        outcome: 'unauthorized',
+        reason,
+        ...(transition ? { healthTransition: transition } : {}),
+      }
     }
     // Transport or 5xx: release the lease so the next pass retries rather than
     // burning the person's only chance at this rule.

@@ -73,13 +73,16 @@ export const buildAutomaticMembershipResponse = async (
     orderBy: { createdAt: 'asc' },
     where: {
       organizationId: input.organizationId,
-      status: { not: 'revoked' },
-      // A team only ever sees domains that already grant it, so the team
-      // surface cannot be used to enumerate the organisation's whole domain
-      // inventory.
-      ...(input.scope.kind === 'team'
-        ? { rules: { some: { teamId: input.scope.teamId } } }
-        : {}),
+      // A team administrator sees every PROVEN domain, so they can attach their
+      // own team to one. The first cut filtered to domains that already granted
+      // their team, which left the attach path with no doorway at all and made
+      // the toggle one-way. Domain names are not the secret here — the DNS
+      // challenge is, and `includeChallenge` strips it for this reader — but an
+      // unproven claim stays hidden: it is an organisation-level act in
+      // progress that a team administrator can do nothing about.
+      status: input.scope.kind === 'team'
+        ? { in: ['verified', 'active', 'suspended'] }
+        : { not: 'revoked' },
     },
     select: {
       challenge: true,
@@ -94,7 +97,11 @@ export const buildAutomaticMembershipResponse = async (
       verifiedAt: true,
       rules: {
         orderBy: { createdAt: 'asc' },
-        where: input.scope.kind === 'team' ? { teamId: input.scope.teamId } : {},
+        // Detaching disables rather than deletes (so the grant ledger survives),
+        // so a disabled rule must not read as an attached team.
+        where: input.scope.kind === 'team'
+          ? { enabled: true, teamId: input.scope.teamId }
+          : { enabled: true },
         select: {
           createdScope: true,
           enabled: true,
@@ -102,7 +109,7 @@ export const buildAutomaticMembershipResponse = async (
           healthState: true,
           id: true,
           team: { select: { id: true, name: true } },
-          _count: { select: { grants: true } },
+          _count: { select: { grants: { where: { outcome: 'granted' } } } },
         },
       },
     },

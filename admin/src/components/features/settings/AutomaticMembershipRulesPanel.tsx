@@ -56,6 +56,9 @@ export const AutomaticMembershipRulesPanel = ({
   const [domainInput, setDomainInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pendingRevoke, setPendingRevoke] = useState<AutomaticMembershipDomainRecord | null>(null)
+  const [pendingActivate, setPendingActivate] =
+    useState<AutomaticMembershipDomainRecord | null>(null)
+  const [pendingPause, setPendingPause] = useState(false)
 
   const addDomain = useAddAutomaticMembershipDomain()
   const verifyDomain = useVerifyAutomaticMembershipDomain()
@@ -64,7 +67,7 @@ export const AutomaticMembershipRulesPanel = ({
   const revokeDomain = useRevokeAutomaticMembershipDomain()
   const setTeams = useSetAutomaticMembershipTeams()
   const setTeamRule = useSetTeamAutomaticMembership()
-  const reauthorize = useReauthorizeAutomaticMembershipRule()
+  const reauthorize = useReauthorizeAutomaticMembershipRule(scope)
   const startRun = useStartAutomaticMembershipReconciliation()
   const cancelRun = useCancelAutomaticMembershipReconciliation()
   const setEnabled = useSetAutomaticMembershipEnabled()
@@ -120,7 +123,11 @@ export const AutomaticMembershipRulesPanel = ({
                         checked={data.provisioningEnabled}
                         disabled={pending}
                         label="Add people automatically"
-                        onChange={(enabled) => run(setEnabled, { enabled })}
+                        onChange={(enabled) => {
+                          // Switching it off is the emergency stop, so it asks.
+                          if (enabled) run(setEnabled, { enabled })
+                          else setPendingPause(true)
+                        }}
                       />
                       <span className="text-sm font-medium text-[color:var(--tx)]">
                         Add people automatically
@@ -192,7 +199,17 @@ export const AutomaticMembershipRulesPanel = ({
                           onRevoke: setPendingRevoke,
                           onRotate: (id) => run(rotateChallenge, { id }),
                           onSaveTeams: (id, teamIds) => run(setTeams, { id, teamIds }),
-                          onSetStatus: (id, status) => run(setStatus, { id, status }),
+                          onSetStatus: (id, status) => {
+                            // Activation places people, so it is confirmed and
+                            // names what it is about to do. Pausing is not: it
+                            // only ever stops future grants.
+                            if (status !== 'active') {
+                              run(setStatus, { id, status })
+                              return
+                            }
+                            const target = data.domains.find((entry) => entry.id === id)
+                            if (target) setPendingActivate(target)
+                          },
                           onToggleTeam: (id, enabled) => run(setTeamRule, { enabled, id }),
                           onVerify: (id) => run(verifyDomain, { id }),
                         }}
@@ -212,6 +229,39 @@ export const AutomaticMembershipRulesPanel = ({
           )
         }}
       </QueryState>
+
+      <ConfirmDialog
+        body={pendingActivate
+          ? `People signing in with an address at ${pendingActivate.domain} will be added as `
+            + `members of ${pendingActivate.rules.map((rule) => rule.teamName).join(', ') || 'the '
+              + 'teams you select'}. People already in your organisation who match will be added `
+            + 'now, in the background.'
+          : undefined}
+        confirmLabel="Turn on and add people"
+        onCancel={() => setPendingActivate(null)}
+        onConfirm={() => {
+          if (pendingActivate) run(setStatus, { id: pendingActivate.id, status: 'active' })
+          setPendingActivate(null)
+        }}
+        open={pendingActivate !== null}
+        pending={setStatus.isPending}
+        title="Start adding people from this domain?"
+      />
+
+      <ConfirmDialog
+        body={'New people stop being added straight away. Nobody is removed, and everyone who '
+          + 'already has access keeps it. You can switch this back on at any time.'}
+        confirmLabel="Pause adding people"
+        destructive
+        onCancel={() => setPendingPause(false)}
+        onConfirm={() => {
+          run(setEnabled, { enabled: false })
+          setPendingPause(false)
+        }}
+        open={pendingPause}
+        pending={setEnabled.isPending}
+        title="Pause automatic access?"
+      />
 
       <ConfirmDialog
         body={pendingRevoke

@@ -259,6 +259,29 @@ export const registerAutomaticMembershipRoutes = (
         context.actorContext.tenant.organizationId,
         body.status,
       )
+      // Switching a domain on is what the plan means by activation, so the
+      // people who already match are placed then — not only when somebody later
+      // finds the "Add people who are already here" button.
+      if (body.status === 'active') {
+        const authorization = resolveRuleAuthorization(context.actorContext, reply)
+        if (!authorization) return reply
+        const run = await startReconciliation(prisma, {
+          authorization,
+          domainId: params.id,
+          organizationId: context.actorContext.tenant.organizationId,
+          requestedByUserId: actorUserId(context.actorContext),
+        })
+        if (run) {
+          await emitAuditEvent(prisma, {
+            action: 'organization.automatic_membership.reconcile_started',
+            actorContext: context.actorContext,
+            metadata: { ruleCount: run.ruleIds.length, trigger: 'activation' },
+            outcome: 'success',
+            resourceId: run.id,
+            resourceType: 'automatic_membership_reconciliation',
+          })
+        }
+      }
       await emitAuditEvent(prisma, {
         action: body.status === 'active'
           ? 'organization.automatic_membership.domain_activated'

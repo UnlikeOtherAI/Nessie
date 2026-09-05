@@ -44,13 +44,20 @@ test('the rules panel is parameterised by scope, serving both surfaces', () => {
   assert.match(rulesPanel, /useAutomaticMembership\(scope\)/)
 })
 
-test('the roster query does not fire on the Automatic logins tab', () => {
-  assert.match(
-    rosterPanel,
-    /const isRosterTab = tab === 'active' \|\| tab === 'deactivated'/,
-    'the roster query must be enabled only for the two roster tabs',
-  )
-  assert.match(rosterPanel, /useMemberRoster\(\s*scope,[^)]*isRosterTab,\s*\)/s)
+test('the rules panel is not gated on the roster query', () => {
+  // The roster read DOES run on this tab — it carries UOA's live verdict on
+  // what this person may do, which is what decides whether the tab exists at
+  // all. What must not happen is the rules panel depending on it: `current` is
+  // null here, so no QueryState wraps the panel and no footer pages an empty
+  // list.
+  assert.match(rosterPanel, /const current = tab === 'automatic' \? null/)
+  assert.match(rosterPanel, /const permissions = \(current \?\? roster\)\.query\.data/)
+})
+
+test('the tab is hidden unless the flag is on and the caller may administer', () => {
+  assert.match(rosterPanel, /me\?\.features\?\.automaticMembership === true/)
+  assert.match(rosterPanel, /permissions\?\.addMember === true \|\| tab === 'automatic'/)
+  assert.match(rosterPanel, /const tabs = canSeeAutomatic \? \[\.\.\.ROSTER_TABS, AUTOMATIC_TAB\] : ROSTER_TABS/)
 })
 
 test('Send invitation does not render on the Automatic logins tab', () => {
