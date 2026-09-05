@@ -69,9 +69,15 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
               + '"options":[{"value":"prod","label":"Production"}],"required":true}; '
               + '{"type":"secret","key":"api_key","label":"API key",'
               + '"destination":{"kind":"connector_credential","instanceId":"<uuid>"}}; '
-              + 'or {"type":"secret","key":"api_key","label":"API key",'
+              + '{"type":"secret","key":"api_key","label":"API key",'
               + '"destination":{"kind":"dashboard_source_credential","sourceId":"<uuid>",'
-              + '"mode":"bearer"}} (header mode also needs headerName).',
+              + '"mode":"bearer"}} (header mode also needs headerName); '
+              + 'or {"type":"secret","key":"api_key","label":"Stripe API key",'
+              + '"destination":{"kind":"vault_secret","name":"STRIPE_API_KEY"}} — the '
+              + 'general destination, saving to the person\'s own Secrets under the '
+              + 'NAME you supply, which is what the form arrives pre-filled with. Use '
+              + 'this one whenever a credential is not being attached to a specific '
+              + 'connector or dashboard source.',
             items: { type: 'object' },
           },
           actions: {

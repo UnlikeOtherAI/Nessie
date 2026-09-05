@@ -70,5 +70,6 @@ export {
   type LinkThoughtsInput,
   getExperienceStats,
   type ExperienceStats,
+  forgetMessageThoughts,
 } from './lifecycle.js'
 export { withTransaction } from './transaction.js'

@@ -4,11 +4,13 @@ import type { CredentialStore } from '@nessie/dashboard'
 import {
   AgentCardRespondBodySchema,
   AgentCardSpecSchema,
+  detectSecrets,
   parseChannelId,
   parseOrganizationId,
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
+import { forgetMessageThoughts } from '@nessie/memory'
 import { applyReplyBookkeeping } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -26,6 +28,7 @@ import {
 import {
   AgentCardSecretPlacementError,
   resolveAgentCardSecretPlacements,
+  rollbackAgentCardSecretPlacements,
   storeAgentCardSecrets,
 } from '../services/agent-card-secret-placement.js'
 import { ResumeRollback, resumeSuspendedRun } from '../services/run-resume-core.js'
@@ -127,12 +130,36 @@ export const registerAgentCardRoutes = (
       throw error
     }
 
+    // An `input` block is ordinary text: its value is written to
+    // `resolutionValues`, to the response message, to realtime and into the
+    // agent's next context. A credential typed into one — an agent asking
+    // "paste your API key" in a plain field rather than a `secret` block —
+    // would therefore persist in the clear, so it is refused here with the
+    // same interception the composer and message routes use. The `secret`
+    // blocks are exempt: their values never reach any of those sinks.
+    const interceptedField = Object.entries(submission.values).find(
+      ([, value]) => typeof value === 'string' && detectSecrets(value).length > 0,
+    )
+    if (interceptedField) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this card was answered. '
+          + 'Save it through Secrets instead.',
+        interceptedField[0],
+        { fieldKeys: [interceptedField[0]] },
+      )
+      return reply
+    }
+
     // Destination access is re-checked before the conditional claim. A card
     // which could no longer store a secret remains answerable once the person
     // repairs that access, and placement still commits with the press below.
     let secretPlacements
     try {
       secretPlacements = await resolveAgentCardSecretPlacements(prisma, {
+        isOwner: actorContext.actor.roles?.includes('owner') ?? false,
         organizationId,
         secrets: submission.secrets,
         spec: spec.data,
@@ -158,6 +185,7 @@ export const registerAgentCardRoutes = (
       resumedRunId: string | null
       rootMessageId: string | null
       replyMetadata: Awaited<ReturnType<typeof applyReplyBookkeeping>> | null
+      secretOutcomes: Record<string, unknown>
     }
     try {
       outcome = await prisma.$transaction(async (tx) => {
@@ -197,7 +225,9 @@ export const registerAgentCardRoutes = (
         const secretOutcomes = await storeAgentCardSecrets(tx, {
           dashboardCredentials: deps.dashboardCredentials,
           mcpSecretStore: deps.mcpSecretStore,
+          organizationId,
           placements: secretPlacements,
+          threadId: card.threadId,
           userId,
         })
 
@@ -253,6 +283,7 @@ export const registerAgentCardRoutes = (
               responseMessageId: responseMessage.id,
               resumedRunId: resumed.runId,
               rootMessageId,
+              secretOutcomes,
             }
           }
         }
@@ -281,9 +312,24 @@ export const registerAgentCardRoutes = (
           responseMessageId: responseMessage.id,
           resumedRunId: null,
           rootMessageId,
+          secretOutcomes,
         }
       })
     } catch (error) {
+      // A vault write is the one placement that already happened by now, so
+      // a press that did not commit must not leave it behind.
+      await rollbackAgentCardSecretPlacements(secretPlacements)
+      // A secret name is unique per scope. Without this the person sees a bare
+      // 500 on a card that stays open, and every retry repeats the same wall.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        sendApiError(
+          reply,
+          409,
+          'SECRET_NAME_TAKEN',
+          'A secret with that name already exists in this scope. Rename or replace it in Secrets.',
+        )
+        return reply
+      }
       if (error instanceof ResumeRollback) {
         sendApiError(
           reply,
@@ -315,6 +361,56 @@ export const registerAgentCardRoutes = (
       { channelId: parseChannelId(card.channelId), kind: 'channel' as const },
       { kind: 'organization' as const, organizationId: parseOrganizationId(organizationId) },
     ]
+
+    for (const [key, value] of Object.entries(outcome.secretOutcomes)) {
+      const stored = value as { kind?: string; redactedMessageId?: string; reference?: string
+        scopeType?: string }
+      if (stored.kind !== 'vault_secret') continue
+
+      // A secret saved through a card belongs in the same audit trail as one
+      // saved on the Secrets screen, or that trail is silently incomplete.
+      await emitAuditEvent(prisma, {
+        action: 'secret.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+        actorContext,
+        metadata: { cardId: card.id, fieldKey: key, scopeType: stored.scopeType },
+        outcome: 'success',
+        resourceId: stored.reference ?? card.id,
+        resourceType: 'secret',
+      })
+
+      if (!stored.redactedMessageId) continue
+
+      // The message row is clean, but a person's message was copied into
+      // memory at send time and recall would hand the credential straight
+      // back. Deliberately outside the transaction: the memory store is a
+      // separate pool, and forgetting a secret is safe even if nothing else
+      // committed.
+      if (deps.messageMemoryCaptureConfig) {
+        await forgetMessageThoughts(
+          { messageId: stored.redactedMessageId, organizationId },
+          deps.messageMemoryCaptureConfig.pool,
+        ).catch(() => undefined)
+      }
+      await emitAuditEvent(prisma, {
+        action: 'message.redacted' as Parameters<typeof emitAuditEvent>[1]['action'],
+        actorContext,
+        metadata: { cardId: card.id, fieldKey: key },
+        outcome: 'success',
+        resourceId: stored.redactedMessageId,
+        resourceType: 'message',
+      })
+      // Viewers with the thread open keep rendering the plaintext until they
+      // reload otherwise — the leak would outlive its own fix on screen.
+      await realtimeHub.publishWs(scopes, {
+        data: {
+          editedAt: new Date().toISOString(),
+          messageId: stored.redactedMessageId,
+          threadId: parseThreadId(card.threadId),
+        },
+        event: 'message.updated',
+      })
+    }
+
     await realtimeHub.publishWs(scopes, {
       data: {
         cardId: card.id,

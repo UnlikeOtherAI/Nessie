@@ -80,7 +80,10 @@ test('the system prompt tells the agent to link to tool-sourced locations, not d
 test('every agent receives the compact secret-form instruction', () => {
   const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
   assert.match(system, /Never ask for, repeat, or put a secret in chat/)
-  assert.match(system, /replaced by a secure form before you see it/)
+  // The instruction has to name the thing an agent can DO, or it is only a
+  // prohibition and no secret ever reaches Secrets.
+  assert.match(system, /call card_post with a secret block/)
+  assert.match(system, /vault_secret/)
 })
 
 test('the provider boundary replaces bypassed secrets with a safe prefix and bullets', () => {

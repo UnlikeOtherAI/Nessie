@@ -179,3 +179,33 @@ export const getExperienceStats = async (
     successRate: total > 0 ? successful / total : 0,
   }
 }
+
+// --- Redaction ---
+
+/**
+ * Forget everything recalled from one message.
+ *
+ * A person's message is copied into `thoughts` at send time, so rewriting
+ * `messages.content` to strip a credential leaves that copy behind and recall
+ * serves the secret straight back into a later context. Deletion rather than
+ * rewriting is deliberate: the row also carries an embedding of the plaintext,
+ * and there is no way to un-embed a value.
+ *
+ * `thought_reasonings` and `thought_links` cascade from `thoughts.id`.
+ *
+ * Returns how many thoughts were forgotten, so a caller can record that the
+ * scrub actually reached memory.
+ */
+export const forgetMessageThoughts = async (
+  input: { messageId: string; organizationId: string },
+  pool: Pool,
+): Promise<number> => {
+  const result = await withTransaction(pool, async (client) =>
+    client.query(
+      `DELETE FROM thoughts
+       WHERE organization_id = $1
+         AND metadata->>'source_message_id' = $2`,
+      [input.organizationId, input.messageId],
+    ))
+  return result.rowCount ?? 0
+}
