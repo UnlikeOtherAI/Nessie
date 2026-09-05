@@ -54,6 +54,16 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // An automatic-membership rule that stopped granting. Revalidated against
+      // the rule's live health exactly as trigger_health revalidates its
+      // trigger: the moment an administrator re-authorizes it, the bell item
+      // stops surfacing without anything having to remember to delete it.
+      kind: 'automatic_membership_health',
+      automaticMembershipRule: {
+        is: { healthState: 'needs_reauthorization' },
+      },
+    },
+    {
       // An agent waiting on this person. Revalidated against the request's live
       // status exactly as trigger_health revalidates its trigger: once the
       // person approves, rejects, or it expires, the bell item stops surfacing

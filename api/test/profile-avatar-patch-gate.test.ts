@@ -111,7 +111,7 @@ const makeApp = async (providerType: 'local-bootstrap' | 'uoa') => {
         claims,
         me: { user: { preferences: {} } },
       }),
-      config: { auth: { autoRedirectToSso: false, providers: [] }, mode: 'hosted' },
+      config: { auth: { autoRedirectToSso: false, providers: [] }, automaticMembership: { enabled: false }, mode: 'hosted' },
       getAuthorizationToken: () => 'token',
       prisma,
       resolveBootstrapState: async () => null,

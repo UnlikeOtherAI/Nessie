@@ -198,3 +198,29 @@ and profile and team names are still mirrored locally. The binding keys (`Organi
 `Team.externalTeamId`, `User.uoaSub`) are not duplication — they are what
 makes asking UOA possible. That rule, and the outstanding gaps against it, are
 in the plan linked above.
+
+### Nessie policy may decide placement; UOA still authorizes it
+
+There is exactly one place where a Nessie-side rule causes someone to join a
+team: **automatic team access by DNS-verified email domain**
+([docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md](../plans/2026-09-04-automatic-team-membership-by-verified-domain.md)).
+It does not contradict the rule above, and the distinction is the whole reason
+it is allowed to exist:
+
+- Nessie holds the **policy** — which domain, proven how, placing people into
+  which teams, audited here.
+- UOA holds the **membership and its authorization**. Every grant is a relay to
+  `addTeamMember` carrying a fresh, 60-second org-scoped subject assertion for
+  the administrator who authorized the rule, so UOA re-resolves that person's
+  live organisation membership and role before every write. A demoted or removed
+  administrator's rule stops granting upstream, without Nessie noticing first.
+
+Two consequences bind any future change here. **Backend mode is not an option**:
+`POST /api/team/members` has no local admin gate at all — its entire
+authorization is that subject assertion — so relaying with the domain-hash
+bearer alone would remove the only check the action has and rebuild a weaker one
+on the `TeamMember` projection this document is trying to demote to a cache.
+And **no automatic path may name a role or remove a membership**: membership is
+read first and the add is skipped when the person is already there, so a team
+owner is never demoted, and narrowing or disabling a rule stops future grants
+and nothing else.

@@ -318,6 +318,7 @@ export const buildMeResponse = async (
       providerType: claims.providerType,
       autoRedirectToSso: config.auth.autoRedirectToSso,
     },
+    features: { automaticMembership: config.automaticMembership.enabled },
     memberships,
     ...(uoaDirectory.uoaTeams
       ? { uoaTeams: uoaDirectory.uoaTeams }

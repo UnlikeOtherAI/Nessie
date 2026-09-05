@@ -71,7 +71,7 @@ test('buildMeResponse no longer manufactures a display name from the email', asy
     prisma,
     makeUser('ada.lovelace@example.com'),
     claims,
-    { auth: { autoRedirectToSso: true }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
+    { auth: { autoRedirectToSso: true }, automaticMembership: { enabled: false }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
   )
 
   assert.equal(me.user.displayName, 'ada.lovelace@example.com')
@@ -84,7 +84,7 @@ test('buildMeResponse writes nothing while hydrating a session', async () => {
     prisma,
     makeUser('Ada L.'),
     claims,
-    { auth: { autoRedirectToSso: true }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
+    { auth: { autoRedirectToSso: true }, automaticMembership: { enabled: false }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
   )
 
   assert.equal(me.user.displayName, 'Ada L.')

@@ -15,6 +15,11 @@ export const UserAlertKindSchema = z.enum([
   'approval_requested',
   'call_missed',
   'team_invitation',
+  // An automatic-membership rule's authorization stopped verifying, so nobody
+  // new is being added to its team. Durable for the same reason as
+  // trigger_health: otherwise it is visible only to whoever happens to open the
+  // Automatic logins tab.
+  'automatic_membership_health',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 

@@ -34,6 +34,12 @@ import {
   KNOWLEDGE_EXTRACT_TOPIC,
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
+  AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
+  AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
+  AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
+  AutomaticMembershipProvisionJobPayloadSchema,
+  AutomaticMembershipReconcileJobPayloadSchema,
+  AutomaticMembershipRevalidateJobPayloadSchema,
   BudgetAlertDispatchJobPayloadSchema,
   TriggerHealthAlertJobPayloadSchema,
   WorkflowRunFailureDispatchJobPayloadSchema,
@@ -70,6 +76,14 @@ import {
   refreshDashboardDataSource,
   sweepDueDashboardSources,
 } from './control/dashboard-refresh.js'
+import { executeAutomaticMembershipProvisionJob } from './control/automatic-membership/provision.js'
+import { executeAutomaticMembershipReconcileJob } from './control/automatic-membership/reconcile.js'
+import {
+  executeAutomaticMembershipRevalidateJob,
+  sweepDueDomainRevalidations,
+  sweepStrandedReconciliations,
+  REVALIDATION_SWEEP_INTERVAL_MS,
+} from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
@@ -487,6 +501,48 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  // Automatic team access after sign-in
+  // (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
+  // The instance flag reaches every handler and the sweep, so switching it off
+  // stops provisioning on rules that already exist — the routes alone cannot,
+  // because they 404 when it is off and take the emergency stop with them.
+  const automaticMembershipEnabled = config.automaticMembership.enabled
+  queueProvider.subscribe(
+    AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
+    async (job) => {
+      const payload = AutomaticMembershipProvisionJobPayloadSchema.parse(job.payload)
+      await executeAutomaticMembershipProvisionJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
+    async (job) => {
+      const payload = AutomaticMembershipReconcileJobPayloadSchema.parse(job.payload)
+      await executeAutomaticMembershipReconcileJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
+    async (job) => {
+      const payload = AutomaticMembershipRevalidateJobPayloadSchema.parse(job.payload)
+      await executeAutomaticMembershipRevalidateJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
   // Dashboards: one cache per source, refreshed here and nowhere else, so
   // viewing a dashboard never causes an outbound request.
   const dashboardEgressPolicy = {
@@ -765,6 +821,24 @@ export const startWorker = async (
     }
   }, 30_000)
 
+  // Automatic-membership DNS revalidation. A short tick that asks "is one
+  // due?", not a 24-hour timer: a long interval never fires in a deployment
+  // that redeploys more often than its period, and this is the control that
+  // catches a domain leaving the organisation's hands.
+  let domainRevalidationSweepInFlight = false
+  const domainRevalidationInterval = setInterval(async () => {
+    if (domainRevalidationSweepInFlight || abortController.signal.aborted) return
+    domainRevalidationSweepInFlight = true
+    try {
+      await sweepDueDomainRevalidations(prisma, automaticMembershipEnabled)
+      await sweepStrandedReconciliations(prisma, automaticMembershipEnabled)
+    } catch (error) {
+      console.error('[worker.automatic-membership-revalidation] failed', error)
+    } finally {
+      domainRevalidationSweepInFlight = false
+    }
+  }, REVALIDATION_SWEEP_INTERVAL_MS)
+
   // W6: reclaim stuck workflow steps — an expired lease (actively-worked step
   // whose worker died) or an expired deadline (suspended step waiting on an
   // external continuation). Both conditions; a lease-only sweep never reclaims
@@ -999,6 +1073,7 @@ export const startWorker = async (
     clearInterval(gmailSendSweepInterval)
     clearInterval(activeCallExpiryInterval)
     clearInterval(dashboardSweepInterval)
+    clearInterval(domainRevalidationInterval)
     clearInterval(workflowStepReapInterval)
     clearInterval(cloudBrowserReapInterval)
     clearInterval(deliveryRetryInterval)

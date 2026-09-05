@@ -218,6 +218,16 @@ export const NessieConfigSchema = z.object({
       maxInboundBytes: z.number().int().positive().default(25 * 1024 * 1024),
     })
     .default({}),
+  // Automatic team access after sign-in, by DNS-verified email domain
+  // (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
+  // The instance rollout gate, and the one that is fail-closed: with it off the
+  // routes answer 404 and the admin tab is absent. The per-organisation
+  // emergency stop is a ScopedSetting, not another env var.
+  automaticMembership: z
+    .object({
+      enabled: z.boolean().default(false),
+    })
+    .default({}),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
@@ -305,6 +315,7 @@ export const ConfigEnvMap = {
   NESSIE_EMAIL_INBOUND_RETENTION_DAYS: 'email.inboundRetentionDays',
   NESSIE_EMAIL_CUSTOM_DOMAINS: 'email.customDomains',
   NESSIE_AGENT_MAIL_MAX_SENDS_PER_HOUR: 'email.maxSendsPerHour',
+  NESSIE_AUTOMATIC_MEMBERSHIP_ENABLED: 'automaticMembership.enabled',
   NESSIE_AGENT_MAIL_MAX_INBOUND_BYTES: 'email.maxInboundBytes',
 } as const
 
@@ -391,6 +402,9 @@ const DEFAULT_CONFIG: NessieConfig = {
     customDomains: false,
     maxSendsPerHour: 30,
     maxInboundBytes: 25 * 1024 * 1024,
+  },
+  automaticMembership: {
+    enabled: false,
   },
 }
 

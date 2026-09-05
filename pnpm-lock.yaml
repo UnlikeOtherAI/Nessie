@@ -805,6 +805,9 @@ importers:
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@20.19.39)
+      tldts:
+        specifier: ^7.4.11
+        version: 7.4.11
       undici:
         specifier: ^6.26.0
         version: 6.26.0
@@ -7232,8 +7235,15 @@ packages:
   tldts-core@7.4.10:
     resolution: {integrity: sha512-KnQjp53ZekKgm/r3l+u8kJGGzYgrWdP8+Mql7a4vijh2WE0IrZWspQj/TpTxDho/YxO+AnOZnIjQcCD+q6iJsw==}
 
+  tldts-core@7.4.11:
+    resolution: {integrity: sha512-CW3WN2rIIE/Of21mulhgnGOwoDyEFNygyIBOONSdyAuSATgMMUCpLeUlB+E8sAwA5xRV9hYPl+kyZ9citHCaKg==}
+
   tldts@7.4.10:
     resolution: {integrity: sha512-GgouD1B+sWwvkaEq8vXC15DjQitxbvs12oIXELpconwm+Tg3zfcEv4jgzq3vtKverDXsg3VI8aRgNL2Nra0Iog==}
+    hasBin: true
+
+  tldts@7.4.11:
+    resolution: {integrity: sha512-aBiNayCfTQxuIJBm06M+xR14cYaYlDlSXZbgsnKzKNxDKUVq7KFwTjwBSsb7m9Y5xO8WfPnBc63WaYFMTGlvqw==}
     hasBin: true
 
   tmp@0.2.7:
@@ -15211,9 +15221,15 @@ snapshots:
 
   tldts-core@7.4.10: {}
 
+  tldts-core@7.4.11: {}
+
   tldts@7.4.10:
     dependencies:
       tldts-core: 7.4.10
+
+  tldts@7.4.11:
+    dependencies:
+      tldts-core: 7.4.11
 
   tmp@0.2.7: {}
 
