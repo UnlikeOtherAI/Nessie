@@ -26,6 +26,18 @@ import {
   toJsonRecord,
 } from './contract-helpers.js'
 
+export const TOOL_REGISTRY_ERROR_CODES = {
+  BUILTIN_TOOL_ID_RESERVED: 'BUILTIN_TOOL_ID_RESERVED',
+} as const
+
+export class ToolRegistryError extends Error {
+  override readonly name = 'ToolRegistryError'
+
+  constructor(public readonly code: string, message: string) {
+    super(message)
+  }
+}
+
 const BUILTIN_TOOL_SCOPE_KEY = 'builtin'
 
 const toToolRegistryScopeKey = (
@@ -170,7 +182,10 @@ export const registerToolRegistryEntry = async (
       select: { id: true },
     })
     if (builtinEntry) {
-      throw new Error('BUILTIN_TOOL_ID_RESERVED')
+      throw new ToolRegistryError(
+        TOOL_REGISTRY_ERROR_CODES.BUILTIN_TOOL_ID_RESERVED,
+        'Built-in tool ids are reserved and cannot be overridden by organization-local entries',
+      )
     }
   }
 

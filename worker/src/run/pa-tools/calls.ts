@@ -80,7 +80,16 @@ export const runMeetingLinkCreateTool = async (
   const member = await resolveActingMember(context)
 
   try {
+    // The run's own tenant — the organisation of the channel this conversation
+    // is happening in, re-read by `resolveActingMember` — mirroring what
+    // `POST /api/meetings/links` passes from the session. A PA cannot carry
+    // home-org authority into another UOA organisation, and the shared seam
+    // refuses a team outside it with the same `Team not found`.
     const link = await createCallLinkForTeamUser(context.prisma, {
+      // Mirrors the route exactly: the team is named in the tool argument, so
+      // the person must be in it.
+      entitlement: 'team_member',
+      organizationId: member.organizationId,
       teamId: args.teamId,
       userId: member.userId,
       ...(args.provider ? { provider: args.provider } : {}),

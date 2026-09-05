@@ -40,6 +40,7 @@ import {
   AutomaticMembershipProvisionJobPayloadSchema,
   AutomaticMembershipReconcileJobPayloadSchema,
   AutomaticMembershipRevalidateJobPayloadSchema,
+  BUDGET_ALERT_DISPATCH_TOPIC,
   BudgetAlertDispatchJobPayloadSchema,
   TriggerHealthAlertJobPayloadSchema,
   WorkflowRunFailureDispatchJobPayloadSchema,
@@ -179,6 +180,19 @@ const prisma = getPrismaClient({
   connectionLimit: config.database.poolMax,
   log: config.mode === 'local' ? ['warn', 'error'] : ['error'],
 })
+
+/**
+ * The package entry, so a cross-package test reaches these through
+ * `@nessie/worker`'s `dist` export rather than a relative path into
+ * `worker/src` (docs/standards/testing.md, "How tests are invoked"): only the
+ * Turbo path guarantees the `^build` CI performs, so a source-path import
+ * passes locally and fails with ERR_MODULE_NOT_FOUND under `pnpm test`.
+ */
+export { queueTriggerRun } from './control/trigger-run.js'
+export {
+  resolveDelegatedRequesterUserId,
+  resolveIdentityDelegatedToolIds,
+} from './run/delegated-identity.js'
 
 const isMainModule = (): boolean =>
   Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href
@@ -436,7 +450,7 @@ export const startWorker = async (
   )
 
   queueProvider.subscribe(
-    'budget.alert-dispatch',
+    BUDGET_ALERT_DISPATCH_TOPIC,
     async (job) => {
       const payload = BudgetAlertDispatchJobPayloadSchema.parse(job.payload)
       await handleBudgetAlertDispatch(
@@ -903,11 +917,11 @@ export const startWorker = async (
       const claimed = await sweepDueDashboardSources(prisma, { limit: 20 })
       for (const source of claimed) {
         // One queued attempt per source: a slow fetch must not pile up.
-        await queueProvider.enqueue(
-          DASHBOARD_REFRESH_TOPIC,
-          { sourceId: source.sourceId },
-          { idempotencyKey: `dashboard:refresh:${source.sourceId}` },
-        )
+        await enqueueQueueJob(prisma, {
+          idempotencyKey: `dashboard:refresh:${source.sourceId}`,
+          payload: { sourceId: source.sourceId },
+          topic: DASHBOARD_REFRESH_TOPIC,
+        })
       }
     } catch (error) {
       console.error('[worker.dashboard-sweep] failed', error)

@@ -23,7 +23,7 @@ import {
   submitExecutorEnrollment,
 } from '@nessie/executor-manage'
 import type { FastifyInstance } from 'fastify'
-import { ImplementedExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
+import { ImplementedExecutorOperationKeySchema } from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -57,15 +57,15 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { requireFreshExecutorPasswordVerification } from '../services/executor-fresh-verification.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'
+import { publishMessageNew } from '../services/message-delivery.js'
 import { setAgentToolPolicyForRegistryEntry } from '../services/agent-tool-policy-registry.js'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import {
   issueExecutorDaemonChallenge,
   verifyExecutorDaemonChallenge,
 } from '../services/executor-daemon-auth.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
 import type { RouteDeps } from './types.js'
@@ -187,24 +187,27 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         sendApiError(reply, 409, 'RUN_THREAD_BUSY', 'That agent already has active work in this thread')
         return reply
       }
-      await realtimeHub.publishWs(
-        buildChannelRealtimeScopes({
-          channelId: launched.channelId,
+      // The channel's system type decides whether this announcement is
+      // channel-only or organization-wide, so it is read rather than omitted:
+      // a launch inside a delegated system DM must not be published org-wide.
+      const launchChannel = await prisma.channel.findUnique({
+        select: { systemChannelType: true },
+        where: { id: launched.channelId },
+      })
+      await publishMessageNew({ buildChannelRealtimeScopes, realtimeHub }, {
+        channel: {
+          id: launched.channelId,
           organizationId: actorContext.tenant.organizationId,
-        }),
-        {
-          data: {
-            agentId: undefined,
-            authorUserId: parseUserId(actorContext.actor.actorId),
-            channelId: parseChannelId(launched.channelId),
-            contentPreview: launched.message.content.slice(0, 200),
-            messageId: launched.message.id,
-            role: launched.message.role,
-            threadId: launched.message.threadId,
-          },
-          event: 'message.new',
+          systemChannelType: launchChannel?.systemChannelType,
         },
-      )
+        message: {
+          content: launched.message.content,
+          id: launched.message.id,
+          role: launched.message.role,
+          userId: actorContext.actor.actorId,
+        },
+        threadId: launched.message.threadId,
+      })
       await emitAuditEvent(prisma, {
         action: 'executor.run.launched',
         actorContext,
@@ -451,14 +454,11 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     '/api/executor-daemon/challenge',
     { config: { public: true } },
     async (request, reply) => {
+      // Rate limiting is the global hook's: `/api/executor-daemon/challenge`
+      // is paired with `executorDaemonIp` in `POST_ROUTE_BUCKETS`, like the
+      // other six daemon routes, so all seven pair in one table.
       const body = parseInput(ExecutorDaemonChallengeBodySchema, request.body, reply)
       if (!body) return reply
-      if (!(await guardAuthRequest(
-        rateLimiter,
-        { bucket: RATE_LIMIT_BUCKETS.executorDaemonIp, rule: config.api.rateLimit.executorDaemonIp },
-        request,
-        reply,
-      ))) return reply
       const challenge = issueExecutorDaemonChallenge(body.executorId, deps.authSecret)
       await recordExecutorDaemonChallenge(prisma, {
         challenge: challenge.challenge,

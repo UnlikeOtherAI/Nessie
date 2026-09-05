@@ -138,8 +138,11 @@ This is the only case where `GET /api/auth/me` returns a non-error response with
 #### Bootstrap token rules
 
 - generated once at API startup when zero users exist
-- stored in memory only, never persisted to database
-- UUID v4 format
+- stored in memory only, never persisted to database — so bootstrap requires a
+  **single API replica**: a token minted on one replica is `401 TOKEN_INVALID`
+  on every other, and each replica logs a different bootstrap URL. Run one
+  instance until the owner account exists (2026-09-05 review, FO3-9).
+- UUID v4 format, compared with a timing-safe equality
 - 15-minute TTL
 - consumed on first successful use — cannot be reused
 - if the API restarts before bootstrap completes, a new token is generated and printed
@@ -422,12 +425,20 @@ Claims:
   never supplies session identity. Billing, delegated calls, activation, team
   enablement, and webhook routing all derive team authority from the signed
   family plus the exact Team mapping.
-- **revocation:** `DELETE /api/auth/session` (logout) is public but requires a
-  authentic signed Bearer session to revoke exactly that session's `{sub,
-  sid}`; an expired access TTL does not prevent this exact revocation.
-  It ignores the ambient refresh cookie and deliberately sends no generic
-  cookie-clear header: a delayed logout response from an older app instance
-  must never revoke or erase a newer login's same-name cookie. The frontend
+- **revocation:** `DELETE /api/auth/session` (logout) is public. With an
+  authentic signed Bearer it revokes exactly that session's `{sub, sid}`; an
+  expired access TTL does not prevent this exact revocation, and the ambient
+  refresh cookie is not consulted. With **no usable Bearer** — the ordinary
+  case of a tab left idle past the 30-minute access TTL — it instead revokes
+  the family named by the refresh cookie the request presented, because that
+  cookie is the durable credential and a logout that left it live would be a
+  logout in name only. This is safe against the older-instance race: a browser
+  attaches the cookie value that existed when the request was *sent*, so the
+  family revoked is always the presenting one, never a newer login's. Logout
+  still sends no cookie-clear header, for the same reason it never did — a
+  delayed logout response must not erase a newer login's same-name cookie; a
+  now-revoked cookie is cleared by `POST /api/auth/refresh` on its next 401.
+  Either way the response is `204`. The frontend
   clears its local session immediately, while every authenticated request also
   requires a live, unrevoked, unexpired refresh row for the Bearer `sid`, so the
   logged-out access JWT stops working without changing another session's user
@@ -784,7 +795,8 @@ On every request:
 - `POST /api/auth/session`
 - `POST /api/auth/refresh` (identity comes from the httpOnly refresh cookie, not a Bearer token)
 - `DELETE /api/auth/session` (logout; exact signed Bearer `{sub, sid}`
-  revocation, with the ambient cookie ignored)
+  revocation, falling back to revoking the presented refresh cookie's family
+  when no usable Bearer is supplied)
 - `GET /api/mcp/oauth/callback` (provider redirect; it consumes a single-use,
   server-stored OAuth state token and has its own per-IP rate limit)
 
@@ -793,6 +805,36 @@ Mark public routes with a Fastify route option:
 ```ts
 fastify.get('/api/health', { config: { public: true } }, handler);
 ```
+
+### Rate limiting
+
+One limiter governs the whole API: the Postgres-backed fixed-window counters in
+`api/src/services/rate-limit.ts`, so replicas share a counter, IPv6 identities
+collapse to their `/64`, lockout transitions are audited, and every threshold is
+a `config.api.rateLimit.<bucket>` rule tunable by `NESSIE_RATE_LIMIT_*`. There
+is no second in-process limiter (there was one, with its own thresholds and its
+own IP keying, on four routes — 2026-09-05 review, FO3-3/FO4-1).
+
+Buckets pair with their config rule in exactly one table,
+`api/src/routes/auth-rate-limit.ts`: a bucket without a matching rule does not
+compile. The global hook applies that table at **`onRequest`**, before the JSON
+body parser and before multipart, so a 429 costs nothing to serve.
+
+Coverage is a property of the route, not of who remembered:
+
+- a route declaring `config.public` is limited — `publicRouteIp` is a generous
+  per-IP flood ceiling that applies unless the table names something tighter;
+- routes the table names (`GET /api/auth/me`, thread message create, agent
+  writes, mailbox discovery, the trigger / comms / board-source / agent-mail
+  webhook intakes, the executor-daemon session routes) carry their own bucket;
+- a handler that guards itself as well (login, refresh, bootstrap, SSO
+  authorize, MCP OAuth, subscription device codes) keeps its own tighter bucket
+  **in addition to** the public floor — the floor is never a replacement.
+
+The client identity is Fastify's resolved `request.ip`, which honours
+`X-Forwarded-For` only as far as `NESSIE_API_TRUSTED_PROXY_HOPS` allows. The
+store fails **open**: a rate-limit outage must never take the login surface down
+with it.
 
 The auth hook checks `request.routeOptions.config.public` and skips validation if true.
 

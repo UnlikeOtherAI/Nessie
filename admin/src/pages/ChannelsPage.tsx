@@ -602,7 +602,7 @@ export const ChannelsPage = () => {
           activeChannel={activeChannel}
           activeThreadId={replyThread.activeThreadId ?? null}
           allUsers={allUsers}
-          canAddPeople={isOwner && activeChannel.type !== 'dm'}
+          canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}

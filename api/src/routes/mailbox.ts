@@ -6,6 +6,8 @@ import {
   claimMailboxMessage,
   createMailboxMessage,
   listMailboxMessages,
+  MAILBOX_ERROR_CODES,
+  MailboxError,
   markMailboxMessageDelivered,
 } from '../services/mailbox.js'
 import type { RouteDeps } from './types.js'
@@ -49,26 +51,22 @@ export const registerMailboxRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         actorType: actorContext.actor.actorType,
       })
     } catch (error) {
-      if (error instanceof Error && error.message === 'MAILBOX_THREAD_NOT_FOUND') {
-        sendApiError(reply, 404, 'MAILBOX_THREAD_NOT_FOUND', 'Mailbox thread not found')
+      if (error instanceof MailboxError && error.code === MAILBOX_ERROR_CODES.THREAD_NOT_FOUND) {
+        sendApiError(reply, 404, error.code, error.message)
         return reply
       }
-      if (error instanceof Error && error.message === 'MAILBOX_THREAD_CHANNEL_MISMATCH') {
-        sendApiError(
-          reply,
-          400,
-          'MAILBOX_THREAD_CHANNEL_MISMATCH',
-          'Mailbox thread does not belong to the requested channel',
-        )
+      if (
+        error instanceof MailboxError
+        && error.code === MAILBOX_ERROR_CODES.THREAD_CHANNEL_MISMATCH
+      ) {
+        sendApiError(reply, 400, error.code, error.message)
         return reply
       }
-      if (error instanceof Error && error.message === 'MAILBOX_CORRELATION_CONFLICT') {
-        sendApiError(
-          reply,
-          409,
-          'MAILBOX_CORRELATION_CONFLICT',
-          'Correlation ID already belongs to a different mailbox message',
-        )
+      if (
+        error instanceof MailboxError
+        && error.code === MAILBOX_ERROR_CODES.CORRELATION_CONFLICT
+      ) {
+        sendApiError(reply, 409, error.code, error.message)
         return reply
       }
       throw error

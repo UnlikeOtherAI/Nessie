@@ -117,28 +117,36 @@ export const acquireResourceLock = async (
   return lock ? mapResourceLock(lock) : null
 }
 
+/**
+ * Release a lock the given agent holds.
+ *
+ * `agentId` is required, and `releasedAt: null` is part of the predicate. Being
+ * in the organisation is not an entitlement to drop somebody else's lock — a
+ * lock is held BY an agent, and releasing it is the one operation whose whole
+ * point is that only the holder does it. The `releasedAt` filter is what makes
+ * a second release a 404 rather than a silent overwrite of the original release
+ * time, which would misreport how long the resource was actually held.
+ *
+ * Returns null when there is no unreleased lock with that id, in that
+ * organisation, held by that agent — the three are deliberately one refusal, so
+ * a caller cannot probe for the existence of another agent's lock.
+ */
 export const releaseResourceLock = async (
   prisma: PrismaClient,
   organizationId: string,
-  lockId: string,
+  input: { agentId: string; lockId: string },
 ): Promise<ResourceLockRecord | null> => {
-  const lock = await prisma.resourceLock.findFirst({
+  const released = await prisma.resourceLock.updateManyAndReturn({
     where: {
-      id: lockId,
+      agentId: input.agentId,
+      id: input.lockId,
       organizationId,
+      releasedAt: null,
     },
-    select: { id: true },
-  })
-  if (!lock) {
-    return null
-  }
-
-  const released = await prisma.resourceLock.update({
-    where: { id: lockId },
     data: {
       releasedAt: new Date(),
     },
   })
 
-  return mapResourceLock(released)
+  return released[0] ? mapResourceLock(released[0]) : null
 }

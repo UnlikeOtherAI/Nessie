@@ -11,8 +11,7 @@ import type { PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
 import { createPgSecretStore, createPgSecretResolver } from '@nessie/mcp-manage'
 import { DASHBOARD_MAX_DATASET_BYTES } from '@nessie/schemas'
-import type { DashboardEgressPolicy } from '@nessie/dashboard'
-import type { CredentialStore } from './dashboard-sources.js'
+import type { DashboardEgressPolicy, CredentialStore } from '@nessie/dashboard'
 
 /**
  * Reuses the existing AES-256-GCM store behind a distinct `secret_dashboard_`

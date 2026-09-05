@@ -5,6 +5,7 @@ import {
   ReauthorizeAgentTriggerBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import {
   getAgentTrigger,
   pauseAgentTrigger,
@@ -49,7 +50,11 @@ export const registerTriggerLifecycleRoutes = (
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -76,6 +81,17 @@ export const registerTriggerLifecycleRoutes = (
       return reply
     }
 
+    // Re-stamping the identity a dormant schedule authenticates as is exactly
+    // the kind of privileged change the audit trail exists for.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.reauthorized',
+      resourceType: 'agent_trigger',
+      resourceId: triggerId,
+      outcome: 'success',
+      ...(body.takeOver === undefined ? {} : { metadata: { takeOver: body.takeOver } }),
+    })
+
     return createApiResponse(AgentTriggerRecordSchema.parse(result.trigger))
   })
 
@@ -90,7 +106,11 @@ export const registerTriggerLifecycleRoutes = (
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -101,11 +121,19 @@ export const registerTriggerLifecycleRoutes = (
       return reply
     }
 
-    const updated = await pauseAgentTrigger(prisma, triggerId)
+    const updated = await pauseAgentTrigger(prisma, scope)
     if (!updated) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.paused',
+      resourceType: 'agent_trigger',
+      resourceId: triggerId,
+      outcome: 'success',
+    })
 
     return createApiResponse(AgentTriggerRecordSchema.parse(updated))
   })
@@ -121,7 +149,11 @@ export const registerTriggerLifecycleRoutes = (
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -132,11 +164,22 @@ export const registerTriggerLifecycleRoutes = (
       return reply
     }
 
-    const updated = await resumeAgentTrigger(prisma, triggerId)
+    const updated = await resumeAgentTrigger(prisma, scope)
     if (!updated) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.resumed',
+      resourceType: 'agent_trigger',
+      resourceId: triggerId,
+      outcome: 'success',
+      // A resume can leave a schedule paused when its `config.until` is past:
+      // there is nothing to arm. Record what actually happened, not the intent.
+      metadata: { status: updated.status },
+    })
 
     return createApiResponse(AgentTriggerRecordSchema.parse(updated))
   })

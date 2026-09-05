@@ -14,10 +14,10 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage } from '../services/message-create.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
 import {
-  findThreadForUser,
   mapMessageRecord,
   mapMessageRecordWithAttachments,
-} from '../services/messages.js'
+} from '../services/message-read-model.js'
+import { findThreadForUser } from '../services/message-read-state.js'
 import type { RouteDeps } from './types.js'
 
 export const registerCreateThreadMessageRoute = (

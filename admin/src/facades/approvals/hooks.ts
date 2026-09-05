@@ -1,25 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { EmailDraftPreview } from '@nessie/schemas'
+import type { ApprovalRequestRecord, EmailDraftPreview } from '@nessie/schemas'
 
 import { approvalKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export type ApprovalRequest = {
-  action: string
-  agentId: string
-  channelId: string | null
-  context?: Record<string, unknown>
-  createdAt: string
-  expiresAt: string
-  id: string
-  reason: string
-  requesterId: string
-  resolution: string | null
-  resolutionNote: string | null
-  resolverId: string | null
-  status: string
-  toolName: string | null
-}
+// The server-enforced shape (`ApprovalRequestRecordSchema`, parsed on every
+// response in `api/src/routes/approvals.ts`) rather than a hand-copied type,
+// so a field the server adds or removes cannot silently drift from what this
+// client reads.
+export type ApprovalRequest = ApprovalRequestRecord
 
 export type PendingApprovalCount = { count: number }
 

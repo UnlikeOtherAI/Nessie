@@ -7,7 +7,14 @@ import {
   PlanStepRecordSchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { addPlanStep, createPlan, getPlan, listPlans } from '../services/plans.js'
+import {
+  addPlanStep,
+  createPlan,
+  getPlan,
+  listPlans,
+  PLAN_ERROR_CODES,
+  PlanError,
+} from '../services/plans.js'
 import type { RouteDeps } from './types.js'
 
 export const registerPlanRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -94,13 +101,8 @@ export const registerPlanRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       step = await addPlanStep(prisma, actorContext.tenant.organizationId, planId, body)
     }
     catch (error) {
-      if (error instanceof Error && error.message === 'PLAN_STEP_SEQUENCE_CONFLICT') {
-        sendApiError(
-          reply,
-          409,
-          'PLAN_STEP_SEQUENCE_CONFLICT',
-          'A step with this sequence already exists for the plan',
-        )
+      if (error instanceof PlanError && error.code === PLAN_ERROR_CODES.STEP_SEQUENCE_CONFLICT) {
+        sendApiError(reply, 409, error.code, error.message)
         return reply
       }
       throw error

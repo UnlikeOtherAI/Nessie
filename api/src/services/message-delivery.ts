@@ -1,6 +1,7 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 
 import { captureUserMessageMemory, type CaptureConfig } from '@nessie/memory'
+import { publishMessageEnvelope, type AnnouncedMessage } from '@nessie/runtime'
 import {
   parseChannelId,
   parseThreadId,
@@ -74,6 +75,85 @@ export type DeliveredMessageThread = {
   }
 }
 
+export type MessageEnvelopeDeps = {
+  buildChannelRealtimeScopes: BuildChannelRealtimeScopes
+  realtimeHub: MessageRealtimePublisher
+}
+
+/** The channel the announcement is scoped to. */
+export type MessageEnvelopeChannel = {
+  id: string
+  organizationId: string
+  /**
+   * Load-bearing, not decoration: a delegated system DM announces to the
+   * channel scope alone, while every other channel also announces
+   * organization-wide. Omitting it publishes a private DM to the whole
+   * organization.
+   */
+  systemChannelType?: string | null
+}
+
+export type { AnnouncedMessage }
+
+/**
+ * The `message.new` announcement for an API-side surface.
+ *
+ * The envelope itself belongs to `@nessie/runtime`
+ * (`publishMessageEnvelope`) because the worker announces messages too; what
+ * this pair adds is the API's channel-scope rule, so `role`, the id branding
+ * and who may see the announcement are each decided once. Publishing is
+ * best-effort in the same way it always was — the row is the record of truth —
+ * but the failure policy stays with the caller, which knows whether a dropped
+ * announcement costs a refresh or a run.
+ */
+export const publishMessageNew = async (
+  deps: MessageEnvelopeDeps,
+  input: {
+    channel: MessageEnvelopeChannel
+    message: AnnouncedMessage
+    threadId: string
+  },
+): Promise<void> => {
+  await publishMessageEnvelope(
+    deps.realtimeHub,
+    deps.buildChannelRealtimeScopes({
+      channelId: input.channel.id,
+      organizationId: input.channel.organizationId,
+      systemChannelType: input.channel.systemChannelType,
+    }),
+    { channelId: input.channel.id, message: input.message, threadId: input.threadId },
+  )
+}
+
+/**
+ * The same envelope for a reply (#233), which carries its root so clients can
+ * update the reply panel without touching the top-level feed.
+ */
+export const publishMessageReply = async (
+  deps: MessageEnvelopeDeps,
+  input: {
+    channel: MessageEnvelopeChannel
+    message: AnnouncedMessage
+    rootMessageId: string
+    threadId: string
+  },
+): Promise<void> => {
+  await publishMessageEnvelope(
+    deps.realtimeHub,
+    deps.buildChannelRealtimeScopes({
+      channelId: input.channel.id,
+      organizationId: input.channel.organizationId,
+      systemChannelType: input.channel.systemChannelType,
+    }),
+    {
+      channelId: input.channel.id,
+      message: input.message,
+      rootMessageId: input.rootMessageId,
+      threadId: input.threadId,
+    },
+  )
+}
+
 export type DeliverCreatedMessageInput = {
   actorContext: AuthorizedActionContext
   /** The inbound text, which is what orchestration is asked to decide on. */
@@ -126,69 +206,56 @@ export const deliverCreatedMessage = async (
       ))
   }
 
-  const channelScopes = buildChannelRealtimeScopes({
-    channelId: thread.channel.id,
+  const envelopeDeps = { buildChannelRealtimeScopes, realtimeHub }
+  const channel: MessageEnvelopeChannel = {
+    id: thread.channel.id,
     organizationId: actorContext.tenant.organizationId,
     systemChannelType: thread.channel.systemChannelType,
-  })
+  }
 
   if (result.replyRoot) {
     // Reply threads (#233): a reply announces itself as `message.reply` (so
     // clients can update the reply panel without touching the top-level
     // feed), followed by the root's fresh materialized metadata.
-    await realtimeHub.publishWs(channelScopes, {
-      data: {
-        agentId: undefined,
-        authorUserId: parseUserId(actorContext.actor.actorId),
-        channelId: parseChannelId(thread.channel.id),
-        contentPreview: result.message.content.slice(0, 200),
-        messageId: result.message.id,
-        rootMessageId: result.replyRoot.rootMessageId,
-        role: result.message.role,
-        threadId: parseThreadId(thread.id),
-      },
-      event: 'message.reply',
+    await publishMessageReply(envelopeDeps, {
+      channel,
+      message: result.message,
+      rootMessageId: result.replyRoot.rootMessageId,
+      threadId: thread.id,
     })
-    await realtimeHub.publishWs(channelScopes, {
-      data: {
-        channelId: parseChannelId(thread.channel.id),
-        threadId: parseThreadId(thread.id),
-        rootMessageId: result.replyRoot.rootMessageId,
-        replyCount: result.replyRoot.metadata.replyCount,
-        lastReplyAt: result.replyRoot.metadata.lastReplyAt?.toISOString(),
-        replyParticipantIds: result.replyRoot.metadata.replyParticipantIds,
+    await realtimeHub.publishWs(
+      buildChannelRealtimeScopes({
+        channelId: channel.id,
+        organizationId: channel.organizationId,
+        systemChannelType: channel.systemChannelType,
+      }),
+      {
+        data: {
+          channelId: parseChannelId(thread.channel.id),
+          threadId: parseThreadId(thread.id),
+          rootMessageId: result.replyRoot.rootMessageId,
+          replyCount: result.replyRoot.metadata.replyCount,
+          lastReplyAt: result.replyRoot.metadata.lastReplyAt?.toISOString(),
+          replyParticipantIds: result.replyRoot.metadata.replyParticipantIds,
+        },
+        event: 'message.reply.meta',
       },
-      event: 'message.reply.meta',
-    })
+    )
   } else {
-    await realtimeHub.publishWs(channelScopes, {
-      data: {
-        agentId: undefined,
-        authorUserId: parseUserId(actorContext.actor.actorId),
-        channelId: parseChannelId(thread.channel.id),
-        contentPreview: result.message.content.slice(0, 200),
-        messageId: result.message.id,
-        role: result.message.role,
-        threadId: parseThreadId(thread.id),
-      },
-      event: 'message.new',
+    await publishMessageNew(envelopeDeps, {
+      channel,
+      message: result.message,
+      threadId: thread.id,
     })
   }
 
   // "Also send to #channel" copy: a normal top-level `message.new` under the
   // copy's own id. It is informational only — no push/orchestration below.
   if (result.broadcastMessage) {
-    await realtimeHub.publishWs(channelScopes, {
-      data: {
-        agentId: undefined,
-        authorUserId: parseUserId(actorContext.actor.actorId),
-        channelId: parseChannelId(thread.channel.id),
-        contentPreview: result.broadcastMessage.content.slice(0, 200),
-        messageId: result.broadcastMessage.id,
-        role: result.broadcastMessage.role,
-        threadId: parseThreadId(thread.id),
-      },
-      event: 'message.new',
+    await publishMessageNew(envelopeDeps, {
+      channel,
+      message: result.broadcastMessage,
+      threadId: thread.id,
     })
   }
 

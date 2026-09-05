@@ -13,16 +13,8 @@ import {
 import { AgentMessagePageSchema, parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import {
-  generateAgentAvatar,
-  generateAvatarForNewAgent,
-} from '../services/agent-avatar-generation.js'
-import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
-  AGENT_BINDING_ERROR_CODES,
-  AgentBindingError,
-  bindAgentToChannel,
   cloneAgentRecord,
   createAgentRecord,
   listAgentsForUser,
@@ -31,19 +23,25 @@ import {
   loadAgentMessages,
   loadAgentStatus,
   loadRunToolCalls,
-  unbindAgentFromChannel,
   updateAgentRecord,
   validateAgentCreateInput,
 } from '../services/agents.js'
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
 import { countPausedPrivateAgents } from '../services/private-agent-lifecycle.js'
 import {
+  AGENT_BINDING_ERROR_CODES,
+  AgentBindingError,
   assertAgentEditAuthority,
   assertAgentFieldAuthority,
   assertAgentModelSelection,
+  bindAgentToChannel,
+  generateAgentAvatar,
+  generateAvatarForNewAgent,
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
   randomAgentAvatarBackgroundColor,
+  unbindAgentFromChannel,
+  updateAgentAvatar,
 } from '@nessie/team-admin'
 import { checkPolicy } from '../services/policy.js'
 import {

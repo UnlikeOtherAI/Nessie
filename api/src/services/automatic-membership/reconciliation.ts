@@ -13,7 +13,7 @@ import { enqueueQueueJob } from '@nessie/db'
 import { AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC } from '@nessie/schemas'
 
 import { AutomaticMembershipDomainError } from './domains.js'
-import type { RuleAuthorization } from './access.js'
+import type { RuleAuthorization } from './rules.js'
 
 export type ReconciliationPrisma = Pick<
   PrismaClient,

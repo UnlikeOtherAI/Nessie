@@ -27,8 +27,12 @@ import {
   updateWorkflowTemplate,
   WorkflowTemplateVersionConflictError,
 } from '../../services/workflow-templates.js'
+import {
+  WORKFLOW_REFERENCE_ERROR_CODES,
+  WorkflowReferenceError,
+} from '../../services/workflow-references.js'
 import { WorkflowTemplateValidationError } from '../../services/workflow-validation.js'
-import { auditWorkflowMutation } from '../../services/workflow-audit.js'
+import { auditWorkflowMutation } from '@nessie/team-admin'
 import { isWorkflowAdmin } from '../../services/workflow-entitlement.js'
 import type { FastifyReply } from 'fastify'
 import type { RouteDeps } from '../types.js'
@@ -57,9 +61,12 @@ const sendTemplateSaveError = (reply: FastifyReply, error: unknown): boolean => 
     return true
   }
 
+  // Thrown as the typed `WorkflowReferenceError` by `@nessie/team-admin`'s
+  // `workflow-authoring.ts` (create/update template) — matched on `.code`,
+  // not on message text.
   if (
-    error instanceof Error &&
-    error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
+    error instanceof WorkflowReferenceError &&
+    error.code === WORKFLOW_REFERENCE_ERROR_CODES.TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND
   ) {
     sendApiError(
       reply,

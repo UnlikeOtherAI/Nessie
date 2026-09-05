@@ -6,7 +6,7 @@ import {
   type FileService,
   type ModelClient,
 } from '@nessie/runtime'
-import type { AuthorizedActionContext, VoiceTranscriptLine } from '@nessie/schemas'
+import type { AuthorizedActionContext, MessageRole, VoiceTranscriptLine } from '@nessie/schemas'
 
 import { compactCallTranscript } from './voice-compaction.js'
 import { VoiceSessionError } from './voice-session.js'
@@ -220,7 +220,7 @@ const callMetadata = (input: {
 export const writeVoiceCallRecord = async (
   prisma: PrismaClient,
   input: WriteCallRecordInput,
-): Promise<{ messageId: string; attachmentId: string | null }> => {
+): Promise<{ attachmentId: string | null; messageId: string; role: MessageRole }> => {
   // The claim is the transcript slot, not the status: a call that has already
   // ended must still be recordable, because a client that died mid-call
   // submits on its next launch and the duration cap (or a second tab) can end
@@ -305,7 +305,7 @@ export const writeVoiceCallRecord = async (
     : null
   const attachmentId = stored?.attachment.id ?? null
 
-  let message: { id: string }
+  let message: { id: string; role: MessageRole }
   try {
     message = await prisma.$transaction(async (tx) => {
       const created = await tx.message.create({
@@ -362,7 +362,9 @@ export const writeVoiceCallRecord = async (
     throw error
   }
 
-  return { messageId: message.id, attachmentId }
+  // The role travels with the id: the caller announces this record, and the
+  // wire enum is the row's own value rather than a literal at the publish site.
+  return { attachmentId, messageId: message.id, role: message.role }
 }
 
 /**

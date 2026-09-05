@@ -1617,6 +1617,10 @@ model BoardColumn {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   placements   TaskBoardPlacement[]
 
+  // The target of TaskBoardPlacement's composite column FK. A placement names
+  // a board AND a column, and without this pair there is nothing stopping a
+  // second writer pointing a task at a column of a different board.
+  @@unique([id, boardId])
   @@index([boardId, position])
   @@map("board_columns")
 }
@@ -1631,9 +1635,14 @@ model TaskBoardPlacement {
   position  Int      @default(0)
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  task   Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  board  Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  column BoardColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  // COMPOSITE, on (columnId, boardId): the storage layer, not the one writer,
+  // is what guarantees a placement's column belongs to the placement's board.
+  // Cascade rather than the SetNull default for the reason spelled out on
+  // Agent.ownerMembership — these columns are NOT NULL and are half the primary
+  // key, so blanking them is not an option; the row goes with the column.
+  column BoardColumn @relation(fields: [columnId, boardId], references: [id, boardId], onDelete: Cascade)
 
   @@id([taskId, boardId])
   @@index([columnId, position])
@@ -4837,8 +4846,10 @@ model Budget {
 // the warn threshold, 'blocked' when the gate first blocks a run). The unique
 // constraint makes "notify at most once per budget per period per kind" atomic
 // and crash-safe: the worker inserts with skipDuplicates and only the first
-// inserter delivers the notification. organizationId is a scalar (no relation),
-// matching the token_ledger_events pattern — this is append-only ops telemetry.
+// inserter delivers the notification. organizationId carries a real FK that
+// cascades on organization delete — unlike token_ledger_events, which is
+// deliberately FK-free so billing rows outlive the tenant. This is ops
+// telemetry about a budget that is itself org-scoped, so it goes with the org.
 model BudgetAlert {
   id             String          @id @default(uuid()) @db.Uuid
   organizationId String          @map("organization_id") @db.Uuid

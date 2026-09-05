@@ -8,6 +8,20 @@ import {
 import type { MailboxMessageRecord } from '../contracts.js'
 import { parseOptional } from './contract-helpers.js'
 
+export const MAILBOX_ERROR_CODES = {
+  THREAD_NOT_FOUND: 'MAILBOX_THREAD_NOT_FOUND',
+  THREAD_CHANNEL_MISMATCH: 'MAILBOX_THREAD_CHANNEL_MISMATCH',
+  CORRELATION_CONFLICT: 'MAILBOX_CORRELATION_CONFLICT',
+} as const
+
+export class MailboxError extends Error {
+  override readonly name = 'MailboxError'
+
+  constructor(public readonly code: string, message: string) {
+    super(message)
+  }
+}
+
 const mapMailboxMessage = (message: {
   attempts: number
   body: string
@@ -131,10 +145,13 @@ export const createMailboxMessage = async (
     })
 
     if (!thread || thread.channel.organizationId !== organizationId) {
-      throw new Error('MAILBOX_THREAD_NOT_FOUND')
+      throw new MailboxError(MAILBOX_ERROR_CODES.THREAD_NOT_FOUND, 'Mailbox thread not found')
     }
     if (resolvedChannelId && resolvedChannelId !== thread.channelId) {
-      throw new Error('MAILBOX_THREAD_CHANNEL_MISMATCH')
+      throw new MailboxError(
+        MAILBOX_ERROR_CODES.THREAD_CHANNEL_MISMATCH,
+        'Mailbox thread does not belong to the requested channel',
+      )
     }
 
     resolvedChannelId = thread.channelId
@@ -188,7 +205,10 @@ export const createMailboxMessage = async (
           existing.threadId === (input.threadId ?? null)
 
         if (!matchesExistingRequest) {
-          throw new Error('MAILBOX_CORRELATION_CONFLICT')
+          throw new MailboxError(
+            MAILBOX_ERROR_CODES.CORRELATION_CONFLICT,
+            'Correlation ID already belongs to a different mailbox message',
+          )
         }
 
         return mapMailboxMessage(existing)

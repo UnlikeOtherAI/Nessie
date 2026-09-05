@@ -12,19 +12,17 @@ import {
   RunThinkingLogSchema,
   ThreadMessageRecordSchema,
   ThreadThinkingSchema,
+  ToggleMessageReactionBodySchema,
   UpdateThreadMessageBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { buildStreamCorsHeaders } from '../lib/server-context.js'
 import { canManageChannel } from '../services/channels.js'
+import { softDeleteMessage, updateMessage } from '../services/message-edit.js'
 import {
-  findThreadForUser,
   listThreadMessages,
   mapMessageRecordWithAttachments,
-  markThreadRead,
-  softDeleteMessage,
-  updateMessage,
-} from '../services/messages.js'
+} from '../services/message-read-model.js'
+import { findThreadForUser, markThreadRead } from '../services/message-read-state.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
 import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
 import { canUserReadRunBasis } from '../services/run-disclosure.js'
@@ -32,13 +30,12 @@ import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
 import { registerThreadActivityRoutes } from './thread-activity.js'
+import { registerThreadStreamRoute } from './thread-stream.js'
 import { registerUnreadDirectMessageRoutes } from './unread-direct-messages.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
-    config,
-    allowedCorsOrigins,
     prisma,
     realtimeHub,
     requireActorContext,
@@ -239,11 +236,8 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const body = request.body as { emoji?: string } | undefined
-    if (!body?.emoji) {
-      sendApiError(reply, 400, 'EMOJI_REQUIRED', 'Emoji is required')
-      return reply
-    }
+    const body = parseInput(ToggleMessageReactionBodySchema, request.body, reply)
+    if (!body) return reply
 
     const reaction = await toggleUserReaction(prisma, {
       messageId,
@@ -430,80 +424,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     return createApiResponse(ThreadMessageRecordSchema.parse(record))
   })
 
-  app.get('/api/threads/:threadId/stream', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    const { threadId } = request.params as { threadId: string }
-    const thread = await findThreadForUser(
-      prisma,
-      threadId,
-      actorContext.actor.actorId,
-      actorContext.tenant.organizationId,
-    )
-    if (!thread) {
-      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
-      return reply
-    }
-
-    reply.hijack()
-    reply.raw.writeHead(200, {
-      ...buildStreamCorsHeaders({
-        origin: request.headers.origin,
-        allowedOrigins: allowedCorsOrigins,
-        mode: config.mode,
-      }),
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'Content-Type': 'text/event-stream',
-      // Token-by-token delivery only survives if no hop buffers the response:
-      // the proxy hint plus Nagle off, matching streamDesignerChat.
-      'X-Accel-Buffering': 'no',
-    })
-    reply.raw.socket?.setNoDelay(true)
-    reply.raw.write(': stream connected\n\n')
-
-    const lastEventIdHeader = request.headers['last-event-id']
-    const lastEventId = Array.isArray(lastEventIdHeader)
-      ? lastEventIdHeader[0]
-      : lastEventIdHeader
-
-    // Register cleanup BEFORE awaiting addSseConnection so a half-open socket
-    // is still torn down if the client disconnects mid-await.
-    const keepAlive = setInterval(() => {
-      reply.raw.write(': keepalive\n\n')
-    }, 15000)
-
-    let streamConnection: Awaited<ReturnType<typeof realtimeHub.addSseConnection>> | null = null
-    let socketClosed = false
-    request.raw.on('close', () => {
-      socketClosed = true
-      clearInterval(keepAlive)
-      if (streamConnection) {
-        realtimeHub.removeSseConnection(streamConnection)
-      }
-      reply.raw.end()
-    })
-
-    try {
-      streamConnection = await realtimeHub.addSseConnection(
-        thread.id,
-        reply.raw,
-        lastEventId,
-      )
-      // If the socket closed during hydration the close handler fired with
-      // streamConnection still null — remove now to avoid orphaning the
-      // connection inside the hub.
-      if (socketClosed) {
-        realtimeHub.removeSseConnection(streamConnection)
-      }
-    } catch (err) {
-      clearInterval(keepAlive)
-      reply.raw.end()
-      request.log.error({ err }, 'sse_setup_failed')
-      return reply
-    }
-  })
+  // Live SSE stream (messages/thinking/document events). Split into its own
+  // module — see thread-stream.ts for why it registers by viewer, not thread id.
+  registerThreadStreamRoute(app, deps)
 }

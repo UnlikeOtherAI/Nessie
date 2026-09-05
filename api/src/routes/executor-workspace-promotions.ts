@@ -18,7 +18,7 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { requireFreshExecutorPasswordVerification } from '../services/executor-fresh-verification.js'
+import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import type { RouteDeps } from './types.js'
 

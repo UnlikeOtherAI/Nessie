@@ -1,51 +1,24 @@
 import {
   AgentIdSchema,
-  OrganizationIdSchema,
   ProjectIdSchema,
-  RunIdSchema,
-  TaskIdSchema,
-  TaskExternalLinkRecordSchema,
   TaskFieldValuesPatchSchema,
+  TaskPrioritySchema,
+  TaskRecordSchema,
   TaskStatusSchema,
   UserIdSchema,
+  type TaskPriority,
+  type TaskRecord,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
-import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
+import { NonEmptyStringSchema } from './shared.js'
 
 // ─── Tasks (human work distribution) ──────────────────────────────────────
-
-export const TaskPrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
-export type TaskPriority = z.infer<typeof TaskPrioritySchema>
-
-export const TaskRecordSchema = z.object({
-  id: TaskIdSchema,
-  organizationId: OrganizationIdSchema,
-  projectId: ProjectIdSchema.nullable(),
-  iterationId: z.string().uuid().nullable(),
-  storyPoints: z.number().int().nullable(),
-  fieldValues: z.record(z.string().uuid(), z.unknown()),
-  externalLink: TaskExternalLinkRecordSchema.nullable(),
-  agentId: AgentIdSchema.nullable(),
-  parentTaskId: TaskIdSchema.nullable(),
-  runId: RunIdSchema.nullable(),
-  status: TaskStatusSchema,
-  priority: TaskPrioritySchema,
-  dueDate: TimestampSchema.nullable(),
-  archivedAt: TimestampSchema.nullable(),
-  title: z.string().nullable(),
-  purpose: z.string().nullable(),
-  detail: z.string().nullable(),
-  assigneeUserId: UserIdSchema.nullable(),
-  assigneeAgentId: AgentIdSchema.nullable(),
-  assigneeName: z.string().nullable(),
-  ownerUserId: UserIdSchema.nullable(),
-  ownerName: z.string().nullable(),
-  createdByUserId: UserIdSchema.nullable(),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
-export type TaskRecord = z.infer<typeof TaskRecordSchema>
+//
+// The task record the admin renders directly lives in `@nessie/schemas`
+// (`task-records.ts`) because the admin has no import path into `api/src`.
+// Re-exported here so route modules keep one contract import.
+export { TaskPrioritySchema, TaskRecordSchema, type TaskPriority, type TaskRecord }
 
 export const CreateTaskBodySchema = z.object({
   title: NonEmptyStringSchema,

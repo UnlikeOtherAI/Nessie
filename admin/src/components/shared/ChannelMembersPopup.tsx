@@ -40,6 +40,13 @@ type ChannelMembersPopupProps = {
   channelUsers: UserRecord[]
   currentUserId: string
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
+  /**
+   * Server-computed `ChannelRecord.viewerCanManage` — channel owner/admin, team
+   * owner/admin, or organisation owner/admin. Gates every add/remove control
+   * here except a person's own "leave" row, which needs no authority over the
+   * channel (see `docs/standards/disclosure-boundaries.md`).
+   */
+  viewerCanManage: boolean
   onClose: () => void
   onGroupCreated: (channelId: string) => void
   onSelectAgent: (agentId: string) => void
@@ -55,6 +62,7 @@ export const ChannelMembersPopup = ({
   channelUsers,
   currentUserId,
   personalAssistantPresences,
+  viewerCanManage,
   onClose,
   onGroupCreated,
   onSelectAgent,
@@ -124,6 +132,7 @@ export const ChannelMembersPopup = ({
               {filteredUsers.map((user) => (
                 <CurrentUserRow
                   key={user.id}
+                  canRemove={viewerCanManage}
                   user={user}
                   currentUserId={currentUserId}
                   removeLabel="Remove from channel"
@@ -169,7 +178,7 @@ export const ChannelMembersPopup = ({
             <div className="mt-2">
               <div className={sectionHeadingClass}>Add to channel</div>
 
-              {availableUsers.map((user) => (
+              {viewerCanManage && availableUsers.map((user) => (
                 <AvailableUserRow
                   key={user.id}
                   user={user}

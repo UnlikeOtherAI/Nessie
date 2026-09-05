@@ -14,6 +14,23 @@ import type {
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import { parseOptional } from './contract-helpers.js'
 
+export const EXECUTION_ENVIRONMENT_ERROR_CODES = {
+  CHANNEL_NOT_FOUND: 'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND',
+  AGENT_NOT_FOUND: 'EXECUTION_ENVIRONMENT_AGENT_NOT_FOUND',
+  RUN_NOT_FOUND: 'EXECUTION_ENVIRONMENT_RUN_NOT_FOUND',
+  WORKFLOW_RUN_NOT_FOUND: 'EXECUTION_ENVIRONMENT_WORKFLOW_RUN_NOT_FOUND',
+  WORKFLOW_STEP_RUN_NOT_FOUND: 'EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_NOT_FOUND',
+  WORKFLOW_STEP_RUN_MISMATCH: 'EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_MISMATCH',
+} as const
+
+export class ExecutionEnvironmentError extends Error {
+  override readonly name = 'ExecutionEnvironmentError'
+
+  constructor(public readonly code: string, message: string) {
+    super(message)
+  }
+}
+
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -219,7 +236,10 @@ const validateChannelOwnership = async (
   })
 
   if (!channel) {
-    throw new Error('EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND')
+    throw new ExecutionEnvironmentError(
+      EXECUTION_ENVIRONMENT_ERROR_CODES.CHANNEL_NOT_FOUND,
+      'Execution environment channel not found',
+    )
   }
 }
 
@@ -242,7 +262,10 @@ const validateExecutionEnvironmentReferences = async (
       select: { id: true },
     })
     if (!agent) {
-      throw new Error('EXECUTION_ENVIRONMENT_AGENT_NOT_FOUND')
+      throw new ExecutionEnvironmentError(
+        EXECUTION_ENVIRONMENT_ERROR_CODES.AGENT_NOT_FOUND,
+        'Execution environment agent not found',
+      )
     }
   }
 
@@ -259,7 +282,10 @@ const validateExecutionEnvironmentReferences = async (
       select: { id: true },
     })
     if (!run) {
-      throw new Error('EXECUTION_ENVIRONMENT_RUN_NOT_FOUND')
+      throw new ExecutionEnvironmentError(
+        EXECUTION_ENVIRONMENT_ERROR_CODES.RUN_NOT_FOUND,
+        'Execution environment run not found',
+      )
     }
   }
 
@@ -272,7 +298,10 @@ const validateExecutionEnvironmentReferences = async (
       select: { id: true },
     })
     if (!workflowRun) {
-      throw new Error('EXECUTION_ENVIRONMENT_WORKFLOW_RUN_NOT_FOUND')
+      throw new ExecutionEnvironmentError(
+        EXECUTION_ENVIRONMENT_ERROR_CODES.WORKFLOW_RUN_NOT_FOUND,
+        'Execution environment workflow run not found',
+      )
     }
   }
 
@@ -289,10 +318,16 @@ const validateExecutionEnvironmentReferences = async (
       },
     })
     if (!workflowStepRun) {
-      throw new Error('EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_NOT_FOUND')
+      throw new ExecutionEnvironmentError(
+        EXECUTION_ENVIRONMENT_ERROR_CODES.WORKFLOW_STEP_RUN_NOT_FOUND,
+        'Execution environment workflow step run not found',
+      )
     }
     if (input.workflowRunId && workflowStepRun.workflowRunId !== input.workflowRunId) {
-      throw new Error('EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_MISMATCH')
+      throw new ExecutionEnvironmentError(
+        EXECUTION_ENVIRONMENT_ERROR_CODES.WORKFLOW_STEP_RUN_MISMATCH,
+        'Execution environment workflow step run does not belong to the workflow run',
+      )
     }
   }
 }

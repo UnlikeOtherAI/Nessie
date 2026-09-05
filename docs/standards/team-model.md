@@ -222,7 +222,9 @@ matter most:
   for anything about the team the session is standing in.
 
 An assertion is pinned to the **organisation** it names, not the team.
-`org-role-guard.ts` compares `active.orgId` to the route's `:orgId`, and
+`withUoaRosterSubjectAssertion`
+([packages/team-admin/src/uoa-org-roster.ts](../../packages/team-admin/src/uoa-org-roster.ts))
+compares `active.orgId` to the route's `:orgId`, and
 separately requires `active.teamId` to be one of the caller's *live* teams in
 that organisation; the route's own `:teamId` is deliberately not compared, and
 UOA's contract says why — "the active team is caller provenance, not authority
@@ -245,6 +247,70 @@ the configured organisation-admin role, and reads the caller's fresh
 holds every declared capability structurally. A local `OrganizationMember` row
 is therefore a binding and compatibility projection, never authority for an
 UOA-bound organisation; a failed role read answers retryably and fails closed.
+
+### Who may ask, and who authorizes it
+
+A membership mutation passes two gates, and they are not the same gate:
+
+1. **Locally, org owner or admin** — `requireOrgAdmin`
+   ([api/src/lib/server-context.ts](../../api/src/lib/server-context.ts)), over
+   the `isAdminActor` contract in `@nessie/schemas`. It runs in the `relay`
+   helper of [api/src/routes/team-members.ts](../../api/src/routes/team-members.ts)
+   and beside the team rename/settings writes in
+   [api/src/routes/teams.ts](../../api/src/routes/teams.ts), so both relaying
+   route modules answer the same way. Roster *reads* are not gated by it: any
+   member of the team sees the roster.
+2. **At UOA, the caller's own subject assertion** — this is the authorization.
+   UOA re-resolves that person's live membership and capability before every
+   write, so a demoted or removed administrator stops being able to change
+   membership upstream whatever the local row says.
+
+The local gate is defence in depth and a consistency rule, never a substitute:
+never widen it into an authorization by relaying with the domain-hash bearer
+alone, which would leave the `TeamMember` projection as the only check.
+
+### The projection has a revocation half
+
+`OrganizationMember`, `TeamMember` and `ProjectMember` are a projection of UOA's
+claims, and `authenticateRequest` re-resolves the acting role from the live
+`OrganizationMember` row — which makes the projection the enforcement point. It
+must therefore be able to *lose* rows, not only gain them:
+
+- Every session rotation carries a verified team directory, and
+  `reconcileUoaMembershipProjection`
+  ([api/src/services/uoa-roles.ts](../../api/src/services/uoa-roles.ts)) removes
+  each UOA-bound `TeamMember` row that directory no longer asserts, then
+  deactivates an `OrganizationMember` for a bound organisation UOA no longer
+  places the person in at all. Deactivation keeps the row and its history, and
+  `ensureTeamMemberships` clears it again the moment UOA re-asserts a team
+  there — in a bound organisation `deactivatedAt` is a projection too.
+- In a UOA-bound organisation, a session whose `OrganizationMember` row is gone
+  is refused (`ORGANIZATION_MEMBERSHIP_REQUIRED`) rather than passed through:
+  every session there was minted from a proven UOA membership, so an absent row
+  means the membership was withdrawn. An unbound organisation keeps the
+  pass-through, because a local install legitimately holds sessions with no row.
+- Rows with no binding are never reconciled: a `Team` with no `externalTeamId`
+  and an `Organization` with no `externalOrgId` have no upstream authority to be
+  reconciled against.
+
+### Which door creates a team, and who may write membership locally
+
+"Is UOA the authority here?" is answered by **the acting tenant's binding** —
+`Organization.externalOrgId`, and `Team.externalTeamId` for a team write — never
+by the deployment's `config.mode`. A `mode: 'local'` install with an enabled
+`uoa` provider is a full UOA deployment, and a `selfHosted` install with no
+providers is the unbound org-tenant that keeps local control; the mode says
+neither. `requireUnboundMembershipManagement`
+([api/src/routes/membership-mode-gate.ts](../../api/src/routes/membership-mode-gate.ts))
+is that predicate, and local role changes, deactivation, local account creation
+and local team-member writes all sit behind it.
+
+The same rule decides who may create a team. `POST /api/teams` and the
+`team_create` agent tool write a purely local `Team`, so inside a UOA-bound
+organisation they refuse with `403 TEAM_CREATION_OWNED_BY_IDP` and name the door
+that relays, `POST /api/teams/teams`. A team is a UOA team; a locally created
+one there would be a level of the hierarchy UOA has never heard of, holding
+`TeamMember` rows nothing upstream authorized.
 
 ## What Nessie must not store
 
@@ -275,10 +341,13 @@ it is allowed to exist:
   administrator's rule stops granting upstream, without Nessie noticing first.
 
 Two consequences bind any future change here. **Backend mode is not an option**:
-`POST /api/team/members` has no local admin gate at all — its entire
-authorization is that subject assertion — so relaying with the domain-hash
-bearer alone would remove the only check the action has and rebuild a weaker one
-on the `TeamMember` projection this document is trying to demote to a cache.
+the subject assertion is the *entire* authorization of `POST /api/team/members`
+— the local owner/admin gate in front of it (§"Who may ask, and who authorizes
+it") is a consistency check on who may ask, not a substitute — so relaying with
+the domain-hash bearer alone would remove the real check and rebuild a weaker
+one on the `TeamMember` projection this document is trying to demote to a cache.
+The automatic-membership grants do not pass through that route at all: they call
+`addTeamMember` directly with the authorizing administrator's own assertion.
 And **no automatic path may name a role or remove a membership**: membership is
 read first and the add is skipped when the person is already there, so a team
 owner is never demoted, and narrowing or disabling a rule stops future grants

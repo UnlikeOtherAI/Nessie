@@ -8,6 +8,7 @@ import { AGENT_EMAIL_INBOUND_TOPIC } from '@nessie/schemas'
 import { safeFetch } from '@nessie/runtime'
 
 import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
 import type { RouteDeps } from './types.js'
 
@@ -68,12 +69,24 @@ export const registerAgentEmailInboundRoutes = (
       if (!readiness.ready) {
         // Nothing is configured to receive mail here. Say so plainly rather
         // than accepting deliveries into a void.
-        return reply.code(503).send({ error: 'agent_email_unconfigured' })
+        sendApiError(
+          reply,
+          503,
+          'AGENT_EMAIL_UNCONFIGURED',
+          'Agent mail is not configured for this deployment.',
+        )
+        return reply
       }
 
       const rawBody = readRawBody(request)
       if (rawBody.length > MAX_BODY_BYTES) {
-        return reply.code(413).send({ error: 'payload_too_large' })
+        sendApiError(
+          reply,
+          413,
+          'PAYLOAD_TOO_LARGE',
+          'Request body exceeds the maximum allowed size.',
+        )
+        return reply
       }
 
       const verified = await verifySnsMessage({
@@ -107,7 +120,8 @@ export const registerAgentEmailInboundRoutes = (
       } catch (error) {
         // Fail loudly to SNS: it retries, and a dropped delivery is lost mail.
         request.log.error({ err: error }, 'agent email inbound enqueue failed')
-        return reply.code(500).send({ error: 'enqueue_failed' })
+        sendApiError(reply, 500, 'ENQUEUE_FAILED', 'Failed to enqueue the inbound message.')
+        return reply
       }
 
       return reply.code(200).send({ ok: true })

@@ -73,6 +73,183 @@ const liveGrantFilter = (now: Date) => ({
   OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
 })
 
+type MessageGrantRow = { grantedByUserId: string; messageId: string }
+type ScopeGrantRow = {
+  agentId: string
+  grantedByUserId: string
+  sourceScopeId: string
+  sourceScopeType: string
+}
+
+/**
+ * Every grant that could lift a restriction for this viewer, over any number of
+ * messages, in two queries.
+ *
+ * `messageIds` is filtered to the messages that actually carry a basis before
+ * it gets here: `message_id` is a uuid column, so an empty list must be skipped
+ * rather than queried with a placeholder — an empty string reaches Postgres as
+ * an invalid uuid and throws, which would turn "is this readable?" into a 500.
+ */
+const fetchGrantRows = async (
+  prisma: DisclosureAccessPrisma,
+  input: {
+    agentIds: readonly string[]
+    channelId: string
+    messageIds: readonly string[]
+    organizationId: string
+    viewerChannelIds: readonly string[]
+    viewerUserId: string
+  },
+): Promise<{ messageGrants: MessageGrantRow[]; scopeGrants: ScopeGrantRow[] }> => {
+  const now = new Date()
+  const [messageGrants, scopeGrants] = await Promise.all([
+    input.messageIds.length > 0
+      ? prisma.disclosureGrant.findMany({
+        where: {
+          messageId: { in: [...input.messageIds] },
+          organizationId: input.organizationId,
+          ...liveGrantFilter(now),
+          OR: [
+            { audienceKind: 'user', audienceId: input.viewerUserId },
+            { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
+          ],
+        },
+        select: { grantedByUserId: true, messageId: true },
+      })
+      : Promise.resolve([]),
+    input.agentIds.length > 0
+      ? prisma.scopeDisclosureGrant.findMany({
+        where: {
+          organizationId: input.organizationId,
+          destinationChannelId: input.channelId,
+          agentId: { in: [...input.agentIds] },
+          ...liveGrantFilter(now),
+        },
+        select: {
+          agentId: true,
+          grantedByUserId: true,
+          sourceScopeId: true,
+          sourceScopeType: true,
+        },
+      })
+      : Promise.resolve([]),
+  ])
+  return { messageGrants, scopeGrants }
+}
+
+/**
+ * A grant is only as good as its granter's current access, so each granter is
+ * re-resolved here — once per distinct granter rather than once per grant row,
+ * which is what makes a page of restricted messages cost a bounded number of
+ * queries instead of one resolution per row.
+ */
+const resolveGranterViewers = async (
+  prisma: DisclosureAccessPrisma,
+  organizationId: string,
+  granterIds: readonly string[],
+): Promise<Map<string, DisclosureViewer>> => {
+  const distinct = [...new Set(granterIds)]
+  const resolved = await Promise.all(
+    distinct.map(async (userId) =>
+      [userId, await resolveDisclosureViewer(prisma, organizationId, userId)] as const),
+  )
+  return new Map(resolved)
+}
+
+/** The scope keys one basis gains from grant rows already fetched and re-checked. */
+const grantedKeysForBasis = (input: {
+  basis: readonly BasisScopeRow[]
+  granterViewers: Map<string, DisclosureViewer>
+  messageGrants: readonly MessageGrantRow[]
+  scopeGrants: readonly ScopeGrantRow[]
+}): Set<string> => {
+  const granted = new Set<string>()
+  for (const grant of input.messageGrants) {
+    const granter = input.granterViewers.get(grant.grantedByUserId)
+    if (granter && viewerSatisfiesBasis(input.basis, granter)) {
+      for (const scope of input.basis) granted.add(`${scope.scopeType}:${scope.scopeId}`)
+    }
+  }
+  for (const grant of input.scopeGrants) {
+    const granter = input.granterViewers.get(grant.grantedByUserId)
+    if (
+      granter
+      && viewerSatisfiesBasis(
+        [{ scopeId: grant.sourceScopeId, scopeType: grant.sourceScopeType }],
+        granter,
+      )
+    ) {
+      granted.add(`${grant.sourceScopeType}:${grant.sourceScopeId}`)
+    }
+  }
+  return granted
+}
+
+/** One restricted message as the grant resolver needs to see it. */
+export type DisclosureGrantSubject = {
+  agentId: string | null
+  basis: readonly BasisScopeRow[]
+  messageId: string
+}
+
+/**
+ * Scope keys a viewer holds through a still-valid disclosure grant, for a whole
+ * page of messages at once, keyed by message id.
+ *
+ * The per-message form below is this same resolution over one subject. Read
+ * paths that withhold more than one row — a channel page, a reply
+ * conversation's read acknowledgement — must use this one: resolving grants a
+ * row at a time cost two round trips per withheld row, in series, on the two
+ * most-executed reads in the product.
+ */
+export const resolveGrantedScopeKeysForMessages = async (
+  prisma: DisclosureAccessPrisma,
+  input: {
+    channelId: string
+    messages: readonly DisclosureGrantSubject[]
+    organizationId: string
+    viewerChannelIds: readonly string[]
+    viewerUserId: string | null
+  },
+): Promise<Map<string, Set<string>>> => {
+  const resolved = new Map<string, Set<string>>()
+  const restricted = input.viewerUserId
+    ? input.messages.filter((message) => message.basis.length > 0)
+    : []
+  for (const message of input.messages) resolved.set(message.messageId, new Set<string>())
+  if (restricted.length === 0 || !input.viewerUserId) return resolved
+
+  const { messageGrants, scopeGrants } = await fetchGrantRows(prisma, {
+    agentIds: [...new Set(restricted.flatMap((message) =>
+      message.agentId ? [message.agentId] : []))],
+    channelId: input.channelId,
+    messageIds: restricted.map((message) => message.messageId),
+    organizationId: input.organizationId,
+    viewerChannelIds: input.viewerChannelIds,
+    viewerUserId: input.viewerUserId,
+  })
+  const granterViewers = await resolveGranterViewers(
+    prisma,
+    input.organizationId,
+    [
+      ...messageGrants.map((grant) => grant.grantedByUserId),
+      ...scopeGrants.map((grant) => grant.grantedByUserId),
+    ],
+  )
+
+  for (const message of restricted) {
+    resolved.set(message.messageId, grantedKeysForBasis({
+      basis: message.basis,
+      granterViewers,
+      messageGrants: messageGrants.filter((grant) => grant.messageId === message.messageId),
+      scopeGrants: message.agentId === null
+        ? []
+        : scopeGrants.filter((grant) => grant.agentId === message.agentId),
+    }))
+  }
+  return resolved
+}
+
 /**
  * Scope keys a viewer holds through a still-valid disclosure grant. Grant
  * granters are rechecked at delivery time, keeping revocation immediate.
@@ -95,65 +272,25 @@ export const resolveGrantedDisclosureScopeKeys = async (
     viewerUserId: string | null
   },
 ): Promise<Set<string>> => {
-  const granted = new Set<string>()
-  if (input.basis.length === 0 || !input.viewerUserId) return granted
+  if (input.basis.length === 0 || !input.viewerUserId) return new Set<string>()
 
-  const [messageGrants, scopeGrants] = await Promise.all([
-    // `message_id` is a uuid column, so this must be skipped rather than queried
-    // with a placeholder: an empty string reaches Postgres as an invalid uuid
-    // and throws, which would turn "is this readable?" into a 500.
-    input.messageId
-      ? prisma.disclosureGrant.findMany({
-        where: {
-          messageId: input.messageId,
-          organizationId: input.organizationId,
-          ...liveGrantFilter(new Date()),
-          OR: [
-            { audienceKind: 'user', audienceId: input.viewerUserId },
-            { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
-          ],
-        },
-        select: { grantedByUserId: true },
-      })
-      : Promise.resolve([]),
-    input.agentId
-      ? prisma.scopeDisclosureGrant.findMany({
-        where: {
-          organizationId: input.organizationId,
-          destinationChannelId: input.channelId,
-          agentId: input.agentId,
-          ...liveGrantFilter(new Date()),
-        },
-        select: { sourceScopeId: true, sourceScopeType: true, grantedByUserId: true },
-      })
-      : Promise.resolve([]),
-  ])
-
-  for (const grant of messageGrants) {
-    const granter = await resolveDisclosureViewer(
-      prisma,
-      input.organizationId,
-      grant.grantedByUserId,
-    )
-    if (viewerSatisfiesBasis(input.basis, granter)) {
-      for (const scope of input.basis) granted.add(`${scope.scopeType}:${scope.scopeId}`)
-    }
-  }
-
-  for (const grant of scopeGrants) {
-    const granter = await resolveDisclosureViewer(
-      prisma,
-      input.organizationId,
-      grant.grantedByUserId,
-    )
-    if (viewerSatisfiesBasis([
-      { scopeId: grant.sourceScopeId, scopeType: grant.sourceScopeType },
-    ], granter)) {
-      granted.add(`${grant.sourceScopeType}:${grant.sourceScopeId}`)
-    }
-  }
-
-  return granted
+  const { messageGrants, scopeGrants } = await fetchGrantRows(prisma, {
+    agentIds: input.agentId ? [input.agentId] : [],
+    channelId: input.channelId,
+    messageIds: input.messageId ? [input.messageId] : [],
+    organizationId: input.organizationId,
+    viewerChannelIds: input.viewerChannelIds,
+    viewerUserId: input.viewerUserId,
+  })
+  const granterViewers = await resolveGranterViewers(
+    prisma,
+    input.organizationId,
+    [
+      ...messageGrants.map((grant) => grant.grantedByUserId),
+      ...scopeGrants.map((grant) => grant.grantedByUserId),
+    ],
+  )
+  return grantedKeysForBasis({ basis: input.basis, granterViewers, messageGrants, scopeGrants })
 }
 
 /** Revalidates whether a user may see a message's restricted reply at send time. */

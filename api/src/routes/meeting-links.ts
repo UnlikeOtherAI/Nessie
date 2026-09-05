@@ -34,6 +34,12 @@ export const registerMeetingLinkRoutes = (
       const result = await createCallLinkForTeamUser(
         prisma,
         {
+          // The session's tenant, not the one the body's team happens to sit
+          // in: a person in two organisations must not mint a link in whichever
+          // team id they name. The team is named in the body, so being in it is
+          // the entitlement.
+          entitlement: 'team_member',
+          organizationId: actorContext.tenant.organizationId,
           teamId: body.teamId,
           userId: actorContext.actor.actorId,
           ...(body.provider ? { provider: body.provider } : {}),

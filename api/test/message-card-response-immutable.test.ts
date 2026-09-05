@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
-import { updateMessage, softDeleteMessage } from '../src/services/messages.js'
+import { updateMessage, softDeleteMessage } from '../src/services/message-edit.js'
 
 const CARD_ID = '11111111-1111-4111-8111-111111111111'
 const AUTHOR = '00000000-0000-4000-8000-000000000001'

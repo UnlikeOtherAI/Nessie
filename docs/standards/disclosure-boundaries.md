@@ -63,5 +63,10 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- Since viewer channel scope comes from `ChannelMember` rows alone, adding or
+  removing one of those rows is itself a disclosure decision: it takes
+  `canManageChannel` (`api/src/services/channel-members.ts`), the same gate
+  renaming and archiving take, with one carve-out — a person may always remove
+  themselves.
 - Spec and build status:
   [docs/plans/2026-08-11-disclosure-boundaries-build.md](../plans/2026-08-11-disclosure-boundaries-build.md).

@@ -9,13 +9,13 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   AGENT_DESIGNER_BLUEPRINT,
   ensureGlobalAgentBootstrap,
-} from '../src/services/global-agents.js'
+} from '@nessie/team-admin'
 import { enqueueOrchestrateDecide } from '../src/queue/pgqueue.js'
 import { resumeSuspendedRun } from '../src/services/run-resume-core.js'
 import {
   resolveDelegatedRequesterUserId,
   resolveIdentityDelegatedToolIds,
-} from '../../worker/src/run/delegated-identity.js'
+} from '@nessie/worker'
 
 /**
  * A run started in a single-member delegated system DM carries

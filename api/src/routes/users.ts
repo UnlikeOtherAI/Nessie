@@ -8,7 +8,7 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
-import { requireLocalMembershipManagement } from './membership-mode-gate.js'
+import { requireUnboundMembershipManagement } from './membership-mode-gate.js'
 import {
   fetchUoaUserAvatar,
   resolveUoaAvatarSubject,
@@ -35,7 +35,6 @@ const isLastOwnerError = (error: unknown): boolean =>
 
 export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
-    config,
     prisma,
     requireActorContext,
     requireOwner,
@@ -68,14 +67,21 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     // Creating a human here also mints a local password credential, which only
-    // a `local` install may own. On every other mode the identity provider is
-    // the authority for who exists: people arrive through SSO/invitations.
-    if (config.mode !== 'local') {
+    // an organisation no identity provider binds may own. Inside a UOA-bound
+    // organisation UOA is the authority for who exists: people arrive through
+    // SSO or an invitation. The predicate is the tenant's binding rather than
+    // the deployment mode, for the reason in `membership-mode-gate.ts`
+    // (2026-09-05 review, FO2-2).
+    const organization = await prisma.organization.findUnique({
+      where: { id: actorContext.tenant.organizationId },
+      select: { externalOrgId: true },
+    })
+    if (organization?.externalOrgId) {
       sendApiError(
         reply,
         403,
         'LOCAL_USER_CREATION_DISABLED',
-        'Local accounts are disabled on this deployment. Members join through SSO or an invitation.',
+        'Local accounts are disabled in this organisation. Members join through SSO or an invitation.',
       )
       return reply
     }
@@ -91,6 +97,23 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    // Where the new member lands has to come from the caller's own session. The
+    // fixed-UUID fallbacks that used to stand in here were the same literal for
+    // every tenant, so a session with no project/team context wrote membership
+    // rows pointing at another organisation's ids (2026-09-05 review, FO1-9);
+    // `docs/architecture.md` forbids sentinel values for exactly this.
+    const projectId = actorContext.tenant.projectId
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!projectId || !teamId) {
+      sendApiError(
+        reply,
+        400,
+        'TEAM_CONTEXT_REQUIRED',
+        'A project and team context is required to create a member.',
+      )
+      return reply
+    }
+
     try {
       const passwordHash = await hashPassword(body.password)
       const user = await createUserForOrganization(prisma, {
@@ -99,19 +122,11 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         email: body.email,
         organizationId: actorContext.tenant.organizationId,
         passwordHash,
-        projectId:
-          actorContext.tenant.projectId ??
-          '00000000-0000-4000-8000-000000000002',
+        projectId,
         role,
-        teamId:
-          actorContext.tenant.teamId ??
-          actorContext.actionContext.teamId ??
-          '00000000-0000-4000-8000-000000000003',
+        teamId,
       })
 
-      const teamId = actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? '00000000-0000-4000-8000-000000000003'
       await ensurePersonalAssistantBootstrap(prisma, {
         organizationId: actorContext.tenant.organizationId,
         teamId,
@@ -146,7 +161,9 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
-    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
+    if (!await requireUnboundMembershipManagement(prisma, reply, {
+      organizationId: actorContext.tenant.organizationId,
+    })) return reply
 
     const body = parseInput(UpdateUserRoleBodySchema, request.body, reply)
     if (!body) return reply
@@ -191,7 +208,9 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
-    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
+    if (!await requireUnboundMembershipManagement(prisma, reply, {
+      organizationId: actorContext.tenant.organizationId,
+    })) return reply
 
     const { userId } = request.params as { userId: string }
     const organizationId = actorContext.tenant.organizationId
@@ -231,7 +250,9 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
-    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
+    if (!await requireUnboundMembershipManagement(prisma, reply, {
+      organizationId: actorContext.tenant.organizationId,
+    })) return reply
 
     const { userId } = request.params as { userId: string }
     const organizationId = actorContext.tenant.organizationId

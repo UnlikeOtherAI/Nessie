@@ -90,9 +90,14 @@ const buildFakePrisma = (grants: GrantFixture[]): FakeState => {
   return { prisma: prisma as unknown as PrismaClient, findManyCalls }
 }
 
+// The caller's tenant. The fake below ignores the tenancy clause, which is
+// exactly why `mcp-tool-grants-tenancy-db.test.ts` runs the same read against
+// Postgres — these cases cover shape and mapping, not scoping.
+const ORGANIZATION_ID = '00000000-0000-4000-8000-0000000000f1'
+
 test('attachGrantsToRegistryEntries returns an empty array when no entries are supplied', async () => {
   const { prisma, findManyCalls } = buildFakePrisma([])
-  const result = await attachGrantsToRegistryEntries(prisma, [])
+  const result = await attachGrantsToRegistryEntries(prisma, ORGANIZATION_ID, [])
   assert.deepEqual(result, [])
   // No DB roundtrip on the empty path — avoids a needless Postgres call when
   // the registry list itself is empty (zero-tool orgs).
@@ -110,7 +115,7 @@ test('attachGrantsToRegistryEntries returns each entry with its own grants', asy
     makeGrant({ id: 'grant-3', toolId: 'tool-2', roleId: 'role-X', source: 'role' }),
   ])
 
-  const result = await attachGrantsToRegistryEntries(prisma, entries)
+  const result = await attachGrantsToRegistryEntries(prisma, ORGANIZATION_ID, entries)
 
   assert.equal(result.length, 2)
   assert.equal(result[0]!.id, 'tool-1')
@@ -136,7 +141,7 @@ test('attachGrantsToRegistryEntries leaves grants empty for tools with no grants
     makeGrant({ id: 'grant-1', toolId: 'tool-with-grant', agentId: 'agent-A' }),
   ])
 
-  const result = await attachGrantsToRegistryEntries(prisma, entries)
+  const result = await attachGrantsToRegistryEntries(prisma, ORGANIZATION_ID, entries)
 
   const grantedEntry = result.find((entry) => entry.id === 'tool-with-grant')
   const ungrantedEntry = result.find((entry) => entry.id === 'tool-without-grant')
@@ -158,7 +163,7 @@ test('attachGrantsToRegistryEntries maps prisma grant-source enum to wire form',
     }),
   ])
 
-  const result = await attachGrantsToRegistryEntries(prisma, entries)
+  const result = await attachGrantsToRegistryEntries(prisma, ORGANIZATION_ID, entries)
 
   const grants = result[0]!.grants
   const roleGrant = grants.find((grant) => grant.id === 'grant-role')

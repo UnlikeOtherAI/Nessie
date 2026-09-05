@@ -1,22 +1,19 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { Prisma, type PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-import { writeAuditEntryInTransaction } from '@nessie/db'
 import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { forgetUoaTeamDirectory } from '../services/uoa-directory-cache.js'
 import {
   checkUoaSlugAvailability,
   createUoaOrganisation,
   resolveUoaTeamHost,
   createUoaTeamTeam,
+  provisionOnce,
   resolveUoaRosterTeam,
   UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
   withUoaRosterSubjectAssertion,
-  type UoaProvisionedTeam,
   type UoaRosterDeps,
 } from '../services/uoa-org-roster.js'
 import type { RouteDeps } from './types.js'
@@ -112,63 +109,6 @@ export const LEGACY_TEAM_CREATED_ACTIONS = [
 const NEEDS_UOA_SESSION =
   'Sign in with UnlikeOtherAI to create an organisation.'
 
-/**
- * Serialize one person's provisioning attempts across every API replica.
- *
- * Transaction-scoped, matching `lockUserSessions` and the audit chain's own
- * lock. Two clicks a few milliseconds apart would otherwise both pass the
- * replay check below and create two organisations.
- */
-const lockUserProvisioning = async (
-  tx: Prisma.TransactionClient,
-  userId: string,
-): Promise<void> => {
-  await tx.$executeRaw(Prisma.sql`
-    SELECT pg_advisory_xact_lock(
-      hashtextextended(${`nessie:org-provisioning:${userId}`}, 0)
-    )
-  `)
-}
-
-/**
- * The result of an earlier attempt carrying this idempotency key, if any.
- *
- * **The audit log is the ledger.** It already records who created what, it is
- * append-only and hash-chained, and using it means no second table mirroring
- * UOA's organisation ids — which is the whole point of this feature. Every
- * predicate but the JSON one is covered by an existing organisation-scoped
- * index (`audit_logs` carries several leading on `organization_id`), and the
- * 24-hour window bounds what is left, so only a handful of rows ever reach the
- * JSON comparison: no new index, and no walk of the organisation's history.
- */
-const findPriorProvisioning = async (
-  tx: Prisma.TransactionClient,
-  input: {
-    action: string
-    organizationId: string
-    userId: string
-    idempotencyKey: string
-  },
-): Promise<UoaProvisionedTeam | null> => {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const prior = await tx.auditLog.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      action: input.action,
-      actorId: input.userId,
-      outcome: 'success',
-      createdAt: { gte: since },
-      metadata: { path: ['idempotencyKey'], equals: input.idempotencyKey },
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { metadata: true },
-  })
-  const metadata = prior?.metadata as Record<string, unknown> | null | undefined
-  const externalOrgId = typeof metadata?.externalOrgId === 'string' ? metadata.externalOrgId : null
-  const externalTeamId = typeof metadata?.externalTeamId === 'string' ? metadata.externalTeamId : null
-  return externalOrgId && externalTeamId ? { externalOrgId, externalTeamId } : null
-}
-
 const auditRequestFields = (request: FastifyRequest) => ({
   requestId: request.id,
   ipAddress: request.ip ?? null,
@@ -176,69 +116,6 @@ const auditRequestFields = (request: FastifyRequest) => ({
     ? request.headers['user-agent']
     : null,
 })
-
-/**
- * Run one provisioning attempt exactly once per idempotency key.
- *
- * The UOA call happens INSIDE the interactive transaction, which is unusual
- * here and deliberate. Holding the per-user advisory lock across it is what
- * makes a double-submit impossible rather than merely unlikely, and the
- * alternative — a lock released before the call — leaves exactly the window
- * this exists to close. It is safe because the call is a single POST bounded by
- * the `/org/*` seam's own 10s timeout, well inside the transaction budget; the
- * long multi-step UOA exchanges that must stay outside transactions are a
- * different shape entirely.
- */
-const provisionOnce = async (
-  prisma: PrismaClient,
-  request: FastifyRequest,
-  input: {
-    action: string
-    organizationId: string
-    userId: string
-    idempotencyKey: string
-    name: string
-    slug?: string
-    resourceType: string
-  },
-  create: () => Promise<UoaProvisionedTeam>,
-): Promise<UoaProvisionedTeam> => prisma.$transaction(
-  async (tx) => {
-    await lockUserProvisioning(tx, input.userId)
-
-    const prior = await findPriorProvisioning(tx, input)
-    if (prior) return prior
-
-    const team = await create()
-
-    // The caller's cached team directory predates what they just made.
-    // The switch that normally follows re-primes it, but if that call fails
-    // they would otherwise be told their own new team does not exist for
-    // up to the cache TTL.
-    forgetUoaTeamDirectory(input.userId)
-
-    await writeAuditEntryInTransaction(tx, {
-      organizationId: input.organizationId,
-      actorType: 'user',
-      actorId: input.userId,
-      action: input.action,
-      resourceType: input.resourceType,
-      resourceId: team.externalOrgId,
-      outcome: 'success',
-      metadata: {
-        idempotencyKey: input.idempotencyKey,
-        name: input.name,
-        slug: input.slug ?? null,
-        externalOrgId: team.externalOrgId,
-        externalTeamId: team.externalTeamId,
-      },
-      ...auditRequestFields(request),
-    })
-
-    return team
-  },
-  { maxWait: 5_000, timeout: 25_000 },
-)
 
 /** Map a provisioning failure onto the API's error envelope. */
 const sendProvisioningError = (
@@ -333,7 +210,7 @@ export const registerTeamProvisioningRoutes = (
     try {
       const team = await provisionOnce(
         prisma,
-        request,
+        auditRequestFields(request),
         {
           action: ORG_CREATED_ACTION,
           organizationId: actorContext.tenant.organizationId,
@@ -473,7 +350,7 @@ export const registerTeamProvisioningRoutes = (
     try {
       const created = await provisionOnce(
         prisma,
-        request,
+        auditRequestFields(request),
         {
           action: TEAM_CREATED_ACTION,
           organizationId: actorContext.tenant.organizationId,

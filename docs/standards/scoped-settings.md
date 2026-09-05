@@ -37,10 +37,14 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   is dropped rather than refused — the personal answer is still a real answer
   without it. `writeScopedSetting` cannot make that check itself, because a
   person may be in several teams; the route makes it where the team is known.
-- **Scopes are the three people work in.** Structurally the tree is
-  Organisation → Project → Team, and budgets cascade through all three;
-  settings walk *past* projects, not through them. Adding a project tier later
-  is a scope value and a resolver step, not a redesign.
+- **Scopes are the three people work in.** The model is Organisation → Team →
+  Project — see [team-model.md](team-model.md) and `secret-precedence.ts`'s
+  `SECRET_SCOPE_ORDER`, which follows the model rather than the
+  `Team.projectId` foreign key (that FK currently inverts the direction; see
+  team-model.md for the schema-vs-model gap). Budgets cascade through all
+  three following the model; settings walk *past* projects, not through
+  them — the resolver here is organisation → team → person. Adding a project
+  tier to settings later is a scope value and a resolver step, not a redesign.
 - **A cascade with its own storage still states the rule once.** Secrets do not
   live in `ScopedSetting` — a `Secret` row carries a vault reference and grants
   that a settings value has no place for — but they resolve by this same

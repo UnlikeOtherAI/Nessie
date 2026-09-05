@@ -5,7 +5,10 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 import { inheritAgentCardResponseBasis } from '@nessie/team-admin'
 
-import { mapMessageRecordWithAttachments, messageInclude } from '../src/services/messages.js'
+import {
+  mapMessageRecordWithAttachments,
+  messageInclude,
+} from '../src/services/message-read-model.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 

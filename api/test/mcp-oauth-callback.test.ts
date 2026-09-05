@@ -79,7 +79,8 @@ test('global authentication hook leaves only the OAuth callback public', async (
   const authenticatedRequests: string[] = []
   const app = makeApp({}, (fastify) => {
     registerGlobalAuthHook(fastify, {
-      checkRateLimit: () => null,
+      config: { api: { rateLimit: {} } } as never,
+      rateLimiter: { guard: async () => ({ allowed: true }) } as never,
       authenticateRequest: async (request, reply) => {
         authenticatedRequests.push(request.routeOptions.url)
         reply.code(401).send({ error: { code: 'AUTH_REQUIRED' } })

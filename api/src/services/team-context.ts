@@ -8,7 +8,7 @@ import {
   resolveExternalTeamSelection,
   type ExternalAuthTeam,
 } from './identity-display.js'
-import { seedDefaultPolicies } from './policy.js'
+import { seedDefaultPolicies } from './policy-seed.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS, lockUserSessions } from './user-session-lock.js'
 import {
   ensureTeamMemberships,
@@ -326,7 +326,13 @@ export const resolveUoaTeamContext = async (
 
   // 1. Ensure the shared org exists (bootstrap the first user), and get the
   // user — by stable UOA subject first, by email only as the adoption bridge.
+  // The ambient fallback may only ever select an UNBOUND organisation. On a
+  // deployment that also configures a generic OIDC provider, an oldest-first
+  // lookup lands on a UOA-owned Organization and writes membership into it with
+  // no relay and no subject assertion — a second identity path into a tenant
+  // UOA is the authority for (2026-09-05 review, FO2-4).
   let sharedOrg = await prisma.organization.findFirst({
+    where: { externalOrgId: null },
     orderBy: CREATED_AT_ASC,
     select: { id: true },
   })

@@ -6,23 +6,21 @@ import { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   AGENT_BINDING_ERROR_CODES,
+  AGENT_DESIGNER_BLUEPRINT,
   AgentBindingError,
   bindAgentToChannel,
   canManageChannel,
   checkPolicy,
   createAgentTrigger,
+  ensureGlobalAgentBootstrap,
+  ensureGlobalAgentsForUser,
   getChannelIfMember,
+  globalAgentHomeDmKey,
   listAgentsForUser,
   unbindAgentFromChannel,
 } from '@nessie/team-admin'
 
-import {
-  AGENT_DESIGNER_BLUEPRINT,
-  ensureGlobalAgentBootstrap,
-  ensureGlobalAgentsForUser,
-  globalAgentHomeDmKey,
-} from '../src/services/global-agents.js'
-import { seedDefaultPolicies } from '../src/services/policy.js'
+import { seedDefaultPolicies } from '../src/services/policy-seed.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 

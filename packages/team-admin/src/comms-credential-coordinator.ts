@@ -103,10 +103,102 @@ const persistedRefreshBundle = (
   refreshToken: refreshed.refreshToken ?? current.credential.refreshToken,
 })
 
-type RefreshResult =
-  | { kind: 'credential'; context: ConnectorConnectionContext }
-  | { kind: 'reauthorization-required' }
+type LoadedCredential = {
+  context: ConnectorConnectionContext
+  expiresAt: Date | null
+  /** The compare-and-swap token: the credential row as this reader saw it. */
+  seenAt: Date
+}
 
+/**
+ * Read the connection and decrypt its credential. No lock and no transaction:
+ * this is a plain read whose result is only ever written back conditionally.
+ */
+const readConnectionCredential = async (
+  prisma: PrismaClient,
+  input: { connectionId: string; encryptionSecret: string },
+): Promise<LoadedCredential> => {
+  const current = await prisma.commsConnection.findUnique({
+    where: { id: input.connectionId },
+    include: { credential: true },
+  })
+  if (!current) {
+    throw new CommsCredentialCoordinatorError('CONNECTION_NOT_FOUND')
+  }
+  if (current.status === 'needs_reauthorization') {
+    throw new CommsCredentialCoordinatorError('NEEDS_REAUTHORIZATION')
+  }
+  if (!current.credential) {
+    throw new CommsCredentialCoordinatorError('CREDENTIAL_MISSING')
+  }
+  return {
+    context: buildCommsConnectorContext(current, input.encryptionSecret),
+    expiresAt: current.credential.expiresAt,
+    seenAt: current.credential.updatedAt,
+  }
+}
+
+/**
+ * Store a refreshed bundle only if nobody rotated the row since we read it.
+ * Returns false when another refresher won; theirs is as valid as ours.
+ */
+const storeRefreshedCredential = async (
+  prisma: PrismaClient,
+  input: {
+    connectionId: string
+    encryptionSecret: string
+    refreshed: CredentialBundle
+    seenAt: Date
+  },
+): Promise<boolean> =>
+  prisma.$transaction(async (tx) => {
+    const swapped = await tx.commsConnectionCredential.updateMany({
+      where: { connectionId: input.connectionId, updatedAt: input.seenAt },
+      data: {
+        accessTokenCiphertext: sealSecret(
+          input.encryptionSecret,
+          input.refreshed.accessToken,
+        ),
+        refreshTokenCiphertext: input.refreshed.refreshToken
+          ? sealSecret(input.encryptionSecret, input.refreshed.refreshToken)
+          : null,
+        expiresAt: parseExpiry(input.refreshed.expiresAt),
+        scopeHash: computeScopeHash(input.refreshed.scopes),
+      },
+    })
+    if (swapped.count === 0) return false
+    await tx.commsConnection.update({
+      where: { id: input.connectionId },
+      data: {
+        grantedScopes: input.refreshed.scopes as unknown as Prisma.InputJsonValue,
+      },
+    })
+    return true
+  })
+
+/**
+ * Rotate an expired access token.
+ *
+ * The OAuth refresh is an outbound HTTPS call to Google/Microsoft and is
+ * deliberately made with NO transaction open. It used to run inside a
+ * `$transaction` that had already taken `SELECT … FOR UPDATE` on the credential
+ * row: a provider that was slow rather than down then held both a pooled
+ * connection and a row lock for up to 30s per waiter, and
+ * `packages/db/src/index.ts` hands the whole API one client, so one stalled
+ * provider degraded everything.
+ *
+ * Mutual exclusion is replaced by a compare-and-swap on the credential row's
+ * `updatedAt` — the pattern `packages/knowledge/src/native-provider.ts` uses for
+ * page revisions. A `pg_advisory_xact_lock` would not help here: a
+ * transaction-scoped lock cannot span a call made outside a transaction, and a
+ * session-scoped one would leak back into the pool still held.
+ *
+ * If two refreshers race, both call the provider and exactly one write lands.
+ * The loser re-reads and returns the winner's credential rather than
+ * overwriting it — the stored row is the one every other process will use, so
+ * clobbering it is what would actually break a provider that rotates refresh
+ * tokens.
+ */
 const refreshSelectedConnection = async (
   prisma: PrismaClient,
   input: {
@@ -116,75 +208,37 @@ const refreshSelectedConnection = async (
     now: Date
   },
 ): Promise<ConnectorConnectionContext> => {
-  const result = await prisma.$transaction(async (tx): Promise<RefreshResult> => {
-    await tx.$queryRaw`
-      SELECT id
-      FROM comms_connection_credentials
-      WHERE connection_id = ${input.connectionId}::uuid
-      FOR UPDATE
-    `
-    const current = await tx.commsConnection.findUnique({
-      where: { id: input.connectionId },
-      include: { credential: true },
-    })
-    if (!current) {
-      throw new CommsCredentialCoordinatorError('CONNECTION_NOT_FOUND')
-    }
-    if (current.status === 'needs_reauthorization') {
-      return { kind: 'reauthorization-required' }
-    }
-    if (!current.credential) {
-      throw new CommsCredentialCoordinatorError('CREDENTIAL_MISSING')
-    }
-    const context = buildCommsConnectorContext(current, input.encryptionSecret)
-    if (!isExpired(current.credential.expiresAt, input.now)) {
-      return { kind: 'credential', context }
-    }
+  const loaded = await readConnectionCredential(prisma, input)
+  if (!isExpired(loaded.expiresAt, input.now)) {
+    return loaded.context
+  }
 
-    let refreshed: CredentialBundle
-    try {
-      refreshed = persistedRefreshBundle(
-        context,
-        await input.connector.refreshCredentials(context),
-      )
-    } catch (error) {
-      if (!isRejectedCredential(error)) throw error
-      await tx.commsConnection.update({
-        where: { id: current.id },
-        data: { status: 'needs_reauthorization' },
-      })
-      return { kind: 'reauthorization-required' }
-    }
-
-    const grantedScopes = refreshed.scopes as unknown as Prisma.InputJsonValue
-    await tx.commsConnection.update({
-      where: { id: current.id },
-      data: { grantedScopes },
-    })
-    await tx.commsConnectionCredential.update({
-      where: { connectionId: current.id },
-      data: {
-        accessTokenCiphertext: sealSecret(
-          input.encryptionSecret,
-          refreshed.accessToken,
-        ),
-        refreshTokenCiphertext: refreshed.refreshToken
-          ? sealSecret(input.encryptionSecret, refreshed.refreshToken)
-          : null,
-        expiresAt: parseExpiry(refreshed.expiresAt),
-        scopeHash: computeScopeHash(refreshed.scopes),
-      },
-    })
-    return {
-      kind: 'credential',
-      context: { ...context, credential: refreshed },
-    }
-  }, { timeout: 30_000 })
-
-  if (result.kind === 'reauthorization-required') {
+  let refreshed: CredentialBundle
+  try {
+    refreshed = persistedRefreshBundle(
+      loaded.context,
+      await input.connector.refreshCredentials(loaded.context),
+    )
+  } catch (error) {
+    if (!isRejectedCredential(error)) throw error
+    await markCommsConnectionNeedsReauthorization(prisma, input.connectionId)
     throw new CommsCredentialCoordinatorError('NEEDS_REAUTHORIZATION')
   }
-  return result.context
+
+  const stored = await storeRefreshedCredential(prisma, {
+    connectionId: input.connectionId,
+    encryptionSecret: input.encryptionSecret,
+    refreshed,
+    seenAt: loaded.seenAt,
+  })
+  if (stored) {
+    return { ...loaded.context, credential: refreshed }
+  }
+
+  // Lost the swap: somebody stored a newer credential while ours was in flight.
+  // Read theirs — one query, and it refuses on its own if that writer also
+  // marked the connection for reauthorization.
+  return (await readConnectionCredential(prisma, input)).context
 }
 
 export type LoadUserGoogleCredentialInput = {

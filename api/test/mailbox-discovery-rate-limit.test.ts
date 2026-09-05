@@ -1,21 +1,41 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createRequestRateLimitChecker } from '../src/lib/rate-limit.js'
+import { loadConfig } from '@nessie/config'
 
-const request = {
-  ip: '203.0.113.9',
-  method: 'POST',
-  routeOptions: { url: '/api/mailbox-connections/discover' },
-  url: '/api/mailbox-connections/discover',
-}
+import {
+  rateLimitFor,
+  resolveGlobalRateLimitBucket,
+} from '../src/routes/auth-rate-limit.js'
 
-test('mailbox discovery is capped at thirty requests per minute per resolved IP', () => {
-  const check = createRequestRateLimitChecker()
-  for (let index = 0; index < 30; index += 1) {
-    assert.equal(check(request as never), null)
-  }
-  const limited = check(request as never)
-  assert.notEqual(limited, null)
-  assert.equal((limited?.retryAfterSeconds ?? 0) > 0, true)
+/**
+ * Mailbox discovery fans one address out to DNS and several bounded HTTPS
+ * requests, so it carries an IP budget even though it is authenticated. That
+ * budget used to be a hard-coded constant in an in-process limiter; it is now
+ * a named bucket with a config rule (2026-09-05 review, FO3-3), and this
+ * pins both the pairing and the threshold it inherited.
+ */
+test('mailbox discovery resolves to its own bucket, capped at thirty per minute', () => {
+  const bucket = resolveGlobalRateLimitBucket({
+    isPublic: false,
+    method: 'POST',
+    routePath: '/api/mailbox-connections/discover',
+  })
+  assert.equal(bucket, 'mailboxDiscoverIp')
+
+  const config = loadConfig({ argv: [], env: {} })
+  const { bucket: storeKey, rule } = rateLimitFor(config, 'mailboxDiscoverIp')
+  assert.equal(storeKey, 'api.mailbox_discover.ip')
+  assert.deepEqual(rule, { max: 30, windowMs: 60_000 })
+})
+
+test('discovery is only limited on the write; reading connections is not', () => {
+  assert.equal(
+    resolveGlobalRateLimitBucket({
+      isPublic: false,
+      method: 'GET',
+      routePath: '/api/mailbox-connections',
+    }),
+    null,
+  )
 })

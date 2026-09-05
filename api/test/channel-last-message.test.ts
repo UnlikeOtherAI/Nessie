@@ -67,6 +67,15 @@ test('the channel list carries lastMessageAt, null for a channel with no message
         },
       ],
     },
+    // `viewerCanManage` is batched over these two once, not per channel — see
+    // `listChannelsForUser`. Neither role grants management here, so both
+    // channels come back `viewerCanManage: false`.
+    organizationMember: {
+      findFirst: async () => null,
+    },
+    teamMember: {
+      findMany: async () => [],
+    },
     $queryRaw: async (query: { sql: string }) =>
       answerRawQuery(query, {
         unread: [
@@ -83,11 +92,26 @@ test('the channel list carries lastMessageAt, null for a channel with no message
   assert.equal(channels.length, 2)
   assert.equal(channels[0]?.lastMessageAt, lastMessageAt.toISOString())
   assert.equal(channels[0]?.unreadCount, 3)
+  assert.equal(channels[0]?.viewerCanManage, false)
   assert.equal(channels[1]?.lastMessageAt, null)
 })
 
+// `mapChannelRecord` computes `viewerCanManage` via `canManageChannel`, which
+// re-reads the channel by id and then the channel-member, org-member, and
+// team-member rows for the viewer. A fake exercising it must model all four
+// (see `docs/standards/testing.md` § "Prisma fakes") even in these
+// lastMessageAt-focused cases; a missing channel row is enough to make
+// `canManageChannel` return `null`, so `viewerCanManage` comes back `false`.
+const noManagementAuthority = {
+  channel: { findUnique: async () => null },
+  channelMember: { findUnique: async () => null },
+  organizationMember: { findFirst: async () => null },
+  teamMember: { findFirst: async () => null },
+}
+
 test('a single channel record carries lastMessageAt too, so a mutation response never blanks it', async () => {
   const prisma = {
+    ...noManagementAuthority,
     thread: {
       findFirst: async () => ({ id: threadId }),
     },
@@ -105,10 +129,12 @@ test('a single channel record carries lastMessageAt too, so a mutation response 
   )
 
   assert.equal(record.lastMessageAt, lastMessageAt.toISOString())
+  assert.equal(record.viewerCanManage, false)
 })
 
 test('a single channel record reports null lastMessageAt for an empty thread', async () => {
   const prisma = {
+    ...noManagementAuthority,
     thread: {
       findFirst: async () => ({ id: quietThreadId }),
     },
@@ -129,4 +155,5 @@ test('a single channel record reports null lastMessageAt for an empty thread', a
   )
 
   assert.equal(record.lastMessageAt, null)
+  assert.equal(record.viewerCanManage, false)
 })

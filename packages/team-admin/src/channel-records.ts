@@ -10,6 +10,8 @@ import {
 } from '@nessie/schemas'
 import type { ChannelRecord } from '@nessie/schemas'
 
+import { canManageChannel } from './channel-manage.js'
+
 type ChannelWithProject = Channel & {
   team?: {
     name: string
@@ -242,6 +244,16 @@ export const mapChannelRecord = async (
       },
     },
   })
+  // A single-record mapping, so one extra lookup here is not the N+1 a list
+  // read would be — `listChannelsForUser` computes this batched instead of
+  // calling through this function per row.
+  const viewerCanManage = userId
+    ? (await canManageChannel(prisma, {
+        channelId: channel.id,
+        organizationId: channel.organizationId,
+        userId,
+      })) !== null
+    : false
 
   return {
     defaultThreadId: parseThreadId(defaultThreadId),
@@ -264,6 +276,7 @@ export const mapChannelRecord = async (
     topic: channel.topic ?? null,
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,
+    viewerCanManage,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }

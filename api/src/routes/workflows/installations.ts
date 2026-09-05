@@ -1,4 +1,4 @@
-import { WorkflowRunOverlapError } from '@nessie/team-admin'
+import { auditWorkflowMutation, WorkflowRunOverlapError } from '@nessie/team-admin'
 import type { FastifyInstance } from 'fastify'
 
 import {
@@ -13,6 +13,10 @@ import {
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { createWorkflowTrigger, listWorkflowInstallationTriggers } from '../../services/triggers.js'
+import {
+  WORKFLOW_REFERENCE_ERROR_CODES,
+  WorkflowReferenceError,
+} from '../../services/workflow-references.js'
 import { createWorkflowRun, listWorkflowRuns } from '../../services/workflow-runs.js'
 import {
   installWorkflowTemplate,
@@ -25,7 +29,6 @@ import {
   WorkflowActionError,
   WorkflowSecretWriteError,
 } from '../../services/workflow-validation.js'
-import { auditWorkflowMutation } from '../../services/workflow-audit.js'
 import {
   canActorReadWorkflowInstallation,
   canActorStartWorkflowRun,
@@ -117,7 +120,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         )
         return reply
       }
-      if (error instanceof Error && error.message === 'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND') {
+      if (
+        error instanceof WorkflowReferenceError
+        && error.code === WORKFLOW_REFERENCE_ERROR_CODES.CHANNEL_NOT_FOUND
+      ) {
         sendApiError(
           reply,
           404,
@@ -216,7 +222,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         )
         return reply
       }
-      if (error instanceof Error && error.message === 'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND') {
+      if (
+        error instanceof WorkflowReferenceError
+        && error.code === WORKFLOW_REFERENCE_ERROR_CODES.CHANNEL_NOT_FOUND
+      ) {
         sendApiError(
           reply,
           404,
@@ -275,58 +284,64 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         sendApiError(reply, 409, error.code, error.message)
         return reply
       }
-      if (error instanceof Error) {
+      // Every code below is thrown as the typed `WorkflowReferenceError` by
+      // `@nessie/team-admin`'s `workflow-run-references.ts`
+      // (`validateWorkflowRunReferences`, reached via
+      // `startWorkflowRunForActor`) — matched on `.code`, not on message
+      // text, so a reworded message can never silently turn a handled 404
+      // into an unhandled 500.
+      if (error instanceof WorkflowReferenceError) {
         const workflowRunErrorMap: Record<string, { code: string; message: string }> = {
-          WORKFLOW_RUN_PARENT_RUN_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_PARENT_RUN_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_PARENT_RUN_NOT_FOUND',
             message: 'Parent run not found',
           },
-          WORKFLOW_RUN_PLAN_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_PLAN_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_PLAN_NOT_FOUND',
             message: 'Plan not found',
           },
-          WORKFLOW_RUN_PLAN_STEP_MISMATCH: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_PLAN_STEP_MISMATCH]: {
             code: 'WORKFLOW_RUN_PLAN_STEP_MISMATCH',
             message: 'Plan step does not belong to the requested plan',
           },
-          WORKFLOW_RUN_PLAN_STEP_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_PLAN_STEP_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_PLAN_STEP_NOT_FOUND',
             message: 'Plan step not found',
           },
-          WORKFLOW_RUN_TRIGGER_DELIVERY_MISMATCH: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_TRIGGER_DELIVERY_MISMATCH]: {
             code: 'WORKFLOW_RUN_TRIGGER_DELIVERY_MISMATCH',
             message: 'Trigger delivery does not belong to the requested trigger',
           },
-          WORKFLOW_RUN_TRIGGER_DELIVERY_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_TRIGGER_DELIVERY_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_TRIGGER_DELIVERY_NOT_FOUND',
             message: 'Trigger delivery not found',
           },
-          WORKFLOW_RUN_TRIGGER_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_TRIGGER_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_TRIGGER_NOT_FOUND',
             message: 'Trigger not found',
           },
-          WORKFLOW_RUN_ORIGIN_CHANNEL_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_ORIGIN_CHANNEL_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_ORIGIN_CHANNEL_NOT_FOUND',
             message: 'Origin channel not found',
           },
-          WORKFLOW_RUN_ORIGIN_THREAD_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_ORIGIN_THREAD_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_ORIGIN_THREAD_NOT_FOUND',
             message: 'Origin thread not found',
           },
-          WORKFLOW_RUN_ORIGIN_THREAD_MISMATCH: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_ORIGIN_THREAD_MISMATCH]: {
             code: 'WORKFLOW_RUN_ORIGIN_THREAD_MISMATCH',
             message: 'Origin thread does not belong to the origin channel',
           },
-          WORKFLOW_RUN_ORIGIN_MESSAGE_NOT_FOUND: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_ORIGIN_MESSAGE_NOT_FOUND]: {
             code: 'WORKFLOW_RUN_ORIGIN_MESSAGE_NOT_FOUND',
             message: 'Origin message not found',
           },
-          WORKFLOW_RUN_ORIGIN_MESSAGE_MISMATCH: {
+          [WORKFLOW_REFERENCE_ERROR_CODES.RUN_ORIGIN_MESSAGE_MISMATCH]: {
             code: 'WORKFLOW_RUN_ORIGIN_MESSAGE_MISMATCH',
             message: 'Origin message does not belong to the origin thread',
           },
         }
-        const mapped = workflowRunErrorMap[error.message]
+        const mapped = workflowRunErrorMap[error.code]
         if (mapped) {
           sendApiError(reply, 404, mapped.code, mapped.message)
           return reply

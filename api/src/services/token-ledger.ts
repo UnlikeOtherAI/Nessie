@@ -7,6 +7,26 @@ export {
   listPricingProfiles,
 } from './pricing-profiles.js'
 
+/**
+ * The cost a connector event contributes to a local aggregate.
+ *
+ * One expression, named once and used by both connector queries below — they
+ * previously carried a copy each of a four-way OR over `productSlug`,
+ * `product_slug`, `product` and `source`, which is what an unschema'd metadata
+ * column costs: whether a call was billed depended on which spelling its writer
+ * happened to pick, and a new spelling silently started charging.
+ *
+ * `metering` is now written by the one door every event goes through
+ * (`recordConnectorUsage`, `@nessie/runtime`), and it is exactly equivalent to
+ * the old chain for rows written before it: migration
+ * `20260720234500_retire_deepwater_local_cost_mirror` nulled `cost_amount` on
+ * every row the chain matched, and its `connector_usage_events_deepwater_cost_boundary`
+ * trigger rejects any attempt to give one a cost since. `SUM` skips those NULLs
+ * exactly as this `CASE` skips them with a zero.
+ */
+const BILLABLE_CONNECTOR_COST =
+  `CASE WHEN metadata->>'metering' = 'operational_only' THEN 0 ELSE cost_amount END`
+
 export const getTokenUsageSummary = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -303,16 +323,7 @@ export const getConnectorUsageSummary = async (
     `SELECT
        COALESCE(SUM(calls), 0) as total_calls,
        COALESCE(SUM(units), 0) as total_units,
-       COALESCE(SUM(
-         CASE
-           WHEN metadata->>'productSlug' = 'deep-water'
-             OR metadata->>'product_slug' = 'deep-water'
-             OR metadata->>'product' = 'deep-water'
-             OR metadata->>'source' = 'deep_water_run_update'
-             THEN 0
-           ELSE cost_amount
-         END
-       ), 0) as total_cost
+       COALESCE(SUM(${BILLABLE_CONNECTOR_COST}), 0) as total_cost
      FROM connector_usage_events
      WHERE ${whereClause}`,
     ...params,
@@ -339,16 +350,7 @@ export const getConnectorUsageSummary = async (
          ${groupByColumn} as key,
          COALESCE(SUM(calls), 0) as calls,
          COALESCE(SUM(units), 0) as units,
-         COALESCE(SUM(
-           CASE
-             WHEN metadata->>'productSlug' = 'deep-water'
-               OR metadata->>'product_slug' = 'deep-water'
-               OR metadata->>'product' = 'deep-water'
-               OR metadata->>'source' = 'deep_water_run_update'
-               THEN 0
-             ELSE cost_amount
-           END
-         ), 0) as cost
+         COALESCE(SUM(${BILLABLE_CONNECTOR_COST}), 0) as cost
        FROM connector_usage_events
        WHERE ${whereClause}
        GROUP BY ${groupByColumn}

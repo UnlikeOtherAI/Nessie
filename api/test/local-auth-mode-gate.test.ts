@@ -9,7 +9,9 @@ import test from 'node:test'
  * deployment actually depends on:
  *
  *   - the password branch of `POST /api/auth/session` → 403 PASSWORD_AUTH_DISABLED
- *   - `POST /api/users` (creates a human WITH a password) → 403 LOCAL_USER_CREATION_DISABLED
+ *   - `POST /api/users` (creates a human WITH a password) → 403
+ *     LOCAL_USER_CREATION_DISABLED, gated on whether an identity provider binds
+ *     the acting organisation rather than on the deployment mode (FO2-2)
  *   - `POST /api/auth/password` → 403 PASSWORD_AUTH_DISABLED
  *
  * Each gate is also asserted *open* in local mode (the request reaches the
@@ -128,12 +130,20 @@ const buildLoginApp = async (mode: Mode, prismaSpy: PrismaSpy) => {
   return app
 }
 
-const buildUsersApp = async (mode: Mode) => {
+/**
+ * `POST /api/users` mints a local password credential, so its gate is the one
+ * question that decides who owns identity here: does an identity provider bind
+ * this organisation? The deployment mode never did answer it (2026-09-05
+ * review, FO2-2), so the fake carries the binding instead.
+ */
+const buildUsersApp = async (mode: Mode, externalOrgId: string | null) => {
   const app = Fastify({ logger: false })
   registerUserRoutes(app, {
     MEMBERSHIP_ROLES: ['owner', 'admin', 'member', 'viewer'],
     config: makeConfig(mode),
-    prisma: {} as never,
+    prisma: {
+      organization: { findUnique: async () => ({ externalOrgId }) },
+    } as never,
     requireActorContext: () => actorContext,
     requireOwner: () => true,
     // Only an unknown role is submitted below, so this never has to resolve.
@@ -259,9 +269,9 @@ test('local mode still answers a credential-less attempt with PASSWORD_REQUIRED'
 
 // --- POST /api/users ---------------------------------------------------------
 
-for (const mode of NON_LOCAL_MODES) {
-  test(`local account creation is refused in ${mode} mode`, async () => {
-    const app = await buildUsersApp(mode)
+for (const mode of [...NON_LOCAL_MODES, 'local' as const]) {
+  test(`local account creation is refused in a UOA-bound organisation (${mode} mode)`, async () => {
+    const app = await buildUsersApp(mode, 'uoa-org')
 
     const response = await postJson(app, '/api/users', {
       email: 'new.hire@example.com',
@@ -278,8 +288,8 @@ for (const mode of NON_LOCAL_MODES) {
   })
 }
 
-test('local account creation still runs in local mode', async () => {
-  const app = await buildUsersApp('local')
+test('local account creation still runs in an unbound organisation', async () => {
+  const app = await buildUsersApp('selfHosted', null)
 
   const response = await postJson(app, '/api/users', {
     email: 'new.hire@example.com',
@@ -289,7 +299,8 @@ test('local account creation still runs in local mode', async () => {
   })
 
   // Past the gate and into the handler's own role validation (the fake
-  // resolver rejects every role), which is only reachable in local mode.
+  // resolver rejects every role), which is only reachable in an organisation
+  // no identity provider binds — whatever the deployment mode.
   assert.equal(response.statusCode, 400)
   assert.equal(response.json().error.code, 'INVALID_ROLE')
 

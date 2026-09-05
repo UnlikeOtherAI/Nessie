@@ -10,6 +10,8 @@ import {
   listAvailableTools,
   listToolRegistryEntries,
   registerToolRegistryEntry,
+  TOOL_REGISTRY_ERROR_CODES,
+  ToolRegistryError,
 } from '../services/tools.js'
 import type { RouteDeps } from './types.js'
 
@@ -64,13 +66,11 @@ export const registerToolRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       )
     }
     catch (error) {
-      if (error instanceof Error && error.message === 'BUILTIN_TOOL_ID_RESERVED') {
-        sendApiError(
-          reply,
-          409,
-          'BUILTIN_TOOL_ID_RESERVED',
-          'Built-in tool ids are reserved and cannot be overridden by organization-local entries',
-        )
+      if (
+        error instanceof ToolRegistryError
+        && error.code === TOOL_REGISTRY_ERROR_CODES.BUILTIN_TOOL_ID_RESERVED
+      ) {
+        sendApiError(reply, 409, error.code, error.message)
         return reply
       }
       throw error

@@ -6,6 +6,8 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
+  CAPABILITY_ERROR_CODES,
+  CapabilityError,
   createTemporaryContextSession,
   dropTemporaryContextSession,
   listTemporaryContextSessions,
@@ -58,37 +60,14 @@ export const registerCapabilityRoutes = (app: FastifyInstance, deps: RouteDeps):
       session = await createTemporaryContextSession(prisma, actorContext, body)
     }
     catch (error) {
-      if (error instanceof Error) {
-        if (error.message === 'TEMP_CONTEXT_SCOPE_REQUIRED') {
-          sendApiError(
-            reply,
-            400,
-            'TEMP_CONTEXT_SCOPE_REQUIRED',
-            'A temporary context session must target exactly one of agentId, runId, or threadId',
-          )
-          return reply
-        }
-        if (error.message === 'TEMP_CONTEXT_SCOPE_AMBIGUOUS') {
-          sendApiError(
-            reply,
-            400,
-            'TEMP_CONTEXT_SCOPE_AMBIGUOUS',
-            'A temporary context session may target only one of agentId, runId, or threadId',
-          )
-          return reply
-        }
-        if (error.message === 'TEMP_CONTEXT_AGENT_NOT_FOUND') {
-          sendApiError(reply, 404, 'TEMP_CONTEXT_AGENT_NOT_FOUND', 'Agent not found')
-          return reply
-        }
-        if (error.message === 'TEMP_CONTEXT_RUN_NOT_FOUND') {
-          sendApiError(reply, 404, 'TEMP_CONTEXT_RUN_NOT_FOUND', 'Run not found')
-          return reply
-        }
-        if (error.message === 'TEMP_CONTEXT_THREAD_NOT_FOUND') {
-          sendApiError(reply, 404, 'TEMP_CONTEXT_THREAD_NOT_FOUND', 'Thread not found')
-          return reply
-        }
+      if (error instanceof CapabilityError) {
+        const status =
+          error.code === CAPABILITY_ERROR_CODES.SCOPE_REQUIRED
+          || error.code === CAPABILITY_ERROR_CODES.SCOPE_AMBIGUOUS
+            ? 400
+            : 404
+        sendApiError(reply, status, error.code, error.message)
+        return reply
       }
       throw error
     }

@@ -83,7 +83,7 @@ export const registerDeviceRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     const device = await prisma.deviceToken.findUnique({ where: { token: body.token } })
     if (!device) {
-      throw new Error(`Device token ${body.token} was not persisted`)
+      throw new Error('Device token was not persisted')
     }
 
     return reply.code(201).send(

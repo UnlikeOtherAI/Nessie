@@ -3,9 +3,17 @@ import { MeResponseSchema, SessionSummarySchema } from '@nessie/schemas'
 
 import { hashPassword, verifyPassword } from '../auth/password.js'
 import { verifySessionToken } from '../auth/session.js'
-import { ChangePasswordRequestSchema } from '../contracts.js'
+import {
+  ChangePasswordRequestSchema,
+  SwitchContextBodySchema,
+} from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie } from '../lib/refresh-cookie.js'
+import {
+  ActorContextSwitchError,
+  switchActorContext,
+  type ActorContextSwitchErrorCode,
+} from '../services/actor-context-switch.js'
 import { buildMeResponse } from '../services/auth.js'
 import { clearPushSurfacePresenceForUser } from '../services/push-surface-presence.js'
 import {
@@ -17,9 +25,32 @@ import {
   AUTH_LOCK_TRANSACTION_OPTIONS,
   lockUserSessions,
 } from '../services/user-session-lock.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
+
+/**
+ * The optimistic-concurrency refusal for a concurrent password change. A typed
+ * class rather than a bare `Error` whose message doubles as its code, so
+ * rewording the sentence cannot silently turn the handled 409 into a 500
+ * (2026-09-05 review, S2-F4).
+ */
+class PasswordStateChangedError extends Error {
+  readonly code = 'PASSWORD_STATE_CHANGED'
+
+  constructor() {
+    super('Password changed concurrently; try again')
+    this.name = 'PasswordStateChangedError'
+  }
+}
+
+/** Status for each refusal `switchActorContext` can raise. */
+const SWITCH_CONTEXT_STATUS: Record<ActorContextSwitchErrorCode, number> = {
+  ACCOUNT_DEACTIVATED: 403,
+  NOT_A_MEMBER: 403,
+  SSO_TEAM_REAUTH_REQUIRED: 409,
+  USER_NOT_FOUND: 500,
+}
 
 export const registerAuthSecurityRoutes = (
   app: FastifyInstance,
@@ -98,14 +129,11 @@ export const registerAuthSecurityRoutes = (
     if (
       !(await guardAuthRequest(
         rateLimiter,
-        { bucket: RATE_LIMIT_BUCKETS.stepUpIp, rule: config.api.rateLimit.stepUpIp },
+        rateLimitFor(config, 'stepUpIp'),
         request,
         reply,
         {
-          account: {
-            bucket: RATE_LIMIT_BUCKETS.stepUpAccount,
-            rule: config.api.rateLimit.stepUpAccount,
-          },
+          account: rateLimitFor(config, 'stepUpAccount'),
           accountIdentity: userId,
           auditContext: actorContext,
         },
@@ -136,7 +164,7 @@ export const registerAuthSecurityRoutes = (
           select: { passwordHash: true },
         })
         if (lockedUser?.passwordHash !== user.passwordHash) {
-          throw new Error('PASSWORD_STATE_CHANGED')
+          throw new PasswordStateChangedError()
         }
         await tx.user.update({
           where: { id: userId },
@@ -148,13 +176,8 @@ export const registerAuthSecurityRoutes = (
         })
       }, AUTH_LOCK_TRANSACTION_OPTIONS)
     } catch (error) {
-      if (error instanceof Error && error.message === 'PASSWORD_STATE_CHANGED') {
-        sendApiError(
-          reply,
-          409,
-          'PASSWORD_STATE_CHANGED',
-          'Password changed concurrently; try again',
-        )
+      if (error instanceof PasswordStateChangedError) {
+        sendApiError(reply, 409, error.code, error.message)
         return reply
       }
       throw error
@@ -165,58 +188,12 @@ export const registerAuthSecurityRoutes = (
   app.post('/api/auth/switch-context', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const body = request.body as {
-      organizationId?: string
-      projectId?: string
-      teamId?: string
-    } | undefined
-    if (!body?.organizationId || !body.projectId || !body.teamId) {
-      sendApiError(
-        reply,
-        400,
-        'INVALID_INPUT',
-        'organizationId, projectId, and teamId are required',
-      )
-      return reply
-    }
-    const { organizationId, projectId, teamId } = body
-    const userId = actorContext.actor.actorId
-    const orgMember = await prisma.organizationMember.findUnique({
-      where: { organizationId_userId: { organizationId, userId } },
-    })
-    if (!orgMember) {
-      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this organization')
-      return reply
-    }
-    if (orgMember.deactivatedAt) {
-      sendApiError(
-        reply,
-        403,
-        'ACCOUNT_DEACTIVATED',
-        'Your access to this organisation has been deactivated',
-      )
-      return reply
-    }
-    const project = await prisma.project.findUnique({ where: { id: projectId } })
-    const projectMember = await prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId } },
-    })
-    const team = await prisma.team.findUnique({ where: { id: teamId } })
-    const teamMember = await prisma.teamMember.findUnique({
-      where: { teamId_userId: { teamId, userId } },
-    })
-    if (
-      !project
-      || project.organizationId !== organizationId
-      || !projectMember
-      || !team
-      || team.projectId !== projectId
-      || !teamMember
-    ) {
-      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
-      return reply
-    }
+    const body = parseInput(SwitchContextBodySchema, request.body, reply)
+    if (!body) return reply
 
+    // The new session inherits the presenting session's provider identity, so
+    // the bearer has to be re-read for its claims rather than reconstructed
+    // from the actor context.
     const currentToken = getAuthorizationToken(request)
     const currentVerification = currentToken
       ? verifySessionToken(currentToken, authSecret)
@@ -225,57 +202,39 @@ export const registerAuthSecurityRoutes = (
       sendApiError(reply, 401, 'AUTH_REQUIRED', 'Authentication required')
       return reply
     }
-    const currentClaims = currentVerification.claims
-    if (
-      currentClaims.providerType === 'uoa'
-      && (
-        !currentClaims.uoaIdentity
-        || team.externalOrgId !== currentClaims.uoaIdentity.organizationId
-        || team.externalTeamId !== currentClaims.uoaIdentity.teamId
-      )
-    ) {
-      sendApiError(
-        reply,
-        409,
-        'SSO_TEAM_REAUTH_REQUIRED',
-        'Sign in with UnlikeOtherAI to switch to this team.',
-      )
-      return reply
+
+    let switched: Awaited<ReturnType<typeof switchActorContext>>
+    try {
+      switched = await switchActorContext(prisma, {
+        buildSessionForUser,
+        currentClaims: currentVerification.claims,
+        organizationId: body.organizationId,
+        projectId: body.projectId,
+        teamId: body.teamId,
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      if (error instanceof ActorContextSwitchError) {
+        sendApiError(reply, SWITCH_CONTEXT_STATUS[error.code], error.code, error.message)
+        return reply
+      }
+      throw error
     }
-    const session = await buildSessionForUser({
-      organizationId,
-      projectId,
-      providerId: currentClaims.providerId,
-      providerType: currentClaims.providerType,
-      roles: [orgMember.role],
-      sessionId: currentClaims.providerType === 'uoa' ? currentClaims.sid : undefined,
-      teamId,
-      uoaIdentity: currentClaims.uoaIdentity,
-      userId,
-    })
-    const verification = verifySessionToken(session.token, authSecret)
-    if (!verification.ok) {
-      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue new session')
-      return reply
-    }
-    const user = await prisma.user.findUnique({ where: { id: userId } })
-    if (!user) {
-      sendApiError(reply, 500, 'USER_NOT_FOUND', 'User not found')
-      return reply
-    }
-    if (verification.claims.providerType !== 'uoa') {
+
+    const { session, user } = switched
+    if (session.claims.providerType !== 'uoa') {
       await issueRefreshCookie(request, reply, {
-        userId,
-        organizationId: verification.claims.org,
+        userId: user.id,
+        organizationId: session.claims.org,
         sessionId: session.sessionId,
-        providerId: verification.claims.providerId,
-        providerType: verification.claims.providerType,
+        providerId: session.claims.providerId,
+        providerType: session.claims.providerType,
       })
     }
     return createApiResponse({
       token: session.token,
       me: MeResponseSchema.parse(
-        await buildMeResponse(prisma, user, verification.claims, config),
+        await buildMeResponse(prisma, user, session.claims, config),
       ),
     })
   })

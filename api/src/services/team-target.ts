@@ -224,6 +224,13 @@ export const resolveTeamTarget = async (
 // The environment when no team was selected (non-UOA OIDC, single-env, or a
 // magic-link that skipped the chooser): the user's existing team, else the shared
 // org's default team — preserving pre-team auto-provisioning.
+//
+// Both lookups refuse a UOA-bound Team (`externalTeamId` non-null). A principal
+// that arrived without a UOA team selection has nothing UOA asserted about
+// them, so landing them in a UOA-owned team would grant local membership of it
+// with no relay and no subject assertion (2026-09-05 review, FO2-4). With only
+// bound teams in the organisation this returns null, and the caller answers
+// with its own refusal rather than picking one.
 export const resolveDefaultTarget = async (
   prisma: Pick<PrismaClient, 'channel' | 'team' | 'teamMember'>,
   organizationId: string,
@@ -231,7 +238,10 @@ export const resolveDefaultTarget = async (
 ): Promise<TeamTarget | null> => {
   if (userId) {
     const membership = await prisma.teamMember.findFirst({
-      where: { userId, team: { project: { organizationId } } },
+      where: {
+        userId,
+        team: { externalTeamId: null, project: { organizationId } },
+      },
       orderBy: CREATED_AT_ASC,
       select: { teamId: true, team: { select: { projectId: true } } },
     })
@@ -247,7 +257,7 @@ export const resolveDefaultTarget = async (
   }
 
   const defaultTeam = await prisma.team.findFirst({
-    where: { project: { organizationId } },
+    where: { externalTeamId: null, project: { organizationId } },
     orderBy: CREATED_AT_ASC,
     select: { id: true, projectId: true },
   })

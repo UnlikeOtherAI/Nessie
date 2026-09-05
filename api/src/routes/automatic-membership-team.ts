@@ -28,7 +28,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   requireTeamAdministrator,
   resolveRuleAuthorization,
-} from '../services/automatic-membership/access.js'
+} from './automatic-membership-access.js'
 import { buildAutomaticMembershipResponse } from '../services/automatic-membership/read-model.js'
 import { reauthorizeRule, setTeamRule } from '../services/automatic-membership/rules.js'
 import { emitAuditEvent } from '../services/audit.js'

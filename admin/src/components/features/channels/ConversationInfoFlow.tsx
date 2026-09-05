@@ -191,6 +191,7 @@ const ConversationMembers = ({
       <div className="px-3 py-2">
         {visibleMembers.map((person) => (
           <CurrentUserRow
+            canRemove={activeChannel.viewerCanManage}
             currentUserId={currentUserId}
             key={person.id}
             onRemove={(userId) => removeMember.mutate({ channelId: activeChannel.id, userId })}
@@ -291,6 +292,10 @@ export const ConversationInfoFlow = ({
 
   if (!route || route.channelId !== activeChannel.id || route.step === 'conversation') return null
 
+  // `canAddPeople` (DM vs. standard channel) can only narrow further: a plain
+  // member without `canManageChannel` standing must not see a control that the
+  // service refuses. See `docs/standards/disclosure-boundaries.md`.
+  const canManageMembers = canAddPeople && activeChannel.viewerCanManage
   const members = channelUsers
   const memberCount = members.length
   const title = route.step === 'info'
@@ -306,7 +311,7 @@ export const ConversationInfoFlow = ({
     <section aria-label={title} className={mobileClassName}>
       <FlowHeader
         action={
-          route.step === 'members' && canAddPeople ? (
+          route.step === 'members' && canManageMembers ? (
             <button
               className="rounded-lg px-3 py-2 text-sm font-semibold text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]"
               onClick={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
@@ -322,7 +327,7 @@ export const ConversationInfoFlow = ({
       {route.step === 'info' ? (
         <ConversationOverview
           activeChannel={activeChannel}
-          canAddPeople={canAddPeople}
+          canAddPeople={canManageMembers}
           channelUsers={members}
           memberCount={memberCount}
           onOpenAddPeople={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
@@ -344,7 +349,7 @@ export const ConversationInfoFlow = ({
         />
       ) : null}
 
-      {route.step === 'add-members' && canAddPeople ? (
+      {route.step === 'add-members' && canManageMembers ? (
         <AddConversationMembers
           activeChannel={activeChannel}
           allUsers={allUsers}
@@ -354,7 +359,7 @@ export const ConversationInfoFlow = ({
         />
       ) : null}
 
-      {route.step === 'add-members' && !canAddPeople ? (
+      {route.step === 'add-members' && !canManageMembers ? (
         <p className="px-6 py-8 text-center text-sm text-[color:var(--tx3)]">
           {activeChannel.type === 'dm'
             ? 'Direct messages are between two participants. Start a channel to include more people.'

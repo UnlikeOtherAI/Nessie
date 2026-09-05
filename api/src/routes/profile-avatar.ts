@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { clearProfileAvatarMirror } from '../services/uoa-profile-mirror.js'
 import { readAvatarUpload, sendAvatarRelayError } from './avatar-upload.js'
 import {
   deleteUoaUserAvatar,
@@ -40,7 +41,7 @@ export const registerProfileAvatarRoutes = (
   const requireOwnSubject = async (
     request: FastifyRequest,
     reply: FastifyReply,
-  ): Promise<string | null> => {
+  ): Promise<{ userId: string; uoaSub: string } | null> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return null
     if (actorContext.actor.actorType !== 'user') {
@@ -52,18 +53,34 @@ export const registerProfileAvatarRoutes = (
       sendApiError(reply, 404, 'UOA_PROFILE_NOT_LINKED', NO_UOA_PROFILE_MESSAGE)
       return null
     }
-    return uoaSub
+    return { userId: actorContext.actor.actorId, uoaSub }
+  }
+
+  /**
+   * The picture now lives at UOA and the local `User.avatarUrl` mirror holds
+   * the previous one, so it is dropped once the relay succeeded. Display data:
+   * a failure here must not turn a stored picture into an error.
+   */
+  const dropStaleMirror = async (
+    request: FastifyRequest,
+    userId: string,
+  ): Promise<void> => {
+    try {
+      await clearProfileAvatarMirror(prisma, userId)
+    } catch (error) {
+      request.log.warn({ err: error }, 'uoa profile avatar mirror clear failed')
+    }
   }
 
   app.put('/api/auth/me/avatar/uoa', async (request, reply) => {
-    const uoaSub = await requireOwnSubject(request, reply)
-    if (!uoaSub) return reply
+    const subject = await requireOwnSubject(request, reply)
+    if (!subject) return reply
 
     const image = await readAvatarUpload(request, reply, 'profile photo')
     if (!image) return reply
 
     try {
-      const written = await putUoaUserAvatar(uoaSub, image)
+      const written = await putUoaUserAvatar(subject.uoaSub, image)
       if (!written) {
         sendApiError(reply, 404, 'UOA_PROFILE_NOT_LINKED', NO_UOA_PROFILE_MESSAGE)
         return reply
@@ -75,15 +92,16 @@ export const registerProfileAvatarRoutes = (
       throw error
     }
 
+    await dropStaleMirror(request, subject.userId)
     return createApiResponse({ ok: true })
   })
 
   app.delete('/api/auth/me/avatar/uoa', async (request, reply) => {
-    const uoaSub = await requireOwnSubject(request, reply)
-    if (!uoaSub) return reply
+    const subject = await requireOwnSubject(request, reply)
+    if (!subject) return reply
 
     try {
-      const cleared = await deleteUoaUserAvatar(uoaSub)
+      const cleared = await deleteUoaUserAvatar(subject.uoaSub)
       if (!cleared) {
         sendApiError(reply, 404, 'UOA_PROFILE_NOT_LINKED', NO_UOA_PROFILE_MESSAGE)
         return reply
@@ -95,6 +113,7 @@ export const registerProfileAvatarRoutes = (
       throw error
     }
 
+    await dropStaleMirror(request, subject.userId)
     return createApiResponse({ ok: true })
   })
 }

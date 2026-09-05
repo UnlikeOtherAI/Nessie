@@ -84,3 +84,19 @@ export const UoaTeamSwitchRequestSchema = z.object({
   organizationId: z.string().trim().min(1).max(256),
   teamId: z.string().trim().min(1).max(256),
 })
+
+/**
+ * Switch the signed-in session to a different organisation / project / team.
+ *
+ * The handler used to read this body as a raw cast and check the three fields
+ * for truthiness, in a file whose other handler validates with a zod contract
+ * (2026-09-05 review, F1-5). Ids are local database uuids, so a value that is
+ * not one cannot name a row and is refused at the boundary rather than
+ * reaching Prisma.
+ */
+export const SwitchContextBodySchema = z.object({
+  organizationId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  teamId: z.string().uuid(),
+})
+export type SwitchContextBody = z.infer<typeof SwitchContextBodySchema>

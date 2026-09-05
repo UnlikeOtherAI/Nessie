@@ -2,8 +2,9 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { buildAccessibleChannelWhere } from '@nessie/team-admin'
 import { decodeKeysetCursor, encodeKeysetCursor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
+import { resolveDisclosureViewer } from '@nessie/runtime'
+
 import type { ThreadActivityRecord } from '../contracts.js'
-import { resolveMessageViewer } from './disclosure-viewer.js'
 import { evaluateMessageReadAccess } from './message-read-access.js'
 
 const DEFAULT_LIMIT = 50
@@ -97,7 +98,7 @@ export const listThreadActivity = async (
     },
   })
 
-  const viewer = await resolveMessageViewer(prisma, input.organizationId, input.userId)
+  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
   const isReadable = async (message: ActivityMessage, channelId: string): Promise<boolean> => {
     const access = await evaluateMessageReadAccess(prisma, {
       channelId,

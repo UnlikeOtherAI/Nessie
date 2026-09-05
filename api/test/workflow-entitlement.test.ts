@@ -3,11 +3,10 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
+import { auditWorkflowMutation, WORKFLOW_SECRET_REDACTION } from '@nessie/team-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { parseOrganizationId } from '@nessie/schemas'
 
-import { auditWorkflowMutation } from '../src/services/workflow-audit.js'
 import {
   canActorReadWorkflowInstallation,
   canActorStartWorkflowRun,

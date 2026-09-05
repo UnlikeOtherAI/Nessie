@@ -16,38 +16,22 @@ import {
   DashboardAccessError,
   importStaticDashboardSource,
   listDashboardSourceNotes,
-} from '@nessie/dashboard'
-import { DashboardFetchError, DashboardNormalizeError } from '@nessie/dashboard'
-import { formatZodIssues } from '@nessie/schemas'
-import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import {
-  readIfMatchRevision,
-  sendMalformedIfMatch,
-  sendRevisionConflict,
-} from '../lib/if-match.js'
-import {
+  DashboardFetchError,
+  DashboardNormalizeError,
   DashboardServiceError,
   DashboardRevisionConflictError,
   applyDashboardDelta,
   createDashboard,
   getDashboardWithWidgets,
   listDashboardsForActor,
-} from '../services/dashboards.js'
-import {
   loadSnapshotProjection,
   loadWidgetProjection,
-} from '../services/dashboard-widgets.js'
-import {
   createDashboardSource,
   listDashboardSources,
   probeSource,
   setSourceCredential,
-} from '../services/dashboard-sources.js'
-import {
   createDashboardMembership,
   resolveDashboardActor,
-} from '../services/dashboard-membership.js'
-import {
   createEmbedPlacement,
   freezeWidgetSnapshot,
   grantDashboardAccess,
@@ -55,6 +39,13 @@ import {
   resolveEmbedForViewer,
   revokeDashboardGrant,
 } from '@nessie/dashboard'
+import { formatZodIssues } from '@nessie/schemas'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import {
+  readIfMatchRevision,
+  sendMalformedIfMatch,
+  sendRevisionConflict,
+} from '../lib/if-match.js'
 import { createDashboardDatasetLoader } from '../services/dashboard-runtime.js'
 import type { RouteDeps } from './types.js'
 import type { DashboardEgressPolicy } from '@nessie/dashboard'

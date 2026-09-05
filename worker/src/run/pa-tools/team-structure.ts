@@ -4,6 +4,7 @@ import {
   listProjectsForUser,
   listTeamsForOrganization,
   ProjectValidationError,
+  UoaBoundOrganizationError,
 } from '@nessie/team-admin'
 import { z } from 'zod'
 
@@ -184,6 +185,9 @@ export const runTeamCreateTool = async (
     })
   } catch (error) {
     if (error instanceof ProjectValidationError) throw new Error(error.message)
+    // The route's own 403: inside a UOA-bound organisation a team is a UOA
+    // team, so it is created upstream and never here.
+    if (error instanceof UoaBoundOrganizationError) throw new Error(error.message)
     throw error
   }
   // The route's own 404: a project of another organisation is indistinguishable

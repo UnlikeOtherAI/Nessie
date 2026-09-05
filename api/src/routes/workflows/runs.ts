@@ -19,7 +19,7 @@ import {
 } from '../../services/workflow-run-controls.js'
 import { getWorkflowRun, listWorkflowRuns, retryWorkflowRun } from '../../services/workflow-runs.js'
 import { WorkflowActionError } from '../../services/workflow-validation.js'
-import { auditWorkflowMutation } from '../../services/workflow-audit.js'
+import { auditWorkflowMutation } from '@nessie/team-admin'
 import {
   canActorReadWorkflowRun,
   isWorkflowAdmin,

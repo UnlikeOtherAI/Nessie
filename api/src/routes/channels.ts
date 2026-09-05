@@ -2,17 +2,12 @@ import type { FastifyInstance } from 'fastify'
 import { SetChannelMuteRequestSchema } from '@nessie/schemas'
 
 import {
-  AddChannelMemberBodySchema,
   ChannelRecordSchema,
   CreateChannelBodySchema,
   StartChannelConversationBodySchema,
   UpdateChannelBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import {
-  addMemberToChannel,
-  removeMemberFromChannel,
-} from '../services/channel-members.js'
 import {
   findOrCreatePrivateConversationChannel,
   findOrCreateDmChannel,
@@ -26,7 +21,10 @@ import {
   setChannelArchived,
   updateChannel,
 } from '../services/channels.js'
+import { emitAuditEvent } from '../services/audit.js'
+import { ChannelTeamAccessError } from '@nessie/team-admin'
 import { resolveSystemAgentConversation } from '../services/system-agent-conversations.js'
+import { registerChannelMemberRoutes } from './channel-members.js'
 import { registerGlobalAgentRoutes } from './global-agents.js'
 import { registerPersonalAssistantRoutes } from './personal-assistant.js'
 import type { RouteDeps } from './types.js'
@@ -37,11 +35,17 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     requireActorContext,
     requireOwner,
     requireUserActor,
-    getChannelIfMember,
   } = deps
+
+  // A team context is what places a channel — in a project, or in the pair a DM
+  // belongs to. There is no organisation-wide default: falling back to a fixed
+  // UUID put every tenant's orphaned channels in one imaginary team.
+  const TEAM_CONTEXT_REQUIRED =
+    'A team context is required. Open a team first, or create a shared channel.'
 
   registerPersonalAssistantRoutes(app, deps)
   registerGlobalAgentRoutes(app, deps)
+  registerChannelMemberRoutes(app, deps)
 
   app.get('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -73,21 +77,27 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    const teamId =
+      body.teamId
+      ?? actorContext.tenant.teamId
+      ?? actorContext.actionContext.teamId
+    const placement = body.scope === 'standalone'
+      ? { scope: 'standalone' as const }
+      : teamId
+        ? { teamId }
+        : null
+    if (!placement) {
+      sendApiError(reply, 400, 'CHANNEL_TEAM_CONTEXT_REQUIRED', TEAM_CONTEXT_REQUIRED)
+      return reply
+    }
+
     let channel
     try {
       channel = await createChannelForUser(prisma, {
         label: body.label,
         visibility: body.visibility ?? 'public',
         organizationId: actorContext.tenant.organizationId,
-        ...(body.scope === 'standalone'
-          ? { scope: 'standalone' as const }
-          : {
-              teamId:
-                body.teamId
-                ?? actorContext.tenant.teamId
-                ?? actorContext.actionContext.teamId
-                ?? '00000000-0000-4000-8000-000000000003',
-            }),
+        ...placement,
         userId: actorContext.actor.actorId,
       })
     } catch (error) {
@@ -100,6 +110,10 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
         return reply
       }
+      if (error instanceof ChannelTeamAccessError) {
+        sendApiError(reply, 403, 'CHANNEL_TEAM_FORBIDDEN', error.message)
+        return reply
+      }
       throw error
     }
 
@@ -107,6 +121,15 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(reply, 400, 'HIERARCHY_VIOLATION', 'Team does not belong to this organization')
       return reply
     }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'channel.created',
+      resourceId: channel.id,
+      resourceType: 'channel',
+      outcome: 'success',
+      metadata: { label: channel.label, visibility: channel.visibility },
+    })
 
     return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(channel)))
   })
@@ -145,6 +168,14 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       where: { id: membership.id },
       data: { muted: body.muted },
       select: { muted: true },
+    })
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'channel.updated',
+      resourceId: channelId,
+      resourceType: 'channel',
+      outcome: 'success',
+      metadata: { muted: updated.muted, setting: 'notifications' },
     })
 
     return createApiResponse({ muted: updated.muted })
@@ -189,6 +220,15 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'channel.updated',
+      resourceId: channel.id,
+      resourceType: 'channel',
+      outcome: 'success',
+      metadata: { changed: Object.keys(body) },
+    })
+
     return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
@@ -209,6 +249,14 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
       return reply
     }
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'channel.updated',
+      resourceId: channel.id,
+      resourceType: 'channel',
+      outcome: 'success',
+      metadata: { archived: true },
+    })
     return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
@@ -240,6 +288,14 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
       return reply
     }
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'channel.updated',
+      resourceId: channel.id,
+      resourceType: 'channel',
+      outcome: 'success',
+      metadata: { archived: false },
+    })
     return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
@@ -261,6 +317,16 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
       return reply
     }
+    // A delete is an archive that is spoken as a delete, and the audit trail
+    // records the act the person performed.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'channel.deleted',
+      resourceId: channel.id,
+      resourceType: 'channel',
+      outcome: 'success',
+      metadata: { archived: true },
+    })
     return reply.code(204).send()
   })
 
@@ -283,97 +349,6 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
-  app.post('/api/channels/:channelId/members', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    const { channelId } = request.params as { channelId: string }
-    const channel = await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId)
-    if (!channel) {
-      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
-      return reply
-    }
-
-    const body = parseInput(AddChannelMemberBodySchema, request.body, reply)
-    if (!body) {
-      return reply
-    }
-
-    if (channel.systemChannelType) {
-      sendApiError(
-        reply,
-        403,
-        'CHANNEL_SYSTEM_MANAGED',
-        'System-managed conversations cannot be modified',
-      )
-      return reply
-    }
-
-    // A DM is a fixed pair. Adding a third participant would either mutate a
-    // private two-person history into something its participants never agreed
-    // to, or silently fork it into a different channel; both are surprises. Use
-    // a channel instead.
-    if (channel.type === 'dm') {
-      sendApiError(
-        reply,
-        403,
-        'CHANNEL_DM_MEMBERS_FIXED',
-        'Direct messages are between two participants. Create a channel to include more people.',
-      )
-      return reply
-    }
-
-    const added = await addMemberToChannel(prisma, channelId, body.userId)
-    if (!added) {
-      sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
-      return reply
-    }
-    return reply.code(204).send()
-  })
-
-  app.delete('/api/channels/:channelId/members/:userId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    const { channelId, userId } = request.params as { channelId: string; userId: string }
-    const channel = await getChannelIfMember(
-      actorContext.actor.actorId,
-      actorContext.tenant.organizationId,
-      channelId,
-    )
-    if (!channel) {
-      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
-      return reply
-    }
-    if (channel.systemChannelType) {
-      sendApiError(
-        reply,
-        403,
-        'CHANNEL_SYSTEM_MANAGED',
-        'System-managed conversations cannot be modified',
-      )
-      return reply
-    }
-    // Symmetrical to the add path: removing either half of a pair would leave a
-    // conversation with one participant and no way back.
-    if (channel.type === 'dm') {
-      sendApiError(
-        reply,
-        403,
-        'CHANNEL_DM_MEMBERS_FIXED',
-        'Direct messages are between two participants and cannot be changed.',
-      )
-      return reply
-    }
-
-    await removeMemberFromChannel(prisma, channelId, userId)
-    return reply.code(204).send()
-  })
-
   app.post('/api/dm/:userId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -381,10 +356,15 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     const { userId } = request.params as { userId: string }
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'CHANNEL_TEAM_CONTEXT_REQUIRED', TEAM_CONTEXT_REQUIRED)
+      return reply
+    }
 
     const channel = await findOrCreateDmChannel(prisma, {
       organizationId: actorContext.tenant.organizationId,
-      teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? '00000000-0000-4000-8000-000000000003',
+      teamId,
       currentUserId: actorContext.actor.actorId,
       targetUserId: userId,
     })
@@ -410,10 +390,11 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const agentIds = body.agentIds ?? []
     const userIds = body.userIds ?? []
-    const teamId =
-      actorContext.tenant.teamId
-      ?? actorContext.actionContext.teamId
-      ?? '00000000-0000-4000-8000-000000000003'
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'CHANNEL_TEAM_CONTEXT_REQUIRED', TEAM_CONTEXT_REQUIRED)
+      return reply
+    }
 
     // Addressing a DM-homed system agent — the Personal Assistant, a global
     // agent such as the Agent Designer — opens this person's own home DM with

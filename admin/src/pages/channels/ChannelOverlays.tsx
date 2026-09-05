@@ -214,6 +214,7 @@ export const ChannelOverlays = ({
         channelUsers={channelUsers}
         currentUserId={me.user.id}
         personalAssistantPresences={personalAssistantPresences}
+        viewerCanManage={activeChannel.viewerCanManage}
         onClose={onCloseMembers}
         onGroupCreated={onGroupCreated}
         onSelectAgent={onSelectAgent}

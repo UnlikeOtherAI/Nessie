@@ -1,5 +1,9 @@
 # API architectural review — 2026-09-05
 
+Findings marked **recorded** below (no code change) are tracked as entries in
+[docs/known-limitations.md](../known-limitations.md), which carries the
+current file:line evidence and suggested fix for each.
+
 Scope: `api/` (408 source files, 82.6k lines, 249 test files) reviewed against
 `AGENTS.md`, `docs/architecture.md`, `docs/standards/*.md` and the UOA identity
 invariant. Thirteen reviewers ran in parallel, split by task complexity: two

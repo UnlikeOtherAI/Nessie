@@ -21,7 +21,7 @@ import {
   ACTIVE_RUN_STATUSES,
   RESTARTABLE_RUN_STATUSES,
   handoffProductSlug,
-  loadRunForOrg,
+  loadRunForActor,
 } from './run-access.js'
 
 export type ActiveRunSummary = {
@@ -159,7 +159,10 @@ export const requestRunCancellation = async (
   prisma: PrismaClient,
   input: { organizationId: string; runId: string; cancelledByUserId: string },
 ): Promise<CancelRunResult> => {
-  const run = await loadRunForOrg(prisma, input.runId, input.organizationId)
+  const run = await loadRunForActor(prisma, input.runId, {
+    organizationId: input.organizationId,
+    userId: input.cancelledByUserId,
+  })
   if (!run) return { kind: 'not_found' }
 
   const productSlug = handoffProductSlug(run.triggerMessageMetadata)
@@ -227,7 +230,10 @@ export const restartRun = async (
   actorContext: AuthorizedActionContext,
   input: { organizationId: string; runId: string },
 ): Promise<RestartRunResult> => {
-  const run = await loadRunForOrg(prisma, input.runId, input.organizationId)
+  const run = await loadRunForActor(prisma, input.runId, {
+    organizationId: input.organizationId,
+    userId: actorContext.actor.actorId,
+  })
   if (!run) return { kind: 'not_found' }
 
   // A PA presence represents one person in a shared room. A colleague may be

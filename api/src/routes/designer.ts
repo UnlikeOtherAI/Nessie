@@ -30,7 +30,7 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!body) return reply
 
     if (!sharedModelClient) {
-      reply.code(500).send({ error: 'Model client not configured' })
+      sendApiError(reply, 500, 'MODEL_CLIENT_NOT_CONFIGURED', 'Model client not configured')
       return reply
     }
 

@@ -45,7 +45,14 @@ export const issueSessionToken = (
   // the access token's `sid` stays stable across a login's rotation chain
   // (keeps session listing/revocation and session-scoped state coherent).
   sessionId?: string,
-): { expiresAt: string; sessionId: string; token: string } => {
+): {
+  // The claims the token carries, returned so a caller never has to verify a
+  // token it has just signed to recover them (2026-09-05 review, FO3-8).
+  claims: SessionTokenClaims
+  expiresAt: string
+  sessionId: string
+  token: string
+} => {
   const issuedAt = Math.floor(Date.now() / 1000)
   const claims: SessionTokenClaims = {
     ...input,
@@ -59,6 +66,7 @@ export const issueSessionToken = (
   const signature = signTokenValue(`${header}.${payload}`, secret)
 
   return {
+    claims,
     token: `${header}.${payload}.${signature}`,
     expiresAt: new Date(claims.exp * 1000).toISOString(),
     sessionId: claims.sid,

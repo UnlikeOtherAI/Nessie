@@ -66,11 +66,17 @@ const makeDeps = (state: Recorded, opts: { throwOnEvent?: boolean } = {}) => {
       organization: { findUnique: async () => ({ name: 'Acme' }) },
       project: { findUnique: async () => ({ name: 'Proj' }) },
       team: { findUnique: async () => ({ name: 'Squad' }) },
-    },
-    queueProvider: {
-      enqueue: async (topic: string, _payload: unknown, options?: { idempotencyKey?: string }) => {
-        state.enqueued.push({ topic, idempotencyKey: options?.idempotencyKey })
-        return 'job-1'
+      // The dispatch now goes through the shared Prisma `enqueueQueueJob`, the
+      // same primitive every other worker enqueue uses, rather than the raw
+      // pg-pool `PgQueueProvider.enqueue` with its different conflict
+      // semantics. Its tagged template interpolates topic first and the
+      // idempotency key last.
+      $executeRaw: async (query: { values: unknown[] }) => {
+        state.enqueued.push({
+          topic: String(query.values[0]),
+          idempotencyKey: query.values[4] as string | undefined,
+        })
+        return 1
       },
     },
   } as unknown as ExecutionDependencies

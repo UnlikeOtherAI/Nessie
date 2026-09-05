@@ -93,6 +93,68 @@ const scopeIdsForActor = async (input: {
 }
 
 /**
+ * The one Prisma access `hasSecretPermission`/`canManageSecret` need — narrow
+ * on purpose (rather than `Pick<PrismaClient, 'secretGrant'>`) so a unit test
+ * can fake it with a single function instead of the full generated delegate.
+ */
+export type SecretGrantLookup = {
+  secretGrant: {
+    findFirst: (args: {
+      where: {
+        secretId: string
+        principalType: 'user'
+        principalId: string
+        permissions: { has: 'manage' | 'delegate' }
+        OR: Array<{ expiresAt: null } | { expiresAt: { gt: Date } }>
+      }
+      select: { id: true }
+    }) => Promise<{ id: string } | null>
+  }
+}
+
+/**
+ * Whether the actor holds an explicit, unexpired `SecretGrant` for
+ * `permission` on this secret. Never true for `use` here — that permission
+ * only gates value retrieval, not the management endpoints that call this.
+ */
+export const hasSecretPermission = async (input: {
+  actorId: string
+  permission: 'manage' | 'delegate'
+  prisma: SecretGrantLookup
+  secretId: string
+}): Promise<boolean> => Boolean(await input.prisma.secretGrant.findFirst({
+  where: {
+    secretId: input.secretId,
+    principalType: 'user',
+    principalId: input.actorId,
+    permissions: { has: input.permission },
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+  },
+  select: { id: true },
+}))
+
+/**
+ * The one access-control predicate for rotating, revoking, or delegating a
+ * secret: an organisation owner, the person who owns a `personal`-scope
+ * secret, or someone holding an explicit grant for `permission`. Composed
+ * once here so the three route handlers that gate on it cannot drift.
+ */
+export const canManageSecret = async (
+  actorContext: { actor: { actorId: string; roles?: string[] | null } },
+  secret: { id: string; scopeType: SecretScope; scopeId: string },
+  permission: 'manage' | 'delegate',
+  prisma: SecretGrantLookup,
+): Promise<boolean> =>
+  actorContext.actor.roles?.includes('owner') === true
+  || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
+  || await hasSecretPermission({
+    actorId: actorContext.actor.actorId,
+    permission,
+    prisma,
+    secretId: secret.id,
+  })
+
+/**
  * The secrets a person may see the *metadata* of: their own, everything
  * explicitly granted to them, and — because a cascade a person cannot see is
  * not a cascade they can work with — the organisation's plus every team and

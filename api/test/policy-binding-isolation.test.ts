@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
-import { addPolicyBinding, removePolicyBinding } from '../src/services/policy.js'
+import { addPolicyBinding, removePolicyBinding } from '../src/services/policy-rules.js'
 
 // Cross-tenant isolation for policy-binding writes. The routes are owner-gated,
 // but ownership is per-org: an owner of org A must not be able to attach a

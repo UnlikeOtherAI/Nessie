@@ -9,7 +9,7 @@ import {
   type VoiceSessionLimits,
 } from '@nessie/schemas'
 
-import { listThreadMessages } from '../messages.js'
+import { listThreadMessages } from '../message-read-model.js'
 
 /**
  * What the model is told at the start of a call, and what it is allowed to

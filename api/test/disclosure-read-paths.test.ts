@@ -4,7 +4,10 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { mapMessageRecordWithAttachments, messageInclude } from '../src/services/messages.js'
+import {
+  mapMessageRecordWithAttachments,
+  messageInclude,
+} from '../src/services/message-read-model.js'
 import { canUserReadRunBasis } from '../src/services/run-disclosure.js'
 import { loadThreadThinking } from '../src/services/run-thinking.js'
 

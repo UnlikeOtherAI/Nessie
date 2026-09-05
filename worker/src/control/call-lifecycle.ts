@@ -1,12 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
-import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import {
   enqueueCallRingCancellation,
   ensureDefaultThread,
   publishCallTransitionRealtime,
 } from '@nessie/team-admin'
-import type { PgRealtimeTransport } from '@nessie/runtime'
+import { publishMessageEnvelope, type PgRealtimeTransport } from '@nessie/runtime'
 import { buildRealtimeScopesForChannel } from '../run/pa-tools/message-destination.js'
 
 const lockCall = async (tx: Prisma.TransactionClient, callId: string): Promise<void> => {
@@ -97,21 +96,21 @@ export const handleCallRingTimeout = async (
   // failure never fails the timeout job. Without this the message only shows
   // up on the next refetch.
   try {
-    await realtimeTransport.publishWs(
+    await publishMessageEnvelope(
+      realtimeTransport,
       buildRealtimeScopesForChannel({
         channelId: missed.channel.id,
         organizationId: missed.channel.organizationId,
         systemChannelType: missed.channel.systemChannelType,
       }),
       {
-        data: {
-          channelId: parseChannelId(missed.channel.id),
-          contentPreview: missed.message.content,
-          messageId: missed.message.id,
+        channelId: missed.channel.id,
+        message: {
+          content: missed.message.content,
+          id: missed.message.id,
           role: 'assistant',
-          threadId: parseThreadId(missed.message.threadId),
         },
-        event: 'message.new',
+        threadId: missed.message.threadId,
       },
     )
   } catch (error) {

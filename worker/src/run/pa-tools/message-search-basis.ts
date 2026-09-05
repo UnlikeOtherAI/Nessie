@@ -14,7 +14,7 @@ import type { BuiltinToolRuntimeContext } from '../tool-types.js'
  *
  * `m` must be the alias of the `messages` table in the surrounding query.
  *
- * This mirrors `api/src/services/messages.ts` verbatim, for the reason stated
+ * This mirrors `api/src/services/message-search.ts` verbatim, for the reason stated
  * there: a search returns content snippets scoped by channel membership alone
  * and has nowhere to render a withheld placeholder, so anything carrying a basis
  * is excluded outright rather than evaluated. The agent case is the stronger

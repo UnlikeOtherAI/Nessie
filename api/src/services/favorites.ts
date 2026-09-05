@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { buildAccessibleChannelWhere } from '@nessie/team-admin'
 
 import type { FavoriteRecord, FavoriteTargetType } from '../contracts.js'
-import { buildAccessibleChannelWhere } from './agents.js'
 
 type FavoriteOwner = {
   includeAllOrgChannels?: boolean

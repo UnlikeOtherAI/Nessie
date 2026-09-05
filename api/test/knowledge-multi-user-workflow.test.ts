@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { registerKnowledgeBaseRoutes } from '../src/routes/knowledge-base.js'
-import { seedDefaultPolicies } from '../src/services/policy.js'
+import { seedDefaultPolicies } from '../src/services/policy-seed.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 

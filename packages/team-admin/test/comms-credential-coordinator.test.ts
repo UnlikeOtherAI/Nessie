@@ -49,14 +49,21 @@ const connectorWithRefresh = (
   refreshCredentials: CommunicationsConnector['refreshCredentials'],
 ): CommunicationsConnector => ({ refreshCredentials } as CommunicationsConnector)
 
-const createPrisma = () => {
+/**
+ * `swapWins` models the compare-and-swap: false is "another refresher stored a
+ * newer credential while ours was in flight", which the coordinator must
+ * resolve by re-reading rather than by overwriting.
+ */
+const createPrisma = (options: { swapWins?: boolean } = {}) => {
+  const swapWins = options.swapWins ?? true
   let credentialUpdate: Record<string, unknown> | undefined
+  let credentialSwapWhere: Record<string, unknown> | undefined
   let connectionStatus: string | undefined
+  let openTransactions = 0
+  let reads = 0
   const row = connection()
   const transaction = {
-    $queryRaw: async () => [{ id: row.credential.id }],
     commsConnection: {
-      findUnique: async () => row,
       update: async (input: { data: Record<string, unknown> }) => {
         if (typeof input.data['status'] === 'string') {
           connectionStatus = input.data['status']
@@ -65,9 +72,14 @@ const createPrisma = () => {
       },
     },
     commsConnectionCredential: {
-      update: async (input: { data: Record<string, unknown> }) => {
+      updateMany: async (input: {
+        data: Record<string, unknown>
+        where: Record<string, unknown>
+      }) => {
+        credentialSwapWhere = input.where
+        if (!swapWins) return { count: 0 }
         credentialUpdate = input.data
-        return row.credential
+        return { count: 1 }
       },
     },
   }
@@ -79,16 +91,36 @@ const createPrisma = () => {
         grantedScopes: row.grantedScopes,
         disabledCapabilities: [],
       }],
-      findUnique: async () => row,
+      findUnique: async () => {
+        reads += 1
+        return row
+      },
+      updateMany: async (input: { data: Record<string, unknown> }) => {
+        if (typeof input.data['status'] === 'string') {
+          connectionStatus = input.data['status']
+        }
+        return { count: 1 }
+      },
     },
     $transaction: async (
       callback: (tx: typeof transaction) => Promise<unknown>,
-    ) => callback(transaction),
+    ) => {
+      openTransactions += 1
+      try {
+        return await callback(transaction)
+      } finally {
+        openTransactions -= 1
+      }
+    },
   } as unknown as PrismaClient
   return {
     connectionStatus: () => connectionStatus,
+    credentialSwapWhere: () => credentialSwapWhere,
     credentialUpdate: () => credentialUpdate,
+    openTransactions: () => openTransactions,
     prisma,
+    reads: () => reads,
+    seenUpdatedAt: () => row.credential.updatedAt,
   }
 }
 
@@ -114,6 +146,57 @@ test('expired refresh preserves the stored refresh token when omitted', async ()
     openSecret(ENCRYPTION_SECRET, ciphertext as string),
     'stored-refresh',
   )
+})
+
+test('the provider refresh runs with no transaction open', async () => {
+  // The refresh used to happen inside a $transaction holding SELECT … FOR
+  // UPDATE on the credential row, so a slow provider held a pooled connection
+  // and a row lock for up to 30s per waiter.
+  const fake = createPrisma()
+  let openDuringRefresh = -1
+  await loadUserGoogleCommsCredential(fake.prisma, {
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+    requiredScopes: [REQUIRED_SCOPE],
+    encryptionSecret: ENCRYPTION_SECRET,
+    now: new Date('2026-08-30T11:00:00.000Z'),
+    connector: connectorWithRefresh(async () => {
+      openDuringRefresh = fake.openTransactions()
+      return {
+        accessToken: 'new-access',
+        expiresAt: '2026-08-30T12:00:00.000Z',
+        scopes: [REQUIRED_SCOPE],
+      }
+    }),
+  })
+
+  assert.equal(openDuringRefresh, 0)
+  // The write that follows is conditional on the row nobody else has rotated.
+  assert.deepEqual(fake.credentialSwapWhere(), {
+    connectionId: CONNECTION_ID,
+    updatedAt: fake.seenUpdatedAt(),
+  })
+})
+
+test('a lost compare-and-swap returns the winner rather than overwriting it', async () => {
+  const fake = createPrisma({ swapWins: false })
+  const context = await loadUserGoogleCommsCredential(fake.prisma, {
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+    requiredScopes: [REQUIRED_SCOPE],
+    encryptionSecret: ENCRYPTION_SECRET,
+    now: new Date('2026-08-30T11:00:00.000Z'),
+    connector: connectorWithRefresh(async () => ({
+      accessToken: 'racing-access',
+      expiresAt: '2026-08-30T12:00:00.000Z',
+      scopes: [REQUIRED_SCOPE],
+    })),
+  })
+
+  assert.equal(fake.credentialUpdate(), undefined)
+  // The stored row — every other process reads that one, and clobbering it is
+  // what breaks a provider that rotates refresh tokens.
+  assert.equal(context.credential.accessToken, 'old-access')
 })
 
 test('a rejected refresh atomically marks reauthorization before refusing', async () => {

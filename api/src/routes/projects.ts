@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import {
   createProjectForUser,
+  deleteProject,
   listProjectsForUser,
   mapProjectRecord,
   projectCountsInclude,
@@ -15,14 +16,13 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { canAccessAttachment } from '../services/attachments.js'
-import { requireLocalMembershipManagement } from './membership-mode-gate.js'
+import { requireUnboundMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
 const toProjectRecord = mapProjectRecord
 
 export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
-    config,
     prisma,
     requireActorContext,
     requireOwner,
@@ -243,37 +243,47 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
-    const project = await prisma.project.findFirst({
-      where: {
-        channelRoot: false,
-        id: projectId,
-        organizationId: actorContext.tenant.organizationId,
-      },
-      include: projectCountsInclude,
+    // What deleting a project destroys is owned by `deleteProject`, not by this
+    // handler: it enumerates every blocking family in one place and returns one
+    // typed refusal per family. The route parses, calls, and maps.
+    const result = await deleteProject(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      projectId,
     })
-    if (!project) {
+
+    if (result.kind === 'not_found') {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-
-    const channelCount = project.teams.reduce((total, team) => total + team._count.channels, 0)
-    if (channelCount > 0) {
+    if (result.kind === 'blocked') {
+      // The first family is the code and the message; every family travels in
+      // `details` so a person emptying the project is not sent round the loop
+      // once per family.
+      const primary = result.blocks[0]!
+      sendApiError(reply, 409, primary.code, primary.message, undefined, {
+        blocks: result.blocks.map((block) => ({
+          code: block.code,
+          count: block.count,
+          message: block.message,
+        })),
+      })
+      return reply
+    }
+    if (result.kind === 'referenced') {
       sendApiError(
         reply,
         409,
         'PROJECT_NOT_EMPTY',
-        'Move or delete the project\'s channels before deleting it',
+        'Something in this project still references it. Empty the project and try again.',
       )
       return reply
     }
-
-    await prisma.project.delete({ where: { id: project.id } })
 
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'project.deleted' as Parameters<typeof emitAuditEvent>[1]['action'],
       resourceType: 'project',
-      resourceId: project.id,
+      resourceId: projectId,
       outcome: 'success',
     })
 
@@ -284,7 +294,13 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
-    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
+    if (
+      !(await requireUnboundMembershipManagement(prisma, reply, {
+        organizationId: actorContext.tenant.organizationId,
+      }))
+    ) {
+      return reply
+    }
 
     const { projectId } = request.params as { projectId: string }
     const body = request.body as { userId?: string; role?: string } | undefined
@@ -339,7 +355,13 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
-    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
+    if (
+      !(await requireUnboundMembershipManagement(prisma, reply, {
+        organizationId: actorContext.tenant.organizationId,
+      }))
+    ) {
+      return reply
+    }
 
     const { projectId, userId } = request.params as { projectId: string; userId: string }
     const project = await prisma.project.findFirst({

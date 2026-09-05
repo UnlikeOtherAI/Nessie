@@ -10,10 +10,10 @@ import {
   canEditAgent,
   createAgentRecord,
   resolveAgentEditAuthority,
+  updateAgentAvatar,
 } from '@nessie/team-admin'
 import { AgentToolPolicyError } from '../src/services/agent-tool-policy.js'
 import { updateAgentRecord } from '../src/services/agent-management.js'
-import { updateAgentAvatar } from '../src/services/agent-avatars.js'
 
 /**
  * Who may rewrite an agent, exercised against a real database because every arm

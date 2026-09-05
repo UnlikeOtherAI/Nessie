@@ -1,17 +1,22 @@
 import type { FastifyInstance } from 'fastify'
 
-import { createApiResponse, sendApiError } from '../lib/api.js'
+import {
+  AddPolicyBindingBodySchema,
+  CreatePolicyRuleBodySchema,
+  PolicyCheckBodySchema,
+  UpdatePolicyRuleBodySchema,
+} from '../contracts.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { checkPolicy, getEffectivePolicy } from '../services/policy.js'
 import {
   addPolicyBinding,
-  checkPolicy,
   createPolicyRule,
   deletePolicyRule,
-  getEffectivePolicy,
   listPolicyRules,
   removePolicyBinding,
   updatePolicyRule,
-} from '../services/policy.js'
+} from '../services/policy-rules.js'
 import type { RouteDeps } from './types.js'
 
 export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -29,18 +34,10 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    const body = request.body as { resourceType?: string; action?: string } | undefined
-    if (!body?.resourceType || !body?.action) {
-      sendApiError(reply, 400, 'INVALID_INPUT', 'resourceType and action are required')
-      return reply
-    }
+    const body = parseInput(PolicyCheckBodySchema, request.body, reply)
+    if (!body) return reply
 
-    const decision = await checkPolicy(
-      prisma,
-      actorContext,
-      body.resourceType as Parameters<typeof checkPolicy>[2],
-      body.action as Parameters<typeof checkPolicy>[3],
-    )
+    const decision = await checkPolicy(prisma, actorContext, body.resourceType, body.action)
 
     return createApiResponse(decision)
   })
@@ -72,24 +69,16 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const body = request.body as {
-      scope: string
-      scopeId: string
-      resourceType: string
-      action: string
-      effect: string
-      priority?: number
-      conditions?: Record<string, unknown>
-      bindings?: Array<{ actorType: string; actorId: string }>
-    }
+    const body = parseInput(CreatePolicyRuleBodySchema, request.body, reply)
+    if (!body) return reply
 
     const rule = await createPolicyRule(prisma, {
       organizationId: actorContext.tenant.organizationId,
-      scope: body.scope as Parameters<typeof createPolicyRule>[1]['scope'],
+      scope: body.scope,
       scopeId: body.scopeId,
-      resourceType: body.resourceType as Parameters<typeof createPolicyRule>[1]['resourceType'],
-      action: body.action as Parameters<typeof createPolicyRule>[1]['action'],
-      effect: body.effect as Parameters<typeof createPolicyRule>[1]['effect'],
+      resourceType: body.resourceType,
+      action: body.action,
+      effect: body.effect,
       priority: body.priority,
       conditions: body.conditions,
       createdBy: actorContext.actor.actorId,
@@ -113,14 +102,11 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!requireOwner(actorContext, reply)) return reply
 
     const { ruleId } = request.params as { ruleId: string }
-    const body = request.body as {
-      effect?: string
-      priority?: number
-      conditions?: Record<string, unknown> | null
-    }
+    const body = parseInput(UpdatePolicyRuleBodySchema, request.body, reply)
+    if (!body) return reply
 
     const rule = await updatePolicyRule(prisma, ruleId, actorContext.tenant.organizationId, {
-      effect: body.effect as Parameters<typeof updatePolicyRule>[3]['effect'],
+      effect: body.effect,
       priority: body.priority,
       conditions: body.conditions,
     })
@@ -161,7 +147,8 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!requireOwner(actorContext, reply)) return reply
 
     const { ruleId } = request.params as { ruleId: string }
-    const body = request.body as { actorType: string; actorId: string }
+    const body = parseInput(AddPolicyBindingBodySchema, request.body, reply)
+    if (!body) return reply
 
     const binding = await addPolicyBinding(
       prisma,

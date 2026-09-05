@@ -9,7 +9,7 @@ import {
 } from '@nessie/schemas'
 
 import { registerTriggerRoutes } from '../src/routes/triggers.js'
-import { queueTriggerRun } from '../../worker/src/control/trigger-run.js'
+import { queueTriggerRun } from '@nessie/worker'
 
 const ORGANIZATION_ID = '20000000-0000-4000-8000-000000000001'
 const PROJECT_ID = '20000000-0000-4000-8000-000000000002'

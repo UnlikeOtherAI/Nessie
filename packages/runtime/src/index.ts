@@ -37,6 +37,7 @@ export * from './message-replies.js'
 export * from './orchestrator.js'
 export * from './fts.js'
 export * from './url-safety.js'
+export * from './connector-usage.js'
 export * from './disclosure-predicate.js'
 export * from './disclosure-access.js'
 

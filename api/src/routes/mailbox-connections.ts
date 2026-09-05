@@ -4,6 +4,8 @@ import {
   DiscoverMailboxConnectionBodySchema,
   MailboxDiscoveryResultSchema,
   SetMailboxAgentAccessBodySchema,
+  isAdminActor,
+  type AuthorizedActionContext,
   type MailboxDiscoveryExistingConnection,
   type MailboxProviderFamily,
 } from '@nessie/schemas'
@@ -78,15 +80,18 @@ export const registerMailboxConnectionRoutes = (
    * re-reads the live membership rather than trusting a session claim, so this
    * is current — a demoted admin loses the shared-mailbox routes immediately.
    */
-  const actingMember = (actorContext: {
-    actor: { actorId: string; roles?: string[] }
-  }): MailboxActingMember => {
-    const roles = actorContext.actor.roles ?? []
-    return {
-      role: roles.includes('owner') ? 'owner' : roles.includes('admin') ? 'admin' : 'member',
-      userId: actorContext.actor.actorId,
-    }
-  }
+  const actingMember = (
+    actorContext: AuthorizedActionContext,
+  ): MailboxActingMember => ({
+    // `isAdminActor` is the shared contract for "manages team-wide settings"
+    // (`@nessie/schemas`); spelling it inline here was one of four spellings of
+    // one predicate (2026-09-05 review, FO1-3). Owner is still distinguished
+    // because the record carries the role, not just the verdict.
+    role: (actorContext.actor.roles ?? []).includes('owner')
+      ? 'owner'
+      : isAdminActor(actorContext) ? 'admin' : 'member',
+    userId: actorContext.actor.actorId,
+  })
 
   const refuse = (reply: Parameters<typeof sendApiError>[0], error: unknown): unknown => {
     if (error instanceof MailboxConnectionError) {

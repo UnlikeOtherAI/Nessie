@@ -18,26 +18,32 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
-  approveInferenceModel,
-  approveInferenceProvider,
-  approveInferenceRoutingProfile,
   createInferenceCredentialBinding,
-  createInferenceModel,
-  createInferenceProvider,
-  createInferenceRoutingProfile,
-  getInferenceModel,
-  getInferenceProvider,
-  getInferenceRoutingProfile,
   listInferenceCredentialBindings,
-  listInferenceModels,
-  listInferenceProviders,
-  listInferenceRoutingProfiles,
   revokeInferenceCredentialBinding,
-  setInferenceProviderHealth,
+} from '../services/inference-credential-bindings.js'
+import {
+  approveInferenceModel,
+  createInferenceModel,
+  getInferenceModel,
+  listInferenceModels,
   updateInferenceModel,
+} from '../services/inference-models.js'
+import {
+  approveInferenceProvider,
+  createInferenceProvider,
+  getInferenceProvider,
+  listInferenceProviders,
+  setInferenceProviderHealth,
   updateInferenceProvider,
+} from '../services/inference-providers.js'
+import {
+  approveInferenceRoutingProfile,
+  createInferenceRoutingProfile,
+  getInferenceRoutingProfile,
+  listInferenceRoutingProfiles,
   updateInferenceRoutingProfile,
-} from '../services/inference-control-plane.js'
+} from '../services/inference-routing-profiles.js'
 
 // The inference-control-plane service widens PrismaClient because the generated
 // client lags the schema surface during local typechecking. Mirror that widening

@@ -1,29 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { SecretScopeType } from '@nessie/schemas'
+import type { SecretRecord as SharedSecretRecord, SecretScopeType } from '@nessie/schemas'
 
 import { secretKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type { SecretScopeType }
 
-export type SecretRecord = {
-  reference: string
-  name: string
-  description: string | null
-  provider: string | null
-  scopeType: SecretScopeType
-  scopeId: string
-  /**
-   * Whether this secret pins its own name for every narrower scope. Always
-   * false at `personal`, which has nothing below it.
-   */
-  locked: boolean
-  rotatedAt: string | null
-  expiresAt: string | null
-  status: 'active' | 'revoked' | 'expired'
-  createdAt: string
-  updatedAt: string
-}
+// The server-enforced shape (`SecretRecordSchema`, parsed on every response
+// in `api/src/routes/secrets.ts`) rather than a hand-copied type, so a field
+// the server adds or renames cannot silently drift from what this client
+// reads.
+export type SecretRecord = SharedSecretRecord
 
 export type CreateSecretInput = {
   name: string

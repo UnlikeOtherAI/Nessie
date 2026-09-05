@@ -186,17 +186,45 @@ export const createProjectForUser = async (
 }
 
 /**
+ * A team may not be born locally inside an organisation UOA binds.
+ *
+ * `docs/standards/team-model.md`: "A team IS a UOA team. Not a copy of one, not
+ * a container for one." A locally created `Team` there is a level of the org
+ * hierarchy UOA has never heard of, carrying local `TeamMember` rows nothing
+ * upstream authorized (2026-09-05 API review, FO2-3). `relayRoute` names the
+ * door that does tell UOA, so the refusal can say where to go instead.
+ */
+export class UoaBoundOrganizationError extends Error {
+  constructor(readonly relayRoute: string) {
+    super(
+      'This organisation is managed by UnlikeOtherAI, which owns its teams. '
+      + `Create the team through ${relayRoute} so UnlikeOtherAI is told about it.`,
+    )
+    this.name = 'UoaBoundOrganizationError'
+  }
+}
+
+/**
  * Create a team inside a project, owned by the acting user.
  *
  * Returns null when the project is not a real, non-container project of this
  * organisation — the same `404 Project not found` the route emits, and the same
- * refusal for a cross-organisation `projectId`.
+ * refusal for a cross-organisation `projectId`. Throws
+ * `UoaBoundOrganizationError` when the organisation is UOA-bound: the local
+ * `Team` row is the same thing as a UOA team, so it has to be created upstream.
  */
 export const createTeamForUser = async (
   prisma: PrismaClient,
   input: { name: string; organizationId: string; projectId: string; userId: string },
 ): Promise<TeamRecord | null> => {
   const name = requireName(input.name, 'Team')
+  const organization = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+    select: { externalOrgId: true },
+  })
+  if (organization?.externalOrgId) {
+    throw new UoaBoundOrganizationError('POST /api/teams/teams')
+  }
   const project = await prisma.project.findFirst({
     where: {
       channelRoot: false,
