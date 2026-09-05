@@ -247,3 +247,27 @@ export const CommsResourcesPatchRequestSchema = z.object({
 export type CommsResourcesPatchRequest = z.infer<
   typeof CommsResourcesPatchRequestSchema
 >
+
+/**
+ * Whether this deployment can actually complete an OAuth connect for a
+ * provider: its adapter registered at startup and its client id is present.
+ *
+ * Availability is a deployment-configuration fact the browser cannot infer.
+ * Without it a surface offers a provider button, the person clicks, and
+ * `/start` answers with a server error they can do nothing about — so the
+ * surface asks first and offers only what this deployment can finish.
+ */
+export const CommsProviderAvailabilitySchema = z.object({
+  provider: CommsProviderSchema,
+  available: z.boolean(),
+})
+export type CommsProviderAvailability = z.infer<
+  typeof CommsProviderAvailabilitySchema
+>
+
+export const CommsProvidersResponseSchema = z.object({
+  providers: z.array(CommsProviderAvailabilitySchema),
+})
+export type CommsProvidersResponse = z.infer<
+  typeof CommsProvidersResponseSchema
+>

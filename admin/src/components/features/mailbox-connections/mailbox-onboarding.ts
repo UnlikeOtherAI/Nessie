@@ -1,3 +1,7 @@
+import { faApple, faGoogle, faMicrosoft, faYahoo } from '@fortawesome/free-brands-svg-icons'
+import { faEnvelope } from '@fortawesome/free-solid-svg-icons'
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+
 import type { MailboxConnectionScope, MailboxDiscoveryResult } from '../../../lib/api-client'
 
 /**
@@ -96,19 +100,23 @@ export const unavailableAuthenticationMessage = (result: MailboxDiscoveryResult)
 export const appPasswordAccountName = (result: MailboxDiscoveryResult): string =>
   result.provider === 'apple' ? 'Apple Account' : `${result.ui.providerName} account`
 
-export const providerMark = (icon: string, providerName: string): string => {
-  switch (icon) {
-    case 'google':
-      return 'G'
-    case 'microsoft':
-      return 'M'
-    case 'icloud':
-    case 'apple':
-      return 'i'
-    default:
-      return providerName.slice(0, 1).toUpperCase() || '?'
-  }
+/**
+ * The mark shown beside a provider. The keys are discovery's `ui.providerIcon`
+ * values plus `icloud`, which the address screen's shortcut rows use directly;
+ * a provider with no brand mark (Fastmail, Zoho, anything unrecognised) falls
+ * back to the envelope rather than to an initial, so no row renders a letter
+ * where its neighbours render a logo.
+ */
+const PROVIDER_ICONS: Record<string, IconDefinition> = {
+  apple: faApple,
+  google: faGoogle,
+  icloud: faApple,
+  microsoft: faMicrosoft,
+  yahoo: faYahoo,
 }
+
+export const providerIcon = (icon: string): IconDefinition =>
+  PROVIDER_ICONS[icon] ?? faEnvelope
 
 type CodedError = { code?: string; message?: string }
 
@@ -138,6 +146,16 @@ export const mailboxErrorMessage = (cause: unknown, fallback: string): string =>
     case 'DISCOVERY_EXHAUSTED':
     case 'DISCOVERY_FAILED':
       return 'We could not find the settings automatically.'
+    // Deployment configuration, not a transient failure: retrying cannot
+    // succeed, so the copy must not invite one.
+    case 'PROVIDER_NOT_CONFIGURED':
+      return 'Sign-in with this provider has not been set up on this Nessie '
+        + 'server. An administrator has to register it first.'
+    case 'NOT_IMPLEMENTED':
+      return 'Connecting this provider is not available yet.'
+    case 'PUBLIC_ORIGIN_NOT_CONFIGURED':
+      return 'This server does not know its own public address, so sign-in '
+        + 'cannot start. An administrator has to set it.'
     default:
       return fallback
   }
