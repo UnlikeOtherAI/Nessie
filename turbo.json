@@ -1,5 +1,12 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  // Root files that no package directory owns but every task's result depends
+  // on. Turbo folds these into the global hash, so a change to one correctly
+  // invalidates every cached lint/typecheck/build entry rather than replaying a
+  // stale pass. `scripts/ci-scope.mjs` separately forces a full, unfiltered run
+  // when they change, because `--affected` compares package directories only
+  // and would otherwise select nothing.
+  "globalDependencies": ["tsconfig.base.json", "eslint.config.js"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
