@@ -92,7 +92,7 @@ Consequences worth knowing:
   (previously a dead API could deploy "green" silently).
 - These services have **no fixed `container_name`** (a pinned name cannot scale
   to two replicas); Compose names them `compose-api-1`-style, so read logs with
-  `docker compose -f infrastructure/compose/docker-compose.prod.yml logs api`.
+  `docker compose -f infrastructure/compose/docker-compose.prod.yml logs nessie-api`.
   `nessie-postgres`, `nessie-minio`, and `nessie-worker` keep their fixed names
   — they are never blue-greened (the worker is recreated in place; queued work
   waits out the gap).
@@ -158,3 +158,45 @@ Both edges set baseline security headers:
 Verify after deploy: `curl -sI https://api.nessie.works/api/health`,
 `curl -sI https://app.nessie.works/`, and `curl -sI https://nessie.works/`
 should show the expected headers.
+
+## Service names are nessie-prefixed, the project name is not
+
+Every service in `docker-compose.prod.yml` is `nessie-*`. That is not style:
+**Compose always publishes the service name as a network alias and gives no way
+to suppress it.** A service called `api` therefore made this project answer to
+the bare name `api` on the *shared* `edge` network, alongside five other
+products doing the same — and Docker round-robins a duplicated alias, so
+anything resolving `api` reached a random product. `worker` had the same
+collision with `deepcrm-worker` on the shared `db` network.
+
+Public traffic was never affected, because every Caddy upstream names a
+specific alias (`nessie-api:5554`, `nessie-admin:80`). The hazard was
+container-to-container calls.
+
+**Do not "finish the job" by setting a top-level `name:` in the compose file.**
+Compose namespaces *volumes* by project name too. This project's name is the
+directory name, `compose`, so the live database is the volume
+`compose_nessie_pgdata`. Renaming the project makes Compose look for
+`<newname>_nessie_pgdata`, fail to find it, silently create an empty one, and
+bring production up with an empty database. The old volume survives; the site
+does not. A project rename needs a deliberate volume migration, not a one-line
+edit. Container names are already collision-proof without it, since the service
+half is unique (`compose-nessie-api-1`).
+
+### The one-time rename migration
+
+Compose identifies a container by its project+service *label*, not its image or
+name, so the first deploy after the rename does not recognise the running
+generation. `redeploy.sh` handles both consequences and is idempotent:
+
+- `nessie-worker` and `nessie-infisical` pin `container_name`, and those names
+  were still held by the pre-rename containers — Compose would have failed with
+  "container name already in use". They are removed *before* anything is
+  created.
+- `api`/`admin`/`web` pin no name, so Compose would simply start a second
+  generation and never retire the first, leaving two generations sharing the
+  `nessie-*` aliases indefinitely. They are retired *after* the new replicas
+  pass their health checks, so the swap stays zero-downtime.
+
+Both blocks are labelled in `redeploy.sh` and can be deleted once every
+environment has deployed past the rename.
