@@ -2,6 +2,39 @@
 
 Chapter of [deployment.md](../deployment.md). Which Ledger adapter serves chat and embeddings, why the vector width is a schema change, and what a deployment with no UOA signer can do.
 
+## Chat model and the Ledger service id
+
+Ledger's proxy is `/v1/:serviceId/*`, and the segment is the service **Ledger**
+registers — not necessarily one of the three providers Nessie compiles an
+adapter for (`openai`, `kimi`, `deepseek`). `NESSIE_MODEL_SERVICE_ID` names that
+segment, so the deployment default can sit on any Ledger service; a service with
+no compiled adapter is reached through the generic OpenAI-compatible connector.
+Unset, the segment defaults to `NESSIE_MODEL_PROVIDER`, which is the old
+behaviour.
+
+Production runs chat on Meta's muse-spark 1.3:
+
+```
+NESSIE_MODEL_SERVICE_ID=openrouter
+NESSIE_MODEL_NAME=meta/muse-spark-1.3-contributor
+```
+
+Two things are easy to get wrong here:
+
+- **1.3 is not on Ledger's `meta` service.** That service stops at
+  `muse-spark-1.2`; 1.3 and 1.3-contributor are carried by Ledger's OpenRouter
+  service, where model ids are vendor-qualified — hence `openrouter` as the
+  service id and `meta/` as part of the model name.
+- **`-contributor` is a data decision, not just a price.** It is roughly 12x
+  cheaper on input and 21x on output ($0.10/$0.002/$0.20 against
+  $1.25/$0.15/$4.25), and upstream treats its traffic as training-eligible.
+  Nessie is multi-tenant, so that applies to tenant content. Drop the suffix to
+  move to the standard tier.
+
+The base URL and credential are unchanged: the configured Ledger base URL has
+its path rewritten to the service id, and the same Ledger app key authenticates
+it. An agent's own model selection still outranks the deployment default.
+
 ## Embedding model and vector width
 
 Embeddings are routed separately from chat, because they are a separate
