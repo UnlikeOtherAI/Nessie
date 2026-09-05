@@ -440,15 +440,15 @@ export const setProjectTaskIteration = async (
   }))
 }
 
-/** Archives only a single project, never an organisation-wide implicit set. */
 /**
- * Tuck completed work behind the Archived toggle.
+ * Tuck completed work behind the Archived toggle. One explicit project, never
+ * an organisation-wide implicit set.
  *
- * `boardId` scopes it to one board's own tickets — the Archive control lives on
- * a board's Done column, and a board owns its tickets, so a click there must
- * not reach another board's completed work. Omitted, it archives the whole
- * project, which is what the personal assistant's `ticket_archive_done` asks
- * for by naming a project and no board.
+ * `boardId` narrows further, to one board's own tickets — the Archive control
+ * lives on a board's Done column, and a board owns its tickets, so a click
+ * there must not reach another board's completed work. Omitted, it archives
+ * the whole project, which is what the personal assistant's
+ * `ticket_archive_done` asks for by naming a project and no board.
  */
 export const archiveProjectDoneTasks = async (
   prisma: PrismaClient,
