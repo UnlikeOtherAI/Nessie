@@ -171,7 +171,7 @@ export const runTicketBoardReadTool = async (
           [
             `Board "${board.name}" | boardId=${board.id} style=${board.style}${
               board.isDefault ? ' (default)' : ''
-            }`,
+            } — owns its own tickets`,
             ...board.columns.map(
               (column) =>
                 `  - ${column.name} (${column.category}) | columnId=${column.id} position=${column.position}`,
@@ -185,6 +185,8 @@ export const runTicketBoardReadTool = async (
 
 const CreateInput = z.object({
   projectId: IdSchema,
+  /** From `ticket_board_read`; absent lands the card on the default board. */
+  boardId: IdSchema.optional(),
   title: z.string().trim().min(1),
   purpose: z.string().optional(),
   detail: z.string().optional(),
@@ -209,9 +211,12 @@ export const runTicketCreateTool = async (
     assignmentAttention: createProjectTaskAssignmentAttention,
   })
   if ('error' in created) {
-    const message = created.error === 'PROJECT_NOT_FOUND' || created.error === 'ITERATION_NOT_FOUND'
-      ? 'Project or iteration not found.'
-      : 'Assignee or owner is not available to you.'
+    const message =
+      created.error === 'PROJECT_NOT_FOUND' ||
+      created.error === 'ITERATION_NOT_FOUND' ||
+      created.error === 'BOARD_NOT_FOUND'
+        ? 'Project, board or iteration not found.'
+        : 'Assignee or owner is not available to you.'
     throw new Error(message)
   }
   return result(

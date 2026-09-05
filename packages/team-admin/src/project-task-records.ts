@@ -11,6 +11,8 @@ export type ProjectTaskRecord = {
   id: string
   organizationId: string
   projectId: string | null
+  /** The board this task lives on; null ⇒ the project's default board. */
+  boardId: string | null
   iterationId: string | null
   fieldValues: Record<string, unknown>
   /** Present only on a task mirrored from an external source. */
@@ -70,6 +72,7 @@ export const mapProjectTask = (task: TaskWithPeople): ProjectTaskRecord => ({
   id: parseTaskId(task.id),
   organizationId: parseOrganizationId(task.organizationId),
   projectId: task.projectId ? parseProjectId(task.projectId) : null,
+  boardId: task.boardId ?? null,
   fieldValues:
     task.fieldValues && typeof task.fieldValues === 'object' && !Array.isArray(task.fieldValues)
       ? (task.fieldValues as Record<string, unknown>)

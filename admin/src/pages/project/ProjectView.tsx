@@ -4,7 +4,6 @@ import { ProjectPageHeader } from '../../components/features/projects/ProjectPag
 import { TaskDialog } from '../../components/kanban/TaskDialog'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoards } from '../../facades/boards/hooks'
-import { BoardSwitcher } from '../../components/kanban/BoardSwitcher'
 import { useTabParam } from '../../navigation/useTabParam'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -27,9 +26,15 @@ export const ProjectView = () => {
   // Which board is on screen. A tab, so it rides in `?board=` written with
   // `replace`; an unknown or absent value reads as the project's default
   // board, so a stale bookmark degrades to the board the project opens on.
+  // The boards themselves are chosen in the Projects sidebar, under this
+  // project's Board section — there is no strip in the header, because the
+  // sidebar already draws every board and two doorways to the same choice
+  // only made the reader guess which one moved them.
   const defaultBoardId = boards.find((item) => item.isDefault)?.id ?? boards[0]?.id ?? ''
   const boardIds: string[] = boards.map((item) => item.id)
-  const [activeBoardId, selectBoard] = useTabParam('board', boardIds, defaultBoardId)
+  // Read-only: the sidebar's board rows write `?board=` themselves, so nothing
+  // on this screen selects a board.
+  const [activeBoardId] = useTabParam('board', boardIds, defaultBoardId)
   const board = boards.find((item) => item.id === activeBoardId) ?? null
 
   if (!projectId) return null
@@ -75,8 +80,8 @@ export const ProjectView = () => {
               },
             ],
             kind: 'menu',
-            // Not "Board": the board switcher already sits in the header's tab
-            // slot on this section, so a second "Board" would name no decision.
+            // Not "Board": the sidebar already names this board on the row the
+            // reader clicked, so a second "Board" here would name no decision.
             label: 'Configure',
             priority: 60,
             title: 'Configure boards',
@@ -97,15 +102,7 @@ export const ProjectView = () => {
       <ProjectPageHeader
         actions={headerActions}
         project={project}
-        tabs={
-          tab === 'board' ? (
-            <BoardSwitcher
-              activeBoardId={activeBoardId}
-              boards={boards}
-              onSelect={selectBoard}
-            />
-          ) : undefined
-        }
+        subtitle={tab === 'board' && boards.length > 1 ? board?.name : undefined}
       />
 
       <div className="min-h-0 flex-1">
@@ -126,6 +123,7 @@ export const ProjectView = () => {
         )}
       </div>
       <TaskDialog
+        boardId={board?.id}
         iterationId={board?.style === 'scrum' ? activeIteration?.id : undefined}
         onClose={() => setTaskDialogOpen(false)}
         open={taskDialogOpen}

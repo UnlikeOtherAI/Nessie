@@ -22,6 +22,8 @@ export const TaskRecordSchema = z.object({
   id: TaskIdSchema,
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.nullable(),
+  /** The board this task lives on; null ⇒ the project's default board. */
+  boardId: z.string().uuid().nullable(),
   iterationId: z.string().uuid().nullable(),
   storyPoints: z.number().int().nullable(),
   fieldValues: z.record(z.string().uuid(), z.unknown()),
@@ -52,6 +54,9 @@ export const CreateTaskBodySchema = z.object({
   purpose: z.string().optional(),
   detail: z.string().optional(),
   projectId: ProjectIdSchema.optional(),
+  // The board the card lands on. Absent means the project's default board,
+  // which is what every caller that has no board on screen wants.
+  boardId: z.string().uuid().optional(),
   iterationId: z.string().uuid().optional(),
   storyPoints: z.number().int().min(0).optional(),
   priority: TaskPrioritySchema.optional(),

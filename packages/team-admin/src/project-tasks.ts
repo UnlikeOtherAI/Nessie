@@ -118,6 +118,8 @@ export type CreateProjectTaskInput = {
   purpose?: string
   detail?: string
   projectId?: string
+  /** The board the task is created on; absent ⇒ the project's default board. */
+  boardId?: string
   iterationId?: string
   storyPoints?: number
   priority?: TaskPriority
@@ -129,7 +131,7 @@ export type CreateProjectTaskInput = {
 }
 
 export type ProjectTaskCreateError = {
-  error: 'ASSIGNEE_NOT_MEMBER' | 'ASSIGNEE_AGENT_NOT_FOUND' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' | 'ITERATION_NOT_FOUND'
+  error: 'ASSIGNEE_NOT_MEMBER' | 'ASSIGNEE_AGENT_NOT_FOUND' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' | 'ITERATION_NOT_FOUND' | 'BOARD_NOT_FOUND'
 }
 
 export const createProjectTask = async (
@@ -146,6 +148,16 @@ export const createProjectTask = async (
     })
     if (!input.projectId || !iteration) return { error: 'ITERATION_NOT_FOUND' }
   }
+  // A board id names the board the card lands on, and a board belongs to one
+  // project — so a board from another project is a refusal, not a cross-project
+  // create.
+  if (input.boardId) {
+    const board = await prisma.board.findFirst({
+      where: { id: input.boardId, projectId: input.projectId ?? undefined },
+      select: { id: true },
+    })
+    if (!input.projectId || !board) return { error: 'BOARD_NOT_FOUND' }
+  }
   if (input.assigneeUserId && !(await isOrganizationMember(prisma, input.organizationId, input.assigneeUserId))) return { error: 'ASSIGNEE_NOT_MEMBER' }
   if (input.assigneeAgentId && !(await isAgentAccessibleToActor(prisma, input.actorContext, input.assigneeAgentId))) return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   if (input.ownerUserId && !(await isOrganizationMember(prisma, input.organizationId, input.ownerUserId))) return { error: 'OWNER_NOT_MEMBER' }
@@ -154,6 +166,7 @@ export const createProjectTask = async (
     const created = await tx.task.create({
       data: {
         organizationId: input.organizationId, projectId: input.projectId ?? null,
+        boardId: input.boardId ?? null,
         iterationId: input.iterationId ?? null, storyPoints: input.storyPoints ?? null,
         priority: input.priority ?? 'medium', dueDate: input.dueDate ?? null,
         createdByUserId: input.createdByUserId, title: input.title,
