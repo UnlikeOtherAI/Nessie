@@ -143,7 +143,15 @@ export const classifyError = (error: unknown): FailoverReason => {
   if (status === 503 || message.includes('overloaded') || message.includes('service unavailable')) {
     return 'overloaded'
   }
-  if (message.includes('model') && message.includes('not found')) {
+  // A 404 from a chat/completions endpoint is never a missing route — the route
+  // is the provider's own. It means the configured model is not available to
+  // this deployment: withdrawn, renamed, or excluded by an account policy. The
+  // pattern below only caught a provider that spelled it out in words, so the
+  // real thing — `… request failed with HTTP 404`, e.g. OpenRouter answering
+  // "0 endpoints out of 1 requested are available matching your guardrail
+  // restrictions and data policy" — landed in `unknown` and was reported as an
+  // unexpected error, exactly like the 403 beside it.
+  if (status === 404 || (message.includes('model') && message.includes('not found'))) {
     return 'model_not_found'
   }
   if (message.includes('content_filter') || message.includes('content policy') || message.includes('safety')) {
