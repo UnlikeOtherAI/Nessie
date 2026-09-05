@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { scopeForVisibility } from './scopes.js'
+import { scopeForVisibility } from '../src/scopes.js'
 
 const CHAIN = {
   channelId: 'channel-1',

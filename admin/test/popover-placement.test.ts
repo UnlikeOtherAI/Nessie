@@ -7,7 +7,7 @@ import {
   PLACEMENT_GUTTER,
   type PopoverPlacement,
   type PopoverRect,
-} from './popover-placement.js'
+} from '../src/lib/popover-placement.js'
 
 /**
  * The pure half of D11 (docs/plans/2026-08-13-responsive-coherence.md): the six
@@ -77,9 +77,17 @@ test('a side placement flips across the anchor when its side does not fit', () =
 
 test('when neither side fits, the roomier side wins and the panel still clamps inside', () => {
   const anchor = anchorAt(400, 200)
-  const placed = place(anchor, 'bottom-start', WINDOW, { height: 700, width: 200 })
+  const panel = { height: 700, width: 200 }
+  const placed = place(anchor, 'bottom-start', WINDOW, panel)
+  // 560px below vs 184px above: below is the lesser evil even though a 700px
+  // panel fits in neither.
   assert.equal(placed.placement, 'bottom-start')
-  assert.equal(placed.top, anchor.bottom + PLACEMENT_GAP)
+  // And then it clamps, which is the half this used to assert away: parked at
+  // `anchor.bottom + gap` a 700px panel would end at 932, 132px outside a box
+  // that stops at 800. It is pulled up until its far edge keeps the gutter.
+  assert.equal(placed.top, WINDOW.bottom - PLACEMENT_GUTTER - panel.height)
+  assert.ok(placed.top < anchor.bottom + PLACEMENT_GAP)
+  assert.equal(placed.top + panel.height, WINDOW.bottom - PLACEMENT_GUTTER)
 })
 
 test('the panel clamps inside a clipping box narrower than the window — the D11 case', () => {
@@ -109,11 +117,19 @@ test('a clipping box narrower than the panel pins the panel to the near gutter',
 
 test('the result follows the anchor: a reflowed anchor re-clamps against the same box', () => {
   const clip: PopoverRect = { bottom: 800, left: 0, right: 500, top: 0 }
-  const before = place(anchorAt(300, 300), 'bottom-start', clip)
-  // Sidebar opened: the anchor moved left and the box no longer holds the panel.
+  // Both anchors have room for the whole panel (the last column the box can
+  // start it in is 292), so each result is the anchor's own edge — which is
+  // what "follows the anchor" means.
+  const before = place(anchorAt(200, 300), 'bottom-start', clip)
+  // Sidebar opened: the anchor moved left, and the panel moves with it.
   const after = place(anchorAt(100, 300), 'bottom-start', clip)
-  assert.equal(before.left, 300)
+  assert.equal(before.left, 200)
   assert.equal(after.left, 100)
+  // Past that column the anchor keeps moving and the panel stops, held off the
+  // far wall by the gutter. 300 is already past it: left-aligning there would
+  // put the panel's right edge flush against the box.
+  const atTheBoundary = place(anchorAt(300, 300), 'bottom-start', clip)
+  assert.equal(atTheBoundary.left, clip.right - PLACEMENT_GUTTER - PANEL.width)
   const squeezed = place(anchorAt(450, 300), 'bottom-start', clip)
   assert.equal(squeezed.left, clip.right - PLACEMENT_GUTTER - PANEL.width)
 })
