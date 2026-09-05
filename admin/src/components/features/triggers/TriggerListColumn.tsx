@@ -34,6 +34,8 @@ type TriggerListColumnProps = {
   filteredTriggers: AgentTriggerRecord[]
   isPending: boolean
   leading?: ReactNode
+  // Forwarded: this column is the page's own header (ColumnBrowserColumn).
+  ownsScreen?: boolean
   onCreate: () => void
   onSearchChange: (query: string) => void
   onSelect: (triggerId: string) => void
@@ -62,6 +64,7 @@ export const TriggerListColumn = ({
   filteredTriggers,
   isPending,
   leading,
+  ownsScreen = false,
   onCreate,
   onSearchChange,
   onSelect,
@@ -77,6 +80,7 @@ export const TriggerListColumn = ({
 }: TriggerListColumnProps) => (
   <ColumnBrowserColumn
     leading={leading}
+    ownsScreen={ownsScreen}
     headerAction={
       <button
         className="admin-button admin-button-primary"

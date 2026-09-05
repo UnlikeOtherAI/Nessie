@@ -323,6 +323,7 @@ export const WorkflowsPage = () => {
   columns.push(
     <ColumnBrowserColumn
       leading={<PhoneNavigationButton />}
+      ownsScreen
       headerAction={
         isWorkflowAdmin ? (
           <button

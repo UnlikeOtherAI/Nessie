@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -135,6 +136,12 @@ export const NestedStage = ({
   const stageLayerKey = owned && host ? host.layerKeyOf(id) : null
   const backRef = useRef(onBack)
   backRef.current = onBack
+  // Handed to whatever renders inside: a pane owns its title and its actions
+  // but not the way out of the stage it sits in.
+  const stageBack = useMemo(
+    () => ({ label, onBack: () => backRef.current() }),
+    [label],
+  )
   useEffect(() => {
     if (!stageLayerKey) return undefined
     setLayerFallback(stageLayerKey, title === undefined ? null : {
@@ -158,7 +165,11 @@ export const NestedStage = ({
     // from context and publish its bar over the page beneath it.
     return shown
       ? createPortal(
-        <ScreenBarLayerProvider layerKey={owned ? host.layerKeyOf(id) : null}>
+        <ScreenBarLayerProvider
+          back={stageBack}
+          isStage
+          layerKey={owned ? host.layerKeyOf(id) : null}
+        >
           {children}
         </ScreenBarLayerProvider>,
         container,

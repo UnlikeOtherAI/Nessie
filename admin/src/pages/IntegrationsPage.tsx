@@ -462,6 +462,7 @@ export const IntegrationsPage = () => {
     <ColumnBrowserColumn
       key="list"
       leading={<PhoneNavigationButton />}
+      ownsScreen
       title={`Integrations (${products.length})`}
     >
       {listBody}
