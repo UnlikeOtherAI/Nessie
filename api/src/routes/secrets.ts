@@ -1,5 +1,3 @@
-import crypto from 'node:crypto'
-
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -10,9 +8,13 @@ import {
   InfisicalVaultError,
   type InfisicalSecretNamespace,
 } from '../services/infisical-vault.js'
+import {
+  canManageSecretScope,
+  putSecretInVault,
+  SecretScopeSchema,
+  vaultSecretName,
+} from '../services/secret-vault-write.js'
 import type { RouteDeps } from './types.js'
-
-const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 
 const CreateSecretBodySchema = z.object({
   name: z.string().trim().min(1).max(120).regex(/^[A-Z][A-Z0-9_]*$/, 'Use an environment-variable-style name.'),
@@ -59,8 +61,6 @@ const publicSecret = (secret: {
   updatedAt: secret.updatedAt.toISOString(),
 })
 
-const vaultName = (reference: string): string => `NESSIE_${reference.slice(4).toUpperCase()}`
-
 const sendVaultError = (reply: Parameters<typeof sendApiError>[0], error: unknown): boolean => {
   if (!(error instanceof InfisicalVaultError)) return false
   sendApiError(
@@ -70,35 +70,6 @@ const sendVaultError = (reply: Parameters<typeof sendApiError>[0], error: unknow
     error.message,
   )
   return true
-}
-
-const canManageScope = async (input: {
-  actorId: string
-  isOwner: boolean
-  organizationId: string
-  scopeId?: string
-  scopeType: z.infer<typeof SecretScopeSchema>
-  deps: Pick<RouteDeps, 'prisma'>
-}): Promise<{ allowed: boolean; scopeId: string }> => {
-  const { actorId, deps, isOwner, organizationId, scopeType } = input
-  if (scopeType === 'personal') return { allowed: true, scopeId: actorId }
-  if (scopeType === 'organization') return { allowed: isOwner, scopeId: organizationId }
-  if (!input.scopeId) return { allowed: false, scopeId: '' }
-  if (scopeType === 'project') {
-    const project = await deps.prisma.project.findFirst({
-      where: { id: input.scopeId, organizationId },
-      select: { id: true },
-    })
-    return {
-      allowed: isOwner && Boolean(project),
-      scopeId: input.scopeId,
-    }
-  }
-  const team = await deps.prisma.team.findFirst({
-    where: { id: input.scopeId, project: { organizationId } },
-    select: { id: true },
-  })
-  return { allowed: isOwner && Boolean(team), scopeId: input.scopeId }
 }
 
 const grantPrincipalExistsInOrganization = async (input: {
@@ -189,12 +160,12 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     const body = parseInput(CreateSecretBodySchema, request.body, reply)
     if (!body) return reply
-    const scope = await canManageScope({
+    const scope = await canManageSecretScope({
       actorId: actorContext.actor.actorId,
-      deps,
       isOwner: actorContext.actor.roles?.includes('owner') ?? false,
       organizationId: actorContext.tenant.organizationId,
-      scopeId: body.scopeId,
+      prisma,
+      ...(body.scopeId === undefined ? {} : { scopeId: body.scopeId }),
       scopeType: body.scopeType,
     })
     if (!scope.allowed) {
@@ -202,19 +173,15 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const reference = `sec_${crypto.randomBytes(16).toString('hex')}`
     const namespace: InfisicalSecretNamespace = {
       organizationId: actorContext.tenant.organizationId,
       scopeId: scope.scopeId,
       scopeType: body.scopeType,
     }
-    let vault: InfisicalVault
-    let vaultReference: string
+    let written: Awaited<ReturnType<typeof putSecretInVault>>
     try {
-      vault = new InfisicalVault()
-      vaultReference = await vault.put({
-        description: body.description,
-        name: vaultName(reference),
+      written = await putSecretInVault({
+        ...(body.description === undefined ? {} : { description: body.description }),
         namespace,
         value: body.value,
       })
@@ -222,6 +189,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       if (sendVaultError(reply, error)) return reply
       throw error
     }
+    const { reference, vaultReference } = written
     let secret
     try {
       secret = await prisma.secret.create({
@@ -240,7 +208,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       })
     } catch (error) {
       // Never retain a usable vault value when its Nessie metadata row failed.
-      await vault.remove({ name: vaultName(reference), namespace }).catch(() => undefined)
+      await written.rollback()
       throw error
     }
     await emitAuditEvent(prisma, {
@@ -292,7 +260,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     try {
       await new InfisicalVault().replace({
-        name: vaultName(secret.reference),
+        name: vaultSecretName(secret.reference),
         namespace,
         value: body.value,
       })
@@ -349,7 +317,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       scopeType: secret.scopeType,
     }
     try {
-      await new InfisicalVault().remove({ name: vaultName(secret.reference), namespace })
+      await new InfisicalVault().remove({ name: vaultSecretName(secret.reference), namespace })
     } catch (error) {
       if (sendVaultError(reply, error)) return reply
       throw error
