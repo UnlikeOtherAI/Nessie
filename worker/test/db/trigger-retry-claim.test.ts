@@ -16,7 +16,7 @@ import {
 //
 // This lives in `test/db/` because it drives a GLOBAL poller — the claim query
 // takes the oldest due delivery anywhere in the database, so it needs a database
-// where it is the only actor (AGENTS.md → Workflow).
+// where it is the only actor (docs/standards/testing.md).
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
 type Seed = {
@@ -60,7 +60,7 @@ const seedFailedDeliveries = async (
         dedupeKey: `webhook:${randomUUID()}`,
         // Explicitly in the past: `timestamp(3)` rounding can put a
         // just-written value fractionally in the future, and a single-shot
-        // poller would then not see its own seed (AGENTS.md → Workflow).
+        // poller would then not see its own seed (docs/standards/testing.md).
         nextRetryAt: new Date(Date.now() - 60_000),
         payload: {},
         retryCount: 1,

@@ -156,6 +156,23 @@ never written locally and hoped for. Two consequences, both load-bearing:
   the Project it fabricates identically, so a rename heals both through
   `mirrorExternalTeamName` — the same function the directory sync uses.
 
+### Creation, renames, and the unbound install
+
+**Creating** an organisation or team happens in-app against UOA's org API
+rather than by redirecting a person into its chooser for a second interactive
+login; the local rows are still born only in `materializeUoaTeam`, from what
+the silent switch grant proved
+([docs/plans/2026-09-02-in-app-organisation-creation.md](../plans/2026-09-02-in-app-organisation-creation.md)).
+The org name is UOA's mirror, so a **rename is a relayed
+`PUT /org/organisations/:orgId` write**. An install with no IdP keeps one
+unbound organisation (`externalOrgId` null). Budgets, policies, audit, the
+member directory, and org settings all scope per UOA organisation
+([docs/plans/2026-08-15-uoa-org-tenancy.md](../plans/2026-08-15-uoa-org-tenancy.md)).
+The standing gap between this and "no duplicated data at all" — three local
+membership tables against UOA's two, a Project level UOA has no concept of,
+and the delta/revocation machinery UOA still lacks — is mapped in
+[docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md).
+
 ### Which UOA route family, and why it is not a detail
 
 UOA exposes two, and picking the wrong one fails for exactly the tenants who
