@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { faChevronDown, faEllipsis, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
@@ -19,7 +18,6 @@ import {
 } from '../../navigation/project-sections'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
-import { SidebarIconButton, SidebarStarIcon } from './SidebarIcons'
 import { sidebarAriaCurrent } from './SidebarRow'
 import type { StarredItem } from './types'
 
@@ -289,18 +287,27 @@ export const ProjectsSidebarNav = ({
             />
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
           </Link>
-          <SidebarIconButton
+          <button
             aria-controls={sectionsId}
             aria-expanded={isExpanded}
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${project.name} sections`}
-            className="flex-shrink-0"
-            icon={faChevronDown}
-            iconClassName={['h-3 w-3 transition-transform', isExpanded ? '' : '-rotate-90'].join(' ')}
+            className="admin-sidebar-more flex-shrink-0"
             onClick={(event) => {
               event.stopPropagation()
               toggleProjectExpanded(project.id)
             }}
-          />
+            type="button"
+          >
+            <svg
+              className={['h-3 w-3 transition-transform', isExpanded ? '' : '-rotate-90'].join(' ')}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
           <span
             className={[
               'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
@@ -313,15 +320,15 @@ export const ProjectsSidebarNav = ({
               onToggleStar('project', project.id)
             }}
           >
-            <SidebarStarIcon starred={isStarred} />
+            {isStarred ? '★' : '☆'}
           </span>
           {isOwner ? (
             <span className="relative ml-1 flex-shrink-0">
-              <SidebarIconButton
+              <button
                 aria-label={`Project actions for ${project.name}`}
                 aria-expanded={isMenuOpen}
                 aria-haspopup="menu"
-                icon={faEllipsis}
+                className="admin-sidebar-more"
                 onClick={(event) => {
                   event.stopPropagation()
                   if (isMenuOpen) {
@@ -337,7 +344,10 @@ export const ProjectsSidebarNav = ({
                     menuButtonRefs.current.delete(rowId)
                   }
                 }}
-              />
+                type="button"
+              >
+                ⋯
+              </button>
               {isMenuOpen && menuPosition
                 ? createPortal(
                     <>
@@ -411,7 +421,17 @@ export const ProjectsSidebarNav = ({
             isCollapsed={starredCollapsed}
             onToggle={toggleStarredCollapsed}
             title="Starred"
-            titleIcon={<SidebarStarIcon starred />}
+            titleIcon={
+              <svg
+                className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--warning-text)]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            }
           >
             {starredProjects.map((project) => renderProjectRow(project, 'starred'))}
           </SidebarMenuSection>
@@ -420,12 +440,14 @@ export const ProjectsSidebarNav = ({
         <SidebarMenuSection
           action={
             isOwner ? (
-              <SidebarIconButton
+              <button
                 aria-label="New project"
-                icon={faPlus}
+                className="admin-sidebar-plus"
                 onClick={() => setCreateOpen(true)}
-                placement="section"
-              />
+                type="button"
+              >
+                +
+              </button>
             ) : null
           }
           id="projects-nav-projects"

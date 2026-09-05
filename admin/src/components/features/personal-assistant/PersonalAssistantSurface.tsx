@@ -9,7 +9,6 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../../shared/AgentAvatar'
-import { SidebarStarIcon } from '../../../layouts/admin-shell/SidebarIcons'
 import { IdentityTile } from '../../primitives/IdentityTile'
 
 type PersonalAssistantSidebarEntryProps = {
@@ -139,7 +138,7 @@ export const PersonalAssistantSidebarEntry = ({
             onToggleStar()
           }}
         >
-          <SidebarStarIcon starred={starred} />
+          {starred ? '★' : '☆'}
         </span>
       ) : null}
     </button>

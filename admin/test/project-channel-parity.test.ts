@@ -33,13 +33,14 @@ test('the Projects sidebar is built from the same rows as the Channels sidebar',
     assert.match(nav, /className="sidebar-project-link"/)
     assert.match(nav, /admin-sb-item sidebar-child group/)
     assert.match(nav, /sidebar-row-star/)
-    assert.match(nav, /icon=\{faChevronDown\}/)
+    // The disclosure chevron is the shared inline SVG, not a per-sidebar glyph.
+    assert.match(nav, /d="M19 9l-7 7-7-7"/)
   }
 
   // Starred sits above the list it draws from, in both sidebars.
   for (const nav of [projectsNav, channelsStarred]) {
     assert.match(nav, /title="Starred"/)
-    assert.match(nav, /titleIcon=\{<SidebarStarIcon starred \/>\}/)
+    assert.match(nav, /<polygon points="12 2 15\.09 8\.26 22 9\.27/)
   }
   assert.ok(
     projectsNav.indexOf('title="Starred"') < projectsNav.indexOf('title="Projects"'),
