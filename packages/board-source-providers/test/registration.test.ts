@@ -36,3 +36,30 @@ test('both halves register the adapter', () => {
   assert.equal(hasBoardSourceAdapter('linear'), true)
   clearBoardSourceAdapters()
 })
+
+test('each provider is configured independently of the others', () => {
+  clearBoardSourceAdapters()
+  const registered = registerBoardSourceAdaptersFromEnv({
+    NESSIE_BOARD_LINEAR_CLIENT_ID: 'id',
+    NESSIE_BOARD_LINEAR_CLIENT_SECRET: 'secret',
+    NESSIE_BOARD_JIRA_CLIENT_ID: 'id',
+    NESSIE_BOARD_JIRA_CLIENT_SECRET: 'secret',
+    NESSIE_BOARD_GITHUB_CLIENT_ID: 'id',
+    NESSIE_BOARD_GITHUB_CLIENT_SECRET: 'secret',
+    NESSIE_BOARD_TRELLO_API_KEY: 'key',
+    NESSIE_BOARD_TRELLO_API_SECRET: 'secret',
+  })
+  assert.deepEqual([...registered].sort(), ['github', 'jira', 'linear', 'trello'])
+
+  // One configured provider does not drag the others in.
+  clearBoardSourceAdapters()
+  assert.deepEqual(
+    registerBoardSourceAdaptersFromEnv({
+      NESSIE_BOARD_TRELLO_API_KEY: 'key',
+      NESSIE_BOARD_TRELLO_API_SECRET: 'secret',
+    }),
+    ['trello'],
+  )
+  assert.equal(hasBoardSourceAdapter('jira'), false)
+  clearBoardSourceAdapters()
+})

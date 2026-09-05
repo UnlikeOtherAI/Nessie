@@ -231,3 +231,39 @@ and worker reject stdio process execution from catalog or instance data, and
 MCP endpoint plus OAuth authorization/token URLs must pass the shared SSRF guard
 before save or use. Private, local, link-local, and metadata-network targets
 should be exposed through remote MCP runners instead of direct cloud callbacks.
+
+### Project board sources (Jira, Linear, Trello, GitHub)
+
+A project's boards can mirror work from another system
+([the design](../plans/2026-09-05-project-boards-external-sources-and-custom-fields.md)).
+Each provider needs an app registered with the vendor **once per deployment**;
+a person then connects their own account to it.
+
+**A provider with no credentials here is not registered.** It is absent from
+the connect picker rather than offered and broken, and any queued job naming it
+parks with `PROVIDER_NOT_CONFIGURED` instead of failing in a way that reads like
+an outage. Configuring one is the only thing that turns it on — there is no
+per-organisation switch.
+
+| Variable | Provider | Where it comes from |
+| --- | --- | --- |
+| `NESSIE_BOARD_LINEAR_CLIENT_ID` / `_SECRET` | Linear | An OAuth application in Linear's workspace settings. Redirect URI: `<NESSIE_API_PUBLIC_URL>/api/board-sources/connections/linear/callback` |
+| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | The signing secret of the app's webhook, if one is configured. Without it Linear syncs on its five-minute poll only. |
+| `NESSIE_BOARD_JIRA_CLIENT_ID` / `_SECRET` | Jira Cloud | An OAuth 2.0 (3LO) app in the Atlassian developer console, with `read:jira-work write:jira-work read:jira-user offline_access`. Same callback path with `/jira/`. |
+| `NESSIE_BOARD_GITHUB_CLIENT_ID` / `_SECRET` | GitHub | An OAuth app or GitHub App. Scopes `repo read:project read:org`. Same callback path with `/github/`. |
+| `NESSIE_BOARD_GITHUB_WEBHOOK_SECRET` | GitHub | The app's webhook secret, for `X-Hub-Signature-256` verification. |
+| `NESSIE_BOARD_TRELLO_API_KEY` / `_API_SECRET` | Trello | A Power-Up's key and secret. Trello has no authorization-code flow: the person's token arrives in a URL fragment and is submitted once to `/api/board-sources/connections/trello/complete`, then encrypted. |
+
+`NESSIE_API_PUBLIC_URL` must be set for webhooks: it is what the worker uses to
+mint the callback URL it registers with the vendor. Without it, sources still
+sync on their polling interval.
+
+Credentials are encrypted at rest with the deployment's `NESSIE_AUTH_SECRET`
+through the same sealed-secret seam the communications connector and the MCP
+secret store use, in `board_source_connection_credentials`. No route returns
+them, and only `loadBoardSourceConnectionContext` decrypts one.
+
+Jira's webhooks are unsigned and expire after 30 days, so a Jira source carries
+a per-source callback token whose **hash** is all that is stored; a delivery
+that cannot present the token is dropped. Every other provider signs its
+deliveries with the app secret above.

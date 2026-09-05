@@ -1,5 +1,5 @@
 {
-  "name": "@nessie/board-source-providers",
+  "name": "@nessie/board-source-trello",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,10 +17,7 @@
   },
   "dependencies": {
     "@nessie/board-sources": "workspace:*",
-    "@nessie/board-source-linear": "workspace:*",
-    "@nessie/board-source-jira": "workspace:*",
-    "@nessie/board-source-github": "workspace:*",
-    "@nessie/board-source-trello": "workspace:*"
+    "@nessie/runtime": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.24"

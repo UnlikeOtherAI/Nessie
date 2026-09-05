@@ -482,6 +482,32 @@ importers:
         specifier: ^3.2.6
         version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.1)(jiti@2.6.1)(jsdom@30.0.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  packages/board-source-github:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-source-jira:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   packages/board-source-linear:
     dependencies:
       '@nessie/board-sources':
@@ -497,12 +523,34 @@ importers:
 
   packages/board-source-providers:
     dependencies:
+      '@nessie/board-source-github':
+        specifier: workspace:*
+        version: link:../board-source-github
+      '@nessie/board-source-jira':
+        specifier: workspace:*
+        version: link:../board-source-jira
       '@nessie/board-source-linear':
         specifier: workspace:*
         version: link:../board-source-linear
+      '@nessie/board-source-trello':
+        specifier: workspace:*
+        version: link:../board-source-trello
       '@nessie/board-sources':
         specifier: workspace:*
         version: link:../board-sources
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-source-trello:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       '@types/node':
         specifier: ^20.19.24

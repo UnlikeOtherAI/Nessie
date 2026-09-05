@@ -18,6 +18,7 @@ import {
 
 import { createApiResponse, sendApiError } from '../../lib/api.js'
 import type { RouteDeps } from '../types.js'
+import { callbackPage } from './callback-page.js'
 import { consumeOAuthState, createOAuthState, createPkcePair } from './oauth-state.js'
 
 /**
@@ -204,6 +205,75 @@ export const registerBoardSourceConnectionRoutes = (
     }
   })
 
+  /**
+   * Trello hands its token to the *browser*, in a URL fragment the server never
+   * sees. The callback page reads it and posts it here exactly once; it is
+   * encrypted on arrival and never echoed back. This is the only plaintext
+   * credential path in the whole feature, and it exists because Trello has no
+   * authorization-code flow at all.
+   */
+  app.post('/api/board-sources/connections/trello/complete', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const body = (request.body ?? {}) as { state?: string; token?: string }
+    if (!body.state || !body.token) {
+      sendApiError(reply, 400, 'VALIDATION_ERROR', 'A state and a token are required')
+      return reply
+    }
+    const claimed = await consumeOAuthState(prisma, body.state)
+    // The state binds this submission to the authorize request that started it,
+    // and to the person who made it — a token posted with somebody else's state
+    // is refused.
+    if (!claimed || claimed.provider !== 'trello' || claimed.userId !== actorContext.actor.actorId) {
+      sendApiError(reply, 400, 'OAUTH_STATE_INVALID', 'That sign-in link has already been used.')
+      return reply
+    }
+
+    try {
+      const adapter = resolveBoardSourceAdapter('trello')
+      // Trello has no code to exchange, so `exchange` proves the token by
+      // asking Trello whose it is.
+      const result = await adapter.oauth.exchange({ code: body.token, redirectUri: '' })
+      const connection = await prisma.boardSourceConnection.upsert({
+        where: {
+          organizationId_ownerUserId_provider_externalAccountId_externalTenantId: {
+            organizationId: claimed.organizationId,
+            ownerUserId: claimed.userId,
+            provider: 'trello',
+            externalAccountId: result.externalAccountId,
+            externalTenantId: result.externalTenantId,
+          },
+        },
+        create: {
+          organizationId: claimed.organizationId,
+          ownerUserId: claimed.userId,
+          provider: 'trello',
+          externalAccountId: result.externalAccountId,
+          externalTenantId: result.externalTenantId,
+          grantedScopes: result.grantedScopes,
+          lastVerifiedAt: new Date(),
+        },
+        update: {
+          grantedScopes: result.grantedScopes,
+          status: 'active',
+          lastVerifiedAt: new Date(),
+        },
+      })
+      await storeBoardSourceCredential(
+        prisma,
+        connection.id,
+        result.credential,
+        config.auth.secret ?? '',
+      )
+      return createApiResponse({ connectionId: connection.id })
+    } catch {
+      sendApiError(reply, 502, 'PROVIDER_UNREACHABLE', 'Trello did not accept that token.')
+      return reply
+    }
+  })
+
   app.get('/api/board-sources/connections', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -317,39 +387,3 @@ export const registerBoardSourceConnectionRoutes = (
     return createApiResponse({ ok: true })
   })
 }
-
-/**
- * The constant callback page. It posts the outcome to whatever opened it and
- * otherwise navigates back into the app — there is no caller-supplied return
- * URL anywhere in this flow.
- */
-const callbackPage = (ok: boolean, detail: string): string => `<!doctype html>
-<html><head><meta charset="utf-8"><title>Connection</title></head>
-<body style="font:14px system-ui;padding:2rem">
-<p>${ok ? 'Connected. You can close this window.' : escapeHtml(detail)}</p>
-<script>
-  try {
-    window.opener && window.opener.postMessage(
-      { source: 'nessie-board-source', ok: ${ok ? 'true' : 'false'} },
-      window.location.origin,
-    )
-  } catch (error) { /* opener gone: the page below is the fallback */ }
-  if (!window.opener) window.location.replace('/settings/connections')
-</script>
-</body></html>`
-
-const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (character) => {
-    switch (character) {
-      case '&':
-        return '&amp;'
-      case '<':
-        return '&lt;'
-      case '>':
-        return '&gt;'
-      case '"':
-        return '&quot;'
-      default:
-        return '&#39;'
-    }
-  })

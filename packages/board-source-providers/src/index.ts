@@ -4,7 +4,10 @@ import {
   listRegisteredProviders,
   registerBoardSourceAdapter,
 } from '@nessie/board-sources'
+import { createGitHubAdapter } from '@nessie/board-source-github'
+import { createJiraAdapter } from '@nessie/board-source-jira'
 import { createLinearAdapter } from '@nessie/board-source-linear'
+import { createTrelloAdapter } from '@nessie/board-source-trello'
 
 /**
  * The one place board-source adapters enter the shared registry, called at API
@@ -33,6 +36,38 @@ export const registerBoardSourceAdaptersFromEnv = (
           ? { webhookSecret: env.NESSIE_BOARD_LINEAR_WEBHOOK_SECRET }
           : {}),
       }),
+    )
+  }
+
+  const jiraClientId = env.NESSIE_BOARD_JIRA_CLIENT_ID
+  const jiraClientSecret = env.NESSIE_BOARD_JIRA_CLIENT_SECRET
+  if (jiraClientId && jiraClientSecret) {
+    registerBoardSourceAdapter('jira', () =>
+      createJiraAdapter({ clientId: jiraClientId, clientSecret: jiraClientSecret }),
+    )
+  }
+
+  const githubClientId = env.NESSIE_BOARD_GITHUB_CLIENT_ID
+  const githubClientSecret = env.NESSIE_BOARD_GITHUB_CLIENT_SECRET
+  if (githubClientId && githubClientSecret) {
+    registerBoardSourceAdapter('github', () =>
+      createGitHubAdapter({
+        clientId: githubClientId,
+        clientSecret: githubClientSecret,
+        ...(env.NESSIE_BOARD_GITHUB_WEBHOOK_SECRET
+          ? { webhookSecret: env.NESSIE_BOARD_GITHUB_WEBHOOK_SECRET }
+          : {}),
+      }),
+    )
+  }
+
+  // Trello's key and secret are a Power-Up's, not an OAuth client's — the
+  // person's token arrives in a URL fragment rather than a code exchange.
+  const trelloApiKey = env.NESSIE_BOARD_TRELLO_API_KEY
+  const trelloApiSecret = env.NESSIE_BOARD_TRELLO_API_SECRET
+  if (trelloApiKey && trelloApiSecret) {
+    registerBoardSourceAdapter('trello', () =>
+      createTrelloAdapter({ apiKey: trelloApiKey, apiSecret: trelloApiSecret }),
     )
   }
 
