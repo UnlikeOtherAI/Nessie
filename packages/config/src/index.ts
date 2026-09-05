@@ -40,6 +40,14 @@ export const ModelConfigSchema = z.object({
   provider: ModelProviderSchema,
   apiKey: z.string().min(1).optional(),
   baseUrl: z.string().url().optional(),
+  // Ledger's provider proxy is `/v1/:serviceId/*`, and the segment is the
+  // service Ledger registers — not necessarily one of the three providers
+  // Nessie compiles an adapter for. Naming it here is what lets the
+  // deployment default sit on a Ledger service with no compiled adapter (for
+  // example Meta's `muse-spark-*`), which reaches Ledger through the generic
+  // OpenAI-compatible connector. Unset keeps today's behaviour: the segment
+  // defaults to `provider`. Mirrors `embedding.serviceId`.
+  serviceId: z.string().min(1).regex(/^[A-Za-z0-9._-]+$/).optional(),
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
@@ -264,6 +272,7 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_BASE_URL: 'model.baseUrl',
   NESSIE_MODEL_MAX_TOKENS: 'model.maxTokens',
   NESSIE_MODEL_NAME: 'model.modelName',
+  NESSIE_MODEL_SERVICE_ID: 'model.serviceId',
   NESSIE_MODEL_BACKENDS: 'model.backends',
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
   NESSIE_LEDGER_IMAGE_PURPOSE_API_ID: 'model.imagePurposeApiId',
