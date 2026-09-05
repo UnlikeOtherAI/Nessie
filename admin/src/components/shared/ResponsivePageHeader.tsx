@@ -165,7 +165,7 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
 // scale but drops the button box, so it reads as a labelled switch rather than
 // one more control competing with the page's real actions.
 const toggleClassName = (action: PageHeaderToggleAction): string => [
-  'admin-page-toggle inline-flex h-9 items-center gap-2 px-1 text-[13px]',
+  'admin-page-toggle inline-flex h-8 items-center gap-2 px-1 text-xs font-medium',
   'whitespace-nowrap text-[color:var(--tx2)]',
   action.disabled ? 'cursor-not-allowed opacity-50' : '',
 ].join(' ')
