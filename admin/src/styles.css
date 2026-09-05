@@ -63,6 +63,12 @@
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The sign-in showcase (packages/sign-in-surface) is a dark stage with a
+     white thread card in every theme; the theme does not restyle it. */
+  --signin-stage: #0a0a0a;
+  --signin-on-stage: #ffffff;
+  --signin-stage-card: #ffffff;
+  --signin-stage-card-fg: #0a0a0a;
   /* The aura: the one place chroma touches an ordinary surface. A blurred
      pastel wash behind the sign-in column and the showcase panel
      (packages/sign-in-surface); never a text, button or border colour. */
