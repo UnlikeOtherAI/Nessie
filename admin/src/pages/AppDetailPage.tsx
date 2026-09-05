@@ -14,7 +14,6 @@ import {
 import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
-import { usePhoneLayout } from '../lib/mobile-shell'
 import { useConsumedIntent } from '../navigation/intent'
 import { useTabParam } from '../navigation/useTabParam'
 
@@ -38,7 +37,6 @@ export const AppDetailPage = () => {
   const [connectOpen, setConnectOpen] = useState(false)
   const [removeOpen, setRemoveOpen] = useState(false)
   const removeApp = useRemoveAppConnections()
-  const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
   // Called before the loading/absent early returns, as every hook must be.
   // With no app yet the offered list is empty, so `?tab=` reads as Overview
@@ -60,12 +58,17 @@ export const AppDetailPage = () => {
     if (connectIntent.value === 'true') setConnectOpen(true)
   }, [connectIntent])
 
-  // Apps owns this detail's immediate parent. On a phone use the shell's
-  // ledger-aware action so the labelled Apps doorway, an edge swipe, and
-  // Android hardware Back all pop or replace consistently. Wider layouts
-  // retain the page's direct list action.
+  // Apps owns this detail's immediate parent, and every layout resolves Back
+  // through the shell's one ledger-aware action (docs/navigation/overview.md
+  // §4) — the labelled Apps doorway, an edge swipe and Android hardware Back
+  // included. Navigating to a bare `/apps` instead, as the wide layouts used
+  // to, threw away the state the catalogue keeps in its URL: someone who
+  // switched to All, opened a card and pressed Back landed on a `/apps` with
+  // no `?filter=`, which the page then answered with the remembered view. A
+  // pop returns to the exact entry the person left. Outside the shell (a page
+  // rendered in isolation) the declared parent is all there is.
   const backToList = () => {
-    if (phoneLayout && phoneNavigation) {
+    if (phoneNavigation) {
       phoneNavigation.performBack()
       return
     }
@@ -73,9 +76,9 @@ export const AppDetailPage = () => {
   }
 
   // One header for every state of this screen — loading, not found, and the
-  // app itself — so Back never disappears with the content. The wide-layout
-  // Back is the page's own, because Apps owns this detail's parent; on a
-  // phone the shared doorway resolves it through the one Back resolver.
+  // app itself — so Back never disappears with the content. On a wide layout
+  // this control is the page's own, because Apps owns this detail's parent;
+  // on a phone the shared doorway renders it. Both run the same resolver.
   const header = (
     <ScreenHeader
       backLabel="Back to Apps"

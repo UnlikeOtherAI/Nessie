@@ -73,10 +73,16 @@ export const AppsPage = () => {
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
   const [activeCategory, setActiveCategory] = useState<AppCategory | null>(null)
   const [customAppDialogOpen, setCustomAppDialogOpen] = useState(false)
-  // Read once per mount: the stored view is the *default* for a URL that
-  // carries no `?filter=`, and re-reading it after every write would make the
-  // hook's "selecting the default clears the param" rule chase its own tail.
-  const [storedFilter] = useState(readStoredAppFilter)
+  // The remembered view: the *default* for a URL that carries no `?filter=`.
+  // It is state rather than a mount-time constant because this screen outlives
+  // its mount — the stack retains it beneath the app detail and re-shows the
+  // same instance on the way back (docs/navigation/stacks-and-layout.md §4),
+  // so a value read once at mount would go on answering with the view that was
+  // open when the page was *loaded* long after someone chose another one. It
+  // is written, not re-read, on every selection: re-reading storage inside the
+  // render would make the hook's "selecting the default clears the param" rule
+  // chase its own tail.
+  const [storedFilter, setStoredFilter] = useState(readStoredAppFilter)
 
   // 150 ms is below the threshold where typing feels laggy and above the rate
   // at which re-requesting would churn.
@@ -173,6 +179,10 @@ export const AppsPage = () => {
 
   const setFilter = (next: AppFilter) => {
     writeStoredAppFilter(next)
+    setStoredFilter(next)
+    // `selectFilter` still compares against the fallback of *this* render, so
+    // choosing the remembered view clears the param and choosing the other one
+    // spells it out — the URL keeps saying which view these shelves are.
     selectFilter(next)
   }
 
