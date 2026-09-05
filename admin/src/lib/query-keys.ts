@@ -177,6 +177,7 @@ export const channelKeys = {
 export const commsKeys = {
   connections: ['comms', 'connections'] as const,
   connection: (id: string) => ['comms', 'connections', id] as const,
+  providers: ['comms', 'providers'] as const,
 }
 
 // Nested so the family rule holds and `dashboardKeys.all` reaches it — nothing

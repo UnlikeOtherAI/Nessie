@@ -11,6 +11,7 @@ import {
   isUsableEmailAddress,
   mailboxErrorMessage,
   nextMailboxOnboardingStep,
+  providerIcon,
   shouldDiscoverMailbox,
 } from '../src/components/features/mailbox-connections/mailbox-onboarding.js'
 
@@ -184,5 +185,37 @@ test('existing native and live connection results share one reachable anchor', (
   assert.equal(
     connectionAnchorId(live.existingConnection?.id ?? ''),
     'connection-live-connection',
+  )
+})
+
+test('a provider mark is a brand icon, and an unknown provider gets the envelope', () => {
+  assert.equal(providerIcon('google').iconName, 'google')
+  assert.equal(providerIcon('microsoft').iconName, 'microsoft')
+  // The address screen labels the row iCloud; discovery calls the same brand
+  // apple. Both must land on the same mark.
+  assert.equal(providerIcon('icloud').iconName, providerIcon('apple').iconName)
+  assert.equal(providerIcon('yahoo').iconName, 'yahoo')
+  // Every discovery icon without a brand mark, and anything unrecognised,
+  // falls back rather than rendering an initial next to real logos.
+  assert.equal(providerIcon('fastmail').iconName, 'envelope')
+  assert.equal(providerIcon('zoho').iconName, 'envelope')
+  assert.equal(providerIcon('generic').iconName, 'envelope')
+  assert.equal(providerIcon('nothing-like-this').iconName, 'envelope')
+})
+
+test('a deployment that never configured a provider does not invite a retry', () => {
+  assert.equal(
+    mailboxErrorMessage({ code: 'PROVIDER_NOT_CONFIGURED' }, 'Connection was not started.'),
+    'Sign-in with this provider has not been set up on this Nessie server. '
+      + 'An administrator has to register it first.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'NOT_IMPLEMENTED' }, 'Connection was not started.'),
+    'Connecting this provider is not available yet.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'PUBLIC_ORIGIN_NOT_CONFIGURED' }, 'Connection was not started.'),
+    'This server does not know its own public address, so sign-in cannot start. '
+      + 'An administrator has to set it.',
   )
 })
