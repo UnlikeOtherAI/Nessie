@@ -25,9 +25,9 @@ import {
   type AutomaticMembershipReconcileJobPayload,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '@nessie/db'
+import { createUoaSubjectAssertion } from '@nessie/runtime'
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
 import {
-  createUoaSubjectAssertion,
   grantAutomaticMembership,
   isAutomaticMembershipEnabledForOrganization,
   listOrganisationMembers,

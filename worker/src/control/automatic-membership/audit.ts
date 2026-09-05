@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
 
 export type AutomaticMembershipAuditAction =
@@ -33,7 +33,7 @@ export const writeAutomaticMembershipAudit = async (
     resourceId: string
     outcome: 'success' | 'denied' | 'error'
     reason?: string
-    metadata?: Record<string, unknown>
+    metadata?: Prisma.InputJsonValue
   },
 ): Promise<void> => {
   try {
