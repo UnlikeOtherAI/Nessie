@@ -15,13 +15,8 @@ summary and points here; **this file is the rule**.
   (`/settings/appearance`); choice persists in `localStorage["nessie.theme"]`
   for logged-out screens and on `User.preferences.theme` for signed-in users, so
   web, desktop, and mobile use the same account theme.
-- Adding a color theme = add a `[data-theme]` block (redeclare every token) +
-  register the id in `ThemeProvider`. A product theme may additionally own a
-  coherent geometry and typography treatment through selectors scoped to the
-  same `[data-theme]`; those selectors still live only in `styles.css` and
-  must restyle shared primitives rather than individual routes. Space White is
-  the reference implementation. See
-  [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+- Adding a theme = add a `[data-theme]` block (redeclare every token) + register
+  the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
   validation, feedback, loading/empty/error states, chips, key-value views and
   confirm flows were audited across every content page; the primitives mostly
@@ -49,11 +44,10 @@ summary and points here; **this file is the rule**.
   that are part of Projects, Knowledge, or Channels use `true`, so the shared
   viewport keeps its horizontal-scroll behaviour without leaking an expand
   control into operational screens.
-- **One selection strip, everywhere.** Every compact single-select strip in
+- **One segmented strip, everywhere.** Every compact single-select strip in
   the admin — detail tabs, page sections, filter segments, and inline form
-  choices — is `components/primitives/TabBar.tsx` (a single sliding indicator,
-  rendered as a pill or underline by the active theme, `role="tablist"` or
-  `role="radiogroup"`). `ChoiceGroup` delegates its inline
+  choices — is `components/primitives/TabBar.tsx` (a single sliding pill,
+  `role="tablist"` or `role="radiogroup"`). `ChoiceGroup` delegates its inline
   form variant to it; explanatory card choices remain cards. Page and filter
   state lives in a URL param written with `replace`, never a history entry;
   transient form values do not. The navigation rule against another fork lives
@@ -108,34 +102,14 @@ summary and points here; **this file is the rule**.
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never
   the page.
-- **One header hierarchy, and every line earns its place.** `ScreenHeader` owns
-  the title, optional eyebrow, optional subtitle and tabs. An eyebrow names a
-  stable scope or product area (`User`, `Team`, `Organization`, `Agents`); it
-  is not a second title. A subtitle exists only when it carries entity metadata,
-  a capability state, or the meaning of the active tab. Root catalogues and
-  lists do not repeat their title with generic explanatory copy. The shared
-  `.admin-page-subtitle` owns subtitle size, colour and line-height, so call
-  sites supply content and layout constraints only. Header icons are 16px in a
-  36px action, action labels are 13px, and compact actions are 36px squares.
-  Selected, pressed and open
-  controls expose their state structurally (`selected`, `aria-pressed`,
-  `aria-expanded`) and the theme styles those states; a route never paints a
-  private active treatment.
-- **One icon family for product controls.** Repeated interface actions use the
-  installed Font Awesome set through a shared primitive, never text glyphs or
-  one-off inline SVGs. In the sidebar, section add actions, disclosure chevrons,
-  row menus and starred state are rendered by `SidebarIcons.tsx`; their
-  28px hit areas and hover, pressed, open and focus-visible states live in
-  `styles.css`. Text symbols remain valid only when the symbol is the content
-  itself (for example a mathematical sign), not when it stands in for a button
-  icon.
 - **One sign-in surface.** The admin login (`/login`) and the public landing
   (`nessie.works`) are the same screen: `packages/sign-in-surface` owns the
   layout (`SignInSurface`), the showcase panel, the app-download tiles and
   the shared copy, and ships only `.signin-*` classes that read host tokens.
   The admin supplies its themes; the landing imports the package's
-  `tokens.css`, whose values mirror the Space White block here. A change to
-  the sign-in doorway is made in the package, never by restyling one host.
+  `tokens.css`, which owns the doorway palette for that themeless host. A
+  change to the sign-in doorway is made in the package, never by restyling
+  one host.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
   minted on the admin origin, so the landing hands off and the admin starts
   the provider flow at once.

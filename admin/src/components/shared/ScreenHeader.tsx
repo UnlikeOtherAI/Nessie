@@ -32,10 +32,9 @@ import {
 //     where the shell turns it into `document.title` and the native shell's
 //     `nessie:screen` message.
 //
-// `subtitle` and `tabs` are slots inside the one header block — the subtitle
-// carries entity metadata, state, or the meaning of the active tab, while
-// generic page explanations stay out. A Tab host's `TabBar` row is the other
-// slot; neither becomes a second header beneath it. The measured leading/actions partition stays in
+// `subtitle` and `tabs` are slots inside the one header block — the hero
+// headers' description lines and a Tab host's `TabBar` row — never a second
+// header beneath it. The measured leading/actions partition stays in
 // `ResponsivePageHeader`, which this composes rather than forks.
 
 export type ScreenHeaderProps = {
@@ -110,7 +109,7 @@ export const ScreenHeader = ({
       actions={actions}
       below={subtitle || tabs ? (
         <div className="flex min-w-0 flex-col gap-2">
-          {subtitle ? <div className="admin-page-subtitle min-w-0">{subtitle}</div> : null}
+          {subtitle ? <div className="min-w-0">{subtitle}</div> : null}
           {tabs ? <div className="min-w-0">{tabs}</div> : null}
         </div>
       ) : null}

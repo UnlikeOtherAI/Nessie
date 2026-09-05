@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { faChevronDown, faEllipsis, faPlus } from '@fortawesome/free-solid-svg-icons';
 import {
   channelHashClassName,
   projectSelectionClassName,
@@ -13,7 +12,6 @@ import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import { SidebarIconButton, SidebarStarIcon } from './SidebarIcons';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
@@ -149,12 +147,14 @@ export const SidebarProjectsSection = ({
   return (
     <SidebarMenuSection
       action={
-        <SidebarIconButton
+        <button
           aria-label="Create project"
-          icon={faPlus}
+          className="admin-sidebar-plus"
           onClick={onOpenCreateProject}
-          placement="section"
-        />
+          type="button"
+        >
+          +
+        </button>
       }
       id="sidebar-nav-projects"
       isCollapsed={projectsCollapsed}
@@ -211,21 +211,30 @@ export const SidebarProjectsSection = ({
                 <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 {isProjectCollapsed ? renderUnreadCount(projectUnreadCount) : null}
               </button>
-              <SidebarIconButton
+              <button
                 aria-controls={projectChannelsId}
                 aria-expanded={!isProjectCollapsed}
                 aria-label={`${isProjectCollapsed ? 'Expand' : 'Collapse'} ${project.name} channels`}
-                className="flex-shrink-0"
-                icon={faChevronDown}
-                iconClassName={[
-                  'h-3 w-3 transition-transform',
-                  isProjectCollapsed ? '-rotate-90' : '',
-                ].join(' ')}
+                className="admin-sidebar-more flex-shrink-0"
                 onClick={(event) => {
                   event.stopPropagation();
                   toggleProjectCollapsed(project.id);
                 }}
-              />
+                type="button"
+              >
+                <svg
+                  className={[
+                    'h-3 w-3 transition-transform',
+                    isProjectCollapsed ? '-rotate-90' : '',
+                  ].join(' ')}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
               <span
                 className={[
                   'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
@@ -238,14 +247,14 @@ export const SidebarProjectsSection = ({
                   onToggleStar('project', project.id);
                 }}
               >
-                <SidebarStarIcon starred={isStarredProject} />
+                {isStarredProject ? '★' : '☆'}
               </span>
               <span className="relative ml-1 flex-shrink-0">
-                <SidebarIconButton
+                <span
                   aria-label={`Project actions for ${project.name}`}
                   aria-expanded={isProjectMenuOpen}
                   aria-haspopup="menu"
-                  icon={faEllipsis}
+                  className="admin-sidebar-more"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isProjectMenuOpen) {
@@ -257,7 +266,11 @@ export const SidebarProjectsSection = ({
                     setMenuPosition({ left: rect.left, top: rect.bottom });
                     setSidebarMenu(() => ({ projectId: project.id, type: 'project' }));
                   }}
-                />
+                  role="button"
+                  tabIndex={0}
+                >
+                  ⋯
+                </span>
                 {isProjectMenuOpen && menuPosition
                   ? createPortal(
                       <>
@@ -342,7 +355,7 @@ export const SidebarProjectsSection = ({
                           onToggleStar('channel', channel.id);
                         }}
                       >
-                        <SidebarStarIcon starred={isStarredChannel} />
+                        {isStarredChannel ? '★' : '☆'}
                       </span>
                     </button>
                   );

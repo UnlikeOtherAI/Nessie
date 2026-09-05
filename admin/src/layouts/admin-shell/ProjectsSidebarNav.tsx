@@ -1,7 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { faEllipsis, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
@@ -11,7 +10,6 @@ import type { ProjectRecord } from '../../lib/api-client'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
-import { SidebarIconButton } from './SidebarIcons'
 import { sidebarAriaCurrent } from './SidebarRow'
 
 type ProjectsSidebarNavProps = {
@@ -106,12 +104,14 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
         <SidebarMenuSection
           action={
             isOwner ? (
-              <SidebarIconButton
+              <button
                 aria-label="New project"
-                icon={faPlus}
+                className="admin-sidebar-plus"
                 onClick={() => setCreateOpen(true)}
-                placement="section"
-              />
+                type="button"
+              >
+                +
+              </button>
             ) : null
           }
           id="projects-nav-projects"
@@ -149,15 +149,14 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                   </Link>
                   {isOwner ? (
-                    <SidebarIconButton
+                    <button
                       aria-label={`Project actions for ${project.name}`}
                       className={[
-                        'absolute right-3 top-1/2 -translate-y-1/2',
+                        'admin-sidebar-more absolute right-3 top-1/2 -translate-y-1/2',
                         'opacity-0 group-hover:opacity-100',
                       ].join(' ')}
                       aria-expanded={menuProjectId === project.id}
                       aria-haspopup="menu"
-                      icon={faEllipsis}
                       onClick={() =>
                         menuProjectId === project.id ? closeMenu() : openMenu(project.id)
                       }
@@ -168,7 +167,10 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
                           menuButtonRefs.current.delete(project.id)
                         }
                       }}
-                    />
+                      type="button"
+                    >
+                      ⋯
+                    </button>
                   ) : null}
 
                   {menuProjectId === project.id && menuPosition

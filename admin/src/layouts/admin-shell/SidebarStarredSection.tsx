@@ -15,7 +15,6 @@ import {
 } from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import { SidebarStarIcon } from './SidebarIcons';
 import type { StarredItem, VisibleStarredEntry } from './types';
 
 type SidebarStarredSectionProps = {
@@ -66,7 +65,17 @@ export const SidebarStarredSection = ({
       isCollapsed={starredCollapsed}
       onToggle={toggleStarredCollapsed}
       title="Starred"
-      titleIcon={<SidebarStarIcon starred />}
+      titleIcon={
+        <svg
+          className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--warning-text)]"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+        >
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      }
     >
       {entries.map((item) => {
         if (item.type === 'agent') {
@@ -91,7 +100,7 @@ export const SidebarStarredSection = ({
                   onToggleStar('agent', agent.id);
                 }}
               >
-                <SidebarStarIcon starred />
+                ★
               </span>
             </button>
           );
@@ -117,7 +126,7 @@ export const SidebarStarredSection = ({
                   onToggleStar('channel', channel.id);
                 }}
               >
-                <SidebarStarIcon starred />
+                ★
               </span>
             </button>
           );
@@ -159,7 +168,7 @@ export const SidebarStarredSection = ({
                       onToggleStar('project', project.id);
                     }}
                   >
-                    <SidebarStarIcon starred />
+                    ★
                   </span>
                 ) : null}
               </button>
@@ -187,7 +196,7 @@ export const SidebarStarredSection = ({
                       onToggleStar('channel', channel.id);
                     }}
                   >
-                    <SidebarStarIcon starred />
+                    ★
                   </span>
                 </button>
               ))}
@@ -239,7 +248,7 @@ export const SidebarStarredSection = ({
                 onToggleStar('user', person.id);
               }}
             >
-              <SidebarStarIcon starred />
+              ★
             </span>
           </button>
         );
