@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import type { BoardRecord, BoardStyle } from '../../../facades/boards/hooks'
-import { useCreateBoard } from '../../../facades/boards/hooks'
-import { ChoiceGroup } from '../../../components/shared/ChoiceGroup'
-import { Dialog } from '../../../components/shared/Dialog'
-import { FormError } from '../../../components/shared/FormActions'
-import { Input, Select } from '../../../components/shared/FormControls'
-import { FormField } from '../../../components/shared/FormField'
+import type { BoardRecord, BoardStyle } from '../../facades/boards/hooks'
+import { useCreateBoard } from '../../facades/boards/hooks'
+import { ChoiceGroup } from '../shared/ChoiceGroup'
+import { Dialog } from '../shared/Dialog'
+import { FormError } from '../shared/FormActions'
+import { Input, Select } from '../shared/FormControls'
+import { FormField } from '../shared/FormField'
 
 type BoardCreateDialogProps = {
   boards: BoardRecord[]
