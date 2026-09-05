@@ -22,6 +22,10 @@ const ORG = '00000000-0000-4000-8000-0000000000c1'
 const RULE_A = '00000000-0000-4000-8000-0000000000d1'
 const RULE_B = '00000000-0000-4000-8000-0000000000d2'
 
+/**
+ * `enqueueQueueJob` calls `$executeRaw(Prisma.sql\`…\`)` — one `Sql` object,
+ * not a tagged template — so the fake takes that shape.
+ */
 type Enqueued = { sql: string; values: unknown[] }
 
 const makeTransaction = (options: {
@@ -29,8 +33,8 @@ const makeTransaction = (options: {
   settingValue?: boolean | null
   enqueued: Enqueued[]
 }) => ({
-  $executeRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
-    options.enqueued.push({ sql: strings.join('?'), values })
+  $executeRaw: async (query: { strings: string[]; values: unknown[] }) => {
+    options.enqueued.push({ sql: query.strings.join('?'), values: query.values })
     return 1
   },
   automaticMembershipRule: {

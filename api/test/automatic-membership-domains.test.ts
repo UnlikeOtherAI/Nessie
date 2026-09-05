@@ -64,7 +64,9 @@ const makePrisma = (rows: Row[]) => ({
         throw Object.assign(new Error('unique'), { code: 'P2002' })
       }
       rows.push(next)
-      return next
+      // A copy: returning the stored object would alias it, so a later update
+      // would silently rewrite what the caller captured.
+      return { ...next }
     },
     findFirst: async ({ where }: { where: Record<string, never> }) => {
       const w = where as Record<string, unknown>
@@ -90,7 +92,7 @@ const makePrisma = (rows: Row[]) => ({
         throw Object.assign(new Error('unique'), { code: 'P2002' })
       }
       Object.assign(row, data)
-      return row
+      return { ...row }
     },
     updateMany: async ({ data, where }: { data: Record<string, unknown>; where: Record<string, unknown> }) => {
       const status = where.status as { not?: string } | undefined

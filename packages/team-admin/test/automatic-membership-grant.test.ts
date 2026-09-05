@@ -125,27 +125,25 @@ beforeEach(() => {
   addError = null
 })
 
-// Stub the two upstream calls at the module boundary the helper imports.
-const membersModule = await import('../src/uoa-org-members.js')
-const pagesModule = await import('../src/uoa-org-roster-pages.js')
-
-Object.defineProperty(membersModule, 'listOrganisationMemberWorkspaceAccess', {
-  configurable: true,
-  value: async () => {
-    if (accessError) throw accessError
-    return { items: workspaceAccess, permissions: { changeWorkspaceAccess: true } }
-  },
-})
-Object.defineProperty(pagesModule, 'addTeamMember', {
-  configurable: true,
-  value: async (team: unknown, input: Record<string, unknown>) => {
+// The two UOA calls, injected through the helper's own seam. ESM exports are
+// not redefinable, so patching the module would throw — and a real parameter is
+// the shape the rest of this package already uses for egress anyway.
+const upstream = {
+  addTeamMember: async (team: unknown, input: Record<string, unknown>) => {
     addCalls.push({ input, team })
     if (addError) throw addError
   },
-})
+  listWorkspaceAccess: async () => {
+    if (accessError) throw accessError
+    return { items: workspaceAccess, permissions: { changeWorkspaceAccess: true } }
+  },
+} as unknown as Parameters<typeof grantAutomaticMembership>[5]
+
+const grant = (uoaSub: string, source: 'signin' | 'reconcile' = 'signin') =>
+  grantAutomaticMembership(fakePrisma, RULE, uoaSub, source, {}, upstream)
 
 test('a first grant adds the person and records the outcome', async () => {
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'granted')
   assert.equal(addCalls.length, 1)
   assert.equal(grants[0]?.outcome, 'granted')
@@ -153,28 +151,28 @@ test('a first grant adds the person and records the outcome', async () => {
 })
 
 test('the upstream add NEVER carries a role', async () => {
-  await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  await grant('person-1')
   assert.deepEqual(addCalls[0]?.input, { uoaSub: 'person-1' })
   assert.equal('teamRole' in (addCalls[0]?.input ?? {}), false)
 })
 
 test('an existing member is skipped, so a team owner is never demoted', async () => {
   workspaceAccess = [{ hasAccess: true, id: 'team-external', name: 'Engineering' }]
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'owner-sub', 'reconcile')
+  const result = await grant('owner-sub', 'reconcile')
   assert.equal(result.outcome, 'skipped_existing')
   assert.equal(addCalls.length, 0, 'no upstream write at all for an existing member')
 })
 
 test('a team the rule points at that UOA does not offer is skipped, not failed', async () => {
   workspaceAccess = [{ hasAccess: false, id: 'some-other-team', name: 'Other' }]
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'skipped_no_such_team')
   assert.equal(addCalls.length, 0)
 })
 
 test('replaying a completed grant makes no second upstream call', async () => {
-  await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
-  const replay = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'reconcile')
+  await grant('person-1')
+  const replay = await grant('person-1', 'reconcile')
   assert.equal(replay.outcome, 'granted')
   assert.equal(addCalls.length, 1, 'the ledger, not the queue, is the idempotency mechanism')
 })
@@ -189,7 +187,7 @@ test('a peer holding a fresh lease is skipped rather than double-granting', asyn
     source: 'reconcile',
     uoaSub: 'person-1',
   })
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'in_flight')
   assert.equal(addCalls.length, 0)
 })
@@ -204,46 +202,46 @@ test('an expired lease is retryable', async () => {
     source: 'signin',
     uoaSub: 'person-1',
   })
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'granted')
   assert.equal(addCalls.length, 1)
 })
 
 test('a transport failure releases the lease so the next sign-in retries', async () => {
   addError = new UoaRosterUnavailableError('upstream down')
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'failed')
   assert.equal(grants[0]?.outcome, 'attempted')
   assert.equal(grants[0]?.leaseExpiresAt, null, 'released, not burned')
 
   addError = null
-  const retry = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const retry = await grant('person-1')
   assert.equal(retry.outcome, 'granted')
 })
 
 test('UOA refusing the authorizer moves the rule to needs_reauthorization, once', async () => {
   accessError = new UoaRosterRejectedError('[uoa] no role', 403, 'INSUFFICIENT_ORG_ROLE')
-  const first = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const first = await grant('person-1')
   assert.equal(first.outcome, 'unauthorized')
   assert.equal(rules[0]?.healthState, 'needs_reauthorization')
   assert.equal(rules[0]?.healthRevision, 1)
 
   // A long reconciliation must not re-alert on every subsequent person.
-  const second = await grantAutomaticMembership(fakePrisma, RULE, 'person-2', 'reconcile')
+  const second = await grant('person-2', 'reconcile')
   assert.equal(second.outcome, 'unauthorized')
   assert.equal(rules[0]?.healthRevision, 1, 'exactly once per transition')
 })
 
 test('a 401 is treated as authorization loss, not a transport fault', async () => {
   accessError = new UoaRosterRejectedError('[uoa] expired', 401)
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'unauthorized')
   assert.equal(rules[0]?.healthState, 'needs_reauthorization')
 })
 
 test('a 404 from UOA is a plain failure, not an authorization loss', async () => {
   accessError = new UoaRosterRejectedError('[uoa] gone', 404)
-  const result = await grantAutomaticMembership(fakePrisma, RULE, 'person-1', 'signin')
+  const result = await grant('person-1')
   assert.equal(result.outcome, 'failed')
   assert.equal(rules[0]?.healthState, 'ok')
 })

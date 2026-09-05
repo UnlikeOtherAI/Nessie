@@ -91,8 +91,11 @@ test('the copy never suggests a domain authenticates anybody', () => {
     assert.doesNotMatch(rulesPanel, pattern)
     assert.doesNotMatch(domainRow, pattern)
   }
+  // The lede is a concatenated literal, so assert its halves rather than
+  // trying to match across the join.
   assert.match(rulesPanel, /Sign-in always verifies who someone is/)
-  assert.match(rulesPanel, /a domain never\s*\+?\s*'?signs anyone in/s)
+  assert.match(rulesPanel, /a domain never/)
+  assert.match(rulesPanel, /signs anyone in/)
 })
 
 test('the tab label is the agreed wording', () => {

@@ -37,6 +37,21 @@ import {
 /** How long one in-flight upstream call may hold a ledger row. */
 const GRANT_LEASE_MS = 2 * 60 * 1000
 
+/**
+ * The two UOA calls a grant makes, injectable so tests can drive every branch
+ * without a network. Same seam convention as `rosterDeps` and the DNS resolver;
+ * production passes nothing.
+ */
+export type AutomaticGrantUpstream = {
+  listWorkspaceAccess: typeof listOrganisationMemberWorkspaceAccess
+  addTeamMember: typeof addTeamMember
+}
+
+const defaultUpstream: AutomaticGrantUpstream = {
+  addTeamMember,
+  listWorkspaceAccess: listOrganisationMemberWorkspaceAccess,
+}
+
 export type AutomaticGrantOutcome =
   | 'granted'
   | 'skipped_existing'
@@ -210,6 +225,7 @@ export const grantAutomaticMembership = async (
   uoaSub: string,
   source: AutomaticGrantSource,
   deps: UoaRosterDeps = {},
+  upstream: AutomaticGrantUpstream = defaultUpstream,
 ): Promise<AutomaticGrantResult> => {
   const claim = await claimGrant(prisma, rule.id, uoaSub, source)
   if (claim !== 'claimed') {
@@ -218,7 +234,7 @@ export const grantAutomaticMembership = async (
 
   try {
     const assertionDeps = assertionDepsFor(rule, deps)
-    const access = await listOrganisationMemberWorkspaceAccess(
+    const access = await upstream.listWorkspaceAccess(
       rule.externalOrgId,
       uoaSub,
       assertionDeps,
@@ -238,7 +254,7 @@ export const grantAutomaticMembership = async (
 
     // No `teamRole`: see the header. An ordinary member is what UOA's own
     // default produces, and naming a role here is what would demote someone.
-    await addTeamMember(
+    await upstream.addTeamMember(
       { externalOrgId: rule.externalOrgId, externalTeamId: rule.externalTeamId },
       { uoaSub },
       assertionDeps,
