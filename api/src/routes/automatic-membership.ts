@@ -16,15 +16,12 @@
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { z } from 'zod'
 import {
   AUTOMATIC_MEMBERSHIP_SETTING_KEY,
   CreateAutomaticMembershipDomainSchema,
-  DOMAIN_REJECTION_MESSAGES,
   SetAutomaticMembershipDomainStatusSchema,
   SetAutomaticMembershipEnabledSchema,
   SetAutomaticMembershipTeamsSchema,
-  SetTeamAutomaticMembershipSchema,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import {
@@ -38,12 +35,10 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
   requireOrganizationAdministrator,
-  requireTeamAdministrator,
   resolveExternalOrgId,
   resolveRuleAuthorization,
 } from '../services/automatic-membership/access.js'
 import {
-  AutomaticMembershipDomainError,
   claimDomain,
   revokeDomain,
   rotateChallenge,
@@ -56,34 +51,22 @@ import {
 import {
   reauthorizeRule,
   setDomainTeams,
-  setTeamRule,
-  type RuleChange,
 } from '../services/automatic-membership/rules.js'
 import {
   cancelReconciliation,
   startReconciliation,
   supersedeReconciliations,
 } from '../services/automatic-membership/reconciliation.js'
+import { registerTeamAutomaticMembershipRoutes } from './automatic-membership-team.js'
+import {
+  actorUserId,
+  auditRuleChange,
+  guardFeature,
+  IdParamSchema,
+  sendDomainError,
+} from './automatic-membership-support.js'
 import type { RouteDeps } from './types.js'
 import type { UoaRosterDeps } from '../services/uoa-org-roster.js'
-
-const IdParamSchema = z.object({ id: z.string().uuid() })
-
-const sendDomainError = (reply: FastifyReply, error: unknown): boolean => {
-  if (!(error instanceof AutomaticMembershipDomainError)) return false
-  sendApiError(
-    reply,
-    error.statusCode,
-    error.code,
-    error.rejection ? DOMAIN_REJECTION_MESSAGES[error.rejection] : error.message,
-    undefined,
-    error.rejection ? { reason: error.rejection } : undefined,
-  )
-  return true
-}
-
-const actorUserId = (actorContext: AuthorizedActionContext): string | null =>
-  actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null
 
 export const registerAutomaticMembershipRoutes = (
   app: FastifyInstance,
@@ -96,34 +79,14 @@ export const registerAutomaticMembershipRoutes = (
   rosterDeps: UoaRosterDeps = {},
   dns: DomainVerificationDns = defaultDomainVerificationDns,
 ): void => {
-  const { prisma, requireActorContext } = deps
-
-  /**
-   * The instance rollout gate, and the one that is fail-closed: with the flag
-   * off every route 404s and the admin never renders the tab. The
-   * per-organisation emergency stop is a separate, softer switch (§11).
-   */
-  const featureEnabled = (): boolean => deps.config.automaticMembership.enabled === true
-
-  const guard = (request: FastifyRequest, reply: FastifyReply): AuthorizedActionContext | null => {
-    if (!featureEnabled()) {
-      sendApiError(
-        reply,
-        404,
-        'AUTOMATIC_MEMBERSHIP_DISABLED',
-        'Automatic team access is not enabled on this instance.',
-      )
-      return null
-    }
-    return requireActorContext(request, reply)
-  }
+  const { prisma } = deps
 
   /** Organisation-admin preamble shared by every organisation route. */
   const orgContext = async (
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<{ actorContext: AuthorizedActionContext; externalOrgId: string } | null> => {
-    const actorContext = guard(request, reply)
+    const actorContext = guardFeature(deps, request, reply)
     if (!actorContext) return null
     const externalOrgId = await resolveExternalOrgId(deps, actorContext, reply)
     if (!externalOrgId) return null
@@ -135,25 +98,6 @@ export const registerAutomaticMembershipRoutes = (
     )
     if (!allowed) return null
     return { actorContext, externalOrgId }
-  }
-
-  const auditRuleChange = async (
-    actorContext: AuthorizedActionContext,
-    domainId: string,
-    change: RuleChange,
-  ): Promise<void> => {
-    if (change.added.length === 0 && change.removed.length === 0) return
-    await emitAuditEvent(prisma, {
-      action: 'organization.automatic_membership.rule_changed',
-      actorContext,
-      metadata: {
-        addedTeamIds: change.added.map((rule) => rule.teamId),
-        removedTeamIds: change.removed.map((rule) => rule.teamId),
-      },
-      outcome: 'success',
-      resourceId: domainId,
-      resourceType: 'automatic_membership_domain',
-    })
   }
 
   app.get('/api/organization/automatic-membership', async (request, reply) => {
@@ -375,7 +319,7 @@ export const registerAutomaticMembershipRoutes = (
       if (change.added.length > 0 || change.removed.length > 0) {
         await supersedeReconciliations(prisma, params.id)
       }
-      await auditRuleChange(context.actorContext, params.id, change)
+      await auditRuleChange(deps, context.actorContext, params.id, change)
       return createApiResponse({ added: change.added.length, removed: change.removed.length })
     } catch (error) {
       if (sendDomainError(reply, error)) return reply
@@ -471,73 +415,5 @@ export const registerAutomaticMembershipRoutes = (
     },
   )
 
-  /**
-   * The team surface. Owner/admin of THIS team only, decided by UOA, and it
-   * never returns the challenge — a domain claim is an organisation-level act,
-   * so its proof of control is not a team admin's to read.
-   */
-  const teamContext = async (
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ): Promise<{ actorContext: AuthorizedActionContext; teamId: string } | null> => {
-    const actorContext = guard(request, reply)
-    if (!actorContext) return null
-    const teamId = actorContext.actionContext.teamId ?? actorContext.tenant.teamId
-    if (!teamId) {
-      sendApiError(reply, 404, 'TEAM_NOT_LINKED', 'No team is selected for this session.')
-      return null
-    }
-    const team = await requireTeamAdministrator(deps, actorContext, teamId, reply, rosterDeps)
-    if (!team) return null
-    return { actorContext, teamId }
-  }
-
-  app.get('/api/team/automatic-membership', async (request, reply) => {
-    const context = await teamContext(request, reply)
-    if (!context) return reply
-    const organizationId = context.actorContext.tenant.organizationId
-    return createApiResponse(
-      await buildAutomaticMembershipResponse(prisma, {
-        includeChallenge: false,
-        manageableTeamIds: new Set([context.teamId]),
-        organizationId,
-        permissions: {
-          manageDomains: false,
-          manageReconciliation: false,
-          manageRules: true,
-        },
-        provisioningEnabled: await isAutomaticMembershipEnabledForOrganization(
-          prisma,
-          organizationId,
-        ),
-        scope: { kind: 'team', teamId: context.teamId },
-      }),
-    )
-  })
-
-  app.put('/api/team/automatic-membership/domains/:id', async (request, reply) => {
-    const context = await teamContext(request, reply)
-    if (!context) return reply
-    const params = parseInput(IdParamSchema, request.params, reply, 'params')
-    if (!params) return reply
-    const body = parseInput(SetTeamAutomaticMembershipSchema, request.body, reply)
-    if (!body) return reply
-    const authorization = resolveRuleAuthorization(context.actorContext, reply)
-    if (!authorization) return reply
-    try {
-      const change = await setTeamRule(prisma, {
-        authorization,
-        createdByUserId: actorUserId(context.actorContext),
-        domainId: params.id,
-        enabled: body.enabled,
-        organizationId: context.actorContext.tenant.organizationId,
-        teamId: context.teamId,
-      })
-      await auditRuleChange(context.actorContext, params.id, change)
-      return createApiResponse({ enabled: body.enabled })
-    } catch (error) {
-      if (sendDomainError(reply, error)) return reply
-      throw error
-    }
-  })
+  registerTeamAutomaticMembershipRoutes(app, deps, rosterDeps)
 }
