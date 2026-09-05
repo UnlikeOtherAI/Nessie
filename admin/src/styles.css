@@ -2874,27 +2874,79 @@ button.reaction-pill-active:focus-visible {
   color: var(--danger);
 }
 
-/* Header actions are bare glyphs in the row, so the tile they fill on hover is
-   the only thing that says they are controls at all. Shape it here rather than
-   in the hover rule so the fill never changes the box, only its colour. */
+/* Page-header actions (`ResponsivePageHeader`). The header is where a screen
+   says what a person can do here, so its controls carry a box and the role the
+   call site declares decides the fill. Colour lives here rather than in the
+   utility string the component builds, because a stylesheet rule can only
+   reach these buttons if they carry a name — spelt as utilities, the hover
+   below had nothing to attach to and the record action was the only control in
+   the row that answered a pointer at all. Geometry stays at the call site:
+   height, width, gap and padding are unclaimed here on purpose, since these
+   rules are unlayered and would beat the `px-2.5` / `px-0` utilities that size
+   a labelled action against an icon-only one.
+
+     - primary — the one action the screen exists for. Creating the item the
+       screen lists is always this, as is committing an edit in progress
+       (Save, Publish, Done). One per header: two filled buttons name no
+       decision.
+     - selected, and a menu that is open — a control that is currently on.
+       Tinted, never filled, so it does not outrank the primary.
+     - secondary — everything else. */
 .admin-page-action {
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
 }
 
-/* The neutral header treatment the rule above refers to, and the reason it is
-   worth naming: the record action tinted its mark red under the pointer while
-   every other action in the row answered a hover with nothing. This is the
-   icon-tile hover the rail and the message actions already use — a soft fill
-   under the glyph, brightened to full text colour. Primary actions are left
-   out because they carry their own fill, and the selectors stay at the same
-   specificity as the theme overrides further down so a theme that repaints
-   these buttons still wins. */
-.admin-page-action-secondary:hover:not(:disabled),
-.admin-page-action-selected:hover:not(:disabled),
-.admin-page-action-secondary:focus-visible:not(:disabled),
-.admin-page-action-selected:focus-visible:not(:disabled) {
+.admin-page-action-secondary {
+  border-color: var(--sep);
   background: var(--overlay-weak);
+  color: var(--tx2);
+}
+
+.admin-page-action-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-page-action-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* A menu that is down, marked on its trigger rather than by moving it to
+   another role: `open` rides on top of whichever fill the action already
+   wears, so a primary that opens a menu stays filled. */
+.admin-page-action-open {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Hover and keyboard focus answer alike. Every one of these is guarded with
+   `:not(:disabled)`: these rules are unlayered, so a bare `:hover` would beat
+   the `opacity-50` utility that marks a disabled action and repaint the one
+   cue saying it cannot be pressed, exactly as the pointer arrives. A step
+   past the resting fill rather than onto it — `--overlay-weak` is what a
+   secondary already sits on, which is why the hover it was given first
+   changed nothing. */
+.admin-page-action-secondary:hover:not(:disabled),
+.admin-page-action-secondary:focus-visible:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--overlay);
   color: var(--tx);
+}
+
+.admin-page-action-selected:hover:not(:disabled),
+.admin-page-action-selected:focus-visible:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-page-action-primary:hover:not(:disabled),
+.admin-page-action-primary:focus-visible:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--on-accent);
 }
 
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the

@@ -44,6 +44,36 @@ summary and points here; **this file is the rule**.
   that are part of Projects, Knowledge, or Channels use `true`, so the shared
   viewport keeps its horizontal-scroll behaviour without leaking an expand
   control into operational screens.
+- **A page-header action is styled by the role it declares.** The header is
+  where a screen says what a person can do here, so its controls carry a box:
+  `ResponsivePageHeader` puts `.admin-page-action` plus one role class on every
+  action, `styles.css` owns the fill, and the utilities that stay at the call
+  site own the box (height, width, gap, padding — deliberately unclaimed by the
+  unlayered rules). Colour spelt as utilities instead is how the row's hover
+  rule ended up with nothing to attach to, leaving a stylesheet rule live in
+  the file and dead on the screen. The roles:
+  - `primary` (filled with `--accent`) — **the one action the screen exists
+    for. Creating the item the screen lists is always primary**, as is
+    committing an edit in progress (Save, Publish, Done, Send invitation).
+  - `selected`, and a menu that is open (tinted with `--accent-soft`) — a
+    control that is currently on. Tinted, never filled, so it does not
+    outrank the primary.
+  - everything else (bordered, `--overlay-weak`) — secondary.
+
+  **One primary per header.** Two filled buttons name no decision, so where a
+  creation and a commit meet, the commit wins and the creation drops to
+  secondary — the Knowledge reader fills Publish while a page is a draft and
+  New page only once it is not; Knowledge's space header fills New page and
+  leaves New folder and Upload file beside it; a dashboard being arranged
+  fills Done, not Add widget. Re-reading a screen (Refresh) and closing a
+  panel are never primary. A label never draws its own mark — "+ Add widget"
+  is `icon: faPlus` and the label `Add widget`. Every hover and focus rule is
+  guarded with `:not(:disabled)`: the rules are unlayered, so a bare `:hover`
+  beats the `opacity-50` utility marking a disabled action and repaints the
+  one cue that it cannot be pressed, exactly as the pointer arrives.
+  `admin/test/page-header-actions.test.ts` holds all of this, and
+  `pnpm --filter @nessie/admin test:e2e:page-header` screenshots every theme's
+  header into `e2e/screenshots/page-header/`.
 - **One segmented strip, everywhere.** Every compact single-select strip in
   the admin — detail tabs, page sections, filter segments, and inline form
   choices — is `components/primitives/TabBar.tsx` (a single sliding pill,

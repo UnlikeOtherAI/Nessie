@@ -145,18 +145,25 @@ const menuPanelClassName = [
 const sameIds = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
 
+// The action's role, not its colours. Which fill a role wears — and what a
+// theme does to it — belongs to `.admin-page-action*` in `styles.css`, where
+// the hover and focus treatment already lives; utilities that stayed here own
+// the box (height, width, gap, padding) and nothing about how it reads. Spelt
+// as colours at this call site, a hover rule in the stylesheet had nothing to
+// attach to, which is how the header's hover became a no-op the moment the
+// resting state gained a fill of its own.
 const actionClassName = (action: PageHeaderAction, open: boolean): string => {
-  const colour = action.primary
-    ? 'border border-transparent bg-[color:var(--accent)] text-[color:var(--on-accent)] hover:opacity-90'
+  const role = action.primary
+    ? 'admin-page-action-primary'
     : action.selected
-      ? 'border border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
-      : 'border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]'
+      ? 'admin-page-action-selected'
+      : 'admin-page-action-secondary'
   return [
-    'inline-flex h-8 items-center justify-center rounded-md text-xs font-semibold transition-colors',
+    'admin-page-action inline-flex h-8 items-center justify-center text-xs transition-colors',
     action.compact ? 'w-8 px-0' : 'gap-1.5 px-2.5',
-    colour,
+    role,
     action.tone === 'danger' ? 'page-header-action-danger' : '',
-    open ? 'ring-2 ring-[color:var(--accent-soft)]' : '',
+    open ? 'admin-page-action-open' : '',
     action.disabled ? 'cursor-not-allowed opacity-50' : '',
   ].join(' ')
 }
