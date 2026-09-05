@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
+import Svg, { Path } from 'react-native-svg'
 
 import { withOpacity } from '../lib/ipad-native-chrome'
 import {
@@ -31,6 +32,7 @@ import {
 export type NativePhoneNavBarProps = {
   accentColor: string
   barState: NativeScreenBarState
+  dark: boolean
   headerSurface: string
   headerText: string
   landscape: boolean
@@ -39,6 +41,29 @@ export type NativePhoneNavBarProps = {
   onTransitionEnd: () => void
   safeTop: number
 }
+
+/**
+ * The Back chevron, drawn rather than taken from an icon font.
+ *
+ * An icon font's glyph carries its own bearing, so centring it in the circle
+ * means compensating for a number nobody wrote down — and the compensation is
+ * wrong the moment the glyph or its size changes. This is the same path the
+ * web's `PhoneBackButton` draws, shifted so it is symmetric about the
+ * viewBox's centre line: x runs 8.5 to 15.5 about 12, y runs 5 to 19 about 12.
+ * Centred by construction, at any size.
+ */
+const BackChevron = ({ color, size }: { color: string, size: number }): React.JSX.Element => (
+  <Svg height={size} viewBox="0 0 24 24" width={size}>
+    <Path
+      d="m15.5 19-7-7 7-7"
+      fill="none"
+      stroke={color}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2.1}
+    />
+  </Svg>
+)
 
 // The stack's own curve and duration (admin/src/navigation/motion.ts). The bar
 // travels on the layers' curve or it is visibly a separate thing bolted above
@@ -69,6 +94,7 @@ const TITLE_TRAVEL = 24
  */
 const NavBarLanes = ({
   accentColor,
+  dark,
   headerText,
   onAction,
   onBack,
@@ -76,6 +102,7 @@ const NavBarLanes = ({
   screenBar,
 }: {
   accentColor: string
+  dark: boolean
   headerText: string
   onAction: (id: string, itemId?: string) => void
   onBack: () => void
@@ -133,28 +160,35 @@ const NavBarLanes = ({
     <View style={[styles.content, { paddingTop: safeTop }]}>
         <View style={styles.leading}>
           {back ? (
+            /*
+              A circle holding the chevron alone, which is what the current
+              iOS bar is — not the older chevron-plus-label. The web's own
+              `PhoneBackButton` already draws this treatment for the iOS phone
+              shell; this is the native side agreeing with it.
+
+              The published label reads "Back to channel info", "Back from
+              Design review" — written for assistive technology, and a
+              sentence rather than a caption — so it stays the accessibility
+              label and nothing draws it.
+
+              Lighter than the surface in both themes, per the platform: a
+              translucent white over dark, and near-solid white over light.
+            */
             <Pressable
               accessibilityLabel={back.label}
               accessibilityRole="button"
-              hitSlop={8}
+              hitSlop={10}
               onPress={onBack}
-              style={({ pressed }) => [styles.backButton, pressed ? { opacity: 0.55 } : null]}
+              style={({ pressed }) => [
+                styles.backButton,
+                {
+                  backgroundColor: dark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.9)',
+                  borderColor: dark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.06)',
+                },
+                pressed ? { opacity: 0.55 } : null,
+              ]}
             >
-              <MaterialIcons color={headerText} name="arrow-back-ios-new" size={20} />
-              {/*
-                The published label is written for assistive technology — the
-                resolver's answers read "Back to channel info", "Back from
-                Design review" — so it is the accessibility label, not the
-                visible text. A UIKit bar shows the previous screen's name
-                there; until the transition descriptors can supply it, plain
-                "Back" is honest and never reads as a sentence.
-              */}
-              <Text
-                numberOfLines={1}
-                style={[styles.backLabel, { color: headerText }]}
-              >
-                Back
-              </Text>
+              <BackChevron color={headerText} size={20} />
             </Pressable>
           ) : null}
         </View>
@@ -196,11 +230,20 @@ const NavBarLanes = ({
             <Pressable
               accessibilityLabel="More actions"
               accessibilityRole="button"
-              hitSlop={8}
+              hitSlop={10}
               onPress={openOverflow}
-              style={({ pressed }) => [styles.overflowButton, pressed ? { opacity: 0.55 } : null]}
+              style={({ pressed }) => [
+                // The same glass circle as the Back: a bare glyph beside one
+                // would read as a half-migrated bar.
+                styles.circleButton,
+                {
+                  backgroundColor: dark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.9)',
+                  borderColor: dark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.06)',
+                },
+                pressed ? { opacity: 0.55 } : null,
+              ]}
             >
-              <MaterialIcons color={headerText} name="more-horiz" size={22} />
+              <MaterialIcons color={headerText} name="more-horiz" size={20} />
             </Pressable>
           ) : null}
         </View>
@@ -221,6 +264,7 @@ const NavBarLanes = ({
 export const NativePhoneNavBar = ({
   accentColor,
   barState,
+  dark,
   headerSurface,
   headerText,
   landscape,
@@ -301,6 +345,7 @@ export const NativePhoneNavBar = ({
             <Animated.View pointerEvents="none" style={[styles.lane, outgoingStyle]}>
               <NavBarLanes
                 accentColor={accentColor}
+                dark={dark}
                 headerText={headerText}
                 onAction={onAction}
                 onBack={onBack}
@@ -311,6 +356,7 @@ export const NativePhoneNavBar = ({
             <Animated.View style={[styles.lane, incomingStyle]}>
               <NavBarLanes
                 accentColor={accentColor}
+                dark={dark}
                 headerText={headerText}
                 onAction={onAction}
                 onBack={onBack}
@@ -323,6 +369,7 @@ export const NativePhoneNavBar = ({
           <View style={styles.lane}>
             <NavBarLanes
               accentColor={accentColor}
+              dark={dark}
               headerText={headerText}
               onAction={onAction}
               onBack={onBack}
@@ -339,12 +386,20 @@ export const NativePhoneNavBar = ({
 const styles = StyleSheet.create({
   backButton: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: 2,
-    marginLeft: -4,
-    minWidth: 0,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
   },
-  backLabel: { flexShrink: 1, fontSize: 17, fontWeight: '500' },
+  circleButton: {
+    alignItems: 'center',
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
   bar: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 30 },
   content: {
     alignItems: 'center',
@@ -357,7 +412,6 @@ const styles = StyleSheet.create({
   // The two side lanes share a width so the title sits on the bar's centre
   // line rather than the centre of whatever is left over.
   leading: { alignItems: 'flex-start', flexBasis: 0, flexGrow: 1, minWidth: 0 },
-  overflowButton: { alignItems: 'center', height: 32, justifyContent: 'center', width: 32 },
   primaryAction: { borderRadius: 14, flexShrink: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 4 },
   primaryLabel: { fontSize: 17, fontWeight: '600' },
   title: { fontSize: 17, fontWeight: '700' },

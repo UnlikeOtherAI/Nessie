@@ -628,6 +628,7 @@ const Shell = (): React.JSX.Element => {
         <NativePhoneNavBar
           accentColor={accent}
           barState={screenBarState}
+          dark={isDark(phoneHeaderSurface)}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
           landscape={largePhoneLandscape}
