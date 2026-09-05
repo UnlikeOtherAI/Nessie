@@ -83,6 +83,7 @@ import {
   NativePhoneConversationMenuChrome,
 } from './src/components/NativePhoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
+import { NativePhoneNavBar } from './src/components/NativePhoneNavBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
 import {
   createNativeExternalAuthDeliveryQueue,
@@ -102,7 +103,8 @@ import {
   isAuthGateRoute,
   isFullScreenTaskRoute,
   type LastKnownScreen,
-  shouldShowNativePhoneHeader,
+  shouldShowNativePhoneNavBar,
+  shouldShowNativePhoneRootLanes,
 } from './src/lib/native-shell-layout'
 import { tabIndexForSection } from './src/lib/tabs'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
@@ -466,13 +468,20 @@ const Shell = (): React.JSX.Element => {
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
   const isTabRoot = lastKnownScreen.type === 'root'
-  const showNativePhoneHeader = shouldShowNativePhoneHeader({
+  // The band and its contents are two decisions, not one. On iOS the band is
+  // always drawn past the auth gate — that constant is what keeps the WebView
+  // frame still while the stack animates — while the team and account lanes
+  // still belong to a tab root alone.
+  const nativePhoneBarInput = {
     isIpad: IS_IPAD,
     isTabRoot,
     largePhoneLandscape,
+    platform: Platform.OS,
     showBar,
-  })
-  const showNativePhoneCreationActions = showNativePhoneHeader
+  }
+  const showNativePhoneNavBar = shouldShowNativePhoneNavBar(nativePhoneBarInput)
+  const showNativePhoneRootLanes = shouldShowNativePhoneRootLanes(nativePhoneBarInput)
+  const showNativePhoneCreationActions = showNativePhoneRootLanes
     && isTabRoot
     && lastKnownScreen.section === 'channels'
 
@@ -494,7 +503,7 @@ const Shell = (): React.JSX.Element => {
     platform: Platform.OS,
     safeArea: insets,
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(largePhoneLandscape),
-    showNativePhoneHeader,
+    showNativePhoneNavBar,
     showTabBar: showBar,
   })
   const webviewLayerStyle = { ...styles.webviewLayer, top: webviewInsets.top, bottom: webviewInsets.bottom }
@@ -505,8 +514,8 @@ const Shell = (): React.JSX.Element => {
     surfaceColor: ipadChromeSurface,
   })
   const navigationState = createNativeTabNavigationState(index, attentionBadges)
-  const hasNativeStatusBackdrop = showNativePhoneHeader || (IS_IPAD && showBar)
-  const nativeStatusBackdropIsDark = showNativePhoneHeader
+  const hasNativeStatusBackdrop = showNativePhoneNavBar || (IS_IPAD && showBar)
+  const nativeStatusBackdropIsDark = showNativePhoneNavBar
     ? isDark(phoneHeaderSurface)
     : isDark(bg)
 
@@ -566,7 +575,7 @@ const Shell = (): React.JSX.Element => {
         />
       ) : null}
 
-      {showNativePhoneHeader ? (
+      {showNativePhoneRootLanes ? (
         <NativePhoneConversationMenuChrome
           accentColor={accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
@@ -595,6 +604,12 @@ const Shell = (): React.JSX.Element => {
           toolbarState={toolbarState}
           teamAvatarUrl={nativeTeamAvatarUrl}
           teamName={ipadTeamName}
+        />
+      ) : showNativePhoneNavBar ? (
+        <NativePhoneNavBar
+          headerSurface={phoneHeaderSurface}
+          landscape={largePhoneLandscape}
+          safeTop={insets.top}
         />
       ) : null}
 

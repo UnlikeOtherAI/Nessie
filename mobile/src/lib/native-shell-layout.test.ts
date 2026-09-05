@@ -9,7 +9,8 @@ import {
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
   NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER,
-  shouldShowNativePhoneHeader,
+  shouldShowNativePhoneNavBar,
+  shouldShowNativePhoneRootLanes,
 } from './native-shell-layout'
 import { getIphoneTabBarHostHeight, IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
@@ -20,7 +21,7 @@ test('the iPhone native frame keeps page content beneath the translucent tab bar
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showNativePhoneHeader: false,
+    showNativePhoneNavBar: false,
     showTabBar: true,
   }), { top: 59, bottom: 0 })
   assert.equal(getIphoneTabBarHostHeight(34), IPHONE_TAB_BAR_HEIGHT + 34)
@@ -34,7 +35,7 @@ test('full-screen iPhone tasks keep the status inset while leaving the home indi
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showNativePhoneHeader: false,
+    showNativePhoneNavBar: false,
     showTabBar: false,
   }), { top: 59, bottom: 0 })
 })
@@ -46,7 +47,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
     platform: 'ios',
     safeArea: { top: 24, bottom: 20 },
-    showNativePhoneHeader: false,
+    showNativePhoneNavBar: false,
     showTabBar: true,
   }), { top: 78, bottom: 0 })
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -55,7 +56,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
     platform: 'android',
     safeArea: { top: 32, bottom: 28 },
-    showNativePhoneHeader: false,
+    showNativePhoneNavBar: false,
     showTabBar: true,
   }), { top: 32, bottom: 28 })
 })
@@ -67,7 +68,7 @@ test('every native phone tab root reserves the team header on iPhone and Android
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showNativePhoneHeader: true,
+    showNativePhoneNavBar: true,
     showTabBar: true,
   }), { top: 123, bottom: 0 })
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -76,7 +77,7 @@ test('every native phone tab root reserves the team header on iPhone and Android
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
     platform: 'android',
     safeArea: { top: 32, bottom: 28 },
-    showNativePhoneHeader: true,
+    showNativePhoneNavBar: true,
     showTabBar: true,
   }), { top: 96, bottom: 28 })
   assert.equal(getNativePhoneBottomChromeClearance('ios'), 49)
@@ -88,23 +89,26 @@ test('every native phone tab root reserves the team header on iPhone and Android
 test('an admitted phone keeps a shorter native header on every landscape page', () => {
   // A detail screen in the admitted large-phone-landscape lane keeps the
   // compact header regardless of whether it is a tab root.
-  assert.equal(shouldShowNativePhoneHeader({
+  assert.equal(shouldShowNativePhoneRootLanes({
     isIpad: false,
     isTabRoot: false,
     largePhoneLandscape: true,
+    platform: 'ios',
     showBar: true,
   }), true)
-  // Off that lane, only a tab root shows the header.
-  assert.equal(shouldShowNativePhoneHeader({
+  // Off that lane, only a tab root carries the team and account controls.
+  assert.equal(shouldShowNativePhoneRootLanes({
     isIpad: false,
     isTabRoot: false,
     largePhoneLandscape: false,
+    platform: 'ios',
     showBar: true,
   }), false)
-  assert.equal(shouldShowNativePhoneHeader({
+  assert.equal(shouldShowNativePhoneRootLanes({
     isIpad: false,
     isTabRoot: true,
     largePhoneLandscape: false,
+    platform: 'ios',
     showBar: true,
   }), true)
   assert.equal(getNativePhoneHeaderHeight(true) < getNativePhoneHeaderHeight(false), true)
@@ -115,7 +119,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(true),
     platform: 'ios',
     safeArea: { top: 0, bottom: 21 },
-    showNativePhoneHeader: true,
+    showNativePhoneNavBar: true,
     showTabBar: true,
   }), { top: getNativePhoneHeaderHeight(true), bottom: 0 })
 })
@@ -134,4 +138,63 @@ test('the native tab state keeps attention badges scoped to their owning tab', (
   assert.equal(state.routes.find((route) => route.key === 'search')?.badge, undefined)
   assert.equal(isAuthGateRoute('/login'), true)
   assert.equal(isAuthGateRoute('/channels'), false)
+})
+
+test('the iOS phone band is one constant height, whatever screen the admin reports', () => {
+  // The invariant the native navigation bar exists to hold
+  // (docs/plans/2026-09-05-ios-native-navigation-bar.md §4). The WebView's own
+  // frame is derived from this band, so an answer that moved with the screen
+  // type made the page jump 64pt when a back-swipe committed — one whole
+  // animation after the motion it belonged to.
+  const insetFor = (isTabRoot: boolean): number => {
+    const input = {
+      isIpad: false,
+      isTabRoot,
+      largePhoneLandscape: false,
+      platform: 'ios',
+      showBar: true,
+    }
+    return getNativeWebviewFrameInsets({
+      ipadChromeTop: 0,
+      isIpad: false,
+      nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
+      platform: 'ios',
+      safeArea: { top: 59, bottom: 34 },
+      showNativePhoneNavBar: shouldShowNativePhoneNavBar(input),
+      showTabBar: true,
+    }).top
+  }
+  assert.equal(insetFor(true), insetFor(false))
+  assert.equal(insetFor(false), 123)
+
+  // Android keeps exactly the answer it had: the band only where the team and
+  // account controls are. Turning it on there is a separate decision.
+  const androidInput = (isTabRoot: boolean) => ({
+    isIpad: false,
+    isTabRoot,
+    largePhoneLandscape: false,
+    platform: 'android',
+    showBar: true,
+  })
+  assert.equal(shouldShowNativePhoneNavBar(androidInput(true)), true)
+  assert.equal(shouldShowNativePhoneNavBar(androidInput(false)), false)
+  assert.equal(
+    shouldShowNativePhoneNavBar(androidInput(false)),
+    shouldShowNativePhoneRootLanes(androidInput(false)),
+  )
+
+  // An iPhone detail draws the band without the root lanes.
+  const iosDetail = {
+    isIpad: false,
+    isTabRoot: false,
+    largePhoneLandscape: false,
+    platform: 'ios',
+    showBar: true,
+  }
+  assert.equal(shouldShowNativePhoneNavBar(iosDetail), true)
+  assert.equal(shouldShowNativePhoneRootLanes(iosDetail), false)
+
+  // Past the auth gate is the whole of the invariant: with no tab bar there is
+  // no band, and that frame change is only ever crossed by a full page load.
+  assert.equal(shouldShowNativePhoneNavBar({ ...iosDetail, showBar: false }), false)
 })
