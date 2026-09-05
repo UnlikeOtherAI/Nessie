@@ -84,6 +84,8 @@ Those three keep `useState`, each saying so where it stands, and
 | a knowledge space (`KnowledgeWorkspace`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
 | Deep Water (`DeepWaterResearchPanel`) | `research` | `run` · `runs` · `settings` |
 | an agent's screen (`AgentScreenViewer`) | `browserTab` | one per tab the agent's cloud browser has open |
+| a project board (`ProjectView`) | `board` | one per board of the project (default: the project's default board) |
+| project settings (`ProjectSettingsPage`) | `section` | `boards`; `board` selects which board inside it |
 
 A conversation offers a different half of that list depending on what it is.
 Messaging one agent is a conversation with a subject, so it carries that

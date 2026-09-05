@@ -1,7 +1,21 @@
-import type { ColumnCategory } from '../../facades/board/hooks'
-import type { TaskRecord, TaskStatus } from '../../facades/tasks/hooks'
+import type { ColumnCategory } from '@nessie/schemas'
 
-// A column the board renders; these come from the API (id = BoardColumn.id).
+/**
+ * Board presentation constants.
+ *
+ * The lifecycle *rule* — which column a task belongs in — is no longer here.
+ * It moved to the server (`resolveBoardPlacement` in `@nessie/team-admin`)
+ * when a project gained many boards: the client cannot resolve placement for a
+ * board it is not rendering, and the old client-side `placeTask` honoured a
+ * pinned column without checking its category still matched the task's status,
+ * so a card an agent completed stayed in "In progress". The board read now
+ * arrives already placed and this module only decides how it looks.
+ */
+
+export { isArchivedStatus, statusToCategory } from '@nessie/schemas'
+export type { ColumnCategory }
+
+/** A column the board renders; `id` is `BoardColumn.id`. */
 export type BoardColumnView = {
   id: string
   name: string
@@ -24,42 +38,4 @@ export const CATEGORY_DOT: Record<ColumnCategory, string> = {
   done: 'var(--success-text)',
 }
 
-// failed/cancelled never get a column; they live behind the Archive toggle.
-export const ARCHIVED_STATUSES: TaskStatus[] = ['failed', 'cancelled']
-
-export const statusToCategory = (status: TaskStatus): ColumnCategory | null => {
-  switch (status) {
-    case 'inbox':
-    case 'assigned':
-      return 'todo'
-    case 'in_progress':
-      return 'in_progress'
-    case 'review':
-    case 'awaiting_approval':
-      return 'review'
-    case 'done':
-      return 'done'
-    default:
-      return null // failed / cancelled
-  }
-}
-
-export const statusLabel = (status: TaskStatus): string => status.replace(/_/g, ' ')
-
-// Which column a task renders in: its pinned column when valid, otherwise the
-// first column whose category matches the task's status. Null = archived.
-export const placeTask = (
-  task: Pick<TaskRecord, 'columnId' | 'status'>,
-  columns: BoardColumnView[],
-): string | null => {
-  // Cancelled/failed work belongs in Archived even if a historic row still
-  // carries its previous column. New transitions clear that column; this guard
-  // keeps the UI correct while those existing rows are encountered.
-  if (ARCHIVED_STATUSES.includes(task.status)) return null
-  if (task.columnId && columns.some((column) => column.id === task.columnId)) {
-    return task.columnId
-  }
-  const category = statusToCategory(task.status)
-  if (!category) return null
-  return columns.find((column) => column.category === category)?.id ?? null
-}
+export const statusLabel = (status: string): string => status.replace(/_/g, ' ')

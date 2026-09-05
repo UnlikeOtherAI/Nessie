@@ -78,6 +78,22 @@ const ensureProject = async (token) => {
   })
 }
 
+/**
+ * A project starts with one board, and a switcher with one choice is not
+ * rendered — so a case that needs the strip asks for a second board first.
+ * Idempotent: the suite reuses a database that may already carry it.
+ */
+export const ensureSecondBoard = async (token, projectId, name) => {
+  const boards = await call(`/api/projects/${projectId}/boards`, { token })
+  const existing = boards.find((board) => board.name === name)
+  if (existing) return existing
+  return call(`/api/projects/${projectId}/boards`, {
+    body: { name },
+    method: 'POST',
+    token,
+  })
+}
+
 export const seedTeam = async (apiServer) => {
   const session = await signIn(apiServer)
   const channels = await ensureChannels(session.token)

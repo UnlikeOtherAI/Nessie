@@ -13,17 +13,13 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
-import { type TaskRecord } from '../../facades/tasks/hooks'
+import type { BoardTaskRecord } from '../../facades/boards/hooks'
+import type { TaskRecord } from '../../facades/tasks/hooks'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
 import { ArchivedTaskCard, KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
 import { TaskDialog } from './TaskDialog'
-import {
-  ARCHIVED_STATUSES,
-  type BoardColumnView,
-  CATEGORY_DOT,
-  placeTask,
-} from './kanban-config'
+import { type BoardColumnView, CATEGORY_DOT } from './kanban-config'
 
 // Columns fill the viewport but never shrink below this. The board fits as many
 // columns as will sit at >= MIN_COLUMN_PX (plus the gap between them) into one
@@ -44,7 +40,9 @@ type ItemMap = Record<string, string[]>
 type KanbanBoardProps = {
   columns: BoardColumnView[]
   projectId?: string
-  tasks: TaskRecord[]
+  // Already placed by the server: `columnId` is the column this board shows
+  // the task in, and null means the Archived strip.
+  tasks: BoardTaskRecord[]
   showProject: boolean
   projectNameById: Record<string, string>
   // Persist a drag: move the task to `columnId` at `position` (index in that
@@ -84,23 +82,22 @@ export const KanbanBoard = ({
   const pageCount = Math.max(1, Math.ceil(columns.length / perPage))
   const paginated = pageCount > 1
 
+  // Grouping only — the server decided placement and order.
   const { byColumn, archived } = useMemo(() => {
-    const grouped: Record<string, TaskRecord[]> = Object.fromEntries(columns.map((c) => [c.id, []]))
-    const archivedTasks: TaskRecord[] = []
+    const grouped: Record<string, BoardTaskRecord[]> = Object.fromEntries(
+      columns.map((c) => [c.id, []]),
+    )
+    const archivedTasks: BoardTaskRecord[] = []
     for (const task of tasks) {
-      if (task.archivedAt) {
-        archivedTasks.push(task)
-        continue
-      }
-      const columnId = placeTask(task, columns)
-      if (columnId && grouped[columnId]) grouped[columnId].push(task)
-      else if (ARCHIVED_STATUSES.includes(task.status)) archivedTasks.push(task)
+      const column = task.columnId ? grouped[task.columnId] : undefined
+      if (column) column.push(task)
+      else archivedTasks.push(task)
     }
     return { byColumn: grouped, archived: archivedTasks }
   }, [tasks, columns])
 
   const taskById = useMemo(() => {
-    const map = new Map<string, TaskRecord>()
+    const map = new Map<string, BoardTaskRecord>()
     for (const task of tasks) map.set(task.id, task)
     return map
   }, [tasks])
@@ -246,14 +243,14 @@ export const KanbanBoard = ({
 
     // Persist only when the column or index actually changed.
     const task = taskById.get(activeId)
-    const originalColumn = task ? placeTask(task, columns) : null
+    const originalColumn = task?.columnId ?? null
     const originalIndex = originalColumn ? baseItems[originalColumn]?.indexOf(activeId) ?? -1 : -1
     if (finalIndex < 0 || (destColumn === originalColumn && finalIndex === originalIndex)) return
     onMoveTask(activeId, destColumn, finalIndex)
     setPulseId(activeId)
   }
 
-  const cardProps = (task: TaskRecord) => ({
+  const cardProps = (task: BoardTaskRecord) => ({
     onOpen: setActiveTask,
     onPulseEnd: () => setPulseId((current) => (current === task.id ? null : current)),
     projectName: task.projectId ? projectNameById[task.projectId] ?? null : null,
@@ -320,7 +317,7 @@ export const KanbanBoard = ({
                   >
                     {ids
                       .map((id) => taskById.get(id))
-                      .filter((task): task is TaskRecord => Boolean(task))
+                      .filter((task): task is BoardTaskRecord => Boolean(task))
                       .map((task) => (
                         <KanbanCard key={task.id} {...cardProps(task)} />
                       ))}

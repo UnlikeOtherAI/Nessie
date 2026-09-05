@@ -2,7 +2,8 @@ import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/cli
 import { parseUserId, type AuthorizedActionContext } from '@nessie/schemas'
 import { isAgentAccessibleToActor } from './access-checks.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
-import { isArchivedProjectTaskStatus, isProjectTaskTransitionValid } from './project-task-status.js'
+import { isProjectTaskTransitionValid } from './project-task-status.js'
+import { dropStalePlacements } from './project-task-move.js'
 
 export type AssignableProjectTaskUser = { id: string; displayName: string }
 
@@ -66,7 +67,7 @@ export const listProjectTasks = async (
       ...projectTaskVisibilityWhere(visibility),
     },
     include: projectTaskInclude,
-    orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
+    orderBy: { updatedAt: 'desc' },
     take: 200,
   })
   return tasks.map(mapProjectTask)
@@ -226,17 +227,14 @@ export const transitionProjectTask = async (
   const task = await prisma.$transaction(async (tx) => {
     const { count } = await tx.task.updateMany({
       where: { id: input.taskId, organizationId: input.organizationId, status: existing.status },
-      // An archived ticket has no board placement. Clear a legacy placement
-      // when restoring as well, so the restored status selects its proper
-      // board column instead of reviving a stale one.
-      data: {
-        status: input.status,
-        ...(isArchivedProjectTaskStatus(existing.status) || isArchivedProjectTaskStatus(input.status)
-          ? { columnId: null }
-          : {}),
-      },
+      data: { status: input.status },
     })
     if (count === 0) return null
+    // A transition can move the task out of its pinned column's category —
+    // into Archived, back out of it, or straight across. `resolveBoardPlacement`
+    // ignores a stale pin, but leaving one behind would mean board-written data
+    // that disagrees with the board, so it goes here on every board.
+    await dropStalePlacements(tx, input.taskId)
     await tx.taskEvent.create({ data: { taskId: input.taskId, eventType: 'status_changed', payload: { by: input.actorId, from: existing.status, to: input.status } } })
     return tx.task.findFirst({ where: { id: input.taskId }, include: projectTaskInclude })
   })

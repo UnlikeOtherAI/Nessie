@@ -426,6 +426,28 @@ export const createServerContext = () => {
 
   const requestHelpers = createRequestHelpers(prisma)
 
+  /**
+   * Guard for changing a project's *shape* — its boards, columns, custom
+   * fields and data sources. An organisation owner passes, and so does
+   * somebody the project itself records as its owner or admin.
+   *
+   * Board mutations were owner-only while a project had one board of four
+   * columns; with many boards per project that is unworkable, and
+   * `ProjectMember.role` is Nessie-owned data (a project has no UOA
+   * counterpart), so gating on it adds no second identity authority.
+   */
+  const requireProjectAdmin = async (
+    actorContext: AuthorizedActionContext,
+    projectId: string,
+    reply: FastifyReply,
+  ): Promise<boolean> => {
+    if (await requestHelpers.canActorAdministerProject(actorContext, projectId)) {
+      return true
+    }
+    sendApiError(reply, 403, 'FORBIDDEN', 'Project administrator access required')
+    return false
+  }
+
   return {
     config,
     prisma,
@@ -459,6 +481,7 @@ export const createServerContext = () => {
     rateLimiter,
     disconnectPrismaClient,
     ...requestHelpers,
+    requireProjectAdmin,
   }
 }
 

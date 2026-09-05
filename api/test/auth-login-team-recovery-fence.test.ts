@@ -49,7 +49,7 @@ const aliceLink = (organizationId: string, epoch: number | null = 3) => ({
 // Every target and membership write model a refusal must never produce.
 const WRITE_CALLS = [
   'project.create',
-  'boardColumn.createMany',
+  'board.create',
   'team.create',
   'channel.create',
   'organizationMember.upsert',

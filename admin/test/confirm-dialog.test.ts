@@ -223,7 +223,9 @@ test('every converted confirm still says exactly what it said', () => {
   assert.ok(projects.includes('title={`Delete project "${deleteTarget.name}"?`}'))
   assert.match(projects, /body="This cannot be undone\."/)
 
-  const columns = source('pages/project/ProjectSettingsPage.tsx')
+  // The column editor moved out of ProjectSettingsPage when a project gained
+  // many boards; the confirm it owns is unchanged.
+  const columns = source('pages/project/settings/BoardColumnsEditor.tsx')
   assert.ok(columns.includes('title={`Delete column "${column.name}"?`}'))
 
   const iterations = source('pages/project/ProjectBacklogTab.tsx')

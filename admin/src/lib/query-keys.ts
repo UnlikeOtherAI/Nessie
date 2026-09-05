@@ -418,11 +418,10 @@ export const projectKeys = {
   all: ['projects'] as const,
   // Nested so the family rule holds. The cost is that create/rename/delete
   // project and add/remove member, which already invalidate `projects`, now
-  // also refetch a mounted board — one cheap `GET /api/projects/:id/board`
-  // column read. The board payload is `{ style, columns }` and carries no
-  // project name, so this is about reachability, not about a rename showing
-  // through.
-  board: (projectId: string) => ['projects', projectId, 'board'] as const,
+  // also refetch a mounted board — one cheap `GET /api/projects/:id/boards`
+  // read. The payload is the boards with their columns and carries no project
+  // name, so this is about reachability, not about a rename showing through.
+  boards: (projectId: string) => ['projects', projectId, 'boards'] as const,
   // Deliberately NOT nested (see the header). Insights is a velocity/burndown
   // report built from one query per completed iteration plus a task-event scan,
   // and nothing that invalidates `projects` — rename, delete, membership, board
@@ -467,6 +466,11 @@ export const taskKeys = {
   // Aggregate and per-project boards share the family root, so one invalidate
   // or optimistic write reaches every board at once.
   forProject: (projectId?: string) => ['tasks', projectId ?? 'all'] as const,
+  // One board's placed task list. Nested under the project's own key so a
+  // move, an archive or a realtime nudge reaches every board of that project
+  // with one invalidate, rather than needing the board ids to hand.
+  forBoard: (projectId?: string, boardId?: string) =>
+    ['tasks', projectId ?? 'all', 'board', boardId ?? 'none'] as const,
 }
 
 export const teamKeys = {

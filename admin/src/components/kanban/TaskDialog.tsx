@@ -24,7 +24,7 @@ import {
   useUpdateTask,
 } from '../../facades/tasks/hooks'
 import { draftKey, useDraft } from '../../navigation/useDraft'
-import { ARCHIVED_STATUSES, statusLabel } from './kanban-config'
+import { isArchivedStatus, statusLabel } from './kanban-config'
 import { TaskDocuments } from './TaskDocuments'
 import {
   PRIORITY_LABEL,
@@ -141,7 +141,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
 
   if (!open) return null
 
-  const archived = task ? ARCHIVED_STATUSES.includes(task.status) : false
+  const archived = task ? isArchivedStatus(task.status) : false
   const canSubmit = title.trim().length > 0 && !pending
 
   const handleSubmit = async () => {

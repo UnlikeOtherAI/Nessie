@@ -7,6 +7,8 @@ import {
   type TeamRecord,
 } from '@nessie/schemas'
 
+import { defaultBoardCreateData } from './board-structure.js'
+
 /**
  * Project and team structure: the reads that resolve a name to an id, and the
  * writes that create one.
@@ -28,26 +30,6 @@ import {
 // The columns every project starts with. Historically in `api/src/services/board.ts`;
 // it lives here because project creation is now shared with the worker and a
 // project created from chat must get the same board a clicked one gets.
-export const DEFAULT_BOARD_COLUMNS: {
-  name: string
-  category: 'todo' | 'in_progress' | 'review' | 'done'
-}[] = [
-  { name: 'To do', category: 'todo' },
-  { name: 'In progress', category: 'in_progress' },
-  { name: 'Review', category: 'review' },
-  { name: 'Done', category: 'done' },
-]
-
-// Nested-create rows for a project's default columns (projectId is supplied by
-// the parent project create, so it is omitted here).
-export const defaultColumnCreateData = (organizationId: string) =>
-  DEFAULT_BOARD_COLUMNS.map((column, index) => ({
-    organizationId,
-    name: column.name,
-    category: column.category,
-    position: index,
-  }))
-
 export const projectCountsInclude = {
   members: { select: { userId: true, role: true } },
   teams: { select: { _count: { select: { channels: true } } } },
@@ -196,7 +178,7 @@ export const createProjectForUser = async (
       name,
       organizationId: input.organizationId,
       members: { create: { userId: input.userId, role: 'owner' } },
-      boardColumns: { create: defaultColumnCreateData(input.organizationId) },
+      boards: { create: defaultBoardCreateData(input.organizationId) },
     },
     include: projectCountsInclude,
   })

@@ -27,7 +27,13 @@ test('the project header is shared by both project doorways and opens the shared
 
   assert.match(header, /label: `Members \(\$\{project\.memberCount\}\)`/)
   assert.match(header, /<ProjectMembersDialog/)
-  assert.match(projectView, /<ProjectPageHeader actions=\{headerActions\} project=\{project\}/)
+  // Props are asserted individually rather than as one line: the project view
+  // also passes the board switcher into the header's `tabs` slot, so the call
+  // spans several lines. What matters is that it is the shared header, driven
+  // by the same actions and project.
+  assert.match(projectView, /<ProjectPageHeader/)
+  assert.match(projectView, /actions=\{headerActions\}/)
+  assert.match(projectView, /project=\{project\}/)
   assert.match(channelOverview, /<ProjectPageHeader project=\{project\}/)
 })
 

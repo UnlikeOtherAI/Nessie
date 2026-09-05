@@ -17,8 +17,6 @@ export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskRecord = {
   id: string
   projectId: string | null
-  columnId: string | null
-  position: number
   iterationId: string | null
   storyPoints: number | null
   status: TaskStatus

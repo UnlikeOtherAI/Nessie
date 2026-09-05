@@ -11,8 +11,6 @@ export type ProjectTaskRecord = {
   id: string
   organizationId: string
   projectId: string | null
-  columnId: string | null
-  position: number
   iterationId: string | null
   storyPoints: number | null
   agentId: string | null
@@ -47,8 +45,6 @@ export const mapProjectTask = (task: TaskWithPeople): ProjectTaskRecord => ({
   id: parseTaskId(task.id),
   organizationId: parseOrganizationId(task.organizationId),
   projectId: task.projectId ? parseProjectId(task.projectId) : null,
-  columnId: task.columnId ?? null,
-  position: task.position,
   iterationId: task.iterationId ?? null,
   storyPoints: task.storyPoints ?? null,
   agentId: task.agentId ? parseAgentId(task.agentId) : null,

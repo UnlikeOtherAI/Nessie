@@ -5,6 +5,7 @@ import {
   createProjectTaskAssignmentAttention,
   getProjectTask,
   isProjectAccessibleToUser,
+  listBoards,
   listProjectTasks,
   moveProjectTaskToColumn,
   setProjectTaskIteration,
@@ -68,7 +69,7 @@ const recordProjectRead = (
 const ticketLine = (ticket: ProjectTaskRecord): string =>
   [
     `- ${ticket.title ?? 'Untitled'} | ticketId=${ticket.id}`,
-    `  status=${ticket.status} priority=${ticket.priority} columnId=${ticket.columnId ?? 'none'}`,
+    `  status=${ticket.status} priority=${ticket.priority}`,
     `  assignee=${ticket.assigneeName ?? 'unassigned'} due=${ticket.dueDate ?? 'none'}`,
   ].join('\n')
 
@@ -122,6 +123,8 @@ export const runTicketReadTool = async (
 
 const BoardInput = z.object({ projectId: IdSchema })
 
+// Mirrors `GET /api/projects/:projectId/boards`: a project has many boards,
+// and a `columnId` only means something together with the board it is on.
 export const runTicketBoardReadTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
@@ -129,17 +132,26 @@ export const runTicketBoardReadTool = async (
   const { projectId } = BoardInput.parse(input)
   const member = await resolveActingMember(context)
   await projectFor(context, member, projectId)
-  const columns = await context.prisma.boardColumn.findMany({
-    where: { projectId, organizationId: member.organizationId },
-    orderBy: { position: 'asc' },
-    select: { id: true, name: true, category: true, position: true },
+  const boards = await listBoards(context.prisma, {
+    id: projectId,
+    organizationId: member.organizationId,
   })
   recordProjectRead(context, member, projectId)
-  const output = columns.length
-    ? `Board columns\n${columns.map((column) => (
-      `- ${column.name} (${column.category}) | columnId=${column.id} position=${column.position}`
-    )).join('\n')}`
-    : 'This project has no board columns.'
+  const output = boards.length
+    ? boards
+        .map((board) =>
+          [
+            `Board "${board.name}" | boardId=${board.id} style=${board.style}${
+              board.isDefault ? ' (default)' : ''
+            }`,
+            ...board.columns.map(
+              (column) =>
+                `  - ${column.name} (${column.category}) | columnId=${column.id} position=${column.position}`,
+            ),
+          ].join('\n'),
+        )
+        .join('\n')
+    : 'This project has no boards.'
   return result('ticket_board_read', `projectId=${projectId}`, output)
 }
 
