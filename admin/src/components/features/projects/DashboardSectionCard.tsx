@@ -13,6 +13,11 @@ type DashboardSectionCardProps = {
   count?: number
   // Right-aligned header destinations — the dashboard's stand-in for the
   // Projects tab bar, which the chat entry point deliberately does not grow.
+  // They are the whole point of the section (this screen is a doorway, not a
+  // report), so they are rendered as real buttons rather than the quiet
+  // dot-separated text run they started as: `Open docs`, `Manage` and `Board`
+  // were the same weight and colour as the `TITLE · N` beside them, which read
+  // as a caption and not as somewhere you could go.
   links?: SectionLink[]
   className?: string
   children: ReactNode
@@ -26,24 +31,21 @@ export const DashboardSectionCard = ({
   children,
 }: DashboardSectionCardProps) => (
   <section className={['admin-card overflow-hidden', className ?? ''].join(' ')}>
-    <header className="flex items-center gap-3 px-4 pb-2 pt-3">
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pb-2 pt-3">
       <SectionLabel as="h2">
         {title}
         {typeof count === 'number' ? ` · ${count}` : ''}
       </SectionLabel>
       {links && links.length > 0 ? (
-        <nav className="ml-auto flex items-center gap-2 text-xs">
-          {links.map((link, index) => (
-            <span className="flex items-center gap-2" key={link.to + link.label}>
-              {index > 0 ? <span className="text-[color:var(--tx3)]">·</span> : null}
-              <Link
-                className="text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-                to={link.to}
-              >
-                {link.label}
-                {links.length === 1 ? ' →' : ''}
-              </Link>
-            </span>
+        <nav className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {links.map((link) => (
+            <Link
+              className="admin-button admin-button-secondary admin-button-compact"
+              key={link.to + link.label}
+              to={link.to}
+            >
+              {link.label}
+            </Link>
           ))}
         </nav>
       ) : null}
