@@ -2875,6 +2875,37 @@ button.reaction-pill-active:focus-visible {
   width: auto;
 }
 
+/* The swatch half of `ColourField`. A native `<input type="color">` paints its
+   value in its content box, so `.admin-input`'s 10px padding leaves a sliver of
+   colour and reads as a broken text field. Stated here rather than as
+   utilities at the call site because these rules are unlayered — a Tailwind
+   `p-1` loses to `.admin-input-compact`'s padding, which is how the swatch
+   came out four pixels wide the first time. */
+.admin-input.admin-input-colour {
+  width: 2.25rem;
+  height: 30px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.admin-input.admin-input-colour:disabled {
+  cursor: not-allowed;
+}
+
+.admin-input.admin-input-colour::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.admin-input.admin-input-colour::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.admin-input.admin-input-colour::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
 /* `.admin-button-secondary` carries a 1px border and `.admin-button-primary`
    does not, so without this the two would differ by 2px and break the shared
    30px box whenever a primary and a secondary sit side by side. */

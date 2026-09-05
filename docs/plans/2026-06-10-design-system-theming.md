@@ -191,9 +191,19 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
 
 **To add a theme:** add a `[data-theme="<id>"]` block to `styles.css` that
 redeclares **every** token the base `:root` defines, add the id to the `Theme`
-union + `THEMES` list in `ThemeProvider.tsx`, and add the matching UOA palette
-id to `SsoThemeSchema` / `UOA_SIGN_IN_THEMES`. No component edits — that's the
-point.
+union in `providers/theme-storage.ts` + the `BUILT_IN_THEMES` list in
+`ThemeProvider.tsx`, and add the matching UOA palette id to `SsoThemeSchema` /
+`UOA_SIGN_IN_THEMES`. No component edits — that's the point.
+
+**To add a token:** it is no longer enough to add it to every `[data-theme]`
+block. An organisation's theme (2026-09-05) is derived rather than written, so
+the token also needs a name in `THEME_TOKENS` and a derivation rule in
+`@nessie/schemas` `organization-theme.ts`; without both, an organisation
+palette renders it as the `@property` registration's `initial-value: #000000`.
+`admin/test/organization-theme-tokens.test.ts` fails the build rather than
+letting that ship. See
+[docs/plans/2026-09-05-organisation-custom-theme.md](2026-09-05-organisation-custom-theme.md)
+§1.3.
 
 **Open items for review:** (a) the live in-app switch was not Playwright-verified
 (Playwright's synthetic events don't drive a controlled radio; each theme's

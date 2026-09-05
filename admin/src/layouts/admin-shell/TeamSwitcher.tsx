@@ -13,7 +13,7 @@ import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/e
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { useTheme } from '../../providers/ThemeProvider'
 import { CreateTeamDialog } from './CreateTeamDialog'
 import { recoverTeamSwitchFailure } from './team-switch-recovery'
 import { teamSwitchFailureMessage } from './team-switch-message'
@@ -53,7 +53,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   const { data: providers = [] } = useAuthProviders()
   const { data: organization } = useCurrentOrganization()
   const avatarRevision = useTeamAvatarRevision()
-  const { theme } = useTheme()
+  const { signInTheme } = useTheme()
   const navigate = useNavigate()
   const acceptInvitation = useAcceptTeamInvitation()
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -168,7 +168,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
                 organizationId: team.organizationId,
                 teamId: team.teamId,
               },
-              theme: resolveAppliedTheme(theme),
+              theme: signInTheme,
             })
             close()
           } catch {
@@ -202,7 +202,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       setCreateOpen(true)
       return
     }
-    void startExternalSignIn(providerId, resolveAppliedTheme(theme))
+    void startExternalSignIn(providerId, signInTheme)
   }
 
   useEffect(() => {

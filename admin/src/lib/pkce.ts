@@ -12,7 +12,7 @@ import {
   type PendingExternalAuthTarget,
   type PkceStorage,
 } from '@nessie/client-core'
-import type { AppliedTheme } from '../providers/ThemeProvider'
+import type { SignInTheme } from '../providers/ThemeProvider'
 import { getBaseUrl } from './api-client'
 
 // Web binds the framework-neutral PKCE helpers to browser sessionStorage and
@@ -34,7 +34,7 @@ export const beginExternalAuth = (input: {
   returnPath?: string
   targetTeam?: PendingExternalAuthTarget
   teamHint?: string
-  theme: AppliedTheme
+  theme: SignInTheme
 }): Promise<BeginExternalAuthResult> => {
   const origin = input.origin
     ?? (typeof window === 'undefined' ? undefined : window.location.origin)

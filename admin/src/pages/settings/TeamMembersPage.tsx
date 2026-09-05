@@ -3,7 +3,7 @@ import { SettingsPanel } from './settings-shared'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useIsOwner } from '../../components/shared/OwnerGate'
 import { startExternalSignIn } from '../../lib/external-auth'
-import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { useTheme } from '../../providers/ThemeProvider'
 import { MembersRosterPanel } from './MembersRosterPanel'
 
 /**
@@ -24,7 +24,7 @@ export const TeamMembersPage = () => {
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
-  const { theme } = useTheme()
+  const { signInTheme } = useTheme()
 
   if (!me) return null
 
@@ -39,7 +39,7 @@ export const TeamMembersPage = () => {
         onReconnect={async () => {
           const providerId = me.auth.providerId
           if (!providerId) throw new Error('UnlikeOtherAI sign-in is not configured.')
-          await startExternalSignIn(providerId, resolveAppliedTheme(theme), {
+          await startExternalSignIn(providerId, signInTheme, {
             returnPath: window.location.pathname + window.location.search,
           })
         }}
