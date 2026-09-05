@@ -482,7 +482,8 @@ const Shell = (): React.JSX.Element => {
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
-  const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
+  const pastAuthGate = currentPath != null && !isAuthGateRoute(currentPath)
+  const showBar = pastAuthGate && !isFullScreenTaskRoute(currentPath)
   const isTabRoot = lastKnownScreen.type === 'root'
   // The band and its contents are two decisions, not one. On iOS the band is
   // always drawn past the auth gate — that constant is what keeps the WebView
@@ -492,6 +493,7 @@ const Shell = (): React.JSX.Element => {
     isIpad: IS_IPAD,
     isTabRoot,
     largePhoneLandscape,
+    pastAuthGate,
     platform: Platform.OS,
     screenBar,
     showBar,

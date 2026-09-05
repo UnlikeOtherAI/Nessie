@@ -123,7 +123,12 @@ export type NativePhoneBarInput = {
   // The admin's published descriptor for the layer showing, or null before
   // the first one of a cold start arrives.
   screenBar: NativeScreenBar | null
+  // Whether the tab bar is showing. A full-screen task route hides it, which
+  // on iOS must not also remove the band — see `shouldShowNativePhoneNavBar`.
   showBar: boolean
+  // Past the login/bootstrap gate, whatever kind of screen this is. The band's
+  // constant height holds for exactly this long.
+  pastAuthGate: boolean
 }
 
 /**
@@ -140,10 +145,20 @@ export type NativePhoneBarInput = {
  * and account controls. The same machinery can be turned on for it later by
  * giving it the iOS answer here, but that is a separate decision.
  */
-export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean =>
-  input.showBar
-  && !input.isIpad
-  && (input.platform === 'ios' || input.largePhoneLandscape || input.isTabRoot)
+export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean => {
+  if (input.isIpad) return false
+  // On iOS the band spans everything past the auth gate — including a
+  // full-screen task route like the compose flow, which hides the tab bar but
+  // is entered and left through a real stack transition. Dropping the band
+  // there would resize the WebView frame across that push, which is the same
+  // defect in a second place.
+  //
+  // The auth gate itself keeps no chrome: it is only ever reached by a full
+  // document load or a logout that replaces the whole app, never by a stack
+  // transition, so that frame change is invisible and is accepted deliberately.
+  if (input.platform === 'ios') return input.pastAuthGate
+  return input.showBar && (input.largePhoneLandscape || input.isTabRoot)
+}
 
 /**
  * Whether the band carries the team identity and account controls — the root

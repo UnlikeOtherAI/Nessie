@@ -1,8 +1,7 @@
 # iOS native navigation bar
 
-Status: **in progress.** Slices 1–3 are built and verified; §15 is the live
-status, including what is deliberately still open. Reviewed by Fable over four
-rounds (§14).
+Status: **built.** All five slices are in; §15 is the record of what landed and
+what was deliberately deferred. Reviewed by Fable over four rounds (§14).
 
 Scope: the **iOS native shell only** (`mobile/` running on iPhone). Mobile
 Safari, the Android app, iPad and desktop keep exactly today's behaviour, pixel
@@ -661,48 +660,54 @@ target's header is still mounted with its descriptor when `currentIndex` moves,
 and the popped layer's publishers unpublish from a per-layer stack nobody reads
 any more.
 
-## 15. Status
+## 15. Status — built
 
-**Built and verified (slices 1–3).**
+All five slices are in.
 
-- The band is one constant height on the iOS phone shell, so the WebView frame
+- **The band is one constant height** on the iOS phone shell for the whole of a
+  session past the auth gate, including the compose flow, so the WebView frame
   no longer moves with navigation. Pinned by `native-shell-layout.test.ts`.
-- The bar draws a native Back and the screen's title from a per-layer
-  descriptor, with the lanes following the published Back rather than the
-  screen type.
-- Header actions travel to the bar; `ScreenHeader` draws no visible bar on that
-  one surface and keeps its `sr-only` `h1`.
-- A stage that draws no header publishes a per-layer fallback, so the dashboard
-  and executor panels are not blank bands.
-- `admin/e2e/ios-nav-bar` (`pnpm --filter @nessie/admin test:e2e:ios-nav-bar`)
-  drives the admin with the iOS shell's globals injected: 11 checks, including
-  that mobile Safari is unchanged and that every action the web header rendered
-  reaches the bar.
+- **The bar** draws a native Back, the screen's title and its actions from a
+  descriptor published per stack layer, with the lanes following the published
+  Back rather than the screen type, and a bare band before anything has
+  published.
+- **Every screen that draws its own header** publishes through
+  `useNativeBarHeader` — the seven of §6, plus four section pages whose
+  column 0 is their only header, which the widened source gate found.
+- **Motion**: `nessie:screen-transition` from the viewport's layout effect and
+  from the swipe's own settle; a two-lane crossfade on the stack's curve, with
+  the incoming lane filling late rather than restarting.
+- **Verification**: `pnpm --filter @nessie/admin test:e2e:ios-nav-bar` drives
+  the admin with the iOS shell's globals injected — mobile Safari unchanged,
+  no web header in the shell, one `h1`, the bar keyed per layer, every rendered
+  action carried across, and a back swipe returning the bar to the root layer.
 
-**Still open, in order.**
+**Deferred, deliberately, with the reason.**
 
-1. The remaining six stray headers of §6 — `ThreadReplyPanel`,
-   `AgentScreenPanel`, `DashboardWorkspacePanel`, `KnowledgePane`,
-   `WorkflowDesignerHeader`, `ColumnBrowserColumn`. Until each publishes, the
-   bar on those screens names the screen underneath them. `KnowledgePane` and
-   `ColumnBrowserColumn` need an `active` gate rather than a blanket adoption:
-   both also render inside a route layer beside a page's own `ScreenHeader`,
-   where they would win by mount order.
-2. Slice 4, motion (§8).
-3. Slice 5's edges (§9, the designer's title input, `titleInput` on the iOS
-   path), the source-gate widening of §6, and the `docs/navigation/` updates
-   of §12.
+- **Interactive swipe tracking** (§8). The bar animates on release, not under
+  the finger. Every bridge message goes through the shell's `onMessage` into
+  React state, so a per-frame stream would re-render the shell and the WebView
+  60 times a second; the short-circuit design is recorded in §8 for the
+  follow-up if the release-time animation reads poorly on device.
+- **The chevron reads "Back"**, not the previous screen's name. The published
+  label is written for assistive technology ("Back to channel info") and reads
+  as a sentence in a bar; showing the previous screen's title needs the
+  transition descriptors to carry it.
+- **A translucent bar with content scrolling under it** (§10) — a separate
+  change to the geometry contract, not a rider on this one.
+- **Android** keeps today's behaviour throughout, by the user's instruction.
+  Every predicate takes it as a separate lane, so turning it on later is a
+  change to one branch rather than a rewrite.
 
-**Known deviations from this document, recorded rather than left to be found.**
+**Known deviations from this document.**
 
 - §6 said `ConversationInfoFlow`'s `FlowHeader` would be converted to
   `ScreenHeader`. It publishes through the shared `useNativeBarHeader` instead:
   converting would have changed what mobile Safari draws, which the hard
-  constraint forbids. The same hook is the mechanism for the other six.
-- The bar's chevron reads "Back" rather than the published label. The label is
-  written for assistive technology ("Back to channel info") and reads as a
-  sentence in a bar; it stays the accessibility label. Showing the previous
-  screen's name there needs §8's transition descriptors.
+  constraint forbids. The same hook is the mechanism for all of them.
+- §6's source gate targets the doorway and page-header components rather than
+  every `<header>`/`<h1>`, which would have failed on legitimate code —
+  `MessageMarkdown` renders an `h1` from user markdown.
 
 ### Round four (Fable, 2026-09-05) — progress review: ON TRACK on scope
 

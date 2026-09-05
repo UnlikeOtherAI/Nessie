@@ -94,6 +94,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     isTabRoot: false,
     largePhoneLandscape: true,
     platform: 'ios',
+    pastAuthGate: true,
     screenBar: null,
     showBar: true,
   }), true)
@@ -103,6 +104,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     isTabRoot: false,
     largePhoneLandscape: false,
     platform: 'ios',
+    pastAuthGate: true,
     screenBar: null,
     showBar: true,
   }), false)
@@ -111,6 +113,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     isTabRoot: true,
     largePhoneLandscape: false,
     platform: 'ios',
+    pastAuthGate: true,
     screenBar: { actions: [], back: null, layerKey: 'channels:0:root:channels:/channels', title: '' },
     showBar: true,
   }), true)
@@ -155,6 +158,7 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
       isTabRoot,
       largePhoneLandscape: false,
       platform: 'ios',
+      pastAuthGate: true,
       screenBar: null,
       showBar: true,
     }
@@ -177,6 +181,7 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
     isIpad: false,
     isTabRoot,
     largePhoneLandscape: false,
+    pastAuthGate: true,
     platform: 'android',
     // Android never receives a descriptor — the bridge posts it only on the
     // iOS shell — so its lanes must keep reading the screen type.
@@ -196,15 +201,31 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
     isTabRoot: false,
     largePhoneLandscape: false,
     platform: 'ios',
+    pastAuthGate: true,
     screenBar: null,
     showBar: true,
   }
   assert.equal(shouldShowNativePhoneNavBar(iosDetail), true)
   assert.equal(shouldShowNativePhoneRootLanes(iosDetail), false)
 
-  // Past the auth gate is the whole of the invariant: with no tab bar there is
-  // no band, and that frame change is only ever crossed by a full page load.
-  assert.equal(shouldShowNativePhoneNavBar({ ...iosDetail, showBar: false }), false)
+  // The band spans everything past the auth gate, including a full-screen task
+  // route that hides the tab bar: the compose flow is entered and left through
+  // a real stack transition, so dropping the band there would resize the frame
+  // across that push — the same defect in a second place.
+  assert.equal(shouldShowNativePhoneNavBar({ ...iosDetail, showBar: false }), true)
+  // The gate itself keeps no chrome. It is only reached by a full document
+  // load, never by a transition, so that frame change is invisible.
+  assert.equal(
+    shouldShowNativePhoneNavBar({ ...iosDetail, pastAuthGate: false, showBar: false }),
+    false,
+  )
+  // Android is unmoved: no tab bar, no band.
+  assert.equal(shouldShowNativePhoneNavBar({
+    ...iosDetail,
+    isTabRoot: true,
+    platform: 'android',
+    showBar: false,
+  }), false)
 })
 
 test('the iOS lanes follow the published descriptor, never the screen type', () => {
@@ -216,6 +237,7 @@ test('the iOS lanes follow the published descriptor, never the screen type', () 
   const base = {
     isIpad: false,
     largePhoneLandscape: false,
+    pastAuthGate: true,
     platform: 'ios',
     showBar: true,
   }
@@ -252,6 +274,7 @@ test('the iOS lanes follow the published descriptor, never the screen type', () 
     ...base,
     isTabRoot: true,
     platform: 'android',
+    pastAuthGate: true,
     screenBar: null,
   }), true)
 })

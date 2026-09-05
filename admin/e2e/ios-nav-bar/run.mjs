@@ -43,12 +43,14 @@ const reachable = (url) => new Promise((resolve) => {
 // them during its first render.
 const installShell = (page) => page.addInitScript(() => {
   window.__nessieScreenBarMessages = []
+  window.__nessieScreenTransitions = []
   window.__nessieNativeShell = { formFactor: 'phone', platform: 'ios' }
   window.ReactNativeWebView = {
     postMessage: (raw) => {
       try {
         const message = JSON.parse(raw)
         if (message.type === 'nessie:screen-bar') window.__nessieScreenBarMessages.push(message)
+        if (message.type === 'nessie:screen-transition') window.__nessieScreenTransitions.push(message)
       } catch { /* not ours */ }
     },
   }
@@ -58,6 +60,8 @@ const lastBar = (page) => page.evaluate(() => {
   const messages = window.__nessieScreenBarMessages ?? []
   return messages[messages.length - 1] ?? null
 })
+
+const transitions = (page) => page.evaluate(() => window.__nessieScreenTransitions ?? [])
 
 const checks = []
 const check = (label, passed, detail = '') => {
@@ -181,6 +185,22 @@ const main = async () => {
       `${rootBar?.layerKey} vs ${detailBar?.layerKey}`,
     )
 
+    // The bar has to move with the layers, so the push announces itself. It
+    // fires from the viewport's layout effect, before the incoming layer has
+    // mounted — which is why the native side fills that lane late rather than
+    // waiting for it.
+    const pushTransitions = await transitions(app.page)
+    const push = pushTransitions[pushTransitions.length - 1] ?? null
+    check(
+      'a push announces the transition, naming both layers and a duration',
+      Boolean(push)
+        && push.direction === 'forward'
+        && push.from === rootBar?.layerKey
+        && push.to === detailBar?.layerKey
+        && typeof push.durationMs === 'number',
+      JSON.stringify(push),
+    )
+
     // Rule zero: the header's actions are not decoration. Hiding the web
     // header without carrying them across would make them unreachable. The
     // count to beat is the same screen's own actions in Safari, read from the
@@ -201,6 +221,21 @@ const main = async () => {
       'a back swipe returns the bar to the root layer it revealed',
       Boolean(afterSwipe && afterSwipe.back === null && afterSwipe.layerKey === rootBar?.layerKey),
       JSON.stringify(afterSwipe),
+    )
+    const swipeTransitions = await transitions(app.page)
+    const settle = swipeTransitions[swipeTransitions.length - 1] ?? null
+    check(
+      'the swipe announces its own settle, over the travel that remains',
+      // `startTransition` never fires for a swipe-committed pop: the viewport
+      // suppresses the route animation this gesture already ran. Without this
+      // the bar would sit still through the one motion the bug was reported
+      // against.
+      Boolean(settle)
+        && settle !== push
+        && settle.direction === 'back'
+        && settle.from === detailBar?.layerKey
+        && settle.to === rootBar?.layerKey,
+      JSON.stringify(settle),
     )
     check(
       'the root it returns to carries no detail actions',
