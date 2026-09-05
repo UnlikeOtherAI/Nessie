@@ -99,3 +99,54 @@ test('a direct provider 402 remains a provider billing error', () => {
 
   assert.equal(classifyError(error), 'billing')
 })
+
+test('a Ledger 403 is a permission refusal, not an unexpected error', () => {
+  // The real one, from production on 2026-09-05: the proxy token authenticates
+  // fine (`GET /v1/models` answered 200 in the same second) but its openrouter
+  // scope does not list the model the deployment had just been pointed at, so
+  // Ledger answers `meta/muse-spark-1.3-contributor is not allowed for
+  // openrouter`. 403 had no branch, so this reached `unknown` — "an unexpected
+  // error", recovery `abort` — and every agent in the deployment failed
+  // identically with nothing naming the model configuration.
+  const error = new ProviderInvocationError(
+    'openai-compatible chat request failed with HTTP 403',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-403',
+      latencyMs: 1,
+      model: 'meta/muse-spark-1.3-contributor',
+      operationType: 'chat',
+      provider: 'openai-compatible',
+      requestId: 'request-403',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 403 },
+  )
+
+  assert.equal(classifyError(error), 'provider_forbidden')
+  assert.match(
+    userMessageForFailureReason(classifyError(error)),
+    /not permitted to use the configured model/,
+  )
+  // Terminal: no amount of retrying widens a credential's scope.
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 }),
+    {
+      action: 'surface_error',
+      userMessage: userMessageForFailureReason('provider_forbidden'),
+    },
+  )
+})
+
+test('403 stays distinct from 401 — permitted is not the same question as authenticated', () => {
+  const forbidden = new Error('provider request failed with HTTP 403')
+  const unauthorized = new Error('provider request failed with HTTP 401')
+
+  assert.equal(classifyError(forbidden), 'provider_forbidden')
+  assert.equal(classifyError(unauthorized), 'auth')
+  assert.notEqual(
+    userMessageForFailureReason('provider_forbidden'),
+    userMessageForFailureReason('auth'),
+  )
+})
