@@ -2233,7 +2233,12 @@ html[data-desktop-platform='linux'] #root {
   outline-offset: 1px;
 }
 
+/* Equal-width segments (`flex-basis: 0`) that still refuse to shrink below
+   their own label. Without the floor a full-width strip absorbs any shortage
+   by crushing its items into each other instead of overflowing, and the strip
+   never reports the overflow that tells it to become a dropdown. */
 .tabbar-full .tabbar-item {
+  min-width: max-content;
   flex: 1 1 0;
 }
 
@@ -2252,6 +2257,149 @@ html[data-desktop-platform='linux'] #root {
 .tabbar-count {
   color: var(--tx3);
   font-variant-numeric: tabular-nums;
+}
+
+/* The strip's measuring box, and the anchor its dropdown hangs off. It is a
+   block-level flex container so it fills the width available in normal flow,
+   and a shrinkable flex item (`min-width: 0`, the default `flex: 0 1 auto`)
+   when a call site drops it into a row — either way `.tabbar` inside it is
+   clamped by `max-width: 100%`, which is what makes `scrollWidth` vs
+   `clientWidth` an honest answer to "do the labels still fit?". */
+.tabbar-shell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tabbar-shell-full {
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+/* Below the width its labels need, the strip is a dropdown naming the current
+   selection. It keeps the strip's own height and ground so a row does not
+   jump as it crosses that width. */
+.tabbar-trigger {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  background: var(--overlay-weak);
+  padding: 0 10px;
+  color: var(--tx);
+  font-weight: var(--font-weight-semibold);
+  transition: background var(--duration-fast) var(--easing-standard);
+}
+
+.tabbar-shell-full .tabbar-trigger {
+  width: 100%;
+}
+
+.tabbar-trigger:hover {
+  background: var(--overlay);
+}
+
+.tabbar-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Matches the strip's outer height exactly (item height + its 3px padding),
+   so swapping one for the other never reflows the row around it. */
+.tabbar-trigger-sm {
+  height: 32px;
+  font-size: 12px;
+}
+
+.tabbar-trigger-md {
+  height: 38px;
+  font-size: 13px;
+}
+
+.tabbar-trigger-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tabbar-trigger-chevron {
+  flex-shrink: 0;
+  color: var(--tx3);
+  font-size: 10px;
+  transition: transform var(--duration-fast) var(--easing-standard);
+}
+
+.tabbar-trigger[aria-expanded='true'] .tabbar-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-trigger-chevron {
+    transition: none;
+  }
+}
+
+/* Sized by its own labels, not by the trigger: the trigger is only as wide as
+   the *current* selection, and matching it is what clipped "Notifications"
+   down to "Notific…" in the very case the dropdown exists to serve. */
+.tabbar-menu {
+  min-width: 9rem;
+  max-width: min(20rem, calc(100vw - 24px));
+  overflow-y: auto;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: 4px;
+  box-shadow: 0 8px 24px var(--scrim-weak);
+}
+
+.tabbar-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border-radius: calc(var(--radius-md) - 4px);
+  padding: 7px 10px;
+  color: var(--tx2);
+  text-align: left;
+  font-size: 13px;
+}
+
+.tabbar-option:hover:not(:disabled) {
+  background: var(--overlay-weak);
+  color: var(--tx);
+}
+
+.tabbar-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tabbar-option[aria-selected='true'] {
+  background: var(--overlay);
+  color: var(--tx);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tabbar-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.tabbar-option-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Agents list table: zebra striping over the row-hover highlight. The `:hover`
@@ -3846,6 +3994,32 @@ button.reaction-pill-active:focus-visible {
 [data-theme='space-white'] .tabbar-md .tabbar-item {
   height: 44px;
   padding-inline: 0;
+  font-size: 14px;
+}
+
+/* The collapsed strip follows the theme it collapsed out of: this theme draws
+   the strip as an underlined row on the page's own ground, so its dropdown is
+   a ruled line rather than the default's filled pill. */
+[data-theme='space-white'] .tabbar-trigger {
+  border-bottom: 1px solid var(--sep);
+  border-radius: 0;
+  background: transparent;
+  padding-inline: 0;
+  font-weight: 500;
+}
+
+[data-theme='space-white'] .tabbar-trigger:hover {
+  border-bottom-color: var(--tx);
+  background: transparent;
+}
+
+[data-theme='space-white'] .tabbar-trigger-sm {
+  height: 36px;
+  font-size: 13px;
+}
+
+[data-theme='space-white'] .tabbar-trigger-md {
+  height: 44px;
   font-size: 14px;
 }
 
