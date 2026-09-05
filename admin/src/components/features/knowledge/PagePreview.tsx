@@ -90,6 +90,10 @@ export const PagePreview = ({
           id: 'new-sub-page',
           label: 'New page',
           onSelect: onCreateChild,
+          // Creating is the primary here only once Publish has left the row:
+          // a draft's reason to be open is publishing it, and two filled
+          // buttons side by side name no decision.
+          primary: page.status === 'published',
           priority: 90,
         } satisfies PageHeaderAction]
       : []),
