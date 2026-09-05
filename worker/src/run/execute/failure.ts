@@ -35,6 +35,28 @@ export const handleRunExecutionFailure = async (
     input.error instanceof Error ? input.error.message : 'Run execution failed unexpectedly'
   const failureReason = classifyError(input.error)
 
+  // Every run failure is logged, not only the unattended ones.
+  //
+  // The interactive path posts "the assistant service encountered an
+  // unexpected error […] ask a team owner to check the worker logs" — and then
+  // wrote nothing to the worker log, because the only console line here sat in
+  // the `SkipTerminalMessage` branch that an interactive run never reaches. The
+  // two records it does leave are both database-only with no read route: the
+  // `run.failed` task event below, and the queue job's `error_message` from the
+  // nack. So the sentence sent the one person who could act on it to the one
+  // place guaranteed to be empty, and `unknown` — the classifier's fallthrough
+  // bucket, which says nothing about the cause — is the reason it is most often
+  // shown.
+  console.error(
+    `[worker] run ${context.run.id} failed (${failureReason})`,
+    {
+      agentId: context.agent.id,
+      systemSlug: context.agent.systemSlug ?? null,
+      threadId: context.run.threadId,
+    },
+    input.error,
+  )
+
   const fallbackMessageId = `run-error:${context.run.id}`
   let terminalMessageId = fallbackMessageId
   let terminalContent =
@@ -100,7 +122,7 @@ export const handleRunExecutionFailure = async (
   } catch (streamError) {
     if (streamError instanceof SkipTerminalMessage) {
       console.warn(
-        `[worker] run ${context.run.id} failed without a channel message: ${messageText}`,
+        `[worker] run ${context.run.id} posted no channel message: nobody was waiting`,
       )
     } else {
       console.error('Failed to persist terminal error message', streamError)
