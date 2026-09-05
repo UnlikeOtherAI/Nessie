@@ -45,6 +45,18 @@ test('the Projects sidebar is built from the same rows as the Channels sidebar',
     projectsNav.indexOf('title="Starred"') < projectsNav.indexOf('title="Projects"'),
     'Starred is drawn above Projects',
   )
+
+  // Starring promotes a project out of the list below rather than copying it,
+  // exactly as the Channels sidebar lifts a starred channel or project.
+  assert.match(
+    projectsNav,
+    /const unstarredProjects = projects\.filter\(\(project\) => !starredProjectIds\.has\(project\.id\)\)/,
+  )
+  assert.match(projectsNav, /unstarredProjects\.map\(\(project\) => renderProjectRow\(project, 'projects'\)\)/)
+  assert.match(
+    source('layouts/admin-shell/useSidebarTree.ts'),
+    /\.filter\(\(project\) => !starredProjectIds\.has\(project\.id\)\)/,
+  )
 })
 
 test('every project section is reachable from the Projects sidebar', () => {
