@@ -153,7 +153,16 @@ export const SidePanelShell = ({
           // WebView bridge. This fixed overlay sits outside those columns, so
           // it owns the inset itself and keeps its header controls out from
           // under an iOS notch in both phone and tablet overlay modes.
+          //
+          // The same goes for the bottom. The iPhone shell's tab-bar clearance
+          // is a spacer on `.phone-navigation-page`, and this overlay is not
+          // inside one — so without this its composer sits under the
+          // translucent native tab bar. The variable is published only by that
+          // shell, so every other surface falls back to the safe-area inset it
+          // had before. Padding rather than inset keeps the background running
+          // under the glass while the content clears it.
           'max-[900px]:fixed max-[900px]:inset-0 max-xl:pt-[env(safe-area-inset-top,0px)]',
+          'max-[900px]:pb-[var(--nessie-native-phone-tabbar-clearance,env(safe-area-inset-bottom,0px))]',
           'min-[900px]:w-[var(--thread-panel-width)]',
           'min-[900px]:max-xl:fixed min-[900px]:max-xl:inset-y-0 min-[900px]:max-xl:right-0',
           'min-[900px]:max-xl:shadow-[0_32px_80px_var(--scrim-strong)]',
