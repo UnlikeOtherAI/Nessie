@@ -15,7 +15,6 @@ const STORAGE_KEY = 'nessie.theme'
 const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)'
 
 export type Theme =
-  | 'space-white'
   | 'nebula'
   | 'midnight'
   | 'daylight'
@@ -43,11 +42,6 @@ type ThemeContextValue = {
 }
 
 const THEMES = [
-  {
-    description: 'Crisp monochrome surfaces, soft gray controls, and Starleague display type.',
-    id: 'space-white',
-    label: 'Space White',
-  },
   {
     description: 'Warm sand surfaces with terracotta controls.',
     id: 'sandstone',
@@ -138,18 +132,18 @@ const writeLocalTheme = (theme: Theme): void => {
 }
 
 const getStoredTheme = (serverTheme?: Theme): Theme =>
-  serverTheme ?? getLocalTheme() ?? 'space-white'
+  serverTheme ?? getLocalTheme() ?? 'sandstone'
 
 const getSystemTheme = (mediaQuery?: MediaQueryList): AppliedTheme => {
   if (mediaQuery) {
-    return mediaQuery.matches ? 'nebula' : 'space-white'
+    return mediaQuery.matches ? 'nebula' : 'daylight'
   }
 
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return 'space-white'
+    return 'daylight'
   }
 
-  return window.matchMedia(SYSTEM_THEME_QUERY).matches ? 'nebula' : 'space-white'
+  return window.matchMedia(SYSTEM_THEME_QUERY).matches ? 'nebula' : 'daylight'
 }
 
 export const resolveAppliedTheme = (theme: Theme): AppliedTheme =>
