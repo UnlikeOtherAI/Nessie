@@ -360,3 +360,122 @@ test('a signing deployment fails closed on an org-routed Ledger call with no UOA
     globalThis.fetch = originalFetch
   }
 })
+
+// The deployment default itself can sit on a Ledger service Nessie compiles no
+// adapter for. `model.serviceId` names the `/v1/:serviceId` segment, so the
+// default route addresses that service rather than the compiled provider name.
+// The live case this exists for: Meta's `muse-spark-1.3` is carried by Ledger's
+// `openrouter` service (the native `meta` service stops at 1.2), so the model id
+// is vendor-qualified and the segment is `openrouter`.
+test('a configured service id routes the deployment default to that Ledger service', async () => {
+  const prisma = {
+    $queryRaw: async () => [],
+  } as unknown as PrismaClient
+
+  const originalFetch = globalThis.fetch
+  let requestedUrl: string | undefined
+  let requestedModel: string | undefined
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    requestedUrl = url.toString()
+    requestedModel = JSON.parse(String(init?.body ?? '{}')).model
+    return new Response([
+      'data: {"id":"chatcmpl-1","model":"meta/muse-spark-1.3","choices":[{"delta":{"content":"muse"},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"meta/muse-spark-1.3","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+      'data: [DONE]\n\n',
+    ].join(''), {
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  try {
+    const result = await runInferenceGraph(prisma, {
+      actorContext,
+      // No agent selection: the deployment default is what is under test.
+      agent: {
+        id: AGENT_ID,
+        model: null,
+        provider: null,
+        routingProfileId: null,
+      },
+      baseMessages: [{ content: 'Hello', role: 'user' }],
+      modelConfig: {
+        ...modelConfig,
+        baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
+        modelName: 'meta/muse-spark-1.3',
+        serviceId: 'openrouter',
+      },
+      organizationId: ORGANIZATION_ID,
+      requestHeadersForProvider: createProviderRequestHeadersResolver({
+        attribution,
+        ledgerIdentity: {
+          requestHeaders: async () => ({
+            'X-Nessie-Context': 'signed-user-team-agent-run',
+          }),
+        },
+      }),
+    })
+
+    assert.equal(result.status, 'completed')
+    assert.equal(result.finalAnswer, 'muse')
+    // The base URL's own `/v1/openai` segment is rewritten to the service id.
+    assert.equal(
+      requestedUrl,
+      'https://ledger.unlikeotherai.com/v1/openrouter/chat/completions',
+    )
+    assert.equal(requestedModel, 'meta/muse-spark-1.3')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+// An agent's explicit selection still outranks the configured service id.
+test('an explicit agent provider still wins over the configured service id', async () => {
+  const prisma = {
+    $queryRaw: async () => [],
+  } as unknown as PrismaClient
+
+  const originalFetch = globalThis.fetch
+  let requestedUrl: string | undefined
+  globalThis.fetch = (async (url: string | URL) => {
+    requestedUrl = url.toString()
+    return new Response([
+      'data: {"id":"c","model":"mistral-large","choices":[{"delta":{"content":"x"},"finish_reason":null}]}\n\n',
+      'data: {"id":"c","model":"mistral-large","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+      'data: [DONE]\n\n',
+    ].join(''), { headers: { 'Content-Type': 'text/event-stream' } })
+  }) as typeof fetch
+
+  try {
+    await runInferenceGraph(prisma, {
+      actorContext,
+      agent: {
+        id: AGENT_ID,
+        model: 'mistral-large',
+        provider: 'mistral',
+        routingProfileId: null,
+      },
+      baseMessages: [{ content: 'Hello', role: 'user' }],
+      modelConfig: {
+        ...modelConfig,
+        baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
+        serviceId: 'openrouter',
+      },
+      organizationId: ORGANIZATION_ID,
+      requestHeadersForProvider: createProviderRequestHeadersResolver({
+        attribution,
+        ledgerIdentity: {
+          requestHeaders: async () => ({
+            'X-Nessie-Context': 'signed-user-team-agent-run',
+          }),
+        },
+      }),
+    })
+
+    assert.equal(
+      requestedUrl,
+      'https://ledger.unlikeotherai.com/v1/mistral/chat/completions',
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

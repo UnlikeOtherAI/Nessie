@@ -26,7 +26,7 @@ import { updateAgentRecord } from '../src/services/agent-management.js'
  *
  * Seed-scoped throughout: each row is created under ids unique to this suite and
  * removed in the same order, because these suites share one database and run
- * concurrently (AGENTS.md → Workflow).
+ * concurrently (docs/standards/testing.md).
  */
 
 const suite = 'a9e0'
