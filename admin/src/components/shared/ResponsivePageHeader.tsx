@@ -22,6 +22,7 @@ import {
 } from './responsive-page-header-layout'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
+import { Switch } from '../primitives/Switch'
 import {
   HeaderAccountMenu,
   useHeaderAccountMenuVisible,
@@ -85,7 +86,20 @@ export type PageHeaderMenuAction = PageHeaderActionBase & {
   kind: 'menu'
 }
 
-export type PageHeaderAction = PageHeaderButtonAction | PageHeaderLinkAction | PageHeaderMenuAction
+// A header filter that is on or off rather than an action you fire: the label
+// stays readable and the switch carries the state, so the bar says what it is
+// filtered by without the reader having to decode a highlighted button.
+export type PageHeaderToggleAction = PageHeaderActionBase & {
+  checked: boolean
+  kind: 'toggle'
+  onChange: (checked: boolean) => void
+}
+
+export type PageHeaderAction =
+  | PageHeaderButtonAction
+  | PageHeaderLinkAction
+  | PageHeaderMenuAction
+  | PageHeaderToggleAction
 
 export type ResponsivePageHeaderProps = {
   actions?: PageHeaderAction[]
@@ -146,6 +160,15 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
     action.disabled ? 'cursor-not-allowed opacity-50' : '',
   ].join(' ')
 }
+
+// A toggle is read, not clicked: it keeps the action row's height and type
+// scale but drops the button box, so it reads as a labelled switch rather than
+// one more control competing with the page's real actions.
+const toggleClassName = (action: PageHeaderToggleAction): string => [
+  'admin-page-toggle inline-flex h-8 items-center gap-2 px-1 text-xs font-medium',
+  'whitespace-nowrap text-[color:var(--tx2)]',
+  action.disabled ? 'cursor-not-allowed opacity-50' : '',
+].join(' ')
 
 // A shared header for dense admin surfaces. It measures the actual controls at
 // runtime, so the same action declarations remain usable in a wide team,
@@ -276,8 +299,14 @@ export const ResponsivePageHeader = ({
     setOpenMenu(null)
     if (menu && restoreFocus) requestAnimationFrame(() => triggerRefs.current[menu]?.focus())
   }
-  const selectMenuItem = (item: PageHeaderMenuButtonItem | PageHeaderButtonAction) => {
+  const selectMenuItem = (
+    item: PageHeaderMenuButtonItem | PageHeaderButtonAction | PageHeaderToggleAction,
+  ) => {
     closeMenu(false)
+    if ('kind' in item && item.kind === 'toggle') {
+      item.onChange(!item.checked)
+      return
+    }
     item.onSelect()
   }
   const handleMenuKeys = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -315,6 +344,23 @@ export const ResponsivePageHeader = ({
           {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
           {action.compact ? null : <span>{action.label}</span>}
         </a>
+      )
+    }
+    if (action.kind === 'toggle') {
+      return (
+        <span className={toggleClassName(action)} title={action.title ?? action.label}>
+          <span>{action.label}</span>
+          {/* The switch's name stays the label whichever way it is thrown —
+              `aria-checked` is what says on or off, so a name that flipped
+              with the state would announce the filter twice and never the
+              same way. */}
+          <Switch
+            checked={action.checked}
+            disabled={action.disabled}
+            label={action.label}
+            onChange={measuring ? () => undefined : action.onChange}
+          />
+        </span>
       )
     }
     const isMenu = action.kind === 'menu'
