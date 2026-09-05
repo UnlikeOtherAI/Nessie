@@ -110,11 +110,15 @@ switches.
 
 **Projects keep seven routes.** `/projects/:id` and its `/board`, `/backlog`,
 `/insights`, `/docs`, `/executors`, `/settings` siblings stay real routes so
-each is linkable, but the header's section menu navigates with `replace: true`,
-so Back leaves the project instead of walking the sections a reader passed
-through. The registry folds all seven into one `tabHost` identity and they
-render the same element, so React reconciles one `ProjectView` across them: the
-switch swaps the section without remounting the page or animating a layer.
+each is linkable. The sections are chosen in one place — the Projects sidebar
+draws them as the project's subpages, from the single list in
+`navigation/project-sections.ts`; the project header carries no section
+dropdown. A section link inside the project already on screen navigates with
+`replace`, so Back leaves the project instead of walking the sections a reader
+passed through; arriving from another project is a real push. The registry
+folds all seven into one `tabHost` identity and they render the same element,
+so React reconciles one `ProjectView` across them: the switch swaps the section
+without remounting the page or animating a layer.
 
 **Transient radio strips are not tab hosts.** A compact form choice may render
 the shared `TabBar` in `radiogroup` mode so it gets the same sliding selection

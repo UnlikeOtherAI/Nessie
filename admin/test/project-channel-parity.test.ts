@@ -20,6 +20,49 @@ test('project navigation reuses project avatars and exposes only edit/delete in 
   assert.doesNotMatch(menu, />\s*Settings\s*</)
 })
 
+test('the Projects sidebar is built from the same rows as the Channels sidebar', () => {
+  const projectsNav = source('layouts/admin-shell/ProjectsSidebarNav.tsx')
+  const channelsProjects = source('layouts/admin-shell/SidebarProjectsSection.tsx')
+  const channelsStarred = source('layouts/admin-shell/SidebarStarredSection.tsx')
+
+  // One row component and one section header for both sidebars, so a project
+  // row is the same size, weight and shape wherever it is drawn.
+  for (const nav of [projectsNav, channelsProjects]) {
+    assert.match(nav, /from '\.\/SidebarMenuSection'/)
+    assert.match(nav, /admin-sb-item sidebar-project-tile group/)
+    assert.match(nav, /className="sidebar-project-link"/)
+    assert.match(nav, /admin-sb-item sidebar-child group/)
+    assert.match(nav, /sidebar-row-star/)
+    assert.match(nav, /icon=\{faChevronDown\}/)
+  }
+
+  // Starred sits above the list it draws from, in both sidebars.
+  for (const nav of [projectsNav, channelsStarred]) {
+    assert.match(nav, /title="Starred"/)
+    assert.match(nav, /titleIcon=\{<SidebarStarIcon starred \/>\}/)
+  }
+  assert.ok(
+    projectsNav.indexOf('title="Starred"') < projectsNav.indexOf('title="Projects"'),
+    'Starred is drawn above Projects',
+  )
+})
+
+test('every project section is reachable from the Projects sidebar', () => {
+  const sections = source('navigation/project-sections.ts')
+  const projectsNav = source('layouts/admin-shell/ProjectsSidebarNav.tsx')
+  const surfaces = source('navigation/surfaces.ts')
+
+  // The sidebar is now the only doorway to a project's sections, so the list it
+  // renders has to name every routed section (AGENTS.md -> "Rule zero").
+  for (const id of ['overview', 'board', 'backlog', 'insights', 'docs', 'executors', 'settings']) {
+    assert.ok(sections.includes(`id: '${id}'`), `project-sections is missing ${id}`)
+  }
+  // ... and the router has to answer every path the list produces.
+  const routed = /board\|backlog\|insights\|docs\|executors\|settings/
+  assert.match(surfaces, routed)
+  assert.match(projectsNav, /projectSections\(\{ assignedWorkCount, isScrum, knowledgeCount, projectId \}\)/)
+})
+
 test('the project header is shared by both project doorways and opens the shared members popup', () => {
   const header = source('components/features/projects/ProjectPageHeader.tsx')
   const projectView = source('pages/project/ProjectView.tsx')
