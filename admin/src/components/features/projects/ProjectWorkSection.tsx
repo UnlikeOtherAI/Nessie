@@ -51,7 +51,8 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
   const { data: tasks, isError, isPending } = useTasks(projectId)
 
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
-  // Scoped exactly like ProjectBoardTab, so the chips count what "Board →" shows.
+  // Scoped exactly like ProjectBoardTab, so the chips count what the board button
+  // opens.
   const scoped = scopeTasksToBoard(tasks ?? [], {
     activeIterationId: activeIteration?.id ?? null,
     isScrum: Boolean(isScrum),

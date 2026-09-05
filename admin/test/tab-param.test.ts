@@ -225,9 +225,18 @@ test('a project section switch replaces and reconciles the view in place', async
   }
 })
 
-test("the project header's section switch is written with replace", () => {
+test('the project section switch is written with replace, and lives in the sidebar', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
   const view = readSource('../src/pages/project/ProjectView.tsx')
-  assert.match(view, /onSelect: \(\) => void navigate\(item\.to, \{ replace: true \}\)/)
+
+  // The sections are the project's sidebar subpages. Switching between them
+  // inside the project already on screen replaces the entry, so Back leaves the
+  // project rather than walking the sections the reader passed through;
+  // arriving from another project is a real push.
+  assert.match(sidebar, /replace=\{isCurrentProject\}/)
+  assert.match(sidebar, /projectSections\(/)
+  // The header no longer carries a second doorway to the same seven routes.
+  assert.doesNotMatch(view, /id: 'project-section'/)
 })
 
 // ─── The source gate ────────────────────────────────────────────────────────
