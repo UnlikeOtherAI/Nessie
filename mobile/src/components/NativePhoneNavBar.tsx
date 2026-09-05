@@ -72,12 +72,14 @@ const NavBarLanes = ({
   headerText,
   onAction,
   onBack,
+  safeTop,
   screenBar,
 }: {
   accentColor: string
   headerText: string
   onAction: (id: string, itemId?: string) => void
   onBack: () => void
+  safeTop: number
   screenBar: NativeScreenBar | null
 }): React.JSX.Element => {
   const back = screenBar?.back ?? null
@@ -123,7 +125,12 @@ const NavBarLanes = ({
   }
 
   return (
-    <View style={styles.content}>
+    // The status-bar inset belongs on the row itself, not on a wrapper above
+    // it: each lane is absolutely positioned, and an absolutely positioned
+    // child is laid out against its parent's border box, so padding on the
+    // wrapper is ignored and the row would centre over the whole band —
+    // including the status bar — leaving a dead gap beneath it.
+    <View style={[styles.content, { paddingTop: safeTop }]}>
         <View style={styles.leading}>
           {back ? (
             <Pressable
@@ -288,7 +295,7 @@ export const NativePhoneNavBar = ({
         },
       ]}
     >
-      <View style={[styles.lanes, { paddingTop: safeTop }]} pointerEvents="box-none">
+      <View style={styles.lanes} pointerEvents="box-none">
         {lanes ? (
           <>
             <Animated.View pointerEvents="none" style={[styles.lane, outgoingStyle]}>
@@ -297,6 +304,7 @@ export const NativePhoneNavBar = ({
                 headerText={headerText}
                 onAction={onAction}
                 onBack={onBack}
+                safeTop={safeTop}
                 screenBar={lanes.outgoing}
               />
             </Animated.View>
@@ -306,6 +314,7 @@ export const NativePhoneNavBar = ({
                 headerText={headerText}
                 onAction={onAction}
                 onBack={onBack}
+                safeTop={safeTop}
                 screenBar={lanes.incoming}
               />
             </Animated.View>
@@ -317,6 +326,7 @@ export const NativePhoneNavBar = ({
               headerText={headerText}
               onAction={onAction}
               onBack={onBack}
+              safeTop={safeTop}
               screenBar={resting}
             />
           </View>
