@@ -85,6 +85,32 @@ export const AgentTriggerTypeSchema = z.enum([
 export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
 
 /**
+ * Why a trigger fire did nothing — one vocabulary, asked twice.
+ *
+ * The webhook receiver asks it **synchronously**, before it queues anything, so
+ * a paused trigger and an agent bound to no channel are still the 409s a
+ * misconfigured integration has to hear on the delivery it sent
+ * (`resolveTriggerFireReadiness`). The worker asks it **again** when the job is
+ * claimed, because the queue is at-least-once and a trigger can be paused,
+ * unbound or deleted between the 202 and the fire — and a claim-time answer is
+ * written onto the `agent_trigger_deliveries` row as its `errorMessage`, so the
+ * `dedupeKey` the ack handed the sender resolves to a terminal record of the
+ * recheck instead of to nothing at all
+ * (docs/standards/horizontal-scaling.md § 3).
+ *
+ * The literals are the same on both sides deliberately: an operator reading
+ * `trigger_paused` off a delivery row is reading the sentence the 409 would
+ * have carried had the trigger been paused a second earlier.
+ */
+export const TriggerFireSkipReasonSchema = z.enum([
+  'agent_not_bound',
+  'trigger_not_found',
+  'trigger_paused',
+  'workflow_installation_not_ready',
+])
+export type TriggerFireSkipReason = z.infer<typeof TriggerFireSkipReasonSchema>
+
+/**
  * Authenticated tenant selected when a user creates a scheduled task. PA and
  * other system-owned agents are deliberately not a source of this identity.
  */

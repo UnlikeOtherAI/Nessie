@@ -102,7 +102,19 @@ const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
     },
     required: ['task'],
   },
-  safe: true,
+  // NOT safe, and the flag is load-bearing rather than descriptive. `safe` says
+  // a call only reads; a delegation does not, because the sub-agent inherits
+  // the parent run's resolved builtins minus `delegate` itself
+  // (`worker/src/run/execute/agent-loop.ts`) and can therefore send mail, file
+  // a ticket or ring somebody. While this said `true`, the tool-effect ledger
+  // excluded the dispatch on that flag alone — `agents` was already an
+  // effectful category — so a resumed run re-issued the delegation and the
+  // second sub-agent's own calls carried new tool-call ids that matched no
+  // earlier claim. The parent's `delegate` call is the one id stable across
+  // executions, so claiming it is what stops the whole sub-run repeating.
+  // (Consequence, and the right one: `reviewableToolSurface` now offers a
+  // delegation to automated review in organisations whose policy asks for it.)
+  safe: false,
 }
 
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
@@ -303,7 +315,23 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['task'],
     },
-    safe: true,
+    // NOT safe — the same correction `delegate` needed, and for a worse
+    // failure. `safe` says a call only reads; this one writes three durable
+    // rows in one transaction (`worker/src/run/subtask-tools.ts`): a child
+    // `Agent`, its `Run`, and its `Task`, then enqueues that run. While this
+    // said `true`, the flag alone kept the dispatch out of `run_tool_effects`
+    // — `agents` was already an effectful category — so a resumed run spawned
+    // the child a SECOND time. Nothing collapses the repeat onto the first:
+    // the child's name embeds a fresh `randomUUID().slice(0, 8)`, so there is
+    // no natural key, and the enqueue's idempotency key is built from that new
+    // child's id. The damage is visible to a person, not just to bookkeeping —
+    // a second agent in the list, a second task on the board, and a second
+    // execution of the work.
+    // (Consequence, and the right one: `reviewableToolSurface` now offers a
+    // spawn to automated review in organisations whose policy asks for one. It
+    // creates a durable agent and dispatches a run; that is precisely the kind
+    // of act a reviewing organisation wants to see before it happens.)
+    safe: false,
   },
   DELEGATE_TOOL_DEFINITION,
   WEB_SEARCH_TOOL_DEFINITION,

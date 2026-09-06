@@ -152,6 +152,35 @@ export type DeepWaterResearchRunRecord =
 export const DeepSignalSignalKindSchema = z.enum(['opportunity', 'risk', 'signal'])
 export type DeepSignalSignalKind = z.infer<typeof DeepSignalSignalKindSchema>
 
+/**
+ * `deepsignal.insight.fanout` queue job — one verified `insight.surfaced`
+ * webhook delivery, already authenticated and routed to its organisation.
+ *
+ * The receiver (`POST /api/integrations/deepsignal/events`) verifies the HMAC,
+ * resolves the signing organisation and the payload's enabled team, and then
+ * enqueues; the recipient fan-out — a channel, a thread, a binding and a digest
+ * transaction *per linked team member* — runs here. It used to run inline, so
+ * one insight for a fifty-person team held the request open across fifty digest
+ * transactions and an instance recycled mid-fan-out lost the rest of them after
+ * the caller had already been told 2xx
+ * (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+ *
+ * `insightId` is lifted out of the payload because it is the idempotency key
+ * (`deepsignal-insight:<organizationId>:<insightId>`) and the receiver refuses a
+ * body without one. Replay is safe without relying on that key: the digest
+ * writer holds a per-thread advisory lock and answers an insight already
+ * recorded on a live digest with `duplicate`, writing nothing.
+ */
+export const DEEPSIGNAL_INSIGHT_FANOUT_TOPIC = 'deepsignal.insight.fanout'
+
+export const DeepSignalInsightFanoutJobPayloadSchema = z.object({
+  insightId: NonEmptyStringSchema,
+  organizationId: z.string().uuid(),
+  payload: z.record(z.unknown()),
+})
+export type DeepSignalInsightFanoutJobPayload =
+  z.infer<typeof DeepSignalInsightFanoutJobPayloadSchema>
+
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),
   accountLink: ProductAccountLinkRecordSchema.nullable(),

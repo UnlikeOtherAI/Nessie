@@ -7727,6 +7727,13 @@ model AgentBrowser {
   /// Retained on a tombstoned row so the delete job still has its target.
   browserbaseContextId String @map("browserbase_context_id")
 
+  /// The window the browser opens at, remembered per browser so an agent whose
+  /// work needs a wider page keeps it across sessions. NULL means the default
+  /// laptop window (`DEFAULT_BROWSER_VIEWPORT`); a pair is always set or
+  /// cleared together, which the CHECK below enforces.
+  viewportWidth        Int?    @map("viewport_width")
+  viewportHeight       Int?    @map("viewport_height")
+
   status       AgentBrowserStatus @default(active)
   createdAt    DateTime           @default(now()) @map("created_at")
   lastUsedAt   DateTime?          @map("last_used_at")

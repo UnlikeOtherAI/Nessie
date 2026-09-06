@@ -1489,7 +1489,26 @@ Agent-level `webhook` triggers receive inbound calls on the public API:
   GitHub-style); the server verifies it timing-safe against the trigger's secret
   and rejects mismatches/missing signatures with `401`.
 
-Both paths dedupe on `X-Nessie-Delivery-Id` / `X-Github-Delivery` / `X-Request-Id`.
+Both paths **enqueue and acknowledge**: once the delivery is authenticated and
+the trigger is confirmed usable, the intake queues `trigger.webhook.dispatch`
+and answers `202` with `{ accepted, dedupeKey, existing, triggerId }`. The fire
+itself — the launch-origin preflight, the delivery row, the kickoff message, the
+thread claim, the run and its task — happens in the worker, so a sender never
+waits on it and an instance recycled mid-fire cannot lose a delivery it has
+already accepted (docs/standards/horizontal-scaling.md § 3). The delivery record
+and `runId` the response used to carry are gone with it: neither row exists at
+acknowledgement time. `dedupeKey` is the handle instead — it is the key
+`GET /api/triggers/{id}/deliveries` reports for this fire.
+
+What did **not** move is the sender's answer to whether the trigger is usable:
+a paused or unavailable trigger is still `409 TRIGGER_UNAVAILABLE`, and an agent
+bound to no channel is still `409 AGENT_NOT_BOUND`, both resolved before
+anything is queued.
+
+Both paths dedupe on `X-Nessie-Delivery-Id` / `X-Github-Delivery` / `X-Request-Id`
+— it is the enqueue's idempotency key and, namespaced `webhook:<id>`, the
+delivery's, so a provider retry collapses at both layers. A sender that offers
+none gets a per-request key and therefore fires every time, as it always has.
 A dispatch that fails transiently is recorded as a `failed` delivery with
 `retry_count` / `next_retry_at`; the worker retry poller re-attempts due
 deliveries with exponential backoff (30s × 2^n, capped at 30 min, up to 5 retries)

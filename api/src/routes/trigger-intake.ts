@@ -3,12 +3,16 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import { verifyHmacSignature } from '@nessie/runtime'
-import { type TriggerEventDispatchJobPayload } from '@nessie/schemas'
-import { AgentTriggerDeliveryRecordSchema, PublishEventBodySchema } from '../contracts/triggers.js'
+import {
+  TRIGGER_WEBHOOK_DISPATCH_TOPIC,
+  type TriggerEventDispatchJobPayload,
+  type TriggerWebhookDispatchJobPayload,
+} from '@nessie/schemas'
+import { PublishEventBodySchema } from '../contracts/triggers.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
 import { enqueueQueueJob } from '@nessie/db'
-import { dispatchAgentTrigger } from '../services/triggers.js'
+import { resolveTriggerFireReadiness } from '../services/trigger-shared.js'
 import type { RouteDeps } from './types.js'
 
 // --- sp-webhook: HMAC signature verification ---------------------------------
@@ -59,13 +63,31 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
     readFirstHeader,
   } = deps
 
-  // Dispatch a verified webhook to its trigger and write the 202/4xx response.
+  // Accept a verified webhook for its trigger and write the 202/4xx response.
   // Shared by the bearer-key endpoint and the HMAC-signed endpoint below.
-  const dispatchVerifiedWebhook = async (
+  //
+  // It enqueues and acks, like every other receiver in this codebase
+  // (`board-sources/webhooks.ts`, `comms-webhooks.ts`, and `POST /api/events`
+  // just below). The fire itself — the launch-origin preflight, the UOA identity
+  // and channel-access rechecks, the delivery row, the kickoff message, the
+  // thread claim, the run and its task — used to run inline, holding the sender's
+  // request open across all of it; an instance recycled mid-transaction then lost
+  // a delivery the sender had already been answered for, and would never send
+  // again (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+  //
+  // What did NOT move is the sender's answer to "is this trigger usable at all":
+  // a paused trigger and an agent bound to no channel are still 409s, resolved
+  // here by `resolveTriggerFireReadiness` before anything is queued.
+  const acceptVerifiedWebhook = async (
     request: FastifyRequest,
     reply: FastifyReply,
     triggerId: string,
   ) => {
+    // The sender's own delivery id when it offers one; otherwise a key unique to
+    // this request, which is what a sender with nothing to dedupe on honestly
+    // has. Both the enqueue and the `agent_trigger_deliveries` row are keyed on
+    // it, so a provider retry collapses at both layers and a sender without a
+    // delivery id keeps firing every time — exactly as it did inline.
     const dedupeKey =
       readFirstHeader(request, [
         'x-nessie-delivery-id',
@@ -73,15 +95,9 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
         'x-request-id',
       ]) ?? randomUUID()
 
-    const dispatched = await dispatchAgentTrigger(prisma, {
-      dedupeKey,
-      payload: request.body,
-      source: 'webhook',
-      triggerId,
-    })
-
-    if (dispatched.kind === 'rejected') {
-      if (dispatched.reason === 'agent_not_bound') {
+    const readiness = await resolveTriggerFireReadiness(prisma, triggerId)
+    if (readiness.kind === 'not_ready') {
+      if (readiness.reason === 'agent_not_bound') {
         sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
         return reply
       }
@@ -90,12 +106,27 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
       return reply
     }
 
+    const payload: TriggerWebhookDispatchJobPayload = {
+      dedupeKey,
+      payload: request.body,
+      triggerId,
+    }
+    const enqueued = await enqueueQueueJob(prisma, {
+      idempotencyKey: `trigger-webhook:${triggerId}:${dedupeKey}`,
+      payload,
+      topic: TRIGGER_WEBHOOK_DISPATCH_TOPIC,
+    })
+
+    // `dedupeKey` is the handle a caller has on the fire: it is the key
+    // `GET /api/triggers/:id/deliveries` reports, so a sender can find the
+    // delivery this ack accepted. The delivery record and `runId` the inline
+    // path used to return cannot be: neither row exists yet.
     return reply.code(202).send(
       createApiResponse({
         accepted: true,
-        delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
-        existing: dispatched.existing,
-        runId: dispatched.runId,
+        dedupeKey,
+        existing: !enqueued,
+        triggerId,
       }),
     )
   }
@@ -137,7 +168,7 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
       return reply
     }
 
-    return dispatchVerifiedWebhook(request, reply, matchedTrigger.id)
+    return acceptVerifiedWebhook(request, reply, matchedTrigger.id)
   })
 
   // sp-webhook: HMAC-signed intake. The trigger is identified by path so its
@@ -167,7 +198,7 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
         return reply
       }
 
-      return dispatchVerifiedWebhook(request, reply, trigger.id)
+      return acceptVerifiedWebhook(request, reply, trigger.id)
     },
   )
 

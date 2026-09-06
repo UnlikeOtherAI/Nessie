@@ -9,7 +9,7 @@ import {
   resolveSignedWebhookOrg,
   setProductWebhookSecret,
 } from '../src/services/product-webhook-secret.js'
-import { handleDeepSignalInsightSurfaced } from '../src/services/deepsignal-webhook.js'
+import { handleDeepSignalInsightSurfaced } from '@nessie/team-admin'
 import {
   LOCAL_TEAM_A,
   LOCAL_TEAM_B,

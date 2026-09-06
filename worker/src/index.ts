@@ -64,7 +64,9 @@ import {
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
+  TRIGGER_WEBHOOK_DISPATCH_TOPIC,
   TriggerEventDispatchJobPayloadSchema,
+  TriggerWebhookDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
 import { getPrismaClient, withSweepLock } from '@nessie/db'
@@ -118,10 +120,12 @@ import { handleWorkflowRunFailureDispatch } from './control/workflow-failure-dis
 import { handleAttentionDispatch } from './control/attention-dispatch.js'
 import {
   dispatchEventTriggers,
+  dispatchWebhookTrigger,
   reattemptTriggerDelivery,
   retryFailedTriggerDeliveries,
   sweepDueScheduledTriggers,
 } from './control/triggers.js'
+import { runDeepSignalInsightFanout } from './control/deepsignal-insight.js'
 import { executeWorkflowRun } from './control/workflows.js'
 import { reapStuckWorkflowSteps } from './control/workflow-step-reaper.js'
 import { executeRunJob } from './run/execute.js'
@@ -167,6 +171,8 @@ import {
   BoardSourceWebhooksRenewJobPayloadSchema,
   BoardSourceWebhookJobPayloadSchema,
   BoardSourceHealthAlertJobPayloadSchema,
+  DEEPSIGNAL_INSIGHT_FANOUT_TOPIC,
+  DeepSignalInsightFanoutJobPayloadSchema,
   parseOrganizationId,
 } from '@nessie/schemas'
 import {
@@ -670,6 +676,33 @@ export const startWorker = async (
     async (job) => {
       const payload = TriggerEventDispatchJobPayloadSchema.parse(job.payload)
       await dispatchEventTriggers(prisma, payload)
+    },
+    {
+      signal: abortController.signal,
+    },
+  )
+
+  // Inbound webhook deliveries. The intake route verifies and acks; the fire
+  // happens here, on the same seam the scheduler and event dispatch use
+  // (docs/standards/horizontal-scaling.md § 3).
+  subscribe(
+    TRIGGER_WEBHOOK_DISPATCH_TOPIC,
+    async (job) => {
+      const payload = TriggerWebhookDispatchJobPayloadSchema.parse(job.payload)
+      await dispatchWebhookTrigger(prisma, payload)
+    },
+    {
+      signal: abortController.signal,
+    },
+  )
+
+  // DeepSignal proactive insights: the receiver verifies and routes, the
+  // per-recipient digest fan-out runs here.
+  subscribe(
+    DEEPSIGNAL_INSIGHT_FANOUT_TOPIC,
+    async (job) => {
+      const payload = DeepSignalInsightFanoutJobPayloadSchema.parse(job.payload)
+      await runDeepSignalInsightFanout({ prisma, realtimeTransport }, payload)
     },
     {
       signal: abortController.signal,

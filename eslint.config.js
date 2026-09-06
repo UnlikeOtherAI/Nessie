@@ -571,7 +571,6 @@ export default [
       '**/__fixtures__/**',
       '**/fixtures/**',
       // --- (a) audited defects, each with the finding that owns its fix ---
-      'worker/src/control/automatic-membership/rate-limit.ts', // 5.6 — per-process buckets; Postgres token bucket in Phase 5.3.
       'worker/src/run/external-conversation-store.ts', // 5.11 — per-process thread locks; covered by the run-slot advisory lock above them.
       'worker/src/run/execute/tool-registry.ts', // 5.12 — per-process memo of seeded builtin-tool organisations; waste only.
       'api/src/services/uoa-roster-subjects.ts', // 3.1 — 30 s roster-subject cache gating the avatar relay; documented trade-off.

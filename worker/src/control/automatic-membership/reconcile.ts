@@ -185,7 +185,7 @@ export const executeAutomaticMembershipReconcileJob = async (
 
   let page
   try {
-    await awaitUpstreamSlot(run.domain.organizationId)
+    await awaitUpstreamSlot(prisma, run.domain.organizationId)
     page = await listOrganisationMembers(
       externalOrgId,
       { limit: PAGE_SIZE, status: 'ACTIVE', ...(run.cursor ? { cursor: run.cursor } : {}) },
@@ -255,7 +255,9 @@ export const executeAutomaticMembershipReconcileJob = async (
         deps.rosterDeps ?? {},
         {
           ...defaultAutomaticGrantUpstream,
-          pace: () => awaitUpstreamSlot(run.domain.organizationId),
+          // `pace` only has to block; how the call was let through is the
+          // limiter's own log, not this caller's business.
+          pace: async () => { await awaitUpstreamSlot(prisma, run.domain.organizationId) },
         },
       )
       if (result.outcome === 'granted') {

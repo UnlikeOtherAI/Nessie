@@ -52,3 +52,41 @@ now stale; the invariants that did not change are still stated there.
   tab. Open question for §7: screenshots of signed-in pages sit unencrypted in
   the database (see `docs/standards/file-storage.md`).
 
+
+## Window size and home page (shipped 2026-09-06)
+
+- **A browser's window is stored on the browser, not on the person or the
+  conversation.** `agent_browsers.viewport_width/height`, read when a session
+  opens. It is a property of the work: an agent that reads a dashboard needs a
+  wide page every time it opens one, whoever asked. That puts it per-person
+  exactly where the browser already is — a system-managed agent's browser is
+  one row per principal, so sizing the Personal Assistant's window sizes one
+  person's and nobody else's. Null means `DEFAULT_BROWSER_VIEWPORT` (1280×800),
+  which keeps every pre-existing row on the default with no backfill.
+- **Browserbase fixes a viewport at session creation.** The stored pair is
+  therefore what the *next* session opens at, and a session already on screen
+  is resized through `Emulation.setDeviceMetricsOverride` — a page-level
+  override, best effort, and **only when the caller holds the control claim**.
+  Reflowing a page an agent is working on mid-run would move every element it
+  had just located; the row is written either way, and the viewer says when a
+  resize is waiting rather than appearing to do nothing.
+- **`agent_browsers_viewport_chk` refuses half a pair** and anything outside
+  320..3840 × 320..2160. `BrowserViewportSchema`
+  (`packages/schemas/src/browser-preferences.ts`) carries the same bounds, so a
+  value the route accepts is one the database accepts.
+- **The home page is a scoped setting**, `browser.homepage`, cascading
+  organisation → team → user with the same lock semantics as
+  `browser.connection`. It is resolved server-side on every use: a client that
+  resolved it would be a second implementation of the cascade.
+- **`http`/`https` only, never credentialed.** This value is typed by an
+  administrator and then navigated to *inside an agent's browser*, where a
+  `javascript:` URL would run in the live view's page and a `user:pass@` one
+  would put a password in the tab strip and in every capture of it.
+  `isNavigableHomepage` is the one gate, used by the schema the field validates
+  with and by `resolveBrowserHomepage`, which falls back to the default rather
+  than failing a session open on an unusable stored value.
+- **A resume with no stored tabs lands on the home page** rather than a blank
+  page, best effort — a browser that came up but did not reach its home page is
+  still a working browser, and releasing it would turn a cosmetic miss into a
+  resume that failed. The address is passed in by the caller; this package
+  holds no settings reader.

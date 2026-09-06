@@ -5,7 +5,7 @@ import { z } from 'zod'
 import {
   createSystemAuthoredMessage,
   createSystemAuthoredReply,
-} from './system-authored-message.js'
+} from '@nessie/team-admin'
 import { ResumeRollback, resumeSuspendedRun, type RunResumeFailure } from './run-resume-core.js'
 
 const ApprovalResumeStateSchema = z.object({

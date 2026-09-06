@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict'
-import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import { mapTriggerRecord, TRIGGER_ADMIN_AUDIENCE } from '@nessie/team-admin'
-import Fastify, { type FastifyRequest } from 'fastify'
 
-import { registerTriggerIntakeRoutes } from '../src/routes/trigger-intake.js'
-import type { RouteDeps } from '../src/routes/types.js'
 import { dispatchAgentTrigger } from '../src/services/trigger-dispatch.js'
 import {
   listAgentTriggers,
@@ -118,82 +115,13 @@ const cleanup = async (prisma: PrismaClient, seed: Seed): Promise<void> => {
   await prisma.organization.delete({ where: { id: seed.organizationId } })
 }
 
-const parseHeaderValue = (value: string | string[] | undefined): string | undefined => {
-  const first = Array.isArray(value) ? value[0] : value
-  const trimmed = first?.trim()
-  return trimmed ? trimmed : undefined
-}
-
-const createWebhookIntakeApp = (prisma: PrismaClient) => {
-  const app = Fastify()
-  registerTriggerIntakeRoutes(app, {
-    isJsonContentType: (request: FastifyRequest) =>
-      /^application\/([a-z0-9.+-]+\+)?json($|;)/i.test(
-        parseHeaderValue(request.headers['content-type']) ?? '',
-      ),
-    isTimingSafeMatch: (left: string | undefined, right: string | undefined) => {
-      if (!left || !right) return false
-      const leftBuffer = Buffer.from(left)
-      const rightBuffer = Buffer.from(right)
-      return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
-    },
-    prisma,
-    readFirstHeader: (request: FastifyRequest, names: string[]) => {
-      for (const name of names) {
-        const value = parseHeaderValue(request.headers[name])
-        if (value) return value
-      }
-      return undefined
-    },
-    readWebhookApiKey: (request: FastifyRequest) => {
-      const authorization = parseHeaderValue(request.headers.authorization)
-      const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
-      return bearer || parseHeaderValue(request.headers['x-nessie-trigger-key'])
-    },
-  } as unknown as RouteDeps)
-  return app
-}
-
-runDatabaseTest('webhook intake persists the exact received payload before queueing its agent run', async () => {
-  const prisma = new PrismaClient()
-  const seed = await seedWebhookTrigger(prisma)
-  const app = createWebhookIntakeApp(prisma)
-  const payload = {
-    build: { id: 'build-42', state: 'passed' },
-    labels: ['release', 'eu'],
-  }
-
-  try {
-    const response = await app.inject({
-      headers: {
-        authorization: `Bearer ${WEBHOOK_KEY}`,
-        'content-type': 'application/json',
-        'x-nessie-delivery-id': 'build-42',
-      },
-      method: 'POST',
-      payload,
-      url: '/api/triggers/webhook',
-    })
-
-    assert.equal(response.statusCode, 202)
-    const body = response.json() as { data: { accepted: boolean; runId: string } }
-    assert.equal(body.data.accepted, true)
-    assert.ok(body.data.runId)
-
-    const delivery = await prisma.agentTriggerDelivery.findFirstOrThrow({
-      orderBy: { createdAt: 'desc' },
-      select: { payload: true, source: true, status: true },
-      where: { triggerId: seed.triggerId },
-    })
-    assert.equal(delivery.status, 'delivered')
-    assert.equal(delivery.source, 'webhook')
-    assert.deepEqual(delivery.payload, payload)
-  } finally {
-    await app.close()
-    await cleanup(prisma, seed)
-    await prisma.$disconnect()
-  }
-})
+// The intake's own end-to-end property — a bearer key resolves its trigger, the
+// exact received bytes are carried, and a redelivery collapses — is pinned in
+// `trigger-webhook-intake-enqueue.test.ts`, and the delivery row those bytes end
+// up in is pinned in `worker/test/db/trigger-webhook-dispatch.test.ts`. The
+// intake enqueues rather than dispatching now (audit 9.2), so no single request
+// spans both halves any more; what this file is about is the audience split
+// below, which the key lookup feeds.
 
 runDatabaseTest('firing a webhook trigger never returns its intake key', async () => {
   const prisma = new PrismaClient()

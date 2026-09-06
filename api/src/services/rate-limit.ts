@@ -1,22 +1,28 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { isIPv6 } from 'node:net'
 
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { writeAuditEntry } from '@nessie/db'
+import {
+  countRateLimitHit,
+  pruneRateLimitWindows,
+  rateLimitKeyHash,
+  writeAuditEntry,
+} from '@nessie/db'
 import { emitAuditEvent } from './audit.js'
 
 /**
  * Brute-force protection for auth-sensitive endpoints (issue #211).
  *
- * Postgres-backed fixed-window counters (the deployment has no Redis): one
- * `rate_limit_buckets` row per (bucket, identity hash, window start),
- * incremented atomically so concurrent replicas count against the same row.
- * Windows are fixed rather than sliding: each identity carries at most two
- * live counters, the unique key makes increments idempotent per row, and
- * expired rows are deleted by the probabilistic cleanup below — a true
- * sliding log would need an unbounded event table and a transaction per hit.
+ * The counter store itself is shared: `countRateLimitHit` in `@nessie/db`
+ * (`rate-limit-window.ts`) owns the `rate_limit_buckets` statement, so this
+ * limiter and the worker's outbound UOA pacer move the same rows with the same
+ * SQL instead of drifting apart. One `rate_limit_buckets` row per (bucket,
+ * identity hash, window start), incremented atomically so concurrent replicas
+ * count against the same row; expired rows are deleted by the probabilistic
+ * cleanup below. The rationale for a fixed window over a sliding log lives on
+ * the shared module.
  *
  * Raw IPs / user ids are never persisted: the store key is
  * sha256(`${bucket}:${identity}`).
@@ -44,9 +50,6 @@ export type RateLimitResult =
   | { allowed: false; retryAfterSeconds: number }
 
 const CLEANUP_PROBABILITY = 0.02
-
-const hashIdentity = (bucket: string, identity: string): string =>
-  createHash('sha256').update(`${bucket}:${identity}`).digest('hex')
 
 /**
  * Expand an IPv6 address to its eight zero-padded hextets. Input is already
@@ -142,39 +145,21 @@ export class RateLimiter {
     identity: string,
   ): Promise<RateLimitDecision> {
     this.stats.checks += 1
-    const now = Date.now()
-    const windowStartMs = Math.floor(now / rule.windowMs) * rule.windowMs
-    const keyHash = hashIdentity(bucket, identity)
     try {
-      const rows = await this.prisma.$queryRaw<Array<{ count: number }>>`
-        INSERT INTO "rate_limit_buckets"
-          ("id", "bucket", "key_hash", "window_start", "count", "updated_at")
-        VALUES (
-          ${randomUUID()}::uuid,
-          ${bucket},
-          ${keyHash},
-          ${new Date(windowStartMs)},
-          1,
-          NOW()
-        )
-        ON CONFLICT ("bucket", "key_hash", "window_start")
-        DO UPDATE SET "count" = "rate_limit_buckets"."count" + 1,
-                      "updated_at" = NOW()
-        RETURNING "count"
-      `
-      const count = rows[0]?.count ?? 1
-      // Bounded cleanup: 2% of hits sweep expired rows, keeping the table at
-      // ~live keys per window without a background job. The sweep is scoped
-      // to the triggering bucket: other buckets run on different windows, so
-      // their still-live rows must never be deleted here.
-      if (Math.random() < this.cleanupProbability) {
-        await this.prisma.$executeRaw`
-          DELETE FROM "rate_limit_buckets"
-          WHERE "bucket" = ${bucket} AND "window_start" < ${new Date(now - rule.windowMs)}
-        `
-      }
-      const limited = count > rule.max
-      if (limited) {
+      // No `nowMs`: the window is floored from `NOW()` inside the statement, so
+      // every replica counts against the same row whatever its own clock says.
+      const hit = await countRateLimitHit(this.prisma, {
+        bucket,
+        keyHash: rateLimitKeyHash(bucket, identity),
+        rule,
+      })
+      // Housekeeping owns its own failure, outside the fail-open catch below.
+      // A sweep that throws after the limiter already answered has allowed
+      // nothing extra, and reporting it as a store outage would put a
+      // FAIL-OPEN line and a `storeErrors` bump against a request that was
+      // counted correctly. The worker's pacer keeps the same discipline.
+      await this.sweepExpired(bucket, rule)
+      if (hit.limited) {
         this.stats.limited += 1
         this.stats.limitedByBucket.set(
           bucket,
@@ -182,14 +167,11 @@ export class RateLimiter {
         )
       }
       return {
-        limited,
+        limited: hit.limited,
         bucket,
-        count,
+        count: hit.count,
         limit: rule.max,
-        retryAfterSeconds: Math.max(
-          1,
-          Math.ceil((windowStartMs + rule.windowMs - now) / 1000),
-        ),
+        retryAfterSeconds: hit.retryAfterSeconds,
       }
     } catch (error) {
       this.stats.storeErrors += 1
@@ -204,6 +186,26 @@ export class RateLimiter {
         limit: rule.max,
         retryAfterSeconds: 0,
       }
+    }
+  }
+
+  /**
+   * Bounded cleanup: a small fraction of hits sweep expired rows, keeping the
+   * table at ~live keys per window without a background job. Scoped to the
+   * triggering bucket, because other buckets run on different windows and their
+   * still-live rows must never be deleted here. The cutoff is database-anchored
+   * for the same reason the window is: a fast clock here would otherwise delete
+   * a window another replica is still counting in.
+   */
+  private async sweepExpired(bucket: string, rule: RateLimitRule): Promise<void> {
+    if (Math.random() >= this.cleanupProbability) return
+    try {
+      await pruneRateLimitWindows(this.prisma, { bucket, olderThanMs: rule.windowMs })
+    } catch (error) {
+      this.logger.error(
+        `[rate-limit] expired-window sweep failed (bucket=${bucket}); the limiter `
+        + `itself answered and nothing extra was allowed: ${String(error)}`,
+      )
     }
   }
 
@@ -289,7 +291,7 @@ export class RateLimiter {
           { count: decision.count, limit: decision.limit },
         ]),
       ),
-      ipHash: hashIdentity('audit.ip', input.ip),
+      ipHash: rateLimitKeyHash('audit.ip', input.ip),
     }
     if (input.auditContext) {
       // Authenticated route: use the standard audit chokepoint so the event

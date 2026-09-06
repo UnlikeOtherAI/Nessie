@@ -16,7 +16,25 @@ import test from 'node:test'
  * the hook under test is the real `registerGlobalAuthHook`.
  */
 
+// The counter statement itself is NOT stubbed: `rate-limit-window.ts` in
+// @nessie/db owns the `rate_limit_buckets` SQL that both this limiter and the
+// worker's outbound UOA pacer issue, and the fake `$queryRaw`/`$executeRaw`
+// below are what assert on it. The stub re-exports the real module by file URL
+// (a data: URL module cannot resolve a bare specifier, and resolving
+// '@nessie/db' from inside the stub would re-enter this loader).
+const dbRateLimitUrl = new URL(
+  '../../packages/db/src/rate-limit-window.ts',
+  import.meta.url,
+).href
 const dbStub = [
+  'export {',
+  '  clearRateLimitWindows,',
+  '  countRateLimitHit,',
+  '  pruneRateLimitWindows,',
+  '  rateLimitKeyHash,',
+  '  rateLimitWindowStart,',
+  '  takeRateLimitSlot,',
+  `} from ${JSON.stringify(dbRateLimitUrl)}`,
   'export const disconnectPrismaClient = async () => {}',
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is stubbed in global-rate-limit-hook.test.ts")',
@@ -57,14 +75,19 @@ class FakeRateLimitStore {
     $queryRaw: async (
       strings: TemplateStringsArray,
       ...values: unknown[]
-    ): Promise<Array<{ count: number }>> => {
+    ): Promise<Array<{ count: number; window_start_ms: number; now_ms: number }>> => {
       assert.ok(strings.join('?').includes('INSERT INTO "rate_limit_buckets"'))
-      const bucket = String(values[1])
+      // Positional args: clock override (null → the store's own clock, because
+      // the statement floors the window from the DATABASE's NOW()), windowMs,
+      // id, bucket, keyHash.
+      const nowMs = (values[0] as number | null) ?? Date.now()
+      const windowStartMs = Math.floor(nowMs / Number(values[1])) * Number(values[1])
+      const bucket = String(values[3])
       this.buckets.push(bucket)
-      const key = `${bucket}|${String(values[2])}|${(values[3] as Date).toISOString()}`
+      const key = `${bucket}|${String(values[4])}|${windowStartMs}`
       const count = (this.rows.get(key) ?? 0) + 1
       this.rows.set(key, count)
-      return [{ count }]
+      return [{ count, now_ms: nowMs, window_start_ms: windowStartMs }]
     },
     $executeRaw: async (): Promise<number> => 0,
   }

@@ -22,6 +22,7 @@ import {
   normalizePayload,
   upsertDelivery,
   type RetryContext,
+  type TriggerFireSkipRecorder,
 } from './trigger-run.js'
 
 // Workflow-installation triggers fire a WorkflowRun rather than a direct agent
@@ -32,6 +33,8 @@ export const queueWorkflowTriggerRun = async (
   prisma: PrismaClient,
   input: {
     dedupeKey?: string
+    /** See `TriggerFireSkipRecorder`: only the webhook dispatcher passes one. */
+    onSkipped?: TriggerFireSkipRecorder
     payload: unknown
     retry?: RetryContext
     source: string
@@ -54,6 +57,7 @@ export const queueWorkflowTriggerRun = async (
   // W8: `paused` must actually pause. Only an unambiguous active
   // installation fires — one lifecycle read, shared with the API.
   if (installation.status !== 'active' || !installation.active) {
+    await input.onSkipped?.('workflow_installation_not_ready')
     return
   }
 

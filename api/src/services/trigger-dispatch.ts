@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { buildTriggerPrompt } from '@nessie/runtime'
 import {
+  createSystemAuthoredMessage,
   prepareScheduledAgentTodoTrigger,
 } from '@nessie/team-admin'
 import {
@@ -16,7 +17,6 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
-import { createSystemAuthoredMessage } from './system-authored-message.js'
 import { dispatchWorkflowTrigger } from './trigger-dispatch-workflow.js'
 import {
   type DispatchTriggerResult,

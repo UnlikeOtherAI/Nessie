@@ -32,11 +32,70 @@ returns null and the session bills until its TTL.
 
 **Corollary.** Put the state in Postgres: a row claimed with a conditional
 `UPDATE … WHERE … RETURNING`, or an existing shared table (`rate_limit_buckets`
-already implements the token bucket). A cache is allowed only when it is
+already implements the counter). A cache is allowed only when it is
 read-through, bounded, carries a TTL, and is **never** the authority for a
 decision — `knowledge-query-embedding.ts` (4.4) and the 30 s UOA roster-subject
 cache (3.1) are the passing shape, and the second one documents its staleness
 window in the module because the staleness is user-visible.
+
+**A rate limit is that state, and there is one counter store for all of them.**
+`packages/db/src/rate-limit-window.ts` owns the `rate_limit_buckets` statement
+and every limiter in the deployment goes through it — the API's inbound
+brute-force guard (`api/src/services/rate-limit.ts`) and the worker's outbound
+UOA pacer (`worker/src/control/automatic-membership/rate-limit.ts`, 5.6, which
+was two module-scope token buckets making the deployment-wide cap `20 × N` and
+one organisation's `5 × N`). Two policies sit on that one statement and the
+choice between them is explicit, never implicit:
+
+- `countRateLimitHit` counts **every** attempt, refusals included, because an
+  inbound guard wants the flood visible in the counter the lockout audit reads.
+- `takeRateLimitSlot` is the **conditional UPDATE** — `DO UPDATE … WHERE count <
+  max` — so a refused caller leaves the counter alone and the row is exactly the
+  calls admitted in that window. An outbound pacer needs this: it polls in a
+  loop while it waits and must not spend the slots it is waiting for.
+
+**The window comes from the database's clock, not the process's.**
+`window_start` is part of the conflict key, so it is the column that decides
+whether two replicas are counting the same thing at all. Flooring it from
+`Date.now()` meant replicas whose clocks disagreed by a fraction of a window
+inserted *different* rows for the same instant and each got a private counter —
+one cap per clock, with nothing in the logs to say so, and a badly skewed host
+keeping its own allowance indefinitely. Derive it inside the statement, and
+derive any expiry cutoff the same way: a fast pruner deleting the live window a
+slower replica is still counting in widens the cap just as silently. Fleet clock
+sync must never be a correctness input.
+
+Three rules for a pacer built on it. **It waits, it does not throw**, when its
+callers are walking a large collection and have nowhere to put a refusal.
+**Nothing is held while it sleeps** — each attempt is one statement on a
+connection the pool takes straight back, and never a transaction, because a
+waiter parked on a pooled connection is how N instances exhaust a pool. **The
+wait is bounded, the ceiling is drawn per call, and what happens at it is itself
+capped.** An unbounded loop against a contended deployment-wide bucket parks the
+job forever, invisibly, because the queue keeps renewing its lock — so there has
+to be a ceiling. But a ceiling that simply admits is not a cap: with W waiters
+it is `W ÷ ceiling` calls per second, unbounded in W, and if every waiter shares
+the same constant they park together and discharge together, which is the same
+herd through a different door. The automatic-membership pacer draws its ceiling
+uniformly from 30–60 s per call, then competes for a third counted allowance
+(2/s deployment-wide) rather than bypassing the limiter, and only proceeds
+uncounted at 4× its own draw — still inside the queue's 300 s lock TTL, and at
+error level when it happens. Admitting rather than refusing is right here
+because no caller has a better "refused" branch than failing a person's
+membership grant; a limiter guarding an authorization decision would have to
+choose the other way and say so.
+
+**A failure in the limiter's housekeeping must not impersonate a limiter
+outage.** The expired-row sweep runs on a fraction of admitted calls, after the
+store has already answered; letting its error reach the fail-open handler made a
+failed `DELETE` print `FAIL-OPEN … allowing the call` when nothing extra had
+been allowed. `FAIL-OPEN` means the cap is off right now. Nothing else may say
+it.
+
+What a fixed window guarantees, stated so nobody over-claims it: `max` per
+window, and at worst `2 × max` across a sliding window. That bound does not grow
+with the replica count, which is the property being bought. State the guarantee
+the code actually delivers, not an estimate that holds for one waiter.
 
 ## 2. Every periodic job claims its work, or runs under `withSweepLock`
 
@@ -115,6 +174,52 @@ loser's task is an orphan nobody sees.
 choosing a key that is an external fact rather than a clock reading: the
 provider's delivery id, `run:<id>`, `mailbox:<messageId>`. The audit's
 "Enqueue sites without an idempotency key" list is the current debt.
+
+**A receiver enqueues and acks; it does not do the work first.** Every HTTP
+receiver in this codebase answers the caller as soon as it has decided the
+delivery is real — `board-sources/webhooks.ts`, `comms-webhooks.ts`,
+`POST /api/events` — and two did not: trigger webhook intake dispatched the
+whole fire inline, and the DeepSignal insight receiver walked a team's linked
+members and wrote a digest transaction each (9.2). Neither was racy; both were
+wrong at N. Latency scaled with fan-out, and — the part the audit rated INFO —
+an instance recycled mid-request had already accepted an event a sender will
+never send again. Autoscaling makes that recycling routine rather than
+exceptional.
+
+**What must not move is the caller's answer to "did this reach anything".** A
+receiver that starts answering 202 for deliveries it will silently drop has
+traded a visible misconfiguration for an invisible one, and a webhook sender has
+no other channel. So the split is: validation and routing stay synchronous —
+a malformed body is a 4xx and is never enqueued; `trigger-intake.ts` resolves
+`resolveTriggerFireReadiness` before it queues, so a paused trigger and an agent
+bound to no channel are still the 409s they were; the DeepSignal receiver
+resolves the payload's enabled team, one indexed lookup, and answers
+`accepted: false` when it names none — and only the fan-out is queued. What the
+caller loses is what the ack cannot honestly carry: an id for a row that does not
+exist yet. `POST /api/triggers/webhook` returns the `dedupeKey` its delivery will
+be keyed by instead of the delivery record and `runId` it used to return, and the
+insight receiver returns `insightId` and `existing` instead of a `delivered`
+count.
+
+**A handle the ack hands out has to resolve — including when the recheck
+refuses.** Both handlers re-ask their synchronous question when the job is
+claimed, because a trigger can be paused or unbound and a team disabled between
+the 202 and the fire: acting on the permission the receiver saw is acting on
+stale permission. Rechecking is right. Being *silent* about it is not, for a
+caller holding a handle. A webhook fire stopped by the recheck used to write no
+row at all, so the `dedupeKey` the 202 promised would name a delivery resolved
+to nothing, forever, and an operator investigating found a **succeeded** queue
+job and no trace of the fire — indistinguishable from one still in flight. So
+every claim-time refusal writes a terminal `skipped` delivery under that exact
+key, carrying the readiness reason (`TriggerFireSkipReason`: `trigger_paused`,
+`agent_not_bound`, `workflow_installation_not_ready`) the receiver's own 409
+would have carried a second earlier — the same vocabulary on both sides, one
+enum in `@nessie/schemas`. The single case with nowhere to write is a trigger
+*deleted* in the window: the delivery cascade took its rows, and the trigger's
+own 404 is the answer. The DeepSignal fan-out needs no equivalent because its
+recheck (`resolveEnabledExternalTeam`, `enabled: true`) precedes every write:
+a team disabled after the ack receives nothing, and the insight id the ack
+returned is DeepSignal's own.
 
 **A key on the enqueue is only half of it.** It coalesces two *enqueues*; it
 says nothing about the same *job row* being handed out twice — a dropped ack
@@ -281,16 +386,73 @@ matches no row. Beside it:
   model remembered from `mcp_find_tools` is still claimed. That property is
   pinned by its own test in `mcp-toolset-deferred.test.ts`; the ledger does not
   assume it.
-- **One exception the category rule does not catch: `delegate`.** It declares
-  `safe: true`, so the `!safe` half of the test excludes it even though its
-  category is effectful. Its sub-agent is a nested loop for discovery, but the
-  toolset it inherits is the parent's builtins minus `delegate` itself, so a
-  sub-agent can in principle call an effectful tool. A resumed run therefore
-  re-issues a delegation whose result the checkpoint never recorded, and the
-  sub-agent's own calls are not separately claimed. That is not a regression —
-  before any of this, every tool re-ran — but it is the one place this
-  invariant's guarantee stops short, and whether `delegate` should still call
-  itself safe is plan row 3.6.
+- **Both `agents` tools are claimed, and it took giving up `safe: true` to get
+  there** (plan row 3.6). `delegate` first, `spawn_subtask` beside it: the same
+  wrong flag on the same category, so a fix for one alone would have left the
+  worse of the two behind. Taking `delegate` first: its category was already
+  `agents`, which `EFFECTFUL_TOOL_CATEGORY_IDS` already judged effectful — the
+  `!safe` half of the test excluded it on its own. `safe` is a definition's
+  statement that its call only reads, and a delegation does not only read: the
+  sub-agent inherits the parent run's resolved builtins minus `delegate` itself
+  (`worker/src/run/execute/agent-loop.ts`), so it can send mail, file a ticket
+  or ring somebody. The flag was therefore wrong rather than merely
+  inconvenient, and correcting it is the whole fix: nothing is added to a
+  category and nothing is gated by name.
+
+  Why claiming the *parent's* call is what matters. The crash checkpoint
+  already skipped a delegation it had recorded; what it could not cover is the
+  window it exists for, and in that window a resumed run re-issued the
+  delegation. The second sub-agent's own effectful calls then carried NEW
+  tool-call ids that matched no earlier row, so nothing deduped them — the
+  duplicate sub-run reached as far as its side effects did. The parent's
+  `delegate` call is the one id stable across executions, because it lives in
+  the parent's own message history, so a claim on it answers the replay from
+  the recorded digest and no second sub-agent is created. The row stores that
+  digest — one assistant turn under `DELEGATE_BUDGET` — and replays it whole;
+  `MAX_TOOL_RESULT_CHARS` truncation happens where the result enters context,
+  on the replay path exactly as on the live one. Cost is negligible against
+  what it guards: successful fan-out is capped at
+  `NESSIE_MAX_DELEGATES_PER_RUN` (16) per run, and each claim is two statements
+  beside a nested loop allowed ninety seconds and a dollar.
+
+  **Where the guarantee still stops: the sub-agent's own calls.** They are
+  dispatched inside `runDelegate`, below the seams the ledger wraps, and the
+  ids they carry belong to the sub-agent's own conversation rather than to the
+  parent run — `authorizeSubAgentTool` does not even have one, passing the
+  literal `'sub-agent'`. So a delegation interrupted mid-flight still reports an
+  unknown outcome for the whole delegation rather than for the individual call
+  inside it that may have landed, which is the honest answer and the one the
+  agent can act on. Claiming them separately needs a key that survives the
+  sub-run, and is not in this row.
+
+  **`spawn_subtask` is the same defect with worse damage, and the same
+  one-line fix.** Same category, same flag, and nothing else was needed either.
+  What differs is what a repeat leaves behind. A re-issued `delegate` produced
+  a duplicate transient sub-agent; a re-issued `spawn_subtask` writes rows a
+  person sees. `runSpawnSubtaskTool` (`worker/src/run/subtask-tools.ts`)
+  commits a child `Agent`, its `Run` and its `Task` in one transaction and
+  enqueues that run, so the resumed execution produced a second agent in the
+  agent list, a second task on the board, and a second execution of the work.
+  Nothing collapses the repeat onto the first: the child's name embeds a fresh
+  `randomUUID().slice(0, 8)`, so there is no natural key, and the enqueue's
+  idempotency key is `subtask:<parent run>:<child agent id>` — built from the
+  id the second creation just minted, so the queue's `ON CONFLICT DO NOTHING`
+  matches nothing either. Its claim is also cheaper than `delegate`'s in the
+  only way that matters: a spawn is rare and heavyweight, so the row is paid
+  once beside a whole child run.
+
+  **`spawn_subtask` has no per-run cap of its own**, unlike `delegate`'s
+  `NESSIE_MAX_DELEGATES_PER_RUN` (16) enforced by `createDelegateGate`. What
+  bounds it is depth, not count: `SUBTASK_CHILD_DENIED_TOOL_IDS`
+  (`worker/src/run/tool-policy.ts`) refuses the tool to any agent with a
+  `parentAgentId`, so children cannot spawn children, and above that only the
+  run's own `maxToolCalls`/`maxIterations` backstop applies. That recursion
+  guard is structural authorization and is independent of the ledger: it is
+  consulted before dispatch, on the parent's `parentAgentId`, and a claimed
+  call that is answered from its row never reaches a tool at all. Claiming
+  therefore neither weakens nor leans on it. The absence of a fan-out cap is
+  noted, not fixed here — it is a budget question, and the ledger's job is to
+  stop the *same* spawn happening twice.
 - **Retention is fused to the status chokepoint.** `updateRunStatus` deletes a
   run's claims on every terminal and suspended transition, beside the crash
   state it already sheds: a terminal run is never resumed, and a suspended one

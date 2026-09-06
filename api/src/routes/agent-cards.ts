@@ -9,7 +9,10 @@ import {
 } from '@nessie/schemas'
 import { forgetMessageThoughts } from '@nessie/memory'
 import type { ReplyRootMetadata } from '@nessie/runtime'
-import { inheritAgentCardResponseBasis } from '@nessie/team-admin'
+import {
+  createSystemAuthoredReply,
+  inheritAgentCardResponseBasis,
+} from '@nessie/team-admin'
 import { enqueueOrchestrateDecide } from '@nessie/db'
 
 import { toInputJson } from '../db/prisma-json.js'
@@ -32,7 +35,6 @@ import {
   storeAgentCardSecrets,
 } from '../services/agent-card-secret-placement.js'
 import { publishMessageReply } from '../services/message-delivery.js'
-import { createSystemAuthoredReply } from '../services/system-authored-message.js'
 import { ResumeRollback, resumeSuspendedRun } from '../services/run-resume-core.js'
 import type { RouteDeps } from './types.js'
 

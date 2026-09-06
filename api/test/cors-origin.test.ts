@@ -4,7 +4,25 @@ import test from 'node:test'
 
 // server-context imports DB wiring for createServerContext; these tests only
 // exercise the pure CORS checker, so keep that unrelated package out of scope.
+// `api/src/services/rate-limit.ts` takes the `rate_limit_buckets` statement from
+// @nessie/db (`rate-limit-window.ts`), shared with the worker's outbound UOA
+// pacer, so the stub must carry those exports. They are re-exported from the
+// real module by file URL rather than faked: a data: URL module cannot resolve
+// a bare specifier, and resolving '@nessie/db' from inside the stub would
+// re-enter this loader.
+const dbRateLimitUrl = new URL(
+  '../../packages/db/src/rate-limit-window.ts',
+  import.meta.url,
+).href
 const dbStub = [
+  'export {',
+  '  clearRateLimitWindows,',
+  '  countRateLimitHit,',
+  '  pruneRateLimitWindows,',
+  '  rateLimitKeyHash,',
+  '  rateLimitWindowStart,',
+  '  takeRateLimitSlot,',
+  `} from ${JSON.stringify(dbRateLimitUrl)}`,
   'export const disconnectPrismaClient = async () => {}',
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is not used by cors-origin.test.ts")',

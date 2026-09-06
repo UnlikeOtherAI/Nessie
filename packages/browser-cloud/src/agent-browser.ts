@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { browserViewportOrDefault, type BrowserViewport } from '@nessie/schemas'
 
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
@@ -19,7 +20,27 @@ export type AgentBrowserRow = {
   connectionId: string
   browserbaseContextId: string
   loginCount: number
+  /**
+   * The window every session on this browser opens at. Resolved here rather
+   * than carried as two nullable columns, because a browser nobody has sized
+   * is not a browser with no size — it is one on the default, and a caller
+   * handed `null` would have to invent that default itself.
+   */
+  viewport: BrowserViewport
 }
+
+/**
+ * The two columns behind `AgentBrowserRow.viewport`, selected together
+ * everywhere a row is read: the CHECK constraint keeps them both set or both
+ * null, and reading one without the other cannot say which.
+ */
+const VIEWPORT_SELECT = { viewportWidth: true, viewportHeight: true } as const
+
+const viewportOf = (row: {
+  viewportWidth: number | null
+  viewportHeight: number | null
+}): BrowserViewport =>
+  browserViewportOrDefault({ width: row.viewportWidth, height: row.viewportHeight })
 
 /**
  * Which connection may hold an agent's durable browser.
@@ -172,6 +193,7 @@ export const ensureAgentBrowser = async (
       id: true,
       connectionId: true,
       browserbaseContextId: true,
+      ...VIEWPORT_SELECT,
       _count: { select: { logins: true } },
     },
   })
@@ -181,6 +203,7 @@ export const ensureAgentBrowser = async (
       connectionId: existing.connectionId,
       browserbaseContextId: existing.browserbaseContextId,
       loginCount: existing._count.logins,
+      viewport: viewportOf(existing),
       connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
     }
   }
@@ -197,11 +220,22 @@ export const ensureAgentBrowser = async (
         browserbaseContextId: context.id,
         principalUserId,
       },
-      select: { id: true, connectionId: true, browserbaseContextId: true },
+      select: {
+        id: true,
+        connectionId: true,
+        browserbaseContextId: true,
+        ...VIEWPORT_SELECT,
+      },
     })
     return {
-      ...created,
+      id: created.id,
+      connectionId: created.connectionId,
+      browserbaseContextId: created.browserbaseContextId,
       loginCount: 0,
+      // A browser is created without a size, so this is the default every
+      // time — read back from the row rather than assumed, so a column
+      // default added later is honoured without touching this path.
+      viewport: viewportOf(created),
       connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
     }
   } catch (error) {
@@ -227,6 +261,7 @@ export const ensureAgentBrowser = async (
           id: true,
           connectionId: true,
           browserbaseContextId: true,
+          ...VIEWPORT_SELECT,
           _count: { select: { logins: true } },
         },
       })
@@ -235,6 +270,7 @@ export const ensureAgentBrowser = async (
         connectionId: winner.connectionId,
         browserbaseContextId: winner.browserbaseContextId,
         loginCount: winner._count.logins,
+        viewport: viewportOf(winner),
         connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
       }
     }
