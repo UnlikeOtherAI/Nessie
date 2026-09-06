@@ -2242,8 +2242,12 @@ model RealtimeEvent {
 
 // ─── User presence registry (foreground SSE streams) ────────────────────────
 // One row per user, shared through Postgres so out-of-process workers can
-// decide whether a user currently has a live foreground connection. Relation-
-// free like device tokens: the SSE route owns lifecycle updates.
+// decide whether a user is present. Liveness is the `last_seen_at` heartbeat
+// and nothing else: the connection counter this table used to carry was
+// incremented on connect and decremented only from the same process's close
+// handler, so a hard kill leaked it permanently and nothing repaired it
+// (horizontal-scaling audit 2.4). Relation-free like device tokens: the SSE
+// route owns lifecycle updates.
 enum UserPresenceManualState {
   active
   away
@@ -2252,7 +2256,6 @@ enum UserPresenceManualState {
 model UserPresence {
   userId         String                   @id @map("user_id") @db.Uuid
   organizationId String                   @map("organization_id") @db.Uuid
-  connections    Int                      @default(0)
   lastSeenAt     DateTime                 @map("last_seen_at")
   lastActiveAt   DateTime?                @map("last_active_at")
   manualState    UserPresenceManualState? @map("manual_state")

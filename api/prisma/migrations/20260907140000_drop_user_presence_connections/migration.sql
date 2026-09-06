@@ -1,0 +1,13 @@
+-- Drop the per-process presence connection counter (horizontal-scaling audit 2.4).
+--
+-- Dropping a column is irreversible on a real database, so why this one is
+-- safe: the counter was already inert. `user_presence.connections` was
+-- incremented when an SSE stream opened and decremented only from that same
+-- process's close handler, so any hard kill leaked the count permanently and
+-- nothing ever repaired it. Presence state resolves from `last_seen_at` alone
+-- (`resolvePresenceState`), and the only reader that gated on the counter,
+-- `isUserActive`, had no production call site -- a repo-wide grep found just
+-- its own definition and its unit test. No query, API response, report or
+-- client field reads this column, so there is nothing to preserve and nothing
+-- a rollback would need back.
+ALTER TABLE "user_presence" DROP COLUMN "connections";
