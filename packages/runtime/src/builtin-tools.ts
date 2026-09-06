@@ -102,7 +102,19 @@ const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
     },
     required: ['task'],
   },
-  safe: true,
+  // NOT safe, and the flag is load-bearing rather than descriptive. `safe` says
+  // a call only reads; a delegation does not, because the sub-agent inherits
+  // the parent run's resolved builtins minus `delegate` itself
+  // (`worker/src/run/execute/agent-loop.ts`) and can therefore send mail, file
+  // a ticket or ring somebody. While this said `true`, the tool-effect ledger
+  // excluded the dispatch on that flag alone — `agents` was already an
+  // effectful category — so a resumed run re-issued the delegation and the
+  // second sub-agent's own calls carried new tool-call ids that matched no
+  // earlier claim. The parent's `delegate` call is the one id stable across
+  // executions, so claiming it is what stops the whole sub-run repeating.
+  // (Consequence, and the right one: `reviewableToolSurface` now offers a
+  // delegation to automated review in organisations whose policy asks for it.)
+  safe: false,
 }
 
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [

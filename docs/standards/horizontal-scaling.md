@@ -327,16 +327,42 @@ matches no row. Beside it:
   model remembered from `mcp_find_tools` is still claimed. That property is
   pinned by its own test in `mcp-toolset-deferred.test.ts`; the ledger does not
   assume it.
-- **One exception the category rule does not catch: `delegate`.** It declares
-  `safe: true`, so the `!safe` half of the test excludes it even though its
-  category is effectful. Its sub-agent is a nested loop for discovery, but the
-  toolset it inherits is the parent's builtins minus `delegate` itself, so a
-  sub-agent can in principle call an effectful tool. A resumed run therefore
-  re-issues a delegation whose result the checkpoint never recorded, and the
-  sub-agent's own calls are not separately claimed. That is not a regression —
-  before any of this, every tool re-ran — but it is the one place this
-  invariant's guarantee stops short, and whether `delegate` should still call
-  itself safe is plan row 3.6.
+- **`delegate` is claimed, and it took giving up `safe: true` to get there**
+  (plan row 3.6). Its category was already `agents`, which
+  `EFFECTFUL_TOOL_CATEGORY_IDS` already judged effectful — the `!safe` half of
+  the test excluded it on its own. `safe` is a definition's statement that its
+  call only reads, and a delegation does not only read: the sub-agent inherits
+  the parent run's resolved builtins minus `delegate` itself
+  (`worker/src/run/execute/agent-loop.ts`), so it can send mail, file a ticket
+  or ring somebody. The flag was therefore wrong rather than merely
+  inconvenient, and correcting it is the whole fix: nothing is added to a
+  category and nothing is gated by name.
+
+  Why claiming the *parent's* call is what matters. The crash checkpoint
+  already skipped a delegation it had recorded; what it could not cover is the
+  window it exists for, and in that window a resumed run re-issued the
+  delegation. The second sub-agent's own effectful calls then carried NEW
+  tool-call ids that matched no earlier row, so nothing deduped them — the
+  duplicate sub-run reached as far as its side effects did. The parent's
+  `delegate` call is the one id stable across executions, because it lives in
+  the parent's own message history, so a claim on it answers the replay from
+  the recorded digest and no second sub-agent is created. The row stores that
+  digest — one assistant turn under `DELEGATE_BUDGET` — and replays it whole;
+  `MAX_TOOL_RESULT_CHARS` truncation happens where the result enters context,
+  on the replay path exactly as on the live one. Cost is negligible against
+  what it guards: successful fan-out is capped at
+  `NESSIE_MAX_DELEGATES_PER_RUN` (16) per run, and each claim is two statements
+  beside a nested loop allowed ninety seconds and a dollar.
+
+  **Where the guarantee still stops: the sub-agent's own calls.** They are
+  dispatched inside `runDelegate`, below the seams the ledger wraps, and the
+  ids they carry belong to the sub-agent's own conversation rather than to the
+  parent run — `authorizeSubAgentTool` does not even have one, passing the
+  literal `'sub-agent'`. So a delegation interrupted mid-flight still reports an
+  unknown outcome for the whole delegation rather than for the individual call
+  inside it that may have landed, which is the honest answer and the one the
+  agent can act on. Claiming them separately needs a key that survives the
+  sub-run, and is not in this row.
 - **Retention is fused to the status chokepoint.** `updateRunStatus` deletes a
   run's claims on every terminal and suspended transition, beside the crash
   state it already sheds: a terminal run is never resumed, and a suspended one

@@ -346,3 +346,85 @@ test('the predicate over a real deferred MCP view claims every connector tool, l
   assert.equal(isExternal('mcp_create_page'), true, 'and still claimed after the run drops the schema again')
   assert.equal(isExternal('kb_search'), false, 'a name the view never handles is not an external dispatch')
 })
+
+// A sub-agent's digest is model prose, not a status line: one assistant turn
+// under `DELEGATE_BUDGET`, so a few kilobytes is the ordinary case and is what
+// the row has to carry back intact.
+const SUB_AGENT_DIGEST = [
+  'Findings from the three docs pages and the two issues:',
+  ...Array.from({ length: 400 }, (_, index) => `- finding ${index}: the connector rejects an empty cursor.`),
+].join('\n')
+
+test('a resumed run answers a completed `delegate` from the recorded digest instead of dispatching a second sub-agent', async () => {
+  const store = createEffectStore()
+  // Counting sub-agents is the whole point. A second one is not a duplicate of
+  // one row: it is a fresh nested loop whose OWN effectful calls carry new
+  // tool-call ids, matching no earlier claim, so nothing further down dedupes
+  // them. The parent's `delegate` call is the only id that is stable across
+  // executions, which is exactly why claiming it is what stops the repeat.
+  let subAgents = 0
+  // No external names: `delegate` is a builtin, so if it is claimed at all it
+  // is claimed on its own declaration, never by the external-dispatch arm.
+  const first = ledgerOver(store.prisma, new Set<string>(), async () => {
+    subAgents += 1
+    return ok('delegate', SUB_AGENT_DIGEST)
+  })
+  const dispatched = await first.executeTool('delegate', { task: 'read the changelog' }, 'call-delegate')
+
+  assert.equal(subAgents, 1)
+  assert.equal(dispatched.output, SUB_AGENT_DIGEST)
+
+  // The successor worker: a new ledger over the same table, exactly as a
+  // takeover builds one after the first execution died.
+  const resumed = ledgerOver(store.prisma, new Set<string>(), async () => {
+    subAgents += 1
+    return ok('delegate', 'a second sub-agent went and did all of it again')
+  })
+  const replayed = await resumed.executeTool('delegate', { task: 'read the changelog' }, 'call-delegate')
+
+  assert.equal(
+    subAgents,
+    1,
+    'the delegation was NOT re-issued: no second sub-agent, so no second round of its side effects',
+  )
+  assert.equal(
+    replayed.output,
+    SUB_AGENT_DIGEST,
+    'and the digest round-trips through the row byte for byte — the model reads what it read before, at full length',
+  )
+  assert.equal(replayed.success, true)
+  assert.equal(replayed.toolCallId, 'call-delegate')
+  assert.equal(
+    store.row(RUN_ID, 'call-delegate')?.state,
+    TOOL_EFFECT_STATES.completed,
+    '`delegate` is claimed like any other tool whose effects leave the agent’s own workspace',
+  )
+})
+
+test('a delegation whose execution died mid-dispatch is reported as unknown, never re-issued', async () => {
+  const store = createEffectStore()
+  let subAgents = 0
+  const first = ledgerOver(store.prisma, new Set<string>(), async () => {
+    subAgents += 1
+    // The worker dies while the sub-agent is out sending mail: nothing ever
+    // settles the claim.
+    return new Promise<ExecutedToolResult>(() => undefined)
+  })
+  void first.executeTool('delegate', { task: 'send the summary' }, 'call-lost')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  const resumed = ledgerOver(store.prisma, new Set<string>(), async () => {
+    subAgents += 1
+    return ok('delegate', 'the sub-agent sent a second copy of the summary')
+  })
+  const answer = await resumed.executeTool('delegate', { task: 'send the summary' }, 'call-lost')
+
+  assert.equal(subAgents, 1, 'an unobserved delegation is never resolved by delegating again')
+  assert.match(answer.output, /NOT known whether it took effect/)
+  assert.equal(answer.success, false)
+  assert.equal(
+    store.row(RUN_ID, 'call-lost')?.state,
+    TOOL_EFFECT_STATES.dispatched,
+    'the claim it was answered from is a dispatch nothing ever settled',
+  )
+})
