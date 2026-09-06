@@ -162,7 +162,15 @@ export const seedBootstrapRecordsInTransaction = async (
 
 export const seedBootstrapRecords = async (
   prisma: PrismaClient,
-  input: SeedBootstrapOptions,
+  input: SeedBootstrapOptions & {
+    /**
+     * Runs inside the seeding transaction, after the guard and before any row
+     * is written. The owner-bootstrap exchange burns its single-use Postgres
+     * token here (throwing to reject it), so the token and the owner it
+     * authorised commit or roll back together.
+     */
+    claim?: (transaction: Prisma.TransactionClient) => Promise<void>
+  },
 ): Promise<BootstrapSeedResult> => prisma.$transaction(async (transaction) => {
   await lockBootstrapInitialization(transaction)
   const [organizationCount, userCount] = await Promise.all([
@@ -172,5 +180,6 @@ export const seedBootstrapRecords = async (
   if (organizationCount > 0 || userCount > 0) {
     throw new BootstrapAlreadyInitializedError()
   }
+  await input.claim?.(transaction)
   return seedBootstrapRecordsInTransaction(transaction, input)
 }, AUTH_LOCK_TRANSACTION_OPTIONS)

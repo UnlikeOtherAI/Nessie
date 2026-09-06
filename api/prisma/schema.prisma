@@ -6249,6 +6249,31 @@ model CommsSubscription {
 /// deleted once their window has passed (probabilistic cleanup per hit), so
 /// the table stays bounded by active keys per window. `keyHash` is a SHA-256
 /// of the caller identity (IP or user id) — raw IPs are never persisted.
+/// The install's owner-bootstrap token, shared by every API replica.
+///
+/// Single row by construction: `id` is always `singleton`, so the primary key
+/// is what stops a second token from existing — the
+/// `nessie:bootstrap-initialization` advisory lock every writer takes only
+/// decides which replica performs the write. Minted when the install has no
+/// users, replaced when it expires unconsumed, and burned by a conditional
+/// UPDATE inside the same transaction that creates the owner.
+///
+/// The token is stored RAW rather than hashed, deliberately. Every replica
+/// prints the whole setup URL — token included — to its own log at boot, so a
+/// hash would protect nothing an operator's logs do not already hold; the
+/// install has zero users for as long as the row is usable, so there is no
+/// account to escalate into; and the row lives fifteen minutes and is consumed
+/// exactly once.
+model BootstrapToken {
+  id         String    @id @default("singleton")
+  token      String
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("bootstrap_tokens")
+}
+
 model RateLimitBucket {
   id          String   @id @default(uuid()) @db.Uuid
   bucket      String

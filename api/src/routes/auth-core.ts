@@ -9,7 +9,10 @@ import {
   UpdatePreferencesSchema,
 } from '@nessie/schemas'
 
-import { isBootstrapTokenExpired } from '../auth/bootstrap.js'
+import {
+  BootstrapTokenRejectedError,
+  claimBootstrapToken,
+} from '../auth/bootstrap.js'
 import { hashPassword } from '../auth/password.js'
 import {
   AuthProviderAuthorizeQuerySchema,
@@ -65,10 +68,8 @@ export const registerAuthCoreRoutes = (
     authSecret,
     authenticateRequest,
     buildLocalSession,
-    clearBootstrapState,
     config,
     getAuthorizationToken,
-    isTimingSafeMatch,
     prisma,
     rateLimiter,
     resolveBootstrapState,
@@ -257,41 +258,37 @@ export const registerAuthCoreRoutes = (
     ) {
       return reply
     }
-    const state = await resolveBootstrapState()
-    if (!state) {
+    // Bootstrap has to be armed at all — an SSO install provisions its owner
+    // through the provider and never mints a token.
+    if (!(await resolveBootstrapState())) {
       sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')
       return reply
     }
-    // Timing-safe: the bootstrap token is the single credential that provisions
-    // the owner account, and `isTimingSafeMatch` already guards far less
-    // sensitive values on the same context object (2026-09-05 review, FO3-9).
-    if (!isTimingSafeMatch(state.token, body.bootstrapToken)) {
-      sendApiError(reply, 401, 'TOKEN_INVALID', 'Invalid bootstrap token')
-      return reply
-    }
-    if (isBootstrapTokenExpired(state)) {
-      sendApiError(reply, 401, 'TOKEN_EXPIRED', 'Bootstrap token expired')
-      return reply
-    }
-    if ((await prisma.user.count()) > 0) {
-      clearBootstrapState()
-      sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')
-      return reply
-    }
+    // The token is verified by burning it, inside the transaction that creates
+    // the owner. Comparing against a per-process copy was audit 1.2: the row
+    // is shared, so the exchange succeeds on whichever replica it reaches and
+    // can succeed only once. A token that is unknown, already consumed, or
+    // expired rejects the whole transaction. The comparison stays constant-time
+    // (2026-09-05 review, FO3-9): `claimBootstrapToken` reads the row by its
+    // primary key and matches in Node rather than letting Postgres match on the
+    // secret.
     let result: Awaited<ReturnType<typeof seedBootstrapRecords>>
     try {
       result = await seedBootstrapRecords(prisma, {
+        claim: (transaction) => claimBootstrapToken(transaction, body.bootstrapToken),
         email: body.email,
         displayName: body.displayName,
         passwordHash: await hashPassword(body.password),
       })
     } catch (error) {
+      if (error instanceof BootstrapTokenRejectedError) {
+        sendApiError(reply, 401, 'TOKEN_INVALID', 'Invalid bootstrap token')
+        return reply
+      }
       if (!(error instanceof BootstrapAlreadyInitializedError)) throw error
-      clearBootstrapState()
       sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')
       return reply
     }
-    clearBootstrapState()
     const session = await buildLocalSession(
       result.user.id,
       ['owner'],

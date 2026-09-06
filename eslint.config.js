@@ -71,9 +71,13 @@ const EGRESS_RESTRICTED_SYNTAX = [
 // anchor on `Program`, so per-process state held in a closure inside a
 // once-per-process factory is invisible to them. `bootstrapTokenState` in
 // api/src/lib/server-context.ts (audit 1.2) and the `buckets` Map inside
-// api/src/lib/rate-limit.ts (audit 1.3) are exactly that shape and neither
-// trips this rule. Widening to every function-scoped `let` would flag the
-// whole tree; the standards file is the rule, this block is only the ratchet.
+// api/src/lib/rate-limit.ts (audit 1.3) were both exactly that shape and
+// neither tripped this rule; both now live in Postgres. The one still standing
+// is the TTL'd revoked-session `Map` inside createAuthSessionRevocationChecker
+// (api/src/services/auth-session-registry.ts) — a bounded read-through cache
+// that is deliberately never an authority. Widening to every function-scoped
+// `let` would flag the whole tree; the standards file is the rule, this block
+// is only the ratchet.
 const MODULE_MUTABLE_STATE_MESSAGE =
   'Module-scope mutable state is per replica: a second instance cannot see it, and a restart loses it. '
   + 'Put the state in Postgres (a claimed row, a conditional UPDATE, rate_limit_buckets), or make it a '

@@ -3,7 +3,13 @@ import { randomUUID } from 'node:crypto'
 import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { runApprovalEffect } from './approval-effects.js'
-import { terminalizeExpiredToolApproval, terminalizeRejectedToolApproval } from './approval-resume.js'
+import {
+  drainTerminalizedRun,
+  terminalizeExpiredToolApproval,
+  terminalizeRejectedToolApproval,
+  terminalizeWaitingApprovalRunInTransaction,
+  type TerminalizedApprovalRun,
+} from './approval-resume.js'
 import { emitAuditEvent } from './audit.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
@@ -361,31 +367,61 @@ export const getPendingApprovalCount = async (
   })
 }
 
+/**
+ * Expire timed-out approvals and close the runs parked behind them.
+ *
+ * Two properties this sweep must hold on N replicas (audit 1.5):
+ *
+ * - **Claim and terminalisation share one transaction.** They used to be two
+ *   statements, so a kill between them left the run in `waiting_approval` with
+ *   the approval already `expired` — and the sweep, selecting `pending` only,
+ *   never revisited it.
+ * - **Self-healing.** The select also picks up `expired` approvals whose run is
+ *   still `waiting_approval`, so rows stranded by the old two-step code (or by
+ *   the same shape still used in `resolveApprovalRequest`) are finished on the
+ *   next tick. Those rows carry no `pending` claim, so the conditional
+ *   `waiting_approval → failed` update inside the terminalisation is what
+ *   admits exactly one replica.
+ */
 export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
   const expired = await prisma.approvalRequest.findMany({
     where: {
-      status: 'pending',
-      expiresAt: { lt: new Date() },
+      OR: [
+        { status: 'pending', expiresAt: { lt: new Date() } },
+        { status: 'expired', run: { status: 'waiting_approval' } },
+      ],
     },
     take: 100,
   })
 
+  const drains: TerminalizedApprovalRun[] = []
   for (const approval of expired) {
-    const expiredClaim = await prisma.approvalRequest.updateMany({
-      where: { id: approval.id, status: 'pending', expiresAt: { lt: new Date() } },
-      data: { status: 'expired' },
-    })
-    if (expiredClaim.count !== 1) continue
+    const terminalized = await prisma.$transaction(async (tx) => {
+      if (approval.status === 'pending') {
+        const expiredClaim = await tx.approvalRequest.updateMany({
+          where: { id: approval.id, status: 'pending', expiresAt: { lt: new Date() } },
+          data: { status: 'expired' },
+        })
+        if (expiredClaim.count !== 1) return null
+      }
 
-    if (approval.action === 'tool.invoke') {
-      await terminalizeExpiredToolApproval(prisma, approval.id)
-      continue
-    }
-    // Existing deferred-effect approvals have no suspended run to close.
-    await prisma.agent.updateMany({
-      where: { id: approval.agentId, status: 'waiting_approval' },
-      data: { status: 'idle' },
+      if (approval.action === 'tool.invoke') {
+        return terminalizeWaitingApprovalRunInTransaction(tx, approval.id, 'expired')
+      }
+      // Existing deferred-effect approvals have no suspended run to close.
+      await tx.agent.updateMany({
+        where: { id: approval.agentId, status: 'waiting_approval' },
+        data: { status: 'idle' },
+      })
+      return null
     })
+    if (terminalized) drains.push(terminalized)
+  }
+
+  // Enqueueing belongs after the commit — a rolled-back claim must not leave a
+  // drain job pointing at a run it never closed.
+  for (const drain of drains) {
+    await drainTerminalizedRun(prisma, drain)
   }
 
   return expired.length
