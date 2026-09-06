@@ -125,6 +125,9 @@ const emitAlert = async (
     scopeId: alert.scopeId,
     kind,
     period: alert.period,
+    // Carried so the consumer's exactly-once delivery claim is window-scoped:
+    // without it the same scope + kind would claim the same key every period.
+    periodStart: alert.periodStart.toISOString(),
     scopeLabel,
     percentUsed: alert.percentUsed,
     reason,

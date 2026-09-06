@@ -21,6 +21,8 @@ test('a ring bypasses foreground surface suppression and native payloads never c
   const encrypted = encryptWithKey(deriveSecretKey(AUTH_SECRET), '-----P8-----')
   const nativePayloads: PushPayload[] = []
   const prisma = {
+    // The exactly-once claim (`push_send_claims`); a fresh fake always wins it.
+    $executeRaw: async () => 1,
     call: {
       findUnique: async () => ({
         channel: { id: ids.channel, label: 'General', organizationId: ids.organization },
@@ -87,6 +89,8 @@ test('a ring bypasses foreground surface suppression and native payloads never c
 
 test('a queued ring does not reach an invitee who has already responded', async () => {
   const prisma = {
+    // The exactly-once claim (`push_send_claims`); a fresh fake always wins it.
+    $executeRaw: async () => 1,
     call: {
       findUnique: async () => ({
         channel: { id: ids.channel, label: 'General', organizationId: ids.organization },

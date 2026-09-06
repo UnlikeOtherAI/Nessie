@@ -161,6 +161,7 @@ const cancelPayload = (context: CallPushContext): PushPayload => ({
 const deliver = async (
   deps: CallRingDispatchDeps,
   context: CallPushContext,
+  kind: 'ring' | 'cancel',
   payload: PushPayload,
   webPayload?: PushPayload,
 ): Promise<PushDispatchSummary> => {
@@ -172,6 +173,11 @@ const deliver = async (
     deepLinkUrl: ringPath(context),
     fcmCreds,
     messageId: null,
+    // The invitee's ring (and its cancel) at this call revision is the
+    // notification; both topics already enqueue once per (call, user), so a
+    // redelivered job re-derives the same key and rings nothing twice, while a
+    // later revision is a genuinely different notification and still rings.
+    notificationKey: `push:call:${kind}:${context.callId}:${context.userId}:${context.revision}`,
     now: deps.now ?? (() => new Date()),
     organizationId: context.organizationId,
     payload,
@@ -202,7 +208,13 @@ export const handleCallRingDispatch = async (
     || shouldSuppressPushForPreferences(context.userPreferences, now, 'incomingCalls')
   ) return emptySummary()
 
-  return deliver(deps, context, nativeRingPayload(context), webRingPayload(context, deps.authSecret))
+  return deliver(
+    deps,
+    context,
+    'ring',
+    nativeRingPayload(context),
+    webRingPayload(context, deps.authSecret),
+  )
 }
 
 /** A cancellation is silent protocol cleanup, so it still reaches a device after a preference change. */
@@ -212,5 +224,5 @@ export const handleCallRingCancel = async (
 ): Promise<PushDispatchSummary> => {
   const context = await loadCallPushContext(deps.prisma, payload)
   if (!context) return emptySummary()
-  return deliver(deps, context, cancelPayload(context))
+  return deliver(deps, context, 'cancel', cancelPayload(context))
 }

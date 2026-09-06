@@ -47,6 +47,10 @@ type FakeState = {
 
 const makeFakePrisma = (state: FakeState): WebPushDeliveryPrisma =>
   ({
+    // The exactly-once claim (`push_send_claims`). A fresh fake always wins it;
+    // the losing side is proved against a real unique index in
+    // `test/db/push-dispatch-idempotency.test.ts`.
+    $executeRaw: async () => 1,
     webPushSubscription: {
       findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
         state.subs.filter((s) => where.userId.in.includes(s.userId)),
@@ -100,6 +104,7 @@ const input = (state: FakeState, sender: WebPushSender) => ({
   payload: basePayload,
   organizationId: 'org-1',
   messageId: 'msg-1',
+  notificationKey: 'push:message:msg-1',
   deepLinkUrl: '/channels/channel-1/threads/thread-1/replies/msg-1',
   sender,
 })

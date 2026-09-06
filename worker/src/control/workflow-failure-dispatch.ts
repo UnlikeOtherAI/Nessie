@@ -154,6 +154,9 @@ export const handleWorkflowRunFailureDispatch = async (
     organizationId: payload.organizationId,
     deepLinkUrl: `/workflows?failedRun=${payload.workflowRunId}`,
     messageId: null,
+    // One notification per failed run: the terminal-event seam already dedupes
+    // the enqueue on the same run id, so this claim closes the redelivery half.
+    notificationKey: `push:workflow-run-failure:${payload.workflowRunId}`,
     // No workflows surface kind exists in PushSurfaceKind; channel presence is
     // the nearest honest "already looking at it" signal for a channel-bound
     // installation, and a missing channel suppresses nothing.

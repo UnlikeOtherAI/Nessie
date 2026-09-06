@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
 import { sweepSettledBudgetReservations } from './control/budget-reservation-sweep.js'
+import {
+  PUSH_SEND_CLAIM_SWEEP_INTERVAL_MS,
+  sweepExpiredPushSendClaims,
+} from './control/push-claim-sweep.js'
 import { sweepDueGmailSends } from './control/gmail-send-sweep.js'
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
@@ -457,6 +461,16 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  // `push.dispatch` never notifies a device twice for a send a provider
+  // accepted. Every enqueue carries a deterministic idempotency key
+  // (`push:<messageId>` from the API, `push:reply:<runId>` from a run's
+  // interactive reply), so two enqueues collapse to one job; the handler then
+  // claims a `push_send_claims` row per endpoint before it calls a provider, so
+  // a job redelivered by a drain, a lock expiry or a nack sends nothing again —
+  // unless the earlier attempt never reached the provider, in which case the
+  // claim was released and the redelivery genuinely retries.
+  // `push_deliveries` stays what it was — the post-send outcome log, not the
+  // guard.
   subscribe(
     'push.dispatch',
     async (job) => {
@@ -1036,6 +1050,27 @@ export const startWorker = async (
     }
   }, 60_000)
 
+  // Push send claims outlive the job that took them by design — a `sent` claim
+  // is what stops a redelivery ringing a device twice — so nothing else ever
+  // removes them, and one row per notification per endpoint is tens of
+  // thousands a day for an active organisation. Age-based DELETE, no leader
+  // needed; the horizon and the reasoning are in `push-claim-sweep.ts`.
+  let pushClaimSweepInFlight = false
+  const pushClaimSweepInterval = setInterval(async () => {
+    if (pushClaimSweepInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    pushClaimSweepInFlight = true
+    try {
+      await sweepExpiredPushSendClaims(prisma)
+    } catch (error) {
+      console.error('[worker.push-claim-sweep] failed', error)
+    } finally {
+      pushClaimSweepInFlight = false
+    }
+  }, PUSH_SEND_CLAIM_SWEEP_INTERVAL_MS)
+
   // A run that crashed before any terminal transition, or a session that
   // outlived its TTL, still costs browser-hours until somebody tells
   // Browserbase to stop it. Reaping calls the provider; flipping the row alone
@@ -1267,6 +1302,7 @@ export const startWorker = async (
     clearInterval(domainRevalidationInterval)
     clearInterval(workflowStepReapInterval)
     clearInterval(budgetReservationSweepInterval)
+    clearInterval(pushClaimSweepInterval)
     clearInterval(cloudBrowserReapInterval)
     clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)

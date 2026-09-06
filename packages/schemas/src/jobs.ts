@@ -76,6 +76,12 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
  * carries the resolved @mention user ids. All recipients see the durable
  * sender as the title and the channel as the destination subtitle; the alert
  * and preference paths retain the distinct mention semantics.
+ *
+ * Every enqueue carries a deterministic idempotency key — `push:<messageId>`
+ * from the api, `push:reply:<runId>` from a run's interactive reply — and the
+ * consumer claims a `push_send_claims` row per device before it calls a
+ * provider, so one notification reaches a device at most once even when the job
+ * is redelivered.
  */
 export const PushDispatchJobPayloadSchema = z.object({
   messageId: z.string().uuid(),
@@ -155,6 +161,16 @@ export const BudgetAlertDispatchJobPayloadSchema = z.object({
   scopeId: z.string().uuid(),
   kind: z.enum(['threshold', 'blocked']),
   period: z.enum(['weekly', 'monthly', 'yearly']),
+  /**
+   * Start of the budget window this alert belongs to, as the `budget_alerts`
+   * marker row records it. The consumer uses it to build the delivery's
+   * exactly-once claim key, so next month's alert for the same scope and kind
+   * is a genuinely different notification and still rings. Optional only so a
+   * job enqueued by an older instance still parses across a rolling deploy;
+   * such a job claims on the coarser `period` label instead, which no
+   * post-deploy job ever uses.
+   */
+  periodStart: z.string().datetime().optional(),
   scopeLabel: z.string(),
   percentUsed: z.number().nullable(),
   reason: z.string(),

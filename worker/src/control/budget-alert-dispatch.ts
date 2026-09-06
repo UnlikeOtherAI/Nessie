@@ -125,6 +125,18 @@ export const handleBudgetAlertDispatch = async (
     organizationId: payload.organizationId,
     deepLinkUrl: '/ops/usage',
     messageId: null,
+    // Mirrors the enqueue key (`budget-alert:<scope>:<periodStart>:<kind>`), so
+    // a redelivered job rings nothing twice while the next period's alert for
+    // the same scope is a different notification and still rings. A job from a
+    // pre-deploy instance carries no `periodStart` and falls back to the coarse
+    // period label, which no job enqueued after the deploy can collide with.
+    notificationKey: [
+      'push:budget',
+      payload.scopeType,
+      payload.scopeId,
+      payload.kind,
+      payload.periodStart ?? `period:${payload.period}`,
+    ].join(':'),
     surface: { kind: 'ops_usage' },
     now: deps.now ?? (() => new Date()),
   })

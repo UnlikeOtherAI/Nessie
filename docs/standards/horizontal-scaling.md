@@ -85,6 +85,41 @@ choosing a key that is an external fact rather than a clock reading: the
 provider's delivery id, `run:<id>`, `mailbox:<messageId>`. The audit's
 "Enqueue sites without an idempotency key" list is the current debt.
 
+**A key on the enqueue is only half of it.** It coalesces two *enqueues*; it
+says nothing about the same *job row* being handed out twice — a dropped ack
+during a drain, a lease expiry, a nack-and-retry — which is exactly what N
+workers make routine. A handler whose writes are not already idempotent
+therefore claims its work before it acts. Push delivery (5.13) is the worked
+example: `push_deliveries` looked like a dedupe but is an outcome log written
+*after* the provider answers, with no unique key and its own retention, so
+`worker/src/control/push-send-claim.ts` inserts a `push_send_claims` row with a
+unique `(organization_id, notification_key, endpoint_key)` before any provider
+call. `notification_key` mirrors the topic's enqueue key one-for-one
+(`push:message:<id>`); the loser of the claim **skips the work and the job still
+succeeds**, because a job whose work is already done is not a failed job. Put
+the claim on its own table rather than on the log when the log is nullable
+where you would need the key, carries no column for the thing being claimed, or
+is pruned on a schedule that would re-arm the duplicate — all three were true
+of `push_deliveries`.
+
+**A claim taken before the side effect must have a state, or it is a silent
+drop.** A claim that is never released is at-most-once, and at-most-once is not
+a trade every effect can make: a push claim held after a failed send means an
+incoming call's ring is suppressed forever, and a ring has no surface that
+retries later. So `push_send_claims` carries `sending` / `sent`. Only a
+**confirmed** outcome makes the claim permanent; a definitive failure or an
+exception deletes it so the next redelivery genuinely retries; and a `sending`
+row left by a killed process is taken over once it is older than a stated
+horizon — inside the claim statement, as an `INSERT … ON CONFLICT DO UPDATE …
+WHERE`, never a read-then-write. Choose that horizon between the longest
+legitimate in-flight attempt and the queue's own 300 s lock TTL: at or beyond
+the lock TTL, the first redelivery after a kill still sees a "fresh" claim and
+drops the work. Say in the module which way the residual risk falls — for a
+notification it is a rare duplicate, never a silent loss. And give the claim
+table a reaper, because nothing else deletes a permanent claim
+(`worker/src/control/push-claim-sweep.ts`). The full push contract is in
+[docs/web-push.md](../web-push.md) → "One notification, one device, one send".
+
 ## 4. Every long-running handler is resumable
 
 **A fencing token on the run and a checkpoint at each iteration boundary.** A

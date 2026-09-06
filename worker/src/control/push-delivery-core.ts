@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { decryptWithKey, deriveSecretKey, safeFetch } from '@nessie/runtime'
+import { safeFetch } from '@nessie/runtime'
 import {
   sendApns,
   sendFcm,
@@ -19,21 +19,44 @@ import {
 } from './push-retry.js'
 import { findRecipientsViewingPushSurface } from './push-surface-presence.js'
 import type { PushSurfaceTarget } from './push-surface-presence.js'
+import {
+  claimPushSend,
+  markPushSendSent,
+  pushEndpointKey,
+  releasePushSendClaim,
+  type PushSendClaimRef,
+} from './push-send-claim.js'
 
 /**
  * Provider-agnostic push delivery core, shared by every notification source:
  * the channel-message fan-out ({@link handlePushDispatch}) and the budget-alert
- * fan-out ({@link handleBudgetAlertDispatch}). It knows how to load the stored
- * APNs/FCM credentials and deliver one already-built {@link PushPayload} to an
- * explicit set of recipient user ids over native tokens + browser Web Push,
- * logging each attempt to `push_deliveries` and pruning dead endpoints. It holds
- * NO opinion about who the recipients are or where the deep link points — that
- * is each caller's job — so there is a single delivery implementation.
+ * fan-out ({@link handleBudgetAlertDispatch}). It delivers one already-built
+ * {@link PushPayload} to an explicit set of recipient user ids over native
+ * tokens + browser Web Push, logging each attempt to `push_deliveries` and
+ * pruning dead endpoints. It holds NO opinion about who the recipients are or
+ * where the deep link points — that is each caller's job — so there is a single
+ * delivery implementation. Credential loading lives in `./push-credentials.ts`
+ * and is re-exported here so every existing import path keeps working.
+ *
+ * **No accepted send is sent twice.** Every caller supplies a
+ * `notificationKey` — the notification's own durable identity, matching its
+ * enqueue idempotency key — and this core claims a `push_send_claims` row for
+ * `(notificationKey, endpoint)` *before* it calls a provider
+ * (`./push-send-claim.ts`). A redelivered job loses that claim and skips the
+ * send instead of notifying the device twice. The claim is only made permanent
+ * once a provider has accepted; a send that definitively failed releases it, so
+ * a later redelivery genuinely retries rather than silently dropping a ring.
+ * `push_deliveries` keeps its unchanged post-send meaning: the outcome log ops
+ * reads, with the provider, the status and the error code.
  */
+
+export { loadPushCredentials } from './push-credentials.js'
+export type { LoadedPushCredentials } from './push-credentials.js'
 
 /** Minimal Prisma surface the delivery core touches — keeps tests light. */
 export type PushDeliveryPrisma = Pick<
   PrismaClient,
+  | '$executeRaw'
   | 'pushCredential'
   | 'deviceToken'
   | 'mcpOAuthSecret'
@@ -75,27 +98,6 @@ export type PushDispatchSummary = {
   sent: number
   failed: number
   pruned: number
-}
-
-export type LoadedPushCredentials = {
-  apnsCreds: ApnsCredentials | null
-  fcmCreds: FcmCredentials | null
-}
-
-const decryptSecret = async (
-  prisma: Pick<PushDeliveryPrisma, 'mcpOAuthSecret'>,
-  authSecret: string,
-  secretRef: string,
-): Promise<string | null> => {
-  const row = await prisma.mcpOAuthSecret.findUnique({ where: { ref: secretRef } })
-  if (!row) {
-    return null
-  }
-  return decryptWithKey(deriveSecretKey(authSecret), {
-    ciphertext: row.ciphertext,
-    iv: row.iv,
-    authTag: row.authTag,
-  })
 }
 
 const errorMessageOf = (error: unknown): string =>
@@ -166,6 +168,25 @@ type PushSendOutcome = {
   result: PushResult
 }
 
+/**
+ * Which transport this token would actually be sent over, or null when the
+ * deployment has no credentials for its platform. Resolved before the claim so
+ * a token nothing can be sent to never burns one.
+ */
+const configuredTransportOf = (
+  token: PushDeviceTokenForSend,
+  apnsCreds: ApnsCredentials | null,
+  fcmCreds: FcmCredentials | null,
+): PushRetryProvider | null => {
+  if (token.platform === 'ios' && apnsCreds) {
+    return 'apns'
+  }
+  if (token.platform === 'android' && fcmCreds) {
+    return 'fcm'
+  }
+  return null
+}
+
 const sendConfiguredToken = async (
   input: {
     apnsCreds: ApnsCredentials | null
@@ -213,67 +234,11 @@ const sendConfiguredToken = async (
   return null
 }
 
-/**
- * Build the decrypted APNs credentials from the `push_credentials` row + the
- * `.p8` plaintext, or null if the row is incomplete / the secret is missing.
- */
-const loadApnsCreds = async (
-  prisma: Pick<PushDeliveryPrisma, 'mcpOAuthSecret'>,
-  authSecret: string,
-  row: {
-    secretRef: string
-    apnsKeyId: string | null
-    apnsTeamId: string | null
-    apnsTopic: string | null
-    apnsEnvironment: 'sandbox' | 'production' | null
-  },
-): Promise<ApnsCredentials | null> => {
-  if (!row.apnsKeyId || !row.apnsTeamId || !row.apnsTopic) {
-    return null
-  }
-  const p8 = await decryptSecret(prisma, authSecret, row.secretRef)
-  if (!p8) {
-    return null
-  }
-  return {
-    p8,
-    keyId: row.apnsKeyId,
-    teamId: row.apnsTeamId,
-    topic: row.apnsTopic,
-    environment: row.apnsEnvironment ?? 'production',
-  }
-}
-
-const loadFcmCreds = async (
-  prisma: Pick<PushDeliveryPrisma, 'mcpOAuthSecret'>,
-  authSecret: string,
-  row: { secretRef: string },
-): Promise<FcmCredentials | null> => {
-  const serviceAccountJson = await decryptSecret(prisma, authSecret, row.secretRef)
-  if (!serviceAccountJson) {
-    return null
-  }
-  return { serviceAccountJson }
-}
-
-/**
- * Load and decrypt the deployment's APNs + FCM credentials from the
- * `push_credentials` table. Returns nulls for absent/incomplete providers.
- */
-export const loadPushCredentials = async (
-  deps: { prisma: Pick<PushDeliveryPrisma, 'pushCredential' | 'mcpOAuthSecret'>; authSecret: string },
-): Promise<LoadedPushCredentials> => {
-  const credRows = await deps.prisma.pushCredential.findMany()
-  const apnsRow = credRows.find((r) => r.provider === 'apns') ?? null
-  const fcmRow = credRows.find((r) => r.provider === 'fcm') ?? null
-  return {
-    apnsCreds: apnsRow ? await loadApnsCreds(deps.prisma, deps.authSecret, apnsRow) : null,
-    fcmCreds: fcmRow ? await loadFcmCreds(deps.prisma, deps.authSecret, fcmRow) : null,
-  }
-}
-
 type NativeDeliveryInput = {
-  prisma: Pick<PushDeliveryPrisma, 'deviceToken' | 'pushDelivery' | 'userPushSurfacePresence'>
+  prisma: Pick<
+    PushDeliveryPrisma,
+    '$executeRaw' | 'deviceToken' | 'pushDelivery' | 'userPushSurfacePresence'
+  >
   apnsCreds: ApnsCredentials | null
   fcmCreds: FcmCredentials | null
   senders: PushSenders
@@ -282,6 +247,7 @@ type NativeDeliveryInput = {
   recipientIds: string[]
   organizationId: string
   messageId: string | null
+  notificationKey: string
   surface: PushSurfaceTarget
   now: () => Date
   bypassSurfaceSuppression: boolean
@@ -289,8 +255,14 @@ type NativeDeliveryInput = {
 
 /**
  * Deliver the notification to every recipient's registered native (APNs/FCM)
- * device tokens, pruning the ones the provider reports dead. Never throws out of
- * the per-token loop.
+ * device tokens, pruning the ones the provider reports dead.
+ *
+ * A provider failure never escapes the per-token loop — one dead endpoint must
+ * not abort the rest of the fan-out. The claim statements around it deliberately
+ * do escape: they sit outside the try, so a database error taking, releasing or
+ * completing a claim aborts the batch and fails the job. Without a working
+ * `push_send_claims` table there is no duplicate guard, and continuing anyway
+ * would send unguarded.
  */
 const deliverNativeTokens = async (
   input: NativeDeliveryInput,
@@ -324,6 +296,30 @@ const deliverNativeTokens = async (
     if (!input.bypassSurfaceSuppression && recipientsViewingTarget.has(token.userId)) {
       continue
     }
+    // Resolved before the claim: a platform with no configured credentials is
+    // not a send, so it must not consume this notification's claim either.
+    const transport = configuredTransportOf(token, input.apnsCreds, input.fcmCreds)
+    if (!transport) {
+      // No configured provider for this platform — skip silently.
+      continue
+    }
+    // The duplicate gate. Everything above re-decides whether this device
+    // should be rung at all; from here down a provider is contacted, so the
+    // claim is taken first and a loser skips the send rather than failing the
+    // job. `sendConfiguredToken`'s transient-failure retries all happen inside
+    // this one claim, so a retry can never duplicate a send that succeeded.
+    const claimRef: PushSendClaimRef = {
+      endpointKey: pushEndpointKey(transport, token.token),
+      notificationKey: input.notificationKey,
+      organizationId: input.organizationId,
+    }
+    const claimed = await claimPushSend(input.prisma, {
+      ...claimRef,
+      provider: transport,
+    })
+    if (!claimed) {
+      continue
+    }
     let outcome: PushSendOutcome | null = null
     try {
       outcome = await sendConfiguredToken({
@@ -341,18 +337,29 @@ const deliverNativeTokens = async (
         platform: token.platform,
         err,
       })
+      // Nothing reached the provider, so the claim must not outlive the
+      // attempt: give it back and let the next delivery of this job try again.
+      await releasePushSendClaim(input.prisma, claimRef)
       continue
     }
 
     if (!outcome) {
-      // No configured provider for this platform — skip silently.
+      // Unreachable: `configuredTransportOf` above already refused this token.
+      await releasePushSendClaim(input.prisma, claimRef)
       continue
     }
 
     if (outcome.result.ok) {
       summary.sent += 1
+      // The one transition that makes a claim permanent. Only now is a second
+      // send of this notification to this device a duplicate.
+      await markPushSendSent(input.prisma, claimRef)
     } else {
       summary.failed += 1
+      // A definitive failure, retries already exhausted. Releasing is what
+      // stops a ring that never happened being suppressed forever; a dead
+      // endpoint is pruned below, so releasing cannot make it be retried.
+      await releasePushSendClaim(input.prisma, claimRef)
     }
     if (outcome.result.deadToken) {
       deadTokenIds.push(token.id)
@@ -408,6 +415,16 @@ export type DeliverToRecipientsInput = {
   now: () => Date
   /** Optional source message; null for non-message notifications. */
   messageId?: string | null
+  /**
+   * The notification's durable identity, and the reason a redelivered job does
+   * not notify twice. Required, never optional: a caller that could omit it
+   * would be a second unclaimed send path, which is the defect this exists to
+   * close (horizontal-scaling invariant 3). Derive it from the fact that makes
+   * the notification unique and match its enqueue idempotency key —
+   * `push:message:<id>`, `push:attention:<alertId>` — never from a clock
+   * reading or a random value.
+   */
+  notificationKey: string
   /** Rings every device, including devices already viewing the destination. */
   bypassSurfaceSuppression?: boolean
 }
@@ -449,6 +466,7 @@ export const deliverToRecipients = async (
       recipientIds,
       organizationId: input.organizationId,
       messageId,
+      notificationKey: input.notificationKey,
       surface: input.surface,
       now: input.now,
       bypassSurfaceSuppression: input.bypassSurfaceSuppression ?? false,
@@ -478,6 +496,7 @@ export const deliverToRecipients = async (
       payload: input.webPayload ?? input.payload,
       organizationId: input.organizationId,
       messageId,
+      notificationKey: input.notificationKey,
       deepLinkUrl: input.deepLinkUrl,
     })
     summary.sent += web.sent

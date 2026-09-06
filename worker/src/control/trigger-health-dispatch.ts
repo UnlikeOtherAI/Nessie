@@ -221,6 +221,10 @@ export const handleTriggerHealthAlert = async (
     organizationId: context.organizationId,
     deepLinkUrl: '/agents/triggers',
     messageId: null,
+    // `healthRevision` identifies the specific failure — the same fact this
+    // topic's enqueue key uses — so a schedule that keeps failing the same way
+    // still notifies once and a genuinely new failure still notifies.
+    notificationKey: `push:trigger-health:${payload.triggerId}:${payload.healthRevision}`,
     surface: { kind: 'triggers' },
     now: deps.now ?? (() => new Date()),
   })
