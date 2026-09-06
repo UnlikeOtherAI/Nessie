@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { z } from 'zod'
 
 import {
   claimSessionControl,
@@ -6,19 +7,27 @@ import {
   createBrowserbaseClient,
   disconnectCloudBrowser,
   isCloudBrowserError,
+  captureUndrivenSessionTabs,
+  listAgentBrowserTabs,
   listCloudBrowserConnections,
   releaseSessionControl,
+  releaseCloudBrowserSession,
   resetAgentBrowser,
+  resumeAgentBrowser,
+  touchResumedSession,
+  viewerMaySeeAgentBrowser,
 } from '@nessie/browser-cloud'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 
 import {
   AgentBrowserResponseSchema,
+  AgentBrowserTabsResponseSchema,
   BrowserLoginListSchema,
   CloudBrowserConnectionListSchema,
   CloudBrowserSessionDetailSchema,
   CloudBrowserSessionListSchema,
   ConnectCloudBrowserBodySchema,
+  ResumeAgentBrowserResponseSchema,
 } from '../contracts/browser-cloud.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { findThreadForUser } from '../services/message-read-state.js'
@@ -31,6 +40,15 @@ import type { RouteDeps } from './types.js'
  * organization connect, the caller's own identity on a personal one — never
  * by anything about the key itself.
  */
+
+/** The site a URL is on, for a reader who may know where but not what. */
+const originOf = (url: string): string => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return ''
+  }
+}
 
 const sendCloudBrowserError = (reply: FastifyReply, error: unknown): boolean => {
   if (!isCloudBrowserError(error)) return false
@@ -59,7 +77,7 @@ export interface ViewableCloudBrowserSession {
   threadId: string
   agentId: string
   agentName: string
-  runId: string
+  runId: string | null
   status: string
   startedAt: Date
   endedAt: Date | null
@@ -107,20 +125,15 @@ const loadViewableSession = async (
     input.actorContext.tenant.organizationId,
   )
   if (!thread) return null
-  if (session.authenticated) {
-    // The requester is not the only person with a claim here: somebody who
-    // took the controls and signed in is looking at *their* logged-in page,
-    // and narrowing to the requester alone would both hide it from them and
-    // show it to somebody who never signed in.
-    const viewer = input.actorContext.actor.actorId
-    if (session.requestedByUserId !== viewer) {
-      const signedIn = session.agentBrowserId
-        ? await prisma.agentBrowserLogin.count({
-          where: { agentBrowserId: session.agentBrowserId, userId: viewer },
-        })
-        : 0
-      if (signedIn === 0) return null
-    }
+  if (session.authenticated && session.agentBrowserId) {
+    // One audience rule for everything a signed-in browser shows — the live
+    // view here, the stored tabs, and the resume — in `viewerMaySeeAgentBrowser`.
+    const allowed = await viewerMaySeeAgentBrowser(prisma, {
+      agentBrowserId: session.agentBrowserId,
+      viewerId: input.actorContext.actor.actorId,
+      requestedByUserId: session.requestedByUserId,
+    })
+    if (!allowed) return null
   }
   return {
     id: session.id,
@@ -286,8 +299,10 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         threadId: thread.id,
         organizationId: actorContext.tenant.organizationId,
         ...(activeOnly ? { status: { in: ['allocating', 'active', 'releasing'] } } : {}),
-        // A browser a person signed into is that person's; phase 1 opens none,
-        // and this keeps the list honest the moment phase 2 does.
+        // A browser a person signed into is that person's. This is the list's
+        // cut of the audience rule in `viewerMaySeeAgentBrowser`: the requester
+        // always, and otherwise only sessions nobody has signed in — signers
+        // who did not ask reach theirs through the detail read.
         OR: [
           { authenticated: false },
           { requestedByUserId: actorContext.actor.actorId },
@@ -343,6 +358,12 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     let tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }> = []
     const live = session.status === 'allocating' || session.status === 'active'
       || session.status === 'releasing'
+    // This read is the column polling while it is open, which is exactly
+    // "somebody is watching": a resumed session has no run to end it, so being
+    // watched is what keeps it alive.
+    if (live && session.runId === null) {
+      await touchResumedSession(prisma, { sessionId: session.id })
+    }
     if (live && session.browserbaseSessionId) {
       const apiKey = await secretResolver.resolve(session.connectionApiKeyRef)
       if (apiKey) {
@@ -382,6 +403,213 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       }),
     )
   })
+  /**
+   * Whether this agent is reachable from this thread by this person.
+   *
+   * Thread-scoped on purpose, like the session routes: `isAgentAccessibleToActor`
+   * refuses every system-managed agent, and the Personal Assistant's own DM is
+   * the most-visited conversation there is. An agent is in a conversation when
+   * it is bound to the channel — for the PA, bound with this person as its
+   * principal.
+   */
+  const agentInThread = async (input: {
+    organizationId: string
+    threadId: string
+    agentId: string
+    userId: string
+  }): Promise<{ channelId: string; teamId: string | null } | null> => {
+    // Path ids reach Prisma as uuid columns, and a malformed one throws there
+    // rather than matching nothing — which a client would see as a 500 for
+    // what is simply an address that names nothing.
+    if (!z.string().uuid().safeParse(input.threadId).success
+      || !z.string().uuid().safeParse(input.agentId).success) {
+      return null
+    }
+    const thread = await findThreadForUser(prisma, input.threadId, input.userId, input.organizationId)
+    if (!thread) return null
+    const bound = await prisma.agentBinding.count({
+      where: {
+        agentId: input.agentId,
+        channelId: thread.channel.id,
+        OR: [{ principalUserId: null }, { principalUserId: input.userId }],
+      },
+    })
+    if (bound === 0) return null
+    const channel = await prisma.channel.findUnique({
+      where: { id: thread.channel.id },
+      select: { teamId: true },
+    })
+    return { channelId: thread.channel.id, teamId: channel?.teamId ?? null }
+  }
+
+  /**
+   * The tabs the agent's browser was last seen with — the chat's Browser column
+   * when nothing is live. Readable by whoever can read the conversation the
+   * agent is in, which is the audience its browser already belongs to.
+   */
+  app.get('/api/threads/:threadId/agents/:agentId/browser/tabs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { threadId, agentId } = request.params as { threadId: string; agentId: string }
+    const organizationId = actorContext.tenant.organizationId
+    const reach = await agentInThread({
+      organizationId,
+      threadId,
+      agentId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!reach) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    const browser = await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active' },
+      select: { id: true },
+    })
+    if (!browser) {
+      return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: false, tabs: [] }))
+    }
+    const tabs = await listAgentBrowserTabs(prisma, { organizationId, agentBrowserId: browser.id })
+    // A picture of a signed-in page is that person's material, exactly as the
+    // live view of it is. Someone outside the audience still learns where the
+    // browser is — the site, not the page — and never what it showed.
+    const allowed = await viewerMaySeeAgentBrowser(prisma, {
+      agentBrowserId: browser.id,
+      viewerId: actorContext.actor.actorId,
+    })
+    const visible = allowed
+      ? tabs
+      : tabs.map((tab) => ({
+        ...tab,
+        url: originOf(tab.url),
+        screenshotDataUrl: null,
+      }))
+    return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: true, tabs: visible }))
+  })
+
+  /**
+   * Bring the agent's browser back, for a person, the way it was left.
+   *
+   * Bills the connection the agent's browser already lives on, never the
+   * resumer's own; lives on the idle TTL and is extended while the column is
+   * open. While it is up the agent's own `browser_open` is refused as "open in
+   * another run", which is the one-live-session-per-browser rule doing its job.
+   */
+  app.post('/api/threads/:threadId/agents/:agentId/browser/resume', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { threadId, agentId } = request.params as { threadId: string; agentId: string }
+    const organizationId = actorContext.tenant.organizationId
+    const reach = await agentInThread({
+      organizationId,
+      threadId,
+      agentId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!reach) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, organizationId },
+      select: { visibility: true, ownerUserId: true },
+    })
+    if (!agent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    // Picking the browser up is seeing everything it is signed in to, so it
+    // takes the same audience as watching it. A browser nobody signed in is
+    // anyone's to open.
+    const existing = await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active' },
+      select: { id: true },
+    })
+    if (existing) {
+      const allowed = await viewerMaySeeAgentBrowser(prisma, {
+        agentBrowserId: existing.id,
+        viewerId: actorContext.actor.actorId,
+      })
+      if (!allowed) {
+        sendApiError(
+          reply,
+          403,
+          'AGENT_BROWSER_SIGNED_IN_BY_OTHERS',
+          'This browser is signed in by someone else, so only they can open it.',
+        )
+        return reply
+      }
+    }
+
+    try {
+      const resumed = await resumeAgentBrowser(
+        {
+          prisma,
+          resolveSecret: (ref) => secretResolver.resolve(ref),
+          encryptionSecret: authSecret ?? '',
+        },
+        {
+          organizationId,
+          agentId,
+          agentVisibility: agent.visibility === 'private' ? 'private' : 'team',
+          agentOwnerUserId: agent.ownerUserId ?? null,
+          threadId,
+          teamId: reach.teamId,
+          userId: actorContext.actor.actorId,
+        },
+      )
+      return createApiResponse(ResumeAgentBrowserResponseSchema.parse(resumed))
+    } catch (error) {
+      // The lifecycle's sentence for this is written for the model ("wait for
+      // the run … open a throwaway browser"); a person gets their own.
+      if (isCloudBrowserError(error) && error.code === 'CLOUD_BROWSER_SESSION_ALREADY_OPEN') {
+        sendApiError(
+          reply,
+          409,
+          error.code,
+          'This agent is using its browser right now. Wait for it to finish, then try again.',
+        )
+        return reply
+      }
+      if (sendCloudBrowserError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  /**
+   * "I'm done" on a resumed session: the last state is written and the
+   * browser stops billing now, rather than when the idle window closes it.
+   * Only for a session a person opened — a run's session is its run's to end.
+   */
+  app.delete('/api/browser-sessions/:sessionId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    const session = await loadViewableSession(prisma, {
+      actorContext,
+      sessionId,
+      findThreadForUser,
+    })
+    if (!session || session.runId !== null) {
+      sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
+      return reply
+    }
+    await releaseCloudBrowserSession(
+      {
+        prisma,
+        resolveSecret: (ref) => secretResolver.resolve(ref),
+        encryptionSecret: authSecret ?? '',
+      },
+      { sessionId, releasedBy: 'person_done' },
+    )
+    return reply.code(204).send()
+  })
+
   /**
    * An agent's browser: whether it exists, what it is signed in to, and who
    * signed it in. Readable by anyone entitled to see the agent, because that
@@ -579,10 +807,32 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     const { sessionId } = request.params as { sessionId: string }
     // Only the holder may hand back, so a bystander cannot yank the controls
     // out from under somebody mid-sign-in.
-    await releaseSessionControl(prisma, {
+    const released = await releaseSessionControl(prisma, {
       sessionId,
       userId: actorContext.actor.actorId,
     })
+    // Handing back is "I'm done" on a resumed session — the person signed in
+    // somewhere, or moved the browser on — so the last state is written now
+    // rather than minutes later when the idle window closes it. A run's
+    // session is left alone: its worker holds the socket and captures itself.
+    const resumed = released
+      ? await prisma.cloudBrowserSession.findFirst({
+        where: {
+          id: sessionId,
+          organizationId: actorContext.tenant.organizationId,
+          runId: null,
+          status: 'active',
+          agentBrowserId: { not: null },
+        },
+        select: { id: true },
+      })
+      : null
+    if (resumed) {
+      await captureUndrivenSessionTabs(prisma, {
+        sessionId,
+        encryptionSecret: authSecret ?? '',
+      })
+    }
     return reply.code(204).send()
   })
 }

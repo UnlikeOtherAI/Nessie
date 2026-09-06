@@ -104,14 +104,17 @@ export const requestBrowserLogin = async (
       {
         type: 'text',
         markdown:
-          `Open the browser below and sign in to ${service}. You type directly `
-          + 'into the browser — nothing you enter passes through this team, '
-          + 'and nobody, including me, can see it. Press Done when you are '
-          + 'signed in.',
+          `Open my browser from the Browser tool beside this conversation, sign in `
+          + `to ${service}, then press Done. You type directly into the browser — `
+          + 'nothing you enter passes through this team, and nobody, including '
+          + 'me, can see it.',
       },
       {
+        // The routed doorway to the agent's browser panel — the same one the
+        // tool rail opens. An earlier placeholder pointed at a host that does
+        // not exist, which made the card's only link a dead end.
         type: 'link',
-        href: `https://nessie.invalid/agent-browser/${browserId}`,
+        href: `/channels/${context.channel.id}/tools/browser`,
         label: 'Open the browser',
       },
     ],

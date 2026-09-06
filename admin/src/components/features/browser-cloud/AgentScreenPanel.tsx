@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import type { AgentRecord } from '../../../lib/api-client'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
+import { browserCloudKeys } from '../../../facades/browser-cloud/keys'
 import { LOCAL_BACK_PRIORITY, useLocalBack } from '../../../navigation/LocalBackContext'
 import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
@@ -9,8 +11,9 @@ import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
-import { AgentBrowserPanel } from './AgentBrowserPanel'
+import { THREAD_PANEL_WIDTH_STORAGE_KEY } from '../channels/thread-panel/thread-panel-layout'
 import { AgentScreenViewer } from './AgentScreenViewer'
+import { BrowserLastState } from './BrowserLastState'
 
 /**
  * One width whichever face the column is wearing — the live viewer or the
@@ -24,10 +27,12 @@ type AgentScreenPanelProps = {
   sessionId: string | null
   onClose: () => void
   agent: AgentRecord
+  /** The conversation the column stands beside; the idle face reads through it. */
+  threadId: string | null
 }
 
 /**
- * The agent's browser, beside the conversation.
+ * The agent's browser panel, beside the conversation.
  *
  * It reads exactly like a reply thread — same shell, same breakpoints, same
  * drag-resize — because it answers the same shape of question ("what is
@@ -37,16 +42,54 @@ type AgentScreenPanelProps = {
  *
  * The tool rail's Browser button is persistent, so most of the time it is
  * pressed there is no session to watch — and "nothing to watch" is not
- * "nothing to know". Idle, the column answers what this browser *is*: the
- * account it runs on, what it stays signed in to, and the way to sign it out,
- * which is `AgentBrowserPanel` — the very panel the agent's own page renders,
- * never a second one. The swap is by session, so a browser starting up turns
- * the card into the screen with no further thought from the caller.
+ * "nothing to know". Idle, the panel shows where the browser left off
+ * (`BrowserLastState`: the tabs it was left with, what each showed, and the
+ * window to tap). The swap is by session, so a browser starting up — the
+ * agent's, or a person's — turns that into the live view with no further
+ * thought from the caller.
  */
-export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanelProps) => {
-  const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY)
+export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentScreenPanelProps) => {
+  // The reply thread stands immediately to this panel's left, and the handle
+  // between them belongs to this panel. The hook links the two only while
+  // both are on screen, so naming the thread's key costs nothing when there
+  // is no thread.
+  const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY, {
+    linkedLeftKey: THREAD_PANEL_WIDTH_STORAGE_KEY,
+  })
   const phoneLayout = useNavigationLayout() === 'single'
+  const queryClient = useQueryClient()
   const [fullscreen, setFullscreen] = useState(false)
+  // A resume is "open it for me": the resumed session arrives a poll later,
+  // and when *that* session — not whichever the thread lists first — is the
+  // one on screen, the panel goes full screen and claims the controls, which
+  // is the only container where a person can drive. Held as intent rather than
+  // set directly, because full screen with no session yet is an empty layer.
+  const [awaitingSessionId, setAwaitingSessionId] = useState<string | null>(null)
+  const [claimForPerson, setClaimForPerson] = useState(false)
+  useEffect(() => {
+    if (awaitingSessionId !== null && sessionId === awaitingSessionId) {
+      setFullscreen(true)
+      setClaimForPerson(true)
+      setAwaitingSessionId(null)
+    }
+  }, [awaitingSessionId, sessionId])
+  // Leaving full screen unmounts the viewer, whose once-guard is a ref that
+  // resets on remount; a claim intent left standing would take the controls
+  // again the next time the person opened full screen by hand.
+  useEffect(() => {
+    if (!fullscreen) setClaimForPerson(false)
+  }, [fullscreen])
+  // The rows behind the idle face change exactly when a session ends, and
+  // the face would otherwise be served last time's tabs from the cache.
+  const previousSessionId = useRef(sessionId)
+  useEffect(() => {
+    if (previousSessionId.current !== null && sessionId === null) {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.agentBrowserTabs(threadId ?? undefined, agent.id),
+      })
+    }
+    previousSessionId.current = sessionId
+  }, [agent.id, queryClient, sessionId, threadId])
 
   // The takeover is full-bleed rather than a centred card, so it is not the
   // shared `Dialog` — but it owes the same shared work every overlay does
@@ -73,14 +116,16 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
   // Each publishes its own Back and its own action, and the store updates the
   // entry in place, so switching between them swaps the bar with no extra
   // coordination.
-  // The tool rail opens this column from component state rather than a route,
-  // so on a single-column layout it is the panel — not the router — that owes
-  // Back an answer. The full-screen layer registers its own at modal priority,
-  // which outranks this one, so the two never fight.
+  // On a single-column layout the panel is a route and the router owns Back;
+  // this registration is for the layouts in between — a narrow tablet, where
+  // the shell is `split` but the panel is a full-screen layer opened from the
+  // rail — so a hardware Back or an edge swipe closes the panel rather than
+  // the conversation under it. The full-screen layer registers its own at
+  // modal priority, which outranks this one, so the two never fight.
   useLocalBack({
     active: !overlay.mounted,
     id: 'chat-tool:browser',
-    label: 'Back to channel',
+    label: 'Back to conversation',
     onBack: onClose,
     priority: LOCAL_BACK_PRIORITY.chatToolPanel,
   })
@@ -100,7 +145,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       submit: false,
       tone: null,
     }],
-    back: { label: 'Back to channel', onBack: onClose },
+    back: { label: 'Back to conversation', onBack: onClose },
     title: 'Browser',
   })
 
@@ -138,7 +183,14 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
           </header>
           )}
           {sessionId === null ? null : (
-            <AgentScreenViewer agent={agent} sessionId={sessionId} variant="fullscreen" />
+            <AgentScreenViewer
+              agent={agent}
+              claimOnLive={claimForPerson}
+              onDone={overlay.requestClose}
+              sessionId={sessionId}
+              threadId={threadId}
+              variant="fullscreen"
+            />
           )}
         </div>
       </OverlayPortal>
@@ -159,7 +211,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       {nativeBarOwnsHeader ? null : (
       <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
         {phoneLayout ? (
-          <PhoneBackButton label="Back to channel" onBack={onClose} />
+          <PhoneBackButton label="Back to conversation" onBack={onClose} />
         ) : null}
         <h2 className="flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">Browser</h2>
         {sessionId === null ? null : (
@@ -184,22 +236,14 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       </header>
       )}
       {sessionId === null ? (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <p className="px-1 pb-3 text-sm text-[color:var(--tx2)]">
-            {agent.name} isn’t browsing in this conversation. Its screen appears here
-            as soon as it does.
-          </p>
-          {/*
-            * A system-managed agent's browser record is deliberately not
-            * readable through `GET /api/agents/:id/browser` — the whole agent
-            * route family refuses one — so the Personal Assistant gets the
-            * sentence alone rather than a card that can only fail. Watching it
-            * live is unaffected: sessions are read per thread.
-            */}
-          {agent.systemManaged ? null : <AgentBrowserPanel agent={agent} heading={false} />}
-        </div>
+        <BrowserLastState
+          agent={agent}
+          onResumed={setAwaitingSessionId}
+          opening={awaitingSessionId !== null}
+          threadId={threadId}
+        />
       ) : (
-        <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
+        <AgentScreenViewer agent={agent} sessionId={sessionId} threadId={threadId} variant="panel" />
       )}
     </SidePanelShell>
   )

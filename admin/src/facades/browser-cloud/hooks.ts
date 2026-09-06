@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
   AgentBrowserRecord,
+  AgentBrowserTabsResponse,
   CloudBrowserConnectionRecord,
   CloudBrowserScope,
   CloudBrowserSessionDetail,
@@ -52,15 +53,9 @@ export const useDisconnectCloudBrowser = () => {
   })
 }
 
-/** Watching a browser: fast enough that the status pill is not a lie. */
+/** With the panel open: a browser that has just started must appear quickly. */
 export const WATCHING_POLL_MS = 5_000
-
-/**
- * Idling: the chat tool rail keeps a live dot for every open agent
- * conversation, so it settles for a slower answer. Still a poll rather than a
- * pushed event — a session's lifetime is minutes, and a new realtime event
- * family costs more than this does.
- */
+/** With it closed: the rail's dot can afford to be a little behind. */
 export const RAIL_POLL_MS = 20_000
 
 /**
@@ -108,6 +103,68 @@ export const useAgentBrowser = (agentId: string | null) => {
     // Switching agents keeps the previous browser record painted rather than
     // blanking the panel between answers.
     placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Where the agent's browser left off. Mounted only by the panel's idle face,
+ * and always refetched on mount rather than served from the five-minute
+ * cache: the face appears exactly when a session has just ended, which is
+ * when these rows have just changed. Keyed by thread as well as agent because
+ * the route authorizes through the thread.
+ */
+export const useAgentBrowserTabs = (threadId: string | null, agentId: string | null) => {
+  const apiClient = useApiClient()
+  return useQuery<AgentBrowserTabsResponse>({
+    queryKey: browserCloudKeys.agentBrowserTabs(threadId ?? undefined, agentId ?? undefined),
+    queryFn: () => apiClient.get(`/api/threads/${threadId}/agents/${agentId}/browser/tabs`),
+    enabled: threadId !== null && agentId !== null,
+    placeholderData: keepPreviousData,
+    refetchOnMount: 'always',
+  })
+}
+
+/**
+ * Bring the browser back the way it was left. The thread's session list is
+ * what the panel watches, so invalidating it is what swaps the idle face for
+ * the live one. The face renders the failure itself, so `onError` is set to
+ * keep the shell's generic toast from saying it a second time.
+ */
+export const useResumeAgentBrowser = (threadId: string | null, agentId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient.post<{ sessionId: string; restoredTabs: number }>(
+        `/api/threads/${threadId}/agents/${agentId}/browser/resume`,
+        {},
+      ),
+    onError: () => undefined,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
+      })
+    },
+  })
+}
+
+/**
+ * "Done" on a resumed session: the browser saves where it is and stops. Both
+ * the session list and the stored tabs change, so both are refetched.
+ */
+export const useEndResumedSession = (threadId: string | null, agentId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (sessionId: string) => apiClient.delete<void>(`/api/browser-sessions/${sessionId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.agentBrowserTabs(threadId ?? undefined, agentId ?? undefined),
+      })
+    },
   })
 }
 
@@ -181,11 +238,15 @@ export const useBrowserControl = (sessionId: string | null) => {
   }, [apiClient, controlling, sessionId])
 
   // Handing back on unmount matters more than it looks: a person who closes
-  // the panel mid-claim would otherwise block the agent until the TTL.
+  // the panel mid-claim would otherwise block the agent until the TTL. Read
+  // through a ref so this runs once, at unmount — with `controlling` in the
+  // dependencies it also ran on every hand-back, sending the release twice.
+  const controllingRef = useRef(controlling)
+  controllingRef.current = controlling
   useEffect(() => () => {
-    if (!controlling || !sessionId) return
+    if (!controllingRef.current || !sessionId) return
     void apiClient.delete(`/api/browser-sessions/${sessionId}/control`).catch(() => undefined)
-  }, [apiClient, controlling, sessionId])
+  }, [apiClient, sessionId])
 
   return {
     controlling,

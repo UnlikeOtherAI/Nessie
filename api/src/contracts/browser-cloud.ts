@@ -43,7 +43,8 @@ export const CloudBrowserSessionSummarySchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
   agentName: z.string(),
-  runId: z.string().uuid(),
+  /** Null for a session a person resumed from the conversation. */
+  runId: z.string().uuid().nullable(),
   status: z.enum(['allocating', 'active', 'releasing', 'released', 'failed', 'unknown']),
   startedAt: z.string(),
   endedAt: z.string().nullable(),
@@ -105,4 +106,32 @@ export const BrowserLoginListSchema = z.object({
 })
 
 export type AgentBrowserResponse = z.infer<typeof AgentBrowserResponseSchema>
+
+/**
+ * The tabs an agent's browser was last seen with. The screenshot travels
+ * inline as a data URL: it is thumbnail-sized by construction, and one
+ * authenticated read is simpler than a second image fetch per tab.
+ */
+export const AgentBrowserTabSchema = z.object({
+  id: z.string().uuid(),
+  position: z.number().int().min(0),
+  url: z.string(),
+  title: z.string(),
+  capturedAt: z.string().nullable(),
+  screenshotDataUrl: z.string().nullable(),
+})
+
+export const AgentBrowserTabsResponseSchema = z.object({
+  /** False when the agent has no durable browser yet — no tabs is then expected. */
+  hasBrowser: z.boolean(),
+  tabs: z.array(AgentBrowserTabSchema),
+})
+
+export const ResumeAgentBrowserResponseSchema = z.object({
+  sessionId: z.string().uuid(),
+  restoredTabs: z.number().int().min(0),
+})
+
+export type AgentBrowserTab = z.infer<typeof AgentBrowserTabSchema>
+export type AgentBrowserTabsResponse = z.infer<typeof AgentBrowserTabsResponseSchema>
 export type BrowserLoginList = z.infer<typeof BrowserLoginListSchema>

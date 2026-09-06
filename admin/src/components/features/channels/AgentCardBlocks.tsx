@@ -1,4 +1,5 @@
 import type { PresentedAgentCardBlock } from '@nessie/schemas'
+import { Link } from 'react-router-dom'
 
 import { useAuthedObjectUrlFromPath } from '../../../lib/uploads'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -132,6 +133,21 @@ export const AgentCardBlocks = ({
         )
       }
       if (block.type === 'link') {
+        // A path is a doorway inside this app — the sign-in card's "Open the
+        // browser" — and goes through the router, so Back and the phone stack
+        // treat it as a screen rather than a new tab on our own origin.
+        if (block.href.startsWith('/')) {
+          return (
+            <Link
+              className="text-sm text-[color:var(--thinking)] underline"
+              key={`link-${index}`}
+              onClick={(event) => event.stopPropagation()}
+              to={block.href}
+            >
+              {block.label}
+            </Link>
+          )
+        }
         return (
           <a
             className="text-sm text-[color:var(--thinking)] underline"

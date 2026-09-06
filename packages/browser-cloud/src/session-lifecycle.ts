@@ -9,7 +9,9 @@ import {
   type BrowserbaseCredentials,
 } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
-import { sealConnectCapability } from './session-capability.js'
+import { captureTabsAtConnectUrl } from './agent-browser-tabs.js'
+import type { CdpClient } from './cdp-client.js'
+import { loadSessionCapability, sealConnectCapability } from './session-capability.js'
 
 /**
  * Connection resolution and the session state machine.
@@ -25,8 +27,16 @@ export type SecretResolve = (ref: string) => Promise<string | null>
 export type CloudBrowserDeps = {
   prisma: PrismaClient
   resolveSecret: SecretResolve
+  /**
+   * The deployment auth secret, which unseals a session's connect capability.
+   * Needed to capture a resumed session's tabs before it is released, since no
+   * worker holds a socket to it; absent, that capture is skipped.
+   */
+  encryptionSecret?: string
   /** Test seam. */
   clientFactory?: (credentials: BrowserbaseCredentials) => BrowserbaseClient
+  /** Test seam for the capture that dials a resumed session itself. */
+  connect?: (connectUrl: string) => Promise<CdpClient>
   now?: () => Date
 }
 
@@ -48,18 +58,30 @@ export const CLOUD_BROWSER_SETTING_KEY = 'browser.connection'
 export const LIVE_SESSION_STATUSES = ['allocating', 'active', 'releasing'] as const
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
+/**
+ * A session a person resumed from the chat has no run to end it. It lives on
+ * this idle window instead, extended by every read of its live view while the
+ * column is open, and capped at the ordinary TTL so a tab left open in a
+ * forgotten window cannot bill past what a run could.
+ */
+const DEFAULT_RESUME_IDLE_MS = 5 * 60 * 1000
 /** A deployment ceiling the model can never argue past. */
 const MAX_TTL_MS = 30 * 60 * 1000
 const DEFAULT_MAX_CONCURRENT = 3
 
 export const cloudBrowserSettings = (env: NodeJS.ProcessEnv = process.env): {
   ttlMs: number
+  resumeIdleMs: number
   maxConcurrent: number
 } => {
   const ttl = Number(env.NESSIE_BROWSER_CLOUD_TTL_MS ?? DEFAULT_TTL_MS)
+  const idle = Number(env.NESSIE_BROWSER_CLOUD_RESUME_IDLE_MS ?? DEFAULT_RESUME_IDLE_MS)
   const concurrent = Number(env.NESSIE_BROWSER_CLOUD_MAX_CONCURRENT ?? DEFAULT_MAX_CONCURRENT)
+  const ttlMs = Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, MAX_TTL_MS) : DEFAULT_TTL_MS
   return {
-    ttlMs: Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, MAX_TTL_MS) : DEFAULT_TTL_MS,
+    ttlMs,
+    resumeIdleMs:
+      Number.isFinite(idle) && idle > 0 ? Math.min(idle, ttlMs) : Math.min(DEFAULT_RESUME_IDLE_MS, ttlMs),
     maxConcurrent:
       Number.isFinite(concurrent) && concurrent > 0 ? concurrent : DEFAULT_MAX_CONCURRENT,
   }
@@ -168,7 +190,11 @@ export const markConnectionNeedsAttention = async (
 
 export type OpenSessionInput = {
   organizationId: string
-  runId: string
+  /**
+   * Null when a person resumed the browser from the conversation: no run will
+   * end it, so it gets the idle TTL rather than the run TTL.
+   */
+  runId: string | null
   threadId: string
   agentId: string
   /**
@@ -225,7 +251,9 @@ export const openCloudBrowserSession = async (
 ): Promise<OpenSessionResult> => {
   const settings = cloudBrowserSettings()
   const now = deps.now?.() ?? new Date()
-  const expiresAt = new Date(now.getTime() + settings.ttlMs)
+  const expiresAt = new Date(
+    now.getTime() + (input.runId === null ? settings.resumeIdleMs : settings.ttlMs),
+  )
 
   // Checked before anything is claimed or created: sealing the connect URL is
   // not optional — a session nobody but this process can re-attach to is the
@@ -348,6 +376,9 @@ export const openCloudBrowserSession = async (
   try {
     const client = await loadClient(deps, connection)
     const session = await client.createSession({
+      // The hard cap, for a resumed session too: its idle window is enforced
+      // by the reaper and extended while somebody watches, and the remote
+      // timeout must leave room for that.
       timeoutSeconds: Math.ceil(settings.ttlMs / 1000),
       ...(input.agentBrowser
         // `persist` is what makes tomorrow's run find the login still there.
@@ -402,6 +433,34 @@ export const openCloudBrowserSession = async (
   }
 }
 
+/**
+ * Keep a resumed session alive while somebody is watching it.
+ *
+ * Called from the read that mints its live view, which the column polls only
+ * while it is open — so closing the column is what lets the session lapse. The
+ * extension never passes `startedAt + ttlMs`: a forgotten window keeps
+ * polling, and without the cap it would keep paying.
+ */
+export const touchResumedSession = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  input: { sessionId: string; now?: Date },
+): Promise<void> => {
+  const settings = cloudBrowserSettings()
+  const now = input.now ?? new Date()
+  const row = await prisma.cloudBrowserSession.findFirst({
+    where: { id: input.sessionId, runId: null, status: { in: [...LIVE_SESSION_STATUSES] } },
+    select: { startedAt: true, expiresAt: true },
+  })
+  if (!row) return
+  const cap = new Date(row.startedAt.getTime() + settings.ttlMs)
+  const next = new Date(Math.min(now.getTime() + settings.resumeIdleMs, cap.getTime()))
+  if (next.getTime() <= row.expiresAt.getTime()) return
+  await prisma.cloudBrowserSession.updateMany({
+    where: { id: input.sessionId, runId: null, status: { in: [...LIVE_SESSION_STATUSES] } },
+    data: { expiresAt: next },
+  })
+}
+
 export type LiveSessionRow = {
   id: string
   browserbaseSessionId: string | null
@@ -440,8 +499,26 @@ export const findLiveSessionForRun = async (
  */
 export const releaseCloudBrowserSession = async (
   deps: CloudBrowserDeps,
-  input: { sessionId: string; releasedBy: string },
+  input: { sessionId: string; releasedBy: string; skipCapture?: boolean },
 ): Promise<boolean> => {
+  // A resumed session's last state is written on the way out: a run's session
+  // was captured by its worker, but nothing drives a resumed one, and this is
+  // its last moment with pages. The capability is read *before* the claim
+  // below clears it, and used *after* — so the claim, which is what stops a
+  // second releaser calling Browserbase, is never held up by a picture.
+  let lastLook: string | null = null
+  if (!input.skipCapture && deps.encryptionSecret) {
+    const resumed = await deps.prisma.cloudBrowserSession.count({
+      where: { id: input.sessionId, runId: null, status: 'active', agentBrowserId: { not: null } },
+    })
+    if (resumed === 1) {
+      const capability = await loadSessionCapability(deps.prisma, {
+        sessionId: input.sessionId,
+        encryptionSecret: deps.encryptionSecret,
+      })
+      lastLook = capability?.connectUrl ?? null
+    }
+  }
   // `releasing` is deliberately NOT claimable: three writers can race here
   // (the tool, the terminal transition, the reaper) and including it let two
   // of them both call Browserbase, with the loser's failure path then
@@ -454,6 +531,16 @@ export const releaseCloudBrowserSession = async (
     data: { status: 'releasing', connectCapabilityCiphertext: null, originGate: Prisma.DbNull },
   })
   if (claimed.count !== 1) return false
+
+  // Bounded (`CAPTURE_TIMEOUT_MS`) and never throws: the remote stop below
+  // runs whatever happens here.
+  if (lastLook) {
+    await captureTabsAtConnectUrl(deps.prisma, {
+      sessionId: input.sessionId,
+      connectUrl: lastLook,
+      connect: deps.connect,
+    })
+  }
 
   const row = await deps.prisma.cloudBrowserSession.findUnique({
     where: { id: input.sessionId },
@@ -643,16 +730,23 @@ export const releaseSessionControl = async (
   // The durable browser keeps whatever they left behind, so the record has to
   // outlive the session: without it, tomorrow's run reads `loginCount === 0`
   // and publishes what it reads to everyone. The service is unnamed because
-  // nobody asked — a person can rename it from the agent's Browser panel.
+  // nobody asked. One row per person per browser: a person who resumes the
+  // browser to look, then to look again, is the same audit fact twice, and a
+  // sign-in card's Done already writes the named row for a real handoff.
   if (session?.agentBrowserId) {
-    await prisma.agentBrowserLogin.create({
-      data: {
-        agentBrowserId: session.agentBrowserId,
-        organizationId: session.organizationId,
-        serviceHint: 'Signed in while at the controls',
-        userId: input.userId,
-      },
-    }).catch(() => undefined)
+    const already = await prisma.agentBrowserLogin.count({
+      where: { agentBrowserId: session.agentBrowserId, userId: input.userId },
+    })
+    if (already === 0) {
+      await prisma.agentBrowserLogin.create({
+        data: {
+          agentBrowserId: session.agentBrowserId,
+          organizationId: session.organizationId,
+          serviceHint: 'Signed in while at the controls',
+          userId: input.userId,
+        },
+      }).catch(() => undefined)
+    }
   }
   return true
 }

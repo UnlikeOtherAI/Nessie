@@ -63,6 +63,7 @@ import {
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
 import { getPrismaClient } from '@nessie/db'
+import { captureTabsForRun } from './run/browser-cloud/tab-capture.js'
 import {
   expireStaleControlClaims,
   reapExpiredCloudBrowserSessions,
@@ -314,8 +315,16 @@ export const startWorker = async (
   const cloudBrowser: CloudBrowserDeps = {
     prisma,
     resolveSecret: (ref) => mcpSecrets.resolver.resolve(ref),
+    // Lets the reaper write a resumed session's last state before stopping
+    // it: nothing drives that session, so the capture dials the capability.
+    encryptionSecret: config.auth.secret ?? '',
   }
   setCloudBrowserReleaseHook(async (runId) => {
+    // The terminal transition is the last moment the pages exist, and the
+    // agent's durable browser keeps what they showed for the chat's Browser
+    // column and for the next resume. Bounded and best effort: a picture is
+    // never allowed to delay the release that stops the billing.
+    await captureTabsForRun(cloudBrowser, runId)
     await releaseSessionsForRun(cloudBrowser, { runId, releasedBy: 'run_terminal' })
   })
 

@@ -28,3 +28,11 @@ Details beyond the rules above:
 - KB file nodes (`KnowledgePage.kind = file`) and page attachments live
   alongside documents — see
   [docs/knowledge-base-requirements.md](../knowledge-base-requirements.md).
+- **One deliberate exception:** `agent_browser_tabs.screenshot` holds the
+  product's own JPEG of each tab an agent's browser was left on (≤ 400 KB,
+  ≤ 12 per browser, overwritten on every capture). It is a snapshot the
+  product makes for its own screen, not a person's file, so it does not pass
+  through `FileService`: storage accounting under-reports by at most that
+  bound per browser, and database dumps carry page imagery of possibly
+  signed-in content — which is why the rows are read only through the
+  browser's audience rule (`viewerMaySeeAgentBrowser`).

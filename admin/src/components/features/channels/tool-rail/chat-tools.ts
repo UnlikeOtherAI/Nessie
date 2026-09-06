@@ -24,7 +24,7 @@ export type ChatTool = {
 
 export const CHAT_TOOLS: readonly ChatTool[] = [
   {
-    description: 'This agent’s own browser, and its screen while it browses.',
+    description: 'Its own browser — watch it work, or pick up where it left off.',
     id: 'browser',
     label: 'Browser',
   },

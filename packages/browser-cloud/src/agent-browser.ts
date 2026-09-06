@@ -240,7 +240,7 @@ export const resetAgentBrowser = async (
   if (live > 0) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.CAPACITY,
-      'This browser is open right now. Close it, or wait for the run to finish, before resetting.',
+      'This browser is open right now. Close it first, then reset it.',
     )
   }
   const updated = await prisma.agentBrowser.updateMany({
@@ -385,6 +385,32 @@ export const describeAgentBrowser = async (
     services: [...new Set(browser.logins.map((row) => row.serviceHint))],
     inUse: live > 0,
   }
+}
+
+/**
+ * Who may see what a durable browser shows — its live view, and now the
+ * pictures it left behind — and who may pick it up.
+ *
+ * A browser nobody has signed in is what the agent could see anyway, so its
+ * audience is whoever can reach the conversation. Once a person has signed it
+ * in, what it shows is *their* material: the audience narrows to the people
+ * with a login row on it, plus whoever asked for the session in front of you,
+ * who is looking at their own request. One rule, used by every reader — the
+ * session detail, the session list, the stored tabs, and the resume — because
+ * the first version of this feature had three, and the idle face showed a
+ * colleague the inbox the live face hid from them.
+ */
+export const viewerMaySeeAgentBrowser = async (
+  prisma: Pick<PrismaClient, 'agentBrowserLogin'>,
+  input: { agentBrowserId: string; viewerId: string; requestedByUserId?: string | null },
+): Promise<boolean> => {
+  if (input.requestedByUserId === input.viewerId) return true
+  const logins = await prisma.agentBrowserLogin.findMany({
+    where: { agentBrowserId: input.agentBrowserId },
+    select: { userId: true },
+  })
+  if (logins.length === 0) return true
+  return logins.some((row) => row.userId === input.viewerId)
 }
 
 export { resolveConnectionForRun, isCloudBrowserError }

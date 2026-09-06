@@ -1,6 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useBrowserControl, useCloudBrowserSession } from '../../../facades/browser-cloud/hooks'
+import {
+  useBrowserControl,
+  useCloudBrowserSession,
+  useEndResumedSession,
+} from '../../../facades/browser-cloud/hooks'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
@@ -9,6 +13,17 @@ type AgentScreenViewerProps = {
   sessionId: string
   /** Full-screen gets more chrome and a bigger frame; the panel is compact. */
   variant: 'panel' | 'fullscreen'
+  /**
+   * Take the controls as soon as the session is live. Set when the person
+   * opened the browser for themselves — a resume — where waiting for a second
+   * press of "Take control" is a step nobody asked for. Never set for a
+   * session an agent is driving.
+   */
+  claimOnLive?: boolean
+  /** The conversation this is shown in; "Done" refetches through it. */
+  threadId?: string | null
+  /** Leave full screen once a resumed session has been ended. */
+  onDone?: () => void
   /**
    * The agent whose browser this is, when known. A team agent's browser
    * is shared with everyone who can reach it, which the banner says before
@@ -45,8 +60,20 @@ const STATUS_LABEL: Record<string, string> = {
  * detail route decides. The claim is what makes the *agent* stand down, since
  * every browser verb is refused server-side while it is held.
  */
-export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenViewerProps) => {
+export const AgentScreenViewer = ({
+  agent,
+  claimOnLive = false,
+  onDone,
+  sessionId,
+  threadId = null,
+  variant,
+}: AgentScreenViewerProps) => {
   const session = useCloudBrowserSession(sessionId)
+  // A session with no run is one a person opened: nobody is watching through
+  // it, nobody is paused, and "done" means the browser saves where it is and
+  // stops — not "hand back to the agent".
+  const resumed = session.data?.runId === null
+  const endResumed = useEndResumedSession(threadId, agent?.id ?? null)
   // Control is only offered full-screen: the panel is a glance, and handing
   // somebody the keyboard in a 400px column is not the affordance.
   const control = useBrowserControl(variant === 'fullscreen' ? sessionId : null)
@@ -71,6 +98,19 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
 
   const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
   const live = session.data?.status === 'active' || session.data?.status === 'allocating'
+
+  // Once, when the session first reports live and nobody else holds it. The
+  // ref rather than state, so a failed claim does not retry on every poll —
+  // the failure is shown instead, and the ordinary button stays available.
+  const claimed = useRef(false)
+  const { take } = control
+  useEffect(() => {
+    if (!claimOnLive || variant !== 'fullscreen' || claimed.current) return
+    if (session.data?.status !== 'active' || session.data.controlledByUserId) return
+    claimed.current = true
+    take()
+  }, [claimOnLive, session.data, take, variant])
+  const claimFailed = claimOnLive && claimed.current && !control.controlling && control.error !== null
 
   // Follow the agent by default: the hook reads an id the session no longer
   // has as its fallback, so when the agent closes the tab being watched the
@@ -99,15 +139,28 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
           </Pill>
         ) : null}
         {variant === 'fullscreen' && live ? (
-          <button
-            className="admin-button admin-button-secondary admin-button-compact ml-auto"
-            disabled={control.pending
-              || (Boolean(session.data?.controlledByUserId) && !control.controlling)}
-            onClick={() => (control.controlling ? control.handBack() : control.take())}
-            type="button"
-          >
-            {control.controlling ? 'Hand back' : 'Take control'}
-          </button>
+          <span className="ml-auto flex items-center gap-2">
+            {resumed && control.controlling ? (
+              <button
+                className="admin-button admin-button-primary admin-button-compact"
+                disabled={endResumed.isPending}
+                onClick={() => endResumed.mutate(sessionId, { onSuccess: onDone })}
+                type="button"
+              >
+                {endResumed.isPending ? 'Saving…' : 'Done'}
+              </button>
+            ) : (
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                disabled={control.pending
+                  || (Boolean(session.data?.controlledByUserId) && !control.controlling)}
+                onClick={() => (control.controlling ? control.handBack() : control.take())}
+                type="button"
+              >
+                {control.controlling ? 'Hand back' : 'Take control'}
+              </button>
+            )}
+          </span>
         ) : null}
       </div>
 
@@ -148,7 +201,9 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
           <iframe
             allow="clipboard-read; clipboard-write"
             className="h-full w-full border-0"
-            // Watch-only: a click here must not reach the agent's browser.
+            // What the provider's live view needs and no more: its own scripts
+            // and origin, and forms so a sign-in can submit in control mode.
+            // Watch-only is the pointer-events line below, not this.
             sandbox="allow-same-origin allow-scripts allow-forms"
             src={frameUrl}
             style={{ pointerEvents: control.controlling ? 'auto' : 'none' }}
@@ -167,12 +222,20 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
 
       {variant === 'fullscreen' ? (
         <p className="flex-shrink-0 px-4 py-2 text-xs text-[color:var(--tx3)]">
-          {control.controlling
-            ? 'You are driving. The agent is paused until you hand back. What you type '
-              + 'goes straight to the browser — it never passes through this team, '
-              + 'and the agent cannot read it.'
-            : 'You are watching what the agent sees. Pages load directly from the browser '
-              + 'provider, so their content never passes through this team.'}
+          {claimFailed
+            ? 'Couldn’t take control — try Take control above.'
+            : resumed
+              ? control.controlling
+                ? 'You are driving. What you type goes straight to the browser — it never '
+                  + 'passes through this team. Press Done when you are finished; the browser '
+                  + 'saves where you left off.'
+                : 'Nobody is driving this browser. Take control to use it.'
+              : control.controlling
+                ? 'You are driving. The agent is paused until you hand back. What you type '
+                  + 'goes straight to the browser — it never passes through this team, '
+                  + 'and the agent cannot read it.'
+                : 'You are watching what the agent sees. Pages load directly from the browser '
+                  + 'provider, so their content never passes through this team.'}
         </p>
       ) : null}
     </div>

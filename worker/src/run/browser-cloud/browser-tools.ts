@@ -5,10 +5,12 @@ import {
   ensureAgentBrowser,
   findLiveSessionForRun,
   isCloudBrowserError,
+  listAgentBrowserTabs,
   observeBrowser,
   openCloudBrowserSession,
   releaseCloudBrowserSession,
   renderObservation,
+  restoreBrowserTabs,
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
 import {
@@ -45,6 +47,7 @@ import {
   saveOriginGate,
   type SessionPoolDeps,
 } from './session-pool.js'
+import { captureTabsNow, scheduleTabCapture } from './tab-capture.js'
 
 /**
  * What a browser verb reports. Failure is a value; ambiguity is a throw.
@@ -269,7 +272,24 @@ const runOpen = async (
         // as somebody on is a property of its cookies, not of what it visits.
         gate.authenticatedOrigins = await readAuthenticatedOrigins(cdp)
       }
-      await cdp.call('Page.navigate', { url: parsed.data.url })
+      if (agentBrowser) {
+        // The agent's browser comes back the way it was left: the page it
+        // asked for takes the working tab, and every other tab it had opens
+        // again behind it. Swapping the first tab rather than adding one is
+        // what keeps the count from growing by one on every open.
+        const stored = await listAgentBrowserTabs(deps.prisma, {
+          organizationId: context.channel.organizationId,
+          agentBrowserId: agentBrowser.id,
+        })
+        await restoreBrowserTabs(cdp, [
+          { url: parsed.data.url },
+          // The requested page may be one of the stored tabs; it must not
+          // come back a second time behind itself.
+          ...stored.slice(1).filter((tab) => tab.url !== parsed.data.url),
+        ])
+      } else {
+        await cdp.call('Page.navigate', { url: parsed.data.url })
+      }
       noteVisitedOrigin(gate, parsed.data.url)
       // The cookie read and the first navigation are what make the gate mean
       // anything; a worker that resumes this run must not start from empty.
@@ -279,6 +299,7 @@ const runOpen = async (
         error instanceof Error ? error.message : String(error)}`)
     }
     const observation = await observeBrowser(cdp)
+    scheduleTabCapture(deps, opened.sessionId)
     return {
       output: untrusted(renderObservation(observation)),
       success: true,
@@ -348,6 +369,10 @@ const runAct = async (
       noteVisitedOrigin(gate, observation.url)
       await saveOriginGate(pool, session.sessionId, gate)
     }
+    // Where the browser is now is written after every act, not only at
+    // close: a worker that dies mid-run never reaches close. Scheduled, not
+    // awaited — the model is waiting on this verb.
+    scheduleTabCapture(deps, session.sessionId)
     return {
       output: untrusted(
         [
@@ -369,6 +394,10 @@ const runClose = async (
 ): Promise<BrowserToolOutcome> => {
   const session = await findLiveSessionForRun(deps.prisma, context.run.id)
   if (!session) return { output: 'No browser is open.', success: true }
+  // Captured before the release, because the release is what takes the pages
+  // away — and after any capture still running, so a stale pass cannot land
+  // on top of this one.
+  await captureTabsNow(deps, session.id)
   releaseCdp(session.id)
   const released = await releaseCloudBrowserSession(deps, {
     sessionId: session.id,
