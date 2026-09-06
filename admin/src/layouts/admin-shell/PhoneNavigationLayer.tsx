@@ -2,6 +2,7 @@ import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
 import { adminQueryClient } from '../../providers/QueryProvider'
 import { useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
+import { ScreenBarLayerProvider } from '../../navigation/ScreenBarLayer'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
 import { matchSurface } from '../../navigation/surfaces'
 import type { PhoneNavigationDirection } from '../../navigation/phone-navigation'
@@ -199,7 +200,9 @@ export const PhoneNavigationLayer = ({
       inert={inertLayer || undefined}
       style={style}
     >
-      <NavigationScreen pathname={entry.pathname} payload={entry.payload} />
+      <ScreenBarLayerProvider layerKey={entry.layerKey}>
+        <NavigationScreen pathname={entry.pathname} payload={entry.payload} />
+      </ScreenBarLayerProvider>
       <div
         aria-hidden
         className="phone-navigation-dim"

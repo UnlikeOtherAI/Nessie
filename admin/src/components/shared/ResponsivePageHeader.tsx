@@ -198,6 +198,7 @@ export const ResponsivePageHeader = ({
         <a
           aria-label={action.compact ? action.label : undefined}
           className={actionClassName(action, false)}
+          data-page-header-action={action.id}
           href={action.href}
           rel={action.rel}
           target={action.target}
@@ -237,6 +238,11 @@ export const ResponsivePageHeader = ({
         aria-label={action.compact ? action.label : undefined}
         aria-pressed={isMenu ? undefined : action.pressed}
         className={actionClassName(action, isOpen)}
+        // The screen's own actions, marked so a test can tell them from the
+        // header chrome beside them — the overflow trigger and the account
+        // menu are not actions and must not be counted as ones the native bar
+        // dropped.
+        data-page-header-action={action.id}
         disabled={action.disabled}
         form={action.form}
         onClick={

@@ -246,6 +246,7 @@ export const ExecutorsPage = () => {
           label="Back to executors"
           onBack={() => setShowCreate(false)}
           priority={LOCAL_BACK_PRIORITY.executorsCreate}
+          title="New executor"
         >
           {me ? (
             <ExecutorCreatePanel

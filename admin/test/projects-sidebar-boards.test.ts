@@ -34,18 +34,32 @@ test('expanded project state removes deleted projects before persisting', () => 
 
 test('every open/closed state of the Projects menu is written to a store that outlives the tab', () => {
   // Two id sets of its own — which projects have their sections open, and which
-  // have the boards inside Board open — plus the two section headers, which go
-  // through the shared cookie-backed helper and the shell's starredCollapsed.
+  // have the boards inside Board *closed* — plus the two section headers, which
+  // go through the shared cookie-backed helper and the shell's starredCollapsed.
   assert.match(sidebar, /EXPANDED_PROJECT_IDS_COOKIE = 'projectsNavExpandedIds'/)
-  assert.match(sidebar, /EXPANDED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavExpandedBoardIds'/)
+  assert.match(sidebar, /COLLAPSED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavCollapsedBoardIds'/)
   assert.match(sidebar, /useCookieBackedSidebarSections\(/)
-  for (const cookie of ['EXPANDED_PROJECT_IDS_COOKIE', 'EXPANDED_BOARD_PROJECT_IDS_COOKIE']) {
+  for (const cookie of ['EXPANDED_PROJECT_IDS_COOKIE', 'COLLAPSED_BOARD_PROJECT_IDS_COOKIE']) {
     assert.match(sidebar, new RegExp(`getCookie\\(${cookie}\\)`), `${cookie} is read at mount`)
     assert.match(sidebar, new RegExp(`setCookie\\(\\s*${cookie}`), `${cookie} is written on change`)
   }
   // Both sets are pruned against the live project list, so neither store grows
   // without bound as projects come and go.
   assert.equal((sidebar.match(/retainExpandedProjectIds\(current, projects\)/g) ?? []).length, 2)
+})
+
+// On every layout that pins this sidebar the project header carries no board
+// strip, so this list is the only doorway to a board that is not the project's
+// default: it has to be open unless the reader closed it (AGENTS.md → "Rule
+// zero"). The single column, which has no pinned sidebar, keeps the strip.
+test('the boards under Board are open until the reader closes them', () => {
+  assert.match(sidebar, /boardsExpanded=\{!collapsedBoardProjectIds\.has\(project\.id\)\}/)
+})
+
+test('the header board strip is the single column’s doorway and nowhere else', () => {
+  const view = source('pages/project/ProjectView.tsx')
+  assert.match(view, /const singleColumn = usePhoneLayout\(\)/)
+  assert.match(view, /tab === 'board' && singleColumn \? \(\s*<BoardSwitcher/)
 })
 
 test('the Board section lists the project boards and creates one through a dialog', () => {
@@ -81,9 +95,12 @@ test('creating a board opens the board list that was closed and lands on the new
   // The navigation decision (expand, then land on the new board) stays in
   // ProjectsSidebarNav.tsx as `handleBoardCreated`, passed into
   // ProjectsNavDialogs.tsx as the `onBoardCreated` prop (06-F5).
-  const created = sidebar.slice(sidebar.indexOf('const handleBoardCreated = (boardId: string)'))
+  const created = sidebar.slice(sidebar.indexOf('const handleBoardCreated = (board: BoardRecord)'))
   assert.match(created, /expandBoards\(boardCreateProjectId\)/)
-  assert.match(created, /\/projects\/\$\{boardCreateProjectId\}\/board\?board=\$\{encodeURIComponent\(boardId\)\}/)
+  // A project's first board is its default, and a default board is spelled
+  // without the param — the same link its row carries.
+  assert.match(created, /board\.isDefault\s*\?\s*boardPath/)
+  assert.match(created, /\$\{boardPath\}\?board=\$\{encodeURIComponent\(board\.id\)\}/)
   assert.ok(
     created.indexOf('expandBoards(') < created.indexOf('navigate('),
     'the list is opened before the navigation that lands in it',
@@ -92,6 +109,40 @@ test('creating a board opens the board list that was closed and lands on the new
     source('layouts/admin-shell/ProjectsNavDialogs.tsx'),
     /onCreated=\{onBoardCreated\}/,
   )
+})
+
+test('a project with no boards says so the way every other empty section does', () => {
+  // One component for every empty sidebar section, so the sentence lands on the
+  // row grid rather than in a box of its own — and one level deeper here,
+  // where the board rows it stands in for would be. The board rows themselves
+  // live in ProjectSectionRows.tsx since 06-F5, so the note stands beside them.
+  const sectionRows = source('layouts/admin-shell/ProjectSectionRows.tsx')
+  assert.match(sectionRows, /<SidebarEmptyNote indent="grandchild">There are no boards yet\.</)
+  assert.match(sectionRows, /from '\.\/SidebarEmptyNote'/)
+  assert.match(
+    source('layouts/admin-shell/SidebarProjectsSection.tsx'),
+    /<SidebarEmptyNote indent="child">/,
+  )
+})
+
+test('every project section row carries a glyph, and Board is plural', () => {
+  const sections = source('navigation/project-sections.ts')
+
+  // A list where only some rows have an icon is a list whose labels do not
+  // line up, so the icon is part of the section rather than of the row.
+  assert.match(sections, /icon: IconDefinition/)
+  for (const id of ['overview', 'board', 'backlog', 'insights', 'docs', 'executors', 'settings']) {
+    const entry = sections.slice(sections.indexOf(`id: '${id}'`) - 200, sections.indexOf(`id: '${id}'`))
+    assert.match(entry, /icon: (fa[A-Za-z]+|BOARD_ICON)/, `${id} has no icon`)
+  }
+  assert.match(sections, /withCount\('Boards', assignedWorkCount\)/)
+  assert.doesNotMatch(sections, /withCount\('Board', /)
+  // Each board under the section wears the section's own glyph, the way every
+  // channel wears the same `#` — drawn by ProjectSectionRows.tsx, which owns
+  // those rows since 06-F5.
+  const sectionRows = source('layouts/admin-shell/ProjectSectionRows.tsx')
+  assert.match(sectionRows, /rowIcon\(BOARD_ICON\)/)
+  assert.match(sectionRows, /rowIcon\(section\.icon\)/)
 })
 
 test('one board-create dialog serves both the sidebar and project settings', () => {

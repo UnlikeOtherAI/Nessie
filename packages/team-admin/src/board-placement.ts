@@ -1,5 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
-import { type BoardFilter, type BoardRecord, statusToCategory } from '@nessie/schemas'
+import {
+  COLUMN_CATEGORIES,
+  type BoardFilter,
+  type BoardRecord,
+  type ColumnCategory,
+  statusToCategory,
+} from '@nessie/schemas'
 import type { Prisma } from '@prisma/client'
 
 import {
@@ -9,19 +15,21 @@ import {
 } from './project-task-records.js'
 
 /**
- * Where a task renders on a given board.
+ * Which tasks a board holds, and where each one renders on it.
  *
- * This rule used to live in the client (`admin/src/components/kanban/
- * kanban-config.ts` `placeTask`), where it had a latent bug: it honoured a
- * pinned column whenever that column still *existed*, without checking that
- * the column's category still matched the task's status. A card somebody
- * dragged into "In progress" that an agent run then completed stayed rendered
- * in "In progress" while its status was `done`.
+ * A board *owns* its tasks (`Task.boardId`). Boards used to be N saved views
+ * over one project pool, which meant every board of a project drew the same
+ * cards — a "Dev" board beside "Board" showed the same ticket twice, and
+ * nothing a person did on one board could make the two differ. Ownership is
+ * what makes a second board worth creating; `boardTaskPoolWhere` is the one
+ * place that decides which board a task belongs to.
  *
- * With N boards over one task pool the rule has to be server-side anyway — the
- * client cannot know a board's columns for a board it is not showing — so it
- * moved here and the staleness check came with it. `Task.status` remains the
- * one lifecycle truth; a placement is a pin over it, never a substitute.
+ * Placement within the board is still derived, never stored: `Task.status` is
+ * the one lifecycle truth and a `TaskBoardPlacement` is a pin over it. The pin
+ * is ignored once its column's category no longer matches the status — this
+ * rule used to live in the client (`kanban-config.ts` `placeTask`), where a
+ * card dragged into "In progress" that an agent run then completed stayed
+ * drawn in "In progress" while its status was `done`.
  */
 
 export type BoardTaskRecord = ProjectTaskRecord & {
@@ -42,15 +50,49 @@ type PlacementPin = { columnId: string; position: number }
  */
 export type PlacementColumn = { id: string; category: string; position: number }
 
+const byPosition = (a: PlacementColumn, b: PlacementColumn) => a.position - b.position
+
+/**
+ * The board's columns of one category, in display order.
+ */
+const columnsOfCategory = (
+  columns: readonly PlacementColumn[],
+  category: string,
+): PlacementColumn[] => columns.filter((column) => column.category === category).sort(byPosition)
+
+/**
+ * The stage a board shows work that is at a stage this board does not model.
+ *
+ * A board need not carry all four categories — three columns is a normal
+ * board — but now that the board *owns* the task, "no column of this category"
+ * can no longer mean "not on this board": the card would exist nowhere. So it
+ * falls back to the nearest stage the board does model, preferring an earlier
+ * one so a board never claims work is further along than it is.
+ */
+const nearestColumn = (
+  columns: readonly PlacementColumn[],
+  category: ColumnCategory,
+): PlacementColumn | undefined => {
+  const index = COLUMN_CATEGORIES.indexOf(category)
+  if (index < 0) return undefined
+  const earlier = COLUMN_CATEGORIES.slice(0, index).reverse()
+  const later = COLUMN_CATEGORIES.slice(index + 1)
+  for (const candidate of [...earlier, ...later]) {
+    const column = columnsOfCategory(columns, candidate)[0]
+    if (column) return column
+  }
+  return undefined
+}
+
 /**
  * The rule itself, over already-loaded data so it stays pure and testable.
+ * The caller has already decided the task belongs to this board.
  *
  * - Archived work (`failed`, `cancelled`) belongs to no column on any board.
- * - A board with no column of the task's category simply does not show it —
- *   that is what makes a board's column set a filter, and how a "Review queue"
- *   board is built without any filter vocabulary at all.
  * - A pin whose column has drifted out of the task's category is ignored, not
  *   honoured.
+ * - A category this board has no column for falls back to `nearestColumn`, so
+ *   the board's own work is always somewhere a person can see it.
  */
 export const resolveBoardPlacement = (
   task: { status: string; archivedAt: Date | string | null },
@@ -61,10 +103,11 @@ export const resolveBoardPlacement = (
   const category = statusToCategory(task.status)
   if (!category) return null
 
-  const ofCategory = columns
-    .filter((column) => column.category === category)
-    .sort((a, b) => a.position - b.position)
-  if (ofCategory.length === 0) return null
+  const ofCategory = columnsOfCategory(columns, category)
+  if (ofCategory.length === 0) {
+    const nearest = nearestColumn(columns, category)
+    return nearest ? { columnId: nearest.id, position: null } : null
+  }
 
   if (pin) {
     const pinned = ofCategory.find((column) => column.id === pin.columnId)
@@ -75,12 +118,29 @@ export const resolveBoardPlacement = (
 }
 
 /**
- * Every task of the board's project, placed for this board.
+ * The tasks one board holds.
+ *
+ * `Task.boardId` names the board; `null` is "the project's default board", so
+ * every task written by something that knows nothing about boards — an agent
+ * run, a trigger, an inbound email, an external source sync — lands on the
+ * board the project opens on rather than nowhere. Deleting a board sets its
+ * tasks' `board_id` back to NULL (`ON DELETE SET NULL`), which returns the
+ * work to the default board instead of destroying it.
+ */
+export const boardTaskPoolWhere = (board: {
+  id: string
+  isDefault: boolean
+}): Prisma.TaskWhereInput =>
+  board.isDefault ? { OR: [{ boardId: board.id }, { boardId: null }] } : { boardId: board.id }
+
+/**
+ * Every task this board owns, placed into its columns.
  *
  * Archived work comes back with `columnId: null` so the board's existing
  * Archived strip keeps rendering; a scrum board is narrowed to one iteration
  * by the caller, because iterations are a project-level time box that any
- * board may or may not care about.
+ * board may or may not care about. The board's `filter` still narrows — it now
+ * narrows the board's own tasks rather than the whole project's.
  */
 export const listBoardTasks = async (
   prisma: PrismaClient,
@@ -93,7 +153,7 @@ export const listBoardTasks = async (
       ...(options.iterationId !== undefined
         ? { iterationId: options.iterationId }
         : {}),
-      ...boardFilterWhere(board.filter),
+      AND: [boardTaskPoolWhere(board), boardFilterWhere(board.filter)],
     },
     include: projectTaskInclude,
     orderBy: { updatedAt: 'desc' },
@@ -116,9 +176,13 @@ export const listBoardTasks = async (
       continue
     }
     const placement = resolveBoardPlacement(task, board.columns, pinByTask.get(task.id))
-    // No column of this task's category on this board: the task is off this
-    // board entirely. That is what makes a board's column set a filter.
-    if (!placement) continue
+    // Only a board with no columns at all leaves its own work unplaced, and
+    // that board's surface says so. The card still comes back — under the
+    // Archived strip rather than nowhere.
+    if (!placement) {
+      placed.push({ ...mapProjectTask(task), columnId: null, position: null })
+      continue
+    }
     placed.push({
       ...mapProjectTask(task),
       columnId: placement.columnId,

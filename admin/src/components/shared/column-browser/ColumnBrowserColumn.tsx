@@ -10,6 +10,8 @@ import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
 import { PhoneNavigationButton } from '../../../navigation/PhoneNavigationButton'
 import { useColumnBackContext } from '../../../navigation/LocalBackContext'
+import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
+import { useScreenBarLayer } from '../../../navigation/ScreenBarLayer'
 import { ScreenHeader } from '../ScreenHeader'
 import type { PageHeaderAction, PageHeaderButtonAction } from '../ResponsivePageHeader'
 
@@ -219,10 +221,34 @@ export const ColumnBrowserColumn = ({
     return () => reportBack(index, null)
   }, [backLabel, hasBack, index, reportBack, runBack])
 
+  // Which columns publish the native bar.
+  //
+  // A pushed column is a stage and always does, taking the stage's own Back.
+  // Column 0 is the page itself, in the route layer, so it must not: it would
+  // win by mount order over the page's own screen header and put a column
+  // title in the page's bar. Where column 0 *is* the route's screen it says
+  // `screen` and renders `ScreenHeader`, which publishes — title, Back and
+  // the typed actions — so there is nothing left for this column to do.
+  //
+  // `leading` is a ReactNode rather than a declared action, so it has no
+  // native lane and stays with the column.
+  const { back: stageBack, isStage } = useScreenBarLayer()
+  const { hidden } = useNativeBarHeader({
+    actions: [],
+    back: stageBack,
+    title,
+  }, !screen && isStage)
+
   return (
     <div className="relative flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
       {screen ? (
         <ScreenHeader actions={actions} leading={leading} title={title} />
+      ) : hidden ? (
+        actions && actions.length > 0 ? (
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-[var(--page-gutter)] pt-2">
+            <ColumnHeaderActions actions={actions} />
+          </div>
+        ) : null
       ) : (
         <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
           {leading}

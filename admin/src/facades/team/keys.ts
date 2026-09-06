@@ -28,3 +28,15 @@ export const teamProvisioningKeys = {
     ['slug-available', scope, orgId, slug] as const,
 }
 
+
+export const tenantHostKeys = {
+  /**
+   * What tenant the browser's current hostname means.
+   *
+   * Keyed by hostname because that is the whole input, and it cannot change
+   * without a navigation — so this is fetched once per host per session.
+   */
+  resolve: (hostname: string) => ['tenant-host', hostname] as const,
+  /** The authenticated half: the ids behind a team hostname. */
+  team: (hostname: string) => ['tenant-host', hostname, 'team'] as const,
+}

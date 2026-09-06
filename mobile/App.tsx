@@ -83,6 +83,7 @@ import {
   NativePhoneConversationMenuChrome,
 } from './src/components/NativePhoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
+import { NativePhoneNavBar } from './src/components/NativePhoneNavBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
 import {
   createNativeExternalAuthDeliveryQueue,
@@ -102,9 +103,15 @@ import {
   isAuthGateRoute,
   isFullScreenTaskRoute,
   type LastKnownScreen,
-  shouldShowNativePhoneHeader,
+  shouldShowNativePhoneNavBar,
+  shouldShowNativePhoneRootLanes,
 } from './src/lib/native-shell-layout'
 import { tabIndexForSection } from './src/lib/tabs'
+import {
+  currentNativeScreenBar,
+  DEFAULT_NATIVE_SCREEN_BAR_STATE,
+  reduceNativeScreenBar,
+} from './src/lib/native-screen-bar-state'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
@@ -184,6 +191,15 @@ const Shell = (): React.JSX.Element => {
   // bookkeeping (boot recovery, notification/push registration), which is a
   // separate concern from tab selection and root-ness.
   const [lastKnownScreen, setLastKnownScreen] = useState<LastKnownScreen>(DEFAULT_LAST_KNOWN_SCREEN)
+  // What the native navigation bar shows, and what it is moving between: a
+  // descriptor per layer, because a transition needs both ends of it. Empty
+  // until the first `nessie:screen-bar` of a cold start arrives, which is why
+  // the band renders bare rather than guessing.
+  const [screenBarState, dispatchScreenBar] = useReducer(
+    reduceNativeScreenBar,
+    DEFAULT_NATIVE_SCREEN_BAR_STATE,
+  )
+  const screenBar = currentNativeScreenBar(screenBarState)
   // Once a `nessie:screen` message has arrived it is authoritative for
   // hardware Back consumption; a `nessie:back-state` kept around during the
   // admin's transition no longer overrides it (native-shell-message-handler.ts).
@@ -430,6 +446,8 @@ const Shell = (): React.JSX.Element => {
       setCurrentPath,
       setIndex,
       setLastKnownScreen,
+      setScreenBar: (bar) => { if (bar) dispatchScreenBar({ bar, kind: 'bar' }) },
+      startScreenBarTransition: (transition) => dispatchScreenBar({ kind: 'transition', transition }),
       triggerHaptic,
     })
   }
@@ -464,15 +482,25 @@ const Shell = (): React.JSX.Element => {
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
-  const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
+  const pastAuthGate = currentPath != null && !isAuthGateRoute(currentPath)
+  const showBar = pastAuthGate && !isFullScreenTaskRoute(currentPath)
   const isTabRoot = lastKnownScreen.type === 'root'
-  const showNativePhoneHeader = shouldShowNativePhoneHeader({
+  // The band and its contents are two decisions, not one. On iOS the band is
+  // always drawn past the auth gate — that constant is what keeps the WebView
+  // frame still while the stack animates — while the team and account lanes
+  // follow the admin's published descriptor for the layer showing.
+  const nativePhoneBarInput = {
     isIpad: IS_IPAD,
     isTabRoot,
     largePhoneLandscape,
+    pastAuthGate,
+    platform: Platform.OS,
+    screenBar,
     showBar,
-  })
-  const showNativePhoneCreationActions = showNativePhoneHeader
+  }
+  const showNativePhoneNavBar = shouldShowNativePhoneNavBar(nativePhoneBarInput)
+  const showNativePhoneRootLanes = shouldShowNativePhoneRootLanes(nativePhoneBarInput)
+  const showNativePhoneCreationActions = showNativePhoneRootLanes
     && isTabRoot
     && lastKnownScreen.section === 'channels'
 
@@ -494,7 +522,7 @@ const Shell = (): React.JSX.Element => {
     platform: Platform.OS,
     safeArea: insets,
     nativePhoneHeaderHeight: getNativePhoneHeaderHeight(largePhoneLandscape),
-    showNativePhoneHeader,
+    showNativePhoneNavBar,
     showTabBar: showBar,
   })
   const webviewLayerStyle = { ...styles.webviewLayer, top: webviewInsets.top, bottom: webviewInsets.bottom }
@@ -505,8 +533,8 @@ const Shell = (): React.JSX.Element => {
     surfaceColor: ipadChromeSurface,
   })
   const navigationState = createNativeTabNavigationState(index, attentionBadges)
-  const hasNativeStatusBackdrop = showNativePhoneHeader || (IS_IPAD && showBar)
-  const nativeStatusBackdropIsDark = showNativePhoneHeader
+  const hasNativeStatusBackdrop = showNativePhoneNavBar || (IS_IPAD && showBar)
+  const nativeStatusBackdropIsDark = showNativePhoneNavBar
     ? isDark(phoneHeaderSurface)
     : isDark(bg)
 
@@ -566,7 +594,7 @@ const Shell = (): React.JSX.Element => {
         />
       ) : null}
 
-      {showNativePhoneHeader ? (
+      {showNativePhoneRootLanes ? (
         <NativePhoneConversationMenuChrome
           accentColor={accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
@@ -595,6 +623,19 @@ const Shell = (): React.JSX.Element => {
           toolbarState={toolbarState}
           teamAvatarUrl={nativeTeamAvatarUrl}
           teamName={ipadTeamName}
+        />
+      ) : showNativePhoneNavBar ? (
+        <NativePhoneNavBar
+          accentColor={accent}
+          barState={screenBarState}
+          dark={isDark(phoneHeaderSurface)}
+          headerSurface={phoneHeaderSurface}
+          headerText={phoneHeaderText}
+          landscape={largePhoneLandscape}
+          onAction={nativeActions.runScreenBarAction}
+          onBack={nativeActions.runScreenBarBack}
+          onTransitionEnd={() => dispatchScreenBar({ kind: 'transition-end' })}
+          safeTop={insets.top}
         />
       ) : null}
 

@@ -11,7 +11,7 @@ type ProjectsNavDialogsProps = {
   createOpen: boolean
   deleteTarget: ProjectRecord | null
   editTarget: ProjectRecord | null
-  onBoardCreated: (boardId: string) => void
+  onBoardCreated: (board: BoardRecord) => void
   onCancelDelete: () => void
   onCloseBoardCreate: () => void
   onCloseCreate: () => void

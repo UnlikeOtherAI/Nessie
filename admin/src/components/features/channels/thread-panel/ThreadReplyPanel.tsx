@@ -18,6 +18,7 @@ import type { MentionEntity } from '../../../shared/MentionInput'
 import type { AvatarSources } from '../../../shared/UserAvatar'
 import { usePhoneLayout } from '../../../../navigation/mobile-shell'
 import { PhoneBackButton } from '../../../../navigation/PhoneBackButton'
+import { useNativeBarHeader } from '../../../../navigation/useNativeBarHeader'
 import { ChannelComposer } from '../ChannelComposer'
 import { ChannelMessageFeed } from '../ChannelMessageFeed'
 import { buildFeedItems } from '../channel-feed'
@@ -209,6 +210,16 @@ export const ThreadReplyPanel = ({
 
   const rootDeleted = Boolean(root?.deletedAt)
 
+  // A real depth-2 route drawn as a full-screen overlay over the conversation's
+  // own layer, so on the iOS shell it publishes over the conversation's bar and
+  // stops drawing its own header — otherwise the bar would keep naming the
+  // channel underneath, with the channel's actions attached to it.
+  const { hidden: nativeBarOwnsHeader } = useNativeBarHeader({
+    actions: [],
+    back: { label: 'Back to channel', onBack: closeThread },
+    title: 'Thread',
+  })
+
   return (
     <>
       <SidePanelShell
@@ -222,6 +233,13 @@ export const ThreadReplyPanel = ({
         resizePanelWithKeyboard={resizePanelWithKeyboard}
         viewportWidth={viewportWidth}
       >
+        {nativeBarOwnsHeader ? (
+          // The subtitle is content, not chrome, and the native bar has no lane
+          // for it: it stays with the page.
+          <div className="flex-shrink-0 truncate px-4 pb-2 pt-3 text-xs text-[color:var(--tx3)]">
+            {channelLabel(activeChannel)}
+          </div>
+        ) : (
         <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
           {phoneLayout ? (
             // The route-level control sits behind this full-screen overlay, so
@@ -245,6 +263,7 @@ export const ThreadReplyPanel = ({
             </div>
           </div>
         </header>
+        )}
 
         {rootQuery.isLoading ? (
           <div className="p-5 text-sm text-[color:var(--tx3)]">Loading thread…</div>

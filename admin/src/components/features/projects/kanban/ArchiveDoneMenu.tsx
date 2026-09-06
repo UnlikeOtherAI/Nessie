@@ -4,8 +4,16 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useArchiveDoneTasks } from '../../../../facades/tasks/hooks'
 
 // Top-right action on the Done column: tuck completed work into the Archived
-// section without cancelling it (sets archivedAt in this project only).
-export const ArchiveDoneMenu = ({ projectId }: { projectId: string }) => {
+// section without cancelling it (sets archivedAt). Scoped to the board it sits
+// on — a board owns its tickets, so a click here must not reach the completed
+// work of a sibling board.
+export const ArchiveDoneMenu = ({
+  boardId,
+  projectId,
+}: {
+  boardId: string
+  projectId: string
+}) => {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const archive = useArchiveDoneTasks()
@@ -20,7 +28,7 @@ export const ArchiveDoneMenu = ({ projectId }: { projectId: string }) => {
   }, [open])
 
   const run = (olderThanDays?: number) => {
-    archive.mutate({ projectId, olderThanDays: olderThanDays ?? null })
+    archive.mutate({ boardId, projectId, olderThanDays: olderThanDays ?? null })
     setOpen(false)
   }
 

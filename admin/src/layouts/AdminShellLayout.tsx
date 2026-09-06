@@ -5,7 +5,6 @@ import { DashboardRealtimeProvider } from '../components/features/dashboards/Das
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import { isReactNativeWebView } from '../lib/native-shell';
 import { useMobileLayout, useNativeLargePhoneLandscapeApp, useNativeIPadApp, useNativePhoneApp, useNavigationLayout } from '../navigation/mobile-shell';
-import { useTeamHostSync } from '../facades/team/host-sync';
 import { MessageNotificationBridge } from '../bridges/MessageNotificationBridge';
 import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
@@ -61,11 +60,6 @@ export type { ShellActions } from './admin-shell/types';
 
 export const AdminShellLayout = () => {
   const { me, sessionState } = useAuthSession();
-
-  // A cold load on a team hostname lands in that team. Mounted before the
-  // early returns below so it runs while the session is still settling —
-  // hooks cannot be called conditionally, and this one no-ops without a token.
-  useTeamHostSync();
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;

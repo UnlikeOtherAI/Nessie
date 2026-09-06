@@ -286,7 +286,11 @@ export const ConversationInfoFlow = ({
       ? `${memberCount} member${memberCount === 1 ? '' : 's'}`
       : 'Add people'
   const mobileClassName = phoneLayout
-    ? 'fixed inset-0 z-[80] flex min-h-0 flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
+    // The bottom pad is the iPhone shell's tab-bar clearance where that shell
+    // publishes one: this overlay is outside `.phone-navigation-page`, so the
+    // spacer that lifts a page's last row above the native tab bar never
+    // reaches it. Everywhere else it falls back to the safe-area inset.
+    ? 'fixed inset-0 z-[80] flex min-h-0 flex-col bg-[color:var(--main)] pb-[var(--nessie-native-phone-tabbar-clearance,env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)]'
     : 'absolute inset-y-0 right-0 z-50 flex w-[min(420px,100%)] min-h-0 flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'
   const actions: PageHeaderAction[] | undefined = route.step === 'members' && canAddPeople
     ? [{

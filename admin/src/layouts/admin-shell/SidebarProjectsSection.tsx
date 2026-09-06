@@ -336,7 +336,7 @@ export const SidebarProjectsSection = ({
             {!isProjectCollapsed ? (
               <div id={projectChannelsId}>
                 {project.channels.length === 0 ? (
-                  <SidebarEmptyNote nested>There are no channels yet.</SidebarEmptyNote>
+                  <SidebarEmptyNote indent="child">There are no channels yet.</SidebarEmptyNote>
                 ) : null}
                 {project.channels.map((channel) => {
                   const isStarredChannel = starredChannelIds.has(channel.id);

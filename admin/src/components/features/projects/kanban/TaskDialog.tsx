@@ -55,8 +55,11 @@ type TaskDialogProps = {
   onClose: () => void
   // When set, the dialog edits this task; otherwise it creates a new one.
   task?: TaskRecord | null
-  // Create-mode context: pin the new task to a project / iteration.
+  // Create-mode context: pin the new task to a project / board / iteration.
   projectId?: string
+  // The board the card is created on. A board owns its tasks, so a card made
+  // while looking at "Dev" belongs to Dev and appears on no other board.
+  boardId?: string
   iterationId?: string
 }
 
@@ -89,7 +92,14 @@ const priorityItems: ReadonlyArray<TabBarItem<TaskPriority>> = PRIORITY_ORDER.ma
   value,
 }))
 
-export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: TaskDialogProps) => {
+export const TaskDialog = ({
+  open,
+  onClose,
+  task,
+  projectId,
+  boardId,
+  iterationId,
+}: TaskDialogProps) => {
   const isEdit = Boolean(task)
   const { data: projects = [] } = useProjects()
   const { data: assignees = [] } = useTaskAssignees()
@@ -211,6 +221,9 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           purpose: trimmedPurpose || undefined,
           detail: trimmedDetail || undefined,
           projectId: projectId ?? (formProjectId || undefined),
+          // Only meaningful together with the project it belongs to: the
+          // project picker in the dialog names no board.
+          ...(projectId && boardId ? { boardId } : {}),
           iterationId: iterationId || undefined,
           priority,
           dueDate: fromDateInputValue(due),

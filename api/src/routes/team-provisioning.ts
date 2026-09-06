@@ -9,6 +9,7 @@ import { forgetUoaTeamDirectory } from '../services/uoa-directory-cache.js'
 import {
   checkUoaSlugAvailability,
   createUoaOrganisation,
+  resolveUoaOrgHost,
   resolveUoaTeamHost,
   createUoaTeamTeam,
   resolveUoaRosterTeam,
@@ -65,10 +66,30 @@ const ResolveHostQuerySchema = z.object({
  * registrable domain that happens to share the suffix — is never treated as
  * one of ours.
  */
-const parseTeamHost = (
+/** A legal DNS label — the same shape the slug rules enforce. */
+const LEGAL_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+type ParsedHost =
+  | { kind: 'organisation'; orgSlug: string }
+  | { kind: 'team'; orgSlug: string; teamSlug: string }
+
+/**
+ * Split a tenant hostname into the labels it carries.
+ *
+ * One label under the base domain is an organisation — its portal. Two is a
+ * team inside that organisation. Anything else is not ours: `app.nessie.works`
+ * has one label but is the product's own host, so it never reaches here (it is
+ * not a tenant slug and resolution simply finds no organisation by that name).
+ *
+ * Returns null unless the host sits exactly under the configured base domain,
+ * so a different registrable domain that merely ends with the same string —
+ * `evil-nessie.works` — is never treated as one of ours. That is a label
+ * comparison, deliberately, not `endsWith`.
+ */
+const parseTenantHost = (
   host: string,
   baseDomain: string | undefined,
-): { orgSlug: string; teamSlug: string } | null => {
+): ParsedHost | null => {
   if (!baseDomain) return null
 
   const normalized = host.trim().toLowerCase().replace(/\.+$/, '').split(':')[0] ?? ''
@@ -76,13 +97,21 @@ const parseTeamHost = (
   if (!normalized.endsWith(`.${base}`)) return null
 
   const labels = normalized.slice(0, -(base.length + 1)).split('.')
-  if (labels.length !== 2) return null
 
-  const [teamSlug, orgSlug] = labels
-  const legal = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-  if (!teamSlug || !orgSlug || !legal.test(teamSlug) || !legal.test(orgSlug)) return null
+  if (labels.length === 1) {
+    const [orgSlug] = labels
+    if (!orgSlug || !LEGAL_LABEL.test(orgSlug)) return null
+    return { kind: 'organisation', orgSlug }
+  }
 
-  return { orgSlug, teamSlug }
+  if (labels.length === 2) {
+    const [teamSlug, orgSlug] = labels
+    if (!teamSlug || !orgSlug) return null
+    if (!LEGAL_LABEL.test(teamSlug) || !LEGAL_LABEL.test(orgSlug)) return null
+    return { kind: 'team', orgSlug, teamSlug }
+  }
+
+  return null
 }
 
 const SlugAvailableQuerySchema = z.object({
@@ -389,7 +418,61 @@ export const registerTeamProvisioningRoutes = (
    * route resolves a name to ids and grants nothing — the caller still runs the
    * ordinary team-switch, which is where authorization actually happens.
    */
-  app.get('/api/hosts/resolve', async (request, reply) => {
+  /**
+   * PUBLIC, and it has to be: this is what a branded landing page renders from,
+   * and that page exists for somebody who is not signed in yet. `public: true`
+   * opts the route out of the API-wide auth gate, which is otherwise
+   * fail-closed for everything.
+   *
+   * It answers about the ORGANISATION only, and never about a team. That is a
+   * structural guarantee rather than a careful branch: this handler has no
+   * access to a team id, so no future edit can make it leak one. A client that
+   * needs to enter a team asks `/api/hosts/team`, which is authenticated.
+   *
+   * What it does disclose is that an organisation of a given name exists on
+   * this domain, with its display name and mark. That is inherent in giving a
+   * tenant a public branded address at all.
+   */
+  app.get('/api/hosts/resolve', { config: { public: true } }, async (request, reply) => {
+    const query = parseInput(ResolveHostQuerySchema, request.query, reply)
+    if (!query) return reply
+
+    const parsed = parseTenantHost(query.host, teamHostBaseDomain)
+    if (!parsed) return createApiResponse({ kind: null })
+
+    try {
+      const organisation = await resolveUoaOrgHost({ orgSlug: parsed.orgSlug }, rosterDeps)
+      if (!organisation) return createApiResponse({ kind: null })
+
+      // Where sign-in happens. A tenant host is never a registered OAuth
+      // redirect target — UOA matches redirect URLs byte-for-byte and tenant
+      // hostnames are created at runtime — so a signed-out visitor is handed
+      // off to the product's canonical origin and returns here afterwards.
+      const signInOrigin =
+        process.env.NESSIE_ADMIN_PUBLIC_URL ?? process.env.NESSIE_ADMIN_ORIGIN ?? null
+
+      return createApiResponse({ kind: parsed.kind, organisation, signInOrigin })
+    } catch (error) {
+      if (error instanceof UoaRosterUnavailableError) {
+        return createApiResponse({ kind: null })
+      }
+      throw error
+    }
+  })
+
+  /**
+   * The ids behind a team hostname, for a caller who is signed in.
+   *
+   * Split from the public resolver deliberately: knowing that
+   * `design.acme.nessie.works` maps to a particular team is not something an
+   * anonymous visitor needs, and keeping it on an authenticated route means the
+   * public one cannot grow into leaking it.
+   *
+   * Resolving is still not authorization. These ids only let the client run the
+   * ordinary team switch, which re-checks live membership and fails closed for
+   * a team this person is not in.
+   */
+  app.get('/api/hosts/team', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
@@ -397,12 +480,15 @@ export const registerTeamProvisioningRoutes = (
     const query = parseInput(ResolveHostQuerySchema, request.query, reply)
     if (!query) return reply
 
-    const labels = parseTeamHost(query.host, teamHostBaseDomain)
-    if (!labels) return createApiResponse({ team: null })
+    const parsed = parseTenantHost(query.host, teamHostBaseDomain)
+    if (!parsed || parsed.kind !== 'team') return createApiResponse({ team: null })
 
     try {
-      const resolved = await resolveUoaTeamHost(labels, rosterDeps)
-      return createApiResponse({ team: resolved })
+      const team = await resolveUoaTeamHost(
+        { orgSlug: parsed.orgSlug, teamSlug: parsed.teamSlug },
+        rosterDeps,
+      )
+      return createApiResponse({ team })
     } catch (error) {
       if (error instanceof UoaRosterUnavailableError) {
         return createApiResponse({ team: null })

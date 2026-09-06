@@ -116,6 +116,8 @@ export type BuiltinToolDependencies = {
   }
 }
 
+import { coerceJsonEncodedToolArguments } from './tool-argument-coercion.js'
+
 const DEFAULT_BUILTIN_TOOL_DEPENDENCIES: Required<BuiltinToolDependencies> = {
   dashboard: {
     resolveServices: resolveDashboardToolServices,
@@ -443,7 +445,14 @@ export const executeBuiltinTool = async (
   stubbedIds: ReadonlySet<string> = new Set(),
   dependencies: BuiltinToolDependencies = DEFAULT_BUILTIN_TOOL_DEPENDENCIES,
 ): Promise<AgenticToolResult> => {
-  const result = await executeBuiltinToolUncorrected(toolName, args, context, dependencies)
+  // Correct a model's double-encoded object/array arguments before dispatch, so
+  // one rule covers every builtin instead of each tool learning it separately.
+  const result = await executeBuiltinToolUncorrected(
+    toolName,
+    coerceJsonEncodedToolArguments(toolName, args),
+    context,
+    dependencies,
+  )
   return appendStubbedBuiltinSchema(
     toolName,
     result,

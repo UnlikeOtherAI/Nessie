@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
-import { useProjectBoards } from '../../facades/boards/hooks'
+import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
 import { getCookie, setCookie } from '../../lib/storage'
@@ -40,9 +40,15 @@ const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-
 // left behind is the tree they come back to: the two section headers through
 // `useCookieBackedSidebarSections` and the shell's `starredCollapsed`, and
 // these two id sets — which projects have their sections open, and which
-// projects have the boards inside their Board section open.
+// projects have the boards inside their Board section *closed*.
+//
+// The two default opposite ways round on purpose. A project's sections are
+// closed until asked for, but its boards are open: this list is the only
+// doorway to a board that is not the project's default — the project header
+// carries no board strip — so a project whose second board nobody can see is
+// a board nobody can reach (AGENTS.md → "Rule zero").
 const EXPANDED_PROJECT_IDS_COOKIE = 'projectsNavExpandedIds'
-const EXPANDED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavExpandedBoardIds'
+const COLLAPSED_BOARD_PROJECT_IDS_COOKIE = 'projectsNavCollapsedBoardIds'
 
 /** The project a projects-section pathname is standing in, if any. */
 const currentProjectIdFromPathname = (pathname: string): string | undefined =>
@@ -76,8 +82,8 @@ export const ProjectsSidebarNav = ({
   const [expandedProjectIds, setExpandedProjectIds] = useState(() =>
     parseExpandedProjectIds(getCookie(EXPANDED_PROJECT_IDS_COOKIE)),
   )
-  const [expandedBoardProjectIds, setExpandedBoardProjectIds] = useState(() =>
-    parseExpandedProjectIds(getCookie(EXPANDED_BOARD_PROJECT_IDS_COOKIE)),
+  const [collapsedBoardProjectIds, setCollapsedBoardProjectIds] = useState(() =>
+    parseExpandedProjectIds(getCookie(COLLAPSED_BOARD_PROJECT_IDS_COOKIE)),
   )
   const [boardCreateProjectId, setBoardCreateProjectId] = useState<string | null>(null)
 
@@ -97,28 +103,29 @@ export const ProjectsSidebarNav = ({
     setCookie(EXPANDED_PROJECT_IDS_COOKIE, serializeExpandedProjectIds(projectIds))
   }, [])
 
-  const persistExpandedBoardProjectIds = useCallback((projectIds: ReadonlySet<string>) => {
-    setCookie(EXPANDED_BOARD_PROJECT_IDS_COOKIE, serializeExpandedProjectIds(projectIds))
+  const persistCollapsedBoardProjectIds = useCallback((projectIds: ReadonlySet<string>) => {
+    setCookie(COLLAPSED_BOARD_PROJECT_IDS_COOKIE, serializeExpandedProjectIds(projectIds))
   }, [])
 
   const expandBoards = useCallback((projectId: string) => {
-    setExpandedBoardProjectIds((current) => {
-      if (current.has(projectId)) return current
-      const next = new Set(current).add(projectId)
-      persistExpandedBoardProjectIds(next)
+    setCollapsedBoardProjectIds((current) => {
+      if (!current.has(projectId)) return current
+      const next = new Set(current)
+      next.delete(projectId)
+      persistCollapsedBoardProjectIds(next)
       return next
     })
-  }, [persistExpandedBoardProjectIds])
+  }, [persistCollapsedBoardProjectIds])
 
   const toggleBoardsExpanded = useCallback((projectId: string) => {
-    setExpandedBoardProjectIds((current) => {
+    setCollapsedBoardProjectIds((current) => {
       const next = new Set(current)
       if (next.has(projectId)) next.delete(projectId)
       else next.add(projectId)
-      persistExpandedBoardProjectIds(next)
+      persistCollapsedBoardProjectIds(next)
       return next
     })
-  }, [persistExpandedBoardProjectIds])
+  }, [persistCollapsedBoardProjectIds])
 
   // Drop remembered expansions for projects that no longer exist, so the cookie
   // cannot grow without bound as projects come and go.
@@ -131,13 +138,13 @@ export const ProjectsSidebarNav = ({
       persistExpandedProjectIds(next)
       return next
     })
-    setExpandedBoardProjectIds((current) => {
+    setCollapsedBoardProjectIds((current) => {
       const next = retainExpandedProjectIds(current, projects)
       if (next.size === current.size) return current
-      persistExpandedBoardProjectIds(next)
+      persistCollapsedBoardProjectIds(next)
       return next
     })
-  }, [persistExpandedBoardProjectIds, persistExpandedProjectIds, projects])
+  }, [persistCollapsedBoardProjectIds, persistExpandedProjectIds, projects])
 
   // Landing inside a project opens its sections, so a deep link never hides the
   // row the reader is standing on. It runs on entering a project and not again,
@@ -183,13 +190,18 @@ export const ProjectsSidebarNav = ({
     })
   }
 
-  const handleBoardCreated = (boardId: string) => {
+  const handleBoardCreated = (board: BoardRecord) => {
     if (!boardCreateProjectId) return
     // A board nobody can see is not a board that was created: open the
-    // list if it was closed, and land on what was just made.
+    // list if it was closed, and land on what was just made. The very
+    // first board of a project is its default, and a default board is
+    // spelled without the param — the same link its row carries.
     expandBoards(boardCreateProjectId)
+    const boardPath = `/projects/${boardCreateProjectId}/board`
     void navigate(
-      `/projects/${boardCreateProjectId}/board?board=${encodeURIComponent(boardId)}`,
+      board.isDefault
+        ? boardPath
+        : `${boardPath}?board=${encodeURIComponent(board.id)}`,
       { replace: currentProjectId === boardCreateProjectId },
     )
   }
@@ -202,7 +214,7 @@ export const ProjectsSidebarNav = ({
       <ProjectRow
         activeBoardParam={activeBoardParam}
         assignedWorkCount={attention?.assignedWork.projects[project.id] ?? 0}
-        boardsExpanded={expandedBoardProjectIds.has(project.id)}
+        boardsExpanded={!collapsedBoardProjectIds.has(project.id)}
         currentProjectId={currentProjectId}
         currentSectionId={currentSectionId}
         isExpanded={isExpanded}

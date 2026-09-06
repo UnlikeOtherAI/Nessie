@@ -7,9 +7,14 @@ import { mailboxDiscoveryRequest } from '../src/facades/mailbox-connections/hook
 import {
   commsOAuthProvider,
   appPasswordAccountName,
+  appPasswordPageUrl,
+  appPasswordPages,
   hasTrustedMailboxConfiguration,
   isUsableEmailAddress,
+  mailboxAddressDomain,
+  mailboxErrorCode,
   mailboxErrorMessage,
+  mailboxTechnicalDetails,
   nextMailboxOnboardingStep,
   providerIcon,
   shouldDiscoverMailbox,
@@ -169,6 +174,115 @@ test('app-password guidance names the detected provider account', () => {
   })
   assert.equal(appPasswordAccountName(fastmail), 'Fastmail account')
   assert.equal(appPasswordAccountName(discovery({ provider: 'apple' })), 'Apple Account')
+})
+
+test('an abandoned or refused sign-in is explained, never left as a raw failure', () => {
+  const fallback = 'Could not connect this mailbox.'
+  assert.equal(
+    mailboxErrorMessage({ code: 'OAUTH_CANCELLED' }, fallback),
+    'Connection wasn\'t completed.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'access_denied' }, fallback),
+    'We need permission to access your email to connect this account.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'ADMIN_BLOCKED' }, fallback),
+    'Your organisation doesn\'t currently allow this app to access email.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'APP_PASSWORD_REQUIRED' }, fallback),
+    'This provider requires an app-specific password.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'RATE_LIMITED' }, fallback),
+    'Your email provider is temporarily unavailable.',
+  )
+  assert.equal(
+    mailboxErrorMessage({ code: 'PROVIDER_UNAVAILABLE' }, fallback),
+    'Your email provider is temporarily unavailable.',
+  )
+  assert.equal(mailboxErrorMessage({ code: 'SOMETHING_NEW' }, fallback), fallback)
+  assert.equal(mailboxErrorMessage(new Error('offline'), fallback), fallback)
+})
+
+test('a mail-server outage keeps its own copy, distinct from a provider outage', () => {
+  const fallback = 'Could not connect this mailbox.'
+  assert.equal(
+    mailboxErrorMessage({ code: 'SERVER_UNAVAILABLE' }, fallback),
+    'We found your email settings, but could not connect to the server.',
+  )
+})
+
+test('a quotable error code is sanitised, never echoed as the server wrote it', () => {
+  assert.equal(mailboxErrorCode({ code: 'access-denied' }), 'ACCESS_DENIED')
+  assert.equal(mailboxErrorCode({ code: '  consent denied  ' }), 'CONSENT_DENIED')
+  assert.equal(mailboxErrorCode({ code: '<b>oops</b>' }), 'B_OOPS_B')
+  assert.equal(mailboxErrorCode({ code: '' }), null)
+  assert.equal(mailboxErrorCode(new Error('offline')), null)
+  assert.equal(mailboxErrorCode(null), null)
+  assert.equal(mailboxErrorCode({ code: 'A'.repeat(200) })?.length, 64)
+})
+
+test('an app-password screen links only to a verified provider page', () => {
+  assert.equal(
+    appPasswordPageUrl(discovery({ provider: 'apple' })),
+    'https://account.apple.com',
+  )
+  assert.equal(
+    appPasswordPageUrl(discovery({ provider: 'google' })),
+    'https://myaccount.google.com/apppasswords',
+  )
+  assert.equal(
+    appPasswordPageUrl(discovery({ provider: 'fastmail' })),
+    'https://app.fastmail.com/settings/security',
+  )
+  assert.equal(
+    appPasswordPageUrl(discovery({ provider: 'yahoo' })),
+    'https://login.yahoo.com/account/security',
+  )
+  assert.equal(appPasswordPageUrl(discovery({ provider: 'zoho' })), 'https://accounts.zoho.com')
+
+  // Unverified providers get guidance without a link rather than a guess.
+  assert.equal(appPasswordPageUrl(discovery({ provider: 'generic' })), null)
+  assert.equal(appPasswordPageUrl(discovery({ provider: 'unknown' })), null)
+  assert.equal(appPasswordPageUrl(discovery({ provider: 'microsoft' })), null)
+  for (const url of Object.values(appPasswordPages)) {
+    assert.equal(String(url).startsWith('https://'), true)
+  }
+})
+
+test('technical details carry the domain and the evidence, never the person', () => {
+  const lines = mailboxTechnicalDetails({
+    address: 'accounts.payable@example.com',
+    code: 'DISCOVERY_FAILED',
+    result: discovery({
+      configurationConfidence: 0.82,
+      credentialDestinationTrust: 0.4,
+      evidence: [
+        { provider: 'generic', score: 60, source: 'provider_registry', trustedForCredentials: true },
+        { score: 20, source: 'mx_fingerprint', trustedForCredentials: false },
+      ],
+    }),
+  })
+
+  assert.deepEqual(lines, [
+    'Error code: DISCOVERY_FAILED',
+    'Domain: example.com',
+    'Configuration confidence: 82%',
+    'Credential destination trust: 40%',
+    'Evidence: provider_registry 60 trusted, mx_fingerprint 20',
+  ])
+  assert.equal(lines.some((line) => line.includes('accounts.payable')), false)
+})
+
+test('technical details still name the domain when discovery never returned', () => {
+  assert.deepEqual(
+    mailboxTechnicalDetails({ address: 'person@Example.COM', code: 'TEST_FAILED', result: null }),
+    ['Error code: TEST_FAILED', 'Domain: example.com'],
+  )
+  assert.deepEqual(mailboxTechnicalDetails({ address: '', code: null, result: null }), [])
+  assert.equal(mailboxAddressDomain('not-an-address'), null)
 })
 
 test('existing native and live connection results share one reachable anchor', () => {

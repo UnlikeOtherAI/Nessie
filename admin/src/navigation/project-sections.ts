@@ -11,6 +11,20 @@
  * the project runs sprints, not only when the board on screen does.
  */
 
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import {
+  faBook,
+  faChartColumn,
+  faGaugeHigh,
+  faGear,
+  faListCheck,
+  faServer,
+  faTableColumns,
+} from '@fortawesome/free-solid-svg-icons'
+
+/** The glyph for a board row, shared by the Boards section and each board under it. */
+export const BOARD_ICON = faTableColumns
+
 export type ProjectSectionId =
   | 'overview'
   | 'board'
@@ -21,6 +35,8 @@ export type ProjectSectionId =
   | 'settings'
 
 export type ProjectSection = {
+  /** The row's glyph. Every section carries one, so the column reads as a list. */
+  icon: IconDefinition
   id: ProjectSectionId
   label: string
   to: string
@@ -60,19 +76,37 @@ export const projectSections = ({
   knowledgeCount = 0,
   projectId,
 }: ProjectSectionsInput): ProjectSection[] => [
-  { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
+  { icon: faGaugeHigh, id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
   {
+    icon: BOARD_ICON,
     id: 'board',
-    label: withCount('Board', assignedWorkCount),
+    // Plural: the section holds every board of the project, and it says so even
+    // while a project has only one.
+    label: withCount('Boards', assignedWorkCount),
     to: `/projects/${projectId}/board`,
   },
   ...(isScrum
     ? ([
-        { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
-        { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
+        {
+          icon: faListCheck,
+          id: 'backlog',
+          label: 'Backlog',
+          to: `/projects/${projectId}/backlog`,
+        },
+        {
+          icon: faChartColumn,
+          id: 'insights',
+          label: 'Insights',
+          to: `/projects/${projectId}/insights`,
+        },
       ] satisfies ProjectSection[])
     : []),
-  { id: 'docs', label: withCount('Docs', knowledgeCount), to: `/projects/${projectId}/docs` },
-  { id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
-  { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
+  {
+    icon: faBook,
+    id: 'docs',
+    label: withCount('Docs', knowledgeCount),
+    to: `/projects/${projectId}/docs`,
+  },
+  { icon: faServer, id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
+  { icon: faGear, id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
 ]

@@ -115,6 +115,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           </EmptyState>
         ) : (
           <KanbanBoard
+            boardId={board.id}
             columns={columns}
             onMoveTask={handleMove}
             projectId={projectId}

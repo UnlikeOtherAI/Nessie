@@ -260,6 +260,7 @@ export const DashboardDetailPage = () => {
         label="Back to dashboard"
         onBack={() => setShowAddWidget(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardPanel}
+        title="Add widget"
       >
         <AddWidgetPanel
           dashboardId={dashboard.id}
@@ -274,6 +275,7 @@ export const DashboardDetailPage = () => {
         label="Back to dashboard"
         onBack={() => setShowVersions(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardVersions}
+        title="Versions"
       >
         <DashboardVersionsPanel
           dashboardId={dashboard.id}

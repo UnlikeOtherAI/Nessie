@@ -87,6 +87,10 @@ const ALLOWLIST = new Map([
     'The reply panel closes through the phone controller\'s Back; same controller-in-layouts reason as the doorway above.',
   ],
   [
+    'admin/src/components/shared/ScreenHeader.tsx -> admin/src/layouts/admin-shell/PhoneNavigationProvider',
+    'The one header publishes the Back it would actually run to the native iOS bar, which is the same controller\'s answer the doorway renders; the controller mounts the shell and stays in layouts.',
+  ],
+  [
     'admin/src/components/primitives/TabBar.tsx -> admin/src/components/overlays/Popover',
     'The overflow menu. docs/standards/design-system.md names TabBar at the primitive path, so the popover comes to it rather than the file moving.',
   ],

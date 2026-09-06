@@ -1,10 +1,25 @@
 import { Fragment } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link } from 'react-router-dom'
 import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
-import { projectSections } from '../../navigation/project-sections'
+import { BOARD_ICON, projectSections } from '../../navigation/project-sections'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
+import { SidebarEmptyNote } from './SidebarEmptyNote'
+
+/**
+ * A subordinate row's glyph, at the size and dimness the channel `#` already
+ * uses. `.admin-sb-item.active svg` lifts it to the readable foreground when
+ * the row is selected, so nothing here has to know about selection.
+ */
+const rowIcon = (icon: typeof BOARD_ICON) => (
+  <FontAwesomeIcon
+    className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
+    fixedWidth
+    icon={icon}
+  />
+)
 
 /** Which list a row belongs to, so Starred and Projects can show one project twice. */
 export type ProjectListId = 'starred' | 'projects'
@@ -77,6 +92,7 @@ export const ProjectSectionRows = ({
                 key={`${listId}-${projectId}-${section.id}`}
                 {...rowProps}
               >
+                {rowIcon(section.icon)}
                 <span className="min-w-0 flex-1 truncate">{section.label}</span>
               </Link>
             )
@@ -99,6 +115,7 @@ export const ProjectSectionRows = ({
                   className="sidebar-project-link"
                   {...rowProps}
                 >
+                  {rowIcon(section.icon)}
                   <span className="min-w-0 flex-1 truncate">{section.label}</span>
                 </Link>
                 <button
@@ -142,6 +159,12 @@ export const ProjectSectionRows = ({
 
               {boardsExpanded ? (
                 <div id={boardsId}>
+                  {boards.length === 0 ? (
+                    // The same quiet line every other empty sidebar section
+                    // shows, on the grid its board rows would stand on. The
+                    // "+" on the Boards row beside it is the way in.
+                    <SidebarEmptyNote indent="grandchild">There are no boards yet.</SidebarEmptyNote>
+                  ) : null}
                   {boards.map((board) => {
                     const isActiveBoard = isActive && board.id === activeBoardId
                     // `?board=` is how the board screen reads its selection
@@ -162,6 +185,7 @@ export const ProjectSectionRows = ({
                         to={to}
                         {...prewarmRowHandlers(prewarm, section.to)}
                       >
+                        {rowIcon(BOARD_ICON)}
                         <span className="min-w-0 flex-1 truncate">{board.name}</span>
                       </Link>
                     )

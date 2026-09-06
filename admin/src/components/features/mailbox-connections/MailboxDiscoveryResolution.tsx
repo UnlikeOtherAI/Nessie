@@ -10,11 +10,13 @@ import {
   commsOAuthProvider,
   connectorMethodLabel,
   appPasswordAccountName,
+  appPasswordPageUrl,
   hasTrustedMailboxConfiguration,
   unavailableAuthenticationMessage,
   type MailboxOnboardingStep,
 } from './mailbox-onboarding'
 import { MailboxConnectionIdentityFields } from './MailboxConnectionIdentityFields'
+import { MailboxTechnicalDetails } from './MailboxTechnicalDetails'
 
 type MailboxDiscoveryResolutionProps = {
   address: string
@@ -36,6 +38,47 @@ type MailboxDiscoveryResolutionProps = {
   screen: MailboxOnboardingStep
   teamId: string
   teams: TeamRecord[]
+  technicalDetails: string[]
+}
+
+/** One failure, one plain sentence, and the raw evidence folded away under it. */
+const ResolutionError = ({
+  error,
+  technicalDetails,
+}: {
+  error: string | null
+  technicalDetails: string[]
+}) => {
+  if (!error) return null
+  return (
+    <div className="grid gap-1">
+      <FormError>{error}</FormError>
+      <MailboxTechnicalDetails lines={technicalDetails} />
+    </div>
+  )
+}
+
+const AppPasswordGuidance = ({ result }: { result: MailboxDiscoveryResult }) => {
+  const account = appPasswordAccountName(result)
+  const url = appPasswordPageUrl(result)
+  return (
+    <p className="text-sm text-[color:var(--tx2)]">
+      Create an app-specific password in your {account}, then paste it here.
+      {url ? (
+        <>
+          {' '}
+          <a
+            className="text-[color:var(--lnk)] underline"
+            href={url}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            Open {account}
+          </a>
+        </>
+      ) : null}
+    </p>
+  )
 }
 
 export const MailboxDiscoveryResolution = ({
@@ -58,6 +101,7 @@ export const MailboxDiscoveryResolution = ({
   screen,
   teamId,
   teams,
+  technicalDetails,
 }: MailboxDiscoveryResolutionProps) => {
   if (screen === 'existing') {
     return (
@@ -102,7 +146,7 @@ export const MailboxDiscoveryResolution = ({
           <span className="block font-medium text-[color:var(--tx)]">Use different settings</span>
           <span className="text-sm text-[color:var(--tx2)]">Enter secure mail-server settings</span>
         </button>
-        <FormError>{error}</FormError>
+        <ResolutionError error={error} technicalDetails={technicalDetails} />
         <button
           className="admin-button admin-button-secondary justify-self-start"
           onClick={onBack}
@@ -139,7 +183,6 @@ export const MailboxDiscoveryResolution = ({
 
   if (screen !== 'password' || !hasTrustedMailboxConfiguration(result)) return null
   const appPassword = result.authentication.strategy === 'app_password'
-  const appPasswordAccount = appPasswordAccountName(result)
   return (
     <form className="grid gap-5" onSubmit={onConnect}>
       <div className="grid gap-1">
@@ -147,11 +190,7 @@ export const MailboxDiscoveryResolution = ({
           {appPassword ? 'Use an app-specific password' : `Sign in to ${result.ui.providerName}`}
         </h3>
         <p className="text-sm text-[color:var(--tx2)]">{address}</p>
-        {appPassword ? (
-          <p className="text-sm text-[color:var(--tx2)]">
-            Create an app-specific password in your {appPasswordAccount}, then paste it here.
-          </p>
-        ) : null}
+        {appPassword ? <AppPasswordGuidance result={result} /> : null}
       </div>
       <MailboxConnectionIdentityFields
         label={label}
@@ -172,7 +211,7 @@ export const MailboxDiscoveryResolution = ({
           value={password}
         />
       </label>
-      <FormError>{error}</FormError>
+      <ResolutionError error={error} technicalDetails={technicalDetails} />
       <div className="flex flex-wrap gap-2">
         <button
           className="admin-button admin-button-primary"
