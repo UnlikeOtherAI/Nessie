@@ -51,7 +51,12 @@ const makePrisma = (budgets: BudgetRow[] = []) => {
   const matches = (row: UsageRow, where: Record<string, unknown>): boolean =>
     Object.entries(where).every(([key, value]) => (row as Record<string, unknown>)[key] === value)
 
-  const prisma = {
+  // `store` runs its quota check and usage writes in one transaction under an
+  // advisory lock (packages/runtime/src/storage-quota.ts). The fake runs the
+  // callback against itself: there is no concurrency here, so a real
+  // transaction would add nothing these assertions could see.
+  const client = {
+    $executeRaw: async () => 0,
     attachment: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         seq += 1
@@ -114,6 +119,10 @@ const makePrisma = (budgets: BudgetRow[] = []) => {
     knowledgePage: {
       findUnique: async () => null,
     },
+  }
+  const prisma = {
+    ...client,
+    $transaction: async <T>(run: (tx: typeof client) => Promise<T>): Promise<T> => run(client),
   }
   return prisma as unknown as PrismaClient
 }

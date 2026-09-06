@@ -1,6 +1,7 @@
-import { evaluateBudget } from '@nessie/runtime'
+import { admitRunToBudget, type BudgetReservationEstimate, evaluateBudget } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { maybeEmitBudgetAlerts } from './budget-alert.js'
+import { resolveRunBackstop } from '../run-budget.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
@@ -82,6 +83,33 @@ export const terminalizeBudgetBlockedRun = async (
   console.warn(`[worker] run ${context.run.id} blocked by budget: ${reason}`)
 }
 
+/**
+ * What this run is assumed capable of spending, for the admission reservation.
+ *
+ * The run's own ceiling is the only honest estimate available before it starts:
+ * `Agent.runLimits` when the designer set one, else the deployment backstop
+ * (`NESSIE_RUN_BACKSTOP_MAX_COST_CENTS` / `_MAX_TOKENS`, defaults 2000¢ and
+ * 500k) — the same envelope the loop itself stops at, per
+ * docs/standards/tech-and-run-budgets.md. Reserving the ceiling makes the gate
+ * conservative on purpose: it can refuse a run that would in fact have fitted,
+ * and it bounds how far a scope can be admitted past its cap by one such
+ * ceiling rather than by the number of replicas. The reservation disappears the
+ * moment the run's real spend is recorded, so the pessimism lasts only as long
+ * as the uncertainty does.
+ */
+const runReservationEstimate = (context: RunContext): BudgetReservationEstimate => {
+  // The same `agent.runLimits?.[dim] ?? backstop[dim]` rule
+  // `resolveEffectiveRunBudget` applies, taken from `resolveRunBackstop`
+  // because that one's fields are all present — `BudgetLimits` marks the two
+  // dimensions a reservation needs optional.
+  const backstop = resolveRunBackstop()
+  const limits = context.agent.runLimits
+  return {
+    costUsd: (limits?.maxCostCents ?? backstop.maxCostCents) / 100,
+    tokens: limits?.maxTokens ?? backstop.maxTokens,
+  }
+}
+
 export const applyBudgetGate = async (
   deps: ExecutionDependencies,
   context: RunContext,
@@ -98,14 +126,23 @@ export const applyBudgetGate = async (
   if (options.subscriptionPinned === true) {
     return { blocked: false, modelOverride: null }
   }
-  const evaluation = await evaluateBudget(
+  // Admission, not observation: for a cap-enforcing budget this reads usage and
+  // writes this run's reservation inside one locked transaction, so a run being
+  // admitted on another replica at the same instant sees this one's ceiling
+  // rather than the same stale pre-run total. The reservation is released when
+  // the run records its real spend.
+  const evaluation = await admitRunToBudget(
     deps.prisma,
     {
       organizationId: payload.actorContext.tenant.organizationId,
       projectId: payload.actorContext.tenant.projectId,
       teamId: payload.actorContext.tenant.teamId,
     },
-    { isHuman: payload.interactive === true },
+    {
+      estimate: runReservationEstimate(context),
+      isHuman: payload.interactive === true,
+      runId: context.run.id,
+    },
   )
   const budgetDecision = evaluation.decision
   // When over a degrade budget, run on the cheaper model instead of the agent's.

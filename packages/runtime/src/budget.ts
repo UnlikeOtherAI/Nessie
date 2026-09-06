@@ -1,6 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 
-import { currentStorageUsageBytes } from './ledger.js'
+import { acquireAdmissionLock, type AdmissionPrismaClient } from './admission-lock.js'
+import {
+  type BudgetReservationEstimate,
+  reserveRunBudget,
+  sumOpenReservations,
+} from './budget-reservations.js'
 
 // Scoped, period-based LLM usage governance. A Budget row governs an organization,
 // project, or team and caps spend (token_ledger_events.estimated_cost_amount, USD)
@@ -18,8 +23,40 @@ import { currentStorageUsageBytes } from './ledger.js'
 //   unlimited — explicit no-cap override; governs here (stops inheritance) and never
 //               blocks. Use it to exempt a critical project/team from an ancestor cap.
 //
-// This is a SOFT cap: spend is recorded only after a run completes, so the gate
-// reads period-to-date usage excluding in-flight runs and can overshoot slightly.
+// ADMISSION GUARANTEE (enforce / degrade only). `admitRunToBudget` takes
+// `pg_advisory_xact_lock` on the governing budget scope, reads usage, and writes
+// the admitted run's reservation inside ONE transaction. Precisely:
+//
+//   Every admitter for one scope is serialised, and each one reads recorded
+//   spend PLUS the full ceiling of every run admitted this period that has not
+//   yet recorded any usage. Once that total reaches the cap, every later
+//   admission is refused. So a run that has spent nothing yet is counted at
+//   everything it COULD spend, and two runs that fit one at a time but not
+//   together can never both be admitted — whatever the number of replicas.
+//
+// That is what changed. It used to be a SOFT cap in the worst way: the gate read
+// only what had already been *recorded*, and a run records nothing until it has
+// spent — so N replicas admitting at the same instant all read the same
+// pre-run total and the overshoot grew with N.
+//
+// THE LIMIT OF THAT GUARANTEE, stated because an overclaimed cap is worse than
+// an honestly documented soft one. A reservation is dropped as soon as the run
+// records its FIRST usage (`recordInferenceUsage`) — leaving the estimate
+// standing beside the real number would double-count it. From that moment the
+// run is counted at what it has recorded, not at what it may still spend. A
+// scope whose in-flight runs have each recorded a little is therefore measured
+// below their combined ceilings, and admission can let further work in. "Past
+// the cap by at most one ceiling" is exact while the competing runs have not
+// started spending; across a period of long, partially-recorded runs the excess
+// is bounded by their unrecorded headroom, not by a single ceiling.
+//
+// What is NOT promised at all, and never was this gate's job: an individual run
+// finishing over cap. A run's own spend is bounded by its envelope
+// (docs/standards/tech-and-run-budgets.md) and stopped mid-flight by the
+// periodic recheck, which deliberately judges recorded spend only.
+//
+// `warn`, `unlimited`, `off` and limit-less budgets never block, so they never
+// take the lock — an observation must not be able to queue behind a writer.
 
 export type BudgetMode = 'off' | 'warn' | 'enforce' | 'degrade' | 'unlimited'
 export type BudgetScopeType = 'organization' | 'project' | 'team'
@@ -70,28 +107,12 @@ export type BudgetEvaluation = {
   alert: BudgetAlertSnapshot | null
 }
 
-export type BudgetStatus = {
-  scopeType: BudgetScopeType
-  scopeId: string
-  mode: BudgetMode
-  period: BudgetPeriod
-  costLimitUsd: number | null
-  tokenLimit: number | null
-  spentUsd: number
-  spentTokens: number
-  warnThresholdPercent: number
-  blockHumansWhenOver: boolean
-  degradeModel: string | null
-  degradeProvider: string | null
-  level: BudgetLevel
-  percentUsed: number | null
-  costTrackingActive: boolean
-  // Storage quota for this scope (BigInt bytes as strings for JSON safety).
-  storageLimitBytes: string | null
-  storageUsedBytes: string
-}
-
-type BudgetRow = {
+/**
+ * The gate's normalised view of a `budgets` row. Exported for `budget-admin.ts`
+ * only — it is the shape the two faces of this subsystem share, not a contract
+ * for anything outside it.
+ */
+export type BudgetRow = {
   organizationId: string
   scopeType: BudgetScopeType
   scopeId: string
@@ -112,7 +133,8 @@ type RawBudgetRow = Omit<BudgetRow, 'costLimitUsd'> & {
   costLimitUsd: { toNumber(): number } | null
 }
 
-const toBudgetRow = (raw: RawBudgetRow): BudgetRow => ({
+/** Shared with `budget-admin.ts`; see BudgetRow. */
+export const toBudgetRow = (raw: RawBudgetRow): BudgetRow => ({
   organizationId: raw.organizationId,
   scopeType: raw.scopeType,
   scopeId: raw.scopeId,
@@ -145,20 +167,32 @@ const periodLabel: Record<BudgetPeriod, string> = {
   yearly: 'Yearly',
 }
 
+// Serialise every admitter against one governing budget scope. See
+// ./admission-lock.ts for why this blocks rather than trying.
+const acquireBudgetLock = (
+  prisma: AdmissionPrismaClient,
+  row: Pick<BudgetRow, 'scopeType' | 'scopeId'>,
+): Promise<void> => acquireAdmissionLock(prisma, `budget:${row.scopeType}:${row.scopeId}`)
+
 const scopeUsageWhere = (row: Pick<BudgetRow, 'scopeType' | 'scopeId'>) => {
   if (row.scopeType === 'team') return { teamId: row.scopeId }
   if (row.scopeType === 'project') return { projectId: row.scopeId }
   return { organizationId: row.scopeId }
 }
 
-const getPeriodUsage = async (
-  prisma: PrismaClient,
-  where: Record<string, unknown>,
-  period: BudgetPeriod,
-): Promise<{ spentUsd: number; spentTokens: number }> => {
+type PeriodUsage = { spentUsd: number; spentTokens: number }
+
+/** Recorded period-to-date spend: `token_ledger_events` and nothing else. */
+export const getPeriodUsage = async (
+  prisma: AdmissionPrismaClient,
+  row: Pick<BudgetRow, 'scopeType' | 'scopeId' | 'period'>,
+): Promise<PeriodUsage> => {
   const result = await prisma.tokenLedgerEvent.aggregate({
     _sum: { estimatedCostAmount: true, totalTokens: true },
-    where: { ...where, occurredAt: { gte: periodStartUtc(period, new Date()) } },
+    where: {
+      ...scopeUsageWhere(row),
+      occurredAt: { gte: periodStartUtc(row.period, new Date()) },
+    },
   })
   return {
     spentUsd: result._sum.estimatedCostAmount?.toNumber() ?? 0,
@@ -166,9 +200,32 @@ const getPeriodUsage = async (
   }
 }
 
+/**
+ * Recorded spend PLUS the ceilings of runs already admitted this period and not
+ * yet settled. This is the admission read and only the admission read: it is
+ * what makes two concurrent admitters see each other, and it must never reach
+ * an owner-facing number, because a reservation is an estimate and not money
+ * anybody spent.
+ */
+const getAdmissionUsage = async (
+  prisma: AdmissionPrismaClient,
+  row: Pick<BudgetRow, 'scopeType' | 'scopeId' | 'period'>,
+  recorded: PeriodUsage,
+): Promise<PeriodUsage> => {
+  const reserved = await sumOpenReservations(
+    prisma,
+    row,
+    periodStartUtc(row.period, new Date()),
+  )
+  return {
+    spentUsd: recorded.spentUsd + reserved.reservedUsd,
+    spentTokens: recorded.spentTokens + reserved.reservedTokens,
+  }
+}
+
 const formatUsd = (value: number): string => `$${value.toFixed(2)}`
 
-const overCapReason = (row: BudgetRow, spentUsd: number, spentTokens: number): string | null => {
+export const overCapReason = (row: BudgetRow, spentUsd: number, spentTokens: number): string | null => {
   const label = periodLabel[row.period]
   if (row.costLimitUsd !== null && spentUsd >= row.costLimitUsd) {
     return `${label} cost budget exceeded (${formatUsd(spentUsd)} of ${formatUsd(row.costLimitUsd)})`
@@ -182,7 +239,7 @@ const overCapReason = (row: BudgetRow, spentUsd: number, spentTokens: number): s
 const percentOf = (spent: number, limit: number | null): number | null =>
   limit !== null && limit > 0 ? (spent / limit) * 100 : null
 
-const maxPercent = (row: BudgetRow, spentUsd: number, spentTokens: number): number | null => {
+export const maxPercent = (row: BudgetRow, spentUsd: number, spentTokens: number): number | null => {
   const parts = [percentOf(spentUsd, row.costLimitUsd), percentOf(spentTokens, row.tokenLimit)].filter(
     (value): value is number => value !== null,
   )
@@ -277,16 +334,21 @@ const deriveDecision = (
   return { action: 'block', reason }
 }
 
-// Evaluate the governing budget for a run: the gate DECISION plus a read-only
-// ALERT snapshot. The decision is byte-identical to the legacy `checkBudget`
-// logic; the snapshot is an additional observation and never influences the
-// verdict. A single period-usage query feeds both.
-export const evaluateBudget = async (
-  prisma: PrismaClient,
-  scope: BudgetScope,
+// A budget that can refuse work. Exactly the budgets whose verdict depends on
+// how much has been spent — and so exactly the ones an unlocked read can get
+// wrong when two replicas ask at once.
+const gatesOnSpend = (row: BudgetRow): boolean =>
+  (row.mode === 'enforce' || row.mode === 'degrade')
+  && (row.costLimitUsd !== null || row.tokenLimit !== null)
+
+// The decision + alert for an already-resolved budget, so the admission path
+// resolves the governing row once and reuses this for the modes it does not
+// need to lock.
+const evaluateResolved = async (
+  prisma: AdmissionPrismaClient,
+  budget: BudgetRow | null,
   opts: { isHuman: boolean },
 ): Promise<BudgetEvaluation> => {
-  const budget = await resolveBudget(prisma, scope)
   if (!budget) {
     return { decision: { action: 'allow' }, alert: null }
   }
@@ -298,7 +360,7 @@ export const evaluateBudget = async (
   // is cap-aware and has a limit even if the verdict is a foregone `allow`.
   if (budget.mode !== 'enforce' && budget.mode !== 'degrade') {
     if (isCapAwareMode(budget.mode) && hasLimit) {
-      const usage = await getPeriodUsage(prisma, scopeUsageWhere(budget), budget.period)
+      const usage = await getPeriodUsage(prisma, budget)
       return { decision: { action: 'allow' }, alert: buildAlertSnapshot(budget, usage) }
     }
     return { decision: { action: 'allow' }, alert: null }
@@ -307,12 +369,27 @@ export const evaluateBudget = async (
     return { decision: { action: 'allow' }, alert: null }
   }
 
-  const usage = await getPeriodUsage(prisma, scopeUsageWhere(budget), budget.period)
+  const usage = await getPeriodUsage(prisma, budget)
   return {
     decision: deriveDecision(budget, usage, opts.isHuman),
     alert: buildAlertSnapshot(budget, usage),
   }
 }
+
+// Evaluate the governing budget for a run: the gate DECISION plus a read-only
+// ALERT snapshot. The decision is byte-identical to the legacy `checkBudget`
+// logic; the snapshot is an additional observation and never influences the
+// verdict. A single period-usage query feeds both.
+//
+// This is the OBSERVING read — no lock, no reservation, recorded spend only.
+// It is what the mid-run recheck and the in-process API model calls use. A run
+// entering the queue is admitted through `admitRunToBudget` instead.
+export const evaluateBudget = async (
+  prisma: PrismaClient,
+  scope: BudgetScope,
+  opts: { isHuman: boolean },
+): Promise<BudgetEvaluation> =>
+  evaluateResolved(prisma, await resolveBudget(prisma, scope), opts)
 
 export const checkBudget = async (
   prisma: PrismaClient,
@@ -320,178 +397,58 @@ export const checkBudget = async (
   opts: { isHuman: boolean },
 ): Promise<BudgetDecision> => (await evaluateBudget(prisma, scope, opts)).decision
 
-// Stored-bytes usage scope for a budget row (org scopeId is the organization id).
-const storageScopeForRow = (row: BudgetRow) => {
-  if (row.scopeType === 'project') {
-    return { organizationId: row.organizationId, projectId: row.scopeId }
-  }
-  if (row.scopeType === 'team') {
-    return { organizationId: row.organizationId, teamId: row.scopeId }
-  }
-  return { organizationId: row.scopeId }
-}
-
-const statusForRow = async (prisma: PrismaClient, row: BudgetRow): Promise<BudgetStatus> => {
-  const [{ spentUsd, spentTokens }, pricingProfiles, storageUsedBytes] = await Promise.all([
-    getPeriodUsage(prisma, scopeUsageWhere(row), row.period),
-    prisma.modelPricingProfile.count({ where: { organizationId: row.organizationId } }),
-    currentStorageUsageBytes(prisma, storageScopeForRow(row)),
-  ])
-  const over = overCapReason(row, spentUsd, spentTokens) !== null
-  const percentUsed = maxPercent(row, spentUsd, spentTokens)
-  const warnReached = percentUsed !== null && percentUsed >= row.warnThresholdPercent
-  const level: BudgetLevel = over ? 'over' : warnReached ? 'warn' : 'ok'
-  return {
-    scopeType: row.scopeType,
-    scopeId: row.scopeId,
-    mode: row.mode,
-    period: row.period,
-    costLimitUsd: row.costLimitUsd,
-    tokenLimit: row.tokenLimit,
-    spentUsd,
-    spentTokens,
-    warnThresholdPercent: row.warnThresholdPercent,
-    blockHumansWhenOver: row.blockHumansWhenOver,
-    degradeModel: row.degradeModel,
-    degradeProvider: row.degradeProvider,
-    level,
-    percentUsed,
-    costTrackingActive: pricingProfiles > 0,
-    storageLimitBytes: row.storageLimitBytes === null ? null : row.storageLimitBytes.toString(),
-    storageUsedBytes: storageUsedBytes.toString(),
-  }
-}
-
-export const listBudgetStatuses = async (
-  prisma: PrismaClient,
-  organizationId: string,
-): Promise<BudgetStatus[]> => {
-  const rows = (
-    await prisma.budget.findMany({
-      where: { organizationId },
-      orderBy: [{ scopeType: 'asc' }, { createdAt: 'asc' }],
-    })
-  ).map(toBudgetRow)
-  return Promise.all(rows.map((row) => statusForRow(prisma, row)))
-}
-
-export const setBudgetConfig = async (
-  prisma: PrismaClient,
-  input: {
-    organizationId: string
-    scopeType: BudgetScopeType
-    scopeId: string
-    costLimitUsd: number | null
-    tokenLimit: number | null
-    storageLimitBytes?: number | null
-    mode: BudgetMode
-    period: BudgetPeriod
-    warnThresholdPercent: number
-    blockHumansWhenOver: boolean
-    degradeModel: string | null
-    degradeProvider: string | null
-  },
-): Promise<BudgetStatus> => {
-  const { organizationId, scopeType, scopeId, storageLimitBytes, ...rest } = input
-  const storageData = {
-    storageLimitBytes: storageLimitBytes == null ? null : BigInt(storageLimitBytes),
-  }
-  const row = toBudgetRow(
-    await prisma.budget.upsert({
-      where: { scopeType_scopeId: { scopeType, scopeId } },
-      create: { organizationId, scopeType, scopeId, ...rest, ...storageData },
-      update: { organizationId, ...rest, ...storageData },
-    }),
-  )
-  return statusForRow(prisma, row)
-}
-
-export const deleteBudget = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  scopeType: BudgetScopeType,
-  scopeId: string,
-): Promise<boolean> => {
-  const { count } = await prisma.budget.deleteMany({
-    where: { organizationId, scopeType, scopeId },
-  })
-  return count > 0
-}
-
-// ─── Storage quota ──────────────────────────────────────────────────────────
-// A per-scope hard cap on bytes AT REST (Budget.storageLimitBytes). Resolved
-// most-specific-first like the spend budget, but independent of BudgetMode: any
-// scope with a limit set governs, and exceeding it blocks new uploads. Unlike
-// the soft spend cap, storage usage is recorded synchronously by the
-// FileService, so this gate is effectively exact (modulo concurrent uploads).
-
-export type StorageQuotaDecision =
-  | { allowed: true; usedBytes: bigint; limitBytes: bigint | null }
-  | { allowed: false; usedBytes: bigint; limitBytes: bigint; reason: string }
-
-const resolveStorageLimit = async (
+/**
+ * Admit a run against its governing budget, atomically.
+ *
+ * For `enforce`/`degrade` budgets with a limit this is one transaction that
+ * takes `pg_advisory_xact_lock` on the governing scope, reads period usage
+ * INCLUDING the reservations of runs already admitted and not yet settled, and
+ * — when the verdict is not `block` — writes this run's own reservation before
+ * committing. Two admitters whose ceilings fit one at a time but not together
+ * therefore cannot both pass: the loser waits on the lock and then reads the
+ * winner's reservation. See the ADMISSION GUARANTEE at the top of this file for
+ * exactly what that does and does not promise.
+ *
+ * Every other mode returns the same verdict `evaluateBudget` would, with no
+ * lock and no row written.
+ */
+export const admitRunToBudget = async (
   prisma: PrismaClient,
   scope: BudgetScope,
-): Promise<{ scopeType: BudgetScopeType; scopeId: string; limitBytes: bigint } | null> => {
-  const candidates: Array<{ scopeType: BudgetScopeType; scopeId: string }> = []
-  if (scope.teamId) candidates.push({ scopeType: 'team', scopeId: scope.teamId })
-  if (scope.projectId) candidates.push({ scopeType: 'project', scopeId: scope.projectId })
-  candidates.push({ scopeType: 'organization', scopeId: scope.organizationId })
+  opts: { isHuman: boolean; runId: string; estimate: BudgetReservationEstimate },
+): Promise<BudgetEvaluation> => {
+  // Resolved outside the transaction because the lock's NAME depends on which
+  // scope governs. Two admitters racing each other read the same configuration
+  // and so take the same lock; only an admin editing the budget in the same
+  // instant could give them different names, and the next admission picks the
+  // new one up.
+  const budget = await resolveBudget(prisma, scope)
+  if (!budget || !gatesOnSpend(budget)) {
+    return evaluateResolved(prisma, budget, opts)
+  }
 
-  const rows = await prisma.budget.findMany({
-    where: { OR: candidates.map((c) => ({ scopeType: c.scopeType, scopeId: c.scopeId })) },
-    select: { scopeType: true, scopeId: true, storageLimitBytes: true },
-  })
-
-  for (const candidate of candidates) {
-    const row = rows.find(
-      (r) => r.scopeType === candidate.scopeType && r.scopeId === candidate.scopeId,
+  return prisma.$transaction(async (tx) => {
+    await acquireBudgetLock(tx, budget)
+    const recorded = await getPeriodUsage(tx, budget)
+    const decision = deriveDecision(
+      budget,
+      await getAdmissionUsage(tx, budget, recorded),
+      opts.isHuman,
     )
-    if (row && row.storageLimitBytes !== null) {
-      return { scopeType: candidate.scopeType, scopeId: candidate.scopeId, limitBytes: row.storageLimitBytes }
+    if (decision.action !== 'block') {
+      await reserveRunBudget(tx, {
+        estimate: opts.estimate,
+        runId: opts.runId,
+        target: {
+          organizationId: budget.organizationId,
+          scopeId: budget.scopeId,
+          scopeType: budget.scopeType,
+        },
+      })
     }
-  }
-  return null
+    // The alert reports RECORDED spend — its numbers become the sentence an
+    // owner reads ("has used $X of $Y"), and an estimate has no business there.
+    return { decision, alert: buildAlertSnapshot(budget, recorded) }
+  })
 }
 
-// Measure usage at the SAME scope the governing limit applies to, so the
-// comparison is apples-to-apples.
-const usageScopeForLimit = (
-  limit: { scopeType: BudgetScopeType; scopeId: string },
-  organizationId: string,
-): { organizationId: string; projectId?: string; teamId?: string } => {
-  if (limit.scopeType === 'team') return { organizationId, teamId: limit.scopeId }
-  if (limit.scopeType === 'project') return { organizationId, projectId: limit.scopeId }
-  return { organizationId }
-}
-
-export const checkStorageQuota = async (
-  prisma: PrismaClient,
-  scope: BudgetScope,
-  addBytes: number | bigint,
-): Promise<StorageQuotaDecision> => {
-  const limit = await resolveStorageLimit(prisma, scope)
-  if (!limit) {
-    const usedBytes = await currentStorageUsageBytes(prisma, {
-      organizationId: scope.organizationId,
-    })
-    return { allowed: true, usedBytes, limitBytes: null }
-  }
-
-  const usedBytes = await currentStorageUsageBytes(
-    prisma,
-    usageScopeForLimit(limit, scope.organizationId),
-  )
-  const add = typeof addBytes === 'bigint' ? addBytes : BigInt(Math.max(0, Math.trunc(addBytes)))
-  if (usedBytes + add > limit.limitBytes) {
-    return {
-      allowed: false,
-      usedBytes,
-      limitBytes: limit.limitBytes,
-      reason:
-        `Storage quota exceeded: ${(usedBytes + add).toString()} bytes would exceed the `
-        + `${limit.limitBytes.toString()}-byte ${limit.scopeType} limit`,
-    }
-  }
-  return { allowed: true, usedBytes, limitBytes: limit.limitBytes }
-}

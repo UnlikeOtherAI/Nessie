@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
-import type { PrismaClient } from '@prisma/client'
 
+import type { AdmissionPrismaClient } from './admission-lock.js'
 import type { LedgerAttribution } from './ledger.js'
 
 export type StorageUsageScope = {
@@ -25,7 +25,9 @@ export type StorageStoreOperation =
  * current storage usage an exact sum of store and delete events.
  */
 export const recordStorageStored = async (
-  prisma: PrismaClient,
+  // Accepts a `$transaction` client so the quota check and this event can be
+  // one atomic step — see `withStorageAdmission` in ./storage-quota.ts.
+  prisma: AdmissionPrismaClient,
   input: {
     attribution: LedgerAttribution
     scope: StorageUsageScope
@@ -58,7 +60,7 @@ export const recordStorageStored = async (
 
 /** Sum stored bytes for an organization and any supplied narrower dimensions. */
 export const currentStorageUsageBytes = async (
-  prisma: PrismaClient,
+  prisma: AdmissionPrismaClient,
   scope: StorageUsageScope,
 ): Promise<bigint> => {
   const where: Prisma.StorageUsageEventWhereInput = {

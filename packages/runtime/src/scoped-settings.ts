@@ -45,6 +45,12 @@ type SettingRow = {
   scope: SettingScope
   value: Prisma.JsonValue | null
   locked: boolean
+  /**
+   * When this level was last written. Present on every row read from the
+   * database; optional only so callers that hand-build rows (the pure-function
+   * tests) need not invent a clock.
+   */
+  updatedAt?: Date | null
 }
 
 const scopeRank = (scope: SettingScope): number => SCOPE_ORDER.indexOf(scope)
@@ -61,10 +67,22 @@ export const isLockedAbove = (
 ): boolean =>
   resolved.lockedAtScope !== null && scopeRank(resolved.lockedAtScope) < scopeRank(scope)
 
-/** Pure resolution, separated from IO so it is directly testable. */
+/**
+ * Pure resolution, separated from IO so it is directly testable.
+ *
+ * The table's partial unique indexes mean two rows at one scope should not
+ * exist. Should is not the same as cannot be handed to this function, which is
+ * pure and takes whatever a caller passes — so it picks the newest `updatedAt`
+ * rather than whichever row happened to arrive first, and a lock somebody just
+ * set can never read back as absent.
+ */
 export const resolveFromRows = <T>(key: string, rows: readonly SettingRow[]): ResolvedSetting<T> => {
   const byScope = new Map<SettingScope, SettingRow>()
-  for (const row of rows) byScope.set(row.scope, row)
+  for (const row of rows) {
+    const held = byScope.get(row.scope)
+    if (held && (held.updatedAt?.getTime() ?? 0) >= (row.updatedAt?.getTime() ?? 0)) continue
+    byScope.set(row.scope, row)
+  }
 
   let value: T | null = null
   let setAtScope: SettingScope | null = null
@@ -109,13 +127,23 @@ export const resolveScopedSettings = async <T = unknown>(
         key: { in: [...keys] },
         OR: targetWhere(target),
       },
-      select: { key: true, scope: true, value: true, locked: true },
+      // Deterministic order, so the resolver never depends on heap order.
+      // Belt and braces over the partial unique indexes: cheap on a query that
+      // reads at most three rows, and the alternative is a resolution that is
+      // only correct while nothing has ever gone wrong.
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: { key: true, scope: true, value: true, locked: true, updatedAt: true },
     })
 
   const grouped = new Map<string, SettingRow[]>()
   for (const row of rows) {
     const list = grouped.get(row.key) ?? []
-    list.push({ locked: row.locked, scope: row.scope as SettingScope, value: row.value })
+    list.push({
+      locked: row.locked,
+      scope: row.scope as SettingScope,
+      updatedAt: row.updatedAt,
+      value: row.value,
+    })
     grouped.set(row.key, list)
   }
 
@@ -168,10 +196,39 @@ export const lockExplanation = (lockedAtScope: SettingScope): string =>
   `This has been set at the ${scopeLabel[lockedAtScope]} level and cannot be changed here.`
 
 /**
+ * The advisory-lock name for one setting target.
+ *
+ * Assembled from exactly the columns the table's three partial unique indexes
+ * cover, so two writers contend on the lock in precisely the cases one of them
+ * would otherwise be rejected. `''` stands in for a null `teamId`/`userId`: the
+ * scope is already part of the name, so an organisation row and a team row can
+ * never collide on it.
+ */
+const settingLockName = (
+  input: Pick<WriteScopedSettingInput, 'organizationId' | 'key' | 'scope'>,
+  teamId: string | null,
+  userId: string | null,
+): string =>
+  `scoped-setting:${input.organizationId}:${input.key}:${input.scope}:${teamId ?? ''}:${userId ?? ''}`
+
+/**
  * Writes one level's row, refusing when a level above has locked the key.
  * Authorization for *this* level is the caller's — it mirrors the route the
  * person's button calls — but the lock is an invariant of the cascade itself
  * and is enforced here so no caller can forget it.
+ *
+ * Race-free across replicas: the transaction takes `pg_advisory_xact_lock` on
+ * this exact target before it reads, so a second writer anywhere in the fleet
+ * blocks until the first commits and then sees its row to update.
+ *
+ * What that fixes is NOT a duplicate row — the table's three partial unique
+ * indexes (see `model ScopedSetting`) already make one impossible. It is that
+ * find-then-create without a lock loses the race noisily: the second save of a
+ * setting nobody had set yet found nothing, tried to create, and hit a unique
+ * violation, so an ordinary "two people pressed Save" — or one person on a
+ * fleet where a retry lands on another replica — surfaced as an opaque failure
+ * instead of the update it should have been. The index is the guarantee; the
+ * lock is what makes the write correct rather than merely safe.
  */
 export const writeScopedSetting = async (
   prisma: PrismaClient,
@@ -187,6 +244,12 @@ export const writeScopedSetting = async (
   }
 
   return prisma.$transaction(async (tx) => {
+    // Before the read, not after: the whole point is that the loser of the race
+    // waits here and then reads the winner's row.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${settingLockName(input, teamId, userId)}::text, 0))
+    `
+
     const current = await resolveScopedSetting(tx, {
       organizationId: input.organizationId,
       teamId,

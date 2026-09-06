@@ -2,7 +2,7 @@ import type { Readable } from 'node:stream'
 
 import type { Attachment, PrismaClient } from '@prisma/client'
 
-import { checkStorageQuota } from '../budget.js'
+import { checkStorageQuota, withStorageAdmission } from '../storage-quota.js'
 import {
   type LedgerAttribution,
   recordStorageStored,
@@ -123,43 +123,67 @@ export const createThumbnailOps = (deps: {
         return true
       }
 
+      // Bound to a const so the narrowing above survives into the transaction
+      // callback below, where TypeScript would otherwise widen the property
+      // back to `GeneratedThumbnail | null`.
+      const thumbnail = input.thumbnail
       const usageScope = await deriveScope(attachment)
-      const bytes = input.thumbnail.data.byteLength
-      const quota = await checkStorageQuota(
-        prisma,
-        {
-          organizationId: usageScope.organizationId,
-          projectId: usageScope.projectId ?? null,
-          teamId: usageScope.teamId ?? null,
-        },
-        bytes,
-      )
-      if (!quota.allowed) {
+      const bytes = thumbnail.data.byteLength
+      const scope = {
+        organizationId: usageScope.organizationId,
+        projectId: usageScope.projectId ?? null,
+        teamId: usageScope.teamId ?? null,
+      }
+
+      // Cheap early-out so an org that is already over quota does not pay for
+      // an object write it will only have to delete. Advisory only — the
+      // authoritative check is the locked one below, because this read is stale
+      // the instant it returns.
+      if (!(await checkStorageQuota(prisma, scope, bytes)).allowed) {
         await markUnavailable(attachment.id)
         return false
       }
 
       const key = thumbnailStorageKey(attachment.storageKey)
-      await storage.put(key, input.thumbnail.data, input.thumbnail.mime)
-      // Conditional on thumbnailKey still being null: if a concurrent writer
-      // won, this claims nothing and the object written above is dropped rather
-      // than counted. Accounting only follows a claim, so bytes never
-      // double-count.
-      const claimed = await prisma.attachment.updateMany({
-        where: { id: attachment.id, thumbnailKey: null },
-        data: thumbnailColumns(key, input.thumbnail),
+      await storage.put(key, thumbnail.data, thumbnail.mime)
+
+      // The claim and its usage event go in one transaction under the
+      // organisation's admission lock, for the same reason the upload path does
+      // (see `withStorageAdmission`): a preview is stored bytes, and a check
+      // that is not atomic with the write that makes it visible lets N
+      // concurrent backfills each pass a quota only one of them fits in.
+      //
+      // The claim stays conditional on `thumbnailKey` still being null: if a
+      // concurrent writer won, this claims nothing and the object written above
+      // is dropped rather than counted. Accounting only follows a claim, so
+      // bytes never double-count.
+      const admission = await withStorageAdmission(prisma, scope, bytes, async (tx) => {
+        const claimed = await tx.attachment.updateMany({
+          where: { id: attachment.id, thumbnailKey: null },
+          data: thumbnailColumns(key, thumbnail),
+        })
+        if (claimed.count === 0) {
+          return false
+        }
+        await recordStorageStored(tx, {
+          attribution: input.attribution,
+          scope: usageScope,
+          deltaBytes: BigInt(bytes),
+          operation: 'store.thumbnail',
+          attachmentId: attachment.id,
+        })
+        return true
       })
-      if (claimed.count === 0) {
+
+      if (!admission.admitted) {
+        await storage.delete(key).catch(() => undefined)
+        await markUnavailable(attachment.id)
+        return false
+      }
+      if (!admission.value) {
         await storage.delete(key).catch(() => undefined)
         return false
       }
-      await recordStorageStored(prisma, {
-        attribution: input.attribution,
-        scope: usageScope,
-        deltaBytes: BigInt(bytes),
-        operation: 'store.thumbnail',
-        attachmentId: attachment.id,
-      })
       return true
     },
   }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
+import { sweepSettledBudgetReservations } from './control/budget-reservation-sweep.js'
 import { sweepDueGmailSends } from './control/gmail-send-sweep.js'
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
@@ -1012,6 +1013,24 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // Budget reservations left by runs that finished without ever recording
+  // spend. Hygiene only — the admission aggregate already ignores them.
+  let budgetReservationSweepInFlight = false
+  const budgetReservationSweepInterval = setInterval(async () => {
+    if (budgetReservationSweepInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    budgetReservationSweepInFlight = true
+    try {
+      await sweepSettledBudgetReservations(prisma)
+    } catch (error) {
+      console.error('[worker.budget-reservation-sweep] failed', error)
+    } finally {
+      budgetReservationSweepInFlight = false
+    }
+  }, 60_000)
+
   // A run that crashed before any terminal transition, or a session that
   // outlived its TTL, still costs browser-hours until somebody tells
   // Browserbase to stop it. Reaping calls the provider; flipping the row alone
@@ -1242,6 +1261,7 @@ export const startWorker = async (
     clearInterval(boardSourceSweepInterval)
     clearInterval(domainRevalidationInterval)
     clearInterval(workflowStepReapInterval)
+    clearInterval(budgetReservationSweepInterval)
     clearInterval(cloudBrowserReapInterval)
     clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)

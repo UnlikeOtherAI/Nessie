@@ -51,7 +51,8 @@ const makePrisma = (stripImageMetadata = true) => {
   const usage: { deltaBytes: bigint; operation: string }[] = []
   let seq = 0
 
-  const prisma = {
+  const client = {
+    $executeRaw: async () => 0,
     organization: {
       findUnique: async () => ({ stripImageMetadata }),
     },
@@ -98,6 +99,10 @@ const makePrisma = (stripImageMetadata = true) => {
     knowledgePage: {
       findUnique: async () => null,
     },
+  }
+  const prisma = {
+    ...client,
+    $transaction: async <T>(run: (tx: typeof client) => Promise<T>): Promise<T> => run(client),
   }
   return Object.assign(prisma as unknown as PrismaClient, { __usage: usage })
 }
