@@ -60,13 +60,31 @@ instances mint N different idempotency keys and N reconcile jobs.
   batch and each row is independent work.
 - **A window-bucketed idempotency key** — put the window (`…:2026-09-05`) in
   the key so N instances enqueueing in the same tick collapse to one job.
-- **`withSweepLock`** — for a sweep whose body is one indivisible walk. Added
-  to `@nessie/db` in Phase 2.9; the contract is: it takes a stable lock name,
-  hashes it to a bigint, and calls `pg_try_advisory_lock` on that hash. If the
-  lock is held the tick is **skipped**, not queued — a blocking
-  `pg_advisory_lock` would pile every replica's ticks behind the holder and
-  turn a slow sweep into a connection leak. It releases in a `finally`, and the
+- **`withSweepLock`** — for a sweep whose body is one indivisible walk. Lives
+  in `@nessie/db` (`packages/db/src/sweep-lock.ts`) as
+  `withSweepLock(db, name, fn, options?)`, returning `{ ran: true, result }` or
+  `{ ran: false }`. It hashes the stable lock name to a bigint with Postgres'
+  own `hashtextextended(name, 0)` — in SQL, so every caller maps a name to the
+  same key with no shared hashing helper — and takes
+  `pg_try_advisory_xact_lock` on it inside a transaction. Three properties are
+  load-bearing. **`try`:** if the lock is held the tick is **skipped**, not
+  queued — a blocking `pg_advisory_lock` would pile every replica's ticks
+  behind the holder and turn a slow sweep into a connection leak — and the
   caller treats "skipped" as a normal outcome, never an error.
+  **`_xact_`:** both a Prisma client and a `pg` `Pool` hand connections back
+  between statements, so a session-scoped lock would be released by whoever
+  reused the connection, or never; a transaction-scoped one is released by the
+  transaction ending, on every path including a throw. **The lock connection
+  only holds the lock:** `fn` runs against the caller's ordinary client, so a
+  long walk does not accumulate a transaction's worth of row locks.
+  It takes either a `PrismaClient` or a `pg` `Pool`, because
+  `PgRealtimeTransport` has only the latter. On the Prisma path the
+  interactive-transaction `timeout` is passed explicitly — ten minutes by
+  default, `options.timeoutMs` to widen it — because Prisma's own default is
+  five seconds and would roll the lock out from under a running sweep while
+  the body kept going; `maxWait` is widened for the same reason, so a busy
+  pool makes a tick skip rather than throw. On the `Pool` path one client is
+  held for the body's duration and released in a `finally`.
 
 ## 3. Every enqueue carries an idempotency key
 

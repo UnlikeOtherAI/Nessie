@@ -1,5 +1,6 @@
 import type { ClientConfig, Notification, Pool } from 'pg'
 import { Client } from 'pg'
+import { withSweepLock } from '@nessie/db'
 import {
   SseEventSchema,
   WsEventSchema,
@@ -44,6 +45,14 @@ const RECONNECT_DELAY_MS = 1_000
 const MAX_REPLAY_EVENTS = 5_000
 const REALTIME_EVENT_RETENTION_MS = 24 * 60 * 60 * 1000
 const REALTIME_EVENT_PRUNE_INTERVAL_MS = 60_000
+
+/**
+ * The retention sweep's cluster-wide identity. Stable by contract: renaming it
+ * during a rolling deploy is the same as taking no lock at all.
+ */
+const REALTIME_PRUNE_LOCK = 'realtime-events-prune'
+/** Single row; the table exists only to hold this one cadence. */
+const REALTIME_PRUNE_STATE_ID = 'realtime_events'
 
 export const parseLastRealtimeEventId = (
   value: string | undefined,
@@ -92,7 +101,6 @@ export class PgRealtimeTransport {
     | ((payload: RealtimeNotificationPayload) => void | Promise<void>)
     | null = null
   private reconnectTimer: NodeJS.Timeout | null = null
-  private lastPruneAt = 0
 
   constructor(
     private readonly pool: Pool,
@@ -301,17 +309,49 @@ export class PgRealtimeTransport {
     })
   }
 
+  /**
+   * Delete `realtime_events` past retention, once a minute for the whole
+   * cluster.
+   *
+   * Two guards, because they answer different questions (horizontal-scaling
+   * invariant 2, audit 2.3). `withSweepLock` answers *who*: the DELETE has no
+   * index on `created_at` alone, so it is a sequential scan, and two replicas
+   * running it at once is the contention worth avoiding. The
+   * `realtime_prune_state` row answers *whether it is due*, and it has to be a
+   * row rather than the field it replaced: `lastPruneAt` was per process, so
+   * the "once a minute" was really once a minute *per replica*, and it reset
+   * to zero on every restart. The clock is read from `now()` on the server for
+   * the same reason — replica clocks are not the cluster's clock.
+   *
+   * The claim is a single conditional upsert: it returns a row only when it
+   * moved the watermark, which is also what creates the row the first time.
+   * It sits inside the lock rather than in front of it, so the cost on the
+   * publish path is the lock probe — a `BEGIN`/`SELECT`/`ROLLBACK` on one
+   * pooled client, held for about a millisecond — rather than a free
+   * in-memory comparison. That is the price of a cadence a second instance
+   * can see, and it is small beside the INSERT and NOTIFY it follows.
+   */
   private async pruneOldRealtimeEvents(): Promise<void> {
-    const now = Date.now()
-    if (now - this.lastPruneAt < REALTIME_EVENT_PRUNE_INTERVAL_MS) {
-      return
-    }
+    await withSweepLock(this.pool, REALTIME_PRUNE_LOCK, async () => {
+      const claimed = await this.pool.query(
+        `
+          INSERT INTO realtime_prune_state (id, pruned_at)
+          VALUES ($1, now())
+          ON CONFLICT (id) DO UPDATE SET pruned_at = now()
+            WHERE realtime_prune_state.pruned_at < now() - make_interval(secs => $2)
+          RETURNING pruned_at
+        `,
+        [REALTIME_PRUNE_STATE_ID, REALTIME_EVENT_PRUNE_INTERVAL_MS / 1000],
+      )
+      if (claimed.rowCount === 0) {
+        return
+      }
 
-    this.lastPruneAt = now
-    await this.pool.query(
-      'DELETE FROM realtime_events WHERE created_at < $1',
-      [new Date(now - REALTIME_EVENT_RETENTION_MS)],
-    )
+      await this.pool.query(
+        'DELETE FROM realtime_events WHERE created_at < $1',
+        [new Date(Date.now() - REALTIME_EVENT_RETENTION_MS)],
+      )
+    })
   }
 
   /**

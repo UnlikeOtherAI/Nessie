@@ -1238,28 +1238,15 @@ export const startWorker = async (
     }
   }, COMMS_INCREMENTAL_SWEEP_INTERVAL_MS)
 
-  // Apps catalogue registry sync. `maybeSyncRegistry` self-gates on the last
-  // completed run (6h window, `NESSIE_REGISTRY_SYNC_INTERVAL_MS`), so a restart
-  // or a frequent poll never triggers a fresh multi-minute walk — the poll only
-  // asks "is one due?". The interval and the post-startup kick share this one
-  // guarded body so the kick fills an empty store within a minute of a fresh
-  // deploy while the interval keeps it fresh (~every 6h) thereafter.
-  let registrySyncSweepInFlight = false
-  const runRegistrySyncSweep = async (): Promise<void> => {
-    if (registrySyncSweepInFlight || abortController.signal.aborted) {
-      return
-    }
-
-    registrySyncSweepInFlight = true
-    try {
-      await maybeSyncRegistry(prisma)
-    } catch (error) {
-      console.error('[worker.registry-sync] failed', error)
-    } finally {
-      registrySyncSweepInFlight = false
-    }
-  }
-
+  // Apps catalogue registry sync. `maybeSyncRegistry` takes the
+  // `mcp-registry-sync` advisory lock and self-gates on the last completed run
+  // (6h window, `NESSIE_REGISTRY_SYNC_INTERVAL_MS`), so a restart or a frequent
+  // poll never triggers a fresh multi-minute walk — the poll only asks "is one
+  // due?". The lock is what makes that decision cluster-wide, so there is
+  // nothing left for this file to guard, and no post-startup kick: every
+  // replica firing one 60 s after boot was N walks per scale-out (audit 5.9),
+  // and an empty store is filled by the first tick instead.
+  //
   // Guard a bad env value: an unparseable NESSIE_REGISTRY_SYNC_SWEEP_MS would
   // otherwise become a NaN delay (a hot 1ms loop), so fall back to 30 minutes.
   const registrySyncSweepMs = (() => {
@@ -1267,14 +1254,10 @@ export const startWorker = async (
     return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 30 * 60 * 1000
   })()
   const registrySyncSweepInterval = setInterval(() => {
-    void runRegistrySyncSweep()
+    void maybeSyncRegistry(prisma).catch((error: unknown) => {
+      console.error('[worker.registry-sync] failed', error)
+    })
   }, registrySyncSweepMs)
-  // Fire one sweep shortly after startup so a fresh install fills the store
-  // promptly rather than waiting up to a full poll interval; it still goes
-  // through `maybeSyncRegistry`, so it no-ops if a sync ran recently.
-  const registrySyncKickoff = setTimeout(() => {
-    void runRegistrySyncSweep()
-  }, 60 * 1000)
 
   console.log(
     JSON.stringify(
@@ -1325,7 +1308,6 @@ export const startWorker = async (
     clearInterval(commsRenewInterval)
     clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
-    clearTimeout(registrySyncKickoff)
     const { settleTimedOut, timedOut } = await drainQueueSubscriptions(subscriptions)
     if (timedOut) {
       console.warn(

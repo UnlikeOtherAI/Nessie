@@ -20,11 +20,20 @@ const FAKE_RESULT = {
   error: null,
 }
 
-/** A fake prisma whose only used surface is `mcpRegistrySyncRun.findFirst`. */
+/**
+ * A fake prisma with the two surfaces the sweep touches:
+ * `mcpRegistrySyncRun.findFirst`, and the interactive transaction
+ * `withSweepLock` takes the advisory lock in. The lock is always granted here,
+ * so these cases exercise the *decision* — the freshness and liveness windows.
+ * The lock's own behaviour needs a second database session and is proved in
+ * `test/db/registry-sync-lock.test.ts`.
+ */
 const prismaWithLatest = (
   latest: { startedAt: Date; completedAt: Date | null } | null,
 ): PrismaClient =>
   ({
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ $queryRaw: async () => [{ locked: true }] }),
     mcpRegistrySyncRun: {
       findFirst: async () => latest,
     },
@@ -131,31 +140,30 @@ test('supersedes a zombie run that never completed past the liveness window', as
   assert.equal(calls, 1)
 })
 
-test('is single-flight: a concurrent call does not start a second sync', async () => {
+test('a tick that does not get the lock is skipped, not queued behind the holder', async () => {
   let calls = 0
-  let release: (() => void) | null = null
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
+  const prisma = {
+    // `pg_try_advisory_xact_lock` returning false is the whole of "another
+    // instance is walking": the body must not run, and nothing waits.
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ $queryRaw: async () => [{ locked: false }] }),
+    mcpRegistrySyncRun: {
+      findFirst: async () => {
+        throw new Error('the decision must not be read without the lock')
+      },
+    },
+  } as unknown as PrismaClient
+
+  const outcome = await maybeSyncRegistry(prisma, {
+    now: () => NOW,
+    intervalMs: 6 * HOUR,
+    runSync: (async () => {
+      calls += 1
+      return FAKE_RESULT
+    }) as never,
   })
-  const runSync = (async () => {
-    calls += 1
-    // Hold the first walk open so the second call overlaps it in the same
-    // process — the module-level guard must reject the second before any query.
-    await gate
-    return FAKE_RESULT
-  }) as never
 
-  const prisma = prismaWithLatest(null)
-  const opts = { now: () => NOW, intervalMs: 6 * HOUR, runSync }
-
-  const first = maybeSyncRegistry(prisma, opts)
-  const second = await maybeSyncRegistry(prisma, opts)
-
-  assert.equal(second.ran, false)
-  assert.equal(second.ran === false && second.reason, 'in_flight_here')
-
-  release?.()
-  const firstOutcome = await first
-  assert.equal(firstOutcome.ran, true)
-  assert.equal(calls, 1)
+  assert.equal(outcome.ran, false)
+  assert.equal(outcome.ran === false && outcome.reason, 'locked_elsewhere')
+  assert.equal(calls, 0)
 })

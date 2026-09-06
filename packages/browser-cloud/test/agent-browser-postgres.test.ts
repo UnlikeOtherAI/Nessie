@@ -696,3 +696,113 @@ runDatabaseTest('a session whose remote stop failed is retried, not abandoned', 
     await prisma.$disconnect()
   }
 })
+
+runDatabaseTest('a reconciler that loses the tombstone claim deletes nothing', async () => {
+  // Horizontal-scaling audit 5.10: the reconciler read tombstoned rows and
+  // deleted them with no claim, so on N instances the same snapshot was acted
+  // on N times — one won, and every loser's provider error was written to
+  // `lastError` as though the row itself were broken. The claim is a
+  // conditional `tombstoned → deleting`, and only real Postgres can decide it.
+  const prisma = new PrismaClient()
+  const peer = new PrismaClient()
+  const s = await seed(prisma, 'durable claim')
+  const calls: string[] = []
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const browser = await ensureAgentBrowser(depsFor(prisma, calls), {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+    })
+    const claimed = await prisma.agentBrowser.findUniqueOrThrow({
+      where: { id: browser.id },
+      select: { browserbaseContextId: true },
+    })
+    await resetAgentBrowser(prisma, {
+      organizationId: s.organizationId,
+      agentBrowserId: browser.id,
+    })
+
+    // A peer reconciler claims the row between this one's snapshot and its own
+    // claim — the interleaving read-then-delete could not survive.
+    let races = 0
+    const raced = prisma.$extends({
+      query: {
+        agentBrowser: {
+          findMany: async ({ args, query }) => {
+            const rows = await query(args)
+            if (races === 0) {
+              races += 1
+              await peer.agentBrowser.updateMany({
+                where: { id: browser.id, status: 'tombstoned' },
+                data: { status: 'deleting' },
+              })
+            }
+            return rows
+          },
+        },
+      },
+    }) as unknown as PrismaClient
+
+    await reconcileTombstonedAgentBrowsers(depsFor(raced, calls), { limit: 5 })
+    assert.equal(races, 1)
+    assert.ok(
+      !calls.includes(`context:delete:${claimed.browserbaseContextId}`),
+      'the loser must not call Browserbase for a context the winner is deleting',
+    )
+    const row = await prisma.agentBrowser.findUnique({
+      where: { id: browser.id },
+      select: { lastError: true, status: true },
+    })
+    // Still the winner's to finish, and with no invented error on it.
+    assert.equal(row?.status, 'deleting')
+    assert.equal(row?.lastError, null)
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
+    await peer.$disconnect()
+  }
+})
+
+runDatabaseTest('a failed provider delete hands the row back for the next sweep', async () => {
+  // The other half of the claim: `deleting` must not be a one-way door, or a
+  // provider blip strands an encrypted context nobody will ever look at again.
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'durable claim retry')
+  const calls: string[] = []
+  const failing: CloudBrowserDeps = {
+    ...depsFor(prisma, calls),
+    clientFactory: () => ({
+      ...fakeClient(calls),
+      deleteContext: async () => {
+        throw new Error('browserbase is down')
+      },
+    }),
+  }
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const browser = await ensureAgentBrowser(depsFor(prisma, calls), {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+    })
+    await resetAgentBrowser(prisma, {
+      organizationId: s.organizationId,
+      agentBrowserId: browser.id,
+    })
+
+    await reconcileTombstonedAgentBrowsers(failing, { limit: 5 })
+
+    const row = await prisma.agentBrowser.findUnique({
+      where: { id: browser.id },
+      select: { lastError: true, status: true },
+    })
+    assert.equal(row?.status, 'tombstoned')
+    assert.equal(row?.lastError, 'browserbase is down')
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})

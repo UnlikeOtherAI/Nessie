@@ -31,6 +31,7 @@ const dbStub = [
   '  throw new Error("agent visibility is not used by auth-rate-limit-routes.test.ts")',
   '}',
   'export const writeAuditEntryInTransaction = async () => {}',
+  'export const withSweepLock = async (_db, _name, fn) => ({ ran: true, result: await fn() })',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

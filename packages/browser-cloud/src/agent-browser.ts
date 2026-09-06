@@ -293,15 +293,33 @@ export const reconcileTombstonedAgentBrowsers = async (
       },
     })
     if (live > 0) continue
+
+    // Claim the row before touching the provider (horizontal-scaling audit
+    // 5.10). The `findMany` above is a snapshot every replica reads alike, so
+    // read-then-delete had N reconcilers calling Browserbase for the same
+    // context: one won, and each loser's "no such context" was written to
+    // `lastError` as though the row were broken. A conditional
+    // `tombstoned → deleting` is the right primitive rather than a lock —
+    // there is no indivisible walk here, just one row and one provider call,
+    // and the status is also what keeps the *next* tick from picking the row
+    // up while this delete is still in flight.
+    const claimed = await deps.prisma.agentBrowser.updateMany({
+      where: { id: row.id, status: 'tombstoned' },
+      data: { status: 'deleting' },
+    })
+    if (claimed.count !== 1) continue
+
     try {
       const client = await loadClientForConnection(deps, row.connection)
       await client.deleteContext(row.browserbaseContextId)
       await deps.prisma.agentBrowser.delete({ where: { id: row.id } })
       deleted += 1
     } catch (error) {
-      await deps.prisma.agentBrowser.update({
-        where: { id: row.id },
-        data: { lastError: (error as Error).message.slice(0, 500) },
+      // Hand the row back, or a provider blip strands the context in
+      // `deleting` where no sweep will ever look at it again.
+      await deps.prisma.agentBrowser.updateMany({
+        where: { id: row.id, status: 'deleting' },
+        data: { lastError: (error as Error).message.slice(0, 500), status: 'tombstoned' },
       }).catch(() => undefined)
     }
   }

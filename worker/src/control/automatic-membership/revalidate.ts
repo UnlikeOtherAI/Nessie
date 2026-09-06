@@ -77,6 +77,10 @@ const STRANDED_RUN_MS = 10 * 60 * 1000
  * enqueue that did not land — otherwise leaves a run `running` forever with
  * Stop as the only way out. The run's own `step` keys the replacement job, so
  * this cannot collide with a job that is merely slow.
+ *
+ * Returns the number of runs this instance actually re-enqueued, which on a
+ * multi-instance deployment is the number of steps it won — not the number of
+ * stranded rows it saw, since a peer may have claimed some of them first.
  */
 export const sweepStrandedReconciliations = async (
   prisma: PrismaClient,
@@ -84,23 +88,36 @@ export const sweepStrandedReconciliations = async (
   now = new Date(),
 ): Promise<number> => {
   if (!enabled) return 0
+  const strandedBefore = new Date(now.getTime() - STRANDED_RUN_MS)
   const stranded = await prisma.automaticMembershipReconciliation.findMany({
     select: { domain: { select: { organizationId: true } }, id: true, step: true },
     take: SWEEP_LIMIT,
     where: {
       status: { in: ['queued', 'running'] },
-      updatedAt: { lt: new Date(now.getTime() - STRANDED_RUN_MS) },
+      updatedAt: { lt: strandedBefore },
     },
   })
 
+  let reenqueued = 0
   for (const run of stranded) {
-    const advanced = await prisma.automaticMembershipReconciliation.update({
-      data: { step: { increment: 1 } },
-      select: { step: true },
-      where: { id: run.id },
+    // Conditional claim, not an unconditional increment (horizontal-scaling
+    // audit 5.5). Every replica sweeps the same snapshot, and the old
+    // `update` advanced `step` for each of them — so N instances minted N
+    // *different* idempotency keys for one stranded run and the queue's unique
+    // index, which exists precisely to collapse this, never saw a collision.
+    // Matching on the step that was read (and on the staleness that made the
+    // row eligible, so a run that moved on its own is left alone) means
+    // exactly one instance advances it and exactly one job is enqueued.
+    const step = run.step + 1
+    const claimed = await prisma.automaticMembershipReconciliation.updateMany({
+      data: { step },
+      where: { id: run.id, step: run.step, updatedAt: { lt: strandedBefore } },
     })
+    if (claimed.count !== 1) continue
+
+    reenqueued += 1
     await enqueueQueueJob(prisma, {
-      idempotencyKey: `auto-membership:reconcile:${run.id}:${advanced.step}`,
+      idempotencyKey: `auto-membership:reconcile:${run.id}:${step}`,
       payload: {
         organizationId: run.domain.organizationId,
         reconciliationId: run.id,
@@ -108,7 +125,7 @@ export const sweepStrandedReconciliations = async (
       topic: AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
     })
   }
-  return stranded.length
+  return reenqueued
 }
 
 /**
