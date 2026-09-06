@@ -3,10 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
-import { Input } from '../../components/shared/FormControls'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { Checkbox } from '../../components/primitives/Checkbox'
+import { CodeInput } from '../../components/primitives/CodeInput'
 import { Pill } from '../../components/primitives/Pill'
 import {
   useAgentAccessCredentials,
@@ -55,7 +55,11 @@ export const AgentAccessPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   // The agent prints a `verification_uri_complete` carrying the code, so
   // arriving from it should land on the decision, not on a form to retype it.
-  const [code, setCode] = useState(searchParams.get('code') ?? '')
+  // Held compact (no dash): the input renders the grouping, and the server
+  // normalises either shape.
+  const [code, setCode] = useState(
+    (searchParams.get('code') ?? '').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+  )
   const [granted, setGranted] = useState<AgentAccessScope[]>([])
   const [decided, setDecided] = useState<'approved' | 'denied' | null>(null)
   // A failed decision or revoke has to be visible: silently leaving a
@@ -113,16 +117,14 @@ export const AgentAccessPage = () => {
             never reach anything you could not.
           </p>
 
-          <div className="mt-3 max-w-xs">
-            <Input
-              aria-label="Pairing code"
-              autoComplete="off"
-              onChange={(event) => {
+          <div className="mt-3">
+            <CodeInput
+              label="Pairing code"
+              onChange={(next) => {
                 setDecided(null)
-                setCode(event.target.value)
+                setActionError(null)
+                setCode(next)
               }}
-              placeholder="WXYZ-2345"
-              spellCheck={false}
               value={code}
             />
           </div>
