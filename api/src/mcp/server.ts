@@ -28,9 +28,20 @@ export const nessieMcpTools = (): McpToolDefinition[] => [
  * exception would instead surface as a JSON-RPC failure the model cannot
  * reason about.
  */
-const toolResult = (payload: unknown, isError = false) => ({
+const toolResult = (payload: unknown, isError?: boolean) => ({
   content: [{ text: JSON.stringify(payload, null, 2), type: 'text' as const }],
-  isError,
+  // A result carrying `error` IS an error, however it was produced. Tools
+  // return refusals rather than throwing — a denied policy, an unreachable
+  // project, a read-only board — and marking those `isError: false` told the
+  // client the call had succeeded while handing the model an error object to
+  // interpret on its own. Derived here rather than passed by each call site,
+  // so a new tool cannot forget.
+  isError:
+    isError
+    ?? (typeof payload === 'object'
+      && payload !== null
+      && 'error' in payload
+      && (payload as { error?: unknown }).error !== undefined),
 })
 
 export const buildNessieMcpServer = (context: McpToolContext): McpServer => {

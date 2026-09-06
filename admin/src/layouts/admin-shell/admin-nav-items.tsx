@@ -207,6 +207,17 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/agent-access',
+        label: 'Agent access',
+        icon: icon(
+          <>
+            <rect height="12" rx="2" width="16" x="4" y="7" />
+            <path d="M9 12h.01M15 12h.01" strokeLinecap="round" />
+            <path d="M12 4v3" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/integrations',
         label: 'Integrations',
         icon: icon(

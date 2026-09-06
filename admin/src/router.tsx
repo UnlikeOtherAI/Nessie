@@ -110,6 +110,9 @@ const ProjectsIndexPage = lazy(() =>
 const ProjectView = lazy(() =>
   import('./pages/project/ProjectView').then((m) => ({ default: m.ProjectView })),
 )
+const AgentAccessPage = lazy(() =>
+  import('./pages/settings/AgentAccessPage').then((m) => ({ default: m.AgentAccessPage })),
+)
 const ConnectionsPage = lazy(() =>
   import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
 )
@@ -450,6 +453,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/connections',
         element: lazyElement(ConnectionsPage, 'list'),
+      },
+      {
+        path: '/settings/agent-access',
+        element: lazyElement(AgentAccessPage, 'list'),
       },
       {
         path: '/settings/integrations',

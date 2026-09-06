@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { AgentAccessScope } from '@prisma/client'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { resolvePublicOrigin } from '../lib/public-origin.js'
+import { resolveAdminOrigin } from './mcp/oauth.js'
 import {
   decideDeviceAuthorization,
   loadPendingAuthorization,
@@ -60,18 +60,21 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         scopes: body.scopes,
       })
 
-      let verificationUri: string
-      try {
-        verificationUri = `${resolvePublicOrigin(request, config)}/settings/agent-access`
-      } catch {
+      // The ADMIN origin, not this one. The person approving opens a page in
+      // the admin app; sending them to the API origin hands them a URL that
+      // serves JSON, and the whole pairing dead-ends there.
+      const adminOrigin = resolveAdminOrigin(config)
+      if (!adminOrigin) {
         sendApiError(
           reply,
           500,
-          'PUBLIC_ORIGIN_UNCONFIGURED',
-          'This deployment has no public origin configured, so it cannot tell an agent where to send its human.',
+          'ADMIN_ORIGIN_UNCONFIGURED',
+          'This deployment has no admin origin configured, so it cannot tell an agent where to send its human. '
+          + 'Set NESSIE_ADMIN_PUBLIC_URL.',
         )
         return reply
       }
+      const verificationUri = `${adminOrigin}/settings/agent-access`
 
       // Snake_case because this half of the exchange is RFC 8628's, and a
       // client implementing the standard reads these names.
@@ -171,6 +174,26 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
       return reply
     }
 
+    // A team is required, not optional.
+    //
+    // Attribution here is scoped by project AND team — the knowledge indexer
+    // refuses a version whose origin carries no team, so a credential minted
+    // without one can read documents but fails the moment it writes any. The
+    // same requirement the scheduled-trigger route already states, and for the
+    // same reason: refuse now, while there is somebody to tell, rather than at
+    // every use.
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    const projectId = actorContext.tenant.projectId
+    if (body.approve && (!teamId || !projectId)) {
+      sendApiError(
+        reply,
+        400,
+        'AGENT_ACCESS_TEAM_REQUIRED',
+        'Pairing an agent needs an active project and team. Pick one, then approve again.',
+      )
+      return reply
+    }
+
     // The credential will act as this person, in this tenant. Taking the scope
     // from their live session rather than anything the agent proposed is what
     // stops an agent naming a workspace its human cannot reach.
@@ -178,9 +201,9 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
       approve: body.approve,
       approvedScopes: body.scopes ?? [],
       organizationId: actorContext.tenant.organizationId,
-      projectId: actorContext.tenant.projectId ?? '',
+      projectId: projectId ?? '',
       requestId: pending.id,
-      teamId: actorContext.tenant.teamId ?? null,
+      teamId: teamId ?? null,
       userId: actorContext.actor.actorId,
     })
 
