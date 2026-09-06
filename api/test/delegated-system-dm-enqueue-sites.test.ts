@@ -37,6 +37,13 @@ const repoRoot = join(here, '..', '..')
  *                 are automation, not a person present at the keyboard.
  */
 const ENQUEUE_RUN_EXECUTION_SITES: Record<string, 'stamps' | 'inherits' | 'unattended'> = {
+  // Waking an agent because a person handed its browser back. The person is
+  // not at the keyboard — they pressed Done and may have walked away — which
+  // is exactly why the run is enqueued `interactive: false` rather than
+  // claiming a live turn to reach the browser. The one capability it does need
+  // travels on the browser row (`agent_browsers.handed_back_by_user_id`),
+  // which grants that browser and nothing else, and ages out.
+  'api/src/services/browser-handover.ts': 'unattended',
   'api/src/services/executor-run-launch.ts': 'stamps',
   'api/src/services/integration-handoffs.ts': 'stamps',
   // The one continuation enqueue: the Continue press, the approval resume and

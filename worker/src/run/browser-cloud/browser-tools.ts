@@ -2,6 +2,7 @@ import {
   actInBrowser,
   CLOUD_BROWSER_ERROR_CODES,
   CloudBrowserUnknownOutcomeError,
+  adoptHandedBackSession,
   ensureAgentBrowser,
   findLiveSessionForRun,
   isCloudBrowserError,
@@ -199,11 +200,26 @@ export const mayUseSignedInBrowser = (input: {
   originatingUserId?: string | null
   /** Whose jar this is, or null when the browser is shared with a team. */
   principalUserId: string | null
+  /**
+   * Who handed this browser back recently, from the browser's own row — null
+   * once it has aged out. It is not a claim that somebody is in the
+   * conversation: the waking run has no live turn behind it. It says only
+   * that this browser was released to the agent, moments ago, by a person.
+   */
+  handedBackByUserId?: string | null
 }): boolean => {
   if (input.loginCount <= 0) return true
+  const forThisPerson = (userId: string | null | undefined): boolean =>
+    input.principalUserId === null || userId === input.principalUserId
+  // The hand-over is the whole point of the sign-in flow: the person signs in,
+  // gives the browser back, and the agent carries on with the task it asked
+  // for. That is not a conversational turn and must not be dressed as one —
+  // `interactive` also decides delegated identity, agent handoff, app setup
+  // and whether the budget treats the run as a human — so it is answered by
+  // its own provenance instead.
+  if (input.handedBackByUserId && forThisPerson(input.handedBackByUserId)) return true
   if (input.interactive !== true) return false
-  return input.principalUserId === null
-    || input.originatingUserId === input.principalUserId
+  return forThisPerson(input.originatingUserId)
 }
 
 const runOpen = async (
@@ -221,6 +237,7 @@ const runOpen = async (
       id: string
       connectionId: string
       browserbaseContextId: string
+      handedBackByUserId: string | null
       hasLogins: boolean
       viewport: BrowserViewport
     } | undefined
@@ -252,6 +269,7 @@ const runOpen = async (
       // colleague reaching the same system-managed agent must not drive a jar
       // somebody else signed in.
       if (!mayUseSignedInBrowser({
+        handedBackByUserId: browser.handedBackByUserId,
         interactive: context.run.interactive,
         loginCount: browser.loginCount,
         originatingUserId: context.run.originatingUserId,
@@ -271,6 +289,7 @@ const runOpen = async (
         id: browser.id,
         connectionId: browser.connectionId,
         browserbaseContextId: browser.browserbaseContextId,
+        handedBackByUserId: browser.handedBackByUserId,
         hasLogins: browser.loginCount > 0,
         viewport: browser.viewport,
       }
@@ -287,7 +306,21 @@ const runOpen = async (
       currentUrl: null,
       touchedAuthenticated: false,
     }
-    const opened = await openCloudBrowserSession(deps, {
+    // The person just handed this browser back and it is still up: take it
+    // over rather than opening another. Opening a second one is refused by the
+    // one-live-session-per-browser rule anyway — which is how "the agent picks
+    // the task back up" became "this agent's browser is already open in
+    // another run" — and a cold start is the delay the hand-over exists to
+    // avoid. Everything downstream is identical either way, so this only has
+    // to produce the same two fields.
+    const adopted = agentBrowser && agentBrowser.handedBackByUserId
+      ? await adoptHandedBackSession(deps, {
+        agentBrowserId: agentBrowser.id,
+        encryptionSecret: capabilitySealSecret(),
+        runId: context.run.id,
+      })
+      : null
+    const opened = adopted ?? await openCloudBrowserSession(deps, {
       organizationId: context.channel.organizationId,
       runId: context.run.id,
       threadId: context.run.threadId,

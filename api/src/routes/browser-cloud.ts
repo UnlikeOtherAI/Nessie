@@ -13,7 +13,6 @@ import {
   listCloudBrowserConnections,
   loadSessionCapability,
   releaseSessionControl,
-  releaseCloudBrowserSession,
   resetAgentBrowser,
   resumeAgentBrowser,
   touchResumedSession,
@@ -44,6 +43,7 @@ import {
   SetAgentBrowserViewportBodySchema,
 } from '../contracts/browser-cloud.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { nudgeAgentAfterHandover } from '../services/browser-handover.js'
 import { findThreadForUser } from '../services/message-read-state.js'
 import type { RouteDeps } from './types.js'
 
@@ -141,6 +141,8 @@ export interface ViewableCloudBrowserSession {
    * and show time remaining on a session the reaper has already taken.
    */
   expiresAt: Date
+  /** The durable browser this session rides on, when it has one. */
+  agentBrowserId: string | null
   connectionProjectId: string | null
   connectionApiKeyRef: string
   /**
@@ -221,6 +223,7 @@ const loadViewableSession = async (
     browserbaseSessionId: session.browserbaseSessionId,
     expiresAt: session.expiresAt,
     connectionProjectId: session.connection.projectId,
+    agentBrowserId: session.agentBrowserId,
     connectionApiKeyRef: session.connection.apiKeyRef,
     shared: browserSessionIsShared({
       agentVisibility: session.agent.visibility,
@@ -840,14 +843,67 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
       return reply
     }
-    await releaseCloudBrowserSession(
-      {
-        prisma,
-        resolveSecret: (ref) => secretResolver.resolve(ref),
-        encryptionSecret: authSecret ?? '',
-      },
-      { sessionId, releasedBy: 'person_done' },
-    )
+
+    // Done hands the browser over; it does not tear it down. Ending the
+    // session here meant the agent had to open a new one — a cold start, a new
+    // context attach, and seconds of nothing — to act on the sign-in it had
+    // just asked for. The browser stays up, the claim is released, and the
+    // idle window closes it if nothing comes of the hand-over.
+    // Answering false means this caller did not hold the claim — an expired
+    // 90-second claim, or somebody else driving. Capturing their page and
+    // waking the agent over a browser another person may now be controlling
+    // is not this press's to do, so it stops here.
+    const released = await releaseSessionControl(prisma, {
+      sessionId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!released) return reply.code(204).send()
+    // The state is saved now rather than when the window closes, so the agent
+    // is told where the browser actually is.
+    await captureUndrivenSessionTabs(prisma, {
+      sessionId,
+      encryptionSecret: authSecret ?? '',
+    })
+
+    const browser = session.agentBrowserId === null
+      ? null
+      : await prisma.agentBrowser.findUnique({
+        select: { id: true },
+        where: { id: session.agentBrowserId },
+      })
+    if (browser) {
+      const channel = await prisma.channel.findFirst({
+        select: { id: true, organizationId: true },
+        where: { threads: { some: { id: session.threadId } } },
+      })
+      if (channel) {
+        // The permission the waking agent needs, recorded on the browser
+        // rather than on the run: a kickoff that has to queue behind an
+        // in-flight run is batched into a follow-up, and a payload field is
+        // lost on that path while a column survives it.
+        await prisma.agentBrowser.update({
+          data: { handedBackAt: new Date(), handedBackByUserId: actorContext.actor.actorId },
+          where: { id: browser.id },
+        })
+        const tabs = await listAgentBrowserTabs(prisma, {
+          organizationId: channel.organizationId,
+          agentBrowserId: browser.id,
+        })
+        // Best effort on purpose: the person has finished either way, and a
+        // wake-up that could not be enqueued must not fail their button.
+        await nudgeAgentAfterHandover(prisma, {
+          actorContext,
+          agentBrowserId: browser.id,
+          agentId: session.agentId,
+          agentName: session.agentName,
+          byUserId: actorContext.actor.actorId,
+          channelId: channel.id,
+          organizationId: channel.organizationId,
+          tabs: tabs.map((tab) => ({ title: tab.title, url: tab.url })),
+          threadId: session.threadId,
+        }).catch(() => undefined)
+      }
+    }
     return reply.code(204).send()
   })
 
@@ -1219,6 +1275,11 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
       return reply
     }
+    // `touchResumedSession` extends only a live session with no run, so a
+    // press against a released one, or against a session an agent has since
+    // adopted, changes nothing. Answering 200 with the row's unchanged expiry
+    // is honest: the countdown reads it, sees no time was added, and stops
+    // claiming otherwise.
     await touchResumedSession(prisma, { sessionId: session.id })
     // Read back rather than compute: the cap may have clamped the extension,
     // and the countdown must agree with the reaper, not with this route's

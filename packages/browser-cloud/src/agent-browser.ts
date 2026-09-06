@@ -15,11 +15,25 @@ import { resolveConnectionForRun, type CloudBrowserDeps } from './session-lifecy
  * disclosure basis enforces afterwards.
  */
 
+/**
+ * How long a hand-back stays a key.
+ *
+ * Long enough that a wake job queued behind an in-flight run still arrives to
+ * a browser it may use, short enough that a job stuck in a backlog is not
+ * still opening somebody's signed-in session an hour after they walked away.
+ */
+export const HANDBACK_GRACE_MS = 10 * 60 * 1000
+
 export type AgentBrowserRow = {
   id: string
   connectionId: string
   browserbaseContextId: string
   loginCount: number
+  /**
+   * Set while a person's hand-back is still recent enough to act on. Null once
+   * it has aged out, so a caller never has to know the rule.
+   */
+  handedBackByUserId: string | null
   /**
    * The window every session on this browser opens at. Resolved here rather
    * than carried as two nullable columns, because a browser nobody has sized
@@ -35,6 +49,19 @@ export type AgentBrowserRow = {
  * null, and reading one without the other cannot say which.
  */
 const VIEWPORT_SELECT = { viewportWidth: true, viewportHeight: true } as const
+
+const HANDBACK_SELECT = { handedBackAt: true, handedBackByUserId: true } as const
+
+/** Null once the hand-back has aged out, so no caller has to know the rule. */
+const handedBackByOf = (
+  row: { handedBackAt: Date | null; handedBackByUserId: string | null },
+  now: Date = new Date(),
+): string | null =>
+  row.handedBackByUserId !== null
+    && row.handedBackAt !== null
+    && now.getTime() - row.handedBackAt.getTime() <= HANDBACK_GRACE_MS
+    ? row.handedBackByUserId
+    : null
 
 const viewportOf = (row: {
   viewportWidth: number | null
@@ -194,6 +221,7 @@ export const ensureAgentBrowser = async (
       connectionId: true,
       browserbaseContextId: true,
       ...VIEWPORT_SELECT,
+      ...HANDBACK_SELECT,
       _count: { select: { logins: true } },
     },
   })
@@ -203,6 +231,7 @@ export const ensureAgentBrowser = async (
       connectionId: existing.connectionId,
       browserbaseContextId: existing.browserbaseContextId,
       loginCount: existing._count.logins,
+      handedBackByUserId: handedBackByOf(existing),
       viewport: viewportOf(existing),
       connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
     }
@@ -225,6 +254,8 @@ export const ensureAgentBrowser = async (
         connectionId: true,
         browserbaseContextId: true,
         ...VIEWPORT_SELECT,
+        ...HANDBACK_SELECT,
+      ...HANDBACK_SELECT,
       },
     })
     return {
@@ -235,6 +266,7 @@ export const ensureAgentBrowser = async (
       // A browser is created without a size, so this is the default every
       // time — read back from the row rather than assumed, so a column
       // default added later is honoured without touching this path.
+      handedBackByUserId: handedBackByOf(created),
       viewport: viewportOf(created),
       connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
     }
@@ -262,6 +294,7 @@ export const ensureAgentBrowser = async (
           connectionId: true,
           browserbaseContextId: true,
           ...VIEWPORT_SELECT,
+          ...HANDBACK_SELECT,
           _count: { select: { logins: true } },
         },
       })
@@ -270,6 +303,7 @@ export const ensureAgentBrowser = async (
         connectionId: winner.connectionId,
         browserbaseContextId: winner.browserbaseContextId,
         loginCount: winner._count.logins,
+        handedBackByUserId: handedBackByOf(winner),
         viewport: viewportOf(winner),
         connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
       }

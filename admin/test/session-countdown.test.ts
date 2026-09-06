@@ -46,6 +46,19 @@ test('past the expiry it reads as closed, never as negative time', () => {
   assert.equal(gone?.secondsLeft, 0)
 })
 
+/**
+ * The clock here is the reader's; the expiry is the server's; and the reaper
+ * is the only thing that actually ends a session. So `expired` must not be
+ * read as "stop offering Continue" — a client running a minute fast would then
+ * never show the rescue at all, and every reader loses it at the moment it
+ * matters most. `warning` stays true past zero for exactly that reason.
+ */
+test('the warning does not switch off at zero', () => {
+  const past = browserCountdown(AT(NOW - 5_000), NOW)
+  assert.equal(past?.warning, true, 'Continue must still be offered')
+  assert.equal(past?.expired, true, 'while the copy says it is closing')
+})
+
 test('it reads as a clock', () => {
   assert.equal(formatCountdown(60), '1:00')
   assert.equal(formatCountdown(7), '0:07')

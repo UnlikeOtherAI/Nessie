@@ -32,6 +32,7 @@ export {
 } from './browser-actions.js'
 
 export {
+  adoptHandedBackSession,
   claimSessionControl,
   CONTROL_CLAIM_TTL_MS,
   expireStaleControlClaims,
