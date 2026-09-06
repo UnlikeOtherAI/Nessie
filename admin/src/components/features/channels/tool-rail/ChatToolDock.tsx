@@ -10,7 +10,7 @@ import { useViewport } from '../../../../hooks/useViewport'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
 import { AgentScreenPanel } from '../../browser-cloud/AgentScreenPanel'
 import { ChatToolRail } from './ChatToolRail'
-import type { ChatToolId } from './chat-tools'
+import { chatToolDoorway, type ChatToolId } from './chat-tools'
 
 type ChatToolDockProps = {
   /** The one agent this conversation is with; the rail is per agent. */
@@ -41,9 +41,9 @@ const CROWDED_REASON =
  * They are ordinary flex children rather than a layer over the chat: on a wide
  * screen the row reads menu · conversation · reply thread · tool column · rail,
  * and every one of them keeps its own width. On a single-column layout the
- * rail is not drawn at all — its doorway is the conversation info screen — and
- * the column, which is `SidePanelShell`, becomes a full screen with its own
- * Back.
+ * rail is not drawn at all — `chatToolDoorway` hands the tools to the
+ * conversation header there — and the column, which is `SidePanelShell`,
+ * becomes a full screen with its own Back.
  */
 export const ChatToolDock = ({
   agent,
@@ -94,14 +94,19 @@ export const ChatToolDock = ({
           threadId={threadId}
         />
       ) : null}
-      {single ? null : (
+      {/*
+        One rule decides which control carries the tools, so the rail standing
+        down on a phone is the same statement as the header picking them up:
+        they can neither double up nor both vanish.
+      */}
+      {chatToolDoorway({ hasConversationAgent: true, single }) === 'rail' ? (
         <ChatToolRail
           blockedReason={crowded ? CROWDED_REASON : null}
           liveTools={liveTools}
           onToggle={onToggle}
           openTool={crowded ? null : openTool}
         />
-      )}
+      ) : null}
     </>
   )
 }

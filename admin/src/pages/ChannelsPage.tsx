@@ -163,6 +163,13 @@ export const ChannelsPage = () => {
     void navigate(conversationPath)
     if (routeTool !== tool) toolRail.open(tool)
   }, [conversationPath, navigate, routeTool, toolRail])
+  // The one way a rail-less layout opens a tool. Both of its doorways — the
+  // conversation header and the info screen's list — call this rather than
+  // building a destination of their own, so the two can never come to disagree
+  // about what "open the browser" means.
+  const openToolScreen = useCallback((tool: ChatToolId) => {
+    if (activeChannel) void navigate(`/channels/${activeChannel.id}/tools/${tool}`)
+  }, [activeChannel, navigate])
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
   const personalAssistantChannel =
     personalAssistantState?.channel ?? activeChannel
@@ -529,6 +536,7 @@ export const ChannelsPage = () => {
         onJoin={() => {
           if (activeChannel) joinChannel.mutate({ channelId: activeChannel.id })
         }}
+        onOpenChatTool={openToolScreen}
         onOpenInfo={() => {
           if (activeChannel) void navigate(`/channels/${activeChannel.id}/info`)
         }}
@@ -640,7 +648,7 @@ export const ChannelsPage = () => {
           hasAgentTools={conversationAgent !== null}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
-          onOpenTool={(tool) => void navigate(`/channels/${activeChannel.id}/tools/${tool}`)}
+          onOpenTool={openToolScreen}
         />
       ) : null}
       {executorLauncher.dialog}
