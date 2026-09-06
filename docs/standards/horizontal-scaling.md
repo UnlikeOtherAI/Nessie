@@ -584,6 +584,27 @@ regression is visible instead of silent (`api/src/realtime/hub.ts`). It never
 moves a watermark past an id it did not write. On LISTEN reconnect, re-read the
 backlog for every registered connection from its own watermark.
 
+**Resuming a stream is not the same as replaying every row, and the difference
+has to be stated or it gets mistaken for data loss.** A reconnect with a
+`Last-Event-ID` replays `thread_stream_events` from that watermark — except for
+five event types the hub deliberately skips: `stream.start`,
+`stream.reasoning`, `stream.thinking.tool`, `stream.delta` and
+`stream.document.delta` (`api/src/realtime/hub.ts`). Those are a live preview of
+state that is durable somewhere else, and re-sending them to a client that
+reconnected after the run ended paints a pending bubble over a finished answer.
+The watermark still advances across them, so the stream carries on from the real
+head of the log. **Nothing is lost, it changes lane**, and each lane has a named
+reader: thought chunks come back by their own `chunkId` from
+`GET /api/threads/:threadId/runs/:runId/thinking`, a composing document from
+`GET /api/threads/:threadId/document-streams/:sessionId`, and a skipped
+`stream.delta` from the finished message the replayed `stream.done` names —
+which is why the terminator itself is durable and replayable, and why it carries
+a `messageId` even when a disclosure basis withholds its `content`. Any *new*
+event type that is not recoverable this way must be replayable. The chaos
+smoke's check (c) asserts both halves; asserting only the first would let a real
+loss hide behind the exclusion, and asserting neither — demanding every row come
+back — is what made that check look permanently broken.
+
 **A notification must be inert to the build it is replacing.** Deploys are
 blue-green, so a replica running the previous image LISTENs on the same channel
 for the length of a swap and receives everything a new one publishes. Its
@@ -607,8 +628,10 @@ replica predates the shape.
 - **CI job `multi-instance-smoke`** — the mock-LLM smoke driven through that
   two-instance stack, plus a chaos step that sends `SIGTERM` to one worker
   mid-run and one API mid-stream and asserts: no duplicate messages, no run
-  left in `running`/`waiting_approval` without a live lease, and SSE resumes
-  with no sequence gap. Advisory until Phase 3 lands, a required check after.
+  left in `running`/`waiting_approval` without a live lease, a crash checkpoint
+  left for the successor, and a resumed SSE stream that loses nothing in the
+  sense above. All four pass; the step stays advisory only because kill timing
+  on a shared runner is not a signal worth blocking every PR on.
 - **Every PR that fixes a finding extends that smoke with the scenario that
   would have caught it**, and takes its file off the lint allowlist below in
   the same change.

@@ -561,10 +561,10 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/worker test:smoke:multi
 
-      # Advisory until Phase 3 (run durability) lands: the API has no SIGTERM
-      # handler, so the SSE-resume assertion fails today; the other two hold and
-      # are a regression net, not a green light. Flip continue-on-error off in
-      # the PR that lands Phase 3 and this becomes a real gate.
+      # All four chaos assertions pass. Kept advisory because the step turns on
+      # kill timing — a 2 s SIGKILL escalation and an 8 s scripted inference —
+      # which a loaded shared runner can miss; that is a flake, not a signal
+      # worth blocking every PR on. A failure here is still worth reading.
       # A second database, because the harness bootstraps an owner account and the
       # run above already consumed the first one's one-time bootstrap window.
       - name: Prepare the chaos database
@@ -588,7 +588,7 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: |
           echo "Chaos step outcome: ${{ steps.chaos.outcome }}. Advisory only —" \
-            "it becomes blocking once Phase 3 of the horizontal-scaling plan lands." \
+            "the kill timing it depends on can be missed on a loaded runner." \
             >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report skip

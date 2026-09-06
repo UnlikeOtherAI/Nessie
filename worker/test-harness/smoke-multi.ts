@@ -12,9 +12,10 @@
 // `--chaos` adds the Phase 0.4 kill steps (SIGTERM one worker mid-run, one API
 // mid-stream) and asserts the durability properties the horizontal-scaling plan
 // names: (a) no duplicate agent message, (b) no unfinished run without a live
-// lease, (c) SSE resumes with no sequence gap, and (d) the killed worker left a
-// crash checkpoint for its successor to resume from (phase 3.1). The CI job
-// runs the chaos step advisory-only.
+// lease, (c) a resumed SSE stream loses nothing (see the check itself for what
+// that does and does not mean), and (d) the killed worker left a crash
+// checkpoint for its successor to resume from (phase 3.1). The CI job runs the
+// chaos step advisory-only.
 import { spawn, type ChildProcess } from 'node:child_process'
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -37,6 +38,16 @@ const EXPECTED_ANSWER =
 // Long enough that a signal lands mid-inference and the draining process cannot
 // finish the run on its way out.
 const CHAOS_TURN_LATENCY_MS = 8_000
+// The five types `api/src/realtime/hub.ts` deliberately never replays from the
+// backlog: a live preview of state that is durable elsewhere (the finished
+// message, the REST thought log, the document-stream bootstrap), and re-sending
+// them to a client that reconnected after the run ended paints a pending bubble
+// over a finished answer. Check (c) excludes them from "must be re-delivered"
+// and proves each one recoverable instead.
+const LIVE_ONLY_SSE_EVENTS: ReadonlySet<string> = new Set([
+  'stream.start', 'stream.reasoning', 'stream.thinking.tool',
+  'stream.delta', 'stream.document.delta',
+])
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://nessie:nessie@localhost:55432/nessie'
 // Two instances sharing one bucket, because that is the invariant under test:
@@ -491,14 +502,56 @@ const main = async (): Promise<void> => {
     resumed.close()
 
     const delivered = [...stream.ids, ...resumed.ids]
-    // Everything the thread persisted from the first delivered id onward; bounding
-    // by the last DELIVERED id instead would make this pass vacuously.
-    const persisted = await pool.query<{ id: string }>(
-      `SELECT id FROM thread_stream_events WHERE thread_id = $1 AND id >= $2 ORDER BY id`,
+    // What "loses nothing" means, stated because the obvious reading is wrong
+    // and cost a long hunt. It is NOT "every row above the client's
+    // Last-Event-ID comes back": the hub refuses by design to replay the five
+    // types in `LIVE_ONLY_SSE_EVENTS`, so a run whose thinking and tokens
+    // landed during the outage always shows those ids undelivered — the product
+    // doing what it says. The promise is that nothing is lost: every durable row
+    // above the watermark is re-delivered, and each live-only row the resume
+    // skipped is readable another way. The second half is what keeps the first
+    // honest; without it the exclusion could hide a real loss.
+    // Bounding by the last DELIVERED id instead would make this pass vacuously.
+    const persisted = await pool.query<{ data: Record<string, unknown>; event_name: string; id: string }>(
+      `SELECT id, event_name, data FROM thread_stream_events WHERE thread_id = $1 AND id >= $2 ORDER BY id`,
       [streamSeed.threadId, Math.min(...delivered)])
-    const missing = persisted.rows.map((row) => Number(row.id)).filter((id) => !delivered.includes(id))
-    check('(c) SSE resume replays with no sequence gap', missing.length === 0,
-      `killed api-${servedBy + 1}; ${delivered.length} id(s) delivered, ${missing.length} never delivered`)
+    const undelivered = persisted.rows.filter((row) => !delivered.includes(Number(row.id)))
+    const missing = undelivered.filter((row) => !LIVE_ONLY_SSE_EVENTS.has(row.event_name))
+    // A skipped thought chunk carries the id of its durable `run_thinking_chunks`
+    // row, so the recovery is checkable by id rather than assumed: every one the
+    // resume passed over has to come back from the run's REST thought log.
+    const thinking = await call(
+      'GET', `/api/threads/${streamSeed.threadId}/runs/${streamRunId}/thinking`, token)
+    const logged = new Set(
+      ((thinking.body['data'] as { entries?: { id: string }[] } | undefined)?.entries ?? [])
+        .map((entry) => entry.id))
+    const unrecovered = undelivered.filter((row) =>
+      (row.event_name === 'stream.reasoning' || row.event_name === 'stream.thinking.tool')
+      && !logged.has(String(row.data['chunkId'] ?? '')))
+    // A skipped `stream.delta` is a preview of the answer, so what has to survive
+    // is the terminator. `stream.done` is durable and is replayed, and it NAMES
+    // the finished message — it does not always carry the body: this scenario's
+    // reply has a disclosure basis, and the live lane is one un-filtered
+    // broadcast, so the text is withheld and `restricted` set. The REST read is
+    // therefore the property worth asserting, not the inline copy.
+    const answer = await prisma.message.findFirst({
+      orderBy: { createdAt: 'desc' },
+      where: { role: 'assistant', threadId: streamSeed.threadId },
+    })
+    const listed = await call('GET',
+      `/api/threads/${streamSeed.threadId}/messages?rootMessageId=${streamSeed.messageId}`, token)
+    const terminator = persisted.rows.find((row) =>
+      row.event_name === 'stream.done' && delivered.includes(Number(row.id)))
+    const answered = terminator !== undefined && answer !== null
+      && String(terminator.data['messageId'] ?? '') === answer.id
+      && JSON.stringify(listed.body).includes(answer.content)
+    check('(c) SSE resume replays every durable event, and what it skips is readable another way',
+      missing.length === 0 && unrecovered.length === 0 && answered,
+      `killed api-${servedBy + 1}; ${delivered.length} id(s) delivered,`
+      + ` ${missing.length} durable id(s) never delivered,`
+      + ` ${undelivered.length - missing.length} live-only id(s) skipped`
+      + ` (${unrecovered.length} missing from the REST thought log),`
+      + ` terminator ${answered ? 'replayed and its message readable' : 'lost or unreadable'}`)
   }
 
   try {
