@@ -8,7 +8,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { CommentsSection } from '../src/components/features/knowledge/comments/CommentsSection.js'
-import { knowledgeKeys } from '../src/lib/query-keys.js'
+import { knowledgeKeys } from '../src/facades/knowledge/keys.js'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 

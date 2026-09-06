@@ -3,8 +3,8 @@ import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
-import { AgentStatusDot } from './AgentStatusDot'
-import { agentStatusTone } from './agent-presentation'
+import { AgentStatusDot } from '../../shared/AgentStatusDot'
+import { agentStatusTone } from '../../shared/agent-presentation'
 
 type AgentIdentityBlockProps = {
   agent: AgentRecord

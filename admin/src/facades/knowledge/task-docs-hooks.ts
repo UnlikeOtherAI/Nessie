@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { taskKeys } from '../../lib/query-keys'
+import { taskKeys } from '../tasks/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { uploadFileWithProgress, type UploadProgress } from '../../lib/upload-xhr'

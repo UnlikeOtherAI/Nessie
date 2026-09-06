@@ -116,7 +116,7 @@ answer — wherever a Back paints.
 
 `navigation/layout.ts` `deriveNavigationLayout()` is the one composition of
 shell probes × viewport bands into `'single' | 'split'`, read through
-`useNavigationLayout()` (`lib/mobile-shell.ts`):
+`useNavigationLayout()` (`navigation/mobile-shell.ts`):
 
 - `single`: phones, narrow web, an iPad in a narrow Split View — one stack
   over the whole content region, Roots included.

@@ -15,7 +15,7 @@ import {
 } from '../../../facades/messages/hooks'
 import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
-import type { OptimisticMessage } from './channel-helpers'
+import type { OptimisticMessage } from './channel-feed'
 import { useDraft } from '../../../navigation/useDraft'
 import {
   composerAttachmentIdsMatch,
@@ -139,6 +139,7 @@ export const useChannelComposer = ({
     restoreStaged(draftValue.attachments)
     // Reacting to the draft's own replacements only; `draftValue` is read at
     // that render and must not re-trigger this on a keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftRevision])
 
   // Finished uploads flow the other way, so a reload re-stages the same files.
@@ -149,7 +150,7 @@ export const useChannelComposer = ({
       composerAttachmentIdsMatch(current.attachments, storable)
         ? current
         : { ...current, attachments: storable })
-  }, [stagedAttachments])
+  }, [setDraft, stagedAttachments])
 
   // Clear optimistic bubble once the real message from the server arrives.
   // Match on content + proximity: any optimistic entry whose content equals
@@ -280,7 +281,7 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, attachments, clearDraft, sendMessage, getSendExtras],
+    [activeChannel, attachments, clearDraft, sendMessage, getSendExtras, setMessage],
   )
 
   const insertEmoji = useCallback((emoji: string) => {

@@ -14,7 +14,7 @@ import { Pill, type PillTone } from '../../primitives/Pill'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
 import { QueryState } from '../../shared/QueryState'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
 

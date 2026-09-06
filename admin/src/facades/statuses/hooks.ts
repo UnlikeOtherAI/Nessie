@@ -4,7 +4,9 @@ import type {
   UserStatusRuleScope,
   UserStatusScheduleKind,
 } from '../../lib/api-client'
-import { presenceKeys, statusKeys, userKeys } from '../../lib/query-keys'
+import { presenceKeys } from '../presence/keys'
+import { userKeys } from '../users/keys'
+import { statusKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 const useStatusInvalidation = () => {

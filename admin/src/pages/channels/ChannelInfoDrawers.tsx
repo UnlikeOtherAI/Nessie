@@ -6,15 +6,12 @@ import type {
   ThreadMessageRecord,
   UserRecord,
 } from '../../lib/api-client'
-import type { AvatarSources } from '../../components/primitives/UserAvatar'
+import type { AvatarSources } from '../../components/shared/UserAvatar'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { ChannelAgentInfoDrawer } from '../../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelUserInfoDrawer } from '../../components/features/channels/ChannelUserInfoDrawer'
 import type { MessageHistoryStatus } from '../../components/features/channels/ChannelMessageFeed'
-import type {
-  ChannelAgentParticipant,
-  MessageUserIdentity,
-} from '../../components/features/channels/channel-helpers'
+import type { ChannelAgentParticipant, MessageUserIdentity } from '../../components/features/channels/channel-participants'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { OlderContentLoader } from '../../hooks/useStickToBottom'
 

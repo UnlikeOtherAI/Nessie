@@ -1,6 +1,6 @@
 import type { AgentVisibility } from '@nessie/schemas'
 
-import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import { Checkbox } from '../../primitives/Checkbox'
 import { EmptyState } from '../../shared/EmptyState'
 

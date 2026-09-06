@@ -8,7 +8,7 @@ import {
   type NoteAnchorInput,
 } from './notes/note-highlight-extension'
 import { WikilinkCreateConfirm } from './wikilink/WikilinkCreateConfirm'
-import { useWikilinkNavigation } from './wikilink/use-wikilink-navigation'
+import { useWikilinkNavigation } from './wikilink/useWikilinkNavigation'
 import { Wikilink } from './wikilink/wikilink-node'
 import { WidgetEmbedReading } from './widget-embed/WidgetEmbedView'
 

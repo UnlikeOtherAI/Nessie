@@ -17,7 +17,7 @@ import {
   useCurrentOrganization,
   useUpdateOrganizationTheme,
 } from '../../../facades/organization/hooks'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { useTheme } from '../../../providers/ThemeProvider'
 import type { PageHeaderAction } from '../../../components/shared/ResponsivePageHeader'
 
@@ -62,6 +62,9 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
   useEffect(() => {
     setDraft(saved ?? STARTING_THEME)
     setDeriveSidebar((saved ?? STARTING_THEME).sidebar === null)
+    // `saved` is read at this render, never a dependency: keying on it would
+    // re-seed — and so discard an edit in progress — on every refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey])
 
   const evaluated = useMemo(() => evaluateOrganizationTheme(draft), [draft])

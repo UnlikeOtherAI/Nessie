@@ -5,7 +5,7 @@ import {
 import {
   isDocumentStreamActive,
   type DocumentStreamEntry,
-} from '../../../facades/threads/document-stream-helpers'
+} from '../../../facades/threads/document-stream-entries'
 
 type DocumentStreamChipProps = {
   entry: DocumentStreamEntry

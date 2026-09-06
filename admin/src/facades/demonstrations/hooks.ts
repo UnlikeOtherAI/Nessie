@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { demonstrationKeys, workflowKeys } from '../../lib/query-keys'
+import { workflowKeys } from '../workflows/keys'
+import { demonstrationKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type DemonstrationRecord = {

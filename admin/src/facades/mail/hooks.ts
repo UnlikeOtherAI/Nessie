@@ -16,7 +16,9 @@ import type {
 } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { gmailKeys, type GmailDraftActionStatus } from '../gmail/hooks'
+import { gmailKeys } from '../gmail/keys'
+import type { GmailDraftActionStatus } from '../gmail/hooks'
+import { connectedMailKeys } from './keys'
 
 export type ConnectedMailPage<T> = {
   items: T[]
@@ -29,18 +31,6 @@ export type MailAddress = { accountId: string; source: ConnectedMailSource }
 
 export const mailPath = ({ accountId, source }: MailAddress): string =>
   `/mail/${source}/${encodeURIComponent(accountId)}`
-
-export const connectedMailKeys = {
-  accounts: () => ['connected-mail', 'accounts'] as const,
-  conversation: ({ accountId, source }: MailAddress, threadId: string | undefined) =>
-    ['connected-mail', 'conversation', source, accountId, threadId] as const,
-  sendAction: (address: MailAddress | null, actionId: string | undefined) =>
-    ['connected-mail', 'send-action', address?.source, address?.accountId, actionId] as const,
-  threads: (
-    { accountId, source }: MailAddress,
-    input: { cursor?: string; pageSize: number; query: string; unreadOnly: boolean },
-  ) => ['connected-mail', 'threads', source, accountId, input] as const,
-}
 
 /**
  * `enabled` matters here: the chat doorway chip mounts on every message row, so

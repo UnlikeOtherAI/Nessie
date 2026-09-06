@@ -18,14 +18,15 @@ import type {
 } from '../../../lib/workflow-designer/types'
 import type { WorkflowStepRunRecord } from '../../../lib/api-client'
 
-// Whiteboard-exception palette (see constants.ts) for live run states.
+// Live run-state colours as semantic tokens, so they theme along with the
+// rest of the app (see constants.ts for the node-type palette).
 const STEP_RUN_COLORS: Record<WorkflowStepRunRecord['status'], string> = {
-  blocked: '#d97706',
-  completed: '#2e7d32',
-  failed: '#c62828',
-  pending: '#8b7a93',
-  running: '#d97706',
-  skipped: '#8b7a93',
+  blocked: 'var(--warning)',
+  completed: 'var(--success)',
+  failed: 'var(--danger)',
+  pending: 'var(--muted)',
+  running: 'var(--warning)',
+  skipped: 'var(--muted)',
 }
 
 type WorkflowCanvasNodeProps = {

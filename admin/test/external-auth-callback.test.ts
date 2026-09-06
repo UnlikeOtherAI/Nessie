@@ -5,7 +5,7 @@ import {
   createExternalAuthCallbackHub,
   parseNativeAuthCallbackUrl,
   parseWebAuthCallbackUrl,
-} from '../src/providers/external-auth-callback.js'
+} from '../src/lib/external-auth-callback.js'
 
 test('native and web parsers accept code, cancellation and provider errors', () => {
   assert.deepEqual(

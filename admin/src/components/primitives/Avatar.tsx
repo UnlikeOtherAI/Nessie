@@ -1,5 +1,5 @@
 import { IdentityTile } from './IdentityTile'
-import { identityInitials } from './identity-shape'
+import { identityInitials } from '../../lib/identity-shape'
 
 type AvatarProps = {
   label: string

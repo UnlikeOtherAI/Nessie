@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { knowledgeKeys } from '../../lib/query-keys'
+import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type TextQuoteAnchor = {

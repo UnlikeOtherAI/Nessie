@@ -6,12 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-
-export type DesignerPageContext = {
-  actions: string[]
-  description: string
-  title: string
-}
+import type { DesignerPageContext } from '../../../../facades/designer/types'
 
 export type DesignerAssistantActionHandler = (
   name: string,

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SecretScopeType } from '@nessie/schemas'
 
-import { secretKeys } from '../../lib/query-keys'
+import { secretKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type { SecretScopeType }

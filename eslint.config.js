@@ -1,5 +1,6 @@
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
+import reactHooksPlugin from 'eslint-plugin-react-hooks'
 
 // Shared with the navigation-gate blocks below (docs/navigation/overview.md §4.18):
 // ESLint flat config replaces a rule's whole value — including every
@@ -119,6 +120,21 @@ const SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX = {
     + 'docs/navigation/overview.md §2. Move the call to useEffect, or drop the layout timing.',
 }
 
+// React hook correctness gate (AGENTS.md → "Linting"): the plugin
+// ships a `configs.flat['recommended-latest']` preset, but that preset also
+// turns on the react-compiler diagnostics (set-state-in-effect,
+// immutability, …) which are a separate, much larger conversation. Only the
+// two hook-correctness rules are registered here, and both at 'error' —
+// admin's lint script is `--max-warnings 0`, so 'warn' would fail the build
+// anyway and would only hide the severity from a reader of this file.
+// Rules set: 'react-hooks/*' only, so this block cannot clobber the
+// admin-scoped 'no-restricted-syntax' gates below (see the note on
+// FORWARDED_HEADER_RESTRICTED_SYNTAX above).
+const REACT_HOOKS_RULES = {
+  'react-hooks/rules-of-hooks': 'error',
+  'react-hooks/exhaustive-deps': 'error',
+}
+
 export default [
   {
     ignores: [
@@ -193,7 +209,7 @@ export default [
     // (docs/plans/2026-08-13-responsive-coherence.md §B/§D, Phase 6): viewport
     // bands derive only from the useViewport store (the @theme static tokens in
     // styles.css are the sole numeric source), and shell-vs-viewport composition
-    // lives in lib/mobile-shell.ts + ShellEnvironmentProvider. Pages must never
+    // lives in navigation/mobile-shell.ts + ShellEnvironmentProvider. Pages must never
     // re-classify the viewport from raw window reads. The allowlisted modules
     // below are either the classification owners themselves (useViewport,
     // mobile-shell), ThemeProvider's prefers-color-scheme listener, or
@@ -205,9 +221,8 @@ export default [
     ignores: [
       'admin/src/hooks/useViewport.ts',
       'admin/src/providers/ThemeProvider.tsx',
-      'admin/src/lib/mobile-shell.ts',
+      'admin/src/navigation/mobile-shell.ts',
       'admin/src/layouts/admin-shell/ResizableSidebar.tsx',
-      'admin/src/pages/channels/useReplyThread.ts',
       // The same drag geometry, lifted out of useReplyThread so the reply
       // panel and the agent-screen panel cannot disagree about clamping.
       'admin/src/hooks/useSidePanelGeometry.ts',
@@ -226,33 +241,14 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            {
-              name: '../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-          ],
+          // A `patterns` group entry already matches `../hooks/useMediaQuery`
+          // at every relative depth (F15) — the four depth-spelled `paths`
+          // entries this used to carry were exact duplicates of it.
           patterns: [
             {
               group: ['**/hooks/useMediaQuery'],
               message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
+                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in navigation/mobile-shell.ts.',
             },
           ],
         },
@@ -363,6 +359,31 @@ export default [
           message:
             'useNavigate() belongs to admin/src/navigation/** — use the controller '
             + '(push/back/redirect) once it exists. See docs/navigation/overview.md §4.2.',
+        },
+      ],
+    },
+  },
+  {
+    // Error-shape reading ratchet (F4): one local `errorMessage` helper after
+    // another hand-rolled `error instanceof Error ? error.message : fallback`,
+    // throwing away the `ApiClientError.details` field errors a validation
+    // failure carries. `facades/forms/form-errors.ts` exports `formErrorMessage` for
+    // exactly this — import it instead of re-declaring the same helper.
+    // Same files/ignores as the navigate() admission block above, so this
+    // does not reintroduce FORWARDED_HEADER_RESTRICTED_SYNTAX or
+    // SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX for files where the block
+    // above already turns 'no-restricted-syntax' off — see the file-top
+    // comment on FORWARDED_HEADER_RESTRICTED_SYNTAX for why that matters.
+    files: ['admin/src/**/*.ts', 'admin/src/**/*.tsx'],
+    ignores: ['admin/src/navigation/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "VariableDeclarator[id.name='errorMessage'] > ArrowFunctionExpression",
+          message:
+            "A local 'errorMessage' helper duplicates facades/forms/form-errors.ts — import "
+            + 'formErrorMessage(error, fallback) instead of hand-rolling error.message reading.',
         },
       ],
     },
@@ -494,6 +515,24 @@ export default [
         },
       ],
     },
+  },
+  {
+    // Every React tree in the repo: admin's app and its node:test suite, plus
+    // the shared sign-in surface. packages/client-core is deliberately absent —
+    // it is framework-free (no hook, no JSX) and registering the plugin there
+    // would claim a React dependency it does not have.
+    files: [
+      'admin/src/**/*.ts',
+      'admin/src/**/*.tsx',
+      'admin/test/**/*.ts',
+      'admin/test/**/*.tsx',
+      'packages/sign-in-surface/src/**/*.ts',
+      'packages/sign-in-surface/src/**/*.tsx',
+    ],
+    plugins: {
+      'react-hooks': reactHooksPlugin,
+    },
+    rules: REACT_HOOKS_RULES,
   },
   {
     // Horizontal-scaling ratchet (docs/standards/horizontal-scaling.md

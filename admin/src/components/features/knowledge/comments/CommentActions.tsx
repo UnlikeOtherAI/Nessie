@@ -1,7 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import {
   faCheck,
-  faFaceSmile,
   faPen,
   faReply,
   faRotateLeft,
@@ -10,7 +9,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeAnnotationReaction } from '../../../../facades/knowledge/comment-hooks'
-import { EmojiPickerPanel } from '../../../shared/EmojiPickerPanel'
+import { EmojiReactionButton } from '../../../shared/EmojiReactionButton'
 
 const THUMBS_UP = '\u{1F44D}'
 
@@ -43,10 +42,6 @@ export const CommentActions = ({
   onEdit,
   onDelete,
 }: CommentActionsProps) => {
-  const pickerId = useId()
-  const pickerRef = useRef<HTMLDivElement>(null)
-  const [pickerOpen, setPickerOpen] = useState(false)
-
   const reactionSummary = useMemo(() => {
     const counts = new Map<string, { count: number; emoji: string; reactedByMe: boolean }>()
     for (const reaction of reactions) {
@@ -58,19 +53,7 @@ export const CommentActions = ({
     return Array.from(counts.values())
   }, [currentUserId, reactions])
 
-  useEffect(() => {
-    if (!pickerOpen) return undefined
-    const closeOnOutside = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) setPickerOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutside)
-    return () => document.removeEventListener('pointerdown', closeOnOutside)
-  }, [pickerOpen])
-
-  const react = (emoji: string) => {
-    onToggleReaction(emoji)
-    setPickerOpen(false)
-  }
+  const react = (emoji: string) => onToggleReaction(emoji)
 
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation()
 
@@ -103,25 +86,7 @@ export const CommentActions = ({
         >
           <FontAwesomeIcon icon={faThumbsUp} />
         </button>
-        <div className="relative" ref={pickerRef}>
-          <button
-            aria-controls={pickerOpen ? pickerId : undefined}
-            aria-expanded={pickerOpen}
-            aria-haspopup="dialog"
-            aria-label="Add emoji reaction"
-            className="admin-msg-action-button"
-            onClick={() => setPickerOpen((open) => !open)}
-            title="Add reaction"
-            type="button"
-          >
-            <FontAwesomeIcon icon={faFaceSmile} />
-          </button>
-          {pickerOpen ? (
-            <div className="admin-msg-emoji-menu" id={pickerId} role="dialog">
-              <EmojiPickerPanel onSelect={react} />
-            </div>
-          ) : null}
-        </div>
+        <EmojiReactionButton onSelect={react} title="Add reaction" />
         {topLevel ? (
           <button
             aria-label="Reply"

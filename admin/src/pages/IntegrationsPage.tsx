@@ -16,7 +16,7 @@ import { DeepWaterResearchPanel } from '../components/features/integrations/Deep
 import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
 import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { KeyValueList } from '../components/shared/KeyValueList'
 import { QueryState } from '../components/shared/QueryState'
 import { StatGrid, StatTile } from '../components/shared/StatTile'
@@ -26,8 +26,7 @@ import {
   useIntegrationPluginManifest,
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
-import { usePhoneLayout } from '../lib/mobile-shell'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { usePhoneLayout } from '../navigation/mobile-shell'
 import { IdentityTile } from '../components/primitives/IdentityTile'
 
 type SurfacePlan = {
@@ -459,12 +458,7 @@ export const IntegrationsPage = () => {
   )
 
   const columns = [
-    <ColumnBrowserColumn
-      key="list"
-      leading={<PhoneNavigationButton />}
-      ownsScreen
-      title={`Integrations (${products.length})`}
-    >
+    <ColumnBrowserColumn key="list" screen title={`Integrations (${products.length})`}>
       {listBody}
     </ColumnBrowserColumn>,
   ]

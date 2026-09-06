@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { useLocalBack } from './LocalBackContext'
 import { ScreenBarLayerProvider } from './ScreenBarLayer'
 import { setLayerFallback } from './screen-bar'
 

@@ -7,11 +7,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { JSDOM } from 'jsdom'
 
 import { AgentDesignerForm } from '../src/components/features/agents/designer/AgentDesignerForm.js'
-import { emptyRunLimitsForm } from '../src/components/features/agents/designer/run-limits.js'
+import { emptyRunLimitsForm } from '../src/facades/designer/run-limits.js'
 import type {
   AgentDesignerActions,
   AgentFormState,
-} from '../src/components/features/agents/designer/useAgentDesigner.js'
+} from '../src/facades/designer/types.js'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 

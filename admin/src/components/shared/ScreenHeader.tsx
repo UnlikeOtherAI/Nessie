@@ -1,14 +1,14 @@
 import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useLocalBackSnapshot } from '../../layouts/admin-shell/local-back/LocalBackContext'
+import { useLocalBackSnapshot } from '../../navigation/LocalBackContext'
 import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 import { useScreenBarLayerKey } from '../../navigation/ScreenBarLayer'
 import { useScreenBarPublisher } from '../../navigation/useScreenBar'
 import type { ScreenBarBack } from '../../navigation/screen-bar'
-import { toScreenBarActions } from '../../navigation/screen-bar-actions'
-import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
-import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
-import { useNativeIOSPhoneApp, useNavigationLayout } from '../../lib/mobile-shell'
+import { toScreenBarActions } from './screen-bar-actions'
+import { PhoneBackButton } from '../../navigation/PhoneBackButton'
+import { PhoneNavigationButton } from '../../navigation/PhoneNavigationButton'
+import { useNativeIOSPhoneApp, useNavigationLayout } from '../../navigation/mobile-shell'
 import { publishScreenTitle, retireScreenTitle } from '../../navigation/screen'
 import { surfaceParent } from '../../navigation/surface-lookup'
 import {
@@ -122,7 +122,14 @@ export const ScreenHeader = ({
       : null
   // Only the iOS shell reads this, so only it pays for building it. Every
   // other surface keeps the render it always had.
-  useScreenBarPublisher({ actions: toScreenBarActions(actions), back: effectiveBack, title }, nativeBar)
+  // A screen whose title *is* an editable field (the workflow designer) names
+  // itself by that field's value: the bar says which workflow, not "Workflow
+  // Designer". The placeholder stands in before the reader has typed one.
+  const barTitle = titleInput ? titleInput.value || titleInput.placeholder : title
+  useScreenBarPublisher(
+    { actions: toScreenBarActions(actions), back: effectiveBack, title: barTitle },
+    nativeBar,
+  )
 
   const pageBack = onBack && (flowOwnsBack || surfaceParent(pathname) !== null)
     ? (
@@ -144,15 +151,28 @@ export const ScreenHeader = ({
     // taking it out of the visual bar the native chrome now owns — removing
     // it would break the announcement silently.
     //
-    // `eyebrow` and `leading` have no lane in a native bar, so they stay with
-    // the page rather than being dropped: an agent's avatar and a "System
-    // managed" note are content, not chrome.
-    const below = eyebrow || leading || subtitle || tabs
+    // `eyebrow`, `leading` and `titleInput` have no lane in a native bar, so
+    // they stay with the page rather than being dropped: an agent's avatar, a
+    // "System managed" note and the workflow-name field are content, not
+    // chrome — and dropping the field would leave no way to rename at all.
+    const below = eyebrow || leading || subtitle || tabs || titleInput
     return (
       <>
-        <h1 className="sr-only" id={titleId}>{title}</h1>
+        <h1 className="sr-only" id={titleId}>{barTitle}</h1>
         {below ? (
           <div className="flex min-w-0 flex-col gap-2 px-4 pb-2 pt-3">
+            {titleInput ? (
+              <input
+                aria-label={titleInput.ariaLabel}
+                className={[
+                  'w-full min-w-0 truncate border-0 bg-transparent p-0 text-[17px] font-bold',
+                  'text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]',
+                ].join(' ')}
+                onChange={(event) => titleInput.onChange(event.target.value)}
+                placeholder={titleInput.placeholder}
+                value={titleInput.value}
+              />
+            ) : null}
             {eyebrow || leading ? (
               <div className="flex min-w-0 items-center gap-2">
                 {leading}
