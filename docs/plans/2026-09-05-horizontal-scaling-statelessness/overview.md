@@ -133,6 +133,7 @@ worker restart during a deploy already replays whatever was in flight.
 | 3.3 | 2.5 | Document-session reaper: `streaming`/`saving` sessions whose run has no live executor token flip to `failed` from the API maintenance sweep. | S |
 | 3.4 | 5.13 | `push.dispatch` enqueues carry an idempotency key and the handler claims a delivery row before sending. | S |
 | 3.5 | 2.2 | LISTEN reconnect re-reads the backlog for every registered connection from its watermark. | M |
+| 3.6 | — | Decide whether `delegate` may keep declaring itself `safe`. It escapes the tool-effect ledger on that flag alone, so a resumed run re-issues a delegation and the sub-agent's own effectful calls are never claimed. Either claim it, or restrict the sub-agent's toolset to genuinely read-only tools and say so where the flag is set. | S |
 
 ## Phase 4 — Google Cloud platform work
 

@@ -199,6 +199,16 @@ matches no row. Beside it:
   are frequent enough that a row per call would be paid where it buys least.
   Membership is by declared category, never a hand-kept id list, so a new tool
   inherits the decision from where it already had to say it belongs.
+- **One exception the category rule does not catch: `delegate`.** It declares
+  `safe: true`, so the `!safe` half of the test excludes it even though its
+  category is effectful. Its sub-agent is a nested loop for discovery, but the
+  toolset it inherits is the parent's builtins minus `delegate` itself, so a
+  sub-agent can in principle call an effectful tool. A resumed run therefore
+  re-issues a delegation whose result the checkpoint never recorded, and the
+  sub-agent's own calls are not separately claimed. That is not a regression —
+  before any of this, every tool re-ran — but it is the one place this
+  invariant's guarantee stops short, and whether `delegate` should still call
+  itself safe is plan row 3.6.
 - **Retention is fused to the status chokepoint.** `updateRunStatus` deletes a
   run's claims on every terminal and suspended transition, beside the crash
   state it already sheds: a terminal run is never resumed, and a suspended one
