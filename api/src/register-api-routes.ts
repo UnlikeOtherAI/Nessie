@@ -34,6 +34,7 @@ import { registerGmailDraftRoutes } from './routes/gmail-drafts.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
 import { registerDashboardRoutes } from './routes/dashboards.js'
 import { registerDesignerRoutes } from './routes/designer.js'
+import { registerWebSearchRoutes } from './routes/web-search.js'
 import { registerDemonstrationRoutes } from './routes/demonstrations.js'
 import { registerDeviceRoutes } from './routes/devices.js'
 import { registerDisclosureGrantRoutes } from './routes/disclosure-grants.js'
@@ -175,6 +176,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerActivityRoutes(app, deps)
   registerThoughtRoutes(app, deps)
   registerDesignerRoutes(app, deps)
+  registerWebSearchRoutes(app, deps)
   registerAuditLogRoutes(app, deps)
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)

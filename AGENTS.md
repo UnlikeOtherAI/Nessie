@@ -346,9 +346,11 @@ when one changes, the same turn updates it, not this section.
   UOA-authored display models and stores no commercial state.
   Read [`docs/standards/customer-billing.md`](docs/standards/customer-billing.md)
   before writing code here.
-- **Builtin `web_search` is a Ledger-only Serper route.** Every call posts to
-  Ledger's `/v1/serper/search` with signed provenance; direct
-  `google.serper.dev` calls and `SERPER_API_KEY` fallbacks are forbidden.
+- **Builtin `web_search` is Ledger-only, and Ledger picks the engine.** Every
+  call posts to Ledger with signed provenance — the multi-provider Purpose API
+  route when one is configured, else the single Serper route — so adding
+  SerpAPI or Brave is a Ledger route change, not a Nessie deploy; `present`
+  posts the page as a search card whose pager is a human search door.
   Read [`docs/standards/web-search.md`](docs/standards/web-search.md)
   before writing code here.
 - deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
