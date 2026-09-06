@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { holdNativeChromeSuspended } from '../../navigation/full-bleed-layers'
 import { useLocalBack } from '../../navigation/LocalBackContext'
 import { useNavigationLayout } from '../../navigation/mobile-shell'
 import {
@@ -82,6 +83,13 @@ export const useOverlay = ({
     onBack: requestClose,
     priority: OVERLAY_BACK_PRIORITY[kind],
   })
+
+  // A modal covers the document, so any native chrome placed over the page
+  // beneath it is pointing at something the reader can no longer see.
+  useEffect(() => {
+    if (!open || kind !== 'modal') return undefined
+    return holdNativeChromeSuspended()
+  }, [kind, open])
 
   const trapsFocus = kind !== 'popover'
   useModalA11y(panelRef, requestClose, open && trapsFocus, initialFocusRef)

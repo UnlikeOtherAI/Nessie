@@ -105,6 +105,12 @@ export interface ViewableCloudBrowserSession {
   browserbaseSessionId: string | null
   connectionProjectId: string | null
   connectionApiKeyRef: string
+  /**
+   * Whether signing in here is signing in for other people too. A durable
+   * browser with a principal belongs to that one person, so it is not shared
+   * however visible the agent is; a throwaway session persists nothing.
+   */
+  shared: boolean
 }
 
 const loadViewableSession = async (
@@ -133,7 +139,8 @@ const loadViewableSession = async (
       endedAt: true,
       controlledByUserId: true,
       browserbaseSessionId: true,
-      agent: { select: { name: true } },
+      agent: { select: { name: true, visibility: true } },
+      agentBrowser: { select: { principalUserId: true } },
       connection: { select: { projectId: true, apiKeyRef: true } },
     },
   })
@@ -168,6 +175,12 @@ const loadViewableSession = async (
     browserbaseSessionId: session.browserbaseSessionId,
     connectionProjectId: session.connection.projectId,
     connectionApiKeyRef: session.connection.apiKeyRef,
+    // Three ways a session shares nothing: it keeps nothing (no durable
+    // browser), the jar is one person's (a system-managed agent, since the
+    // per-principal browsers), or only its owner can reach the agent at all.
+    shared: session.agentBrowser !== null
+      && session.agentBrowser.principalUserId === null
+      && session.agent.visibility !== 'private',
   }
 }
 
@@ -418,6 +431,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         startedAt: session.startedAt.toISOString(),
         endedAt: session.endedAt?.toISOString() ?? null,
         controlledByUserId: session.controlledByUserId,
+        shared: session.shared,
         liveViewUrl,
         tabs,
       }),

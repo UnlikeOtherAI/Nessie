@@ -183,7 +183,7 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
       return reply
     }
     if (!(await authorizeScope(reply, {
-      ...role, organizationId, scope: body.scope, teamId: body.teamId, userId,
+      ...role, organizationId, scope: body.scope, teamId: body.teamId ?? undefined, userId,
     }))) {
       return reply
     }
@@ -192,7 +192,7 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     // organisation, and `writeScopedSetting` cannot know which team that is —
     // a person may be in several. Check it here, where the team is verified.
     if (body.scope === 'user') {
-      const teamId = await memberTeamId(prisma, organizationId, userId, body.teamId)
+      const teamId = await memberTeamId(prisma, organizationId, userId, body.teamId ?? undefined)
       const current = await resolveScopedSetting(prisma, { organizationId, teamId, userId }, key)
       if (isLockedAbove(current, 'user')) {
         sendApiError(reply, 409, SCOPED_SETTING_ERROR_CODES.LOCKED_ABOVE, lockExplanation(

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
-  useBrowserControl,
   useCloudBrowserSession,
   useEndResumedSession,
+  type BrowserControl,
 } from '../../../facades/browser-cloud/hooks'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { Pill } from '../../primitives/Pill'
@@ -25,11 +25,18 @@ type AgentScreenViewerProps = {
   /** Leave full screen once a resumed session has been ended. */
   onDone?: () => void
   /**
-   * The agent whose browser this is, when known. A team agent's browser
-   * is shared with everyone who can reach it, which the banner says before
-   * anybody types into it.
+   * The agent whose browser this is, when known. Only used to key the share
+   * banner's dismissal — whether the browser is actually shared is the
+   * session's answer, not the agent's visibility.
    */
   agent?: { id: string; visibility?: 'team' | 'private' }
+  /**
+   * The claim, held by the panel rather than by this component. Going full
+   * screen and back re-renders the viewer in a different container, and a
+   * claim that unmounted with it would hand the keyboard back to the agent
+   * every time somebody resized the window they were typing in.
+   */
+  control: BrowserControl
 }
 
 /**
@@ -59,10 +66,14 @@ const STATUS_LABEL: Record<string, string> = {
  * boundary: the boundary is who may fetch the live-view URL at all, which the
  * detail route decides. The claim is what makes the *agent* stand down, since
  * every browser verb is refused server-side while it is held.
+ *
+ * The claim itself belongs to the panel, which outlives both faces; both offer
+ * it, so shrinking a browser you are driving leaves you still driving it.
  */
 export const AgentScreenViewer = ({
   agent,
   claimOnLive = false,
+  control,
   onDone,
   sessionId,
   threadId = null,
@@ -74,10 +85,11 @@ export const AgentScreenViewer = ({
   // stops — not "hand back to the agent".
   const resumed = session.data?.runId === null
   const endResumed = useEndResumedSession(threadId, agent?.id ?? null)
-  // Control is only offered full-screen: the panel is a glance, and handing
-  // somebody the keyboard in a 400px column is not the affordance.
-  const control = useBrowserControl(variant === 'fullscreen' ? sessionId : null)
-  const shared = agent !== undefined && agent.visibility !== 'private'
+  // Whether signing in here signs in for other people is the session's answer.
+  // Reading it off the agent's visibility said "shared" for every browser a
+  // team agent owned — including the Personal Assistant's, which since the
+  // per-principal browsers is one jar per person and shared with nobody.
+  const shared = session.data?.shared ?? false
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     if (!agent) return true
     try {
@@ -105,11 +117,11 @@ export const AgentScreenViewer = ({
   const claimed = useRef(false)
   const { take } = control
   useEffect(() => {
-    if (!claimOnLive || variant !== 'fullscreen' || claimed.current) return
+    if (!claimOnLive || claimed.current) return
     if (session.data?.status !== 'active' || session.data.controlledByUserId) return
     claimed.current = true
     take()
-  }, [claimOnLive, session.data, take, variant])
+  }, [claimOnLive, session.data, take])
   const claimFailed = claimOnLive && claimed.current && !control.controlling && control.error !== null
 
   // Follow the agent by default: the hook reads an id the session no longer
@@ -118,11 +130,41 @@ export const AgentScreenViewer = ({
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
   const [activeTab, setActiveTab] = useTabParam('browserTab', tabIds, tabIds[0] ?? '')
 
-  const frameUrl = useMemo(() => {
+  // The URL the provider minted, which is a *fresh* URL on every read.
+  const mintedUrl = useMemo(() => {
     if (!session.data) return null
     const chosen = tabs.find((tab) => tab.id === activeTab)
     return chosen?.liveViewUrl ?? session.data.liveViewUrl
   }, [session.data, tabs, activeTab])
+
+  // ...and the one actually in the frame, which must not be.
+  //
+  // The detail route mints a live-view URL per read and the panel polls, so
+  // handing `mintedUrl` straight to `src` swapped the iframe's source every
+  // fifteen seconds: the browser reloaded under the reader, losing a
+  // half-typed URL and any page state. Both URLs address the same live
+  // session, so the first one is kept for as long as it is pointing at the
+  // same thing — a new session, a different tab, or the reload button below.
+  // A poll that comes back without a URL (a provider hiccup, which the route
+  // deliberately renders as "no picture" rather than an error) also leaves
+  // the frame alone rather than blanking it.
+  const heldFrame = useRef<{ key: string; url: string } | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const frameKey = `${sessionId}::${activeTab}::${reloadNonce}`
+  if (!live) heldFrame.current = null
+  else if (mintedUrl !== null && heldFrame.current?.key !== frameKey) {
+    heldFrame.current = { key: frameKey, url: mintedUrl }
+  }
+  const frameUrl = heldFrame.current?.url ?? null
+
+  // A held URL outlives its session if the provider retires it, which looks
+  // like a frame that has simply stopped. Re-minting is one press away rather
+  // than a reason to go back to swapping `src` on a timer.
+  const reloadFrame = () => {
+    heldFrame.current = null
+    setReloadNonce((nonce) => nonce + 1)
+    void session.refetch()
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -138,8 +180,18 @@ export const AgentScreenViewer = ({
             {control.controlling ? 'You are driving' : 'Someone is driving'}
           </Pill>
         ) : null}
-        {variant === 'fullscreen' && live ? (
+        {live ? (
           <span className="ml-auto flex items-center gap-2">
+            {variant === 'fullscreen' ? (
+              <button
+                aria-label="Reload the live view"
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={reloadFrame}
+                type="button"
+              >
+                Reload
+              </button>
+            ) : null}
             {resumed && control.controlling ? (
               <button
                 className="admin-button admin-button-primary admin-button-compact"
