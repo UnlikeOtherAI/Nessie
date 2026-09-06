@@ -60,9 +60,33 @@ export type RealtimeNotificationPayload =
        * `sid` from their revocation caches at once, instead of each waiting
        * out its own TTL. Nothing is persisted — a replica that was not
        * listening converges on its TTL, which stays the backstop.
+       *
+       * The shape is not free, for the same reason a ref envelope's is not (see
+       * `RealtimeNotificationEnvelope`). Nessie deploys blue-green, so for the
+       * length of the swap that ships this, a replica running a build with no
+       * knowledge of `'auth'` is LISTENing on the same channel and receives it;
+       * that build is already deployed and cannot be given a guard. It reads
+       * `kind` — not `'sse'`, so it falls through — finds no `eventId`, so it
+       * builds no replay event and never reaches `message`, and then enters its
+       * WebSocket loop, whose first act is `scopes.filter`. It does that in an
+       * *unawaited* promise, so a TypeError there is an unhandled rejection,
+       * which terminates the process on Node 22. Logging out is not a rare
+       * event: without the field below, the first person to sign out during the
+       * swap would kill every old replica holding a socket, and the admin
+       * always holds one.
        */
       kind: 'auth'
       sessionId: string
+      /**
+       * Always empty — the same compatibility shim the ref envelopes carry, and
+       * the only field a listener that predates `'auth'` dereferences without
+       * checking on the path an unknown kind takes. It makes that listener's
+       * WebSocket loop filter an empty array, match no connection and send
+       * nothing, rather than throw. Nothing is lost: this build's fan-out
+       * answers the `auth` branch and returns long before that loop. Do not
+       * remove until every deployed replica understands `kind: 'auth'`.
+       */
+      scopes: []
     }
 
 /**

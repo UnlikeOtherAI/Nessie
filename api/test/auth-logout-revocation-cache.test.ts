@@ -74,7 +74,10 @@ test('logout drops the revoked sid from the handling replica and every listening
     invalidateSessionRevocationCache: replicaA.invalidate,
     prisma: {} as PrismaClient,
     publishSessionRevocation: async (sessionId) => {
-      const payload: RealtimeNotificationPayload = { kind: 'auth', sessionId }
+      // The same shape `PgRealtimeTransport.publishSessionRevocation` puts on
+      // the wire, empty `scopes` included — that field is what keeps a replica
+      // running the previous build from crashing on this payload mid-deploy.
+      const payload: RealtimeNotificationPayload = { kind: 'auth', scopes: [], sessionId }
       broadcast.push(payload)
       await deliverNotification(payload)
     },
@@ -105,7 +108,7 @@ test('logout drops the revoked sid from the handling replica and every listening
   // remainder of its TTL...
   assert.equal(await replicaA(SESSION_ID), true)
   // ...and neither must any other, which learns of it from the NOTIFY.
-  assert.deepEqual(broadcast, [{ kind: 'auth', sessionId: SESSION_ID }])
+  assert.deepEqual(broadcast, [{ kind: 'auth', scopes: [], sessionId: SESSION_ID }])
   assert.equal(await replicaB(SESSION_ID), true)
 
   await app.close()
@@ -120,7 +123,7 @@ test('an auth control notification reaches no client connection', async () => {
       },
     })
 
-  await deliverNotification({ kind: 'auth', sessionId: SESSION_ID })
+  await deliverNotification({ kind: 'auth', scopes: [], sessionId: SESSION_ID })
 
   assert.deepEqual(dropped, [SESSION_ID])
   // A revocation is replica-to-replica bookkeeping: it must never be fanned

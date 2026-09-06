@@ -349,9 +349,13 @@ export class PgRealtimeTransport {
    * already wrote, and every replica re-reads it when its own cache entry
    * expires, so a lost NOTIFY costs latency (up to the cache TTL) and never
    * correctness.
+   *
+   * `scopes: []` is a deploy-compatibility field, not payload data: it is what
+   * keeps a replica on the previous build from crashing on this payload during
+   * a blue-green swap. See `RealtimeNotificationPayload`.
    */
   async publishSessionRevocation(sessionId: string): Promise<void> {
-    await notifyRealtime(this.pool, this.channel, { kind: 'auth', sessionId })
+    await notifyRealtime(this.pool, this.channel, { kind: 'auth', scopes: [], sessionId })
   }
 
   listRealtimeEventsAfter(input: {
