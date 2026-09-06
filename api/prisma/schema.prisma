@@ -7544,7 +7544,12 @@ model CloudBrowserConnection {
   /// team, and one per (organization, member).
   teamId         String?                     @map("team_id") @db.Uuid
   userId         String?                     @map("user_id") @db.Uuid
-  projectId      String                      @map("project_id")
+  /// Browserbase resolves the project from the API key, so this is not
+  /// asked for and is null on every connection made since 2026-09-06. Rows
+  /// created before that keep theirs, and it is still sent on their
+  /// requests: their sessions and profiles are already scoped to it, and a
+  /// silent change of project would strand the contexts holding their logins.
+  projectId      String?                      @map("project_id")
   /// Server-minted `secret_browserbase_*` ref into the encrypted secret
   /// store. Never caller-chosen, never returned to a client: the key plus a
   /// context id is session-equivalent material.

@@ -60,7 +60,13 @@ export const assertBrowserbaseUrl = (raw: string): URL => {
 
 export type BrowserbaseCredentials = {
   apiKey: string
-  projectId: string
+  /**
+   * Browserbase resolves the project from the API key, so this is optional and
+   * nothing in Nessie asks for one. It is still sent when a connection carries
+   * one — installs made before 2026-09-06 stored it, and their sessions and
+   * profiles are already scoped to it.
+   */
+  projectId?: string | null
 }
 
 export type CreateSessionInput = {
@@ -149,6 +155,10 @@ export const createBrowserbaseClient = (
     'content-type': 'application/json',
     'x-bb-api-key': credentials.apiKey,
   }
+  // Spread into each body, so a connection with no project id sends no
+  // `projectId` field at all rather than `null` — which the API reads as a
+  // project named null and refuses.
+  const projectScope = credentials.projectId ? { projectId: credentials.projectId } : {}
 
   const request = async (
     path: string,
@@ -179,7 +189,7 @@ export const createBrowserbaseClient = (
         {
           method: 'POST',
           body: {
-            projectId: credentials.projectId,
+            ...projectScope,
             timeout: input.timeoutSeconds,
             browserSettings: {
               // See the file header: none of these are cosmetic.
@@ -220,7 +230,9 @@ export const createBrowserbaseClient = (
         `/v1/sessions/${encodeURIComponent(sessionId)}`,
         {
           method: 'POST',
-          body: { projectId: credentials.projectId, status: 'REQUEST_RELEASE' },
+          // The documented release body is `{status}` alone; the project was
+          // never needed here and is not sent even when one is stored.
+          body: { status: 'REQUEST_RELEASE' },
         },
         'releasing a browser session',
       )
@@ -229,7 +241,7 @@ export const createBrowserbaseClient = (
     createContext: async () => {
       const response = await request(
         '/v1/contexts',
-        { method: 'POST', body: { projectId: credentials.projectId } },
+        { method: 'POST', body: { ...projectScope } },
         'creating a browser profile',
       )
       const body = (await response.json()) as { id?: unknown }

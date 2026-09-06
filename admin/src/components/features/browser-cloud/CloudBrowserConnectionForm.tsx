@@ -32,7 +32,6 @@ export const CloudBrowserConnectionForm = ({
 }: CloudBrowserConnectionFormProps) => {
   const connect = useConnectCloudBrowser()
   const [apiKey, setApiKey] = useState('')
-  const [projectId, setProjectId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -43,7 +42,6 @@ export const CloudBrowserConnectionForm = ({
     connect.mutate(
       {
         apiKey: apiKey.trim(),
-        projectId: projectId.trim(),
         scope,
         ...(teamId ? { teamId } : {}),
       },
@@ -57,7 +55,6 @@ export const CloudBrowserConnectionForm = ({
         },
         onSuccess: () => {
           setApiKey('')
-          setProjectId('')
           setNotice(connected ? 'Key replaced.' : 'Connected.')
           onDone?.()
         },
@@ -68,17 +65,6 @@ export const CloudBrowserConnectionForm = ({
   return (
     <form className="mt-4 grid gap-3" onSubmit={submit}>
       <p className="text-sm text-[color:var(--tx2)]">{blurb}</p>
-      <label className="grid gap-1">
-        <SectionLabel as="span" size="xs">Project ID</SectionLabel>
-        <input
-          autoComplete="off"
-          className="admin-input"
-          onChange={(event) => setProjectId(event.target.value)}
-          placeholder="From your Browserbase dashboard"
-          required
-          value={projectId}
-        />
-      </label>
       <label className="grid gap-1">
         <SectionLabel as="span" size="xs">API key</SectionLabel>
         <input
@@ -99,7 +85,7 @@ export const CloudBrowserConnectionForm = ({
       <div className="flex items-center gap-3">
         <button
           className="admin-button admin-button-primary admin-button-compact"
-          disabled={connect.isPending || apiKey.trim() === '' || projectId.trim() === ''}
+          disabled={connect.isPending || apiKey.trim() === ''}
           type="submit"
         >
           {connect.isPending

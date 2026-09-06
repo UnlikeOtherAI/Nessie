@@ -38,7 +38,7 @@ export const resolveDurableBrowserConnection = async (
     agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
   },
-): Promise<{ id: string; scope: 'organization' | 'team' | 'user'; projectId: string; apiKeyRef: string }> => {
+): Promise<{ id: string; scope: 'organization' | 'team' | 'user'; projectId: string | null; apiKeyRef: string }> => {
   const rows = await prisma.cloudBrowserConnection.findMany({
     where: { organizationId: input.organizationId, status: 'active' },
     select: { id: true, scope: true, projectId: true, apiKeyRef: true, userId: true },
@@ -68,7 +68,7 @@ export const resolveDurableBrowserConnection = async (
 
 const loadClientForConnection = async (
   deps: CloudBrowserDeps,
-  connection: { projectId: string; apiKeyRef: string },
+  connection: { projectId: string | null; apiKeyRef: string },
 ): Promise<BrowserbaseClient> => {
   const apiKey = await deps.resolveSecret(connection.apiKeyRef)
   if (!apiKey) {
@@ -103,7 +103,7 @@ export const ensureAgentBrowser = async (
     agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
   },
-): Promise<AgentBrowserRow & { connection: { projectId: string; apiKeyRef: string } }> => {
+): Promise<AgentBrowserRow & { connection: { projectId: string | null; apiKeyRef: string } }> => {
   const connection = await resolveDurableBrowserConnection(deps.prisma, input)
 
   const existing = await deps.prisma.agentBrowser.findFirst({

@@ -83,7 +83,7 @@ export interface ViewableCloudBrowserSession {
   endedAt: Date | null
   controlledByUserId: string | null
   browserbaseSessionId: string | null
-  connectionProjectId: string
+  connectionProjectId: string | null
   connectionApiKeyRef: string
 }
 

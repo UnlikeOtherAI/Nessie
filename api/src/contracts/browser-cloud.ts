@@ -18,13 +18,20 @@ export const ConnectCloudBrowserBodySchema = z.object({
   /** Required at team scope, refused at the others. */
   teamId: z.string().uuid().optional(),
   apiKey: NonEmptyStringSchema.max(500),
-  projectId: NonEmptyStringSchema.max(200),
+  /**
+   * Not asked for by any Nessie surface — Browserbase resolves the project
+   * from the key. Still accepted, so an install that wants its sessions
+   * pinned to one project can say so, and so an older client that still
+   * sends one is not rejected.
+   */
+  projectId: NonEmptyStringSchema.max(200).optional(),
 })
 
 export const CloudBrowserConnectionSchema = z.object({
   id: z.string().uuid(),
   scope: CloudBrowserScopeSchema,
-  projectId: z.string(),
+  /** Null on every connection made since the project id stopped being asked for. */
+  projectId: z.string().nullable(),
   status: z.enum(['active', 'needs_attention', 'disabled']),
   healthReason: z.string().nullable(),
   healthDetail: z.string().nullable(),

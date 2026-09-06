@@ -26,7 +26,8 @@ export type ConnectCloudBrowserInput = {
   /** Required at team scope. */
   teamId?: string
   apiKey: string
-  projectId: string
+  /** Optional: Browserbase resolves the project from the key. */
+  projectId?: string
 }
 
 export const useConnectCloudBrowser = () => {
