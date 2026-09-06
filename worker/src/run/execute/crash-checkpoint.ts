@@ -245,9 +245,16 @@ export type CrashCheckpointWriter = {
  *
  * A fenced-out write (zero rows) is reported as a failure rather than as a
  * quiet success, and said out loud once: from that point this execution's state
- * is not the run's state, and the run belongs to whoever took it over. The loop
- * finds that out for itself at its next per-iteration probe and stops; the log
- * line is what makes the ordering legible afterwards.
+ * is not the run's state, and the run belongs to whoever took it over.
+ *
+ * It does not stop the loop, though, and must not be read as if it did. The
+ * per-iteration probe (`assertExecutorHoldsRun`) reads a flag that only the
+ * executor heartbeat and `updateRunStatus` ever set, and a fenced-out write
+ * sets nothing — so the loop runs on, through however many iterations fit,
+ * until the next heartbeat tick (`EXECUTOR_HEARTBEAT_MS`, 30 s) sees the
+ * takeover and raises it. What that work cannot do is land: every terminal
+ * write is fenced on the same token. The log line is what makes the ordering
+ * legible afterwards.
  */
 export const createCrashCheckpointWriter = (
   prisma: PrismaClient,

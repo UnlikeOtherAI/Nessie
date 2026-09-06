@@ -62,7 +62,14 @@ type InFlightJob = {
   // handler's own settle path and `abandon()`'s deadline nack may pass it; the
   // loser issues no statement at all. The flip is synchronous, so on a
   // single-threaded runtime the two can never both win however their pooled
-  // connections interleave underneath — which is the whole point. The gate
+  // connections interleave underneath — which is the whole point.
+  //
+  // What it earns is therefore "exactly one settle statement from THIS process
+  // for THIS claim", not "exactly one settle per job". Neither `acknowledge`
+  // nor `nack` is fenced — both are `WHERE id = $1` with no lock predicate — so
+  // a process that has already lost the row still writes to it, and a successor
+  // now holding the claim sees that write. Lock renewal and the abort it raises
+  // on repeated failure are what keep that narrow, not this gate. The gate
   // replaces an `abandoned` flag that was read before the acknowledge was
   // issued and never re-checked, which left a window where a handler resolving
   // exactly as the deadline fired issued an ack while `abandon()` issued a
@@ -240,8 +247,12 @@ export class PgQueueProvider implements QueueProvider {
         // than after the five-minute lock TTL burns down.
         //
         // The controller is normally aborted already — `stop()` raised it when
-        // the drain began — so this abort is the record of *why* the job was
-        // taken away, not the first warning the handler gets. Taking the settle
+        // the drain began, via `forwardDrain` — and aborting an aborted
+        // controller is a no-op, so in that normal case this line records
+        // nothing at all: `signal.reason` keeps saying `worker_drain_started`.
+        // It carries `reason` only on the path where nothing aborted first (a
+        // deadline with no drain behind it). Either way it is not the first
+        // warning the handler gets. Taking the settle
         // below is what makes `runClaimedJob` discard the handler's own
         // outcome, so a straggler that finishes after this cannot ack a row
         // someone else now owns.

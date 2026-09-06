@@ -275,10 +275,12 @@ const withOrderedPublish = async <T>(
  * transaction that raise would take the INSERT down with it — and `stream.done`
  * carries the whole assistant reply, which has no bound (horizontal-scaling
  * audit 2.7), so it is reachable in ordinary use. Before the publish became one
- * transaction the row was already committed when the notify threw, and the
- * client recovered the event on its next reconnect replay: late, but never
- * lost, and the caller's operation still succeeded. Losing the row instead
- * would be a straight regression.
+ * transaction the row was already committed when the notify threw, so the
+ * caller's operation still succeeded and the content stayed reachable — on the
+ * thread lane, because the message is a durable row a REST bootstrap re-reads.
+ * Not by reconnect replay: replay is `id > watermark`, so the first later event
+ * delivered on that connection carries the watermark past the one that was
+ * never announced. Losing the row instead would be a straight regression.
  *
  * So the payload is measured first — in bytes, because the cap is bytes and a
  * reply full of non-ASCII counts for more than its length — and an oversized
@@ -304,7 +306,11 @@ const notifyWithinTransaction = async (
   if (Buffer.byteLength(body, 'utf8') > NOTIFY_PAYLOAD_LIMIT_BYTES) {
     // Not reachable unless the scope list alone is enormous, and the row is
     // committed regardless — so stay silent rather than raise and destroy it.
-    // The client still recovers the event from replay on its next reconnect.
+    // No connection is told, and reconnect replay returns the event only while
+    // no later event has carried that connection's watermark past it (`id >
+    // watermark`). What does recover the content is the durable row itself: on
+    // the thread lane a REST bootstrap re-reads the message. The WebSocket lane
+    // has no such re-read, so there the live event is simply missed.
     return
   }
 

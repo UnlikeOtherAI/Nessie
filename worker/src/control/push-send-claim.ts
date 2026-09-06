@@ -16,7 +16,7 @@ import type { PushRetryProvider } from './push-retry.js'
  * with N workers every drain and every scale-in could cause it
  * (horizontal-scaling audit 5.13).
  *
- * ## The claim has a state, and only one of them is permanent
+ * ## The claim has a state, and only one of them turns a later delivery away
  *
  * A claim taken and never released would be at-most-once, and that is not a
  * trade every notification can make. An incoming call fans out
@@ -31,7 +31,8 @@ import type { PushRetryProvider } from './push-retry.js'
  *
  * - {@link claimPushSend} inserts `sending` *before* the provider is called.
  * - {@link markPushSendSent} promotes it to `sent` on a confirmed accept.
- *   `sent` is permanent and is the state that makes a duplicate impossible.
+ *   `sent` is the state that turns every later claimant away, for as long as
+ *   the row lives (see the guarantee below, and `./push-claim-sweep.ts`).
  * - {@link releasePushSendClaim} deletes it on a definitive failure or a thrown
  *   send, so the next redelivery genuinely retries.
  * - A `sending` row whose process was killed between the claim and the send is
@@ -41,12 +42,25 @@ import type { PushRetryProvider } from './push-retry.js'
  *
  * ## The guarantee, stated honestly
  *
- * **A send a provider accepted is never sent again.** It is deliberately not
- * exactly-once: past the stale horizon a genuinely in-flight send could be sent
- * a second time, and a process that dies after the provider accepted but before
- * {@link markPushSendSent} lands leaves a `sending` row a later delivery will
- * re-send. A duplicate ring is annoying; a ring that never happens is a missed
- * call, so this is the right way round.
+ * **Once a claim reads `sent`, no later delivery sends that endpoint again** —
+ * for as long as the row lives, which is as long as the job that would consult
+ * it can be redelivered (`./push-claim-sweep.ts` deletes it a day later, two
+ * orders of magnitude past that window).
+ *
+ * That is the whole of the guarantee, and it is deliberately not exactly-once.
+ * A send the provider accepted is still repeated when:
+ *
+ * - the process dies after the accept but before {@link markPushSendSent}
+ *   lands, leaving a `sending` row a later delivery re-sends;
+ * - a genuinely in-flight send outlives {@link PUSH_SEND_CLAIM_STALE_MS} and is
+ *   taken over by the next claimant;
+ * - FCM's HTTP call throws after the server took the message. That is reported
+ *   as `status: 0`, which `isTransientPushFailure` treats as retryable, so
+ *   `sendWithRetry` attempts it again inside this same claim. APNs retries only
+ *   5xx and has no equivalent case.
+ *
+ * A duplicate ring is annoying; a ring that never happens is a missed call, so
+ * this is the right way round.
  */
 
 /** The Prisma surface the claim needs — single statements, no delegate. */
@@ -91,9 +105,12 @@ export type PushSendClaimRef = {
   organizationId: string
   /**
    * The notification's durable identity — never a clock reading or a random
-   * value. It matches the enqueue idempotency key one-for-one
-   * (`push:message:<id>`, `push:attention:<alertId>`), so the enqueue upsert and
-   * this claim together stop one notification reaching a device twice.
+   * value. It corresponds to the enqueue idempotency key without being the same
+   * string: the API enqueues `push:<messageId>`, and the handler then passes
+   * `push:message:<messageId>` as the delivery core's `notificationKey`
+   * (likewise `push:attention:<alertId>`). The enqueue upsert collapses two
+   * enqueues for one notification into one job row; this claim then stops that
+   * job's redeliveries reaching the same endpoint twice.
    */
   notificationKey: string
   /** {@link pushEndpointKey} over the device token / subscription endpoint. */
@@ -112,8 +129,10 @@ export type ClaimPushSendInput = PushSendClaimRef & {
  * One statement does both jobs. The insert wins when nothing has claimed this
  * (notification, endpoint) yet; the `DO UPDATE` arm wins when a stale `sending`
  * row is taken over, and re-stamps `claimed_at` so the take-over's own age
- * starts now. A `sent` row satisfies neither, so it blocks forever — that is
- * the duplicate guard.
+ * starts now. A `sent` row satisfies neither, so it turns every later claimant
+ * away for as long as the job can be redelivered — that is the duplicate guard.
+ * Not literally forever: `sweepExpiredPushSendClaims` deletes the row a day on,
+ * far past the last moment anything could consult it.
  */
 export const claimPushSend = async (
   prisma: PushSendClaimPrisma,
@@ -154,8 +173,9 @@ export const claimPushSend = async (
 }
 
 /**
- * Make the claim permanent. Called only once a provider has *accepted* the
- * send; from here on every redelivery skips this endpoint.
+ * Promote the claim to `sent`. Called only once a provider has *accepted* the
+ * send; from here on every redelivery skips this endpoint, for as long as the
+ * row lives — see the guarantee at the top of this file.
  */
 export const markPushSendSent = async (
   prisma: PushSendClaimPrisma,

@@ -19,11 +19,23 @@
  *   and started a second body beside the first, which is precisely the
  *   duplicate this helper exists to prevent (the thirty-minute registry walk
  *   was the obvious victim, but an event-loop stall does it to any sweep).
- *   A session lock has no such deadline: it is held until this helper
- *   unlocks, and if the process dies the connection drops and Postgres
- *   releases every lock the backend held. That is why the argument is a `pg`
- *   `Pool` and not a `PrismaClient` — Prisma hands a connection back between
- *   statements, so it cannot hold a session lock at all.
+ *   A session lock has no such deadline: it is held until this helper unlocks
+ *   or the connection holding it goes away, and if the process dies that drop
+ *   is exactly what is wanted — Postgres releases every lock the backend held.
+ *   That is why the argument is a `pg` `Pool` and not a `PrismaClient` —
+ *   Prisma hands a connection back between statements, so it cannot hold a
+ *   session lock at all.
+ *
+ *   The residual is the same drop *without* the death. `fn` runs on the
+ *   caller's client, not this one, so if only the lock connection is lost —
+ *   the server terminates the backend, a proxy or an `idle_session_timeout`
+ *   reaps a socket that has been idle since the probe, a network blip — then
+ *   Postgres releases the lock while the body carries on, and the next tick on
+ *   any replica may start a second one. Nothing here detects that, and the
+ *   longest body (the thirty-minute registry walk) is also the one whose lock
+ *   connection sits idle longest. So the property is "one body per tick unless
+ *   the lock connection is lost under a running body", not an unconditional
+ *   one.
  * - **The lock connection only holds the lock.** `fn` runs the sweep against
  *   the caller's ordinary client, so the body is not confined to one
  *   transaction and a long walk does not accumulate a transaction's worth of
@@ -72,10 +84,12 @@ export type SweepLockOptions = {
 }
 
 /**
- * Ten seconds. Long enough that a momentarily busy pool still gets a client —
- * these sweeps hold one for milliseconds — and short enough that a genuinely
- * saturated pool skips the tick rather than parking a pending acquire on it
- * until the next tick adds another.
+ * Ten seconds. Long enough that a momentarily busy pool still gets a client:
+ * a running sweep holds exactly one, for the whole length of its body — the
+ * thirty-minute registry walk included, as the header says — so what a tick
+ * competes with is a handful of long-held connections, not churn. And short
+ * enough that a genuinely saturated pool skips the tick rather than parking a
+ * pending acquire on it until the next tick adds another.
  */
 const DEFAULT_ACQUIRE_TIMEOUT_MS = 10_000
 

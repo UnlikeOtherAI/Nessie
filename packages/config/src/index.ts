@@ -302,8 +302,10 @@ export const ConfigEnvMap = {
   NESSIE_DB_URL: 'database.url',
   // Postgres pool sizing per process. Until these existed only
   // `nessie.config.json` could move them, so a containerised deployment was
-  // pinned to the 10/2 defaults; at ~31 connections per API replica that is
-  // what makes the connection ceiling scale with replica count.
+  // pinned to the 10/2 defaults; at ~21 connections per API replica
+  // (`poolMax * 2 + 1` — the arithmetic is spelled out in `api/src/index.ts`,
+  // which owns it) that is what makes the connection ceiling scale with
+  // replica count.
   NESSIE_DB_POOL_MAX: 'database.poolMax',
   NESSIE_DB_POOL_MIN: 'database.poolMin',
   NESSIE_SHUTDOWN_TIMEOUT_MS: 'shutdownTimeoutMs',

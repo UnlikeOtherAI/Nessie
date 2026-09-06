@@ -252,14 +252,22 @@ export class PgRealtimeTransport {
         // A payload too large for NOTIFY travelled as its row id, so the row is
         // read back here and nothing above the transport ever meets the compact
         // form. That read costs a round trip, so such an event can reach the
-        // fan-out behind a smaller one published after it; the connection
-        // watermark then skips it and the client picks it up on its next
-        // reconnect replay — which is exactly what an over-limit NOTIFY did
-        // before it was made survivable, and far short of losing the row.
+        // fan-out behind a smaller one published after it, and the connection
+        // watermark then skips it. Reconnect replay does NOT bring that one
+        // back: replay is `id > watermark` and the watermark has already moved
+        // past it. The row is never lost, and on the thread lane the content is
+        // still reachable — the message is a durable row of its own, so a
+        // client that re-bootstraps the thread over REST sees it. That is a
+        // different mechanism from replay, and the WebSocket lane has no
+        // equivalent: what a connection's watermark skips there is gone for
+        // that connection.
         void resolveRealtimeNotification(this.pool, envelope)
           .then((payload) => (payload ? onNotification(payload) : undefined))
           .catch(() => {
-            // The row could not be read back; replay recovers it on reconnect.
+            // The row could not be read back. Same recovery as above: not
+            // replay, which any later delivered event moves the watermark past
+            // — the durable row, re-read by a REST bootstrap on the thread
+            // lane.
           })
       })
 

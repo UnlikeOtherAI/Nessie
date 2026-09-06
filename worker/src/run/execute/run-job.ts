@@ -546,9 +546,11 @@ const runJobUnderFence = async (
       if (failureError instanceof RunDrainedError) {
         // Hand the run back before the throw reaches the queue, so the nacked
         // job's next claimant does not have to wait out the takeover window to
-        // pick up a run this worker has already stopped executing. The crash
-        // checkpoint written at the boundary the loop stopped at is what it
-        // resumes from.
+        // pick up a run this worker has already stopped executing. It resumes
+        // from the most recent crash checkpoint that became durable — normally
+        // the boundary the loop stopped at, but a write that was skipped, fenced
+        // out or failed leaves an older one, or none, and then the run replays
+        // from its prompt (`createCrashCheckpointWriter`).
         await releaseRunForDrain(deps.prisma, context.run.id)
         console.log(
           `[worker] draining: handed run ${context.run.id} back at its crash checkpoint`,

@@ -24,13 +24,14 @@ import {
  * {@link PushDispatchDeps}) so the handler is fully unit-testable without any
  * network or live database.
  *
- * **A redelivered job sends nothing twice.** The API enqueues with the
- * idempotency key `push:<messageId>`, so two enqueues for one message collapse
- * to one job row; this handler then passes `push:message:<messageId>` as the
- * delivery core's `notificationKey`, and the core claims a `push_send_claims`
- * row per endpoint before it calls a provider. A job that is redelivered — a
- * dropped ack during a drain, a lock expiry, a nack-and-retry — loses every
- * claim and rings no device again.
+ * **A redelivered job re-rings no endpoint whose claim already reads `sent`.**
+ * The API enqueues with the idempotency key `push:<messageId>`, so two enqueues
+ * for one message collapse to one job row; this handler then passes
+ * `push:message:<messageId>` as the delivery core's `notificationKey`, and the
+ * core claims a `push_send_claims` row per endpoint before it calls a provider.
+ * A job that is redelivered — a dropped ack during a drain, a lock expiry, a
+ * nack-and-retry — loses those claims. What that does and does not cover is
+ * stated once in `./push-send-claim.ts`; this handler adds nothing to it.
  */
 
 export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
