@@ -65,7 +65,7 @@ import {
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
 import { setCloudBrowserReleaseHook } from './run/browser-cloud/release-hook.js'
-import { drainQueueSubscriptions } from './lifecycle.js'
+import { drainQueueSubscriptions, startDeadQueueJobSweep } from './lifecycle.js'
 import {
   allocateExecutionEnvironmentInstance,
   expireExecutionLeases,
@@ -1098,24 +1098,7 @@ export const startWorker = async (
     }
   }, 15_000)
 
-  // Dead-letter the rows the claim's timeout arm now refuses: `processing`,
-  // past their lock and already at `max_attempts`. A set-based UPDATE, so every
-  // replica running it on its own interval is harmless.
-  let deadQueueSweepInFlight = false
-  const deadQueueSweepInterval = setInterval(async () => {
-    if (deadQueueSweepInFlight || abortController.signal.aborted) {
-      return
-    }
-
-    deadQueueSweepInFlight = true
-    try {
-      await expireDeadQueueJobs(pool)
-    } catch (error) {
-      console.error('[worker.queue-dead-sweep] failed', error)
-    } finally {
-      deadQueueSweepInFlight = false
-    }
-  }, 60_000)
+  const deadQueueSweepInterval = startDeadQueueJobSweep(() => expireDeadQueueJobs(pool))
 
   // Re-poll for pended thread messages whose in-flight run vanished without
   // draining (worker crash between terminal update and drain, or an API-side

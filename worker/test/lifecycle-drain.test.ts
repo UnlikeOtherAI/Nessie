@@ -6,6 +6,7 @@ import {
   DEFAULT_WORKER_DRAIN_TIMEOUT_MS,
   drainQueueSubscriptions,
   resolveDrainTimeoutMs,
+  startDeadQueueJobSweep,
   WORKER_DRAIN_TIMEOUT_REASON,
 } from '../src/lifecycle.js'
 
@@ -112,5 +113,58 @@ describe('resolveDrainTimeoutMs', () => {
       DEFAULT_WORKER_DRAIN_TIMEOUT_MS,
     )
     assert.equal(resolveDrainTimeoutMs({ NESSIE_WORKER_DRAIN_TIMEOUT_MS: '1500' }), 1_500)
+  })
+})
+
+describe('startDeadQueueJobSweep', () => {
+  test('never stacks a second pass on top of one still running', async () => {
+    let started = 0
+    let release: () => void = () => undefined
+    const interval = startDeadQueueJobSweep(
+      async () => {
+        started += 1
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+      },
+      { intervalMs: 15 },
+    )
+
+    try {
+      await delay(120)
+      // Eight ticks fired; a sweep that never returned must still have run once.
+      assert.equal(started, 1)
+      release()
+      await delay(40)
+      assert.ok(started > 1, 'the sweep never resumed once the slow pass finished')
+    } finally {
+      clearInterval(interval)
+      release()
+    }
+  })
+
+  test('a failing pass is logged, not thrown, and the next tick still runs', async () => {
+    let started = 0
+    const errors: unknown[] = []
+    const originalError = console.error
+    console.error = (...args: unknown[]): void => {
+      errors.push(args[0])
+    }
+    const interval = startDeadQueueJobSweep(
+      async () => {
+        started += 1
+        throw new Error('sweep exploded')
+      },
+      { intervalMs: 15 },
+    )
+
+    try {
+      await delay(80)
+      assert.ok(started >= 2, `the sweep stopped after ${started} pass(es)`)
+      assert.ok(errors.includes('[worker.queue-dead-sweep] failed'))
+    } finally {
+      clearInterval(interval)
+      console.error = originalError
+    }
   })
 })

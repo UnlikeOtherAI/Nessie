@@ -21,6 +21,39 @@ export const resolveDrainTimeoutMs = (
     : DEFAULT_WORKER_DRAIN_TIMEOUT_MS
 }
 
+// How often to dead-letter the rows `claimNextJob`'s timeout arm now refuses:
+// `processing`, past their lock and already at `max_attempts`. Without the
+// sweep those rows sit `processing` forever once the claim stops re-taking
+// them.
+export const DEAD_QUEUE_SWEEP_INTERVAL_MS = 60_000
+
+// The sweep itself is a set-based UPDATE, so every replica may run it on its
+// own interval: a second instance's pass is a no-op for the rows this one
+// already moved. The in-flight flag is per process and correct that way — it
+// only stops one process stacking overlapping passes on a slow database, and
+// nothing outside this process needs to see it.
+export const startDeadQueueJobSweep = (
+  sweep: () => Promise<unknown>,
+  options: { intervalMs?: number } = {},
+): ReturnType<typeof setInterval> => {
+  let inFlight = false
+
+  return setInterval(() => {
+    if (inFlight) {
+      return
+    }
+
+    inFlight = true
+    void sweep()
+      .catch((error: unknown) => {
+        console.error('[worker.queue-dead-sweep] failed', error)
+      })
+      .finally(() => {
+        inFlight = false
+      })
+  }, options.intervalMs ?? DEAD_QUEUE_SWEEP_INTERVAL_MS)
+}
+
 export type DrainResult = {
   // True when the deadline passed with handlers still running, so their jobs
   // were abandoned rather than acked.
