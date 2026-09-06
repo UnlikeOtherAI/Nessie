@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import type { SweepLockPool } from '@nessie/db'
 import { REGISTRY_MAX_PAGES, REGISTRY_MAX_RECORDS } from '@nessie/mcp-manage'
 import type { PrismaClient } from '@prisma/client'
 
@@ -21,19 +22,23 @@ const FAKE_RESULT = {
 }
 
 /**
- * A fake prisma with the two surfaces the sweep touches:
- * `mcpRegistrySyncRun.findFirst`, and the interactive transaction
- * `withSweepLock` takes the advisory lock in. The lock is always granted here,
- * so these cases exercise the *decision* — the freshness and liveness windows.
- * The lock's own behaviour needs a second database session and is proved in
+ * A fake pool that always grants the session advisory lock, so these cases
+ * exercise the *decision* — the freshness and liveness windows. The lock's own
+ * behaviour needs a second database session and is proved in
  * `test/db/registry-sync-lock.test.ts`.
  */
+const lockPool = (locked = true): SweepLockPool => ({
+  connect: async () => ({
+    query: async () => ({ rows: [{ locked, unlocked: true }] }),
+    release: () => undefined,
+  }),
+})
+
+/** A fake prisma with the one surface the decision reads. */
 const prismaWithLatest = (
   latest: { startedAt: Date; completedAt: Date | null } | null,
 ): PrismaClient =>
   ({
-    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ $queryRaw: async () => [{ locked: true }] }),
     mcpRegistrySyncRun: {
       findFirst: async () => latest,
     },
@@ -42,7 +47,7 @@ const prismaWithLatest = (
 test('runs when no prior sync run exists', async () => {
   let calls = 0
   let received: unknown = null
-  const outcome = await maybeSyncRegistry(prismaWithLatest(null), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(null), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async (_prisma, options) => {
@@ -68,7 +73,7 @@ test('runs when the last completed run is older than the window', async () => {
     startedAt: new Date(NOW - 7 * HOUR),
     completedAt: new Date(NOW - 7 * HOUR),
   }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async () => {
@@ -87,7 +92,7 @@ test('skips when a run completed inside the window', async () => {
     startedAt: new Date(NOW - 2 * HOUR),
     completedAt: new Date(NOW - 1 * HOUR),
   }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async () => {
@@ -104,7 +109,7 @@ test('skips when a run completed inside the window', async () => {
 test('skips when a peer run is in progress inside the liveness window', async () => {
   let calls = 0
   const latest = { startedAt: new Date(NOW - 5 * 60 * 1000), completedAt: null }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     staleMs: 30 * 60 * 1000,
@@ -126,7 +131,7 @@ test('supersedes a zombie run that never completed past the liveness window', as
   // must run a fresh walk rather than treat the corpse as a live peer for 6h.
   let calls = 0
   const latest = { startedAt: new Date(NOW - 45 * 60 * 1000), completedAt: null }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     staleMs: 30 * 60 * 1000,
@@ -142,11 +147,9 @@ test('supersedes a zombie run that never completed past the liveness window', as
 
 test('a tick that does not get the lock is skipped, not queued behind the holder', async () => {
   let calls = 0
+  // `pg_try_advisory_lock` returning false is the whole of "another instance is
+  // walking": the body must not run, and nothing waits.
   const prisma = {
-    // `pg_try_advisory_xact_lock` returning false is the whole of "another
-    // instance is walking": the body must not run, and nothing waits.
-    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ $queryRaw: async () => [{ locked: false }] }),
     mcpRegistrySyncRun: {
       findFirst: async () => {
         throw new Error('the decision must not be read without the lock')
@@ -154,7 +157,7 @@ test('a tick that does not get the lock is skipped, not queued behind the holder
     },
   } as unknown as PrismaClient
 
-  const outcome = await maybeSyncRegistry(prisma, {
+  const outcome = await maybeSyncRegistry(prisma, lockPool(false), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async () => {

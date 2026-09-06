@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 
 import type { BrowserbaseClient } from '../src/browserbase-client.js'
 import {
@@ -762,6 +762,108 @@ runDatabaseTest('a reconciler that loses the tombstone claim deletes nothing', a
     await s.cleanup()
     await prisma.$disconnect()
     await peer.$disconnect()
+  }
+})
+
+/**
+ * Force a row into `deleting` with an `updated_at` of this age, the way a
+ * process killed mid-delete leaves it behind. Raw SQL because Prisma stamps
+ * `@updatedAt` on every write it issues, so it cannot age a row.
+ */
+const strandInDeleting = async (
+  prisma: PrismaClient,
+  id: string,
+  ageMinutes: number,
+): Promise<void> => {
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE agent_browsers
+    SET status = 'deleting'::"AgentBrowserStatus",
+        updated_at = now() - make_interval(mins => ${ageMinutes}::int)
+    WHERE id = ${id}::uuid
+  `)
+}
+
+runDatabaseTest('a browser stranded in deleting is reclaimed once it is old enough', async () => {
+  // The leak this closes: the claim moves `tombstoned → deleting` before the
+  // provider call, and the sweep only ever selected `tombstoned`. A process
+  // killed between the two left the row in `deleting` for good, so the remote
+  // context — which holds encrypted login state — stayed in somebody's
+  // Browserbase account with no reaper and no alert.
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'durable stranded delete')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const browser = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+    })
+    await resetAgentBrowser(prisma, {
+      organizationId: s.organizationId,
+      agentBrowserId: browser.id,
+    })
+    // Past the ten-minute horizon: a delete that has made no progress for this
+    // long belongs to a process that is not coming back.
+    await strandInDeleting(prisma, browser.id, 30)
+
+    const deleted = await reconcileTombstonedAgentBrowsers(deps, { limit: 5 })
+
+    assert.equal(deleted, 1)
+    assert.ok(
+      calls.includes(`context:delete:${browser.browserbaseContextId}`),
+      'the context behind a stranded claim must actually be deleted',
+    )
+    assert.equal(await prisma.agentBrowser.count({ where: { id: browser.id } }), 0)
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a fresh deleting claim is left to the instance that took it', async () => {
+  // The other half of the horizon. If a `deleting` row were claimable
+  // immediately, the status would stop being a claim at all: the next tick —
+  // on this replica or any other — would call Browserbase for a context whose
+  // delete is still in flight, which is the duplicate provider call the claim
+  // was added to prevent.
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'durable fresh delete')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const browser = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+    })
+    await resetAgentBrowser(prisma, {
+      organizationId: s.organizationId,
+      agentBrowserId: browser.id,
+    })
+    // Inside the horizon: somebody is working on it.
+    await strandInDeleting(prisma, browser.id, 1)
+
+    const deleted = await reconcileTombstonedAgentBrowsers(deps, { limit: 5 })
+
+    assert.equal(deleted, 0)
+    assert.ok(
+      !calls.includes(`context:delete:${browser.browserbaseContextId}`),
+      'a claim younger than the horizon is not this tick\u2019s to take',
+    )
+    const row = await prisma.agentBrowser.findUnique({
+      where: { id: browser.id },
+      select: { lastError: true, status: true },
+    })
+    assert.equal(row?.status, 'deleting')
+    assert.equal(row?.lastError, null)
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
   }
 })
 

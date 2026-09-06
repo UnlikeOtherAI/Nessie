@@ -33,6 +33,7 @@ export {
 export { visibleUserAlertWhere } from './user-alerts.js'
 export {
   withSweepLock,
+  type SweepLockClient,
   type SweepLockOptions,
   type SweepLockOutcome,
   type SweepLockPool,

@@ -1,6 +1,7 @@
 import { disconnectPrismaClient, getPrismaClient } from '@nessie/db'
 import type { PrismaClient } from '@prisma/client'
 import { pathToFileURL } from 'node:url'
+import { Pool } from 'pg'
 
 import { backfillProtectedMcpToolGrants } from '../services/agent-tool-policy-registry.js'
 import { runRefreshCredentialSweep } from '../services/api-maintenance.js'
@@ -71,7 +72,17 @@ export const runReconcile = async (
     + `${assistantGrants.agentCount} assistant(s)`,
   )
 
-  await runRefreshCredentialSweep(prisma, true)
+  // The sweep holds a session advisory lock on a dedicated connection for the
+  // duration of its body, so it takes a `pg` pool, not the Prisma client. One
+  // connection, opened for this step and closed with it: reconcile is a
+  // one-shot per deploy that runs beside live API replicas, and the lock is
+  // what keeps it from erasing the same credentials twice over.
+  const lockPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
+  try {
+    await runRefreshCredentialSweep(prisma, lockPool, true)
+  } finally {
+    await lockPool.end()
+  }
   log('expired refresh credentials swept')
 
   return {

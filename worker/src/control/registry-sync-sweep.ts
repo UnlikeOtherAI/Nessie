@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 
-import { withSweepLock } from '@nessie/db'
+import { withSweepLock, type SweepLockPool } from '@nessie/db'
 import {
   REGISTRY_MAX_PAGES,
   REGISTRY_MAX_RECORDS,
@@ -30,6 +30,14 @@ import {
  * together, then both walk the registry. The lock closes that, and it is a
  * `try` lock, so a replica that does not get it skips the tick instead of
  * queueing another walk behind the holder.
+ *
+ * The lock is *session*-scoped and lives on a connection out of the worker's
+ * `pg` pool, which is why this takes a pool as well as the Prisma client the
+ * walk writes through. This walk is the reason: it is the longest body any
+ * sweep in the codebase has, and under the previous transaction-scoped lock a
+ * walk that outlived the transaction had its lock released while it kept
+ * running — a peer replica could then take the lock and start a second walk
+ * beside it, which is the duplicate the lock exists to prevent.
  */
 
 /** Re-sync the catalogue at most this often; the walk itself is bounded below. */
@@ -96,6 +104,7 @@ export const REGISTRY_SYNC_LOCK = 'mcp-registry-sync'
 
 export const maybeSyncRegistry = async (
   prisma: PrismaClient,
+  lockPool: SweepLockPool,
   options: MaybeSyncRegistryOptions = {},
 ): Promise<MaybeSyncRegistryResult> => {
   const staleMs = resolveStaleMs(options.staleMs)
@@ -105,14 +114,14 @@ export const maybeSyncRegistry = async (
   // race the run-row check could only narrow — two replicas both seeing
   // "nothing fresh" and both walking the registry.
   //
-  // The lock is held for `staleMs` (30 min by default) rather than the
-  // helper's ten-minute ceiling, because that is exactly the window in which
-  // an in-progress run row is trusted to belong to a live walk: a lock that
-  // expired earlier would drop the leader mid-walk while the run row still
-  // says a peer is working, which is a confusing half-guard rather than a
-  // safer one.
+  // Nothing here caps how long the lock may be held, and that is deliberate:
+  // the lock is a session lock on a connection this walk owns, so it lasts
+  // exactly as long as the body and is released by the `finally` that ends it
+  // — or, if this process dies mid-walk, by Postgres when the connection
+  // drops. `staleMs` is now only what it says on the label: the window in
+  // which an in-progress run row is trusted to belong to a live walk.
   const outcome = await withSweepLock(
-    prisma,
+    lockPool,
     REGISTRY_SYNC_LOCK,
     async (): Promise<MaybeSyncRegistryResult> => {
       const now = options.now?.() ?? Date.now()
@@ -155,7 +164,6 @@ export const maybeSyncRegistry = async (
       })
       return { ran: true, result }
     },
-    { timeoutMs: staleMs },
   )
 
   // A tick that did not get the lock is a normal outcome, not an error: another

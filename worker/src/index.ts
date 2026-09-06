@@ -1239,7 +1239,9 @@ export const startWorker = async (
   }, COMMS_INCREMENTAL_SWEEP_INTERVAL_MS)
 
   // Apps catalogue registry sync. `maybeSyncRegistry` takes the
-  // `mcp-registry-sync` advisory lock and self-gates on the last completed run
+  // `mcp-registry-sync` advisory lock — a session lock on a connection out of
+  // the pool below, held for the whole walk — and self-gates on the last
+  // completed run
   // (6h window, `NESSIE_REGISTRY_SYNC_INTERVAL_MS`), so a restart or a frequent
   // poll never triggers a fresh multi-minute walk — the poll only asks "is one
   // due?". The lock is what makes that decision cluster-wide, so there is
@@ -1254,7 +1256,7 @@ export const startWorker = async (
     return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 30 * 60 * 1000
   })()
   const registrySyncSweepInterval = setInterval(() => {
-    void maybeSyncRegistry(prisma).catch((error: unknown) => {
+    void maybeSyncRegistry(prisma, pool).catch((error: unknown) => {
       console.error('[worker.registry-sync] failed', error)
     })
   }, registrySyncSweepMs)

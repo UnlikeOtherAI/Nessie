@@ -101,6 +101,18 @@ export class PgRealtimeTransport {
     | ((payload: RealtimeNotificationPayload) => void | Promise<void>)
     | null = null
   private reconnectTimer: NodeJS.Timeout | null = null
+  /**
+   * Earliest moment this replica will ask the database whether a prune is due.
+   *
+   * An optimisation, and only an optimisation: it can make this replica ask
+   * *less* often, never decide that a prune should happen. The authority is
+   * the `realtime_prune_state` row — losing that distinction is the exact bug
+   * this file was changed to fix, because the in-process `lastPruneAt` it
+   * replaced was a per-replica clock pretending to be the cluster's. Zeroed by
+   * a restart, wrong under clock skew, and none of that matters: the worst it
+   * can do either way is cost one extra lock probe.
+   */
+  private nextPruneProbeAt = 0
 
   constructor(
     private readonly pool: Pool,
@@ -325,13 +337,26 @@ export class PgRealtimeTransport {
    *
    * The claim is a single conditional upsert: it returns a row only when it
    * moved the watermark, which is also what creates the row the first time.
-   * It sits inside the lock rather than in front of it, so the cost on the
-   * publish path is the lock probe — a `BEGIN`/`SELECT`/`ROLLBACK` on one
-   * pooled client, held for about a millisecond — rather than a free
-   * in-memory comparison. That is the price of a cadence a second instance
-   * can see, and it is small beside the INSERT and NOTIFY it follows.
+   *
+   * `nextPruneProbeAt` in front of all of it is a pre-filter, not a second
+   * authority. This runs after every durable ws publish, and without it each
+   * one would borrow a pooled connection and run a lock probe — a new cost and
+   * a new stall point on the realtime hot path, on a pool of about ten
+   * connections. With it a replica touches the database about once a minute;
+   * whether a prune is actually *due* is still decided by the row, so two
+   * replicas whose timers drift apart, or one that just restarted with a zero
+   * here, cannot prune more often than the cadence the cluster agrees on.
    */
   private async pruneOldRealtimeEvents(): Promise<void> {
+    const now = Date.now()
+    if (now < this.nextPruneProbeAt) {
+      return
+    }
+    // Advanced before the await, so a burst of concurrent publishes probes
+    // once rather than once each, and advanced even when the probe finds the
+    // prune not due — the answer would be the same a millisecond later.
+    this.nextPruneProbeAt = now + REALTIME_EVENT_PRUNE_INTERVAL_MS
+
     await withSweepLock(this.pool, REALTIME_PRUNE_LOCK, async () => {
       const claimed = await this.pool.query(
         `
@@ -347,9 +372,13 @@ export class PgRealtimeTransport {
         return
       }
 
+      // The cutoff is computed by the server, for the same reason the cadence
+      // is: a replica whose clock runs fast would otherwise delete events
+      // younger than the retention window, and a client reconnecting inside
+      // that window would replay across a gap it cannot detect.
       await this.pool.query(
-        'DELETE FROM realtime_events WHERE created_at < $1',
-        [new Date(Date.now() - REALTIME_EVENT_RETENTION_MS)],
+        'DELETE FROM realtime_events WHERE created_at < now() - make_interval(secs => $1)',
+        [REALTIME_EVENT_RETENTION_MS / 1000],
       )
     })
   }
@@ -377,7 +406,12 @@ export class PgRealtimeTransport {
 
     const replayEvent = await publishWsEvent(this.pool, this.channel, { message, scopes })
     if (replayEvent) {
-      await this.pruneOldRealtimeEvents()
+      // Housekeeping must never fail a publish that already committed: the row
+      // and its NOTIFY are durable by this point, and retention is not the
+      // caller's problem. The next publish past the throttle asks again.
+      await this.pruneOldRealtimeEvents().catch((error: unknown) => {
+        console.error('[realtime] retention prune failed', error)
+      })
     }
 
     return message
