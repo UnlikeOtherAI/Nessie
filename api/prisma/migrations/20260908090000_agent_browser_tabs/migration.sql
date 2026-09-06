@@ -7,8 +7,9 @@
 -- never a history. The screenshot is stored in the row: it is the product's
 -- own snapshot for its own screen, bounded by the tab count and overwritten a
 -- few times a session, not a person's file that needs a quota, a thumbnail
--- and a message to hang off. It is kept small at capture (a JPEG scaled to a
--- thumbnail column; see packages/browser-cloud/src/agent-browser-tabs.ts).
+-- and a message to hang off. It is kept small at capture: the page's viewport
+-- as a JPEG at quality 55, then 30, and dropped past 400 KB
+-- (packages/browser-cloud/src/agent-browser-tabs.ts).
 --
 -- `cloud_browser_sessions.run_id` becomes nullable: a person can now resume
 -- the agent's browser from the conversation, and that session has no run.

@@ -69,8 +69,8 @@ export const AgentBrowserPanel = ({ agent, heading = true }: AgentBrowserPanelPr
         </div>
       ) : !row ? (
         <p className="mt-3 text-sm text-[color:var(--tx2)]">
-          This agent has no browser yet. One is created the first time it opens its own
-          browser, and it keeps its sign-ins between runs.
+          This agent has no browser yet. One is created the first time it — or you —
+          opens it, and it keeps its sign-ins between runs.
         </p>
       ) : (
         <div className="mt-3 grid gap-4">
@@ -125,7 +125,7 @@ export const AgentBrowserPanel = ({ agent, heading = true }: AgentBrowserPanelPr
             </button>
             <p className="mt-2 text-xs text-[color:var(--tx3)]">
               {row.inUse
-                ? 'The browser is open right now — wait for the run to finish.'
+                ? 'The browser is open right now. Close it first.'
                 : 'Clears every sign-in at once and starts the browser over. It does not '
                   + 'sign the services themselves out: to do that fully, use each service’s '
                   + 'own security page.'}

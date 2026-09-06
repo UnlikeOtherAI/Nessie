@@ -11,9 +11,11 @@ import {
   listAgentBrowserTabs,
   listCloudBrowserConnections,
   releaseSessionControl,
+  releaseCloudBrowserSession,
   resetAgentBrowser,
   resumeAgentBrowser,
   touchResumedSession,
+  viewerMaySeeAgentBrowser,
 } from '@nessie/browser-cloud'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 
@@ -38,6 +40,15 @@ import type { RouteDeps } from './types.js'
  * organization connect, the caller's own identity on a personal one — never
  * by anything about the key itself.
  */
+
+/** The site a URL is on, for a reader who may know where but not what. */
+const originOf = (url: string): string => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return ''
+  }
+}
 
 const sendCloudBrowserError = (reply: FastifyReply, error: unknown): boolean => {
   if (!isCloudBrowserError(error)) return false
@@ -114,20 +125,15 @@ const loadViewableSession = async (
     input.actorContext.tenant.organizationId,
   )
   if (!thread) return null
-  if (session.authenticated) {
-    // The requester is not the only person with a claim here: somebody who
-    // took the controls and signed in is looking at *their* logged-in page,
-    // and narrowing to the requester alone would both hide it from them and
-    // show it to somebody who never signed in.
-    const viewer = input.actorContext.actor.actorId
-    if (session.requestedByUserId !== viewer) {
-      const signedIn = session.agentBrowserId
-        ? await prisma.agentBrowserLogin.count({
-          where: { agentBrowserId: session.agentBrowserId, userId: viewer },
-        })
-        : 0
-      if (signedIn === 0) return null
-    }
+  if (session.authenticated && session.agentBrowserId) {
+    // One audience rule for everything a signed-in browser shows — the live
+    // view here, the stored tabs, and the resume — in `viewerMaySeeAgentBrowser`.
+    const allowed = await viewerMaySeeAgentBrowser(prisma, {
+      agentBrowserId: session.agentBrowserId,
+      viewerId: input.actorContext.actor.actorId,
+      requestedByUserId: session.requestedByUserId,
+    })
+    if (!allowed) return null
   }
   return {
     id: session.id,
@@ -293,8 +299,10 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         threadId: thread.id,
         organizationId: actorContext.tenant.organizationId,
         ...(activeOnly ? { status: { in: ['allocating', 'active', 'releasing'] } } : {}),
-        // A browser a person signed into is that person's; phase 1 opens none,
-        // and this keeps the list honest the moment phase 2 does.
+        // A browser a person signed into is that person's. This is the list's
+        // cut of the audience rule in `viewerMaySeeAgentBrowser`: the requester
+        // always, and otherwise only sessions nobody has signed in — signers
+        // who did not ask reach theirs through the detail read.
         OR: [
           { authenticated: false },
           { requestedByUserId: actorContext.actor.actorId },
@@ -439,7 +447,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
    * when nothing is live. Readable by whoever can read the conversation the
    * agent is in, which is the audience its browser already belongs to.
    */
-  app.get('/api/threads/:threadId/agents/:agentId/browser-tabs', async (request, reply) => {
+  app.get('/api/threads/:threadId/agents/:agentId/browser/tabs', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
@@ -463,7 +471,21 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: false, tabs: [] }))
     }
     const tabs = await listAgentBrowserTabs(prisma, { organizationId, agentBrowserId: browser.id })
-    return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: true, tabs }))
+    // A picture of a signed-in page is that person's material, exactly as the
+    // live view of it is. Someone outside the audience still learns where the
+    // browser is — the site, not the page — and never what it showed.
+    const allowed = await viewerMaySeeAgentBrowser(prisma, {
+      agentBrowserId: browser.id,
+      viewerId: actorContext.actor.actorId,
+    })
+    const visible = allowed
+      ? tabs
+      : tabs.map((tab) => ({
+        ...tab,
+        url: originOf(tab.url),
+        screenshotDataUrl: null,
+      }))
+    return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: true, tabs: visible }))
   })
 
   /**
@@ -499,6 +521,28 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
+    // Picking the browser up is seeing everything it is signed in to, so it
+    // takes the same audience as watching it. A browser nobody signed in is
+    // anyone's to open.
+    const existing = await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active' },
+      select: { id: true },
+    })
+    if (existing) {
+      const allowed = await viewerMaySeeAgentBrowser(prisma, {
+        agentBrowserId: existing.id,
+        viewerId: actorContext.actor.actorId,
+      })
+      if (!allowed) {
+        sendApiError(
+          reply,
+          403,
+          'AGENT_BROWSER_SIGNED_IN_BY_OTHERS',
+          'This browser is signed in by someone else, so only they can open it.',
+        )
+        return reply
+      }
+    }
 
     try {
       const resumed = await resumeAgentBrowser(
@@ -515,14 +559,55 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
           threadId,
           teamId: reach.teamId,
           userId: actorContext.actor.actorId,
-          encryptionSecret: authSecret ?? '',
         },
       )
       return createApiResponse(ResumeAgentBrowserResponseSchema.parse(resumed))
     } catch (error) {
+      // The lifecycle's sentence for this is written for the model ("wait for
+      // the run … open a throwaway browser"); a person gets their own.
+      if (isCloudBrowserError(error) && error.code === 'CLOUD_BROWSER_SESSION_ALREADY_OPEN') {
+        sendApiError(
+          reply,
+          409,
+          error.code,
+          'This agent is using its browser right now. Wait for it to finish, then try again.',
+        )
+        return reply
+      }
       if (sendCloudBrowserError(reply, error)) return reply
       throw error
     }
+  })
+
+  /**
+   * "I'm done" on a resumed session: the last state is written and the
+   * browser stops billing now, rather than when the idle window closes it.
+   * Only for a session a person opened — a run's session is its run's to end.
+   */
+  app.delete('/api/browser-sessions/:sessionId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    const session = await loadViewableSession(prisma, {
+      actorContext,
+      sessionId,
+      findThreadForUser,
+    })
+    if (!session || session.runId !== null) {
+      sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
+      return reply
+    }
+    await releaseCloudBrowserSession(
+      {
+        prisma,
+        resolveSecret: (ref) => secretResolver.resolve(ref),
+        encryptionSecret: authSecret ?? '',
+      },
+      { sessionId, releasedBy: 'person_done' },
+    )
+    return reply.code(204).send()
   })
 
   /**
@@ -722,7 +807,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     const { sessionId } = request.params as { sessionId: string }
     // Only the holder may hand back, so a bystander cannot yank the controls
     // out from under somebody mid-sign-in.
-    await releaseSessionControl(prisma, {
+    const released = await releaseSessionControl(prisma, {
       sessionId,
       userId: actorContext.actor.actorId,
     })
@@ -730,16 +815,18 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     // somewhere, or moved the browser on — so the last state is written now
     // rather than minutes later when the idle window closes it. A run's
     // session is left alone: its worker holds the socket and captures itself.
-    const resumed = await prisma.cloudBrowserSession.findFirst({
-      where: {
-        id: sessionId,
-        organizationId: actorContext.tenant.organizationId,
-        runId: null,
-        status: 'active',
-        agentBrowserId: { not: null },
-      },
-      select: { id: true },
-    })
+    const resumed = released
+      ? await prisma.cloudBrowserSession.findFirst({
+        where: {
+          id: sessionId,
+          organizationId: actorContext.tenant.organizationId,
+          runId: null,
+          status: 'active',
+          agentBrowserId: { not: null },
+        },
+        select: { id: true },
+      })
+      : null
     if (resumed) {
       await captureUndrivenSessionTabs(prisma, {
         sessionId,

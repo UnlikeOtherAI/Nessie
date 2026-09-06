@@ -9,9 +9,9 @@ import {
   type BrowserbaseCredentials,
 } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
-import { captureUndrivenSessionTabs } from './agent-browser-tabs.js'
+import { captureTabsAtConnectUrl } from './agent-browser-tabs.js'
 import type { CdpClient } from './cdp-client.js'
-import { sealConnectCapability } from './session-capability.js'
+import { loadSessionCapability, sealConnectCapability } from './session-capability.js'
 
 /**
  * Connection resolution and the session state machine.
@@ -499,21 +499,24 @@ export const findLiveSessionForRun = async (
  */
 export const releaseCloudBrowserSession = async (
   deps: CloudBrowserDeps,
-  input: { sessionId: string; releasedBy: string },
+  input: { sessionId: string; releasedBy: string; skipCapture?: boolean },
 ): Promise<boolean> => {
-  // A resumed session's last state is written here, before the claim clears
-  // the capability: a run's session was captured by its worker, but nothing
-  // drives a resumed one, and this is its last moment with pages.
-  if (deps.encryptionSecret) {
+  // A resumed session's last state is written on the way out: a run's session
+  // was captured by its worker, but nothing drives a resumed one, and this is
+  // its last moment with pages. The capability is read *before* the claim
+  // below clears it, and used *after* — so the claim, which is what stops a
+  // second releaser calling Browserbase, is never held up by a picture.
+  let lastLook: string | null = null
+  if (!input.skipCapture && deps.encryptionSecret) {
     const resumed = await deps.prisma.cloudBrowserSession.count({
       where: { id: input.sessionId, runId: null, status: 'active', agentBrowserId: { not: null } },
     })
     if (resumed === 1) {
-      await captureUndrivenSessionTabs(deps.prisma, {
+      const capability = await loadSessionCapability(deps.prisma, {
         sessionId: input.sessionId,
         encryptionSecret: deps.encryptionSecret,
-        connect: deps.connect,
       })
+      lastLook = capability?.connectUrl ?? null
     }
   }
   // `releasing` is deliberately NOT claimable: three writers can race here
@@ -528,6 +531,16 @@ export const releaseCloudBrowserSession = async (
     data: { status: 'releasing', connectCapabilityCiphertext: null, originGate: Prisma.DbNull },
   })
   if (claimed.count !== 1) return false
+
+  // Bounded (`CAPTURE_TIMEOUT_MS`) and never throws: the remote stop below
+  // runs whatever happens here.
+  if (lastLook) {
+    await captureTabsAtConnectUrl(deps.prisma, {
+      sessionId: input.sessionId,
+      connectUrl: lastLook,
+      connect: deps.connect,
+    })
+  }
 
   const row = await deps.prisma.cloudBrowserSession.findUnique({
     where: { id: input.sessionId },
@@ -717,16 +730,23 @@ export const releaseSessionControl = async (
   // The durable browser keeps whatever they left behind, so the record has to
   // outlive the session: without it, tomorrow's run reads `loginCount === 0`
   // and publishes what it reads to everyone. The service is unnamed because
-  // nobody asked — a person can rename it from the agent's Browser panel.
+  // nobody asked. One row per person per browser: a person who resumes the
+  // browser to look, then to look again, is the same audit fact twice, and a
+  // sign-in card's Done already writes the named row for a real handoff.
   if (session?.agentBrowserId) {
-    await prisma.agentBrowserLogin.create({
-      data: {
-        agentBrowserId: session.agentBrowserId,
-        organizationId: session.organizationId,
-        serviceHint: 'Signed in while at the controls',
-        userId: input.userId,
-      },
-    }).catch(() => undefined)
+    const already = await prisma.agentBrowserLogin.count({
+      where: { agentBrowserId: session.agentBrowserId, userId: input.userId },
+    })
+    if (already === 0) {
+      await prisma.agentBrowserLogin.create({
+        data: {
+          agentBrowserId: session.agentBrowserId,
+          organizationId: session.organizationId,
+          serviceHint: 'Signed in while at the controls',
+          userId: input.userId,
+        },
+      }).catch(() => undefined)
+    }
   }
   return true
 }

@@ -33,7 +33,7 @@ type ChatToolDockProps = {
 }
 
 const CROWDED_REASON =
-  'Close the thread to open a tool beside this conversation, or widen the window.'
+  'No room beside this conversation. Close the thread or dashboard, or widen the window.'
 
 /**
  * The tool rail and the column it opens, as two siblings of the conversation.
@@ -73,7 +73,11 @@ export const ChatToolDock = ({
     enabled: browserOpen || !single,
     refetchInterval: browserOpen ? WATCHING_POLL_MS : RAIL_POLL_MS,
   })
-  const liveSessionId = sessions.data?.sessions[0]?.id ?? null
+  // This agent's session, not the newest in the thread: the panel is per
+  // agent, and a room with several agents must not hand one agent's browser
+  // to another's panel — or claim it for a person who resumed a different one.
+  const liveSessionId =
+    sessions.data?.sessions.find((row) => row.agentId === agent.id)?.id ?? null
 
   const liveTools = useMemo(
     () => new Set<ChatToolId>(liveSessionId === null ? [] : ['browser']),

@@ -47,7 +47,7 @@ import {
   saveOriginGate,
   type SessionPoolDeps,
 } from './session-pool.js'
-import { captureTabsForSession } from './tab-capture.js'
+import { captureTabsNow, scheduleTabCapture } from './tab-capture.js'
 
 /**
  * What a browser verb reports. Failure is a value; ambiguity is a throw.
@@ -281,7 +281,12 @@ const runOpen = async (
           organizationId: context.channel.organizationId,
           agentBrowserId: agentBrowser.id,
         })
-        await restoreBrowserTabs(cdp, [{ url: parsed.data.url }, ...stored.slice(1)])
+        await restoreBrowserTabs(cdp, [
+          { url: parsed.data.url },
+          // The requested page may be one of the stored tabs; it must not
+          // come back a second time behind itself.
+          ...stored.slice(1).filter((tab) => tab.url !== parsed.data.url),
+        ])
       } else {
         await cdp.call('Page.navigate', { url: parsed.data.url })
       }
@@ -294,7 +299,7 @@ const runOpen = async (
         error instanceof Error ? error.message : String(error)}`)
     }
     const observation = await observeBrowser(cdp)
-    await captureTabsForSession(deps, opened.sessionId)
+    scheduleTabCapture(deps, opened.sessionId)
     return {
       output: untrusted(renderObservation(observation)),
       success: true,
@@ -364,10 +369,10 @@ const runAct = async (
       noteVisitedOrigin(gate, observation.url)
       await saveOriginGate(pool, session.sessionId, gate)
     }
-    // The last state is written after every act, not only at close: a worker
-    // that dies mid-run never reaches close, and the column would otherwise
-    // show a page from before the agent did anything.
-    await captureTabsForSession(deps, session.sessionId)
+    // Where the browser is now is written after every act, not only at
+    // close: a worker that dies mid-run never reaches close. Scheduled, not
+    // awaited — the model is waiting on this verb.
+    scheduleTabCapture(deps, session.sessionId)
     return {
       output: untrusted(
         [
@@ -389,8 +394,10 @@ const runClose = async (
 ): Promise<BrowserToolOutcome> => {
   const session = await findLiveSessionForRun(deps.prisma, context.run.id)
   if (!session) return { output: 'No browser is open.', success: true }
-  // The pages exist for one more moment; what they show is the last state.
-  await captureTabsForSession(deps, session.id)
+  // Captured before the release, because the release is what takes the pages
+  // away — and after any capture still running, so a stale pass cannot land
+  // on top of this one.
+  await captureTabsNow(deps, session.id)
   releaseCdp(session.id)
   const released = await releaseCloudBrowserSession(deps, {
     sessionId: session.id,

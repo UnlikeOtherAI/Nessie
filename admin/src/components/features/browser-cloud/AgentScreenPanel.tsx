@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import type { AgentRecord } from '../../../lib/api-client'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
+import { browserCloudKeys } from '../../../facades/browser-cloud/keys'
 import { LOCAL_BACK_PRIORITY, useLocalBack } from '../../../navigation/LocalBackContext'
 import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
@@ -30,7 +32,7 @@ type AgentScreenPanelProps = {
 }
 
 /**
- * The agent's browser, beside the conversation.
+ * The agent's browser panel, beside the conversation.
  *
  * It reads exactly like a reply thread — same shell, same breakpoints, same
  * drag-resize — because it answers the same shape of question ("what is
@@ -40,36 +42,54 @@ type AgentScreenPanelProps = {
  *
  * The tool rail's Browser button is persistent, so most of the time it is
  * pressed there is no session to watch — and "nothing to watch" is not
- * "nothing to know". Idle, the column shows the last state (`BrowserLastState`:
- * the tabs the browser was left with, what each showed, and Resume). The swap
- * is by session, so a browser starting up — the agent's, or a resume — turns
- * the last state into the screen with no further thought from the caller.
+ * "nothing to know". Idle, the panel shows where the browser left off
+ * (`BrowserLastState`: the tabs it was left with, what each showed, and the
+ * window to tap). The swap is by session, so a browser starting up — the
+ * agent's, or a person's — turns that into the live view with no further
+ * thought from the caller.
  */
 export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentScreenPanelProps) => {
-  // The reply thread stands immediately to this column's left, and the handle
-  // between them belongs to this column. Naming the thread's key is
-  // unconditional: the link is made only while a thread panel is on screen.
+  // The reply thread stands immediately to this panel's left, and the handle
+  // between them belongs to this panel. The hook links the two only while
+  // both are on screen, so naming the thread's key costs nothing when there
+  // is no thread.
   const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY, {
     linkedLeftKey: THREAD_PANEL_WIDTH_STORAGE_KEY,
   })
   const phoneLayout = useNavigationLayout() === 'single'
+  const queryClient = useQueryClient()
   const [fullscreen, setFullscreen] = useState(false)
-  // A resume is "open it for me": the session arrives a poll later, and when
-  // it does the column goes full screen and claims the keyboard, which is the
-  // only container where a person can drive. Held as intent rather than set
-  // directly, because full screen with no session yet is an empty layer.
-  const [openForPerson, setOpenForPerson] = useState(false)
+  // A resume is "open it for me": the resumed session arrives a poll later,
+  // and when *that* session — not whichever the thread lists first — is the
+  // one on screen, the panel goes full screen and claims the controls, which
+  // is the only container where a person can drive. Held as intent rather than
+  // set directly, because full screen with no session yet is an empty layer.
+  const [awaitingSessionId, setAwaitingSessionId] = useState<string | null>(null)
   const [claimForPerson, setClaimForPerson] = useState(false)
   useEffect(() => {
-    if (sessionId !== null && openForPerson) {
+    if (awaitingSessionId !== null && sessionId === awaitingSessionId) {
       setFullscreen(true)
       setClaimForPerson(true)
-      setOpenForPerson(false)
+      setAwaitingSessionId(null)
     }
-  }, [openForPerson, sessionId])
+  }, [awaitingSessionId, sessionId])
+  // Leaving full screen unmounts the viewer, whose once-guard is a ref that
+  // resets on remount; a claim intent left standing would take the controls
+  // again the next time the person opened full screen by hand.
   useEffect(() => {
     if (!fullscreen) setClaimForPerson(false)
   }, [fullscreen])
+  // The rows behind the idle face change exactly when a session ends, and
+  // the face would otherwise be served last time's tabs from the cache.
+  const previousSessionId = useRef(sessionId)
+  useEffect(() => {
+    if (previousSessionId.current !== null && sessionId === null) {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.agentBrowserTabs(threadId ?? undefined, agent.id),
+      })
+    }
+    previousSessionId.current = sessionId
+  }, [agent.id, queryClient, sessionId, threadId])
 
   // The takeover is full-bleed rather than a centred card, so it is not the
   // shared `Dialog` — but it owes the same shared work every overlay does
@@ -96,14 +116,16 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
   // Each publishes its own Back and its own action, and the store updates the
   // entry in place, so switching between them swaps the bar with no extra
   // coordination.
-  // The tool rail opens this column from component state rather than a route,
-  // so on a single-column layout it is the panel — not the router — that owes
-  // Back an answer. The full-screen layer registers its own at modal priority,
-  // which outranks this one, so the two never fight.
+  // On a single-column layout the panel is a route and the router owns Back;
+  // this registration is for the layouts in between — a narrow tablet, where
+  // the shell is `split` but the panel is a full-screen layer opened from the
+  // rail — so a hardware Back or an edge swipe closes the panel rather than
+  // the conversation under it. The full-screen layer registers its own at
+  // modal priority, which outranks this one, so the two never fight.
   useLocalBack({
     active: !overlay.mounted,
     id: 'chat-tool:browser',
-    label: 'Back to channel',
+    label: 'Back to conversation',
     onBack: onClose,
     priority: LOCAL_BACK_PRIORITY.chatToolPanel,
   })
@@ -123,7 +145,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
       submit: false,
       tone: null,
     }],
-    back: { label: 'Back to channel', onBack: onClose },
+    back: { label: 'Back to conversation', onBack: onClose },
     title: 'Browser',
   })
 
@@ -164,7 +186,9 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
             <AgentScreenViewer
               agent={agent}
               claimOnLive={claimForPerson}
+              onDone={overlay.requestClose}
               sessionId={sessionId}
+              threadId={threadId}
               variant="fullscreen"
             />
           )}
@@ -187,7 +211,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
       {nativeBarOwnsHeader ? null : (
       <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
         {phoneLayout ? (
-          <PhoneBackButton label="Back to channel" onBack={onClose} />
+          <PhoneBackButton label="Back to conversation" onBack={onClose} />
         ) : null}
         <h2 className="flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">Browser</h2>
         {sessionId === null ? null : (
@@ -214,11 +238,12 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
       {sessionId === null ? (
         <BrowserLastState
           agent={agent}
-          onResumed={() => setOpenForPerson(true)}
+          onResumed={setAwaitingSessionId}
+          opening={awaitingSessionId !== null}
           threadId={threadId}
         />
       ) : (
-        <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
+        <AgentScreenViewer agent={agent} sessionId={sessionId} threadId={threadId} variant="panel" />
       )}
     </SidePanelShell>
   )

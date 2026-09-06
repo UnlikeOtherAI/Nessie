@@ -153,8 +153,9 @@ runDatabaseTest('tabs are a set: a capture replaces what was there', async () =>
     assert.deepEqual(
       rows.map((row) => [row.position, row.url, row.screenshotDataUrl !== null, row.capturedAt !== null]),
       [
+        // Seen now whether or not the picture came out.
         [0, 'https://a.example', true, true],
-        [1, 'https://b.example', false, false],
+        [1, 'https://b.example', false, true],
       ],
     )
     assert.ok(rows[0]?.screenshotDataUrl?.startsWith('data:image/jpeg;base64,'))
@@ -200,7 +201,6 @@ runDatabaseTest('a resume reopens the same browser with no run, tabs restored, o
       threadId: s.threadId,
       teamId: s.teamId,
       userId: s.ownerUserId,
-      encryptionSecret: 'test-auth-secret',
     })
     assert.equal(resumed.restoredTabs, 2)
     // The same persistent context, so the sign-ins are the ones it had.
@@ -257,6 +257,50 @@ runDatabaseTest('a resume reopens the same browser with no run, tabs restored, o
       ['https://gmail.example/inbox', 'Inbox', true],
     ])
     assert.ok(calls.some((call) => call.startsWith('end:')))
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a signed-in browser is seen by its signers and its requester, nobody else', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const stranger = await prisma.user.create({
+      data: { displayName: 'Stranger', email: `stranger-${randomUUID()}@example.com` },
+    })
+    await prisma.organizationMember.create({
+      data: { organizationId: s.organizationId, userId: stranger.id, role: 'member' },
+    })
+    const browser = await prisma.agentBrowser.create({
+      data: {
+        organizationId: s.organizationId,
+        agentId: s.agentId,
+        connectionId: s.connectionId,
+        browserbaseContextId: 'ctx-audience',
+      },
+    })
+    const { viewerMaySeeAgentBrowser } = await import('../src/agent-browser.js')
+    const see = (viewerId: string, requestedByUserId: string | null = null) =>
+      viewerMaySeeAgentBrowser(prisma, { agentBrowserId: browser.id, viewerId, requestedByUserId })
+
+    // Nobody signed in: what the agent could see anyway.
+    assert.equal(await see(stranger.id), true)
+
+    await prisma.agentBrowserLogin.create({
+      data: {
+        agentBrowserId: browser.id,
+        organizationId: s.organizationId,
+        userId: s.ownerUserId,
+        serviceHint: 'Mail',
+      },
+    })
+    assert.equal(await see(s.ownerUserId), true)
+    assert.equal(await see(stranger.id), false)
+    // A session you asked for is your own request, whoever signed the browser in.
+    assert.equal(await see(stranger.id, stranger.id), true)
+    await prisma.user.delete({ where: { id: stranger.id } }).catch(() => undefined)
   } finally {
     await s.cleanup()
     await prisma.$disconnect()

@@ -64,11 +64,15 @@ export const ChatToolRail = ({
       const live = liveTools.has(tool.id)
       return (
         <button
+          // `aria-disabled` rather than `disabled`: a disabled button shows no
+          // tooltip in Safari, and the reason is the whole point of leaving
+          // the button on screen.
+          aria-disabled={blockedReason !== null}
           aria-pressed={openTool === tool.id}
-          className={`admin-rail-btn ${openTool === tool.id ? 'active' : ''}`}
-          disabled={blockedReason !== null}
+          className={`admin-rail-btn ${openTool === tool.id ? 'active' : ''} ${
+            blockedReason === null ? '' : 'cursor-not-allowed opacity-50'}`}
           key={tool.id}
-          onClick={() => onToggle(tool.id)}
+          onClick={() => { if (blockedReason === null) onToggle(tool.id) }}
           title={blockedReason ?? undefined}
           type="button"
         >

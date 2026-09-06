@@ -16,7 +16,6 @@ export type ResumeAgentBrowserInput = {
   teamId: string | null
   /** The person resuming. Never null: a resume is somebody's ask. */
   userId: string
-  encryptionSecret: string
 }
 
 /**
@@ -55,7 +54,7 @@ export const resumeAgentBrowser = async (
     agentId: input.agentId,
     requestedByUserId: input.userId,
     teamId: input.teamId,
-    encryptionSecret: input.encryptionSecret,
+    encryptionSecret: deps.encryptionSecret ?? '',
     // The worker's gate shape (`origin-gate.ts`), starting from what the
     // browser is being put back on. No agent drives this session, so nothing
     // reads it for a write decision; it is here so the row is well-formed for
@@ -90,6 +89,8 @@ export const resumeAgentBrowser = async (
     await releaseCloudBrowserSession(deps, {
       sessionId: opened.sessionId,
       releasedBy: 'resume_failed',
+      // Nothing was restored, so there is no last state worth a dial.
+      skipCapture: true,
     }).catch(() => undefined)
     throw error
   } finally {
