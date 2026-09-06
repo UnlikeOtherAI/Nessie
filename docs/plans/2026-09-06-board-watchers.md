@@ -299,10 +299,49 @@ above as a description of the code.
   exactly one board's pool. The recipient collapse is still correct and still
   earns its place for the *concurrency* case — a sweep page and a webhook
   applying one change — which is what `BoardWatchNotification` claims on.
-- **The agent half is not built.** A watcher may be an agent, the row stores
-  it, and the fan-out resolves it — but nothing wakes it yet. Waking one needs
-  either a managed `AgentTrigger` per watcher or a message posted with no run
-  context, and both are a design rather than an addition. People are told
-  durably today; agents are recorded and silent. This is the first thing to
-  close, and until it is, the picker should arguably refuse an agent rather
-  than accept one it cannot reach.
+- **The agent half is built, and not the way §2 said.** That decision was to
+  wake an agent through `queueTriggerRun`. It cannot be: that function needs an
+  `AgentTrigger` row to hang its delivery, retry and health off, so a watcher
+  would have to mint one per agent — rows on the Triggers page nobody created
+  and nobody can edit. What the trigger path and the wake actually share is the
+  layer *underneath* it, and that is reused verbatim: a `system` kickoff
+  message, `claimThreadRunOrPend`, and a new `startAgentRun` that both call.
+  Extracting that trio is what makes this reuse rather than a second copy.
+- **The destination and the identity are captured when the watcher is added,
+  not worked out at wake time.** `BoardWatcher` carries `channelId`, `threadId`
+  and a `launchOrigin` for agent rows. Both halves were review findings, and
+  both were the same mistake — the worker reconstructing something only the
+  adder's session knew. `agentDmKey` includes a team: the interactive route
+  takes it from the session, so the worker choosing "the project's oldest team"
+  opened a *second* DM for the same pair and woke the agent where nobody was
+  reading. And a wake has no session, so with no captured `uoaIdentity` the
+  Ledger signer has nothing to verify and the run dies at its first inference —
+  unattended, posting nothing to say why. A trigger solves both with
+  `launchOrigin`; a watcher now does the same.
+- **The entitlement rule reaches the agent's reader.** An agent is woken in a DM
+  a *person* opens, and the kickoff carries ticket titles, so the check the user
+  branch applies had to reach whoever is on the other side of the agent —
+  otherwise the agent branch is a way around it.
+- **A wake needs a conversation, so the picker now refuses an agent without
+  one.** `resolveAgentConversation` returns a private agent's own home DM and a
+  shared agent's DM with the person who added the watcher; a system-managed
+  agent and the personal assistant have neither, for the same reason
+  `createAgentTrigger` refuses them. `setBoardWatchers` refuses such a watcher
+  with `AGENT_HAS_NO_CONVERSATION` at the point somebody adds it, rather than
+  accepting one that could never fire.
+- **The kickoff is `system`, never `user`.** A `user` role would sign "a ticket
+  moved" with the name of whoever added the watcher and fill their DM with
+  plumbing — the defect the trigger path documents at length. The run still
+  receives the content as its prompt.
+- **A hidden kickoff can never own a reply, on either path.** The drain that
+  batches a pended wake keyed its placement on `triggerId`, so a wake landing
+  while the slot was busy would have replied under a `system` message nobody can
+  see and dropped out of the feed. That rule was always about the kickoff being
+  hidden rather than about triggers, and it now reads the role. Only the latest
+  pended kickoff drives the follow-up's prompt, so the wake tells the agent to
+  check the board rather than trusting the list it carries.
+- **A busy board costs one run at a time per agent.** The wake takes the same
+  per-(agent, thread) claim a chat reply does, so a ticket that moves mid-run is
+  batched into the follow-up instead of racing it. That is the coalescing §2
+  asked for, provided by machinery that already existed rather than a window of
+  its own.

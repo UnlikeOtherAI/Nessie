@@ -76,15 +76,37 @@ export const registerBoardWatcherRoutes = (
     const body = parseInput(SetBoardWatchersBodySchema, request.body, reply)
     if (!body) return reply
 
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'TEAM_REQUIRED', 'A team is required to add a watcher.')
+      return reply
+    }
     const result = await setBoardWatchers(prisma, {
       boardId: board.id,
       organizationId: board.organizationId,
       addedByUserId: actorContext.actor.actorId,
+      // The session is captured here because a wake has no session of its own —
+      // the same reason a trigger captures its launch origin.
+      origin: {
+        teamId,
+        ...(actorContext.actionContext.uoaIdentity
+          ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+          : {}),
+      },
       watchers: body.watchers,
     })
     if (isBoardWatcherError(result)) {
       if (result.error === 'BOARD_NOT_FOUND') {
         sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
+        return reply
+      }
+      if (result.error === 'AGENT_HAS_NO_CONVERSATION') {
+        sendApiError(
+          reply,
+          400,
+          'AGENT_HAS_NO_CONVERSATION',
+          'That agent has no conversation it can be woken in, so it could never be told.',
+        )
         return reply
       }
       sendApiError(

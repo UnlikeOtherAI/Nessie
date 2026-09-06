@@ -229,7 +229,7 @@ export const drainPendingThreadMessages = async (
         ...runPrincipalWhere(input.principalUserId),
       },
       orderBy: [{ message: { createdAt: 'asc' } }, { seq: 'asc' }],
-      include: { message: { select: { content: true } } },
+      include: { message: { select: { content: true, role: true } } },
     })
     if (pendings.length === 0) {
       return null
@@ -277,14 +277,18 @@ export const drainPendingThreadMessages = async (
         agentId: input.agentId,
         principalUserId: latest.principalUserId,
         threadId: input.threadId,
-        // A batched follow-up driven by a trigger fire is still a trigger run,
-        // so it posts to the room rather than threading under its kickoff —
-        // matching the direct claim path in `worker/src/control/trigger-run.ts`.
-        // Without this, a fire that lands while the slot is busy would reply
-        // under a `system` kickoff nobody can see, and the sweep would vanish
-        // from the channel. Structural: derived from the pending row's
-        // triggerId, never from content.
-        replyPlacement: latest.triggerId ? 'channel' : null,
+        // A batched follow-up whose kickoff is hidden still posts to the room
+        // rather than threading under it — matching the direct claim path in
+        // `agent-run-start.ts`. Without this, an unattended fire that lands
+        // while the slot is busy replies under a `system` kickoff nobody can
+        // see, and vanishes from the channel.
+        //
+        // Keyed on the kickoff's role, not on `triggerId`: a trigger fire was
+        // the first path to write a hidden kickoff, but a board watcher's wake
+        // is the second, and the rule was always "a hidden root cannot own a
+        // reply". Structural either way — derived from the row, never content.
+        replyPlacement:
+          latest.triggerId || latest.message.role === 'system' ? 'channel' : null,
         status: 'pending',
         triggerMessageId: scheduledKickoff?.id ?? latest.messageId,
         triggerId: latest.triggerId ?? null,

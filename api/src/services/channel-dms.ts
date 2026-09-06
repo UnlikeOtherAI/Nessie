@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import type { ChannelRecord } from '../contracts/team.js'
 import {
   channelTeamInclude,
+  ensureSharedAgentDm,
   loadChannelTeamProject,
   mapChannelRecord,
   validateChannelLabel,
@@ -15,19 +16,6 @@ const uniqueIds = (ids: string[]): string[] => Array.from(new Set(ids))
 const isUniqueConstraintError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 
-const agentDmKey = (input: {
-  agentId: string
-  currentUserId: string
-  organizationId: string
-  teamId: string
-}): string =>
-  [
-    input.organizationId,
-    input.teamId,
-    input.currentUserId,
-    'agent',
-    input.agentId,
-  ].join(':')
 
 const groupDmKey = (input: {
   agentIds: string[]
@@ -274,44 +262,22 @@ export const findOrCreateAgentDmChannel = async (
     return null
   }
 
-  const dmKey = agentDmKey(input)
-
-  try {
-    const channel = await prisma.channel.upsert({
-      where: { dmKey },
-      create: {
-        label: agent.name,
-        type: 'dm',
-        organizationId: input.organizationId,
-        projectId: teamProject.projectId,
-        teamId: input.teamId,
-        visibility: 'private',
-        dmKey,
-        members: {
-          create: { userId: input.currentUserId, role: 'owner' },
-        },
-        agentBindings: {
-          create: { agentId: agent.id },
-        },
-      },
-      update: {},
-      include: channelTeamInclude,
-    })
-    await prisma.agentBinding.createMany({
-      data: [{ agentId: agent.id, channelId: channel.id }],
-      skipDuplicates: true,
-    })
-    return mapChannelRecord(prisma, channel, input.currentUserId)
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      const existing = await prisma.channel.findUniqueOrThrow({
-        where: { dmKey },
-        include: channelTeamInclude,
-      })
-      return mapChannelRecord(prisma, existing, input.currentUserId)
-    }
-    throw error
-  }
+  // The channel itself is `ensureSharedAgentDm` in @nessie/team-admin: the
+  // worker reaches the same DM to wake a board watcher, and two spellings of
+  // one key is how the two would drift apart.
+  const channelId = await ensureSharedAgentDm(prisma, {
+    agentId: agent.id,
+    agentName: agent.name,
+    organizationId: input.organizationId,
+    projectId: teamProject.projectId,
+    teamId: input.teamId,
+    userId: input.currentUserId,
+  })
+  const channel = await prisma.channel.findUniqueOrThrow({
+    where: { id: channelId },
+    include: channelTeamInclude,
+  })
+  return mapChannelRecord(prisma, channel, input.currentUserId)
 }
 
 export const findOrCreatePrivateConversationChannel = async (
