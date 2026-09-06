@@ -3,7 +3,11 @@ import {
   MAX_DELIVERY_RETRIES,
   computeNextRetryAt,
 } from '@nessie/runtime'
-import { parseRunId, type AgentTriggerRecord } from '@nessie/schemas'
+import {
+  parseRunId,
+  type AgentTriggerRecord,
+  type TriggerFireSkipReason,
+} from '@nessie/schemas'
 import { toTimestamp } from '@nessie/team-admin'
 import type { AgentTriggerDeliveryRecord } from '../contracts/triggers.js'
 import { toInputJson } from '../db/prisma-json.js'
@@ -220,12 +224,11 @@ export const loadExistingDeliveryRun = async (
 export type DispatchTriggerResult =
   | {
       kind: 'rejected'
-      reason:
-        | 'agent_not_bound'
-        | 'trigger_not_found'
-        | 'trigger_paused'
-        | 'workflow_installation_not_ready'
-        | 'webhook_secret_mismatch'
+      // The four claim-time reasons come from `@nessie/schemas` because the
+      // worker writes them onto the delivery row when the same question is
+      // re-asked after the ack; `webhook_secret_mismatch` is the one rejection
+      // only an inbound request can produce, so it never reaches a job.
+      reason: TriggerFireSkipReason | 'webhook_secret_mismatch'
     }
   | {
       delivery: AgentTriggerDeliveryRecord
@@ -254,17 +257,23 @@ export type DispatchTriggerResult =
  * personal assistant is exempt from the *binding* check, being its owner's
  * delegate rather than an agent bound to channels — so the receiver never
  * refuses a delivery the worker would happily have fired.
+ *
+ * The worker asks the same question again when it claims the job, and answers
+ * it in the same four words: a fire the recheck stops writes a terminal
+ * `skipped` delivery carrying the reason, so the `dedupeKey` this route's 202
+ * handed out always resolves to something.
  */
 export type TriggerFireReadiness =
   | { kind: 'ready' }
   | {
       kind: 'not_ready'
-      reason: Extract<DispatchTriggerResult, { kind: 'rejected' }>['reason']
+      reason: TriggerFireSkipReason
     }
 
-const notReady = (
-  reason: Extract<DispatchTriggerResult, { kind: 'rejected' }>['reason'],
-): TriggerFireReadiness => ({ kind: 'not_ready', reason })
+const notReady = (reason: TriggerFireSkipReason): TriggerFireReadiness => ({
+  kind: 'not_ready',
+  reason,
+})
 
 export const resolveTriggerFireReadiness = async (
   prisma: PrismaClient,

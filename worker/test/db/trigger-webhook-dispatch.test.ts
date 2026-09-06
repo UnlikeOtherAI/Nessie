@@ -129,9 +129,13 @@ runDatabaseTest('replaying a webhook dispatch fires the trigger once', async () 
   }
 })
 
-runDatabaseTest('a trigger paused between the ack and the claim does not fire', async () => {
+runDatabaseTest('a trigger paused between the ack and the claim leaves a delivery the ack’s key finds', async () => {
   const prisma = new PrismaClient()
   const context = await seed(prisma)
+  // What the receiver's 202 handed the sender, and called the key
+  // `GET /api/triggers/:id/deliveries` reports for this fire.
+  const ackedKey = `dlv-${randomUUID()}`
+  const payload = { event: 'ping' }
 
   try {
     // The receiver's 202 is an acceptance, not a promise: state can change
@@ -143,16 +147,92 @@ runDatabaseTest('a trigger paused between the ack and the claim does not fire', 
     })
 
     await dispatchWebhookTrigger(prisma, {
-      dedupeKey: `dlv-${randomUUID()}`,
+      dedupeKey: ackedKey,
+      payload,
+      triggerId: context.triggerId,
+    })
+
+    const deliveries = await prisma.agentTriggerDelivery.findMany({
+      where: { triggerId: context.triggerId },
+      select: {
+        dedupeKey: true,
+        errorMessage: true,
+        payload: true,
+        source: true,
+        status: true,
+      },
+    })
+    // Not firing is right. Being silent about it is not: without a row the key
+    // the sender holds resolves to nothing, forever, and is indistinguishable
+    // from a fire still in flight — while the queue job reports success.
+    assert.equal(deliveries.length, 1, 'the refused fire is still on the record')
+    assert.equal(deliveries[0]?.status, 'skipped')
+    assert.equal(
+      deliveries[0]?.errorMessage,
+      'trigger_paused',
+      'and names the readiness reason the receiver’s own 409 would have carried',
+    )
+    assert.equal(
+      deliveries[0]?.dedupeKey,
+      `webhook:${ackedKey}`,
+      'under exactly the key the 202 handed out (`mapTriggerDeliveryRecord` strips the source namespace)',
+    )
+    assert.equal(deliveries[0]?.source, 'webhook')
+    assert.deepEqual(deliveries[0]?.payload, payload, 'carrying what the sender posted')
+
+    assert.equal(
+      await prisma.run.count({ where: { triggerId: context.triggerId } }),
+      0,
+      'and starts no run',
+    )
+
+    // A re-claimed job must not pile up skips, nor collide on the unique key.
+    await dispatchWebhookTrigger(prisma, {
+      dedupeKey: ackedKey,
+      payload,
+      triggerId: context.triggerId,
+    })
+    assert.equal(
+      await prisma.agentTriggerDelivery.count({ where: { triggerId: context.triggerId } }),
+      1,
+      'the replay records the same skip once',
+    )
+  } finally {
+    await deleteThreadQueueJobs(prisma, context.threadId)
+    await prisma.organization.delete({ where: { id: context.organizationId } })
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('an agent unbound between the ack and the claim leaves a delivery too', async () => {
+  const prisma = new PrismaClient()
+  const context = await seed(prisma)
+  const ackedKey = `dlv-${randomUUID()}`
+
+  try {
+    // The other half of the promise: the trigger is still active, so the refusal
+    // comes from `queueTriggerRun`'s own gate rather than from the handler's
+    // first read. The receiver answers this one 409 AGENT_NOT_BOUND when it can
+    // see it; a binding removed after the ack has to reach the operator the
+    // only way left — the delivery log.
+    await prisma.agentBinding.deleteMany({
+      where: { agentId: context.agentId, channelId: context.channelId },
+    })
+
+    await dispatchWebhookTrigger(prisma, {
+      dedupeKey: ackedKey,
       payload: { event: 'ping' },
       triggerId: context.triggerId,
     })
 
-    assert.equal(
-      await prisma.agentTriggerDelivery.count({ where: { triggerId: context.triggerId } }),
-      0,
-      'a paused trigger records no delivery',
-    )
+    const deliveries = await prisma.agentTriggerDelivery.findMany({
+      where: { triggerId: context.triggerId },
+      select: { dedupeKey: true, errorMessage: true, status: true },
+    })
+    assert.equal(deliveries.length, 1, 'the refused fire is still on the record')
+    assert.equal(deliveries[0]?.status, 'skipped')
+    assert.equal(deliveries[0]?.errorMessage, 'agent_not_bound')
+    assert.equal(deliveries[0]?.dedupeKey, `webhook:${ackedKey}`)
     assert.equal(
       await prisma.run.count({ where: { triggerId: context.triggerId } }),
       0,

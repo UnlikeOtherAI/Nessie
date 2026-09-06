@@ -142,6 +142,26 @@ be keyed by instead of the delivery record and `runId` it used to return, and th
 insight receiver returns `insightId` and `existing` instead of a `delivered`
 count.
 
+**A handle the ack hands out has to resolve — including when the recheck
+refuses.** Both handlers re-ask their synchronous question when the job is
+claimed, because a trigger can be paused or unbound and a team disabled between
+the 202 and the fire: acting on the permission the receiver saw is acting on
+stale permission. Rechecking is right. Being *silent* about it is not, for a
+caller holding a handle. A webhook fire stopped by the recheck used to write no
+row at all, so the `dedupeKey` the 202 promised would name a delivery resolved
+to nothing, forever, and an operator investigating found a **succeeded** queue
+job and no trace of the fire — indistinguishable from one still in flight. So
+every claim-time refusal writes a terminal `skipped` delivery under that exact
+key, carrying the readiness reason (`TriggerFireSkipReason`: `trigger_paused`,
+`agent_not_bound`, `workflow_installation_not_ready`) the receiver's own 409
+would have carried a second earlier — the same vocabulary on both sides, one
+enum in `@nessie/schemas`. The single case with nowhere to write is a trigger
+*deleted* in the window: the delivery cascade took its rows, and the trigger's
+own 404 is the answer. The DeepSignal fan-out needs no equivalent because its
+recheck (`resolveEnabledExternalTeam`, `enabled: true`) precedes every write:
+a team disabled after the ack receives nothing, and the insight id the ack
+returned is DeepSignal's own.
+
 **A key on the enqueue is only half of it.** It coalesces two *enqueues*; it
 says nothing about the same *job row* being handed out twice — a dropped ack
 during a drain, a lease expiry, a nack-and-retry — which is exactly what N

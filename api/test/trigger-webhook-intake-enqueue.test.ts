@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client'
 import Fastify, { type FastifyRequest } from 'fastify'
 
 import { registerTriggerIntakeRoutes } from '../src/routes/trigger-intake.js'
+import { mapTriggerDeliveryRecord } from '../src/services/trigger-shared.js'
 import type { RouteDeps } from '../src/routes/types.js'
 
 /**
@@ -266,4 +267,41 @@ runDatabaseTest('an unusable trigger is refused synchronously and queues nothing
     await cleanup(prisma, seed)
     await prisma.$disconnect()
   }
+})
+
+/**
+ * The other end of the handle the 202 hands out.
+ *
+ * The ack returns a bare `dedupeKey` and calls it the key
+ * `GET /api/triggers/:id/deliveries` reports for that fire. The worker stores it
+ * namespaced (`webhook:<key>`) so a caller can never occupy the scheduler's
+ * predictable key, and a claim-time refusal writes it as a terminal `skipped`
+ * row rather than nothing at all. Both halves have to meet: what the endpoint
+ * reports back must be the string the sender was given, and it must say why
+ * nothing ran. No database — this is the mapping, and the mapping is the promise.
+ */
+test('a skipped delivery is reported under the exact key the ack returned', () => {
+  const ackedKey = 'dlv-8f2c'
+
+  const reported = mapTriggerDeliveryRecord({
+    createdAt: new Date('2026-09-06T10:00:00.000Z'),
+    dedupeKey: `webhook:${ackedKey}`,
+    deliveredAt: null,
+    errorMessage: 'trigger_paused',
+    id: '2f1c4a5e-0000-4000-8000-000000000001',
+    payload: { event: 'ping' },
+    run: null,
+    source: 'webhook',
+    status: 'skipped',
+    triggerId: '2f1c4a5e-0000-4000-8000-000000000002',
+  })
+
+  assert.equal(reported.dedupeKey, ackedKey, 'the sender looks it up by the key it was given')
+  assert.equal(reported.status, 'skipped')
+  assert.equal(
+    reported.errorMessage,
+    'trigger_paused',
+    'and finds why the fire it was acked for did nothing',
+  )
+  assert.equal(reported.runId, undefined, 'a skip has no run to point at')
 })
