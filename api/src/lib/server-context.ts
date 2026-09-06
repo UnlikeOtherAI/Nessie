@@ -9,8 +9,7 @@ import {
 } from '@nessie/schemas'
 import { disconnectPrismaClient, getPrismaClient } from '@nessie/db'
 import {
-  createBootstrapTokenState,
-  isBootstrapTokenExpired,
+  ensureBootstrapToken,
   type BootstrapTokenState,
 } from '../auth/bootstrap.js'
 import {
@@ -28,6 +27,8 @@ import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import { createSessionIssuers } from '../services/session-issuers.js'
 import { createRequestHelpers } from './request-helpers.js'
 import { createRateLimiter } from '../services/rate-limit.js'
+import { lockBootstrapInitialization } from '../db/seed.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from '../services/user-session-lock.js'
 import { parseOriginList } from './server-origin-policy.js'
 
 export { createFastifyTrustProxyConfig } from './rate-limit.js'
@@ -123,9 +124,17 @@ export const createServerContext = () => {
     )
   })()
 
-  let bootstrapTokenState: BootstrapTokenState | null = null
-  let bootstrapExpiryWarned = false
-
+  /**
+   * The install's owner-bootstrap token, read from Postgres so every replica
+   * agrees on it.
+   *
+   * It used to be minted per process with `randomUUID()` and held in this
+   * closure (audit 1.2): each replica logged a different setup URL and an
+   * exchange that landed anywhere else failed `TOKEN_INVALID`. There is no
+   * `clearBootstrapState` any more either — clearing one replica's copy was
+   * the same defect from the other end. Consumption is now the conditional
+   * UPDATE in `POST /api/auth/bootstrap`.
+   */
   const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
     // When an external auth provider (SSO) is configured, the first SSO login
     // provisions the owner — there is no manual owner-account bootstrap step, so
@@ -133,39 +142,21 @@ export const createServerContext = () => {
     const hasExternalAuthProvider = config.auth.providers.some(
       (provider) => provider.enabled && provider.type !== 'local-bootstrap',
     )
-    if (hasExternalAuthProvider) {
-      bootstrapTokenState = null
-      return null
-    }
+    if (hasExternalAuthProvider) return null
 
-    const usersExist = (await prisma.user.count()) > 0
-    if (usersExist) {
-      bootstrapTokenState = null
-      return null
-    }
+    // Unauthenticated GET /api/auth/me lands here on every page load of a live
+    // install, so answer the common case with one count and never open a
+    // locked transaction for it.
+    if ((await prisma.user.count()) > 0) return null
 
-    // Mint exactly once at startup (or first call). After the initial token
-    // expires without being consumed, do NOT auto-rotate — return the expired
-    // state so callers (e.g. POST /api/auth/bootstrap) reject with
-    // TOKEN_EXPIRED. An explicit restart is required to mint a fresh token.
-    if (!bootstrapTokenState) {
-      bootstrapTokenState = createBootstrapTokenState()
-      return bootstrapTokenState
-    }
-
-    if (isBootstrapTokenExpired(bootstrapTokenState) && !bootstrapExpiryWarned) {
-      bootstrapExpiryWarned = true
-      console.warn(
-        '[auth] Initial bootstrap token has expired without being consumed.'
-          + ' Restart the API process to mint a new bootstrap token.',
-      )
-    }
-
-    return bootstrapTokenState
-  }
-
-  const clearBootstrapState = (): void => {
-    bootstrapTokenState = null
+    return prisma.$transaction(async (transaction) => {
+      // The seeder's own lock name: minting and owner-creation serialise
+      // against each other, so simultaneous boots settle on one token instead
+      // of each writing their own.
+      await lockBootstrapInitialization(transaction)
+      if ((await transaction.user.count()) > 0) return null
+      return ensureBootstrapToken(transaction)
+    }, AUTH_LOCK_TRANSACTION_OPTIONS)
   }
 
   const logBootstrapUrl = (state: BootstrapTokenState): void => {
@@ -537,7 +528,6 @@ export const createServerContext = () => {
     DEFAULT_LOCAL_PROVIDER_TYPE,
     MEMBERSHIP_ROLES,
     resolveBootstrapState,
-    clearBootstrapState,
     logBootstrapUrl,
     getAuthorizationToken,
     authenticateRequest,

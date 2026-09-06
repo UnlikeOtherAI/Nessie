@@ -129,107 +129,151 @@ export const resumeRunFromApproval = async (
 
 type TerminalApprovalOutcome = 'rejected' | 'expired'
 
-/** Close a waiting approval without consuming its checkpoint, leaving a plain reply able to resume it. */
+/**
+ * The thread whose pending messages must be drained once the terminalising
+ * transaction commits. The drain enqueues work, so it deliberately runs after
+ * the commit rather than inside it — a rolled-back transaction must not leave
+ * a job pointing at a run it never closed.
+ */
+export type TerminalizedApprovalRun = {
+  agentId: string
+  principalUserId: string | null
+  threadId: string
+}
+
+/**
+ * Close a waiting approval without consuming its checkpoint, leaving a plain
+ * reply able to resume it.
+ *
+ * Takes a transaction client rather than opening its own so a caller that
+ * already claimed the approval row can do both in one transaction: a crash
+ * between a `pending → expired` claim and this terminalisation used to strand
+ * the run in `waiting_approval` forever (audit 1.5). Returns null when the
+ * conditional `waiting_approval` update matched no row — another writer
+ * terminalised it first, and this caller must write nothing.
+ */
+export const terminalizeWaitingApprovalRunInTransaction = async (
+  tx: Prisma.TransactionClient,
+  approvalId: string,
+  outcome: TerminalApprovalOutcome,
+): Promise<TerminalizedApprovalRun | null> => {
+  const approval = await tx.approvalRequest.findFirst({
+    where: { action: 'tool.invoke', id: approvalId },
+    select: { agentId: true, id: true, organizationId: true, runId: true, toolName: true },
+  })
+  if (!approval?.runId || !approval.toolName) return null
+  const run = await tx.run.findFirst({
+    where: { id: approval.runId, thread: { channel: { organizationId: approval.organizationId } } },
+    select: { agentId: true, principalUserId: true, replyRootMessageId: true, threadId: true },
+  })
+  if (!run) return null
+  const status = outcome === 'rejected' ? 'completed' : 'failed'
+  const taskStatus = outcome === 'rejected' ? 'done' : 'failed'
+  const changed = await tx.run.updateMany({
+    where: { id: approval.runId, status: 'waiting_approval' },
+    data: { finishedAt: new Date(), status },
+  })
+  if (changed.count !== 1) return null
+  await updateApprovalGateNoticeStatus(tx, {
+    approvalId: approval.id,
+    status: outcome,
+    threadId: run.threadId,
+  })
+
+  const content = outcome === 'rejected'
+    ? `Approval was declined for ${approval.toolName}. Reply to continue without that action.`
+    : `Approval expired for ${approval.toolName}. Reply to try again.`
+  // Follower decision: nobody new. The notice answers a gate the run's own
+  // participants are already waiting on, and the server is not a participant
+  // — adding a follow here would put the agent's housekeeping in an inbox
+  // nobody asked for.
+  const noticeInput = {
+    agentId: run.agentId,
+    content,
+    followedByUserIds: [],
+    metadata: {
+      approvalGate: {
+        approvalId: approval.id,
+        runId: approval.runId,
+        status: outcome,
+        toolName: approval.toolName,
+      },
+    } as Prisma.InputJsonValue,
+    onBehalfOfUserId: run.principalUserId,
+    role: 'assistant' as const,
+    threadId: run.threadId,
+  }
+  const message = run.replyRootMessageId
+    ? (await createSystemAuthoredReply(tx, {
+      ...noticeInput,
+      authorId: run.agentId,
+      rootMessageId: run.replyRootMessageId,
+    })).message
+    : await createSystemAuthoredMessage(tx, noticeInput)
+  const basis = await tx.runBasisScope.findMany({
+    where: { runId: approval.runId },
+    select: { scopeId: true, scopeType: true },
+  })
+  if (basis.length > 0) {
+    await tx.messageBasisScope.createMany({
+      data: basis.map((scope) => ({
+        messageId: message.id,
+        organizationId: approval.organizationId,
+        scopeId: scope.scopeId,
+        scopeType: scope.scopeType,
+      })),
+      skipDuplicates: true,
+    })
+  }
+  await tx.task.updateMany({ where: { runId: approval.runId }, data: { status: taskStatus } })
+  const task = await tx.task.findFirst({ where: { runId: approval.runId }, select: { id: true } })
+  if (task) {
+    await tx.taskEvent.create({
+      data: {
+        eventType: outcome === 'rejected' ? 'run.approval_rejected' : 'run.approval_expired',
+        payload: { approvalId: approval.id, runId: approval.runId, toolName: approval.toolName },
+        taskId: task.id,
+      },
+    })
+  }
+  await tx.agent.updateMany({
+    where: { id: approval.agentId, status: 'waiting_approval' },
+    data: { status: 'idle' },
+  })
+  return { agentId: run.agentId, principalUserId: run.principalUserId, threadId: run.threadId }
+}
+
+/**
+ * Terminalise a waiting approval in its own transaction, then drain. Callers
+ * that already hold a transaction use
+ * `terminalizeWaitingApprovalRunInTransaction` plus `drainTerminalizedRun`.
+ */
 const terminalizeWaitingApprovalRun = async (
   prisma: PrismaClient,
   approvalId: string,
   outcome: TerminalApprovalOutcome,
 ): Promise<boolean> => {
-  const result = await prisma.$transaction(async (tx) => {
-    const approval = await tx.approvalRequest.findFirst({
-      where: { action: 'tool.invoke', id: approvalId },
-      select: { agentId: true, id: true, organizationId: true, runId: true, toolName: true },
-    })
-    if (!approval?.runId || !approval.toolName) return null
-    const run = await tx.run.findFirst({
-      where: { id: approval.runId, thread: { channel: { organizationId: approval.organizationId } } },
-      select: { agentId: true, principalUserId: true, replyRootMessageId: true, threadId: true },
-    })
-    if (!run) return null
-    const status = outcome === 'rejected' ? 'completed' : 'failed'
-    const taskStatus = outcome === 'rejected' ? 'done' : 'failed'
-    const changed = await tx.run.updateMany({
-      where: { id: approval.runId, status: 'waiting_approval' },
-      data: { finishedAt: new Date(), status },
-    })
-    if (changed.count !== 1) return null
-    await updateApprovalGateNoticeStatus(tx, {
-      approvalId: approval.id,
-      status: outcome,
-      threadId: run.threadId,
-    })
-
-    const content = outcome === 'rejected'
-      ? `Approval was declined for ${approval.toolName}. Reply to continue without that action.`
-      : `Approval expired for ${approval.toolName}. Reply to try again.`
-    // Follower decision: nobody new. The notice answers a gate the run's own
-    // participants are already waiting on, and the server is not a participant
-    // — adding a follow here would put the agent's housekeeping in an inbox
-    // nobody asked for.
-    const noticeInput = {
-      agentId: run.agentId,
-      content,
-      followedByUserIds: [],
-      metadata: {
-        approvalGate: {
-          approvalId: approval.id,
-          runId: approval.runId,
-          status: outcome,
-          toolName: approval.toolName,
-        },
-      } as Prisma.InputJsonValue,
-      onBehalfOfUserId: run.principalUserId,
-      role: 'assistant' as const,
-      threadId: run.threadId,
-    }
-    const message = run.replyRootMessageId
-      ? (await createSystemAuthoredReply(tx, {
-        ...noticeInput,
-        authorId: run.agentId,
-        rootMessageId: run.replyRootMessageId,
-      })).message
-      : await createSystemAuthoredMessage(tx, noticeInput)
-    const basis = await tx.runBasisScope.findMany({
-      where: { runId: approval.runId },
-      select: { scopeId: true, scopeType: true },
-    })
-    if (basis.length > 0) {
-      await tx.messageBasisScope.createMany({
-        data: basis.map((scope) => ({
-          messageId: message.id,
-          organizationId: approval.organizationId,
-          scopeId: scope.scopeId,
-          scopeType: scope.scopeType,
-        })),
-        skipDuplicates: true,
-      })
-    }
-    await tx.task.updateMany({ where: { runId: approval.runId }, data: { status: taskStatus } })
-    const task = await tx.task.findFirst({ where: { runId: approval.runId }, select: { id: true } })
-    if (task) {
-      await tx.taskEvent.create({
-        data: {
-          eventType: outcome === 'rejected' ? 'run.approval_rejected' : 'run.approval_expired',
-          payload: { approvalId: approval.id, runId: approval.runId, toolName: approval.toolName },
-          taskId: task.id,
-        },
-      })
-    }
-    await tx.agent.updateMany({
-      where: { id: approval.agentId, status: 'waiting_approval' },
-      data: { status: 'idle' },
-    })
-    return { agentId: run.agentId, principalUserId: run.principalUserId, threadId: run.threadId }
-  })
+  const result = await prisma.$transaction((tx) =>
+    terminalizeWaitingApprovalRunInTransaction(tx, approvalId, outcome))
   if (!result) return false
-  // The status transition occurred outside a worker, so proactively schedule
-  // the existing durable pending-message drain rather than leaving it to its sweep.
-  await drainPendingThreadMessagesBestEffort(prisma, {
-    agentId: result.agentId,
-    ...(result.principalUserId ? { principalUserId: result.principalUserId } : {}),
-    threadId: result.threadId,
-  })
+  await drainTerminalizedRun(prisma, result)
   return true
+}
+
+/**
+ * The status transition occurred outside a worker, so proactively schedule the
+ * existing durable pending-message drain rather than leaving it to its sweep.
+ * Runs after the terminalising transaction commits, never inside it.
+ */
+export const drainTerminalizedRun = async (
+  prisma: PrismaClient,
+  run: TerminalizedApprovalRun,
+): Promise<void> => {
+  await drainPendingThreadMessagesBestEffort(prisma, {
+    agentId: run.agentId,
+    ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
+    threadId: run.threadId,
+  })
 }
 
 export const terminalizeRejectedToolApproval = async (
