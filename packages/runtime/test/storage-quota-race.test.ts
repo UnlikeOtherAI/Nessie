@@ -187,6 +187,10 @@ runIfDatabase('an upload waits for the organisation\'s storage admission lock', 
   const held = new Promise<void>((resolve) => {
     release = resolve
   })
+  let acquired!: () => void
+  const lockHeld = new Promise<void>((resolve) => {
+    acquired = resolve
+  })
 
   try {
     await prisma.organization.create({ data: { id: organizationId, name: 'Storage lock' } })
@@ -195,11 +199,24 @@ runIfDatabase('an upload waits for the organisation\'s storage admission lock', 
     const holding = holder.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}::text, 0))`
+        acquired()
         await held
       },
       { timeout: 30_000 },
     )
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    // Wait for the lock to actually be held, rather than sleeping and hoping.
+    // A fixed delay is a guess about how long another client needs to connect,
+    // open a transaction and take a lock; on a loaded runner it is too short,
+    // the upload below then walks through a gate nobody is holding, and the
+    // assertion fails for a reason that has nothing to do with the gate.
+    // Racing the holder itself turns a holder that died before locking into
+    // that error, instead of a test that hangs waiting for a signal.
+    await Promise.race([
+      lockHeld,
+      holding.then(() => {
+        throw new Error('the lock holder finished before it took the lock')
+      }),
+    ])
 
     const upload = files.store({
       attribution,
