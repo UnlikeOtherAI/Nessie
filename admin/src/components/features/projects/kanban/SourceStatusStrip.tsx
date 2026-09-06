@@ -6,6 +6,7 @@ import {
   useSourceAction,
 } from '../../../../facades/board-sources/hooks'
 import { Pill } from '../../../primitives/Pill'
+import { useToasts } from '../../../../providers/ToastProvider'
 
 type SourceStatusStripProps = {
   canAdminister: boolean
@@ -64,6 +65,7 @@ export const SourceStatusStrip = ({
   sources,
 }: SourceStatusStripProps) => {
   const action = useSourceAction(projectId)
+  const { pushToast } = useToasts()
   if (sources.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -93,7 +95,24 @@ export const SourceStatusStrip = ({
                 aria-label={`Sync ${source.name} from ${PROVIDER_LABEL[source.provider]} now`}
                 className="disabled:opacity-60"
                 disabled={syncing || action.isPending}
-                onClick={() => action.mutate({ id: source.id, action: 'sync' })}
+                onClick={() =>
+                  action.mutate(
+                    { id: source.id, action: 'sync' },
+                    {
+                      // A press that changed nothing has to say so: the pill
+                      // still reads "synced 8h ago" either way, so silence here
+                      // is indistinguishable from a sync that has not started.
+                      onError: (cause) =>
+                        pushToast({
+                          body:
+                            cause instanceof Error
+                              ? cause.message
+                              : 'The sync could not be started.',
+                          title: `Could not sync ${source.name}`,
+                        }),
+                    },
+                  )
+                }
                 type="button"
               >
                 <Pill radius="chip" size="sm" tone="outline" uppercase={false}>
