@@ -337,6 +337,7 @@ export const registerBoardSourceConnectionRoutes = (
           id: connection.id,
           provider: connection.provider,
           status: connection.status,
+          authMethod: connection.authMethod,
           externalAccountId: connection.externalAccountId,
           externalTenantId: connection.externalTenantId,
           ownerUserId: parseUserId(connection.ownerUserId),

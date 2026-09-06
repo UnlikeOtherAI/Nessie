@@ -1,0 +1,159 @@
+# Two-instance local stack (Phase 0.3 of the horizontal-scaling plan).
+#
+# An OVERRIDE for docker-compose.yml, not a replacement — it reuses that file's
+# single `postgres` service and adds MinIO, two API replicas, two worker
+# replicas and a Caddy proxy that round-robins the API on one published port:
+#
+#   pnpm dev:multi
+#   docker compose -f infrastructure/compose/docker-compose.yml \
+#                  -f infrastructure/compose/docker-compose.multi.yml up --build
+#
+# The point is that every replica shares one Postgres and one object store, so
+# any per-process authority, boot-time race or unhandled SIGTERM shows up here
+# rather than in production. `pnpm --filter @nessie/worker test:smoke:multi`
+# asserts the same properties headlessly in CI.
+#
+# The API is published only through the proxy: two replicas cannot both bind a
+# host port, and pinning one would defeat the exercise. Reach the stack at
+# http://localhost:${NESSIE_MULTI_PORT:-5460}; 5454/5455 stay reserved for the
+# ordinary `pnpm dev` loop and must never be used here.
+#
+# Service names are bare (`api`, `worker`, …) because this project's networks
+# are local and unshared. Do NOT copy that into docker-compose.prod.yml, whose
+# services are nessie-prefixed for a reason the file explains at length.
+#
+# NESSIE_MODE is `local` so the stack boots with no credentials: outside local
+# the API refuses to start without a DeepSignal application key and a UOA
+# delegated-identity configuration. The cost is that every API replica also
+# starts an embedded worker, so this stack has FOUR run.execute claimants, not
+# two. Set NESSIE_MULTI_MODE=selfHosted (with those credentials in the
+# environment) for the exact two-and-two shape the CI harness runs.
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: nessie
+      MINIO_ROOT_PASSWORD: nessie-multi-instance
+    ports:
+      - "${NESSIE_MULTI_MINIO_PORT:-9010}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://minio:9000 nessie nessie-multi-instance; do sleep 2; done;
+        mc mb --ignore-existing local/nessie;
+    restart: "no"
+
+  # Migrations run once, before either app service claims anything: two replicas
+  # racing `migrate deploy` on boot is exactly the failure this stack exists to
+  # avoid reproducing by accident.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.app
+    image: ${NESSIE_APP_IMAGE:-nessie-app:latest}
+    command: >
+      pnpm --filter @nessie/api exec prisma migrate deploy --schema prisma/schema.prisma
+    environment:
+      DATABASE_URL: postgresql://nessie:nessie@postgres:5432/nessie?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.app
+    image: ${NESSIE_APP_IMAGE:-nessie-app:latest}
+    deploy:
+      replicas: 2
+    environment: &app_env
+      DATABASE_URL: postgresql://nessie:nessie@postgres:5432/nessie?schema=public
+      NESSIE_DB_URL: postgresql://nessie:nessie@postgres:5432/nessie?schema=public
+      NESSIE_API_HOST: 0.0.0.0
+      NESSIE_API_PORT: "5554"
+      NESSIE_API_TRUSTED_PROXY_HOPS: "1"
+      NESSIE_AUTH_SECRET: ${NESSIE_MULTI_AUTH_SECRET:-nessie-multi-instance-development-secret}
+      NESSIE_MODE: ${NESSIE_MULTI_MODE:-local}
+      NESSIE_MODEL_API_KEY: ${NESSIE_MODEL_API_KEY:-nessie-multi-instance}
+      NESSIE_MODEL_BASE_URL: ${NESSIE_MODEL_BASE_URL:-http://host.docker.internal:5479/v1}
+      NESSIE_MODEL_PROVIDER: ${NESSIE_MODEL_PROVIDER:-openai}
+      NESSIE_STORAGE_PROVIDER: s3
+      NESSIE_STORAGE_ENDPOINT: http://minio:9000
+      NESSIE_STORAGE_REGION: us-east-1
+      NESSIE_STORAGE_FORCE_PATH_STYLE: "true"
+      NESSIE_STORAGE_BUCKET: nessie
+      NESSIE_STORAGE_ACCESS_KEY_ID: nessie
+      NESSIE_STORAGE_SECRET_ACCESS_KEY: nessie-multi-instance
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5554/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+      start_interval: 2s
+
+  worker:
+    image: ${NESSIE_APP_IMAGE:-nessie-app:latest}
+    command: ["node", "worker/dist/index.js"]
+    deploy:
+      replicas: 2
+    environment: *app_env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+
+  # `dynamic a` re-resolves the `api` alias on every dial, so Caddy sees both
+  # replicas as Docker scales them; a plain `reverse_proxy api:5554` resolves
+  # once at load and pins the whole run to whichever replica answered first.
+  # flush_interval -1 keeps SSE token streams unbuffered.
+  proxy:
+    image: caddy:2-alpine
+    depends_on:
+      - api
+    ports:
+      - "${NESSIE_MULTI_PORT:-5460}:5460"
+    command:
+      - sh
+      - -c
+      - |
+        cat > /etc/caddy/Caddyfile <<'CADDY'
+        {
+          admin off
+          auto_https off
+        }
+        :5460 {
+          reverse_proxy {
+            dynamic a {
+              name api
+              port 5554
+              refresh 1s
+            }
+            lb_policy round_robin
+            flush_interval -1
+          }
+        }
+        CADDY
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

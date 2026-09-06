@@ -1,18 +1,14 @@
 import type { ChannelRecord } from '../../lib/api-client';
-import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { UserAvatar } from '../../components/shared/UserAvatar';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
-import { isReactNativeWebView } from '../../lib/mobile-shell';
-import {
-  channelHashClassName,
-  projectSelectionClassName,
-  renderUnreadCount,
-  sidebarAriaCurrent,
-} from './SidebarRow';
+import { isReactNativeWebView } from '../../lib/native-shell';
+import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { StarredItem, VisibleStarredEntry } from './types';

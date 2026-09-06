@@ -188,8 +188,44 @@ Deltas from the design above, each with its reason:
 - **The structural gate is composed**, not extended: `composeStructuralGates`
   takes the hosted-mailbox hook and the connected-mailbox hook, each returning
   null for tools it does not own.
+- **Discovery carries the long tail from a snapshot, not a live lookup**
+  (`mailbox-ispdb.ts`, added 2026-09-04). Thirty reviewed entries cover ~110
+  domains, each recording the published source it was read from. Querying a
+  third-party configuration service at connect time was rejected outright: that
+  service would be deciding where somebody's mail password is sent. The snapshot
+  is a *candidate*, never a short circuit — candidates are selected by evidence
+  strength (autoconfig 90, mail SRV 85, snapshot 75), so what a domain publishes
+  today beats what we verified once. Only the exact-domain reviewed registry
+  stays network-free. Custom-domain hosting providers are deliberately absent: a
+  domain-keyed lookup can only match their vanity domain, never a customer's.
+- **A configuration is confirmed before it is offered a password**
+  (`mailbox-probe.ts`). A reviewed hostname is evidence a server *should* be
+  there, not that one *is* — most obviously for snapshot entries, verified from
+  a document rather than observed. The probe is structurally credential-free:
+  no username or password parameter exists in the module, which is why its
+  three-command conversation is written there rather than through
+  `ImapSession.open`/`openSmtpSession`, whose job is to log in. It dials only
+  through the shared vetting, opens only the registered mail ports so a
+  discovered document cannot aim a port scan through us, and treats a refused
+  STARTTLS or an unverifiable certificate as `insecure` — configuration
+  withheld, person sent to manual settings. Unreachable changes nothing; a
+  transient failure is the connect step's error to report.
+- **`mailbox-discovery.ts` split at its 500-line cap** into what touches the
+  network under one deadline, how findings are weighed, and the shapes an answer
+  may take, leaving a 303-line orchestrator. Every answer still leaves through
+  one `MailboxDiscoveryResultSchema.parse`.
+- **Discovery counts its own outcome** (`api/src/services/mailbox-discovery-telemetry.ts`).
+  Counting completed connections hides the failure this design exists to remove,
+  so each attempt logs duplicate/provider-sign-in/password/confirmation/manual
+  beside its evidence sources. A mailbox address is a person: the payload is
+  built by a function that can only emit the domain and banded confidences.
 - **Not built here**: outbound attachments, folder listing, marking mail read,
-  and any import into `CommsEvent`. Operator guide:
+  and any import into `CommsEvent`. Also still absent: Apple Account
+  authorisation (`appleAuthorization` is hard-coded false — Nessie is not a
+  registered relying party), a JMAP connector (discovery classifies JMAP but
+  `capabilities.jmap` is false, so it falls back to IMAP/SMTP), and HTTPS
+  Exchange Autodiscover for on-premises servers (only the Exchange Online SRV
+  fingerprint is read). Operator guide:
   [../connected-mailboxes.md](../connected-mailboxes.md).
 
 ## 3. Model B — the hosted mailbox (Nessie is the mailbox)

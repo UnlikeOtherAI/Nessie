@@ -139,10 +139,22 @@ test('a domain that merely ends with the base domain as a string is refused', as
   }
 })
 
-test('a team hostname needs exactly the team and organisation labels', async () => {
+test('an organisation portal host is allowed too — one label, not just two', async () => {
+  // An earlier version required exactly two labels and silently blocked every
+  // org portal, which the browser found before a human did.
+  assert.equal(
+    await checkOrigin({
+      mode: 'hosted',
+      origin: 'https://acme.nessie.works',
+      teamHostBaseDomain: TEAM_HOST_BASE,
+    }),
+    true,
+  )
+})
+
+test('the base domain itself, and anything deeper than a team, stay refused', async () => {
   for (const origin of [
     'https://nessie.works',
-    'https://acme.nessie.works',
     'https://a.design.acme.nessie.works',
   ]) {
     assert.equal(

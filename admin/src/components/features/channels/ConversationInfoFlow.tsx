@@ -1,12 +1,13 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { ChannelRecord, MeResponse, UserRecord } from '../../../lib/api-client'
 import { getConversationRoute } from '../../../lib/conversation-navigation'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
-import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
 import { useAddChannelMember, useRemoveChannelMember, useSetChannelMute } from '../../../facades/channels/hooks'
 import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/MemberUserRow'
-import { UserAvatar } from '../../primitives/UserAvatar'
+import { ScreenHeader } from '../../shared/ScreenHeader'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
+import { UserAvatar } from '../../shared/UserAvatar'
 import { AgentScreenDisclosure } from '../browser-cloud/AgentScreenDisclosure'
 import { IdentityTile } from '../../primitives/IdentityTile'
 
@@ -26,20 +27,6 @@ const matchPerson = (person: UserRecord, query: string): boolean => {
   if (!normalized) return true
   return `${person.displayName} ${person.email}`.toLocaleLowerCase().includes(normalized)
 }
-
-const FlowHeader = ({
-  action,
-  title,
-}: {
-  action?: ReactNode
-  title: string
-}) => (
-  <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-4">
-    <PhoneNavigationButton />
-    <h1 className="min-w-0 flex-1 truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
-    {action ? <div className="flex flex-shrink-0 items-center">{action}</div> : null}
-  </header>
-)
 
 const Disclosure = ({
   detail,
@@ -304,25 +291,24 @@ export const ConversationInfoFlow = ({
       ? `${memberCount} member${memberCount === 1 ? '' : 's'}`
       : 'Add people'
   const mobileClassName = phoneLayout
-    ? 'fixed inset-0 z-[80] flex min-h-0 flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
+    // The bottom pad is the iPhone shell's tab-bar clearance where that shell
+    // publishes one: this overlay is outside `.phone-navigation-page`, so the
+    // spacer that lifts a page's last row above the native tab bar never
+    // reaches it. Everywhere else it falls back to the safe-area inset.
+    ? 'fixed inset-0 z-[80] flex min-h-0 flex-col bg-[color:var(--main)] pb-[var(--nessie-native-phone-tabbar-clearance,env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)]'
     : 'absolute inset-y-0 right-0 z-50 flex w-[min(420px,100%)] min-h-0 flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'
+  const actions: PageHeaderAction[] | undefined = route.step === 'members' && canManageMembers
+    ? [{
+        id: 'add-people',
+        label: 'Add',
+        onSelect: () => void navigate(`/channels/${activeChannel.id}/info/members/add`),
+        priority: 100,
+      }]
+    : undefined
 
   return (
     <section aria-label={title} className={mobileClassName}>
-      <FlowHeader
-        action={
-          route.step === 'members' && canManageMembers ? (
-            <button
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]"
-              onClick={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
-              type="button"
-            >
-              Add
-            </button>
-          ) : undefined
-        }
-        title={title}
-      />
+      <ScreenHeader actions={actions} title={title} />
 
       {route.step === 'info' ? (
         <ConversationOverview

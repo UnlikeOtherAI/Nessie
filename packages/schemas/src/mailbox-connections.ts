@@ -112,6 +112,8 @@ export type MailboxConnectorType = z.infer<typeof MailboxConnectorTypeSchema>
 export const MailboxDiscoveryEvidenceSourceSchema = z.enum([
   'autoconfig',
   'autodiscover_srv',
+  'capability_probe',
+  'ispdb',
   'jmap_session',
   'jmap_srv',
   'mx_fingerprint',

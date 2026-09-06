@@ -5,7 +5,7 @@ import type {
   AppListResponse,
 } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
-import { appKeys } from '../../lib/query-keys'
+import { appKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -37,7 +37,7 @@ export type AppListFilters = {
  *
  * It is the shared factory's root rather than its own `['apps']` literal: a
  * second spelling of a prefix stops matching the moment either side moves,
- * which is the drift `lib/query-keys.ts` exists to remove.
+ * which is the drift the per-facade key factories exist to remove.
  */
 export const APPS_QUERY_KEY = appKeys.all
 

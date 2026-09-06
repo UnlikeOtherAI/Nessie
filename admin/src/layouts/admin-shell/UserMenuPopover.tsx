@@ -4,7 +4,7 @@ import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeUser } from '@nessie/schemas'
 import { Popover } from '../../components/overlays/Popover'
-import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import { PresenceControl } from './user-menu/PresenceControl'

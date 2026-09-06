@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { Popover } from '../../../overlays/Popover'
 import { useDebouncedValue } from '../../../../hooks/useDebouncedValue'
@@ -61,7 +61,7 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
     return pageItems
   }, [hits, query])
 
-  const select = (item: SuggestionItem) => {
+  const select = useCallback((item: SuggestionItem) => {
     const attrs =
       item.kind === 'page' ? { pageId: item.pageId, title: item.title } : { pageId: null, title: item.title }
     editor
@@ -69,7 +69,7 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
       .focus()
       .insertContentAt({ from: trigger.from, to: trigger.to }, { type: 'kbWikilink', attrs })
       .run()
-  }
+  }, [editor, trigger.from, trigger.to])
 
   useEffect(() => {
     if (!open) return
@@ -98,7 +98,7 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
     }
     dom.addEventListener('keydown', onKeyDown, true)
     return () => dom.removeEventListener('keydown', onKeyDown, true)
-  }, [open, items, activeIndex, trigger.from, editor])
+  }, [open, items, activeIndex, select, trigger.from, editor])
 
   if (!open) return null
 

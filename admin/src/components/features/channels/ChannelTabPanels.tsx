@@ -10,7 +10,7 @@ import { AgentTodosTab } from '../agents/todos/AgentTodosTab'
 import { ChannelAgentPanel } from './panels/ChannelAgentPanel'
 import { ChannelAgentsPanel } from './panels/ChannelAgentsPanel'
 import { ChannelFilesPanel } from './panels/ChannelFilesPanel'
-import type { ChannelTab } from './channel-helpers'
+import type { ChannelTab } from './channel-tabs'
 
 interface ChannelTabPanelsProps {
   visibleActiveTab: ChannelTab

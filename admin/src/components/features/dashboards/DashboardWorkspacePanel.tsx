@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiClientError } from '@nessie/client-core'
 import type { DashboardWidgetKind } from '@nessie/schemas'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
+import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
+import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useDashboard, useDashboardSourceNotes, useSaveLayout } from '../../../facades/dashboards/hooks'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
 import { SkeletonBlock } from '../../primitives/Skeleton'
@@ -61,6 +62,53 @@ export const DashboardWorkspacePanel = ({
     )
   }
 
+  const saveEditedLayout = (): void => {
+    if (!dashboard.data) return
+    saveLayout.mutate(
+      {
+        layout: draftLayout ?? dashboard.data.layout,
+        revision: baseRevision.current ?? dashboard.data.revision,
+      },
+      {
+        // Refetch before offering a retry: no stale revision is ever silently
+        // replayed over an agent or another editor.
+        onError: () => void dashboard.refetch(),
+        onSuccess: () => setEditing(false),
+      },
+    )
+  }
+
+  const beginEditingLayout = (): void => {
+    if (!dashboard.data) return
+    baseRevision.current = dashboard.data.revision
+    setDraftLayout(dashboard.data.layout)
+    setEditing(true)
+  }
+
+  // A `fixed inset-0` panel over the conversation's own layer: it publishes
+  // over the conversation's bar and stops drawing its own header, or the bar
+  // would keep naming the channel underneath it.
+  const { hidden: nativeBarOwnsHeader } = useNativeBarHeader({
+    actions: dashboard.data
+      ? [{
+        checked: null,
+        disabled: editing && saveLayout.isPending,
+        id: 'dashboard-edit-layout',
+        items: null,
+        kind: 'button' as const,
+        label: editing ? (saveLayout.isPending ? 'Saving…' : 'Done') : 'Edit layout',
+        perform: editing ? saveEditedLayout : beginEditingLayout,
+        primary: true,
+        priority: 100,
+        selected: editing,
+        submit: false,
+        tone: null,
+      }]
+      : [],
+    back: { label: 'Back to channel', onBack: onClose },
+    title: dashboard.data?.title ?? 'Dashboard',
+  })
+
   return (
     <SidePanelShell
       ariaLabel="Dashboard workspace"
@@ -72,6 +120,12 @@ export const DashboardWorkspacePanel = ({
       resizePanelWithKeyboard={geometry.resizePanelWithKeyboard}
       viewportWidth={geometry.viewportWidth}
     >
+      {nativeBarOwnsHeader ? (
+        // The revision and realtime line is content the bar has no lane for.
+        <p className="shrink-0 truncate px-4 pb-2 pt-3 text-xs text-[color:var(--tx3)]">
+          {dashboard.data ? `Revision ${dashboard.data.revision} · ${realtime}` : 'Loading dashboard'}
+        </p>
+      ) : (
       <header className="flex shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
         {phoneLayout ? <PhoneBackButton label="Back to channel" onBack={onClose} /> : null}
         <div className="min-w-0 flex-1">
@@ -82,23 +136,14 @@ export const DashboardWorkspacePanel = ({
             {dashboard.data ? `Revision ${dashboard.data.revision} · ${realtime}` : 'Loading dashboard'}
           </p>
         </div>
-        {dashboard.data ? (
-          editing ? (
+        {(() => {
+          const dashboardData = dashboard.data
+          if (!dashboardData) return null
+          return editing ? (
             <button
               className="admin-button admin-button-primary text-xs"
               disabled={saveLayout.isPending}
-              onClick={() => saveLayout.mutate(
-                {
-                  layout: draftLayout ?? dashboard.data!.layout,
-                  revision: baseRevision.current ?? dashboard.data!.revision,
-                },
-                {
-                  // Refetch before offering a retry: no stale revision is
-                  // ever silently replayed over an agent or another editor.
-                  onError: () => void dashboard.refetch(),
-                  onSuccess: () => setEditing(false),
-                },
-              )}
+              onClick={saveEditedLayout}
               type="button"
             >
               {saveLayout.isPending ? 'Saving…' : 'Done'}
@@ -106,17 +151,13 @@ export const DashboardWorkspacePanel = ({
           ) : (
             <button
               className="admin-button admin-button-secondary text-xs"
-              onClick={() => {
-                baseRevision.current = dashboard.data!.revision
-                setDraftLayout(dashboard.data!.layout)
-                setEditing(true)
-              }}
+              onClick={beginEditingLayout}
               type="button"
             >
               Edit layout
             </button>
           )
-        ) : null}
+        })()}
         {phoneLayout ? null : (
           <button
             aria-label="Close dashboard workspace"
@@ -128,6 +169,7 @@ export const DashboardWorkspacePanel = ({
           </button>
         )}
       </header>
+      )}
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {saveError ? (
           <section

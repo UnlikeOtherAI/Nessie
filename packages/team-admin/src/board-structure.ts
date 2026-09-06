@@ -17,8 +17,12 @@ import {
 /**
  * Boards and their columns — the shared implementation behind the API routes,
  * project creation (clicked and from chat), and the personal assistant's
- * `ticket_board_read`. A board is a *view*: deleting one deletes its columns
- * and placements, never a task.
+ * `ticket_board_read`.
+ *
+ * A board owns its tickets (`Task.boardId`, resolved by `boardTaskPoolWhere`)
+ * and its own columns. Deleting one still deletes no work: the foreign key is
+ * `ON DELETE SET NULL`, so its tickets fall back to the project's default
+ * board along with its columns and placements.
  */
 
 export const DEFAULT_BOARD_NAME = 'Board'

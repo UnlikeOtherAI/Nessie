@@ -16,7 +16,8 @@ import {
   ChannelMessageFeed,
   type MessageHistoryStatus,
 } from './ChannelMessageFeed'
-import { buildFeedItems, type ChannelAgentParticipant } from './channel-helpers'
+import { buildFeedItems } from './channel-feed'
+import { type ChannelAgentParticipant } from './channel-participants'
 import {
   useStickToBottom,
   type OlderContentLoader,
@@ -24,7 +25,7 @@ import {
 import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
-import type { AvatarSources } from '../../primitives/UserAvatar'
+import type { AvatarSources } from '../../shared/UserAvatar'
 
 type ChannelAgentInfoDrawerProps = {
   activeChannel: ChannelRecord | null

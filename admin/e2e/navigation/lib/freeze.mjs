@@ -104,6 +104,10 @@ export const waitForStackSettled = (page, timeoutMs = 15_000) => page.waitForFun
     const viewport = document.querySelector('[data-phone-navigation-viewport]')
     if (!viewport) return false
     if (!viewport.querySelector('[data-phone-navigation-layer="current"]')) return false
+    // A lazily loaded route shows its Skeleton fallback while the chunk is in
+    // flight; the layer has landed but the screen has not (router.tsx
+    // `routeLoading`). Settled means the screen itself is on the layer.
+    if (viewport.querySelector('[data-route-loading]')) return false
     return !document.getAnimations().some((animation) => {
       const target = animation.effect && animation.effect.target
       return target instanceof Element

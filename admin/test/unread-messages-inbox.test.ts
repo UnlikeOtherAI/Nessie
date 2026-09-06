@@ -21,7 +21,10 @@ test('unread message rows open their direct-message conversation', () => {
   const router = readSource('../src/router.tsx')
 
   assert.match(page, /onClick=\{\(\) => void navigate\(/)
-  assert.match(router, /path: '\/unread-messages', element: <UnreadMessagesPage \/>/)
+  // Route-level code splitting (05-pages-routing.md F1): UnreadMessagesPage
+  // is lazy-loaded, not statically imported, so the route wires the lazy
+  // component through the shared `lazyElement` Suspense wrapper.
+  assert.match(router, /path: '\/unread-messages', element: lazyElement\(UnreadMessagesPage, 'list'\)/)
 })
 
 test('the empty unread inbox is the shared caught-up card', () => {

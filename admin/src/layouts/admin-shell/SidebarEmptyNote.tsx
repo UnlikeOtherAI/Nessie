@@ -2,9 +2,12 @@ import type { ReactNode } from 'react';
 
 type SidebarEmptyNoteProps = {
   children: ReactNode;
-  // A section nested inside a project (its channel list) rather than one of the
-  // sidebar's top-level sections, so the note keeps the indent its rows have.
-  nested?: boolean;
+  // Which row depth the note lines up with. Omitted for one of the sidebar's
+  // top-level sections; 'child' for a list nested inside a project (its
+  // channels, its sections) and 'grandchild' for one nested inside that (the
+  // boards inside a project's Boards section), so the note keeps the indent
+  // the rows it stands in for have.
+  indent?: 'child' | 'grandchild';
 };
 
 /**
@@ -16,11 +19,11 @@ type SidebarEmptyNoteProps = {
  * button: the dashed call-to-action that used to sit here read as an error
  * state, and the "+" beside the section header is already the way in.
  */
-export const SidebarEmptyNote = ({ children, nested }: SidebarEmptyNoteProps) => (
+export const SidebarEmptyNote = ({ children, indent }: SidebarEmptyNoteProps) => (
   <p
     className={[
       'admin-sb-item admin-sb-empty',
-      nested ? 'sidebar-child' : '',
+      indent ? `sidebar-${indent}` : '',
     ].join(' ')}
   >
     {children}

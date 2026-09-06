@@ -141,7 +141,7 @@ test('session ownership wraps the app inside the shared tenant query cache', () 
 
 test('every shared UserAvatar usage supplies the SSO user identity source', () => {
   const usages = sourceFiles(sourceRoot)
-    .filter((path) => !path.endsWith('/components/primitives/UserAvatar.tsx'))
+    .filter((path) => !path.endsWith('/components/shared/UserAvatar.tsx'))
     .flatMap((path) => {
       const source = readFileSync(path, 'utf8')
       return [...source.matchAll(/<UserAvatar[\s\S]*?\/>/g)].map((match) => ({

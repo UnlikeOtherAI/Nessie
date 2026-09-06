@@ -46,6 +46,76 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   on no re-render that changes none. The shell keeps a **last-known section**
   from the latest message, so its tab index is right before the first message
   on a cold start and after the search overlay closes.
+- **The iOS phone shell draws the navigation bar natively.** Its band has a
+  **constant height for the whole of a session past the auth gate** — no screen
+  type, no transition state and no message may change it. That constant is the
+  point: the WebView's own frame is derived from the band
+  (`getNativeWebviewFrameInsets`), so a band that moved with the screen made
+  the frame a function of navigation. It did, and the page jumped 64pt when a
+  back-swipe committed — one whole animation after the motion it belonged to,
+  because a swipe commits only once its settle has finished. (A tapped push
+  resized at the *start* of its transition instead: same defect, two moments.)
+  `shouldShowNativePhoneNavBar` is that constant;
+  `shouldShowNativePhoneRootLanes` decides only what the band *carries*.
+  **Android, iPad and mobile Safari are untouched** — every rule in this bullet
+  and the three below is gated on the iOS phone shell
+  (`useNativeIOSPhoneApp`), and Android still shows its band only where it
+  shows the team and account controls. Full design and history:
+  [`docs/plans/2026-09-05-ios-native-navigation-bar.md`](../plans/2026-09-05-ios-native-navigation-bar.md).
+
+- **`nessie:screen-bar` — what the bar shows, per stack layer.**
+
+  ```
+  nessie:screen-bar {
+    type: 'nessie:screen-bar',
+    layerKey: string | null,
+    title: string,
+    back: { label: string } | null,
+    actions: Array<{ id, label, kind, priority, disabled, primary, selected, tone, checked, items }>,
+  }
+  ```
+
+  Keyed by the stack's `layerKey` (`section:depth:key`), **never** by a
+  pathname and never by `screenType`. The two differ exactly where the bar has
+  to be right: a nested stage never changes the pathname, so an open Knowledge
+  editor over a space root reports `screenType: 'root'` and would be handed the
+  team switcher; and a channel and its `/info` route share the classifier's
+  bare `key` while both are alive in the stack. Within one layer the publishers
+  form a **stack, not a slot** — a full-screen overlay (the conversation-info
+  flow, a reply thread) publishes over its page's header and hands the bar back
+  when it closes. `admin/src/navigation/screen-bar.ts` owns all of it.
+
+  `back` is the Back the screen's **own header** would run, not the resolver's
+  answer: a Flow that owns its Back returns to an address the registry cannot
+  name. The chevron calls it through `__nessieScreenBarBack`. An action is
+  described as data but performed through `__nessieScreenBarAction(id, itemId)`,
+  because three of the four kinds do not simply call an `onSelect` — a `submit`
+  action's work is in its form, a toggle inverts itself, and a link may leave
+  through the shell.
+
+  A layer that has not published yet — a cold start, the frame after a forward
+  push — is a **bare band**, never the root lanes: a team switcher flashing
+  above a conversation is worse than an empty band.
+
+- **`nessie:screen-transition { from, to, direction, durationMs }`** — the
+  stack is moving, so the bar moves with it. Posted from
+  `PhoneNavigationViewport`'s `startTransition` (a layout effect, so ahead of
+  the bridge's passive effect) on `single` only. The incoming layer has not
+  mounted when it fires, so its descriptor arrives a render later and fills
+  that lane **in place, without restarting the animation**. `startTransition`
+  never fires for a swipe-committed pop — the viewport suppresses the animation
+  the gesture already ran — so the gesture announces its own settle, with the
+  duration of the travel that remains.
+
+- **The web draws no header there.** `ScreenHeader` renders no visible bar on
+  the iOS phone shell, keeps its `h1` as `sr-only` (the settle focuses it and
+  the live region reads it by `querySelector('h1')`, so removing the element
+  would break the announcement silently), and keeps its subtitle/tabs row.
+  Seven components draw screen-level chrome outside `ScreenHeader`; each
+  publishes through `useNativeBarHeader` and hides its own header the same way.
+  `admin/test/screen-header.test.ts` gates the doorway and page-header
+  components across all of `admin/src` so an eighth cannot appear unnoticed.
+
 - **`nessie:attention { badges }`** carries one unread count per section, keyed
   by the same registry section names (`{ channels, knowledge, projects }`
   today; a section the admin does not count is absent and reads as 0). It

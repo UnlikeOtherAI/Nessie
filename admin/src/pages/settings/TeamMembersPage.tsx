@@ -1,10 +1,10 @@
 import { TeamMembersSection } from './TeamMembersSection'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../../facades/auth/hooks'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { useTheme } from '../../providers/ThemeProvider'
-import { MembersRosterPanel } from './MembersRosterPanel'
+import { MembersRosterPanel } from '../../components/features/settings/MembersRosterPanel'
 
 /**
  * A team's own roster — the direct, top-level peer of

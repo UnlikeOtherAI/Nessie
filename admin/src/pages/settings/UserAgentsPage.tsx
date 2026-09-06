@@ -1,6 +1,6 @@
 import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
 import { MyBrowserLoginsPanel } from '../../components/features/browser-cloud/MyBrowserLoginsPanel'
-import { SettingsPanel, type SettingsTabHostProps } from './settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
 /**

@@ -1,6 +1,6 @@
 # Configuration reference
 
-Chapter of [deployment.md](../deployment.md). Config layering and the full environment-variable table: Google scopes and Meet, object storage, agent email, connected mailboxes, the MCP secret store.
+Chapter of [deployment.md](../deployment.md). Config layering and the full environment-variable table: Google scopes and Meet, graceful shutdown and health probes, object storage, agent email, connected mailboxes, the MCP secret store.
 
 ## Configuration reference
 
@@ -12,6 +12,9 @@ production settings:
 |---------|-------|-------|
 | Mode | `NESSIE_MODE` | `selfHosted` (disables dev login, requires CORS allowlist) |
 | DB URL | `DATABASE_URL` / `NESSIE_DB_URL` | `postgresql://nessie:***@nessie-postgres:5432/nessie` |
+| DB pool size | `NESSIE_DB_POOL_MAX`, `NESSIE_DB_POOL_MIN` | optional; per-process Postgres pool bounds, default `10` / `2`. One API replica opens `poolMax` Prisma connections + `poolMax` on the shared `pg.Pool` (realtime fan-out, memory capture and thought search all use that one pool) + 1 dedicated LISTEN client — `poolMax * 2 + 1`, i.e. 21 by default. Multiply by replica count and keep the total under Postgres `max_connections`; lower `poolMax` before adding replicas rather than after exhausting connections. |
+| API bind port | `NESSIE_API_PORT`, `PORT` | `NESSIE_API_PORT` wins and is what production pins (the API container's internal `5554`). `PORT` is a lower-precedence fallback for runtimes that choose the port for you (Cloud Run, Heroku, Fly) and inject nothing else; unset, both fall back to `5454`. |
+| Shutdown deadline | `NESSIE_SHUTDOWN_TIMEOUT_MS` | optional; default `25000`. Hard ceiling on the API's and gateway's graceful drain — see "Graceful shutdown and health probes" below. Keep it under the orchestrator's own grace period (`terminationGracePeriodSeconds`, `docker stop -t`) or the runtime SIGKILLs first and the drain buys nothing. |
 | CORS | `NESSIE_CORS_ORIGINS` | `https://app.nessie.works,https://nessie.unlikeotherai.com` (Tauri origins are allowed in code: `tauri://localhost`, `http://tauri.localhost`) |
 | Trusted proxy hops | `NESSIE_API_TRUSTED_PROXY_HOPS` | `1` behind the production Caddy proxy; default `0` ignores `X-Forwarded-For`. Also the single trust decision for all auth rate-limit client IP keys — set it correctly or every proxied client shares the proxy's IP bucket. |
 | Auth brute-force limits | `NESSIE_RATE_LIMIT_*` (`_MAX` / `_WINDOW_MS` per rule) | Postgres-backed fixed-window counters (`rate_limit_buckets`) on login (`LOGIN_IP` 10/10min, `LOGIN_ACCOUNT` 5/10min), refresh (`REFRESH_IP` 30, `REFRESH_ACCOUNT` 20), bootstrap (`BOOTSTRAP_IP` 10), MCP OAuth start/callback (`MCP_OAUTH_IP` 20), MCP secret writes (`MCP_SECRET_WRITE_IP` 20, `MCP_SECRET_WRITE_ACCOUNT` 10), executor daemon challenges (`EXECUTOR_DAEMON_IP` 60), step-up password re-proof (`STEP_UP_IP` 10, `STEP_UP_ACCOUNT` 5), and personal model-subscription device codes (`SUBSCRIPTION_DEVICE_IP` 240, `SUBSCRIPTION_DEVICE_ACCOUNT` 120). Trips return 429 + `Retry-After` and emit an `auth.rate_limit.lockout` audit event; the store fails open with a loud log on outage. Counters on `/api/ops/health`. Full table: [rate-limiting.md](../rate-limiting.md) |
@@ -59,6 +62,46 @@ Communications connectors register from env at API and worker startup via
 `@nessie/comms-providers`; a provider whose vars are unset simply does not
 register, and its sync jobs park cleanly on `ConnectorNotRegisteredError`.
 Startup logs one line listing the registered providers (no secrets).
+
+### Graceful shutdown and health probes
+
+Three endpoints, three different questions. Point each probe at the right one.
+
+| Endpoint | Question | Fails (503) when |
+|----------|----------|------------------|
+| `GET /api/health` | Is this process alive? | It has begun draining (`status: "draining"`). Nothing else. |
+| `GET /api/health/ready` | May this replica take new requests? | Its `SELECT 1` fails, or it is draining. |
+| `GET /api/ops/health` | How is the deployment doing? | Never — it is a super-admin **report** (worker heartbeats, queue depth, dead jobs, rate-limiter counters), not a probe. |
+
+**Point the load balancer at `/api/health/ready`.** Worker heartbeats
+deliberately do not gate it. They used to, which meant a worker outage — or an
+ordinary worker deploy — would 503 every API replica at once and empty the
+pool, taking the product down over a subsystem the API does not need in order
+to answer a request. That signal now lives only on `/api/ops/health`, where a
+person reads it.
+
+On `SIGTERM`/`SIGINT` the API drains rather than dying where it stands:
+
+1. readiness flips to 503, so the load balancer stops sending new work;
+2. every SSE stream gets a final `retry: 2000` + `event: shutdown` frame and is
+   ended, and every WebSocket is closed with code `1012` ("service restart") —
+   clients reconnect to a surviving replica in about a second instead of
+   waiting out a full backoff on a reset socket. Fastify will not do this
+   itself: `forceCloseConnections` defaults to `'idle'`, and an open stream is
+   an in-flight request, so `close()` alone would wait for a client that may
+   never hang up;
+3. `app.close()` runs the shutdown hooks — LISTEN client, pools, Prisma,
+   maintenance timers, and in `local` mode the embedded worker;
+4. exit `0`. A drain still unfinished after `NESSIE_SHUTDOWN_TIMEOUT_MS`
+   (default 25 s) exits `1`, so a wedged shutdown shows up as a non-zero exit
+   instead of a silent SIGKILL.
+
+The push gateway does the same, minus step 2 (it holds no client connections):
+its `app.close()` is what ends the APNs HTTP/2 session with a GOAWAY, and
+without it every deploy dropped the dead-token verdicts still in flight.
+
+Both processes handle the signal only when started as the main module, so an
+embedder keeps its own signal handling.
 
 ### Google scopes, capabilities and verification tiers
 

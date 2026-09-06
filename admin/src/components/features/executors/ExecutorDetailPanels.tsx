@@ -16,7 +16,7 @@ import { FormError } from '../../shared/FormActions'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar } from '../../primitives/TabBar'
-import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
+import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
 
 const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'attention'] as const
 

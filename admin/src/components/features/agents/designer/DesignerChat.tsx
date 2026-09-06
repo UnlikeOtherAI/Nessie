@@ -4,7 +4,7 @@ import { useAgentDesignerAgent } from '../../../../facades/designer/agent-design
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { Notice } from '../../../primitives/Notice'
-import type { DesignerPageContext } from './DesignerAssistantPanelContext'
+import type { DesignerPageContext } from '../../../../facades/designer/types'
 
 type DesignerChatProps = {
   error: string | null

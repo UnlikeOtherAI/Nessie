@@ -1,5 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { iterationKeys, projectKeys, taskKeys } from '../../lib/query-keys'
+import { projectKeys } from '../projects/keys'
+import { taskKeys } from '../tasks/keys'
+import { iterationKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type IterationStatus = 'planned' | 'active' | 'completed'

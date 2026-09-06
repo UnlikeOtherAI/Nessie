@@ -25,6 +25,9 @@ export const CreateTaskBodySchema = z.object({
   purpose: z.string().optional(),
   detail: z.string().optional(),
   projectId: ProjectIdSchema.optional(),
+  // The board the card lands on. Absent means the project's default board,
+  // which is what every caller that has no board on screen wants.
+  boardId: z.string().uuid().optional(),
   iterationId: z.string().uuid().optional(),
   storyPoints: z.number().int().min(0).optional(),
   priority: TaskPrioritySchema.optional(),
@@ -46,10 +49,12 @@ export const UpdateTaskBodySchema = z.object({
   fieldValues: TaskFieldValuesPatchSchema.optional(),
 })
 
-// Archive completed work from one explicit project. A board action must never
-// silently affect another project in the same organisation.
+// Archive completed work from one explicit project, and — when the caller is a
+// board's own Done column — one explicit board. A board action must never
+// silently affect another board, or another project in the same organisation.
 export const ArchiveDoneTasksBodySchema = z.object({
   projectId: ProjectIdSchema,
+  boardId: z.string().uuid().optional(),
   olderThanDays: z.number().int().positive().nullable().optional(),
 })
 

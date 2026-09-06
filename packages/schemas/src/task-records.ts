@@ -26,6 +26,8 @@ export const TaskRecordSchema = z.object({
   id: TaskIdSchema,
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.nullable(),
+  /** The board this task lives on; null ⇒ the project's default board. */
+  boardId: z.string().uuid().nullable(),
   iterationId: z.string().uuid().nullable(),
   storyPoints: z.number().int().nullable(),
   fieldValues: z.record(z.string().uuid(), z.unknown()),

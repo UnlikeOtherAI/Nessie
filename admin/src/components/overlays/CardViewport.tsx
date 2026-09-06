@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useNavigationLayout } from '../../lib/mobile-shell'
+import { useNavigationLayout } from '../../navigation/mobile-shell'
 import { OVERLAY_LAYER } from '../../navigation/overlay'
 import { whenStackSettled } from '../../navigation/transition-state'
-import { Card, type CardRegion } from './Card'
+import { OverlayCard, type CardRegion } from './OverlayCard'
 
 /**
  * The one region cards live in (docs/navigation/overview.md §7). Exactly one of these is
@@ -74,9 +74,9 @@ export const CardViewport = ({ cards, onLeft }: CardViewportProps) => {
       style={{ zIndex: `var(--layer-card, ${OVERLAY_LAYER.card})` }}
     >
       {visible.map((card) => (
-        <Card key={card.id} onClosed={() => onLeft(card.id)} open={!card.leaving}>
+        <OverlayCard key={card.id} onClosed={() => onLeft(card.id)} open={!card.leaving}>
           {card.children}
-        </Card>
+        </OverlayCard>
       ))}
     </div>
   )

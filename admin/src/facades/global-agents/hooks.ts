@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ChannelRecord, GlobalAgentHomeResponse } from '../../lib/api-client'
-import { channelKeys } from '../../lib/query-keys'
+import { channelKeys } from '../channels/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { upsertChannel } from '../channels/channel-cache'
 

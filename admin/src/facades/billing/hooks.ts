@@ -15,7 +15,7 @@ import type {
   BillingStatementV2,
 } from '@unlikeotherai/billing-statement-protocol'
 import type { MeResponse, UoaBillingCapability } from '@nessie/schemas'
-import { billingKeys } from '../../lib/query-keys'
+import { billingKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useOptionalAuthSession } from '../../providers/AuthSessionProvider'
 

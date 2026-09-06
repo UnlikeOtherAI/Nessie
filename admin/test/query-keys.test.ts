@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  agentKeys,
-  agentTodoKeys,
-  appKeys,
-  channelKeys,
-  dashboardKeys,
-  knowledgeKeys,
-  projectKeys,
-  taskKeys,
-  threadKeys,
-  triggerKeys,
-  userKeys,
-  workflowKeys,
-} from '../src/lib/query-keys.js'
+import { agentTodoKeys } from '../src/facades/agent-todos/keys.js'
+import { agentKeys } from '../src/facades/agents/keys.js'
+import { appKeys } from '../src/facades/apps/keys.js'
+import { channelKeys } from '../src/facades/channels/keys.js'
+import { dashboardKeys } from '../src/facades/dashboards/keys.js'
+import { knowledgeKeys } from '../src/facades/knowledge/keys.js'
+import { projectKeys } from '../src/facades/projects/keys.js'
+import { taskKeys } from '../src/facades/tasks/keys.js'
+import { threadKeys } from '../src/facades/threads/keys.js'
+import { triggerKeys } from '../src/facades/triggers/keys.js'
+import { userKeys } from '../src/facades/users/keys.js'
+import { workflowKeys } from '../src/facades/workflows/keys.js'
 
 // A key is cache identity, so a factory that emits anything but the array the
 // call sites used before this module existed silently orphans a cache entry.

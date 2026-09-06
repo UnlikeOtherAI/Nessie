@@ -104,21 +104,30 @@ test('secondary sidebar menus do not repeat the active tab title above their ite
 
 test('project action menus render in the document overlay layer instead of the clipped sidebar', () => {
   const sidebarProjects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
-  const projectNavigation = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+  // The Projects sidebar's row (and its menu) live in ProjectRow.tsx now;
+  // ProjectsSidebarNav.tsx is the orchestrator (06-F5).
+  const projectRow = readSource('../src/layouts/admin-shell/ProjectRow.tsx')
+  // Both files' menu positioning + Escape/scroll/resize dismiss now go
+  // through the one shared hook instead of each re-implementing it.
+  const rowMenuHook = readSource('../src/layouts/admin-shell/useSidebarRowMenu.ts')
 
   assert.match(sidebarProjects, /createPortal\(/)
   assert.match(sidebarProjects, /document\.body/)
-  assert.match(sidebarProjects, /admin-sidebar-menu-project fixed z-\[61\]/)
-  assert.match(sidebarProjects, /setMenuPosition\(\{ left: rect\.left, top: rect\.bottom \}\)/)
-  assert.match(sidebarProjects, /window\.addEventListener\('scroll', closeOnViewportChange, true\)/)
-  assert.match(projectNavigation, /createPortal\(/)
-  assert.match(projectNavigation, /document\.body/)
+  assert.match(sidebarProjects, /admin-sidebar-menu-project fixed z-\[var\(--layer-popover\)\]/)
+  assert.match(sidebarProjects, /from '\.\/useSidebarRowMenu'/)
+  assert.match(sidebarProjects, /openAt\(e\.currentTarget\.getBoundingClientRect\(\)\)/)
+  assert.match(projectRow, /createPortal\(/)
+  assert.match(projectRow, /document\.body/)
+  assert.match(projectRow, /from '\.\/useSidebarRowMenu'/)
+  assert.match(rowMenuHook, /window\.addEventListener\('scroll', onClose, true\)/)
+  assert.match(rowMenuHook, /window\.addEventListener\('resize', onClose\)/)
+  assert.match(rowMenuHook, /document\.addEventListener\('keydown', onKeyDown\)/)
 })
 
 test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
   const people = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
   const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
-  const avatar = readSource('../src/components/primitives/UserAvatar.tsx')
+  const avatar = readSource('../src/components/shared/UserAvatar.tsx')
   const agentAvatar = readSource('../src/components/shared/AgentAvatar.tsx')
   const teamAvatar = readSource('../src/components/primitives/TeamAvatar.tsx')
   const badge = readSource('../src/components/primitives/PresenceBadge.tsx')
@@ -148,7 +157,7 @@ test('the native phone home chrome delegates team, history, account, and Channel
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const accountPopover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
-  const mobileShell = readSource('../src/lib/mobile-shell.ts')
+  const nativeShell = readSource('../src/lib/native-shell.ts')
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
   const phoneCreationOptions = readSource('../../mobile/src/lib/native-creation-menu.ts')
   const phoneHeader = readSource('../../mobile/src/components/NativePhoneHeader.tsx')
@@ -182,18 +191,22 @@ test('the native phone home chrome delegates team, history, account, and Channel
   assert.match(phoneHeader, /accountFocusModeEnabled/)
   assert.match(phoneHeader, /NativeFocusModeButton/)
   assert.match(nativeApp, /onToggleFocusMode=\{nativeActions\.toggleFocusMode\}/)
-  assert.match(mobileShell, /requestNativeFullRefresh/)
-  assert.match(mobileShell, /type: 'nessie:full-refresh'/)
+  assert.match(nativeShell, /requestNativeFullRefresh/)
+  assert.match(nativeShell, /type: 'nessie:full-refresh'/)
   assert.match(creation, /onCreateProject\(\)/)
   assert.match(creation, /onCreateChannel\(\)/)
   assert.match(creation, /onCreateMessage\(\)/)
   assert.match(creation, /onCreateAgent\(\)/)
-  assert.match(nativeApp, /shouldShowNativePhoneHeader\(/)
+  // The band and its contents are two decisions on iOS: the band is constant
+  // so the WebView frame cannot move with navigation, while the team and
+  // account lanes still belong to a tab root.
+  assert.match(nativeApp, /shouldShowNativePhoneNavBar\(/)
+  assert.match(nativeApp, /shouldShowNativePhoneRootLanes\(/)
   assert.match(nativeApp, /largePhoneLandscapeCapable/)
   assert.match(nativeApp, /large-phone-landscape/)
   assert.match(
     nativeApp,
-    /showNativePhoneCreationActions = showNativePhoneHeader/,
+    /showNativePhoneCreationActions = showNativePhoneRootLanes/,
   )
   assert.match(nativeApp, /landscape=\{largePhoneLandscape\}/)
   assert.match(phoneNavigationProvider, /useNativeLargePhoneLandscapeApp/)
@@ -338,6 +351,6 @@ test('sidebar action menus have room to read and tap their choices', () => {
 test('an open project action menu dismisses when the person taps outside it', () => {
   const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
 
-  assert.match(projects, /className="fixed inset-0 z-\[60\] cursor-default"/)
+  assert.match(projects, /className="fixed inset-0 z-\[var\(--layer-popover\)\] cursor-default"/)
   assert.match(projects, /closeProjectMenu\(\)/)
 })

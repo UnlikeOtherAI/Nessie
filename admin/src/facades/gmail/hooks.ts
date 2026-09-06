@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-query'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { gmailKeys } from './keys'
 
 /**
  * React-Query facade for the owner-gated Gmail draft surface. Every route is
@@ -28,12 +29,6 @@ export type GmailDraftView = {
   attachments: { filename: string; mimeType: string; sizeBytes: number }[]
   editable: boolean
   unsupportedReason: 'attachments' | 'non_plain_content' | null
-}
-
-export const gmailKeys = {
-  draft: (id: string) => ['gmail', 'draft', id] as const,
-  draftStatus: (id: string) => ['gmail', 'draft-status', id] as const,
-  sendGrants: ['gmail', 'send-grants'] as const,
 }
 
 export type GmailDraftActionStatus = {

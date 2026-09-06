@@ -8,28 +8,61 @@ Nothing here is required unless you are turning team hostnames on. With
 
 ## Once, for the deployment
 
-### 1. Caddy needs a DNS provider module
+### 1. DNS
 
-Team hostnames are two labels deep, so they need per-organisation **wildcard**
-certificates, and a wildcard can only be issued over the DNS-01 challenge.
-Stock `caddy:2-alpine` cannot do DNS-01 — it has no provider module — so the
-shared edge has to be rebuilt with one:
+One wildcard covers every organisation host:
 
-```dockerfile
-FROM caddy:2-builder-alpine AS builder
-RUN xcaddy build --with github.com/caddy-dns/cloudflare
-
-FROM caddy:2-alpine
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+```bash
+curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+  -H "X-Auth-Email: $CLOUDFLARE_EMAIL" -H "X-Auth-Key: $CLOUDFLARE_API_KEY" \
+  -H 'content-type: application/json' \
+  --data '{"type":"A","name":"*","content":"178.105.82.46","proxied":false}'
 ```
 
-### 2. A zone-scoped Cloudflare token
+`proxied:false` matters — Caddy needs to see the real connection to answer the
+HTTP-01 challenge. Specific records (`api`, `app`, `www`) still win over the
+wildcard, so nothing existing moves.
 
-Create an API token limited to the `nessie.works` zone with **Zone:DNS:Edit**.
-Nothing wider — this token can write DNS for whatever it can reach.
+A DNS wildcard matches exactly one label, so `*.nessie.works` covers
+`acme.nessie.works` but **not** `design.acme.nessie.works`. Team hosts need a
+`*.<org>.nessie.works` record per organisation.
 
-Put it in the host env file (`/srv/nessie/infrastructure/compose/.env`, not
-committed) as `CLOUDFLARE_API_TOKEN`, and pass it to the Caddy container.
+### 2. Caddy — named hosts, no rebuild
+
+**Stock `caddy:2-alpine` is enough.** Certificates are issued per hostname over
+HTTP-01, which needs no DNS provider module. This was verified on the shared
+edge: `tenant-test.nessie.works` was issued a Let's Encrypt certificate
+(`CN=tenant-test.nessie.works`) within seconds of the site block being added,
+with no change to the Caddy image.
+
+Add hostnames to the `# === Nessie tenant hosts ===` block:
+
+```caddyfile
+acme.nessie.works, design.acme.nessie.works {
+	encode zstd gzip
+	reverse_proxy nessie-admin:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+	}
+}
+```
+
+Then validate before reloading — this proxy fronts ~72 site blocks for other
+products, and a malformed file takes all of them down:
+
+```bash
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+```
+
+**Do not reach for `xcaddy` + `caddy-dns/cloudflare` unless volume forces it.**
+Wildcard certificates can only be issued over DNS-01, which is the only reason
+that rebuild would be needed — and rebuilding the shared edge risks every other
+product on the box. The single thing it buys is escaping Let's Encrypt's ~50
+certificates per registered domain per week, counted across all of
+`nessie.works`. Named hosts spend one certificate per tenant hostname, so that
+ceiling only bites in the hundreds of tenants.
 
 ### 3. Tell the API its base domain
 
@@ -37,13 +70,14 @@ committed) as `CLOUDFLARE_API_TOKEN`, and pass it to the Caddy container.
 NESSIE_TEAM_HOST_BASE_DOMAIN=nessie.works
 ```
 
-This one variable turns the feature on. It makes `/api/hosts/resolve` answer,
-and it admits `https://<team>.<org>.nessie.works` as a CORS origin — by label
-comparison, so a look-alike domain ending in the same string is still refused.
+This is what turns the feature on: it makes `/api/hosts/resolve` answer, and
+admits `https://<org>.nessie.works` and `https://<team>.<org>.nessie.works` as
+CORS origins — by label comparison, so a look-alike domain ending in the same
+string is still refused.
 
 ### 4. Declare the product's hostnames to UOA
 
-In the signed config Nessie serves at `/api/auth/sso/config`, add:
+In the signed config Nessie serves at `/api/auth/sso/config`:
 
 ```json
 "hostnames": {
@@ -54,8 +88,7 @@ In the signed config Nessie serves at `/api/auth/sso/config`, add:
 
 `reserved_labels` are added to UOA's base list and cannot subtract from it, so
 no tenant can take a label the product answers on. **A config change only takes
-effect once the product redeploys and serves the new JWT** — see
-`Docs/deployment.md` in UOA.
+effect once the product redeploys and serves the new JWT.**
 
 ## Per organisation
 
@@ -78,14 +111,9 @@ origin.
 
 ### Caddy
 
-```caddyfile
-*.acme.nessie.works {
-	tls {
-		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-	}
-	reverse_proxy nessie-admin:80
-}
-```
+Add the organisation host, and each team host, to the tenant block by name —
+see "Caddy — named hosts" above. No `tls` stanza is needed: HTTP-01 issues
+automatically for a named host.
 
 Then validate and reload, exactly as for any other site block:
 
@@ -99,16 +127,13 @@ docker exec infra-caddy caddy reload --config /etc/caddy/Caddyfile
 Because a DNS wildcard matches exactly one label, and `*.*.nessie.works` is not
 valid DNS. `*.nessie.works` covers `acme.nessie.works` and stops there.
 
-## Why not per-hostname on-demand TLS
+## Why not on-demand TLS
 
-Let's Encrypt allows roughly **50 certificates per registered domain per week**,
-and the registered domain is `nessie.works` — one bucket for the whole estate.
-Issuing per team hostname puts that ceiling on team creation, and the failure is
-ugly: the 51st team created in a week gets an address that does not serve TLS.
-
-A per-organisation wildcard moves the ceiling onto organisation creation, which
-is rare, and publishes only the organisation label to Certificate Transparency
-rather than every team name.
+The shared edge already has `on_demand_tls` configured globally, but its `ask`
+endpoint belongs to another product (`landscaper-app`). `on_demand_tls.ask` is a
+single global setting, so using on-demand for Nessie would mean another
+product's endpoint deciding which Nessie hostnames may exist. Named hosts avoid
+that coupling entirely.
 
 ## Checks
 

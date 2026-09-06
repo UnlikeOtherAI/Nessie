@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  channelHashClassName,
-  projectSelectionClassName,
-  renderUnreadCount,
-  sidebarAriaCurrent,
-} from './SidebarRow';
+import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { getCookie, setCookie } from '../../lib/storage';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
@@ -13,6 +9,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { useSidebarRowMenu } from './useSidebarRowMenu';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
@@ -20,11 +17,6 @@ import type {
   SidebarMenu,
   SidebarProject,
 } from './types';
-
-type ProjectMenuPosition = {
-  left: number;
-  top: number;
-};
 
 const COLLAPSED_PROJECT_IDS_COOKIE = 'collapsedProjectIds';
 
@@ -113,7 +105,6 @@ export const SidebarProjectsSection = ({
 }: SidebarProjectsSectionProps) => {
   const { token } = useAuthSession();
   const prewarm = usePrewarm();
-  const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState(() =>
     parseCollapsedProjectIds(getCookie(COLLAPSED_PROJECT_IDS_COOKIE)),
   );
@@ -163,21 +154,16 @@ export const SidebarProjectsSection = ({
   }, [persistCollapsedProjectIds, revealedChannel]);
 
   const closeProjectMenu = useCallback(() => {
-    setMenuPosition(null);
     setSidebarMenu(() => null);
   }, [setSidebarMenu]);
 
-  useLayoutEffect(() => {
-    if (!menuPosition) return undefined;
-
-    const closeOnViewportChange = () => closeProjectMenu();
-    window.addEventListener('resize', closeOnViewportChange);
-    window.addEventListener('scroll', closeOnViewportChange, true);
-    return () => {
-      window.removeEventListener('resize', closeOnViewportChange);
-      window.removeEventListener('scroll', closeOnViewportChange, true);
-    };
-  }, [closeProjectMenu, menuPosition]);
+  // Only one project menu is ever open at a time — `sidebarMenu` (lifted so it
+  // can coordinate with the channel menu's own open/closed state) says which,
+  // and the shared hook owns the position plus the Escape/scroll/resize close.
+  const { openAt, position: menuPosition } = useSidebarRowMenu(
+    sidebarMenu?.type === 'project',
+    closeProjectMenu,
+  );
 
   return (
     <SidebarMenuSection
@@ -287,8 +273,7 @@ export const SidebarProjectsSection = ({
                       return;
                     }
 
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setMenuPosition({ left: rect.left, top: rect.bottom });
+                    openAt(e.currentTarget.getBoundingClientRect());
                     setSidebarMenu(() => ({ projectId: project.id, type: 'project' }));
                   }}
                   role="button"
@@ -301,7 +286,7 @@ export const SidebarProjectsSection = ({
                       <>
                         <button
                           aria-hidden="true"
-                          className="fixed inset-0 z-[60] cursor-default"
+                          className="fixed inset-0 z-[var(--layer-popover)] cursor-default"
                           onClick={(e) => {
                             e.stopPropagation();
                             closeProjectMenu();
@@ -310,7 +295,7 @@ export const SidebarProjectsSection = ({
                           type="button"
                         />
                         <span
-                          className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[61]"
+                          className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[var(--layer-popover)]"
                           onClick={(e) => e.stopPropagation()}
                           role="menu"
                           style={menuPosition}
@@ -351,7 +336,7 @@ export const SidebarProjectsSection = ({
             {!isProjectCollapsed ? (
               <div id={projectChannelsId}>
                 {project.channels.length === 0 ? (
-                  <SidebarEmptyNote nested>There are no channels yet.</SidebarEmptyNote>
+                  <SidebarEmptyNote indent="child">There are no channels yet.</SidebarEmptyNote>
                 ) : null}
                 {project.channels.map((channel) => {
                   const isStarredChannel = starredChannelIds.has(channel.id);

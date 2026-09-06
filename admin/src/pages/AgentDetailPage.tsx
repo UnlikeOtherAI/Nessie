@@ -12,7 +12,7 @@ import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
-import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
+import { DesignerAssistantDock } from '../components/features/agents/designer/DesignerAssistantDock'
 
 /**
  * Why the form below cannot be changed. It is a lead-in note inside the
@@ -136,7 +136,7 @@ export const AgentDetailPage = () => {
             />
           </div>
         </div>
-        {canEdit ? <DesignerAssistantDrawer /> : null}
+        {canEdit ? <DesignerAssistantDock /> : null}
       </div>
     </DesignerAssistantPanelProvider>
   )

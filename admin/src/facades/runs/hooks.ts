@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { runKeys } from '../../lib/query-keys'
+import { runKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 // Cancel/continue invalidate the active-run list so a run's state refreshes

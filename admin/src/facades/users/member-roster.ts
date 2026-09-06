@@ -9,9 +9,10 @@ import type {
   TeamMemberRecord,
 } from '@nessie/schemas'
 
-import { teamKeys, organizationKeys } from '../../lib/query-keys'
+import { organizationKeys } from '../organization/keys'
+import { teamKeys } from '../team/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { usePagedList } from '../usePagedList'
+import { usePagedList } from '../pagination/usePagedList'
 
 export type MemberRosterScope = 'organization' | 'team'
 
@@ -80,9 +81,15 @@ export const useMemberTeamAccess = (uoaSub: string | null, enabled: boolean) => 
   const api = useApiClient()
   return useQuery({
     enabled: enabled && uoaSub !== null,
-    queryFn: () => api.getPage<MemberTeamAccessResponse>(
-      `/api/organization/members/${encodeURIComponent(uoaSub!)}/teams`,
-    ),
+    queryFn: () => {
+      // `enabled` keeps react-query from calling this while `uoaSub` is null.
+      if (uoaSub === null) {
+        throw new Error('useMemberTeamAccess: queryFn ran without a uoaSub')
+      }
+      return api.getPage<MemberTeamAccessResponse>(
+        `/api/organization/members/${encodeURIComponent(uoaSub)}/teams`,
+      )
+    },
     queryKey: organizationKeys.memberTeams(uoaSub ?? undefined),
   })
 }

@@ -7,7 +7,7 @@ import type {
   PersonalAssistantPresenceParticipant,
   UserRecord,
 } from '../../../lib/api-client'
-import type { FeedItem } from './channel-helpers'
+import type { FeedItem } from './channel-feed'
 import { personalAssistantPresenceKey } from './personal-assistant-presence'
 import type { ResolveReactorName } from './ReactionPills'
 

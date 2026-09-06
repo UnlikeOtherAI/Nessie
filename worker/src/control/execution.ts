@@ -16,7 +16,11 @@ import {
 } from './execution/workflow-continuation.js'
 
 export { buildGcloudRunJobArgs } from './execution/gcloud-provider.js'
-export { expireExecutionLeases, renewExecutionLeases } from './execution/leases.js'
+export {
+  expireExecutionLeases,
+  reapStaleExecutionRunners,
+  renewExecutionLeases,
+} from './execution/leases.js'
 export { registerExecutionRunners } from './execution/runners.js'
 
 export const allocateExecutionEnvironmentInstance = async (

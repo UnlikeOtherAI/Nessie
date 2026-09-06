@@ -9,7 +9,7 @@ import {
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../providers/ToastProvider'
 import { Pill } from '../../primitives/Pill'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import {
   formatRelativeTime,
   getInstallationTone,
@@ -108,7 +108,7 @@ const InstallationAutomationRow = ({
         <button
           className="rounded-md px-2 py-1.5 text-xs font-semibold text-[color:var(--tx3)] hover:text-[var(--tx)]"
           onClick={() =>
-            navigate('/workflows', { state: { selectedInstallationId: installationId } })
+            navigate(`/workflows?installation=${encodeURIComponent(installationId)}`)
           }
           type="button"
         >

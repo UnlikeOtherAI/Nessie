@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { OrganizationTheme } from '@nessie/schemas'
 import type { OrganizationSummary } from '../../lib/api-client'
-import { organizationKeys } from '../../lib/query-keys'
+import { organizationKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 

@@ -20,17 +20,14 @@ import {
 import { ChannelSearchPanel } from '../../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../../components/features/channels/ChannelTabBar'
 import { Pill } from '../../components/primitives/Pill'
-import { agentSelectionLabel } from '../../components/features/agents/AgentVisibilityPill'
+import { agentSelectionLabel } from '../../components/shared/AgentVisibilityPill'
 import { Dialog } from '../../components/shared/Dialog'
 import { ChannelTabPanels } from '../../components/features/channels/ChannelTabPanels'
 import { ExternalAgentIntro } from '../../components/features/channels/ExternalAgentIntro'
 import type { ChannelTitleFavorite } from '../../components/features/channels/ChannelFavoriteButton'
-import {
-  buildFeedItems,
-  type ChannelAgentParticipant,
-  type ChannelTab,
-  type MessageUserIdentity,
-} from '../../components/features/channels/channel-helpers'
+import { buildFeedItems } from '../../components/features/channels/channel-feed'
+import { type ChannelAgentParticipant, type MessageUserIdentity } from '../../components/features/channels/channel-participants'
+import { type ChannelTab } from '../../components/features/channels/channel-tabs'
 import { useAgentLivenessHint } from '../../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../../components/features/channels/useChannelComposer'
 import { useFileDrop } from '../../hooks/useFileDrop'
@@ -43,14 +40,14 @@ import {
   useStopDemonstration,
 } from '../../facades/demonstrations/hooks'
 import type { DocumentStreamStore } from '../../facades/threads/document-stream-store'
-import type { DocumentStreamEntry } from '../../facades/threads/document-stream-helpers'
+import type { DocumentStreamEntry } from '../../facades/threads/document-stream-entries'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import type { useChannelMentions } from './useChannelMentions'
 import type { useChannelMessageSearch } from './useChannelMessageSearch'
 import type { useDeepWaterResearchLauncher } from './useDeepWaterResearchLauncher'
 import type { useExecutorRunLauncher } from './useExecutorRunLauncher'
-import type { useReplyThread } from './useReplyThread'
+import type { useReplyThread } from '../../components/features/channels/useReplyThread'
 
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
@@ -475,11 +472,12 @@ export const ChannelConversationSurface = ({
                 disabled={!activeChannel || !activeThreadId || !selectedRoutineAgentId || startDemonstration.isPending}
                 onClick={() => {
                   if (!activeChannel || !activeThreadId || !selectedRoutineAgentId) return
+                  // The app-wide mutation default surfaces a failure as a toast.
                   void startDemonstration.mutateAsync({
                     agentId: selectedRoutineAgentId,
                     channelId: activeChannel.id,
                     threadId: activeThreadId,
-                  }).then(() => setRecordRoutineOpen(false))
+                  }).then(() => setRecordRoutineOpen(false)).catch(() => undefined)
                 }}
                 type="button"
               >

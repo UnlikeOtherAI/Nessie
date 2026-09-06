@@ -7,7 +7,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import type { CallRecord } from '../../lib/api-client'
-import { callKeys } from '../../lib/query-keys'
+import { callKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { SseFrame } from '../../lib/sse'
 import { useEventStream } from '../realtime/event-stream'

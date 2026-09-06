@@ -8,7 +8,7 @@ import type {
   WorkflowStepSamplesRecord,
   WorkflowTemplateRecord,
 } from '../../lib/api-client'
-import { workflowKeys } from '../../lib/query-keys'
+import { workflowKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**

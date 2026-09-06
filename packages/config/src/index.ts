@@ -107,6 +107,14 @@ const RateLimitRuleSchema = z.object({
 
 export const NessieConfigSchema = z.object({
   mode: NessieModeSchema,
+  // Hard ceiling on graceful shutdown. Every long-lived process (API, gateway)
+  // arms a timer for this long when it starts draining and calls
+  // `process.exit(1)` if the drain has not finished, so a wedged stream or a
+  // hung pool cannot outlive the orchestrator's own grace period. Keep it
+  // comfortably below that period (Kubernetes `terminationGracePeriodSeconds`,
+  // Cloud Run's 10 s, `docker stop -t`) or the runtime SIGKILLs first and the
+  // drain buys nothing.
+  shutdownTimeoutMs: z.number().int().positive().default(25_000),
   auth: z.object({
     providers: z.array(AuthProviderConfigSchema),
     autoRedirectToSso: z.boolean().default(false),
@@ -294,6 +302,13 @@ export const ConfigEnvMap = {
   NESSIE_AUTH_TOKEN_TTL: 'auth.tokenTtlSeconds',
   NESSIE_AUTH_REFRESH_TOKEN_TTL: 'auth.refreshTokenTtlSeconds',
   NESSIE_DB_URL: 'database.url',
+  // Postgres pool sizing per process. Until these existed only
+  // `nessie.config.json` could move them, so a containerised deployment was
+  // pinned to the 10/2 defaults; at ~31 connections per API replica that is
+  // what makes the connection ceiling scale with replica count.
+  NESSIE_DB_POOL_MAX: 'database.poolMax',
+  NESSIE_DB_POOL_MIN: 'database.poolMin',
+  NESSIE_SHUTDOWN_TIMEOUT_MS: 'shutdownTimeoutMs',
   NESSIE_REDIS_URL: 'redis.url',
   NESSIE_STORAGE_PROVIDER: 'storage.provider',
   NESSIE_STORAGE_BUCKET: 'storage.bucket',
@@ -419,6 +434,7 @@ const DEFAULT_LOCAL_DATABASE_URL =
 
 const DEFAULT_CONFIG: NessieConfig = {
   mode: 'local',
+  shutdownTimeoutMs: 25_000,
   auth: {
     providers: [],
     autoRedirectToSso: false,
@@ -583,6 +599,19 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
     env.DATABASE_URL !== ''
   ) {
     setByPath(overrides, 'database.url', env.DATABASE_URL)
+  }
+
+  // Container runtimes that pick the port for you (Cloud Run, Heroku, Fly)
+  // inject `PORT` and nothing else. Accept it as a *lower-precedence* fallback:
+  // an explicit `NESSIE_API_PORT` is a deliberate operator choice and still
+  // wins, so pinning the production container's internal port keeps working
+  // even where the platform also sets `PORT`.
+  if (
+    (env.NESSIE_API_PORT === undefined || env.NESSIE_API_PORT === '') &&
+    env.PORT !== undefined &&
+    env.PORT !== ''
+  ) {
+    setByPath(overrides, 'api.port', coerceScalar(env.PORT))
   }
 
   const firstNonEmpty = (...values: Array<string | undefined>): string | undefined =>

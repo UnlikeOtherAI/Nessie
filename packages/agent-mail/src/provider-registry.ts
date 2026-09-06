@@ -10,7 +10,7 @@ import type {
  * An MX match is intentionally only a classification signal; it is never a
  * password-destination trust decision by itself.
  */
-export const MAILBOX_PROVIDER_REGISTRY_VERSION = 1
+export const MAILBOX_PROVIDER_REGISTRY_VERSION = 2
 
 export type MailboxProviderRegistryEntry = {
   family: Exclude<MailboxProviderFamily, 'generic' | 'unknown'>
@@ -59,7 +59,17 @@ export const MAILBOX_PROVIDER_REGISTRY: readonly MailboxProviderRegistryEntry[] 
     domains: ['hotmail.com', 'live.com', 'msn.com', 'outlook.com'],
     family: 'microsoft',
     icon: 'microsoft',
-    mxSuffixes: ['mail.protection.outlook.com', 'outlook.com'],
+    // `*.mx.microsoft` and the US-government delivery domains are published beside
+    // `*.mail.protection.outlook.com` on Microsoft's port-25 endpoint lists:
+    // learn.microsoft.com/microsoft-365/enterprise/urls-and-ip-address-ranges (row 10) and
+    // .../microsoft-365-u-s-government-gcc-high-endpoints (row 6). Verified 2026-09-04.
+    mxSuffixes: [
+      'mail.protection.outlook.com',
+      'mx.microsoft',
+      'outlook.com',
+      'protection.office365.us',
+      'usgovcloud-mx.microsoft',
+    ],
     oauthConnector: 'microsoft_graph',
     passwordConfig: config(
       'outlook.office365.com', 993, 'tls',

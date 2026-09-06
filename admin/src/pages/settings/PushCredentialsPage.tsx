@@ -3,7 +3,7 @@ import { usePushStatus } from '../../facades/platform-push/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { ApnsCard } from './push/ApnsCard'
 import { FcmCard } from './push/FcmCard'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 export const PushCredentialsPage = () => {
   const { me } = useAuthSession()

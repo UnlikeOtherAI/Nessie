@@ -159,7 +159,7 @@ Examples:
 
 - `agents`
 - `projects`
-- `teams`
+- `team`
 - `channels`
 - `threads`
 - `messages`
@@ -167,7 +167,7 @@ Examples:
 - `users`
 - `tools`
 
-Each domain facade should own:
+Each domain facade owns:
 
 - API calls
 - request/response typing
@@ -176,73 +176,120 @@ Each domain facade should own:
 - mutations
 - optimistic update rules where needed
 
-Good shape:
+The shape a facade actually takes, in this order:
 
-- `agents/api.ts`
-- `agents/queries.ts`
-- `agents/mutations.ts`
-- `agents/types.ts`
-- `agents/hooks.ts`
-
-Same pattern should exist for tools:
-
-- `tools/api.ts`
-- `tools/queries.ts`
-- `tools/mutations.ts`
-- `tools/types.ts`
-- `tools/hooks.ts`
+1. **`hooks.ts` is the facade.** Fifty-odd of the fifty-seven directories under
+   `admin/src/facades/` are exactly one `hooks.ts` holding the queries, the
+   mutations and the types for that domain. That is the default, and a new
+   facade starts there — not with five near-empty files.
+2. **Split by sub-resource when it grows**, never into layer-shaped shards.
+   `facades/knowledge/` splits into `file-hooks.ts`, `comment-hooks.ts`,
+   `backlinks-hooks.ts`, `wikilink-hooks.ts`; `facades/team/` into
+   `invitations.ts`, `provisioning.ts`, `host-sync.ts`. Splitting a small
+   facade into `api.ts`/`queries.ts`/`mutations.ts` scatters one resource over
+   four files and is the shape to avoid.
+3. **`keys.ts` per facade.** A facade's query keys live in
+   `facades/<domain>/keys.ts`, beside the hooks that read and invalidate them,
+   and a family a second facade needs is imported across the boundary rather
+   than re-declared (`facades/agent-todos/keys.ts` builds on `agentKeys.all`;
+   `facades/mail` imports `gmailKeys`). `admin/src/lib/query-keys.ts` keeps only
+   what belongs to no domain — `paginationKeys`, plus the few families whose
+   surface has no facade yet. `admin/test/query-key-invariants.test.ts` walks
+   every `keys.ts` under `src/facades` and holds the union to three rules: a
+   family root prefixes its members, no two facades declare the same key, and
+   no key is ever written as a raw literal at a call site. A `*Keys` object
+   exported from anywhere but a `keys.ts` fails the same test — that is how
+   five private factories stayed invisible to it.
+4. **Non-React domain logic belongs to the facade, not to the component that
+   calls it.** `facades/apps/connect-flow.ts`, `facades/designer/types.ts` and
+   `facades/tools/deep-water-tool-filter.ts` are facade files with no React in
+   them. A facade never imports from `components/`, `layouts/` or `pages/` —
+   see §5.4.
 
 This gives you an "agent provider facade" in practice without turning it
 into a tree-wide React Context.
 
 ### 5.3 Reusable UI component layers
 
-The UI should be split into:
+The UI is split into:
 
-1. primitives
-2. composed shared components
-3. feature components
-4. page shells
+1. primitives — no data dependencies at all
+2. composed shared components — may read facade hooks and providers
+3. feature components — one product domain each
+4. layouts — the shell and the app chrome around the router
+5. page shells — one routed screen each, holding composition and nothing else
 
-Recommended structure under `/admin/src`:
+The structure under `admin/src`:
 
 ```text
+lib/            pure modules: formatting, storage, the API client, native-shell probes
+hooks/          generic React hooks with no provider or facade dependency
+navigation/     the one navigation framework: surfaces, back, motion, layout, doorways
+facades/        one directory per domain (§5.2)
+providers/      the app-wide React contexts, and only those
+bridges/        render-nothing components that wire an outside system in
+                (the native shell, desktop updates, notification centre)
 components/
-  primitives/
-    Avatar/
-    Badge/
-    Button/
-    Icon/
-    Input/
-    ScrollArea/
-    Tooltip/
-  shared/
-    ChannelRow/
-    AgentRow/
-    ToolRow/
-    ThreadListItem/
-    PresenceDot/
-    SectionHeader/
-    EmptyState/
-    AppShell/
-  features/
-    channels/
-    agents/
-    tools/
-    threads/
-    auth/
-    settings/
-pages/
-  login/
-  channels/
-  agents/
-  settings/
-providers/
-  AppProvider.tsx
-  AuthSessionProvider.tsx
-  ApiClientProvider.tsx
-  QueryProvider.tsx
+  primitives/   Avatar, Badge, Pill, Switch, TabBar, Notice, Skeleton, …
+  overlays/     the overlay machinery: Sheet, Popover, OverlayCard, useOverlay
+  shared/       ScreenHeader, Card, ChoiceGroup, AgentRow, IncomingCallDialog, …
+  features/     channels/ agents/ projects/ knowledge/ settings/ triggers/ …
+layouts/        RootLayout, AdminShellLayout, DesktopWindowFrame, admin-shell/*
+pages/          one directory per routed page: <Page>.tsx plus its own sub-views
 ```
+
+Two rules the tree does not state on its own:
+
+- **`pages/<page>/` holds single-consumer composition only.** A file under a
+  page directory has exactly one importer: that page (or a sub-view chain
+  ending at it). The moment a second surface wants it, it moves down to
+  `components/features/<domain>/` — a page directory is a shell, never a
+  library.
+- **A component that needs a provider is not a primitive.** `AgentAvatar` and
+  `UserAvatar` live in `shared/` precisely because they read the identity and
+  presence providers; a primitive stays renderable in isolation.
+
+### 5.4 Dependency direction
+
+`admin/src` is ten ordered layers, and an import may only run downward. An
+arrow is "may import from"; a layer may always import from itself, from
+`node_modules`, and from the `@nessie/*` workspace packages.
+
+```text
+lib                    →  (nothing else in admin/src)
+hooks                  →  lib
+navigation             →  lib, hooks, providers
+facades                →  lib, hooks, providers
+providers / bridges    →  lib, hooks, facades, navigation, components/overlays¹
+components/primitives  →  lib
+components/overlays    →  lib, hooks, navigation, components/primitives
+components/shared      →  lib, hooks, navigation, facades, providers,
+                          components/primitives, components/overlays
+components/features    →  everything above, + components/shared
+layouts                →  everything above
+pages                  →  everything above, + layouts
+router.tsx / main.tsx  →  everything
+```
+
+¹ `providers → components/overlays` is for **viewport mounts only** — a
+provider that mounts the region an ambient surface lives in
+(`ToastProvider` → `CardViewport`). It does not license a provider rendering
+product UI.
+
+`components/shared` may read facade **hooks** and providers, never a facade's
+`api.ts`: a shared component that took identity as a prop would push identity
+plumbing through every call site, which §6 forbids.
+
+`scripts/lint-admin-layers.mjs` enforces this on every `pnpm lint`. It resolves
+each relative specifier against the importing file's real path, classifies both
+ends by longest-prefix match, and fails on an upward edge. Two escapes exist,
+both narrow and both carrying their reason in the script: an `EXCEPTIONS` entry
+for a named file (`navigation/prewarm.ts` must call the destination's exact
+`fetch*`), and a shrinking `ALLOWLIST` of individual edges. The allowlist
+self-checks — an entry whose edge no longer exists fails the gate until the
+line is deleted — so it can only shrink. Inverting the dependency (moving the
+shared symbol down) is always the fix; adding a line is the admission that the
+move is not available yet.
 
 ## 6) Single source of truth rules
 

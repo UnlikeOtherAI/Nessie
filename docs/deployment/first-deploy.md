@@ -52,7 +52,7 @@ Requires SSH access to the host and the Cloudflare full-token env var.
    ```sh
    cd /srv/nessie
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
-   docker compose -f infrastructure/compose/docker-compose.prod.yml build api admin web
+   docker compose -f infrastructure/compose/docker-compose.prod.yml build nessie-api nessie-admin nessie-web
    docker compose -f infrastructure/compose/docker-compose.prod.yml \
      run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d
@@ -76,7 +76,7 @@ Requires SSH access to the host and the Cloudflare full-token env var.
 6. **First owner account** — Nessie runs in `selfHosted` mode with no users, so
    the API prints a one-time bootstrap URL on startup:
    ```sh
-   docker compose -f infrastructure/compose/docker-compose.prod.yml logs api 2>&1 | grep bootstrap
+   docker compose -f infrastructure/compose/docker-compose.prod.yml logs nessie-api 2>&1 | grep bootstrap
    ```
    Open `https://app.nessie.works/bootstrap?token=<token>` and create the
    owner account. The token has a 15-minute TTL; restart the `api` service to
@@ -90,16 +90,16 @@ push-credentials admin page that uses them, are gated by the platform-level
 the deployed tree:
 
 ```sh
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts grant-super-admin owner@example.com
 ```
 
 To audit or remove the tier later:
 
 ```sh
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts list-super-admins
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts revoke-super-admin owner@example.com
 ```
 
@@ -114,11 +114,11 @@ surface: an org admin who could set it would be choosing the login screen for
 every other tenant on the deployment.
 
 ```sh
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts show-instance-brand
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts set-instance-brand <organizationId>
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts clear-instance-brand
 ```
 

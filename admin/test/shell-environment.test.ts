@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readDesktopPlatform } from '../src/lib/desktop'
 import { deriveShellEnvironment } from '../src/providers/ShellEnvironmentProvider'
 
-// The mapping contract over lib/mobile-shell.ts + lib/desktop.ts probes
+// The mapping contract over navigation/mobile-shell.ts + lib/desktop.ts probes
 // (docs/plans/2026-08-13-responsive-coherence.md §D): platform facts stay orthogonal
 // to viewport width, so no input here is a width.
 

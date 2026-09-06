@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
   WorkflowRunRecord,
@@ -11,93 +11,75 @@ import {
   useDemonstrations,
 } from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { usePagedList } from '../facades/usePagedList'
-import { workflowKeys } from '../lib/query-keys'
-import { Pill } from '../components/primitives/Pill'
-import { Skeleton } from '../components/primitives/Skeleton'
+import { usePagedList } from '../facades/pagination/usePagedList'
+import { workflowKeys } from '../facades/workflows/keys'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { PaginationFooter } from '../components/shared/PaginationFooter'
-import { QueryState } from '../components/shared/QueryState'
-import { Row, RowList } from '../components/shared/RowList'
+import { WorkflowFailedRunsColumn } from '../components/features/workflows/WorkflowFailedRunsColumn'
+import { WorkflowsListColumn } from '../components/features/workflows/WorkflowsListColumn'
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
-import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
 import { DemonstrationDraftsColumn } from '../components/features/workflows/DemonstrationDraftsColumn'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
-import {
-  formatRelativeTime,
-  formatTimestamp,
-  getRunTone,
-} from '../components/features/workflows/presentation'
 
 /**
  * Workflows page. One list — the workflow templates — with drill-down:
  * workflow → installation → run. Installations are subordinate to their
  * workflow instead of a parallel top-level list of UUIDs.
- */
-
-type WorkflowsPageLocationState = {
-  selectedInstallationId?: string
-  selectedRunId?: string
-  selectedTemplateId?: string
-}
-
-const readWorkflowsPageLocationState = (
-  value: unknown,
-): WorkflowsPageLocationState => {
-  if (!value || typeof value !== 'object') {
-    return {}
-  }
-
-  const state = value as WorkflowsPageLocationState
-  return {
-    selectedInstallationId:
-      typeof state.selectedInstallationId === 'string'
-        ? state.selectedInstallationId
-        : undefined,
-    selectedRunId:
-      typeof state.selectedRunId === 'string' ? state.selectedRunId : undefined,
-    selectedTemplateId:
-      typeof state.selectedTemplateId === 'string'
-        ? state.selectedTemplateId
-        : undefined,
-  }
-}
-
-/**
- * The badge beside a workflow on the list.
  *
- * It reads the server's aggregate rather than counting a page of rows the
- * browser happens to hold — which is what it did before, and which stopped
- * being true the moment list endpoints started returning 25 rows instead of
- * every row. An absent summary means the endpoint did not report one, which
- * is not the same as zero, so the badge says nothing rather than "draft".
+ * Selection and search are URL state (`?search=&template=&installation=&run=
+ * &failedRuns=1&demonstrationDrafts=1`), not `useState`/`location.state`: the
+ * registry declares this route family's filters linkable
+ * (`navigation/admin-surfaces.ts`'s `/agents/(?:workflows|…)` row), and a
+ * selection that only lived in component state could not be bookmarked,
+ * shared, or survive a refresh (docs/plans/2026-09-05-admin-architecture-review/audit/05-pages-routing.md F5).
  */
-const summarizeInstallations = (
-  summary: WorkflowTemplateRecord['installationSummary'],
-): { label: string; tone: 'accent' | 'danger' | 'muted' | 'success' | 'warning' } | null => {
-  if (!summary) return null
-  if (summary.total === 0) return { label: 'draft', tone: 'muted' }
-  if (summary.active > 0) {
-    return {
-      label: summary.active === summary.total ? 'active' : `${summary.active} of ${summary.total} active`,
-      tone: 'success',
-    }
-  }
-  return { label: `${summary.total} inactive`, tone: 'muted' }
-}
+
+const readParam = (searchParams: URLSearchParams, key: string): string | undefined =>
+  searchParams.get(key) ?? undefined
 
 export const WorkflowsPage = () => {
-  const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const isWorkflowAdmin =
     isOwner || (me?.user.roleIds.includes('admin') ?? false)
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const searchQuery = searchParams.get('search') ?? ''
+  const selectedTemplateId = readParam(searchParams, 'template')
+  const selectedInstallationId = readParam(searchParams, 'installation')
+  const selectedRunId = readParam(searchParams, 'run')
+  const showFailedRuns = searchParams.get('failedRuns') === '1'
+  const showDemonstrationDrafts = searchParams.get('demonstrationDrafts') === '1'
+
+  // One writer for every param this screen owns, so a selection that touches
+  // several of them (choosing a template drops its installation and run) is
+  // one replace, not a race between three.
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          for (const [key, value] of Object.entries(patch)) {
+            if (value === null) next.delete(key)
+            else next.set(key, value)
+          }
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+  const setSearchQuery = (value: string) => updateParams({ search: value || null })
+  const setSelectedRunId = (id: string | undefined) => updateParams({ run: id ?? null })
+  const setShowFailedRuns = (value: boolean) => updateParams({ failedRuns: value ? '1' : null })
+  const setShowDemonstrationDrafts = (value: boolean) =>
+    updateParams({ demonstrationDrafts: value ? '1' : null })
+
   // W19: template authoring stays admin-gated; the member-facing read surface
   // is the installations list (entitlement-scoped server-side) plus the
   // failed-runs triage view.
@@ -117,20 +99,6 @@ export const WorkflowsPage = () => {
   const failedRuns = failedRunsList.items
   const installWorkflowTemplate = useInstallWorkflowTemplate()
   const { data: demonstrations = [] } = useDemonstrations()
-  const restoredSelection = useMemo(
-    () => readWorkflowsPageLocationState(location.state),
-    [location.state],
-  )
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>(
-    () => restoredSelection.selectedTemplateId,
-  )
-  const [selectedInstallationId, setSelectedInstallationId] = useState<
-    string | undefined
-  >(() => restoredSelection.selectedInstallationId)
-  const [selectedRunId, setSelectedRunId] = useState<string | undefined>(
-    () => restoredSelection.selectedRunId,
-  )
 
   // Installations are read for the selected template only, through the
   // endpoint's `workflowTemplateId` filter. The page used to fetch the
@@ -146,10 +114,6 @@ export const WorkflowsPage = () => {
     queryKey: workflowKeys.installations,
   })
   const installations = installationsList.items
-  // W29: the triage surface — one cross-installation answer to "what broke
-  // last night". Opens straight onto the failed run's detail.
-  const [showFailedRuns, setShowFailedRuns] = useState(false)
-  const [showDemonstrationDrafts, setShowDemonstrationDrafts] = useState(false)
 
   useEffect(() => {
     if (
@@ -209,98 +173,37 @@ export const WorkflowsPage = () => {
     [installations, selectedInstallationId],
   )
 
-  // Restore selection handed back from the designer; an installation-only
-  // state also selects its parent workflow so the drill-down stays coherent.
-  useEffect(() => {
-    if (restoredSelection.selectedTemplateId) {
-      setSelectedTemplateId(restoredSelection.selectedTemplateId)
-    }
-    if (restoredSelection.selectedInstallationId) {
-      setSelectedInstallationId(restoredSelection.selectedInstallationId)
-      const parent = installations.find(
-        (entry) => entry.id === restoredSelection.selectedInstallationId,
-      )
-      if (parent) setSelectedTemplateId(parent.workflowTemplateId)
-    }
-    if (restoredSelection.selectedRunId) {
-      setSelectedRunId(restoredSelection.selectedRunId)
-    }
-  }, [installations, restoredSelection])
-
-  const currentWorkflowLocationState: WorkflowsPageLocationState = {
-    selectedTemplateId: selectedTemplate?.id,
-    selectedInstallationId,
-    selectedRunId,
-  }
-
   const selectTemplate = (template: WorkflowTemplateRecord) => {
-    setSelectedTemplateId(template.id)
-    setSelectedInstallationId(undefined)
-    setSelectedRunId(undefined)
+    updateParams({ installation: null, run: null, template: template.id })
   }
+
+  // The designer's own return address: a plain path this page can restore
+  // from on the way back, since the selection lives in the URL rather than
+  // `location.state` a round trip through the designer would otherwise have
+  // to carry.
+  const workflowsReturnPath = useMemo(() => {
+    const params = new URLSearchParams()
+    if (searchQuery) params.set('search', searchQuery)
+    if (selectedTemplate?.id) params.set('template', selectedTemplate.id)
+    if (selectedInstallationId) params.set('installation', selectedInstallationId)
+    if (selectedRunId) params.set('run', selectedRunId)
+    const query = params.toString()
+    return `/agents/workflows${query ? `?${query}` : ''}`
+  }, [searchQuery, selectedInstallationId, selectedRunId, selectedTemplate])
 
   const columns = []
 
   if (showFailedRuns) {
     columns.push(
-      <ColumnBrowserColumn
+      <WorkflowFailedRunsColumn
+        failedRuns={failedRuns}
+        failedRunsList={failedRunsList}
         key="failed-runs"
         onBack={() => setShowFailedRuns(false)}
-        showBack
-        title={`Failed runs (${failedRunsList.total ?? failedRuns.length})`}
-      >
-        <QueryState
-          emptyLabel="No failed runs — nothing broke."
-          errorLabel="Failed runs could not be loaded."
-          isEmpty={failedRuns.length === 0}
-          loadingLabel="Loading failed runs…"
-          query={failedRunsList.query}
-        >
-          {() => (
-            <>
-              <RowList label="Failed runs">
-                {failedRuns.map((run) => (
-                  <Row
-                    key={run.id}
-                    onClick={() => {
-                      setSelectedRunId(run.id)
-                      setSelectedInstallationId(run.installationId)
-                      setShowFailedRuns(false)
-                    }}
-                    subtitle={
-                      `${run.errorMessage ?? run.summary ?? 'Failed'} · `
-                      + `${formatRelativeTime(run.finishedAt ?? run.updatedAt)
-                        ?? formatTimestamp(run.updatedAt)}`
-                    }
-                    title={
-                      <span className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate">
-                          Run {run.id.slice(0, 8)}
-                        </span>
-                        <Pill height="control" tone={getRunTone(run.status)}>
-                          {run.status}
-                        </Pill>
-                      </span>
-                    }
-                  />
-                ))}
-              </RowList>
-              <PaginationFooter
-                canNext={failedRunsList.canNext}
-                canPrevious={failedRunsList.canPrevious}
-                className="mt-3"
-                hideWhenSinglePage
-                label={failedRunsList.label}
-                onPageChange={failedRunsList.onPageChange}
-                onPageSizeChange={failedRunsList.onPageSizeChange}
-                page={failedRunsList.page}
-                pageCount={failedRunsList.pageCount}
-                pageSize={failedRunsList.pageSize}
-              />
-            </>
-          )}
-        </QueryState>
-      </ColumnBrowserColumn>,
+        onSelectRun={(run) =>
+          updateParams({ failedRuns: null, installation: run.installationId, run: run.id })
+        }
+      />,
     )
   }
 
@@ -310,171 +213,49 @@ export const WorkflowsPage = () => {
         demonstrations={demonstrations}
         key="demonstration-drafts"
         onBack={() => setShowDemonstrationDrafts(false)}
-        onReview={(workflowTemplateId) => {
-          setSelectedTemplateId(workflowTemplateId)
-          setSelectedInstallationId(undefined)
-          setSelectedRunId(undefined)
-          setShowDemonstrationDrafts(false)
-        }}
+        onReview={(workflowTemplateId) =>
+          updateParams({
+            demonstrationDrafts: null,
+            installation: null,
+            run: null,
+            template: workflowTemplateId,
+          })
+        }
       />,
     )
   }
 
   columns.push(
-    <ColumnBrowserColumn
-      leading={<PhoneNavigationButton />}
-      headerAction={
-        isWorkflowAdmin ? (
-          <button
-            className="admin-button admin-button-primary"
-            onClick={() =>
-              void navigate('/agents/workflow-designer', {
-                state: {
-                  returnTo: '/agents/workflows',
-                  returnToState: currentWorkflowLocationState,
-                },
-              })
-            }
-            type="button"
-          >
-            New workflow
-          </button>
-        ) : undefined
-      }
+    <WorkflowsListColumn
+      demonstrations={demonstrations}
+      failedRunsCount={failedRuns.length}
+      filteredTemplates={filteredTemplates}
+      isWorkflowAdmin={isWorkflowAdmin}
       key="workflows"
-      title={`Workflows (${templatesList.total ?? sortedTemplates.length})`}
-    >
-      <button
-        className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
-        data-testid="failed-runs-toggle"
-        onClick={() => setShowFailedRuns(true)}
-        type="button"
-      >
-        <span className="text-sm font-medium text-[var(--tx)]">
-          What failed?
-        </span>
-        <Pill tone={failedRuns.length > 0 ? 'danger' : 'muted'}>
-          {failedRuns.length} failed
-        </Pill>
-      </button>
-      <button
-        className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
-        data-testid="demonstration-drafts-toggle"
-        onClick={() => setShowDemonstrationDrafts(true)}
-        type="button"
-      >
-        <span className="text-sm font-medium text-[var(--tx)]">Demonstration drafts</span>
-        <Pill tone={demonstrations.some((entry) => entry.status === 'captured') ? 'warning' : 'muted'}>
-          {demonstrations.length}
-        </Pill>
-      </button>
-      <div className="grid gap-3">
-        <div className="flex items-start gap-2">
-          <input
-            autoComplete="off"
-            className="admin-input flex-1"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search workflows…"
-            type="search"
-            value={searchQuery}
-          />
-          <WorkflowImportButton
-            onImported={(template) => {
-              setSelectedTemplateId(template.id)
-              setSelectedInstallationId(undefined)
-              setSelectedRunId(undefined)
-            }}
-          />
-        </div>
-        {/* Search narrows only the loaded page: `/api/workflows` has no
-            server-side text filter to page a search against, so paging past
-            the first screen and searching are two different ways to reach
-            more templates rather than one combined query.
-
-            A list whose shape is already known shows that shape while it
-            loads rather than the word Loading (docs/navigation/overview.md §14); the
-            kit's QueryState still owns the error and empty lines. */}
-        {templatesList.query.isLoading ? (
-          <Skeleton className="py-4" count={4} variant="list" />
-        ) : (
-          <QueryState
-            emptyLabel={
-              sortedTemplates.length === 0
-                ? 'No workflows yet. Build one in the designer.'
-                : 'No workflows match the search.'
-            }
-            errorLabel="Workflows could not be loaded."
-            isEmpty={filteredTemplates.length === 0}
-            loadingLabel="Loading workflows…"
-            query={templatesList.query}
-          >
-            {() => (
-              <>
-                <RowList label="Workflows">
-                  {filteredTemplates.map((template) => {
-                    const summary = summarizeInstallations(template.installationSummary)
-
-                    return (
-                      <Row
-                        key={template.id}
-                        onClick={() => selectTemplate(template)}
-                        selected={template.id === selectedTemplate?.id}
-                        subtitle={
-                          `v${template.version} · ${template.graph.steps.length} step`
-                          + `${template.graph.steps.length === 1 ? '' : 's'}`
-                          + (template.installationSummary?.total
-                            ? ` · ${template.installationSummary.total} installation${
-                                template.installationSummary.total === 1 ? '' : 's'
-                              }`
-                            : '')
-                          + ' · '
-                          + (formatRelativeTime(template.updatedAt)
-                            ?? formatTimestamp(template.updatedAt))
-                        }
-                        title={
-                          <span className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate">
-                              {template.name}
-                            </span>
-                            {summary ? (
-                              <Pill height="control" tone={summary.tone}>
-                                {summary.label}
-                              </Pill>
-                            ) : null}
-                            {template.source === 'demonstration' ? (
-                              <Pill height="control" tone="accent">Learned</Pill>
-                            ) : null}
-                          </span>
-                        }
-                      />
-                    )
-                  })}
-                </RowList>
-                <PaginationFooter
-                  canNext={templatesList.canNext}
-                  canPrevious={templatesList.canPrevious}
-                  className="mt-3"
-                  hideWhenSinglePage
-                label={templatesList.label}
-                onPageChange={templatesList.onPageChange}
-                onPageSizeChange={templatesList.onPageSizeChange}
-                page={templatesList.page}
-                pageCount={templatesList.pageCount}
-                pageSize={templatesList.pageSize}
-                />
-              </>
-            )}
-          </QueryState>
-        )}
-      </div>
-    </ColumnBrowserColumn>,
+      onImported={(template) =>
+        updateParams({ installation: null, run: null, template: template.id })
+      }
+      onNewWorkflow={() =>
+        void navigate('/agents/workflow-designer', {
+          state: { returnTo: workflowsReturnPath },
+        })
+      }
+      onSelectTemplate={selectTemplate}
+      onShowDemonstrationDrafts={() => setShowDemonstrationDrafts(true)}
+      onShowFailedRuns={() => setShowFailedRuns(true)}
+      searchQuery={searchQuery}
+      selectedTemplateId={selectedTemplate?.id}
+      setSearchQuery={setSearchQuery}
+      sortedTemplatesCount={sortedTemplates.length}
+      templatesList={templatesList}
+    />,
   )
 
   if (selectedTemplate) {
     columns.push(
       <ColumnBrowserColumn
         key={`template-${selectedTemplate.id}`}
-        onBack={() => setSelectedTemplateId(undefined)}
+        onBack={() => updateParams({ template: null })}
         showBack
         title={selectedTemplate.name}
       >
@@ -486,28 +267,22 @@ export const WorkflowsPage = () => {
               { workflowTemplateId: selectedTemplate.id },
               {
                 onSuccess: (installation) => {
-                  setSelectedInstallationId(installation.id)
-                  setSelectedRunId(undefined)
+                  updateParams({ installation: installation.id, run: null })
                 },
               },
             )
           }
           onEdit={() =>
             void navigate(`/agents/workflow-designer/${selectedTemplate.id}`, {
-              state: {
-                returnTo: '/agents/workflows',
-                returnToState: {
-                  selectedTemplateId: selectedTemplate.id,
-                },
-              },
+              state: { returnTo: `/agents/workflows?template=${selectedTemplate.id}` },
             })
           }
-          onSelectInstallation={(installationId) => {
-            setSelectedInstallationId(
-              installationId === selectedInstallationId ? undefined : installationId,
-            )
-            setSelectedRunId(undefined)
-          }}
+          onSelectInstallation={(installationId) =>
+            updateParams({
+              installation: installationId === selectedInstallationId ? null : installationId,
+              run: null,
+            })
+          }
           selectedInstallationId={selectedInstallation?.id}
           template={selectedTemplate}
         />
@@ -519,10 +294,7 @@ export const WorkflowsPage = () => {
     columns.push(
       <ColumnBrowserColumn
         key={`installation-${selectedInstallation.id}`}
-        onBack={() => {
-          setSelectedInstallationId(undefined)
-          setSelectedRunId(undefined)
-        }}
+        onBack={() => updateParams({ installation: null, run: null })}
         showBack
         title={`Installation ${selectedInstallation.id.slice(0, 8)}`}
       >

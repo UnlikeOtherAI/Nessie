@@ -30,12 +30,18 @@ type OriginPolicy = {
 }
 
 /**
- * Whether an origin is a team host under the configured base domain.
+ * Whether an origin is a tenant host under the configured base domain.
+ *
+ * ONE label in front of the base is an organisation's portal
+ * (`acme.nessie.works`); TWO is a team inside it
+ * (`design.acme.nessie.works`). Both are served by the same admin bundle and
+ * both talk to the API cross-origin, so both must be admitted — an earlier
+ * version required exactly two and silently blocked every org portal.
  *
  * Deliberately strict about shape rather than merely checking the suffix:
  * `https://evil-nessie.works` ends with `nessie.works` as a *string* and must
- * not be admitted, so the check is on labels — https, exactly two labels in
- * front of the base, and each of them a legal DNS label.
+ * not be admitted, so the check is on labels — https, one or two legal DNS
+ * labels in front of the base, and no explicit port.
  */
 const isTeamHostOrigin = (origin: string, baseDomain: string | undefined): boolean => {
   if (!baseDomain) return false
@@ -54,7 +60,7 @@ const isTeamHostOrigin = (origin: string, baseDomain: string | undefined): boole
 
   const prefix = host.slice(0, -(base.length + 1))
   const labels = prefix.split('.')
-  if (labels.length !== 2) return false
+  if (labels.length !== 1 && labels.length !== 2) return false
 
   return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
 }

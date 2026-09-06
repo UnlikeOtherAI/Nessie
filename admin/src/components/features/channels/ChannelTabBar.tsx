@@ -1,5 +1,5 @@
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
-import type { ChannelTab } from './channel-helpers'
+import type { ChannelTab } from './channel-tabs'
 
 interface ChannelTabBarProps {
   visibleActiveTab: ChannelTab

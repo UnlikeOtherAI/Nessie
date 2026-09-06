@@ -12,6 +12,7 @@ import { createRealtimeEventStore } from '../services/realtime-events.js'
 import { createRealtimeDeliveryEntitlements } from './delivery-entitlements.js'
 import {
   createWsNotificationDelivery,
+  endSseConnectionForShutdown,
   formatSseEvent,
   formatUserSseEvent,
   type AddThreadSseConnectionInput,
@@ -218,6 +219,40 @@ export const createRealtimeHub = async (input: {
       await transport.close()
       await pool.end()
     },
+    /**
+     * End every live stream this replica is serving, so `app.close()` has only
+     * idle sockets left to reap (see `endSseConnectionForShutdown` above for
+     * why Fastify cannot do this itself). Synchronous and idempotent: a drain
+     * must not await a peer that may never read again.
+     *
+     * `1012` is the WebSocket "service restart" status — RFC 6455's registry
+     * entry that tells a client this close is a deploy, not a protocol error,
+     * so it reconnects instead of surfacing a failure.
+     */
+    closeLiveConnections: (): void => {
+      for (const connection of threadSseConnections) {
+        endSseConnectionForShutdown(connection.response)
+      }
+      threadSseConnections.clear()
+
+      for (const connection of userSseConnections) {
+        endSseConnectionForShutdown(connection.response)
+      }
+      userSseConnections.clear()
+
+      for (const connection of wsConnections) {
+        try {
+          connection.close(1012, 'restart')
+        } catch {
+          // Socket already torn down by the peer.
+        }
+      }
+      wsConnections.clear()
+    },
+    // The one `pg.Pool` this process opens outside Prisma. Exposed so the API
+    // entrypoint can share it instead of creating a second pool on the same
+    // URL — see the connection-ceiling note in `api/src/index.ts`.
+    pool,
     removeSseConnection: (connection: SseConnection): void => {
       if (connection.kind === 'thread') {
         threadSseConnections.delete(connection)
@@ -248,12 +283,14 @@ export const createRealtimeHub = async (input: {
       }),
     registerWsConnection: (
       input: {
+        close: (code: number, reason: string) => void
         organizationId: string
         send: (message: WsEventMessage) => void
         userId: string
       },
     ): WsConnection => {
       const connection: WsConnection = {
+        close: input.close,
         organizationId: input.organizationId,
         scopes: [],
         send: input.send,

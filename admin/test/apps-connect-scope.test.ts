@@ -10,7 +10,7 @@ import {
   buildAppConnectScope,
   canShareAppConnectionKey,
 } from '../src/components/features/apps/app-connect-scope.js'
-import { channelKeys } from '../src/lib/query-keys.js'
+import { channelKeys } from '../src/facades/channels/keys.js'
 import type { ChannelRecord } from '../src/lib/api-client.js'
 
 const CHANNEL_ID = '22222222-2222-2222-2222-222222222222'

@@ -8,7 +8,7 @@ import {
 
 import type { BoardSourceWriteBack, BoardSourceWriteBackError } from './board-source-writeback.js'
 
-import { resolveBoardPlacement } from './board-placement.js'
+import { boardTaskPoolWhere, resolveBoardPlacement } from './board-placement.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 
@@ -29,14 +29,20 @@ export type ProjectTaskMoveError =
  */
 const reindexBoardColumn = async (
   tx: Prisma.TransactionClient,
-  board: { id: string; columns: { id: string; category: string; position: number }[] },
+  board: {
+    id: string
+    isDefault: boolean
+    columns: { id: string; category: string; position: number }[]
+  },
   column: { id: string; category: string },
   movedTaskId: string,
   projectId: string,
   index: number,
 ): Promise<void> => {
+  // Only the board's own tasks: a board owns its cards, so a sibling board's
+  // work must not take up positions in this column's order.
   const candidates = await tx.task.findMany({
-    where: { projectId, archivedAt: null },
+    where: { projectId, archivedAt: null, ...boardTaskPoolWhere(board) },
     select: { id: true, status: true, archivedAt: true, updatedAt: true },
     orderBy: { updatedAt: 'desc' },
   })
@@ -105,6 +111,7 @@ export const moveProjectTaskToColumn = async (
       id: true,
       assigneeAgentId: true,
       assigneeUserId: true,
+      boardId: true,
       status: true,
       projectId: true,
     },
@@ -123,6 +130,7 @@ export const moveProjectTaskToColumn = async (
       board: {
         select: {
           id: true,
+          isDefault: true,
           columns: { select: { id: true, category: true, position: true } },
         },
       },
@@ -155,11 +163,21 @@ export const moveProjectTaskToColumn = async (
     ? { assigneeUserId: input.actorId, assigneeAgentId: null }
     : {}
 
+  // A column names its board, and a board owns its tasks — so dropping a card
+  // on another board's column *is* how work changes boards. The board tab only
+  // ever offers its own columns, but the personal assistant's `ticket_move`
+  // takes any `columnId` from `ticket_board_read`, and that is the move.
+  // Nothing here re-homes a default-board task that is still implicit (`null`)
+  // onto the same board: writing the id makes the row say what it already meant.
+  const changesBoard = existing.boardId !== column.board.id
+  const boardData = changesBoard ? { boardId: column.board.id } : {}
+  const taskData = { ...assignmentData, ...boardData }
+
   const task = await prisma.$transaction(async (tx) => {
     if (needsTransition) {
       const { count } = await tx.task.updateMany({
         where: { id: existing.id, organizationId: input.organizationId, status: existing.status },
-        data: { status: target as TaskStatus, ...assignmentData },
+        data: { status: target as TaskStatus, ...taskData },
       })
       if (count === 0) return null
       await tx.taskEvent.create({
@@ -175,8 +193,8 @@ export const moveProjectTaskToColumn = async (
           },
         },
       })
-    } else if (Object.keys(assignmentData).length > 0) {
-      await tx.task.update({ where: { id: existing.id }, data: assignmentData })
+    } else if (Object.keys(taskData).length > 0) {
+      await tx.task.update({ where: { id: existing.id }, data: taskData })
     }
     if (shouldAutoAssignActor) {
       await tx.taskEvent.create({
@@ -207,6 +225,13 @@ export const moveProjectTaskToColumn = async (
     // column of the old category is now stale. `resolveBoardPlacement` would
     // ignore it, but data the board itself wrote should not be left wrong.
     if (needsTransition) await dropStalePlacements(tx, existing.id, column.board.id)
+    // Left a board: every pin it kept there is about a board that no longer
+    // holds this task, and no read would ever consult one again.
+    if (changesBoard) {
+      await tx.taskBoardPlacement.deleteMany({
+        where: { taskId: existing.id, NOT: { boardId: column.board.id } },
+      })
+    }
 
     if (input.position !== undefined) {
       await reindexBoardColumn(

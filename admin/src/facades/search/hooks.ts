@@ -7,8 +7,8 @@ import type {
   UserRecord,
 } from '../../lib/api-client'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import { searchKeys } from '../../lib/query-keys'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { searchKeys } from './keys'
+import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useChannels } from '../channels/hooks'
 import { useProjects } from '../projects/hooks'

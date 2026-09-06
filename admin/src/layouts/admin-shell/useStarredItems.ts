@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { getCookie, setCookie } from '../../lib/storage'
 import type { PreferenceStarredItem } from './types'
@@ -24,6 +24,14 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
   )
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1')
   const [starred, setStarred] = useState<PreferenceStarredItem[]>(() => initialStarred)
+  // The list the reader is looking at, readable from a callback without
+  // making that callback's identity depend on it.
+  const starredRef = useRef(starred)
+  starredRef.current = starred
+  // How many preference writes this device has in flight. A `me` that was
+  // produced before the newest of them still carries the pre-toggle list, and
+  // adopting it would visibly un-star what the reader just starred.
+  const pendingStarredWrites = useRef(0)
 
   // Expanding is its own verb, not a toggle with a guard at every call site.
   // Something new landing in a closed section has to open it — a channel
@@ -78,6 +86,7 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
   }, [])
 
   useEffect(() => {
+    if (pendingStarredWrites.current > 0) return
     setStarred(initialStarred)
   }, [initialStarred])
 
@@ -94,14 +103,26 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
     [starred],
   )
 
+  // The star lights up immediately and the write follows; a failed write puts
+  // the list back exactly as it was, so the sidebar never keeps a star the
+  // server refused.
   const toggleStar = useCallback((type: PreferenceStarredItem['type'], id: string) => {
-    setStarred((prev) => {
-      const exists = prev.some((s) => s.type === type && s.id === id)
-      const next = exists
-        ? prev.filter((s) => !(s.type === type && s.id === id))
-        : [...prev, { type, id }]
-      updatePreferences.mutate({ starred: next })
-      return next
+    const previous = starredRef.current
+    const exists = previous.some((item) => item.type === type && item.id === id)
+    const next = exists
+      ? previous.filter((item) => !(item.type === type && item.id === id))
+      : [...previous, { type, id }]
+    starredRef.current = next
+    setStarred(next)
+    pendingStarredWrites.current += 1
+    updatePreferences.mutate({ starred: next }, {
+      onError: () => {
+        starredRef.current = previous
+        setStarred(previous)
+      },
+      onSettled: () => {
+        pendingStarredWrites.current -= 1
+      },
     })
   }, [updatePreferences])
 

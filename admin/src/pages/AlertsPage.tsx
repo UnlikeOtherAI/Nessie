@@ -14,8 +14,8 @@ import {
   type UserAlertRecord,
 } from '../facades/alerts/hooks'
 import { useAcceptTeamInvitation } from '../facades/team/invitations'
-import { alertKeys } from '../lib/query-keys'
-import { usePagedList } from '../facades/usePagedList'
+import { alertKeys } from '../facades/alerts/keys'
+import { usePagedList } from '../facades/pagination/usePagedList'
 
 export const AlertsPage = () => {
   const navigate = useNavigate()

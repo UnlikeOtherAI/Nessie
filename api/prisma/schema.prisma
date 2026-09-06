@@ -1595,6 +1595,7 @@ model Board {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   columns      BoardColumn[]
   placements   TaskBoardPlacement[]
+  tasks        Task[]
 
   @@index([projectId, position])
   @@map("boards")
@@ -4218,6 +4219,12 @@ model Task {
   agentId             String?              @map("agent_id") @db.Uuid
   organizationId      String               @map("organization_id") @db.Uuid
   projectId           String?              @map("project_id") @db.Uuid
+  /// The board this task lives on. A board owns its tasks: a project's boards
+  /// no longer share one pool, so work created on "Dev" is not also on "Board".
+  /// `null` means the project's default board — that is what the seventeen
+  /// task-creating call sites (agent runs, triggers, mailbox, source sync)
+  /// produce, and it is where a deleted board's work returns to.
+  boardId             String?              @map("board_id") @db.Uuid
   iterationId         String?              @map("iteration_id") @db.Uuid
   /// `{ "<taskFieldDefinitionId>": <value> }` — an absent key is no value.
   /// One JSONB column rather than an EAV table: the board already reads whole
@@ -4243,6 +4250,7 @@ model Task {
   agent               Agent?               @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  board               Board?               @relation(fields: [boardId], references: [id], onDelete: SetNull)
   iteration           Iteration?           @relation(fields: [iterationId], references: [id], onDelete: SetNull)
   assignee            User?                @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   assigneeAgent       Agent?               @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
@@ -4260,6 +4268,7 @@ model Task {
   @@index([agentId, status])
   @@index([organizationId, status])
   @@index([organizationId, projectId, status])
+  @@index([boardId])
   @@index([iterationId])
   @@index([assigneeUserId, status])
   @@index([assigneeAgentId, status])

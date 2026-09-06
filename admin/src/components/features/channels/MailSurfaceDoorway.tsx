@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   MailSurfaceDoorwayMetadataSchema,
   type ConnectedMailAccountRecord,
@@ -14,7 +14,7 @@ import { ConnectedMailConversationView } from '../connected-mail/ConnectedMailCo
 import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../mailbox/MailboxWorkspace'
 import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../../../facades/mail/hooks'
 import { connectedMailSettingsPath } from '../../../facades/mail/settings-path'
-import { useNavigationLayout } from '../../../lib/mobile-shell'
+import { useNavigationLayout } from '../../../navigation/mobile-shell'
 
 export type MailSurfaceDoorway = MailSurfaceDoorwayMetadata
 
@@ -119,11 +119,15 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     open && Boolean(account),
   )
 
-  const checkAndOpen = async (): Promise<ConnectedMailAccountRecord | null> => {
+  // `refetch` rather than the whole query result: it is the stable handle, so
+  // the observer effect below is not restarted every time the account list
+  // changes identity.
+  const refetchAccounts = accounts.refetch
+  const checkAndOpen = useCallback(async (): Promise<ConnectedMailAccountRecord | null> => {
     if (!doorway) return null
     setAccessError(null)
     try {
-      const refreshed = await accounts.refetch({ throwOnError: true })
+      const refreshed = await refetchAccounts({ throwOnError: true })
       const next = findAccount(refreshed.data, doorway)
       if (!next) { setAccessError('This email is no longer available to you. Check mailbox settings.'); return null }
       setAccount(next)
@@ -133,7 +137,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
       setAccessError('Could not check access to this email. Try again.')
       return null
     }
-  }
+  }, [doorway, refetchAccounts])
 
   useEffect(() => {
     if (!storageKey || !targetRef.current || !doorway) return
@@ -154,7 +158,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     }, { threshold: 0.5 })
     observer.observe(targetRef.current)
     return () => observer.disconnect()
-  }, [doorway, messageId, storageKey])
+  }, [checkAndOpen, doorway, messageId, storageKey])
 
   // A route change can unmount an open doorway without invoking Dialog.onClose.
   // Release only the marker this instance claimed, so a different message's

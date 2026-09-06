@@ -4,7 +4,9 @@ import type {
   TaskRecord as SharedTaskRecord,
   TaskStatus,
 } from '@nessie/schemas'
-import { iterationKeys, taskKeys } from '../../lib/query-keys'
+
+import { iterationKeys } from '../iterations/keys'
+import { taskKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type { TaskPriority, TaskStatus }
@@ -47,6 +49,8 @@ export const useCreateTask = () => {
       purpose?: string
       detail?: string
       projectId?: string
+      /** The board the card lands on; absent ⇒ the project's default board. */
+      boardId?: string
       iterationId?: string
       storyPoints?: number
       priority?: TaskPriority
@@ -92,8 +96,12 @@ export const useArchiveDoneTasks = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { projectId: string; olderThanDays?: number | null }) =>
-      apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
+    mutationFn: (input: {
+      projectId: string
+      /** The board whose Done column was clicked; its tickets only. */
+      boardId?: string
+      olderThanDays?: number | null
+    }) => apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
       void queryClient.invalidateQueries({ queryKey: iterationKeys.all })

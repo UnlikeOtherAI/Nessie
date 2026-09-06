@@ -19,6 +19,14 @@ import {
 type SseResponseSink = {
   once: (event: 'drain', listener: () => void) => unknown
   write: (chunk: string) => boolean
+  /**
+   * A drain ends the stream itself (see `endSseConnectionForShutdown`). Both
+   * members are optional because only a real `ServerResponse` — which every
+   * production connection is — carries them; a test double that registers a
+   * connection to observe delivery is never drained.
+   */
+  end?: () => unknown
+  writableEnded?: boolean
 }
 
 /**
@@ -72,6 +80,10 @@ export type UserSseConnection = {
 export type SseConnection = ThreadSseConnection | UserSseConnection
 
 export type WsConnection = {
+  // Closing the socket is the route's business — the hub only tracks the
+  // connection — but a drain has to reach the socket itself, so the registrant
+  // hands over a closer alongside the sender.
+  close: (code: number, reason: string) => void
   organizationId: string
   scopes: WsScope[]
   send: (message: WsEventMessage) => void
@@ -117,6 +129,36 @@ const writeThreadSseEvent = (
 
 export const formatUserSseEvent = (event: RealtimeReplayEvent) =>
   `id: ${event.id.toString()}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`
+
+// The last frame a draining replica writes to an SSE stream. `retry:` resets
+// the EventSource reconnection time to 2 s for any native-EventSource client;
+// the admin runs its own fetch-based loop (`admin/src/lib/sse.ts` drops the
+// field) and reconnects on its own base backoff, so the line costs nothing
+// there and is the whole signal for a client that does use EventSource. No
+// `id:` — this frame is not a replayable event and must not move the
+// client's Last-Event-ID watermark.
+const SHUTDOWN_SSE_FRAME = 'retry: 2000\nevent: shutdown\ndata: {}\n\n'
+
+// Fastify 5.8.4 leaves `forceCloseConnections` at `'idle'` — verified in
+// `node_modules/fastify/lib/server.js:131-137`, where a non-boolean option
+// becomes `'idle'` on any Node that exposes `server.closeIdleConnections()`.
+// `'idle'` closes only *idle* sockets, and an open SSE stream is an in-flight
+// request, so `app.close()` on its own waits for every live stream and the
+// drain never finishes. The hub therefore ends its own streams before the
+// server closes — it owns the registries, so the terminator lives here with
+// them and `hub.ts` calls it from `closeLiveConnections`.
+export const endSseConnectionForShutdown = (response: SseResponseSink): void => {
+  try {
+    if (response.writableEnded) {
+      return
+    }
+
+    response.write(SHUTDOWN_SSE_FRAME)
+    response.end?.()
+  } catch {
+    // The peer already went away; nothing left to drain on this socket.
+  }
+}
 
 const toScopeKey = (scope: WsScope): string => JSON.stringify(scope)
 

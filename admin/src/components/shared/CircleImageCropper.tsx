@@ -6,7 +6,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { Dialog } from './Dialog'
-import { identityTileRadius } from '../primitives/identity-shape'
+import { identityTileRadius } from '../../lib/identity-shape'
 
 // On-screen editing stage (square). The crop is inscribed in it, with either a
 // circular or rounded-square mask. The exported image is rendered at a fixed

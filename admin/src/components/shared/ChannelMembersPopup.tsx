@@ -17,7 +17,7 @@ import {
   useAddPersonalAssistantPresence,
   useRemovePersonalAssistantPresence,
 } from '../../facades/personal-assistant/hooks'
-import { useMemberFilters } from './channel-members/use-member-filters'
+import { useMemberFilters } from './channel-members/useMemberFilters'
 import {
   AvailableUserRow,
   CurrentUserRow,

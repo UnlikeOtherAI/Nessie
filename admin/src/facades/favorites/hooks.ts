@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { FavoriteRecord, FavoriteTargetType } from '../../lib/api-client'
-import { favoriteKeys } from '../../lib/query-keys'
+import { favoriteKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 type SetFavoriteInput = {

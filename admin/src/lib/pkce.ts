@@ -12,7 +12,7 @@ import {
   type PendingExternalAuthTarget,
   type PkceStorage,
 } from '@nessie/client-core'
-import type { SignInTheme } from '../providers/ThemeProvider'
+import type { SignInTheme } from './theme-storage'
 import { getBaseUrl } from './api-client'
 
 // Web binds the framework-neutral PKCE helpers to browser sessionStorage and

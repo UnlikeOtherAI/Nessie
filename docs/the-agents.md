@@ -1294,7 +1294,7 @@ Precise definitions. All documents must use these terms consistently.
 | **Temporary context** | Agent context section loaded on demand with external tool schemas. Agent controls lifecycle via `resolve_capability` (load) and `drop_context` (drop). See external-tool-integration.md section 5. | Memory |
 | **Resolver sub-agent** | Cheap disposable LLM that selects the right tools for the main agent's temporary context. See external-tool-integration.md section 5. | Orchestrator |
 | **Trigger** | A first-class activation record linked to an agent. Types include manual, scheduled, webhook, event, and interval. See § 17. | Run |
-| **Scheduler service** | Background process that evaluates cron/interval triggers and creates runs. Uses `pg_advisory_lock` for leader election. See § 17. | Worker |
+| **Scheduler service** | Background process that evaluates cron/interval triggers and creates runs. Every instance sweeps; a due trigger is claimed with a per-row lease under `FOR UPDATE SKIP LOCKED`. See § 17. | Worker |
 
 ---
 
@@ -1684,7 +1684,7 @@ The emptiness criterion is deliberately the one thing provable from the data mod
 
 The skip is observable, not silent: the `skipped` delivery appears in the trigger history surfaces (`GET /api/triggers/{id}/history`) alongside real deliveries. Applies to agent-target scheduled/interval triggers only; workflow triggers (no target thread ⇒ emptiness unprovable) always run. Implementation: `worker/src/control/trigger-empty-skip.ts`, wired in `trigger-scheduler.ts`.
 
-**Leader election:** In multi-instance deployments, only one scheduler instance should be active. Use `pg_advisory_lock` on a well-known lock ID. If the lock holder dies, another instance acquires it automatically.
+**Multi-instance claiming:** There is no leader and no scheduler singleton. Every instance runs the same 15-second sweep, and the contention is resolved per trigger rather than per process: `claimDueScheduledTriggers` selects due rows `FOR UPDATE SKIP LOCKED` and stamps `scheduler_claim_id` (a fresh UUID per sweep) and `scheduler_claimed_at` in the same statement, so a second instance sweeping at the same moment skips the locked rows instead of blocking on them and walks away with a different batch. `finalizeScheduledTriggerClaim` writes `next_run_at` back only `WHERE scheduler_claim_id = <this claim>`, so an instance that died mid-fire cannot have its lease overwritten by the one that took over; a claim older than the lease window (`scheduler_claimed_at < now() - leaseMs`) is simply re-claimable. Duplicate runs are blocked underneath all of this by the `(trigger_id, dedupe_key)` unique index on `agent_trigger_deliveries`, so even a re-fire after a crash produces one delivery. Implementation: `worker/src/control/trigger-scheduler.ts:41-77` (claim), `:112-123` (finalize); index at `api/prisma/schema.prisma:3283`.
 
 **Cron parsing:** Standard 5-field cron syntax (`minute hour day-of-month month day-of-week`). Extended with optional 6th field for seconds if sub-minute scheduling is ever needed. Timezone stored per-trigger, evaluated at fire time (handles DST transitions).
 

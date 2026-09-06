@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ApprovalRequestRecord, EmailDraftPreview } from '@nessie/schemas'
 
-import { approvalKeys } from '../../lib/query-keys'
+import { approvalKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 // The server-enforced shape (`ApprovalRequestRecordSchema`, parsed on every
