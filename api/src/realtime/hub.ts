@@ -8,7 +8,6 @@ import {
   type WsEventMessage,
 } from '@nessie/runtime'
 import type { SseEvent, WsScope } from '@nessie/schemas'
-import { createRealtimeEventStore } from '../services/realtime-events.js'
 import { createRealtimeDeliveryEntitlements } from './delivery-entitlements.js'
 import {
   createWsNotificationDelivery,
@@ -22,6 +21,7 @@ import {
   type UserSseConnection,
   type WsConnection,
 } from './notification-delivery.js'
+import type { RealtimeFanOutLogger } from './watermark.js'
 
 // The delivery-time authorization and the connection registries live in
 // `./notification-delivery.js`; re-exported here because the hub is this
@@ -31,6 +31,7 @@ export {
   shouldDeliverWsNotification,
   type AddThreadSseConnectionInput,
 } from './notification-delivery.js'
+export type { RealtimeFanOutLogger } from './watermark.js'
 
 
 export const createRealtimeHub = async (input: {
@@ -45,6 +46,7 @@ export const createRealtimeHub = async (input: {
     userId: string
   }) => Promise<boolean>
   databaseUrl: string
+  logger?: RealtimeFanOutLogger
   poolMax: number
   poolMin: number
   prisma: PrismaClient
@@ -54,7 +56,6 @@ export const createRealtimeHub = async (input: {
     min: input.poolMin,
   })
   const transport = new PgRealtimeTransport(pool, input.databaseUrl)
-  const realtimeEventStore = createRealtimeEventStore(input.prisma)
   const {
     deliverNotification,
     threadSseConnections,
@@ -273,14 +274,7 @@ export const createRealtimeHub = async (input: {
         event: string
         ts?: string
       },
-    ): Promise<WsEventMessage> =>
-      transport.publishWs(scopes, {
-        ...input,
-        // Insert through the api's Prisma client so the durable row shares the
-        // api's connection lifecycle; the transport still owns the single
-        // persist-then-notify shape and carries the row id in the NOTIFY.
-        persistEvent: realtimeEventStore.append,
-      }),
+    ): Promise<WsEventMessage> => transport.publishWs(scopes, input),
     registerWsConnection: (
       input: {
         close: (code: number, reason: string) => void

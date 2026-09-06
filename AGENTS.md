@@ -325,7 +325,8 @@ when one changes, the same turn updates it, not this section.
 - **Nothing a second instance cannot see.** The API and the worker run as N
   replicas: no module-scope mutable state, every periodic job claims its work
   or takes `withSweepLock`, every run is fenced and resumable, `SIGTERM` drains
-  inside sixty seconds, and realtime persists and notifies in one transaction;
+  inside sixty seconds, and realtime publishes under a per-scope advisory lock
+  held across insert and commit, so id order is commit order;
   the horizontal-scaling block in the root `eslint.config.js` is the ratchet.
   Read [`docs/standards/horizontal-scaling.md`](docs/standards/horizontal-scaling.md)
   before writing code here.

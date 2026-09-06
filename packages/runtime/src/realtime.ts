@@ -7,6 +7,27 @@ import {
   type WsScope,
 } from '@nessie/schemas'
 
+import {
+  mapRealtimeEventRow,
+  mapThreadStreamEvent,
+  notifyRealtime,
+  publishThreadStreamEvent,
+  publishWsEvent,
+  type RealtimeEventRow,
+  type RealtimeNotificationPayload,
+  type RealtimeReplayEvent,
+  type ThreadStreamEvent,
+  type ThreadStreamEventRow,
+  type WsEventMessage,
+} from './realtime-publish.js'
+
+export type {
+  RealtimeNotificationPayload,
+  RealtimeReplayEvent,
+  ThreadStreamEvent,
+  WsEventMessage,
+} from './realtime-publish.js'
+
 // The message announcement envelope rides this transport and is published by
 // both processes, so it is reachable wherever the transport is.
 export * from './message-envelope.js'
@@ -14,94 +35,9 @@ export * from './message-envelope.js'
 const DEFAULT_NOTIFICATION_CHANNEL = 'nessie_realtime'
 const RECONNECT_DELAY_MS = 1_000
 
-type ThreadStreamEventRow = {
-  created_at: Date
-  data: unknown
-  event_name: SseEvent['event']
-  id: number
-  thread_id: string
-}
-
-export type ThreadStreamEvent = {
-  data: SseEvent['data']
-  event: SseEvent['event']
-  sequence: number
-  threadId: string
-  ts: string
-}
-
-export type WsEventMessage = {
-  data: unknown
-  event: string
-  ts: string
-  type: 'event'
-}
-
-export type RealtimeNotificationPayload =
-  | ({
-      kind: 'sse'
-      /**
-       * Notify-only: no `thread_stream_events` row exists, so `sequence` is a
-       * placeholder the hub must not surface as an SSE `id:` or store as a
-       * connection watermark. Reconnecting clients repair over REST instead.
-       */
-      ephemeral?: boolean
-    } & ThreadStreamEvent)
-  | {
-      /**
-       * Id of the `realtime_events` row the publisher persisted before
-       * notifying. Absent only when the publisher is an older build mid
-       * rolling deploy: listeners then fan out live without replay
-       * bookkeeping for that one event.
-       */
-      eventId?: string
-      kind: 'ws'
-      message: WsEventMessage
-      scopes: WsScope[]
-    }
-
-const mapThreadStreamEvent = (row: ThreadStreamEventRow): ThreadStreamEvent => ({
-  data: SseEventSchema.parse({
-    event: row.event_name,
-    data: row.data,
-  }).data,
-  event: row.event_name,
-  sequence: row.id,
-  threadId: row.thread_id,
-  ts: row.created_at.toISOString(),
-})
-
 const MAX_REPLAY_EVENTS = 5_000
 const REALTIME_EVENT_RETENTION_MS = 24 * 60 * 60 * 1000
 const REALTIME_EVENT_PRUNE_INTERVAL_MS = 60_000
-
-export type RealtimeReplayEvent = {
-  id: bigint
-  channelId: string | null
-  eventType: string
-  payload: unknown
-  createdAt: Date
-  recipientUserId: string | null
-}
-
-type RealtimeEventRow = {
-  id: bigint | number
-  organization_id: string
-  channel_id: string | null
-  recipient_user_id: string | null
-  event_type: string
-  payload: unknown
-  created_at: Date
-}
-
-const mapRealtimeEventRow = (row: RealtimeEventRow): RealtimeReplayEvent => ({
-  id: BigInt(row.id),
-  channelId: row.channel_id,
-  eventType: row.event_type,
-  payload: row.payload,
-  createdAt: row.created_at,
-  recipientUserId: row.recipient_user_id,
-})
 
 export const parseLastRealtimeEventId = (
   value: string | undefined,
@@ -141,27 +77,6 @@ export const listRealtimeEventsAfterCursor = async (
 
   return result.rows.map(mapRealtimeEventRow)
 }
-
-const notify = async (
-  pool: Pool,
-  channel: string,
-  payload: RealtimeNotificationPayload,
-): Promise<void> => {
-  await pool.query('SELECT pg_notify($1, $2)', [channel, JSON.stringify(payload)])
-}
-
-/**
- * Persisted write side of the ws realtime lane. Every event is persisted
- * exactly once, at publish time inside `PgRealtimeTransport.publishWs` —
- * never in a LISTEN handler, where each api replica would append its own
- * copy and corrupt the Last-Event-ID sequence. Mirrors the SSE lane's
- * persist-then-notify shape. Callers that must insert through a different
- * path (a Prisma transaction) can use this type as a structural seam.
- */
-export type PersistedRealtimeEventWriter = (input: {
-  message: WsEventMessage
-  scopes: WsScope[]
-}) => Promise<RealtimeReplayEvent | null>
 
 export class PgRealtimeTransport {
   private listenerClient: Client | null = null
@@ -326,32 +241,17 @@ export class PgRealtimeTransport {
     }
   }
 
+  /**
+   * Durable thread publish: one transaction on one pooled client, serialised
+   * per thread by an advisory lock so id order equals commit order — see
+   * `publishThreadStreamEvent`.
+   */
   async publishSse(
     threadId: string,
     event: SseEvent['event'],
     data: SseEvent['data'],
   ): Promise<ThreadStreamEvent> {
-    const parsed = SseEventSchema.parse({ event, data })
-    const result = await this.pool.query<ThreadStreamEventRow>(
-      `
-        INSERT INTO thread_stream_events (
-          thread_id,
-          event_name,
-          data,
-          created_at
-        )
-        VALUES ($1, $2, $3::jsonb, now())
-        RETURNING id, thread_id, event_name, data, created_at
-      `,
-      [threadId, parsed.event, JSON.stringify(parsed.data)],
-    )
-
-    const record = mapThreadStreamEvent(result.rows[0]!)
-    await notify(this.pool, this.channel, {
-      kind: 'sse',
-      ...record,
-    })
-    return record
+    return publishThreadStreamEvent(this.pool, this.channel, { data, event, threadId })
   }
 
   /**
@@ -369,7 +269,7 @@ export class PgRealtimeTransport {
     data: SseEvent['data'],
   ): Promise<void> {
     const parsed = SseEventSchema.parse({ event, data })
-    await notify(this.pool, this.channel, {
+    await notifyRealtime(this.pool, this.channel, {
       data: parsed.data,
       ephemeral: true,
       event: parsed.event,
@@ -395,88 +295,16 @@ export class PgRealtimeTransport {
   }
 
   /**
-   * Insert the durable `realtime_events` row for one ws publication and
-   * return it, or `null` when the publication has no deliverable target
-   * (a scope list with neither a channel nor a user scope) or when the
-   * organization cannot be resolved. The publisher is the only writer, so a
-   * null row also means no persisted replay — exactly the previous
-   * append-at-listen semantics, without the per-replica duplication.
-   */
-  private async appendWsEvent(
-    scopes: WsScope[],
-    message: WsEventMessage,
-  ): Promise<RealtimeReplayEvent | null> {
-    const channelScope = scopes.find(
-      (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
-    )
-    const userScope = scopes.find(
-      (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
-    )
-    if (!channelScope && !userScope) {
-      return null
-    }
-
-    const organizationScope = scopes.find(
-      (scope): scope is Extract<WsScope, { kind: 'organization' }> =>
-        scope.kind === 'organization',
-    )
-    // A user-scoped publication (the incoming-call ring) carries neither an
-    // organization nor a channel scope, but the user scope names its own
-    // organization. Without this fallback no row would be written, and the
-    // hub gates the whole user-SSE fan-out on a persisted row.
-    let organizationId: string | null = organizationScope?.organizationId ?? null
-    if (!organizationId && channelScope) {
-      const channel = await this.pool.query<{ organization_id: string }>(
-        'SELECT organization_id FROM channels WHERE id = $1',
-        [channelScope.channelId],
-      )
-      organizationId = channel.rows[0]?.organization_id ?? null
-    }
-    organizationId ??= userScope?.organizationId ?? null
-    if (!organizationId) {
-      return null
-    }
-
-    const result = await this.pool.query<RealtimeEventRow>(
-      `
-        INSERT INTO realtime_events (
-          organization_id,
-          channel_id,
-          recipient_user_id,
-          event_type,
-          payload,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, $5::jsonb, now())
-        RETURNING id, organization_id, channel_id, recipient_user_id, event_type, payload, created_at
-      `,
-      [
-        organizationId,
-        channelScope?.channelId ?? null,
-        userScope?.userId ?? null,
-        message.event,
-        JSON.stringify(message),
-      ],
-    )
-
-    await this.pruneOldRealtimeEvents()
-
-    return mapRealtimeEventRow(result.rows[0]!)
-  }
-
-  /**
-   * Persist-then-notify, mirroring `publishSse`: the row lands in
-   * `realtime_events` first, then the NOTIFY carries its id so every
-   * listener fans out against the same sequence. A custom `persistEvent`
-   * seam exists only for callers that must insert through a different path
-   * (e.g. a Prisma transaction); it must still insert exactly once.
+   * Durable ws publish: the `realtime_events` row and its NOTIFY land in one
+   * transaction, serialised per organization by an advisory lock so id order
+   * equals commit order — see `publishWsEvent`. The transport is the only
+   * writer; a listener must never append.
    */
   async publishWs(
     scopes: WsScope[],
     input: {
       data: unknown
       event: string
-      persistEvent?: PersistedRealtimeEventWriter
       ts?: string
     },
   ): Promise<WsEventMessage> {
@@ -487,17 +315,10 @@ export class PgRealtimeTransport {
       ts: input.ts ?? new Date().toISOString(),
     })
 
-    const persistEvent = input.persistEvent
-      ?? ((eventInput: { message: WsEventMessage; scopes: WsScope[] }) =>
-        this.appendWsEvent(eventInput.scopes, eventInput.message))
-    const replayEvent = await persistEvent({ message, scopes })
-
-    await notify(this.pool, this.channel, {
-      ...(replayEvent ? { eventId: replayEvent.id.toString() } : {}),
-      kind: 'ws',
-      message,
-      scopes,
-    })
+    const replayEvent = await publishWsEvent(this.pool, this.channel, { message, scopes })
+    if (replayEvent) {
+      await this.pruneOldRealtimeEvents()
+    }
 
     return message
   }

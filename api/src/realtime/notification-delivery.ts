@@ -9,6 +9,7 @@ import {
   createEntitlementGate,
   type RealtimeDeliveryEntitlements,
 } from './delivery-entitlements.js'
+import { createWatermarkDuplicateWarning, type RealtimeFanOutLogger } from './watermark.js'
 
 /**
  * The subset of a Node `ServerResponse` an SSE connection writes through. Named
@@ -238,9 +239,9 @@ export const shouldDeliverWsNotification = async (
 /**
  * The LISTEN-side fan-out, exported so it can be exercised without a live
  * pg LISTEN connection. It never writes to `realtime_events`: the publisher
- * persisted the row before NOTIFYing (`PgRealtimeTransport.publishWs`), so
- * with N api replicas listening, N appends here would corrupt the shared
- * Last-Event-ID sequence. A notification carrying no `eventId` comes from an
+ * inserted the row and issued the NOTIFY inside one locked transaction
+ * (`PgRealtimeTransport.publishWs`), so with N api replicas listening, N
+ * appends here would corrupt the shared Last-Event-ID sequence. A notification carrying no `eventId` comes from an
  * older publisher mid rolling deploy and is fanned out live with no replay
  * bookkeeping.
  */
@@ -256,9 +257,11 @@ export const createWsNotificationDelivery = (input: {
     userId: string
   }) => Promise<boolean>
   entitlements?: Partial<RealtimeDeliveryEntitlements>
+  logger?: RealtimeFanOutLogger
   /** Clock behind the per-connection entitlement cache's TTL. */
   now?: () => number
 }) => {
+  const warnDuplicate = createWatermarkDuplicateWarning(input.logger)
   const threadSseConnections = new Set<ThreadSseConnection>()
   const userSseConnections = new Set<UserSseConnection>()
   const wsConnections = new Set<WsConnection>()
@@ -343,6 +346,12 @@ export const createWsNotificationDelivery = (input: {
         // Sequence filtering and the watermark only apply to durable events;
         // an ephemeral notification's sequence is a placeholder.
         if (!ephemeral && connection.lastSequence >= notification.sequence) {
+          warnDuplicate({
+            lane: 'thread',
+            lastSequence: connection.lastSequence,
+            sequence: notification.sequence,
+            threadId: connection.threadId,
+          })
           continue
         }
 
@@ -364,9 +373,10 @@ export const createWsNotificationDelivery = (input: {
       return
     }
 
-    // The publisher persisted the row before NOTIFYing and carried its id in
-    // the payload; a listener must never append — with N api replicas that
-    // wrote N copies of the same event and duplicated every replay.
+    // The publisher persisted the row and notified in one transaction and
+    // carried the row id in the payload; a listener must never append — with N
+    // api replicas that wrote N copies of the same event and duplicated every
+    // replay.
     // During a rolling deploy an old publisher still sends payloads without
     // an id: those are fanned out live only, with no replay bookkeeping, so
     // the mixed-version window can miss a row from replay but never writes a
@@ -390,6 +400,12 @@ export const createWsNotificationDelivery = (input: {
     if (replayEvent) {
       for (const connection of userSseConnections) {
         if (connection.lastEventId >= replayEvent.id) {
+          warnDuplicate({
+            eventId: replayEvent.id.toString(),
+            lane: 'user',
+            lastEventId: connection.lastEventId.toString(),
+            userId: connection.userId,
+          })
           continue
         }
 

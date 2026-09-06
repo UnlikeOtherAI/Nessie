@@ -263,24 +263,47 @@ context object (not a module `let` — see invariant 1). Every row keyed by it
 gets a heartbeat column, and the lease sweep deletes rows whose heartbeat is
 older than an hour.
 
-## 9. Realtime persists and notifies in one transaction
+## 9. Realtime publishes under a per-scope lock, so id order is commit order
 
 **And a listener never advances a connection watermark past an id it did not
-deliver.** Insert and `NOTIFY` are two autocommit statements on two pools
-(2.1, `api/src/realtime/hub.ts:179-181, 226-228, 261, 508`,
-`packages/runtime/src/realtime.ts:128-135, 331-350, 486-496`), so notifications
-can arrive out of id order. The per-connection watermark then drops the lower id
-permanently, and because the client's `Last-Event-ID` has already advanced past
-it, replay (`id > $2`) never returns it either — the message is gone, not late.
-Two publishers make this rare; N make it routine. On a LISTEN drop the transport
-re-listens after a second but never re-reads the backlog for connections already
-registered (2.2), and keepalives keep those sockets alive so no client reconnect
-fires to paper over it.
+deliver.** The defect (2.1) was that insert and `NOTIFY` were two autocommit
+statements on two pools, so notifications could arrive out of id order: the
+per-connection watermark then dropped the lower id permanently, and because the
+client's `Last-Event-ID` had already advanced past it, replay (`id > $2`) never
+returned it either — the message was gone, not late. Two publishers made this
+rare; N make it routine.
 
-**Corollary.** Persist and `pg_notify` on **one** client inside **one**
-transaction, for both the SSE and the WS lane (the hub stops persisting through
-Prisma). The listener delivers a lower id rather than dropping it, and never
-moves the watermark past an undelivered id. On LISTEN reconnect, re-read the
+**One transaction is not sufficient, and this is the part worth remembering.**
+Postgres delivers notifications in **commit** order, but `id`/`sequence` come
+from a sequence at **insert** time. Two concurrent transactions can still commit
+in the opposite order of their ids, and the listener sees the higher id first.
+The fix is to make id order *equal* commit order within the scope a watermark
+covers: hold `pg_advisory_xact_lock` on that scope from **before** the INSERT
+until COMMIT, so the publishers sharing a watermark serialise and the sequence
+is handed out and committed in the same order. The lock is released by the
+COMMIT or ROLLBACK itself, so a crashed publisher cannot wedge a scope.
+
+**Corollary.** A durable publish is one transaction on **one** pooled client:
+`BEGIN`, `pg_advisory_xact_lock(hashtextextended(<scope>, 0))`, the INSERT, the
+`pg_notify` carrying the returned id, `COMMIT` — `ROLLBACK` on any error, the
+client always released
+(`packages/runtime/src/realtime-publish.ts`). The scope is the span of the
+watermark it protects, not a global lock: `realtime:thread:<threadId>` for the
+SSE lane (`ThreadSseConnection.lastSequence`) and
+`realtime:org:<organizationId>` for the WS lane
+(`UserSseConnection.lastEventId`, which replays one organization's events for
+one user). The **transport is the only writer** for both lanes — the api hub
+does not persist through Prisma, because a Prisma insert cannot join that
+transaction or take that lock; `api/src/services/realtime-events.ts` is replay
+reads only. An **ephemeral** publish (`publishSseEphemeral`) writes no row and
+moves no watermark, so it is a plain `NOTIFY` with no lock.
+
+With the lock in place a notification at or below a connection's watermark can
+only be the same event delivered twice — a LISTEN reconnect, or an old
+publisher mid rolling deploy — so the listener skips it, leaves the watermark
+where it is, and logs the pair of numbers at **warn** level so a publisher
+regression is visible instead of silent (`api/src/realtime/hub.ts`). It never
+moves a watermark past an id it did not write. On LISTEN reconnect, re-read the
 backlog for every registered connection from its own watermark.
 
 ## How to verify

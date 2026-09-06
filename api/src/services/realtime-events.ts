@@ -1,5 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
-import type { RealtimeReplayEvent } from '@nessie/runtime'
+import type { PrismaClient } from '@prisma/client'
 import { parseOrganizationId, parseUserId, type WsScope } from '@nessie/schemas'
 
 export type { RealtimeReplayEvent } from '@nessie/runtime'
@@ -15,9 +14,6 @@ type BuildChannelRealtimeScopes = (input: {
   organizationId: string
   systemChannelType?: string | null
 }) => WsScope[]
-
-const toJsonPayload = (value: unknown): Prisma.InputJsonValue =>
-  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 
 export const buildUserChannelRealtimeScopes = (
   channels: ChannelRealtimeScopeInput[],
@@ -119,75 +115,4 @@ export const resolveUserChannelRealtimeScopes = async (
       input.buildChannelRealtimeScopes,
     ),
   ]
-}
-
-// Only the writer seam remains on the api side. Durable ws events are
-// persisted once by `PgRealtimeTransport.publishWs` on the publish side;
-// the api hub publishes through its own Prisma client so the row insert
-// shares the api's connection lifecycle (and can join a transaction), while
-// the NOTIFY still carries the persisted row id.
-export const createRealtimeEventStore = (prisma: PrismaClient) => {
-  const resolveOrganizationIdForChannel = async (
-    channelId: string,
-  ): Promise<string | null> => {
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId },
-      select: { organizationId: true },
-    })
-
-    return channel?.organizationId ?? null
-  }
-
-  const append = async (input: {
-    message: {
-      data: unknown
-      event: string
-      ts: string
-      type: 'event'
-    }
-    scopes: WsScope[]
-  }): Promise<RealtimeReplayEvent | null> => {
-    const channelScope = input.scopes.find(
-      (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
-    )
-    const userScope = input.scopes.find(
-      (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
-    )
-    if (!channelScope && !userScope) {
-      return null
-    }
-
-    const organizationScope = input.scopes.find(
-      (scope): scope is Extract<WsScope, { kind: 'organization' }> =>
-        scope.kind === 'organization',
-    )
-    // A user-scoped publication (the incoming-call ring) carries neither an
-    // organization nor a channel scope, but the user scope names its own
-    // organization. Without this fallback `append` returned null for it, and
-    // the hub gates the whole user-SSE fan-out on a persisted row — so the
-    // event was never stored, replayed, or delivered to anyone.
-    const organizationId =
-      organizationScope?.organizationId
-      ?? (channelScope ? await resolveOrganizationIdForChannel(channelScope.channelId) : null)
-      ?? userScope?.organizationId
-      ?? null
-
-    if (!organizationId) {
-      return null
-    }
-
-    const event = await prisma.realtimeEvent.create({
-      data: {
-        organizationId,
-        channelId: channelScope?.channelId,
-        eventType: input.message.event,
-        payload: toJsonPayload(input.message),
-        recipientUserId: userScope?.userId,
-      },
-    })
-
-    return event
-  }
-
-  return { append }
 }
