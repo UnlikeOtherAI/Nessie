@@ -109,21 +109,42 @@ result instead of sending the mail again.
 ## 5. Boot connects and listens — nothing else
 
 **Seeding, backfills and reconciliation belong to the post-migrate job.**
-`seedDefaultPolicies` runs on every replica at boot as a count-then-create with
-no lock and no unique constraint on `PolicyRule` (1.4, `api/src/index.ts:249-266`,
-`api/src/services/policy.ts:159-196`): concurrent boots insert the default set N
-times per organisation, and duplicate rules at equal priority make
-`resolveDecision` order-dependent — a permission answer that depends on row
-order. Boot also does O(orgs + agents) sequential advisory-locked round trips
-before `listen()` (1.7), so cold start scales with tenant size and simultaneous
-boots serialise on the locks.
+`seedDefaultPolicies` used to run on every replica at boot as a
+count-then-create with no lock and no unique constraint on `PolicyRule` (1.4):
+concurrent boots inserted the default set N times per organisation, and
+duplicate rules at equal priority made `resolveDecision` order-dependent — a
+permission answer that depended on row order. Boot also did O(orgs + agents)
+sequential advisory-locked round trips before `listen()` (1.7), so cold start
+scaled with tenant size and simultaneous boots serialised on the locks.
 
 **Corollary.** Policy seeding, the protected-grant backfill, PA default grants
-and the credential sweep run from `pnpm --filter @nessie/api reconcile` after
-`migrate deploy`, in `redeploy.sh` and in the Cloud Run Job. Whatever must stay
-at boot takes `pg_advisory_xact_lock` on the organisation and is backed by a
-partial unique index, so the lock is an optimisation and the index is the
-guarantee.
+and the credential sweep run from `runReconcile`
+(`api/src/db/reconcile-cli.ts`), invoked as
+`pnpm --filter @nessie/api reconcile` after `migrate deploy` — in
+`infrastructure/compose/redeploy.sh`, before the rollout, and in the first-deploy
+sequence. `buildApp` and `startApiServer` do none of it; boot connects,
+validates read-only config and listens.
+
+**The one exception is `local` mode**, where `startApiServer` calls
+`runReconcile` before `listen()`. A developer instance has no deploy step to
+hang the job off and is single-instance by construction — it already embeds the
+worker in-process for the same reason. Nothing else may take this exception:
+`hosted` and `selfHosted` run the job from the deploy.
+
+**Whatever must stay at boot takes `pg_advisory_xact_lock` on the organisation
+and is backed by a partial unique index, so the lock is an optimisation and the
+index is the guarantee.** Default policy rules carry a stable
+`PolicyRule.seedKey` (`default:channel:view:allow:*` and friends), written with
+`createMany({ skipDuplicates: true })` and constrained by
+`policy_rules_organization_id_seed_key_key` on `(organization_id, seed_key)`
+`WHERE seed_key IS NOT NULL`. The index is deliberately **not** over the rule's
+semantic columns: a person may legitimately author two rules that differ only in
+`conditions` or `priority`, and `seed_key` is NULL for every rule a person
+wrote, so nothing they author is constrained. The lock is
+`pg_advisory_xact_lock(hashtextextended('policy-seed:' || organizationId, 0))`,
+taken by `seedDefaultPolicies` itself, so the login path — `ensureTeamPrincipal`
+seeding a freshly materialized organisation inside its own transaction — and the
+reconcile job serialise on the same key.
 
 ## 6. `SIGTERM` drains within the configured grace
 

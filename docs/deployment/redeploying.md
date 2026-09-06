@@ -104,6 +104,17 @@ Consequences worth knowing:
 - Migrations still run **before** the swap, while the old API is serving, so a
   schema change must remain compatible with the previous code for the length of
   the build+swap window (this was already true of the old recreate flow).
+- **The reconcile job runs between the migrations and the swap**, as a one-shot
+  `$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile`.
+  It seeds each organisation's default policy rules, backfills protected-MCP
+  tool grants and Personal Assistant default grants, and sweeps expired refresh
+  credentials — work every API replica used to do at boot, before it started
+  serving. Boot now connects and listens
+  ([standards/horizontal-scaling.md](../standards/horizontal-scaling.md) §5), so
+  **skipping this step leaves a new organisation with no policy rules and
+  deny-by-default answers.** Every step is idempotent and the job prints the
+  rows it created; a redeploy that changes none of them reports zero. It exits
+  non-zero on failure, which fails the deploy before the rollout starts.
 - In-flight SSE/WebSocket streams to the old API replica break at retirement;
   the admin's stream-retry/refetch paths reconnect to the new one.
 - Optional hardening: the nessie site blocks in `/srv/infra/caddy/Caddyfile` can

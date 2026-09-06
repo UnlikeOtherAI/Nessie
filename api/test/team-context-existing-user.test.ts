@@ -87,6 +87,16 @@ const makeFake = (seed: {
       count: async () => (record('policyRule.count'),
         0),
       findFirst: async () => (record('policyRule.findFirst'), null),
+      // The default seeder writes the whole set with
+      // `createMany({ skipDuplicates: true })` and reads the rows back by seed
+      // key to attach their bindings. This fake keeps no rows, so the read-back
+      // is empty and no binding is written — these suites assert the recovery
+      // path, not the seed's contents.
+      createMany: async ({ data }: { data: Row[] }) => {
+        record('policyRule.createMany')
+        return { count: data.length }
+      },
+      findMany: async () => (record('policyRule.findMany'), [] as Row[]),
       create: async ({ data }: { data: Row }) => {
         record('policyRule.create')
         const bindings = (data.bindings as
@@ -100,6 +110,12 @@ const makeFake = (seed: {
           updatedAt: new Date(),
           bindings: bindings.map((b) => ({ id: randomUUID(), ...b })),
         }
+      },
+    },
+    policyBinding: {
+      createMany: async ({ data }: { data: Row[] }) => {
+        record('policyBinding.createMany')
+        return { count: data.length }
       },
     },
     user: {
@@ -331,7 +347,7 @@ test('a cross-org recovery materializes the TARGET org and claims ITS link', asy
   // First materializer of the brand-new org owns it (UOA sent no org_role),
   // and the org's default policies were seeded.
   assert.equal(context.orgRole, 'owner')
-  assert.equal(state.calls.includes('policyRule.create'), true)
+  assert.equal(state.calls.includes('policyRule.createMany'), true)
 })
 
 test('recovery fails closed for a missing principal with zero membership writes', async () => {

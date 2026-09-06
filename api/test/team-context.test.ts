@@ -53,6 +53,7 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
   const channelMembers: ChannelMember[] = []
   const boardColumns: Array<Record<string, unknown>> = []
   const policyRules: Array<Record<string, unknown>> = []
+  const policyBindings: Array<Record<string, unknown>> = []
   const linkSyncs: number[] = []
 
   let defaultTeamId: string | null = null
@@ -112,6 +113,39 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
       count: async ({ where }: { where: { organizationId: string } }) =>
         policyRules.filter((r) => r.organizationId === where.organizationId).length,
       findFirst: async () => null,
+      // The default seeder writes the set with `createMany({ skipDuplicates })`
+      // against the partial unique index on (organization_id, seed_key), then
+      // reads the rows back by seed key to attach their bindings. Honour the
+      // uniqueness here, or a re-seed reports every default as new.
+      createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        let count = 0
+        for (const row of data) {
+          const seedKey = row.seedKey as string | null | undefined
+          const duplicate = seedKey != null && policyRules.some((existing) =>
+            existing.organizationId === row.organizationId
+            && existing.seedKey === seedKey)
+          if (duplicate) continue
+          policyRules.push({
+            id: randomUUID(),
+            ...row,
+            bindings: [],
+            conditions: row.conditions ?? null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          count += 1
+        }
+        return { count }
+      },
+      findMany: async ({
+        where,
+      }: {
+        where: { organizationId: string; seedKey?: { in: string[] } }
+      }) =>
+        policyRules.filter((r) =>
+          r.organizationId === where.organizationId
+          && (where.seedKey === undefined
+            || where.seedKey.in.includes(r.seedKey as string))),
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const bindings = (data.bindings as
           | { create: Array<Record<string, unknown>> }
@@ -126,6 +160,23 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         }
         policyRules.push(row)
         return row
+      },
+    },
+    policyBinding: {
+      // Unique on (policy_rule_id, actor_type, actor_id), which is what makes
+      // the seeder's second pass idempotent.
+      createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        let count = 0
+        for (const row of data) {
+          const duplicate = policyBindings.some((existing) =>
+            existing.policyRuleId === row.policyRuleId
+            && existing.actorType === row.actorType
+            && existing.actorId === row.actorId)
+          if (duplicate) continue
+          policyBindings.push({ id: randomUUID(), ...row })
+          count += 1
+        }
+        return { count }
       },
     },
     user: {
@@ -433,6 +484,7 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
       teamMembers,
       channelMembers,
       policyRules,
+      policyBindings,
       linkSyncs,
     },
   }

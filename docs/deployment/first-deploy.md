@@ -54,11 +54,25 @@ Requires SSH access to the host and the Cloudflare full-token env var.
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
    docker compose -f infrastructure/compose/docker-compose.prod.yml build nessie-api nessie-admin nessie-web
    docker compose -f infrastructure/compose/docker-compose.prod.yml \
-     run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
+     run --rm --no-deps nessie-api pnpm --filter @nessie/api prisma:migrate:deploy
+   docker compose -f infrastructure/compose/docker-compose.prod.yml \
+     run --rm --no-deps nessie-api pnpm --filter @nessie/api seed:connectors
+   docker compose -f infrastructure/compose/docker-compose.prod.yml \
+     run --rm --no-deps nessie-api pnpm --filter @nessie/api seed:apps
+   docker compose -f infrastructure/compose/docker-compose.prod.yml \
+     run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d
    ```
    The production Dockerfiles run package lint before building. A lint failure
    is a build failure.
+
+   The `reconcile` step seeds each organisation's default policy rules and
+   backfills the protected-MCP and Personal Assistant tool grants. The API used
+   to do this at boot on every replica; it now connects and listens and nothing
+   else ([standards/horizontal-scaling.md](../standards/horizontal-scaling.md)
+   §5), so **without this step the first organisation has no policy rules and
+   every agent bind is denied.** It is idempotent, so `redeploy.sh` reruns it on
+   every deploy.
 
 5. **Caddy** — add or update the Nessie site blocks in `/srv/infra/caddy/Caddyfile`
    (holding page → `nessie-web:80`, admin → `nessie-admin:80`,

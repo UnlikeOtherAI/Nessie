@@ -21,13 +21,8 @@ import { registerRawBodyJsonParser } from './lib/raw-body-json-parser.js'
 import { registerApiErrorHandler } from './lib/error-handler.js'
 import { createLifecycleState, installApiShutdownHandlers } from './lifecycle.js'
 import { createRealtimeHub } from './realtime/hub.js'
-import { seedDefaultPolicies } from './services/policy-seed.js'
-import { backfillProtectedMcpToolGrants } from './services/agent-tool-policy-registry.js'
-import { reconcilePersonalAssistantDefaultToolGrantsAtStartup } from './services/personal-assistant-default-tool-grants.js'
-import {
-  runRefreshCredentialSweep,
-  startApiMaintenance,
-} from './services/api-maintenance.js'
+import { runReconcile } from './db/reconcile-cli.js'
+import { startApiMaintenance } from './services/api-maintenance.js'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
 import { runKnowledgeInferenceRequestContext } from './services/knowledge-inference-origin.js'
@@ -251,45 +246,11 @@ export const buildApp = async (
     return payload
   })
 
-  // Self-heal: ensure every pre-existing organization has the default policy
-  // rules seeded. Bootstrap only runs on first install, so orgs provisioned
-  // through migrations or older installs otherwise hit NO_MATCHING_ALLOW on
-  // every agent bind / invoke. seedDefaultPolicies is idempotent per-org.
-  try {
-    const orgs = await prisma.organization.findMany({
-      select: {
-        id: true,
-        members: {
-          where: { role: 'owner' },
-          select: { userId: true },
-          take: 1,
-        },
-      },
-    })
-    for (const org of orgs) {
-      const createdBy = org.members[0]?.userId ?? org.id
-      await seedDefaultPolicies(prisma, org.id, createdBy)
-    }
-  } catch (error) {
-    app.log.error({ err: error }, 'Failed to seed default policies on startup')
-  }
-
-  // The worker requires a descriptor-bound ToolGrant for protected MCP tools.
-  // Complete the legacy Agent.toolPolicy migration before any route can mutate
-  // policy or the local worker can claim a run, so upgrading does not revoke
-  // existing Linear/DeepWater access for one startup window.
-  const protectedMcpGrantBackfill = await backfillProtectedMcpToolGrants(prisma)
-  app.log.info(
-    protectedMcpGrantBackfill,
-    'Materialized protected MCP tool grants from existing agent policy.',
-  )
-
-  const personalAssistantDefaultGrants =
-    await reconcilePersonalAssistantDefaultToolGrantsAtStartup(prisma)
-  app.log.info(
-    personalAssistantDefaultGrants,
-    'Provisioned default protected MCP tool grants for Personal Assistants.',
-  )
+  // Boot connects and listens — nothing else. Policy seeding, the protected-MCP
+  // grant backfill, Personal Assistant default grants and the credential sweep
+  // all used to run here, on every replica, before `listen()`; they now run once
+  // per deploy from `pnpm --filter @nessie/api reconcile`
+  // (docs/standards/horizontal-scaling.md §5).
 
   app.decorateRequest('actorContext', null)
 
@@ -441,7 +402,6 @@ export const startApiServer = async () => {
   const { config, logBootstrapUrl, prisma, resolveBootstrapState } = serverContext
 
   const { app, lifecycle, realtimeHub } = await buildApp({ serverContext })
-  await runRefreshCredentialSweep(prisma, true)
   const initialBootstrapState = await resolveBootstrapState()
   if (initialBootstrapState) {
     logBootstrapUrl(initialBootstrapState)
@@ -452,6 +412,14 @@ export const startApiServer = async () => {
   // app shutdown tears the worker down instead of leaking it. Register the onClose
   // hook BEFORE app.listen() — Fastify rejects addHook once the server is listening.
   if (config.mode === 'local') {
+    // The one documented exception to "boot connects and listens": local mode is
+    // a single developer instance with no deploy step to hang the reconcile job
+    // off, and it already embeds the worker below for the same reason. Every
+    // other mode runs `pnpm --filter @nessie/api reconcile` after
+    // `migrate deploy` (docs/standards/horizontal-scaling.md §5).
+    await runReconcile(prisma, (message) => {
+      console.log(`[reconcile] ${message}`)
+    })
     const { startWorker } = await import('@nessie/worker')
     const embeddedWorker = await startWorker()
     app.addHook('onClose', async () => {
