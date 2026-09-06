@@ -6,9 +6,10 @@ import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
+import { OwnerGate } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { auditLogKeys } from '../lib/query-keys'
-import { usePagedList } from '../facades/usePagedList'
+import { usePagedList } from '../facades/pagination/usePagedList'
 
 type AuditEntry = {
   id: string

@@ -7,7 +7,7 @@ import {
   advancePhoneNavigationStack,
   createPhoneNavigationStack,
 } from '../src/layouts/admin-shell/phone-navigation-stack'
-import { getPhoneNavigationDirection } from '../src/layouts/admin-shell/phone-navigation'
+import { getPhoneNavigationDirection } from '../src/navigation/phone-navigation'
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
@@ -33,7 +33,7 @@ test('the native shell decides by its named form factor, never by width alone', 
 })
 
 test('usePhoneLayout is only the single-layout reading of the one decision', () => {
-  const shell = source('../src/lib/mobile-shell.ts')
+  const shell = source('../src/navigation/mobile-shell.ts')
   assert.match(shell, /export const usePhoneLayout = \(\): boolean => useNavigationLayout\(\) === 'single'/)
   assert.match(shell, /deriveNavigationLayout\(\{/)
   const layout = source('../src/layouts/AdminShellLayout.tsx')

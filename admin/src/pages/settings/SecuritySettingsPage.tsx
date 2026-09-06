@@ -4,7 +4,8 @@ import {
   useSessions,
 } from '../../facades/auth/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { FeedbackBanner, type SettingsFeedback, SettingsPanel, type SettingsTabHostProps } from './settings-shared'
+import { FeedbackBanner, type SettingsFeedback } from './FeedbackBanner'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { ActiveSessionsTable } from '../../components/features/settings/ActiveSessionsTable'
 

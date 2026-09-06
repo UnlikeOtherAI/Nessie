@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import type { AutomaticMembershipDomainRecord } from '@nessie/schemas'
 
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { EmptyState } from '../../shared/EmptyState'
 import { FormError } from '../../shared/FormActions'
@@ -43,9 +44,6 @@ import { AutomaticMembershipDomainRow } from './AutomaticMembershipDomainRow'
 const LEDE = 'When someone signs in with an email address at a domain you control, add them '
   + 'to these teams as a member. Sign-in always verifies who someone is — a domain never '
   + 'signs anyone in.'
-
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Something went wrong. Try again.'
 
 export const AutomaticMembershipRulesPanel = ({
   scope,
@@ -82,7 +80,7 @@ export const AutomaticMembershipRulesPanel = ({
     input: TInput,
   ): void => {
     setError(null)
-    void mutation.mutateAsync(input).catch((cause: unknown) => setError(errorMessage(cause)))
+    void mutation.mutateAsync(input).catch((cause: unknown) => setError(formErrorMessage(cause, 'Something went wrong. Try again.')))
   }
 
   const submitDomain = (event: React.FormEvent) => {
@@ -93,7 +91,7 @@ export const AutomaticMembershipRulesPanel = ({
     void addDomain
       .mutateAsync({ domain })
       .then(() => setDomainInput(''))
-      .catch((cause: unknown) => setError(errorMessage(cause)))
+      .catch((cause: unknown) => setError(formErrorMessage(cause, 'Something went wrong. Try again.')))
   }
 
   return (

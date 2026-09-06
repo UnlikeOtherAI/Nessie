@@ -1,7 +1,7 @@
 import { CallProviderSettingsPanel } from './CallProviderSettingsPanel'
 import { CloudBrowserPanel } from '../../../components/features/browser-cloud/CloudBrowserPanel'
 import { MailboxConnectionsPanel } from '../../../components/features/mailbox-connections/MailboxConnectionsPanel'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { useCurrentOrganization } from '../../../facades/organization/hooks'
 
 /**

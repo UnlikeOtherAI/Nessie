@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ToolDescriptor } from '../../lib/api-client'
-import { toolKeys } from '../../lib/query-keys'
+import { toolKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useTools = () => {

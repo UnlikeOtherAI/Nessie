@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useCurrentOrganization } from '../../../facades/organization/hooks'
 import { useTheme } from '../../../providers/ThemeProvider'
 import { DEFAULT_THEME } from '../../../providers/theme-resolution'
-import type { Theme } from '../../../providers/theme-storage'
+import type { Theme } from '../../../lib/theme-storage'
 import { Pill } from '../../../components/primitives/Pill'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 

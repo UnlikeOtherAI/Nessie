@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { isReactNativeWebView } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
 
 // Pull-to-refresh, owned by the web (docs/navigation/overview.md §13): the native
 // WebView's own gesture was iOS-only, forced bounces, reloaded the whole

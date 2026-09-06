@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AgentCardPresenter } from '@nessie/schemas'
 
-import { agentCardKeys, threadKeys } from '../../lib/query-keys'
+import { threadKeys } from '../threads/keys'
+import { agentCardKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /** The card id is opaque; the server resolves every viewer-scoped fact. */

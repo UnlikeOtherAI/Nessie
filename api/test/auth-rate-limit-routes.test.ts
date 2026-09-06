@@ -71,6 +71,7 @@ const { default: Fastify } = await import('fastify')
 const { RateLimiter } = await import('../src/services/rate-limit.js')
 const { registerAuthLoginRoute } = await import('../src/routes/auth-login.js')
 const { registerHealthRoutes } = await import('../src/routes/health.js')
+const { createLifecycleState } = await import('../src/lifecycle.js')
 const { createFastifyTrustProxyConfig } = await import('../src/lib/server-context.js')
 
 const noopLogger = { error: () => {} }
@@ -240,6 +241,7 @@ test('/api/health carries no rate limit', async () => {
   const app = Fastify({ logger: false })
   const rateLimiter = new RateLimiter(store.prisma as never, noopLogger)
   registerHealthRoutes(app, {
+    lifecycle: createLifecycleState(),
     prisma: {} as never,
     rateLimiter,
     requireActorContext: (() => null) as never,

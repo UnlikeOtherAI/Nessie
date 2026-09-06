@@ -1,7 +1,7 @@
-import { UserAvatar } from '../../../primitives/UserAvatar'
+import { UserAvatar } from '../../../shared/UserAvatar'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { formatRelativeTime } from '../../workflows/presentation'
-import type { ThreadParticipant } from './thread-panel-helpers'
+import type { ThreadParticipant } from './thread-replies'
 
 const MAX_AVATARS = 5
 

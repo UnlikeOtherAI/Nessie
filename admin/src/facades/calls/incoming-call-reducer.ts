@@ -11,18 +11,14 @@ export type IncomingCallEvent =
 
 export type IncomingCallState = {
   calls: Map<string, CallIncomingEvent>
-  inviteUpdates: Map<string, CallInviteUpdatedEvent>
   lastEventId: bigint | null
   tombstones: Map<string, number>
-  updates: Map<string, CallUpdatedEvent>
 }
 
 export const initialIncomingCallState = (): IncomingCallState => ({
   calls: new Map(),
-  inviteUpdates: new Map(),
   lastEventId: null,
   tombstones: new Map(),
-  updates: new Map(),
 })
 
 const terminalInviteStates = new Set<CallInviteUpdatedEvent['state']>([
@@ -63,10 +59,8 @@ export const reduceIncomingCallEvent = (
 
   const next: IncomingCallState = {
     calls: new Map(state.calls),
-    inviteUpdates: new Map(state.inviteUpdates),
     lastEventId: eventId,
     tombstones: new Map(state.tombstones),
-    updates: new Map(state.updates),
   }
   const { event } = input
 
@@ -84,10 +78,6 @@ export const reduceIncomingCallEvent = (
   }
 
   if (event.event === 'call.invite.updated') {
-    const existing = next.inviteUpdates.get(event.data.callId)
-    if (isNewer(existing?.revision, event.data.revision)) {
-      next.inviteUpdates.set(event.data.callId, event.data)
-    }
     if (event.data.userId === input.currentUserId && terminalInviteStates.has(event.data.state)) {
       const currentTombstone = next.tombstones.get(event.data.callId)
       if (isNewer(currentTombstone, event.data.revision)) {
@@ -98,10 +88,6 @@ export const reduceIncomingCallEvent = (
     return next
   }
 
-  const existing = next.updates.get(event.data.callId)
-  if (isNewer(existing?.revision, event.data.revision)) {
-    next.updates.set(event.data.callId, event.data)
-  }
   if (terminalCallStates.has(event.data.status)) {
     const currentTombstone = next.tombstones.get(event.data.callId)
     if (isNewer(currentTombstone, event.data.revision)) {

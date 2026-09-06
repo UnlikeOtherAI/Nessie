@@ -93,8 +93,12 @@ test('no file outside Skeleton.tsx declares shimmer markup of its own', () => {
 // sits on the query: a facade read that waits for an id, or is keyed by one,
 // is a screen's content and must say so.
 const KEEP_PREVIOUS_EXEMPT = [
+  // `useSessionMe` is gated on the session existing, not on a screen's entity
+  // id: there is no sibling swap to bridge, and it seeds itself from the `me`
+  // the session provider already holds, so it can never paint empty.
+  'src/facades/auth/hooks.ts',
   // Billing is scoped per UOA org/team and must never reuse another team's
-  // projection across an active-team switch (see lib/query-keys.ts).
+  // projection across an active-team switch (see facades/billing/keys.ts).
   'src/facades/billing/hooks.ts',
   // A connected mailbox can change account, provider and entitlement in one
   // navigation. Its former list, thread or draft is private provider content,

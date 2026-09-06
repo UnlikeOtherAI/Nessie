@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { SHEET_SIZE_STYLE, Sheet } from '../src/components/overlays/Sheet.js'
 import { resolveSheetSwipeOutcome, sheetEdgeTravel } from '../src/components/overlays/sheet-swipe.js'
-import { PHONE_BACK_SWIPE_COMMIT_RATIO } from '../src/layouts/admin-shell/phone-navigation-gesture.js'
+import { PHONE_BACK_SWIPE_COMMIT_RATIO } from '../src/navigation/phone-navigation-gesture.js'
 
 /**
  * The shared edge-anchored overlay shell. Eight drawers each hand-rolled a
@@ -159,7 +159,7 @@ const React = await import('react')
 const { act, createElement: h } = React
 const { createRoot } = await import('react-dom/client')
 const { LocalBackProvider, useLocalBackSnapshot } = await import(
-  '../src/layouts/admin-shell/local-back/LocalBackContext.js'
+  '../src/navigation/LocalBackContext.js'
 )
 
 // Every file in this package's suite shares one process

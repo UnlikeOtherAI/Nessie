@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Row, RowList } from '../../../components/shared/RowList'
-import { sectionTitleClass } from '../settings-shared'
+import { sectionTitleClass } from '../settings-presentation'
 import {
   useGrantSendAuthorization,
   useRevokeSendGrant,

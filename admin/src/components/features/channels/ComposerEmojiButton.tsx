@@ -1,10 +1,10 @@
 import { useId, useRef, useState } from 'react'
 import { faFaceSmile } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
 import { Popover } from '../../overlays/Popover'
 import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
-import { toolbarButtonClass } from './channel-helpers'
+import { toolbarButtonClass } from './channel-presentation'
 
 // Composer emoji picker: the same panel the message reactions use, opened as a
 // Popover above the toolbar and inserting the picked glyph into the input.

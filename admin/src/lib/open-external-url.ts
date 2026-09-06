@@ -1,5 +1,5 @@
 import { isDesktopApp } from './desktop'
-import { isReactNativeWebView } from './mobile-shell'
+import { isReactNativeWebView } from './native-shell'
 
 type NativeShellWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }

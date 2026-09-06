@@ -170,6 +170,70 @@ export const collectOutsideStackPaths = (source) => {
 export const toSamplePathname = (routerPath) =>
   routerPath.replace(/:[A-Za-z0-9_]+/g, 'sample-id')
 
+// Every registry row should classify at least one live route. A pattern that
+// matches none is a dead row: the route it once covered was renamed or
+// retired and nothing deleted the row behind it.
+export const findDeadPatterns = (patterns, routerPaths) =>
+  patterns.filter(
+    (pattern) => !routerPaths.some((routerPath) => pattern.test(toSamplePathname(routerPath))),
+  )
+
+// `matchSurface` (admin/src/navigation/surfaces.ts) is first-match-wins, so a
+// router path matched by more than one pattern depends entirely on array
+// order for its depth, parent and motion. Most of the 14 that do this today
+// are intentional — a specific row (`/agents/designer`) declared ahead of a
+// broader sibling (`/agents/:id`) — but the ordering itself is silent: moving
+// the general row above its specific sibling reclassifies the route with
+// every other test still green. Returns a Map of routerPath -> the source
+// text of every pattern that matches it, for every router path (outside the
+// stack excluded) matched more than once.
+export const findShadowedPaths = (routerPaths, patterns, outside) => {
+  const shadowed = new Map()
+  for (const routerPath of routerPaths) {
+    if (outside.has(routerPath)) continue
+    const sample = toSamplePathname(routerPath)
+    const matches = patterns.filter((pattern) => pattern.test(sample))
+    if (matches.length > 1) {
+      shadowed.set(routerPath, matches.map((pattern) => pattern.source))
+    }
+  }
+  return shadowed
+}
+
+// Seeded from a full run of `findShadowedPaths` against router.tsx and the
+// registry as they stand today — 14 entries, matching
+// docs/plans/2026-09-05-admin-architecture-review/audit/08-navigation-dependency-rules.md
+// F11. Each is a router path whose specific surface row must stay declared
+// ahead of a broader sibling row that would otherwise also match it; the
+// comment above each group names that broader row. A router path shadowed by
+// more than one pattern that is NOT listed here fails the build — seed it
+// (with a reason) or reorder the rows so only the specific one matches. This
+// list should only shrink (a specific row absorbed into its general sibling,
+// or the general row narrowed so it no longer overlaps), never grow silently.
+export const SHADOWED_PATHS = new Set([
+  // `/settings/:tab` (the generic settings-tab row) also matches these two
+  // named-feature settings screens; the named rows are declared first.
+  '/settings/tools',
+  '/settings/agents',
+  // `/channels/:channelId(?:/.*)?` (the channel detail catch-all) also
+  // matches every one of these more specific channel sub-routes; each is
+  // declared ahead of the catch-all.
+  '/channels/projects/:projectId',
+  '/channels/new',
+  '/channels/:channelId/threads/:threadId/replies/:rootMessageId',
+  '/channels/:channelId/info',
+  '/channels/:channelId/info/members',
+  '/channels/:channelId/info/members/add',
+  // `/agents/:id` (agent detail) also matches these named agent sub-screens;
+  // each is declared ahead of it.
+  '/agents/designer',
+  '/agents/workflow-designer',
+  '/agents/triggers',
+  '/agents/workflows',
+  '/agents/tools',
+  '/agents/executors',
+])
+
 const main = () => {
   const routerSource = readRepoFile(ROUTER_FILE)
   const surfacesSource = SURFACE_FILES.map(readRepoFile).join('\n')
@@ -208,9 +272,58 @@ const main = () => {
     process.exit(1)
   }
 
+  const deadPatterns = findDeadPatterns(patterns, routerPaths)
+  if (deadPatterns.length > 0) {
+    console.error(
+      [
+        'Every `pattern:` row in the surface registry must match at least one',
+        'route in admin/src/router.tsx. A row matching nothing is dead: its',
+        'route was renamed or retired and the row was never deleted.',
+        '',
+        ...deadPatterns.map((pattern) => `  /${pattern.source}/ matches no router path`),
+      ].join('\n'),
+    )
+    process.exit(1)
+  }
+
+  const shadowed = findShadowedPaths(routerPaths, patterns, outside)
+  const unseededShadows = [...shadowed.keys()].filter((routerPath) => !SHADOWED_PATHS.has(routerPath))
+  const staleShadowSeeds = [...SHADOWED_PATHS].filter((routerPath) => !shadowed.has(routerPath))
+
+  if (unseededShadows.length > 0) {
+    console.error(
+      [
+        '`matchSurface` is first-match-wins, so a router path matched by more',
+        'than one pattern depends on array order for its depth, parent and',
+        'motion. These router paths are matched by more than one row and are',
+        'not on the SHADOWED_PATHS allowlist in this script — either reorder',
+        'the rows so only the intended (specific) one matches, or add the path',
+        'to SHADOWED_PATHS with a comment naming the broader row it precedes.',
+        '',
+        ...unseededShadows.map(
+          (routerPath) => `  ${routerPath} matches: ${shadowed.get(routerPath).join(', ')}`,
+        ),
+      ].join('\n'),
+    )
+    process.exit(1)
+  }
+
+  if (staleShadowSeeds.length > 0) {
+    console.error(
+      [
+        'SHADOWED_PATHS in this script lists router paths that are no longer',
+        'matched by more than one surface row. The allowlist only shrinks —',
+        'delete the stale entries:',
+        '',
+        ...staleShadowSeeds.map((routerPath) => `  ${routerPath}`),
+      ].join('\n'),
+    )
+    process.exit(1)
+  }
+
   console.log(
     `lint-navigation-surfaces: ${routerPaths.length} router paths classified by `
-    + `${patterns.length} surface rows`,
+    + `${patterns.length} surface rows (${shadowed.size} seeded shadows, 0 dead rows)`,
   )
 }
 

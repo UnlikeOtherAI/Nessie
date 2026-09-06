@@ -6,7 +6,7 @@ import {
   CANVAS_NODE_WIDTH,
 } from '../../../lib/workflow-designer/constants'
 import { getWorkflowConnectionLayouts } from '../../../lib/workflow-designer/geometry'
-import { parseWorkflowTemplate } from '../../../lib/workflow-designer/serialization'
+import { parseWorkflowTemplate } from '../../../lib/workflow-designer/template-parsing'
 import type {
   WorkflowCanvasNode,
   WorkflowConnection,

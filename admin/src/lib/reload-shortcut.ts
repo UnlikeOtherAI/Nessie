@@ -1,5 +1,5 @@
 import { isDesktopApp } from './desktop'
-import { isReactNativeWebView } from './mobile-shell'
+import { isReactNativeWebView } from './native-shell'
 
 // In embedded webviews (the Tauri desktop app and the React Native WebView shell
 // on iPad/iPhone) Cmd/Ctrl+R does nothing by default — there's no browser chrome

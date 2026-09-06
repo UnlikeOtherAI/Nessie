@@ -1,9 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import {
-  clampThreadPanelWidth,
-  readThreadPanelWidth,
-} from '../components/features/channels/thread-panel/thread-panel-helpers'
+export const SIDE_PANEL_DEFAULT_WIDTH = 400
+export const SIDE_PANEL_MIN_WIDTH = 320
+
+// Drag-resize bounds for a right-hand side panel: never narrower than the
+// Slack-style minimum and never wider than half the viewport.
+export const clampSidePanelWidth = (width: number, viewportWidth: number): number => {
+  if (!Number.isFinite(width)) {
+    return SIDE_PANEL_DEFAULT_WIDTH
+  }
+  const max = Math.max(SIDE_PANEL_MIN_WIDTH, Math.floor(viewportWidth / 2))
+  return Math.min(Math.max(Math.round(width), SIDE_PANEL_MIN_WIDTH), max)
+}
+
+// Read a persisted panel width, tolerating missing/garbage values.
+export const readSidePanelWidth = (
+  stored: string | null,
+  viewportWidth: number,
+): number => clampSidePanelWidth(stored === null ? Number.NaN : Number(stored), viewportWidth)
 
 /**
  * Width state for a drag-resizable right-hand panel.
@@ -35,9 +49,9 @@ export const useSidePanelGeometry = (storageKey: string): SidePanelGeometry => {
   // that preference derived against the current bounds, so a temporary
   // viewport shrink never destroys what they chose.
   const [preferredWidth, setPreferredWidth] = useState(() =>
-    readThreadPanelWidth(window.localStorage.getItem(storageKey), window.innerWidth),
+    readSidePanelWidth(window.localStorage.getItem(storageKey), window.innerWidth),
   )
-  const panelWidth = clampThreadPanelWidth(preferredWidth, viewportWidth)
+  const panelWidth = clampSidePanelWidth(preferredWidth, viewportWidth)
 
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth)
@@ -46,7 +60,7 @@ export const useSidePanelGeometry = (storageKey: string): SidePanelGeometry => {
   }, [])
 
   const resizePanel = useCallback((next: number) => {
-    setPreferredWidth(clampThreadPanelWidth(next, window.innerWidth))
+    setPreferredWidth(clampSidePanelWidth(next, window.innerWidth))
   }, [])
 
   const persistPanelWidth = useCallback(() => {
@@ -57,7 +71,7 @@ export const useSidePanelGeometry = (storageKey: string): SidePanelGeometry => {
   }, [storageKey])
 
   const resizePanelWithKeyboard = useCallback((next: number) => {
-    const clamped = clampThreadPanelWidth(next, window.innerWidth)
+    const clamped = clampSidePanelWidth(next, window.innerWidth)
     setPreferredWidth(clamped)
     window.localStorage.setItem(storageKey, String(clamped))
   }, [storageKey])

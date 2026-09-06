@@ -7,14 +7,13 @@ import {
   type ReactNode,
 } from 'react'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
-import { useLocation } from 'react-router-dom'
-import { usePhoneNavigation } from '../../../layouts/admin-shell/PhoneNavigationProvider'
-import { useLocalBackSnapshot } from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
+import { PhoneNavigationButton } from '../../../navigation/PhoneNavigationButton'
+import { useColumnBackContext } from '../../../navigation/LocalBackContext'
 import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useScreenBarLayer } from '../../../navigation/ScreenBarLayer'
-import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
-import { useColumnBackContext } from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { ScreenHeader } from '../ScreenHeader'
+import type { PageHeaderAction, PageHeaderButtonAction } from '../ResponsivePageHeader'
 
 // A keyboard step for the resize handle below — arbitrary but matches the
 // step every other pixel-resizable surface in the admin uses.
@@ -132,14 +131,35 @@ const ColumnResizeHandle = ({ max, min, onResize, width }: ColumnResizeConfig) =
   )
 }
 
+// A non-screen column's own action row is a plain button strip, not the
+// measured overflow: only a `screen` column composes `ScreenHeader` (and, by
+// extension, `ResponsivePageHeader`'s partition). Every current caller of
+// `actions` is a `screen` column — TriggerListColumn's "New trigger" and
+// WorkflowsPage's "New workflow" — but a deeper section bar takes the same
+// typed shape rather than a second, untyped one.
+const isButtonAction = (action: PageHeaderAction): action is PageHeaderButtonAction =>
+  !action.kind || action.kind === 'button'
+
+const ColumnHeaderActions = ({ actions }: { actions: PageHeaderAction[] }) => (
+  <div className="flex flex-shrink-0 items-center gap-2">
+    {actions.filter(isButtonAction).map((action) => (
+      <button
+        className={action.primary ? 'admin-button admin-button-primary' : 'admin-button admin-button-secondary'}
+        disabled={action.disabled}
+        key={action.id}
+        onClick={action.onSelect}
+        type="button"
+      >
+        {action.label}
+      </button>
+    ))}
+  </div>
+)
+
 type ColumnBrowserColumnProps = {
+  actions?: PageHeaderAction[]
   children: ReactNode
-  headerAction?: ReactNode
   leading?: ReactNode
-  // This column is the page's own header — it carries the phone doorway and
-  // the page renders no ScreenHeader. Without it the native bar would have
-  // nothing to publish for that route (see the publishing note below).
-  ownsScreen?: boolean
   onBack?: () => void
   /**
    * Renders a drag/keyboard-resizable handle on the column's trailing edge.
@@ -148,6 +168,13 @@ type ColumnBrowserColumnProps = {
    * affordance and reports the caller's intended next width.
    */
   resize?: ColumnResizeConfig
+  // True when this column *is* the route's own screen — the first column of
+  // a column-browser page that has no `ScreenHeader` of its own
+  // (docs/navigation/deep-links-and-headers.md §9). It renders the real `h1`
+  // and publishes the title through `ScreenHeader` instead of the column's
+  // usual `h3` section bar. Every other column stays sectioning content
+  // inside that one screen.
+  screen?: boolean
   // True when this column owns a Back action at all — independent of layout.
   // A column browser that hosts its columns as navigation-stack layers takes
   // that action over the one-way report channel below and registers it once,
@@ -163,12 +190,12 @@ type ColumnBrowserColumnProps = {
 }
 
 export const ColumnBrowserColumn = ({
+  actions,
   children,
-  headerAction,
   leading,
-  ownsScreen = false,
   onBack,
   resize,
+  screen = false,
   showBack,
   title,
   scrollKey,
@@ -197,53 +224,45 @@ export const ColumnBrowserColumn = ({
   // Which columns publish the native bar.
   //
   // A pushed column is a stage and always does, taking the stage's own Back.
-  // Column 0 is the page itself, in the route layer, so it normally must not:
-  // it would win by mount order over that page's own ScreenHeader and put a
-  // column title in the page's bar. The exception is a page whose column 0 *is*
-  // its only header — the four column-browser section pages carry the phone
-  // doorway in `leading` and render no ScreenHeader at all — where nothing
-  // else would publish and the bar would come up blank. Those say `ownsScreen`,
-  // and take the route Back the doorway itself renders.
+  // Column 0 is the page itself, in the route layer, so it must not: it would
+  // win by mount order over the page's own screen header and put a column
+  // title in the page's bar. Where column 0 *is* the route's screen it says
+  // `screen` and renders `ScreenHeader`, which publishes — title, Back and
+  // the typed actions — so there is nothing left for this column to do.
   //
-  // `headerAction` and `leading` are ReactNodes rather than declared actions,
-  // so they have no native lane and stay with the column.
+  // `leading` is a ReactNode rather than a declared action, so it has no
+  // native lane and stays with the column.
   const { back: stageBack, isStage } = useScreenBarLayer()
-  const navigation = usePhoneNavigation()
-  useLocalBackSnapshot()
-  const location = useLocation()
-  const routeBack = navigation?.resolveBackAction(location.pathname) ?? null
-  const publishes = isStage || ownsScreen
   const { hidden } = useNativeBarHeader({
     actions: [],
-    back: isStage
-      ? stageBack
-      : routeBack
-        ? { label: routeBack.label, onBack: () => navigation?.performBack() }
-        : null,
+    back: stageBack,
     title,
-  }, publishes)
+  }, !screen && isStage)
 
   return (
     <div className="relative flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
-      {hidden ? null : (
-      <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
-        {leading}
-        {showBack && onBack
-          ? stacked
-            ? <PhoneNavigationButton />
-            : <PhoneBackButton label={backLabel} onBack={onBack} />
-          : null}
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">
-          {title}
-        </h3>
-        {headerAction}
-      </div>
-      )}
-      {hidden && headerAction ? (
-        <div className="flex flex-shrink-0 items-center justify-end gap-2 px-[var(--page-gutter)] pt-2">
-          {headerAction}
+      {screen ? (
+        <ScreenHeader actions={actions} leading={leading} title={title} />
+      ) : hidden ? (
+        actions && actions.length > 0 ? (
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-[var(--page-gutter)] pt-2">
+            <ColumnHeaderActions actions={actions} />
+          </div>
+        ) : null
+      ) : (
+        <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
+          {leading}
+          {showBack && onBack
+            ? stacked
+              ? <PhoneNavigationButton />
+              : <PhoneBackButton label={backLabel} onBack={onBack} />
+            : null}
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">
+            {title}
+          </h3>
+          {actions && actions.length > 0 ? <ColumnHeaderActions actions={actions} /> : null}
         </div>
-      ) : null}
+      )}
       <div
         className="flex-1 overflow-y-auto px-[var(--page-gutter)] py-3"
         onScroll={scroll.onScroll}

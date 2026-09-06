@@ -61,7 +61,6 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
   },
   {
     depth: 2,
-    flowPresentation: 'screen',
     identityOf: (match) => `designer:${match[1] ?? 'new'}`,
     keyScope: () => 'agent-designer',
     intent: { state: ['parentId'] },
@@ -73,7 +72,6 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
   },
   {
     depth: 2,
-    flowPresentation: 'screen',
     identityOf: (match) => `workflow-designer:${match[1] ?? 'new'}`,
     keyScope: () => 'workflow-designer',
     parentOf: toWorkflows,

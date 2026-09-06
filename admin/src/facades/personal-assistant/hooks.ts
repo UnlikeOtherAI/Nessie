@@ -4,7 +4,8 @@ import type {
   PersonalAssistantBootstrapResponse,
   PersonalAssistantStateResponse,
 } from '../../lib/api-client'
-import { channelKeys, personalAssistantKeys } from '../../lib/query-keys'
+import { channelKeys } from '../channels/keys'
+import { personalAssistantKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { upsertChannel } from '../channels/channel-cache'
 

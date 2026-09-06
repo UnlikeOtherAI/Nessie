@@ -8,11 +8,11 @@ import {
 import {
   isDocumentStreamActive,
   type DocumentStreamEntry,
-} from '../../../facades/threads/document-stream-helpers'
+} from '../../../facades/threads/document-stream-entries'
 import { useCancelRun } from '../../../facades/runs/hooks'
 import { useCursorFollow } from '../../../hooks/useCursorFollow'
 import { useLeaveGuard } from '../../../hooks/useLeaveGuard'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { DocumentStreamChip } from './DocumentStreamChip'

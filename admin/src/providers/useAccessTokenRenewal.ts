@@ -11,16 +11,24 @@ const ACCESS_TOKEN_RENEWAL_RETRY_MS = 30_000
 const MAX_TIMEOUT_DELAY_MS = 2_147_483_647
 
 /** Imported bearers expire in place; renewable sessions rotate before expiry. */
-export const useAccessTokenRenewal = (input: {
+// Destructured, never held as one `input` object: the caller builds that
+// object fresh on every render, and an effect that depended on it would tear
+// down and rebuild the renewal timer on every render of the provider.
+export const useAccessTokenRenewal = ({
+  clearImportedSession,
+  refreshAccessToken,
+  sessionMode,
+  token: sessionToken,
+}: {
   clearImportedSession: (expectedToken: string) => Promise<void>
   refreshAccessToken: (expected?: SessionCredentialSnapshot) => Promise<string | null>
   sessionMode: StoredTokenMode
   token: string | null
 }): void => {
   useEffect(() => {
-    if (!input.token) return
-    const token = input.token
-    const expected = { mode: input.sessionMode, token }
+    if (!sessionToken) return
+    const token = sessionToken
+    const expected = { mode: sessionMode, token }
     let cancelled = false
     let renewalTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -31,14 +39,14 @@ export const useAccessTokenRenewal = (input: {
       }
     }
 
-    if (input.sessionMode === 'imported') {
+    if (sessionMode === 'imported') {
       const clearImportedWhenExpired = (): void => {
         clearRenewalTimer()
         const expiresAt = getAccessTokenExpiresAtMs(token)
         if (expiresAt === null) return
         const delay = expiresAt - Date.now()
         if (delay <= 0) {
-          void input.clearImportedSession(token)
+          void clearImportedSession(token)
           return
         }
         renewalTimer = setTimeout(
@@ -80,7 +88,7 @@ export const useAccessTokenRenewal = (input: {
     const renewAccessToken = async (): Promise<void> => {
       if (cancelled) return
       try {
-        await input.refreshAccessToken(expected)
+        await refreshAccessToken(expected)
       } catch {
         if (!cancelled) scheduleRenewal(ACCESS_TOKEN_RENEWAL_RETRY_MS)
       }
@@ -115,9 +123,9 @@ export const useAccessTokenRenewal = (input: {
       document.removeEventListener('visibilitychange', renewWhenDue)
     }
   }, [
-    input.clearImportedSession,
-    input.refreshAccessToken,
-    input.sessionMode,
-    input.token,
+    clearImportedSession,
+    refreshAccessToken,
+    sessionMode,
+    sessionToken,
   ])
 }
