@@ -81,10 +81,10 @@ every preflight. That is safe only because control of any `*.nessie.works`
 origin requires control of the zone — and a name with no certificate cannot
 complete a TLS handshake, so no browser can ever originate from one.
 
-## The edge: DNS is free, certificates are issued on demand
+## The edge: DNS is free, team certificates are automatic
 
-Creating a team makes its address work. Nobody touches the edge, and the
-sections below are the reasons that is safe rather than merely convenient.
+Creating a team makes its address work with no edge change. Founding an
+organisation still needs one line, for a reason that cost an outage to learn.
 
 ### DNS needs nothing per tenant
 
@@ -98,29 +98,60 @@ organisation portal and every team address, for ever.
 Confirm before relying on it if the zone ever moves to another provider: this
 is provider behaviour, not a standard.
 
-### Certificates are issued on demand, gated by this product
+### Teams are issued on demand; organisations are not
 
-A tenant hostname is **not** listed in the edge config. The tenant block is two
-wildcards —
+The tenant configuration is deliberately two blocks, and the split is a
+measured constraint rather than a preference.
 
 ```
-*.nessie.works, *.*.nessie.works
+nessie-works.nessie.works,        # organisations: one line each
+kilomayo.nessie.works { ... }
+
+*.*.nessie.works {                # teams: nothing is listed
+	tls { on_demand }
+	...
+}
 ```
 
-— with `tls { on_demand }`. Caddy's site-address wildcard matches exactly one
-label (verified, not assumed: `*.nessie.works` matched `acme.nessie.works` and
-not `design.acme.nessie.works`, and neither matched three labels), so the pair
-covers an organisation portal and a team address and nothing deeper.
+**Creating a team makes its address work.** Nobody edits the edge. On the first
+TLS handshake for a name Caddy has not seen, it asks whether that tenant exists
+and issues over HTTP-01 if so. Measured on the live proxy: **2.95 s** for the
+first visit to a hostname with no certificate, **0.15 s** for the next one.
 
-On the first TLS handshake for a hostname it has never seen, Caddy asks whether
-that name may exist, and issues over HTTP-01 only if the answer is 2xx. **The
-first visitor to a brand-new address waits a second or two inside the
-handshake; every visit after that is served from cache.** Nobody edits config,
-which is what makes a created team reachable — rule zero.
+**Creating an organisation still needs a line here.** That is the part that
+cannot be automated, and the reason is worth reading before anyone tries again.
+
+#### `*.nessie.works` with `on_demand` breaks the product's own hosts
+
+Do not add it. With such a block present, the handshake for `api.nessie.works`
+fails — `tlsv1 alert internal error` — even though `api` has its own site
+block, its own `tls` policy, and appears in Caddy's managed-certificate list.
+**This took the production API down for about two minutes on 2026-09-06.**
+
+It is not an ordering problem and not a missing policy. Against an isolated
+Caddy, all of these still failed:
+
+| Attempted fix | Result |
+|---|---|
+| Rely on the explicit `api.nessie.works` block winning | fails |
+| Give the named block its own `tls { issuer ... }` policy | fails |
+| Have the gate answer **yes** for `api.nessie.works` | fails |
+
+A control with the wildcard block removed served `api.nessie.works` normally,
+so the wildcard is the cause: its automation policy captures its siblings.
+
+`*.*.nessie.works` has no such problem, because **every hostname this product
+serves itself is one label** — `api`, `app`, `www`. A two-label wildcard cannot
+collide with any of them, and a Caddy site-address wildcard matches exactly one
+label (also measured: `*.nessie.works` matched `acme.nessie.works` and not
+`design.acme.nessie.works`; neither matched three labels).
+
+So organisation portals keep one line each. An organisation is founded far less
+often than a team is created, which is why this is the acceptable half.
 
 #### The gate is `GET /api/hosts/tls-check`, and it is stricter than resolution
 
-Wiring the edge to `/api/hosts/resolve` would be the obvious shortcut and is a
+Wiring the edge to `/api/hosts/resolve` would be the obvious shortcut and a
 serious bug. Two reasons, either one sufficient:
 
 - It answers **200 with `kind: null`** for a hostname it does not recognise.
@@ -133,8 +164,10 @@ serious bug. Two reasons, either one sufficient:
   `nessie.works`, so a made-up team label that earned one would let anybody
   exhaust issuance **for every tenant at once**.
 
-So the gate verifies the team, answers `204` or `404` and nothing else, and
-treats UOA being unreachable as no.
+So the gate verifies the team, answers `204` or a bare `404` and nothing else,
+and treats UOA being unreachable as no. Confirmed against production: real
+tenants `204`; `totally-made-up.nessie-works.nessie.works` `404` and no
+certificate minted for it.
 
 #### And it is authenticated, by `NESSIE_TLS_CHECK_KEY`
 
@@ -146,29 +179,25 @@ door, so the edge presents a shared secret in the ask URL.
 
 **Unset means the gate refuses everything.** An install that has not configured
 it cannot be turned into an existence oracle, and on-demand issuance simply
-does not happen there — which is the right default for every deployment that
-does not route tenants by hostname.
+does not happen there — the right default for every deployment that does not
+route tenants by hostname.
 
 #### One `ask` endpoint, two products
 
 `on_demand_tls.ask` is a **single global setting** on a proxy fronting around
-forty products, and another product already owns it. It is therefore pointed at
-a dispatcher — a loopback-only site block in the same Caddy — which routes by
-the `domain` it is asked about and forwards everything that is not ours to the
+forty products, and another product already owned it. It now points at a
+dispatcher — a loopback-only site block in the same Caddy — which routes by the
+`domain` being asked about and forwards anything that is not ours to the
 endpoint that had it before. Nessie must never take that setting for itself.
 
 The dispatcher lives inside Caddy rather than in a container of its own on
 purpose: if Caddy is down nothing is being served anyway, so it adds no failure
 mode. A separate container would add one, and it would fall on the *other*
-product.
+product. It was checked against the previous owner's endpoint domain by domain
+before the switch, and answered identically every time.
 
-#### What this still costs
-
-Issuance is per hostname, so the weekly ceiling now applies to tenant creation,
-counted across the whole zone. Team labels also reach Certificate Transparency,
-which a per-organisation wildcard would have avoided; that remains the reason
-to revisit `xcaddy` + `caddy-dns/cloudflare` if tenant volume ever grows enough
-to matter.
+The key is forwarded on the Nessie branch only; the other product neither needs
+nor should see it.
 
 ## The tenant's address is the tenant's brand
 

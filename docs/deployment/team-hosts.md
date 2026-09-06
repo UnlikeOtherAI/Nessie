@@ -135,7 +135,20 @@ docker exec caddy caddy validate --config /tmp/Caddyfile.candidate --adapter cad
 docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-## Why not simply a `*.nessie.works` site block
+## Never add a `*.nessie.works` block with `on_demand`
+
+It breaks `api.nessie.works`, `app.nessie.works` and `www.nessie.works` — the
+handshake fails with `tlsv1 alert internal error` even though each has its own
+site block and its own managed certificate. **This took the production API down
+for about two minutes on 2026-09-06.** Reordering the blocks, giving the named
+block an explicit `tls` policy, and having the gate answer yes for `api` were
+all tried against an isolated Caddy; all three still failed.
+
+Team addresses use `*.*.nessie.works`, which is safe because every hostname
+this product serves itself is a single label. Organisation portals are listed
+by name.
+
+## Why not simply a `*.nessie.works` site block for routing
 
 DNS is not the obstacle here — Cloudflare's wildcard already answers at any
 depth (above). Caddy is. A Caddy wildcard **site address** matches exactly one
