@@ -323,17 +323,29 @@ export const AgentScreenViewer = ({
         </div>
       ) : null}
 
-      {countdown?.warning && !countdown.expired ? (
+      {/* Still offered at zero. The clock here is the reader's, the expiry is
+          the server's, and the reaper is the only thing that actually ends a
+          session — so hiding the button the moment this clock says zero takes
+          the rescue away exactly when it is needed, and a client running a
+          minute fast never sees it at all. If the session really has gone the
+          press is answered by a 404 and the panel moves on. */}
+      {countdown?.warning ? (
         <div
           aria-live="polite"
           className="mx-3 mb-2 flex flex-shrink-0 items-center gap-3 border border-[color:var(--warning)] bg-[color:var(--bg2)] px-3 py-2"
         >
           <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
-            This browser closes in{' '}
-            <span className="font-mono font-semibold text-[color:var(--tx)]">
-              {formatCountdown(countdown.secondsLeft)}
-            </span>
-            {' '}unless you are still using it. Anything signed in is saved either way.
+            {countdown.expired ? (
+              <>This browser is closing. Anything signed in is saved.</>
+            ) : (
+              <>
+                This browser closes in{' '}
+                <span className="font-mono font-semibold text-[color:var(--tx)]">
+                  {formatCountdown(countdown.secondsLeft)}
+                </span>
+                {' '}unless you are still using it. Anything signed in is saved either way.
+              </>
+            )}
           </p>
           <button
             className="admin-button admin-button-primary admin-button-compact"

@@ -1275,6 +1275,11 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
       return reply
     }
+    // `touchResumedSession` extends only a live session with no run, so a
+    // press against a released one, or against a session an agent has since
+    // adopted, changes nothing. Answering 200 with the row's unchanged expiry
+    // is honest: the countdown reads it, sees no time was added, and stops
+    // claiming otherwise.
     await touchResumedSession(prisma, { sessionId: session.id })
     // Read back rather than compute: the cap may have clamped the extension,
     // and the countdown must agree with the reaper, not with this route's
