@@ -5,8 +5,18 @@ Chapter of [deployment.md](../deployment.md). What `prisma migrate deploy` is pr
 ## Supported upgrade paths
 
 Upgrades are applied by `prisma migrate deploy` against the existing database
-(see `redeploy.sh`). CI proves this works for the path self-hosters actually
-take — a database sitting on an older schema, not a fresh dev database:
+(see `redeploy.sh`), followed by the seeds and then
+`pnpm --filter @nessie/api reconcile`. That last step is not optional: default
+policy rules, protected-MCP tool grants, Personal Assistant default grants and
+the expired-credential sweep used to run on every API replica at boot and now
+run once per deploy, because boot connects and listens and nothing else
+([standards/horizontal-scaling.md](../standards/horizontal-scaling.md) §5). An
+upgrade that applies the migrations by hand must run the reconcile job too, or
+organisations provisioned by an older release keep denying knowledge actions and
+agent binds. It is idempotent, so running it again is free.
+
+CI proves the migration path works for the route self-hosters actually take — a
+database sitting on an older schema, not a fresh dev database:
 
 - The `upgrade-path` job in `.github/workflows/ci.yml` restores
   `api/prisma/upgrade-fixtures/baseline.sql.gz` — a snapshot taken 20

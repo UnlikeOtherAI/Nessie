@@ -156,6 +156,16 @@ echo "==> Seeding App Store catalogue (first-party + curated connectors)"
 $COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api seed:connectors
 $COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api seed:apps
 
+# Boot connects and listens — nothing else (docs/standards/horizontal-scaling.md
+# §5). Default policy rules, the protected-MCP grant backfill, Personal
+# Assistant default grants and the expired-credential sweep used to run on every
+# API replica before it started serving; they run once here instead, after the
+# migrations and before the rollout, so the new containers only connect and
+# listen. Every step is idempotent, so a redeploy that changes none of them
+# reports zero rows created.
+echo "==> Reconciling policy defaults and tool grants"
+$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile
+
 # Zero-downtime rollout for the services Caddy fronts. Instead of the
 # stop-then-start recreate (which took the site down for the whole API boot,
 # and left it down when a broken image never came up), start a NEW replica of

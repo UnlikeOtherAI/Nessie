@@ -224,6 +224,16 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
     policyRule: {
       count: async () => (record('policyRule.count'), 0),
       findFirst: async () => (record('policyRule.findFirst'), null),
+      // The default seeder writes the whole set with
+      // `createMany({ skipDuplicates: true })` and then reads the rows back by
+      // seed key to attach their bindings. This fake keeps no rows, so the
+      // read-back is empty and no binding is written — which is all these
+      // suites need: they assert the login path, not the seed's contents.
+      createMany: async ({ data }: { data: Row[] }) => {
+        record('policyRule.createMany')
+        return { count: data.length }
+      },
+      findMany: async () => (record('policyRule.findMany'), [] as Row[]),
       create: async ({ data }: { data: Row }) => {
         record('policyRule.create')
         const bindings = (data.bindings as
@@ -237,6 +247,12 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
           updatedAt: new Date(),
           bindings: bindings.map((b) => ({ id: randomUUID(), ...b })),
         }
+      },
+    },
+    policyBinding: {
+      createMany: async ({ data }: { data: Row[] }) => {
+        record('policyBinding.createMany')
+        return { count: data.length }
       },
     },
     user: {

@@ -4631,6 +4631,17 @@ model PolicyRule {
   effect         PolicyEffect
   priority       Int                @default(0)
   conditions     Json?
+  /// Stable identity of a rule the default-policy seeder wrote, e.g.
+  /// `default:channel:view:allow:*`. NULL for every rule a person authored, so
+  /// two hand-written rules may still differ only in `conditions` or
+  /// `priority` — which is why uniqueness is over this key and never over the
+  /// semantic columns. Enforced by the partial unique index
+  /// `policy_rules_organization_id_seed_key_key` on
+  /// (organization_id, seed_key) WHERE seed_key IS NOT NULL, created in
+  /// 20260907130000_policy_rule_seed_key; Prisma cannot express a partial
+  /// index, so it is managed purely in raw SQL. That index is what makes
+  /// concurrent seeders converge on one default set.
+  seedKey        String?            @map("seed_key")
   createdBy      String             @map("created_by")
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")

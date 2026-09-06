@@ -16,6 +16,7 @@
     "prisma:migrate:dev": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} prisma migrate dev --schema prisma/schema.prisma",
     "prisma:migrate:resolve-rolled-back": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} prisma migrate resolve --schema prisma/schema.prisma --rolled-back",
     "prisma:migrate:status": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} prisma migrate status --schema prisma/schema.prisma",
+    "reconcile": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/reconcile-cli.ts",
     "seed:apps": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/seed-apps-cli.ts",
     "seed:connectors": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/seed-connectors-cli.ts",
     "sync:registry": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/sync-registry-cli.ts",
