@@ -19,6 +19,7 @@ export const ACTOR_CONTEXT_SWITCH_ERROR_CODES = [
   'ACCOUNT_DEACTIVATED',
   'NOT_A_MEMBER',
   'SSO_TEAM_REAUTH_REQUIRED',
+  'TEAM_NOT_UOA_LINKED',
   'USER_NOT_FOUND',
 ] as const
 
@@ -102,18 +103,33 @@ export const switchActorContext = async (
   // are not enough: the session may only land on the team its UOA credential
   // was actually issued for. Anything else needs a fresh sign-in, not a
   // locally minted token.
-  if (
-    currentClaims.providerType === 'uoa'
-    && (
+  if (currentClaims.providerType === 'uoa') {
+    // A team with no UOA identity at all is a different failure, and telling
+    // somebody to sign in again for it sends them through SSO to land back
+    // here: there is nothing on the other side to authenticate them into.
+    // These rows predate the guard that now refuses to create a local team
+    // inside a UOA-bound organisation (`UoaBoundOrganizationError`), so the
+    // remedy is to give the team a UOA identity, never to mint a local session
+    // for it — that would be exactly the parallel identity path UOA ownership
+    // exists to prevent.
+    if (!team.externalOrgId || !team.externalTeamId) {
+      throw new ActorContextSwitchError(
+        'TEAM_NOT_UOA_LINKED',
+        'This team is not linked to UnlikeOtherAI, so it cannot be opened. '
+        + 'An administrator has to recreate it through UnlikeOtherAI.',
+      )
+    }
+
+    if (
       !currentClaims.uoaIdentity
       || team.externalOrgId !== currentClaims.uoaIdentity.organizationId
       || team.externalTeamId !== currentClaims.uoaIdentity.teamId
-    )
-  ) {
-    throw new ActorContextSwitchError(
-      'SSO_TEAM_REAUTH_REQUIRED',
-      'Sign in with UnlikeOtherAI to switch to this team.',
-    )
+    ) {
+      throw new ActorContextSwitchError(
+        'SSO_TEAM_REAUTH_REQUIRED',
+        'Sign in with UnlikeOtherAI to switch to this team.',
+      )
+    }
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } })
