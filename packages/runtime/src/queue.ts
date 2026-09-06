@@ -1,50 +1,21 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Pool } from 'pg'
 
-export type QueueJob = {
-  attempt: number
-  enqueuedAt: string
-  id: string
-  maxAttempts: number
-  payload: unknown
-  topic: string
-}
+import {
+  DRAIN_STARTED_REASON,
+  LOCK_EXPIRED_AT_MAX_ATTEMPTS_REASON,
+  LOCK_RENEWAL_FAILED_REASON,
+  type QueueHandler,
+  type QueueJob,
+  type QueueJobClaim,
+  type QueueProvider,
+  type QueueSubscription,
+} from './queue-contract.js'
 
-export type QueueHandlerContext = {
-  // Aborted when the subscription's own signal aborts, when the job's lock is
-  // lost, or when a drain BEGINS — not when it runs out of time. A long handler
-  // (an agentic run) should reach its cancel/checkpoint path on it, and it only
-  // gets to do that if it is told at the start of the grace window rather than
-  // at the end of it.
-  //
-  // The abort is a warning, not a verdict: a handler that ignores it runs to
-  // completion and is acked exactly as before. Only the deadline (`abandon`)
-  // takes the job away.
-  signal: AbortSignal
-}
-
-export type QueueHandler = (job: QueueJob, context: QueueHandlerContext) => Promise<void>
-
-// The handle `subscribe` hands back. `stop()` is the graceful half of a drain:
-// the loop takes no new job, the job it holds is told the drain has begun (its
-// `context.signal` aborts), and `done` resolves once that job has been acked or
-// nacked. `abandon()` is the ungraceful half, for a caller that has run out of
-// patience.
-export type QueueSubscription = {
-  abandon(reason: string): Promise<void>
-  done: Promise<void>
-  stop(): void
-}
-
-export interface QueueProvider {
-  acknowledge(jobId: string): Promise<void>
-  nack(jobId: string, reason?: string): Promise<void>
-  subscribe(
-    topic: string,
-    handler: QueueHandler,
-    options?: { pollIntervalMs?: number; signal?: AbortSignal },
-  ): QueueSubscription
-}
+// The queue's vocabulary is `queue-contract.ts`; this file is the Postgres
+// implementation of it, and re-exports it so `@nessie/runtime` still hands a
+// consumer the whole queue from one module.
+export * from './queue-contract.js'
 
 type RawQueueJobRow = {
   attempt: number
@@ -58,6 +29,7 @@ type RawQueueJobRow = {
 type LockRenewalState = { lost: boolean }
 
 type InFlightJob = {
+  claim: QueueJobClaim
   // The single-writer gate over this job's terminal write. Exactly one of the
   // handler's own settle path and `abandon()`'s deadline nack may pass it; the
   // loser issues no statement at all. The flip is synchronous, so on a
@@ -78,7 +50,6 @@ type InFlightJob = {
   // already claimed to `done` mid-run.
   claimSettle: () => boolean
   controller: AbortController
-  jobId: string
 }
 
 type SubscriptionState = { inFlight: InFlightJob | null }
@@ -93,12 +64,6 @@ const LOCK_RENEWAL_FRACTION = 3
 // is aborted while the lock it lost is (just) still nominally held, rather
 // than after another worker has already been free to claim the row.
 const MAX_CONSECUTIVE_LOCK_RENEWAL_FAILURES = 2
-export const LOCK_RENEWAL_FAILED_REASON = 'lock_renewal_failed'
-export const LOCK_EXPIRED_AT_MAX_ATTEMPTS_REASON = 'lock_expired_at_max_attempts'
-// `signal.reason` when the abort came from the drain starting rather than from
-// a lost lock or an exhausted deadline. A handler that wants to tell "wind down
-// and hand the work back" apart from "you no longer hold this row" reads it.
-export const DRAIN_STARTED_REASON = 'worker_drain_started'
 
 const logQueueError = (message: string, error?: unknown): void => {
   if (error === undefined) {
@@ -150,8 +115,8 @@ export class PgQueueProvider implements QueueProvider {
     } = {},
   ) {}
 
-  async acknowledge(jobId: string): Promise<void> {
-    await this.pool.query(
+  async acknowledge(claim: QueueJobClaim): Promise<boolean> {
+    const result = await this.pool.query(
       `
         UPDATE queue_jobs
         SET
@@ -159,13 +124,17 @@ export class PgQueueProvider implements QueueProvider {
           completed_at = now(),
           locked_until = NULL
         WHERE id = $1
+          AND attempt = $2
+          AND status = 'processing'
       `,
-      [jobId],
+      [claim.id, claim.attempt],
     )
+
+    return this.settled('acknowledge', claim, result.rowCount ?? 0)
   }
 
-  async nack(jobId: string, reason?: string): Promise<void> {
-    await this.pool.query(
+  async nack(claim: QueueJobClaim, reason?: string): Promise<boolean> {
+    const result = await this.pool.query(
       `
         UPDATE queue_jobs
         SET
@@ -173,12 +142,48 @@ export class PgQueueProvider implements QueueProvider {
             WHEN attempt >= max_attempts THEN 'dead'
             ELSE 'pending'
           END,
-          error_message = $2,
+          error_message = $3,
           locked_until = NULL
         WHERE id = $1
+          AND attempt = $2
+          AND status = 'processing'
       `,
-      [jobId, reason ?? null],
+      [claim.id, claim.attempt, reason ?? null],
     )
+
+    return this.settled('nack', claim, result.rowCount ?? 0)
+  }
+
+  // A settle that matched no row is a lost race, not a no-op: this worker was
+  // superseded while it held the job, so what it just finished may duplicate
+  // work another instance is running or has already finished. Report it with
+  // both attempts — the one this worker claimed and the one the row carries now
+  // — because that difference is the whole diagnosis.
+  private async settled(
+    settle: 'acknowledge' | 'nack',
+    claim: QueueJobClaim,
+    rowCount: number,
+  ): Promise<boolean> {
+    if (rowCount > 0) {
+      return true
+    }
+
+    const observed = await this.pool
+      .query<{ attempt: number; status: string }>(
+        'SELECT attempt, status FROM queue_jobs WHERE id = $1',
+        [claim.id],
+      )
+      .then((result) => result.rows[0])
+      .catch(() => undefined)
+
+    logQueueError(
+      `Refused to ${settle} queue job ${claim.id} on topic "${claim.topic}": claimed attempt `
+      + `${claim.attempt}, the row now carries attempt ${observed?.attempt ?? 'none'} `
+      + `(${observed?.status ?? 'deleted'}). This worker lost the claim, so it may have been `
+      + 'running the job alongside its successor.',
+    )
+
+    return false
   }
 
   subscribe(
@@ -268,8 +273,12 @@ export class PgQueueProvider implements QueueProvider {
           return
         }
 
-        await this.nack(entry.jobId, reason).catch((error) => {
-          logQueueError(`Failed to nack abandoned queue job ${entry.jobId}`, error)
+        // Fenced on the claim like every other settle: a deadline that fires
+        // after the lease already expired and a successor re-claimed the row
+        // releases nothing, and says so rather than releasing the successor's
+        // job to a third worker.
+        await this.nack(entry.claim, reason).catch((error) => {
+          logQueueError(`Failed to nack abandoned queue job ${entry.claim.id}`, error)
         })
       },
       done,
@@ -311,6 +320,7 @@ export class PgQueueProvider implements QueueProvider {
 
     let settleClaimed = false
     const entry: InFlightJob = {
+      claim: job,
       claimSettle: (): boolean => {
         if (settleClaimed) {
           return false
@@ -320,7 +330,6 @@ export class PgQueueProvider implements QueueProvider {
         return true
       },
       controller,
-      jobId: job.id,
     }
     state.inFlight = entry
     const renewal: LockRenewalState = { lost: false }
@@ -331,7 +340,7 @@ export class PgQueueProvider implements QueueProvider {
     // write could be claimed.
     let outcome: { kind: 'acknowledge' } | { kind: 'nack'; reason: string }
     try {
-      await this.withLockRenewal(job.id, { controller, state: renewal }, () =>
+      await this.withLockRenewal(job, { controller, state: renewal }, () =>
         handler(job, { signal: controller.signal }),
       )
 
@@ -365,9 +374,9 @@ export class PgQueueProvider implements QueueProvider {
       }
 
       if (outcome.kind === 'acknowledge') {
-        await this.acknowledge(job.id)
+        await this.acknowledge(job)
       } else {
-        await this.nack(job.id, outcome.reason)
+        await this.nack(job, outcome.reason)
       }
     } catch (error) {
       logQueueError(`Failed to settle queue job ${job.id}`, error)
@@ -378,24 +387,32 @@ export class PgQueueProvider implements QueueProvider {
     }
   }
 
-  private async renewLock(jobId: string, lockTtlSeconds: number): Promise<boolean> {
+  private async renewLock(claim: QueueJobClaim, lockTtlSeconds: number): Promise<boolean> {
     const result = await this.pool.query(
       `
         UPDATE queue_jobs
-        SET locked_until = now() + make_interval(secs => $2)
+        SET locked_until = now() + make_interval(secs => $3)
         WHERE id = $1
+          AND attempt = $2
           AND status = 'processing'
       `,
-      [jobId, lockTtlSeconds],
+      [claim.id, claim.attempt, lockTtlSeconds],
     )
 
     // Zero rows means the row is no longer ours to renew — swept, dead-lettered
     // or re-claimed by another instance. That is a renewal failure, not a no-op.
+    //
+    // The attempt is half of that fence and not decoration: a re-claim leaves
+    // the row `processing`, so a status-only fence let a superseded owner go on
+    // renewing — extending its successor's lock, never learning it had lost the
+    // race, and running the job to completion beside it. With the attempt in
+    // the predicate the loser misses twice and is aborted mid-flight, which is
+    // how this provider abandons in-flight work on a lost claim.
     return (result.rowCount ?? 0) > 0
   }
 
   private async withLockRenewal(
-    jobId: string,
+    claim: QueueJobClaim,
     lock: { controller: AbortController; state: LockRenewalState },
     run: () => Promise<void>,
   ): Promise<void> {
@@ -412,7 +429,7 @@ export class PgQueueProvider implements QueueProvider {
       }
 
       renewing = true
-      void this.renewLock(jobId, lockTtlSeconds)
+      void this.renewLock(claim, lockTtlSeconds)
         .then((renewed) => {
           if (renewed) {
             consecutiveFailures = 0
@@ -421,14 +438,14 @@ export class PgQueueProvider implements QueueProvider {
 
           consecutiveFailures += 1
           logQueueError(
-            `Lock renewal for queue job ${jobId} matched no processing row `
+            `Lock renewal for queue job ${claim.id} matched no processing row `
             + `(${consecutiveFailures} consecutive)`,
           )
         })
         .catch((error) => {
           consecutiveFailures += 1
           logQueueError(
-            `Failed to renew lock for queue job ${jobId} (${consecutiveFailures} consecutive)`,
+            `Failed to renew lock for queue job ${claim.id} (${consecutiveFailures} consecutive)`,
             error,
           )
         })
@@ -441,7 +458,7 @@ export class PgQueueProvider implements QueueProvider {
           lock.state.lost = true
           clearInterval(timer)
           logQueueError(
-            `Lost the lock on queue job ${jobId} after ${consecutiveFailures} consecutive `
+            `Lost the lock on queue job ${claim.id} after ${consecutiveFailures} consecutive `
             + 'renewal failures; aborting the handler and releasing the job',
           )
           lock.controller.abort(new Error(LOCK_RENEWAL_FAILED_REASON))
