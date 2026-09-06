@@ -75,22 +75,30 @@ export const SourceStatusStrip = ({
           <span className="flex items-center gap-1" key={source.id}>
             <Link to={`/projects/${projectId}/settings?section=sources&source=${source.id}`}>
               <Pill size="sm" tone={health.tone} uppercase={false}>
+                {/* Freshness even mid-sync: the pill answers "is what I am
+                    looking at current?", which a running sync has not changed
+                    yet. The button is where a press reports back. */}
                 {PROVIDER_LABEL[source.provider]} {source.name} ·{' '}
-                {health.remedy ??
-                  (syncing ? 'syncing…' : freshness(source.lastSyncCompletedAt))}
+                {health.remedy ?? freshness(source.lastSyncCompletedAt)}
                 {mode && !health.remedy ? ` · ${mode}` : ''}
               </Pill>
             </Link>
             {canAdminister ? (
               <button
-                className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]
-                  disabled:opacity-50"
+                // The label is a Pill rather than sized text: `button { font:
+                // inherit }` in styles.css is unlayered, so it beats Tailwind's
+                // layered `.text-xs` and a text utility here renders at body
+                // size beside a 10px chip. Reusing the primitive also makes the
+                // action read as part of the strip rather than a stray word.
+                aria-label={`Sync ${source.name} from ${PROVIDER_LABEL[source.provider]} now`}
+                className="disabled:opacity-60"
                 disabled={syncing || action.isPending}
                 onClick={() => action.mutate({ id: source.id, action: 'sync' })}
-                title={`Sync ${source.name} from ${PROVIDER_LABEL[source.provider]} now`}
                 type="button"
               >
-                {syncing ? 'Syncing…' : 'Sync'}
+                <Pill radius="chip" size="sm" tone="outline" uppercase={false}>
+                  {syncing ? 'Syncing…' : 'Sync'}
+                </Pill>
               </button>
             ) : null}
           </span>

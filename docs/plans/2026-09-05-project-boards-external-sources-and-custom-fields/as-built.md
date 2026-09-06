@@ -39,9 +39,34 @@ fact. Read this before treating any section above as a description of the code.
 - **§5.6 `board-source.sync.sweep`** is not a queue topic. The worker's own
   30-second interval claims due sources directly, exactly as the dashboard
   refresher does, so there is no second scheduler.
+- **§6.1 the board's source strip** now carries *Sync* as well as the health
+  chip, and says whether the provider is pushing (*Live*) or the board is
+  waiting for the next poll (*every 5 min*). The sync action already existed;
+  the only door to it was Settings, which is not where "is this current?" is
+  asked.
 
 ### Superseded
 
+- **§5.1 "Webhooks" for Linear and GitHub is no longer app-level only.** Both
+  register a **per-source** webhook after the first successful sync — Linear
+  `webhookCreate` scoped to the team, GitHub a repository hook — so a deployment
+  that configured no app webhook, and every API-key connection, gets pushed
+  changes rather than a five-minute floor. Linear mints the signing secret and
+  returns it exactly once, so `WebhookRegistration.signingSecret` carries it to
+  `BoardSource.webhookSecretCiphertext`, sealed with the credential envelope;
+  GitHub takes the secret the caller offers. `ensureWebhook` returning `null`
+  now means "the provider declined", which is the ordinary answer for a Linear
+  key that is not a workspace admin's and for a repository the person cannot
+  administer — it leaves the declared poll running instead of raising
+  `WEBHOOK_REGISTRATION_FAILED`. GitHub Projects v2 still has no per-source hook.
+- **Removing a source un-registers its webhook** (`BoardSourceAdapter.removeWebhook`,
+  best-effort), which the design did not say and which matters now that the
+  registration is per-source rather than one app-level webhook for everything.
+- **§5.6 `WebhookSecrets.signingSecret` had two meanings.** Trello read the
+  *callback URL* out of it — it signs `body + callbackURL` — and nothing ever
+  passed one, so no Trello delivery could verify. The URL is now
+  `WebhookSecrets.callbackUrl`, rebuilt from the delivery's own token rather
+  than stored, so it cannot drift from the URL Trello is calling.
 - **§5.1 "Auth (deployment ↔ person)" is no longer OAuth-only for Linear.**
   `BoardSourceAdapter.oauth` is now `auth: { oauth?, apiKey? }`, and Linear
   declares both: a personal API key that needs nothing registered on the
@@ -63,9 +88,14 @@ vendor — see
 [configuration](../../deployment/configuration.md) → "Project board sources".
 The specific assumptions to check on first connect:
 
-- **Linear** — that app-level webhooks fire for every authorised workspace, and
-  that `Linear-Signature` is an HMAC-SHA256 of the raw body. A wrong assumption
-  here costs freshness only: the adapter declares a five-minute poll.
+- **Linear, webhooks** — that `webhookCreate` takes `{url, teamId,
+  resourceTypes: ['Issue'], enabled, label}` and returns the signing secret on
+  `webhook { secret }`; that a *personal API key belonging to a workspace admin*
+  may call it, since Linear documents the gate as "workspace admins, or OAuth
+  applications with the `admin` scope"; and that `Linear-Signature` is an
+  HMAC-SHA256 of the raw body. Every wrong assumption here costs freshness
+  only — a refusal is caught by name and the adapter's five-minute poll runs.
+  The board's source strip says which of the two is happening.
 - **Linear, API key** — that `Authorization: <key>` without a `Bearer` prefix is
   accepted (the shared `linearGraphQl` helper has always sent the token bare,
   so the OAuth path has the same assumption), and that `VIEWER_QUERY` returns
