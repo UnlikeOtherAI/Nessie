@@ -3,8 +3,10 @@ import assert from 'node:assert/strict'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { QueueSubscription } from '@nessie/runtime'
 import {
+  closeTransportsWithDeadline,
   DEFAULT_WORKER_DRAIN_TIMEOUT_MS,
   drainQueueSubscriptions,
+  memoiseShutdown,
   resolveDrainTimeoutMs,
   startDeadQueueJobSweep,
   WORKER_DRAIN_TIMEOUT_REASON,
@@ -17,7 +19,14 @@ type FakeSubscription = QueueSubscription & {
 
 // Stands in for a `PgQueueProvider` subscription: `done` resolves only once the
 // in-flight handler settles, which is exactly what the drain has to wait for.
-const fakeSubscription = (options: { handlerMs: number | 'never' }): FakeSubscription => {
+//
+// `settleMs` is how long the handler keeps writing AFTER it has been abandoned.
+// The real provider nacks first and lets the handler fall out afterwards, so
+// `done` does not resolve just because `abandon()` returned; a drain that treats
+// the nack as the end closes the pool on a handler mid-write.
+const fakeSubscription = (
+  options: { handlerMs: number | 'never'; settleMs?: number | 'never' },
+): FakeSubscription => {
   const abandonedWith: string[] = []
   let stopped = false
   let stoppedBeforeSettling = false
@@ -46,7 +55,15 @@ const fakeSubscription = (options: { handlerMs: number | 'never' }): FakeSubscri
 
       inFlight = false
       abandonedWith.push(reason)
-      finish()
+      const settleMs = options.settleMs ?? 0
+      if (settleMs === 'never') {
+        return
+      }
+      if (settleMs === 0) {
+        finish()
+        return
+      }
+      void delay(settleMs).then(finish)
     },
     abandonedWith,
     stoppedBeforeSettling: () => stoppedBeforeSettling,
@@ -97,7 +114,44 @@ describe('drainQueueSubscriptions', () => {
   })
 
   test('an empty subscription list drains immediately', async () => {
-    assert.deepEqual(await drainQueueSubscriptions([], { timeoutMs: 10 }), { timedOut: false })
+    assert.deepEqual(await drainQueueSubscriptions([], { timeoutMs: 10 }), {
+      settleTimedOut: false,
+      timedOut: false,
+    })
+  })
+
+  test('waits for an abandoned handler to fall out before the caller tears down', async () => {
+    // Abandoning nacks the row, which the queue is satisfied by; the handler is
+    // still writing. `stop()` closes the pool and the Prisma client next, so the
+    // drain owes it this window.
+    const subscription = fakeSubscription({ handlerMs: 'never', settleMs: 200 })
+
+    const started = Date.now()
+    const result = await drainQueueSubscriptions([subscription], {
+      settleMs: 2_000,
+      timeoutMs: 60,
+    })
+    const elapsed = Date.now() - started
+
+    assert.deepEqual(result, { settleTimedOut: false, timedOut: true })
+    assert.deepEqual(subscription.abandonedWith, [WORKER_DRAIN_TIMEOUT_REASON])
+    assert.ok(elapsed >= 240, `drain returned after ${elapsed}ms, before the handler settled`)
+  })
+
+  test('reports the handler that was still writing when the settle window closed', async () => {
+    const subscription = fakeSubscription({ handlerMs: 'never', settleMs: 'never' })
+
+    const started = Date.now()
+    const result = await drainQueueSubscriptions([subscription], {
+      settleMs: 120,
+      timeoutMs: 60,
+    })
+    const elapsed = Date.now() - started
+
+    // The one outcome the drain cannot prevent, so it is reported rather than
+    // swallowed: the caller closes the pool under a handler that never fell out.
+    assert.deepEqual(result, { settleTimedOut: true, timedOut: true })
+    assert.ok(elapsed >= 150, `drain gave up after ${elapsed}ms, before the settle window closed`)
   })
 })
 
@@ -166,5 +220,138 @@ describe('startDeadQueueJobSweep', () => {
       clearInterval(interval)
       console.error = originalError
     }
+  })
+})
+
+describe('closeTransportsWithDeadline', () => {
+  test('returns within its deadline even when a client is never released', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]): void => {
+      warnings.push(String(args[0]))
+    }
+    let prismaClosed = false
+
+    try {
+      const started = Date.now()
+      const result = await closeTransportsWithDeadline(
+        [
+          { close: async () => undefined, label: 'realtime transport' },
+          // `pool.end()` resolves only when every checked-out client is back. A
+          // handler already written off at the settle window — parked on a row
+          // lock its successor now holds — never returns its one, so an
+          // unbounded await here is where SIGTERM used to stop until the
+          // platform SIGKILLed the process.
+          { close: () => new Promise<void>(() => undefined), label: 'postgres pool' },
+          { close: async () => { prismaClosed = true }, label: 'prisma client' },
+        ],
+        { timeoutMs: 120 },
+      )
+      const elapsed = Date.now() - started
+
+      assert.deepEqual(result, {
+        timedOut: true,
+        unfinished: ['postgres pool', 'prisma client'],
+      })
+      assert.equal(prismaClosed, false, 'the sequence ran past the transport that hung')
+      assert.ok(elapsed >= 100, `teardown gave up after ${elapsed}ms, before its deadline`)
+      // Without the deadline this never returns at all; the bound is the fix.
+      assert.ok(elapsed < 5_000, `teardown took ${elapsed}ms — the deadline did not hold`)
+      assert.ok(
+        warnings.some((line) =>
+          line.includes('hard deadline of 120ms ended the shutdown')
+          && line.includes('postgres pool')),
+        `the deadline was not logged plainly; saw ${JSON.stringify(warnings)}`,
+      )
+    } finally {
+      console.warn = originalWarn
+    }
+  })
+
+  test('a clean close reports no deadline and leaves nothing unfinished', async () => {
+    const closed: string[] = []
+    const result = await closeTransportsWithDeadline(
+      [
+        { close: async () => { closed.push('realtime transport') }, label: 'realtime transport' },
+        { close: async () => { closed.push('postgres pool') }, label: 'postgres pool' },
+        { close: async () => { closed.push('prisma client') }, label: 'prisma client' },
+      ],
+      { timeoutMs: 2_000 },
+    )
+
+    assert.deepEqual(result, { timedOut: false, unfinished: [] })
+    // Ordered, not concurrent: the transports close in the order given.
+    assert.deepEqual(closed, ['realtime transport', 'postgres pool', 'prisma client'])
+  })
+
+  test('a transport that rejects is logged and the ones after it still close', async () => {
+    const errors: string[] = []
+    const originalError = console.error
+    console.error = (...args: unknown[]): void => {
+      errors.push(String(args[0]))
+    }
+    let prismaClosed = false
+
+    try {
+      const result = await closeTransportsWithDeadline(
+        [
+          {
+            close: async () => {
+              throw new Error('Called end on pool more than once')
+            },
+            label: 'postgres pool',
+          },
+          { close: async () => { prismaClosed = true }, label: 'prisma client' },
+        ],
+        { timeoutMs: 2_000 },
+      )
+
+      assert.deepEqual(result, { timedOut: false, unfinished: [] })
+      assert.equal(prismaClosed, true, 'one failing close abandoned the rest of the teardown')
+      assert.ok(errors.includes('[worker.teardown] postgres pool failed to close'))
+    } finally {
+      console.error = originalError
+    }
+  })
+})
+
+describe('memoiseShutdown', () => {
+  test('a second signal joins the first shutdown rather than starting another', async () => {
+    let drains = 0
+    let ends = 0
+    const raw = async (): Promise<void> => {
+      drains += 1
+      await delay(60)
+      ends += 1
+      if (ends > 1) {
+        // pg's own message when a pool is ended twice. Unmemoised this rejects
+        // inside a floating promise, and the unhandled rejection ends the
+        // process before its teardown finishes.
+        throw new Error('Called end on pool more than once')
+      }
+    }
+    const stop = memoiseShutdown(raw)
+
+    // The orchestrator's SIGTERM, then an operator's Ctrl-C partway through it.
+    const first = stop()
+    await delay(20)
+    const second = stop()
+    await Promise.all([first, second])
+
+    assert.equal(drains, 1, 'the second signal started a second drain')
+    assert.equal(ends, 1, 'the pool was closed twice')
+    assert.equal(first, second, 'the second signal did not join the first shutdown')
+  })
+
+  test('a caller arriving after the shutdown finished gets the finished one', async () => {
+    let runs = 0
+    const stop = memoiseShutdown(async () => {
+      runs += 1
+    })
+
+    await stop()
+    await stop()
+
+    assert.equal(runs, 1, 'a late signal replayed a shutdown that had already finished')
   })
 })

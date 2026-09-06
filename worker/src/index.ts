@@ -71,7 +71,12 @@ import {
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
 import { setCloudBrowserReleaseHook } from './run/browser-cloud/release-hook.js'
-import { drainQueueSubscriptions, startDeadQueueJobSweep } from './lifecycle.js'
+import {
+  closeTransportsWithDeadline,
+  drainQueueSubscriptions,
+  memoiseShutdown,
+  startDeadQueueJobSweep,
+} from './lifecycle.js'
 import {
   allocateExecutionEnvironmentInstance,
   expireExecutionLeases,
@@ -1285,12 +1290,19 @@ export const startWorker = async (
     ),
   )
 
-  const stop = async () => {
+  // Memoised, so the second signal joins the first shutdown instead of starting
+  // a second drain and a second `pool.end()` — pg rejects that one, and the
+  // signal handler's floating promise turned the rejection into an unhandled
+  // rejection that ends the process mid-drain.
+  const stop = memoiseShutdown(async () => {
     // Drain before anything closes (audit 5.1): `stop()` used to abort and end
     // the pool while a handler was still running, so a long run died
-    // mid-inference with its terminal writes throwing on a closed pool. Stop
-    // claiming first, clear the sweeps, then wait for what is already in
-    // flight — and only abort what outlives the deadline.
+    // mid-inference with its terminal writes throwing on a closed pool.
+    //
+    // First act, before the sweeps are even cleared: stop claiming and raise
+    // every in-flight job's `context.signal`. That abort is the only warning a
+    // long handler gets, and it is worth nothing if it arrives at the deadline
+    // instead of at the start of the grace window.
     for (const subscription of subscriptions) {
       subscription.stop()
     }
@@ -1314,29 +1326,51 @@ export const startWorker = async (
     clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
     clearTimeout(registrySyncKickoff)
-    const { timedOut } = await drainQueueSubscriptions(subscriptions)
+    const { settleTimedOut, timedOut } = await drainQueueSubscriptions(subscriptions)
     if (timedOut) {
       console.warn(
         '[worker.drain] deadline reached with handlers still in flight; their jobs were '
         + 'released so another worker can claim them now.',
       )
     }
-    // Only once the drain is over: the sweeps' in-flight bodies read this, and
-    // nothing claims work after this point.
+    if (settleTimedOut) {
+      console.warn(
+        '[worker.drain] an abandoned handler was still writing when its settle window '
+        + 'expired; the pool closes under it and its last writes are lost.',
+      )
+    }
+    // Only once the drain is over — including the settle window above. Nothing
+    // below may run while a handler still holds the pool: closing it under one
+    // is what left a released run looking held by a live executor.
     abortController.abort()
     modelClient.close()
-    await realtimeTransport.close()
-    await pool.end()
-    await prisma.$disconnect()
-  }
+    // ...and under a hard deadline, because the wait above is bounded and this
+    // one was not: `pool.end()` resolves only when every checked-out client is
+    // back, so a handler already written off at the settle window — parked on a
+    // row lock its successor now holds — would keep the process alive until the
+    // platform SIGKILLed it, defeating the bound the settle window exists to
+    // provide.
+    await closeTransportsWithDeadline([
+      { close: () => realtimeTransport.close(), label: 'realtime transport' },
+      { close: () => pool.end(), label: 'postgres pool' },
+      { close: () => prisma.$disconnect(), label: 'prisma client' },
+    ])
+  })
 
   if (standalone) {
-    process.once('SIGINT', () => {
-      void stop().finally(() => process.exit(0))
-    })
-    process.once('SIGTERM', () => {
-      void stop().finally(() => process.exit(0))
-    })
+    // `.catch` before `.finally`, not a bare floating promise: a shutdown that
+    // throws must be logged and still exit, never surface as an unhandled
+    // rejection that kills the process ahead of its own teardown.
+    const shutdown = (signal: string): void => {
+      void stop()
+        .catch((error: unknown) => {
+          console.error(`[worker.shutdown] ${signal} shutdown failed`, error)
+        })
+        .finally(() => process.exit(0))
+    }
+
+    process.once('SIGINT', () => shutdown('SIGINT'))
+    process.once('SIGTERM', () => shutdown('SIGTERM'))
   }
 
   return { stop }

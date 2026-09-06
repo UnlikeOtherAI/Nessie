@@ -316,3 +316,136 @@ runIfDatabase('expireDeadQueueJobs dead-letters the jobs the claim now refuses',
     }
   })
 })
+
+// `abandon()`'s reason on the worker's drain deadline. Spelled out rather than
+// imported: the constant lives in `@nessie/worker`, which depends on this
+// package and not the other way round.
+const DRAIN_DEADLINE_REASON = 'worker_drain_timeout'
+
+runIfDatabase('a handler completing as the deadline fires applies exactly one settle write', async () => {
+  await withPool(async (pool) => {
+    const topic = uniqueTopic()
+    const provider = new PgQueueProvider(pool)
+    const jobId = await seedPendingJob(pool, topic, { seq: 1 })
+
+    // Every terminal statement this subscription issues, in order. The
+    // acknowledge is held open at its entry so the drain deadline lands exactly
+    // where the race lived: after the handler resolved and before its ack
+    // reached the database. Both statements go out on different pooled
+    // connections with no ordering between them, so "the nack lost the race" is
+    // not a defence — the second one must never be issued at all.
+    const applied: string[] = []
+    const ackEntered = deferred()
+    const releaseAck = deferred()
+    const realAcknowledge = provider.acknowledge.bind(provider)
+    const realNack = provider.nack.bind(provider)
+    provider.acknowledge = async (id: string): Promise<void> => {
+      applied.push('acknowledge')
+      ackEntered.resolve()
+      await releaseAck.promise
+      await realAcknowledge(id)
+    }
+    provider.nack = async (id: string, reason?: string): Promise<void> => {
+      applied.push('nack')
+      await realNack(id, reason)
+    }
+
+    const claimed = deferred()
+    const release = deferred()
+    const subscription = provider.subscribe(
+      topic,
+      async () => {
+        claimed.resolve()
+        await release.promise
+      },
+      { pollIntervalMs: 25 },
+    )
+
+    try {
+      await claimed.promise
+      subscription.stop()
+      release.resolve()
+      // The handler has resolved and its acknowledge is in flight.
+      await ackEntered.promise
+      // ...and only now does the drain run out of patience.
+      await subscription.abandon(DRAIN_DEADLINE_REASON)
+      releaseAck.resolve()
+      await subscription.done
+
+      // The invariant: exactly one of acknowledge and nack is ever applied to a
+      // job. Without the single-writer gate the nack went out too, and whichever
+      // committed last decided the row — a completed job back to `pending` for a
+      // second worker to run, or a row the successor already held flipped to
+      // `done` mid-run.
+      assert.deepEqual(applied, ['acknowledge'])
+      const rows = await readJobs(pool, topic)
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0]!.id, jobId)
+      assert.equal(rows[0]!.status, 'done')
+      // The nack is the only thing that writes this column, so a null here says
+      // no nack was applied whatever order the two statements committed in.
+      assert.equal(rows[0]!.error_message, null)
+      assert.equal(rows[0]!.locked_until, null)
+    } finally {
+      release.resolve()
+      releaseAck.resolve()
+      subscription.stop()
+      await pool.query('DELETE FROM queue_jobs WHERE topic = $1', [topic])
+    }
+  })
+})
+
+runIfDatabase('a job abandoned on the deadline is nacked once and its straggler never acks', async () => {
+  await withPool(async (pool) => {
+    const topic = uniqueTopic()
+    const provider = new PgQueueProvider(pool)
+    const jobId = await seedPendingJob(pool, topic, { seq: 1 })
+
+    const applied: string[] = []
+    const realAcknowledge = provider.acknowledge.bind(provider)
+    const realNack = provider.nack.bind(provider)
+    provider.acknowledge = async (id: string): Promise<void> => {
+      applied.push('acknowledge')
+      await realAcknowledge(id)
+    }
+    provider.nack = async (id: string, reason?: string): Promise<void> => {
+      applied.push('nack')
+      await realNack(id, reason)
+    }
+
+    const claimed = deferred()
+    const release = deferred()
+    const subscription = provider.subscribe(
+      topic,
+      async () => {
+        claimed.resolve()
+        await release.promise
+      },
+      { pollIntervalMs: 25 },
+    )
+
+    try {
+      await claimed.promise
+      // The deadline fires with the handler still running: the row is released
+      // now rather than after its five-minute lock burns down.
+      await subscription.abandon(DRAIN_DEADLINE_REASON)
+      // The straggler falls out inside its settle window. It ran to completion,
+      // but a successor may already hold the row, so its ack is not its to
+      // issue — the other half of the same single-writer invariant.
+      release.resolve()
+      await subscription.done
+
+      assert.deepEqual(applied, ['nack'])
+      const rows = await readJobs(pool, topic)
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0]!.id, jobId)
+      assert.equal(rows[0]!.status, 'pending')
+      assert.equal(rows[0]!.error_message, DRAIN_DEADLINE_REASON)
+      assert.equal(rows[0]!.locked_until, null)
+    } finally {
+      release.resolve()
+      subscription.stop()
+      await pool.query('DELETE FROM queue_jobs WHERE topic = $1', [topic])
+    }
+  })
+})

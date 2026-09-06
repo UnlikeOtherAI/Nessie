@@ -366,6 +366,50 @@ cancel/checkpoint path, awaits in-flight handlers under a deadline, and acks or
 nacks before the pool closes. Drain is solved by checkpointing inside sixty
 seconds, not by asking the platform for a longer grace.
 
+**That signal is raised when the drain BEGINS, never at its deadline**, and the
+distinction is the whole point: a warning that arrives when the time is already
+gone buys a long run nothing. `PgQueueProvider`'s `stop()` therefore aborts the
+in-flight job's `context.signal` in the same call that stops the claim loop
+(`DRAIN_STARTED_REASON`), and the abort is a warning rather than a verdict — a
+handler that ignores it runs to completion and is acked exactly as before, and
+only the deadline's `abandon()` takes a job away. **And nothing a handler writes
+through may be closed while it is still writing.** `drainQueueSubscriptions`
+awaits every subscription's `done` under `NESSIE_WORKER_DRAIN_TIMEOUT_MS`,
+abandons what is left (which nacks, so a successor re-claims at once rather than
+waiting out the five-minute lock), then waits a second, shorter window
+(`DEFAULT_WORKER_ABANDON_SETTLE_MS`) for those handlers to fall out before
+`stop()` closes the transport, the pool and the Prisma client. Returning at the
+nack instead is what left a run's release write executing against a closing pool,
+so a successor saw a run "held by a live executor" that had already exited. The
+settle window is bounded and its expiry is reported, because a handler parked in
+an uninterruptible await must not hold `SIGTERM` open until the platform
+`SIGKILL`s the process.
+
+**Exactly one of acknowledge and nack is ever applied to a job.** The deadline
+and the handler both want to settle the row, they issue their statements on
+different pooled connections, and nothing orders those two commits — so a
+handler resolving in the same tick the deadline fires must not produce both.
+`PgQueueProvider` gives each in-flight job a synchronous single-writer gate
+(`claimSettle`): whoever takes it issues the only statement, and the loser
+issues none. Reading a flag before the acknowledge and never re-checking is what
+let a completed job go back to `pending` for a second worker to run when the
+nack committed last, and let a row the successor already held flip to `done`
+mid-run when the acknowledge did.
+
+**And the shutdown itself is bounded end to end, once.** The settle window buys
+nothing if the close that follows it can block forever: `pool.end()` resolves
+only when every checked-out client is back, and a handler already written off —
+parked on a row lock its successor now holds — never returns its one. The
+transports therefore close in order under one shared hard deadline
+(`DEFAULT_WORKER_TEARDOWN_TIMEOUT_MS`, 10 s; 25 + 5 + 10 leaves twenty seconds
+of the grace unspent), and when that deadline is what ended the shutdown it says
+so and names the transport still closing. `stop()` is memoised, because `SIGINT`
+and `SIGTERM` are both registered and an operator's Ctrl-C during an
+orchestrator's `SIGTERM` drain otherwise ran a second drain and a second
+`pool.end()` — which pg rejects, and which the signal handler's floating promise
+turned into an unhandled rejection that killed the process mid-shutdown. The
+second signal joins the first.
+
 ## 7. No local disk beyond per-request scratch the same request deletes
 
 **A file one instance wrote is not there for the next call.** `filesystem` is
