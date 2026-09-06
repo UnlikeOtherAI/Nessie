@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react'
 import type { AgentRecord, UserRecord } from '../../lib/api-client'
 import {
   buildRecipientOptions,
@@ -23,6 +30,12 @@ type RecipientBarProps = {
   /** Focused on mount. The compose screen wants it; a settings section does not. */
   autoFocus?: boolean
   disabled?: boolean
+  /**
+   * The caller's handle on the text field. Passed rather than owned because the
+   * compose screen focuses it on events this component knows nothing about —
+   * switching between people and agents, returning from the agent designer.
+   */
+  inputRef?: RefObject<HTMLInputElement | null>
 }
 
 const nameOf = (
@@ -54,8 +67,10 @@ export const RecipientBar = ({
   placeholder,
   autoFocus = false,
   disabled = false,
+  inputRef: callerRef,
 }: RecipientBarProps) => {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const ownRef = useRef<HTMLInputElement>(null)
+  const inputRef = callerRef ?? ownRef
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -185,7 +200,10 @@ export const RecipientBar = ({
       </div>
 
       {showOptions ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-72 overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-xl">
+        <div
+          className="absolute left-0 right-0 top-[calc(100%+6px)] max-h-72 overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-xl"
+          style={{ zIndex: 'var(--layer-popover)' }}
+        >
           {options.map((option, index) => (
             <button
               key={recipientKey(option)}

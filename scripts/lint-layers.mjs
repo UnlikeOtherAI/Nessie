@@ -52,7 +52,6 @@ const ALLOWLIST = new Set([
   'admin/src/layouts/admin-shell/SidebarProjectsSection.tsx',
   'admin/src/layouts/admin-shell/UserMenuTrigger.tsx',
   'admin/src/layouts/admin-shell/TeamSwitcher.tsx',
-  'admin/src/pages/ChannelConversationComposePage.tsx',
   'admin/src/pages/DashboardDetailPage.tsx',
   'admin/src/providers/ExternalAuthProvider.tsx',
   'admin/src/styles.css',

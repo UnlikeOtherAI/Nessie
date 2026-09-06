@@ -114,13 +114,26 @@ test('the new-message surface excludes the sender and keeps recipients available
   // a measured action on the split layout; the phone gets the flow's Back.
   assert.match(source, /label: 'Close new message'/)
   assert.match(source, /flowOwnsBack/)
-  assert.match(source, /setAddressFocused\(true\)/)
-  assert.match(source, /document\.activeElement !== addressInputRef\.current/)
+  // The address bar itself is now `components/shared/RecipientBar.tsx`, shared
+  // with the board watchers editor. What it must keep doing is asserted there;
+  // what the compose screen must keep doing is asserted here.
+  const recipientBar = readSource('../src/components/shared/RecipientBar.tsx')
+  // Clicking anywhere in the chip row focuses the field and opens the list.
+  assert.match(recipientBar, /setFocused\(true\)/)
+  // A blur that did not leave the field does not close the list underneath it.
+  assert.match(recipientBar, /document\.activeElement !== inputRef\.current/)
+  // The compose screen keeps its own handle, because it focuses the field on
+  // events the bar knows nothing about — switching sides, returning from the
+  // agent designer.
+  assert.match(source, /inputRef=\{addressInputRef\}/)
   assert.match(source, /open: !phoneLayout,/)
   assert.match(source, /fixed inset-0 bg-\[color:var\(--main\)\]/)
   assert.match(source, /target === 'people' \? 'Type a name or email address' : 'Type an agent name'/)
   assert.match(source, /allUsers\.filter\(\(user\) => user\.id !== me\?\.user\.id\)/)
-  assert.match(source, /const hasSelectableOptions = options\.length > 0/)
+  // Selecting somebody does not close the list: the bar keeps offering whoever
+  // is left, which is what makes addressing several people one gesture. Also
+  // moved into RecipientBar with the rest of the address bar.
+  assert.match(recipientBar, /const showOptions = focused && options\.length > 0/)
   assert.doesNotMatch(source, /\(you\)/)
   assert.match(source, /admin-compose mt-auto flex-shrink-0/)
   assert.match(source, /StartChannelConversation/)
