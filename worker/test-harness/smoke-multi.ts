@@ -8,8 +8,8 @@
 // user exists, so it cannot share a database the way smoke.ts can.
 // `--chaos` adds the Phase 0.4 kill steps (SIGTERM one worker mid-run, one API
 // mid-stream) and asserts the three durability properties the horizontal-scaling
-// plan names. They are expected to fail until Phases 1-3 land, which is why the
-// CI job runs the chaos step with continue-on-error.
+// plan names. (c) fails today — a resumed stream never receives what was
+// published while its instance was gone — so the CI job runs it advisory-only.
 import { spawn, type ChildProcess } from 'node:child_process'
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'

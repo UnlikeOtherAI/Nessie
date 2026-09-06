@@ -527,9 +527,9 @@ jobs:
         run: pnpm --filter @nessie/worker test:smoke:multi
 
       # Advisory until Phase 3 (run durability) lands: the API has no SIGTERM
-      # handler and the worker abandons in-flight jobs, so these assertions
-      # measure defects the plan has not fixed yet. Flip continue-on-error off
-      # in the PR that lands Phase 3 and this becomes a real gate.
+      # handler, so the SSE-resume assertion fails today; the other two hold and
+      # are a regression net, not a green light. Flip continue-on-error off in
+      # the PR that lands Phase 3 and this becomes a real gate.
       # A second database, because the harness bootstraps an owner account and the
       # run above already consumed the first one's one-time bootstrap window.
       - name: Prepare the chaos database
