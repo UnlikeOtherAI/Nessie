@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import { type Prisma, type PrismaClient } from '@prisma/client'
+import { enqueueQueueJob } from '../../queue.js'
 import {
   buildWorkflowInstanceOutput,
   loadWorkflowInstanceState,
@@ -143,6 +145,55 @@ export const finalizeLease = async (
   })
 }
 
+export const LEASE_EXPIRED_ERROR = 'EXECUTION_LEASE_EXPIRED'
+
+// A lease that reaches expiry belongs to a runner that stopped renewing, so the
+// machine it provisioned has nobody left pointing at it. Which of them the
+// sweep can actually reclaim depends on whether the provider reference is
+// addressable from any worker.
+//
+// `gcloud` refs are `gcloud:<kind>:<project>:<zone|region>:<name>` — a global
+// address. Whichever replica claims `execution.environment.terminate` deletes
+// the real VM or Cloud Run job, so the sweep enqueues one.
+//
+// `docker` refs are a container id on ONE host's daemon (horizontal-scaling
+// audit 8.2; `docs/standards/horizontal-scaling.md` invariant 7). Queue jobs
+// are not host-routed, so a terminate claimed by another replica would run
+// `docker rm -f` against the wrong daemon, get `No such container`, have
+// `terminateDocker` swallow it as already-gone, and let `persistTermination`
+// write `terminated` — a lie about a container that is still running and still
+// consuming the dead host's CPU. The sweep therefore never enqueues one.
+// Instead the instance keeps the honest terminal state it already has,
+// `failed`, and its error message names the container so an operator (or the
+// host's own restart) can reap it. `loadProvisioningContext` makes the mirror
+// refusal on the way in with `EXECUTION_RUNNER_NOT_LOCAL`.
+const HOST_INDEPENDENT_PROVIDERS: readonly ExecutionProvider[] = ['gcloud']
+
+export const ABANDONED_HOST_LOCAL_INSTANCE_ERROR = 'EXECUTION_INSTANCE_ABANDONED_HOST_LOCAL'
+
+// The terminate the sweep asks for is the sweep's own act, not a replay of
+// whoever launched the instance: attributing it to the launcher would put a
+// request in the audit trail that person never made, and `launchedByActorType`
+// can be `system`, which `AuthorizedActionContextSchema` does not accept.
+const buildLeaseSweepActorContext = (input: {
+  instanceId: string
+  organizationId: string
+}) => ({
+  actionContext: {
+    correlationId: `execution-lease-expiry:${input.instanceId}`,
+    purpose: 'execution.lease.expiry',
+    requestId: randomUUID(),
+  },
+  actor: {
+    actorId: 'execution-lease-sweep',
+    actorType: 'service' as const,
+    roles: ['system'],
+  },
+  tenant: {
+    organizationId: input.organizationId,
+  },
+})
+
 export const expireExecutionLeases = async (
   prisma: PrismaClient,
 ): Promise<number> => {
@@ -159,11 +210,25 @@ export const expireExecutionLeases = async (
     select: {
       id: true,
       instanceId: true,
+      instance: {
+        select: {
+          organizationId: true,
+          providerInstanceRef: true,
+          template: {
+            select: { provider: true },
+          },
+        },
+      },
     },
   })
 
   let expiredCount = 0
   for (const lease of expiredLeases) {
+    const providerInstanceRef = lease.instance.providerInstanceRef
+    const provider = lease.instance.template.provider
+    const abandonedHostLocal =
+      Boolean(providerInstanceRef) && !HOST_INDEPENDENT_PROVIDERS.includes(provider)
+
     const result = await prisma.$transaction(async (tx) => {
       const updatedLease = await tx.executionLease.updateMany({
         where: {
@@ -192,11 +257,32 @@ export const expireExecutionLeases = async (
           },
         },
         data: {
-          errorMessage: 'EXECUTION_LEASE_EXPIRED',
+          errorMessage: abandonedHostLocal
+            ? `${ABANDONED_HOST_LOCAL_INSTANCE_ERROR}:${provider}:${providerInstanceRef}`
+            : LEASE_EXPIRED_ERROR,
           lastHeartbeatAt: now,
           status: 'failed',
         },
       })
+
+      // Inside the winning claim, so only the sweeper that actually expired the
+      // lease enqueues. The idempotency key repeats the guarantee across sweep
+      // passes, and is namespaced apart from the API's
+      // `execution-environment:terminate:<id>` so a user-requested termination
+      // that already ran cannot suppress this one.
+      if (providerInstanceRef && !abandonedHostLocal) {
+        await enqueueQueueJob(tx, {
+          idempotencyKey: `execution-environment:terminate:lease-expired:${lease.instanceId}`,
+          payload: {
+            actorContext: buildLeaseSweepActorContext({
+              instanceId: lease.instanceId,
+              organizationId: lease.instance.organizationId,
+            }),
+            instanceId: lease.instanceId,
+          },
+          topic: 'execution.environment.terminate',
+        })
+      }
 
       return true
     })

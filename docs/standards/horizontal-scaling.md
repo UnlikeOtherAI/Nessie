@@ -469,7 +469,8 @@ on the worker's own disk under an operator-configured `allowedRoots` (6.2,
 `worker/src/run/builtin-handlers/file-write.ts:60-71`), so a write on one worker
 is invisible to the next tool call on another. The `docker` execution provider
 shells out to the local daemon and its terminate job is routed to any worker
-(6.3/8.2, `worker/src/control/execution/docker-provider.ts:105-177`).
+(6.3/8.2, `worker/src/control/execution/docker-provider.ts:105-177`); the
+lease sweep's response to that is the second corollary below.
 
 **Corollary, as built.** All three are refused outside `local` mode, and the
 refusal names the setting, the mode it is illegal in, and what to use instead.
@@ -525,6 +526,27 @@ used. The write door is
 which is already past the 500-line file cap, so closing it there is a refactor
 rather than a guard. Nothing is silently wrong in the meantime — the template is
 inert and says so the first time anyone launches it.
+
+**Corollary — a reaper never *reports* a host-local resource reclaimed.**
+`expireExecutionLeases` now enqueues `execution.environment.terminate` for an
+expired lease whose instance holds a provider reference (5.8/8.2, plan row 5.2),
+because a lease that reaches expiry means the runner that provisioned the
+machine has stopped renewing and nothing else points at it. It enqueues only for
+**host-independent** references. A `gcloud` ref is
+`gcloud:<kind>:<project>:<zone|region>:<name>` — a global address, so whichever
+replica claims the job deletes the real VM or Cloud Run job. A `docker` ref is a
+container id on one host's daemon, and queue jobs are not host-routed: a
+terminate claimed elsewhere runs `docker rm -f` against the wrong daemon, gets
+`No such container`, has `terminateDocker` swallow it as already-gone, and lets
+`persistTermination` write `terminated`. That row would then say the container
+is gone while it is still running on the dead host. So the sweep enqueues
+nothing for `docker`; the instance keeps the honest terminal state it already
+has, `failed`, with `error_message` =
+`EXECUTION_INSTANCE_ABANDONED_HOST_LOCAL:docker:<ref>` naming what a person or
+the host's own restart still has to reap. This is the same refusal
+`loadProvisioningContext` makes on the way in (`EXECUTION_RUNNER_NOT_LOCAL`).
+The general rule: when a sweep cannot reach the resource, it records that it
+could not, never a state it did not achieve.
 
 ## 8. Instance identity is a UUID minted at boot, never `HOSTNAME`
 
