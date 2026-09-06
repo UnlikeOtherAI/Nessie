@@ -262,12 +262,11 @@ const main = async (): Promise<void> => {
   await Promise.all(workers.map((w) => waitFor(`${w.label} ready`, () => ready(w), 180_000)))
 
   const proxy = await startProxy(API_PORTS)
-  const { disconnectPrismaClient, getPrismaClient } = await import('@nessie/db')
-  const { createPgPool, PgQueueProvider } = await import('@nessie/runtime')
+  const { disconnectPrismaClient, enqueueQueueJob, getPrismaClient } = await import('@nessie/db')
+  const { createPgPool } = await import('@nessie/runtime')
   const { RunExecuteJobPayloadSchema } = await import('@nessie/schemas')
   const prisma = getPrismaClient()
   const pool = createPgPool(DATABASE_URL, { max: 4, min: 0 })
-  const queue = new PgQueueProvider(pool)
   const runIds: string[] = []
 
   // The only tenant this session's JWT can reach; assert it rather than assume it.
@@ -311,23 +310,30 @@ const main = async (): Promise<void> => {
       },
     })
     runIds.push(run.id)
-    await queue.enqueue('run.execute', RunExecuteJobPayloadSchema.parse({
-      actorContext: {
-        actionContext: {
-          agentId: agent.id, channelId: channel.id, correlationId: randomUUID(),
-          effectiveUserId: ownerId, requestId: randomUUID(), taskId: task.id,
-          teamId: general.teamId, threadId: seed.threadId,
+    // The queue has one enqueue door; `PgQueueProvider` claims, it does not
+    // write. The harness seeds through the same function production uses.
+    await enqueueQueueJob(prisma, {
+      payload: RunExecuteJobPayloadSchema.parse({
+        actorContext: {
+          actionContext: {
+            agentId: agent.id, channelId: channel.id, correlationId: randomUUID(),
+            effectiveUserId: ownerId, requestId: randomUUID(), taskId: task.id,
+            teamId: general.teamId, threadId: seed.threadId,
+          },
+          actor: { actorId: ownerId, actorType: 'user', roles: ['owner'] },
+          tenant: {
+            channelId: channel.id, organizationId, projectId: general.projectId, teamId: general.teamId,
+          },
         },
-        actor: { actorId: ownerId, actorType: 'user', roles: ['owner'] },
-        tenant: { channelId: channel.id, organizationId, projectId: general.projectId, teamId: general.teamId },
-      },
-      agentId: agent.id,
-      interactive: true,
-      messageId: seed.messageId,
-      runId: run.id,
-      taskId: task.id,
-      threadId: seed.threadId,
-    }))
+        agentId: agent.id,
+        interactive: true,
+        messageId: seed.messageId,
+        runId: run.id,
+        taskId: task.id,
+        threadId: seed.threadId,
+      }),
+      topic: 'run.execute',
+    })
     return run.id
   }
 
