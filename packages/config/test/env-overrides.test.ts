@@ -118,6 +118,26 @@ test('NESSIE_QUEUE_PROVIDER=pubsub is rejected rather than silently accepted', (
   )
 })
 
+// The rejection has to be readable, not just present. Zod's own
+// `invalid_enum_value` text is "Expected 'local', received 'pubsub'" — it never
+// says the provider was retired, so an operator whose boot just started
+// crashing has nothing to go on. This asserts the custom error map on
+// `QueueProviderSchema`, because the comment there claims the message names the
+// retirement.
+test('the rejection names the retirement rather than only the legal value', () => {
+  assert.throws(
+    () => load({ NESSIE_QUEUE_PROVIDER: 'pubsub' }),
+    (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      assert.match(message, /retired/i)
+      assert.match(message, /pubsub/)
+      assert.match(message, /horizontal-scaling/)
+      assert.doesNotMatch(message, /Invalid enum value/)
+      return true
+    },
+  )
+})
+
 test('NESSIE_QUEUE_PROVIDER=local still loads', () => {
   assert.equal(load({ NESSIE_QUEUE_PROVIDER: 'local' }).queue.provider, 'local')
 })

@@ -3,11 +3,15 @@ import { randomUUID } from 'node:crypto'
 
 import { Prisma, PrismaClient } from '@prisma/client'
 
+import { loadProvisioningContext } from '../../src/control/execution/claims.js'
 import {
   ABANDONED_HOST_LOCAL_INSTANCE_ERROR,
   LEASE_EXPIRED_ERROR,
+  acknowledgeLease,
   expireExecutionLeases,
 } from '../../src/control/execution/leases.js'
+import { buildGcloudInstanceName } from '../../src/control/execution/naming.js'
+import { persistDerivedProviderInstanceRef } from '../../src/control/execution/persistence.js'
 import { runDatabaseTest } from './support.js'
 
 // Plan row 5.2 / audit 5.8: an expired lease used to flip the instance row to
@@ -15,6 +19,13 @@ import { runDatabaseTest } from './support.js'
 // and billing with nothing pointing at it. `expireExecutionLeases` is a global
 // sweep — it expires every overdue lease in the database, not just this file's
 // — so every assertion below counts only rows keyed to its own seed.
+
+// The sweep takes a bounded batch of the *oldest* expired leases per pass, so
+// every lease this file seeds is expired far enough in the past to sort ahead
+// of anything another suite leaves lying around in a shared database. A date
+// this old is not a fiction the sweep can see: it reads `expiresAt < now` and
+// nothing else.
+const LONG_EXPIRED = new Date('2020-01-01T00:00:00.000Z')
 
 type Seed = {
   instanceId: string
@@ -65,7 +76,7 @@ const seedExpiredLease = async (
   })
   const lease = await prisma.executionLease.create({
     data: {
-      expiresAt: new Date(Date.now() - 60_000),
+      expiresAt: LONG_EXPIRED,
       instanceId: instance.id,
       leaseToken: randomUUID(),
       runnerId: runner.id,
@@ -221,6 +232,134 @@ runDatabaseTest(
       )
       assert.equal(instance?.terminatedAt, null)
       assert.equal(instance?.providerInstanceRef, containerId)
+    } finally {
+      await cleanup(prisma, seed)
+      await prisma.$disconnect()
+    }
+  },
+)
+
+// The crash the whole mechanism exists to catch, driven through the real
+// provisioning path instead of a fabricated row.
+//
+// Every seed above creates its instance already carrying a
+// `provider_instance_ref` — a state no production path used to produce, because
+// `persistProvisionSuccess` was the only writer of that column and it commits in
+// the same transaction that moves the lease to `completed`. So the sweep's
+// enqueue could not fire for the one crash it was written for: a worker killed
+// after `gcloud compute instances create` returned and before that transaction
+// landed left the column NULL, the sweep skipped the enqueue, and the VM billed
+// forever.
+//
+// The three calls below are literally the prefix of
+// `allocateExecutionEnvironmentInstance`: claim the instance and issue a lease,
+// acknowledge it, record the reference the provider is about to create. The
+// worker dying is the *absence* of everything after — no
+// `persistProvisionSuccess`, no `markProvisionFailure` — which leaves exactly
+// the row a SIGKILL leaves: lease `acknowledged`, instance `provisioning`.
+runDatabaseTest(
+  'a worker killed between provisioning and persistProvisionSuccess still has its VM reclaimed',
+  async () => {
+    const prisma = new PrismaClient()
+    const projectId = 'nessie-lease-crash'
+    const zone = 'europe-west4-a'
+
+    const org = await prisma.organization.create({
+      data: { name: `lease-crash ${randomUUID()}` },
+    })
+    const template = await prisma.executionEnvironmentTemplate.create({
+      data: {
+        createdByActorId: 'user-seed',
+        createdByActorType: 'user',
+        launchConfig: { image: 'debian-12', projectId, zone },
+        mode: 'vm',
+        name: `tpl ${randomUUID()}`,
+        organizationId: org.id,
+        provider: 'gcloud',
+      },
+    })
+    const instance = await prisma.executionEnvironmentInstance.create({
+      data: {
+        launchedByActorId: 'user-seed',
+        launchedByActorType: 'user',
+        organizationId: org.id,
+        status: 'pending',
+        templateId: template.id,
+      },
+    })
+    const runnerLabelPrefix = `lease-crash-${randomUUID().slice(0, 8)}`
+    await prisma.executionRunner.create({
+      data: {
+        heartbeatAt: new Date(),
+        label: `${runnerLabelPrefix}-gcloud`,
+        organizationId: org.id,
+        provider: 'gcloud',
+        status: 'active',
+      },
+    })
+
+    const seed: Seed = {
+      instanceId: instance.id,
+      leaseId: '',
+      organizationId: org.id,
+      runnerId: '',
+    }
+
+    try {
+      const context = await loadProvisioningContext(prisma, instance.id, runnerLabelPrefix)
+      assert.ok(context, 'the instance should have been claimed and leased')
+      seed.leaseId = context.leaseId
+      seed.runnerId = context.runnerId
+
+      assert.equal(await acknowledgeLease(prisma, context.leaseId), true)
+      await persistDerivedProviderInstanceRef(prisma, context)
+
+      // The name is `buildGcloudInstanceName(instance.id)` because the launch
+      // config sets no explicit `instanceName` — the same branch
+      // `resolveGcloudVmTarget` takes when it builds the `gcloud compute
+      // instances create` arguments, which is why the two cannot disagree.
+      const expectedRef = `gcloud:vm:${projectId}:${zone}:${buildGcloudInstanceName(instance.id)}`
+
+      // Read, do not assert yet: the enqueue below is the behaviour under test,
+      // and asserting the reference here first would fail the test one step
+      // early and hide whether the sweep can actually reclaim the machine.
+      const beforeCrash = await prisma.executionEnvironmentInstance.findUnique({
+        where: { id: instance.id },
+      })
+      assert.equal(beforeCrash?.status, 'provisioning')
+
+      // ---- the worker is killed here; nothing below ever ran on it ----
+
+      // The 5 min lease TTL elapses with nobody renewing it.
+      await prisma.executionLease.update({
+        where: { id: context.leaseId },
+        data: { expiresAt: LONG_EXPIRED },
+      })
+
+      await expireExecutionLeases(prisma)
+
+      assert.equal(
+        await countTerminateJobs(prisma, instance.id),
+        1,
+        'the abandoned VM must be enqueued for termination',
+      )
+      assert.equal(
+        beforeCrash?.providerInstanceRef,
+        expectedRef,
+        'the row must name the machine before the provider is called',
+      )
+
+      const lease = await prisma.executionLease.findUnique({ where: { id: context.leaseId } })
+      assert.equal(lease?.status, 'expired')
+
+      const afterSweep = await prisma.executionEnvironmentInstance.findUnique({
+        where: { id: instance.id },
+      })
+      assert.equal(afterSweep?.status, 'failed')
+      assert.equal(afterSweep?.errorMessage, LEASE_EXPIRED_ERROR)
+      // The terminate job is only useful if the reference survives to the
+      // handler, which reads it off the instance row.
+      assert.equal(afterSweep?.providerInstanceRef, expectedRef)
     } finally {
       await cleanup(prisma, seed)
       await prisma.$disconnect()

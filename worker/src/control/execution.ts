@@ -4,6 +4,7 @@ import { cleanupProvisionedInstance } from './execution/environment-cleanup.js'
 import { acknowledgeLease } from './execution/leases.js'
 import {
   markProvisionFailure,
+  persistDerivedProviderInstanceRef,
   persistProvisionSuccess,
   persistTermination,
 } from './execution/persistence.js'
@@ -61,6 +62,13 @@ export const allocateExecutionEnvironmentInstance = async (
   }
 
   try {
+    // Before the machine exists, not after: a crash between the provider
+    // returning and `persistProvisionSuccess` committing would otherwise leave
+    // a VM running that nothing in the database names, and the lease sweep only
+    // reclaims what the instance row points at. Providers whose reference is
+    // only knowable after the fact (docker) derive nothing and this is a no-op.
+    await persistDerivedProviderInstanceRef(prisma, context)
+
     const provisioned = await provisionProviderInstance(context)
     const persisted = await persistProvisionSuccess(prisma, context, provisioned)
 

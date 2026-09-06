@@ -48,9 +48,28 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 // Pub/Sub terraform module; Postgres is the queue by decision
 // (docs/standards/horizontal-scaling.md). Keeping `'pubsub'` in the enum let a
 // deployment be configured for a provider that no longer exists and then boot
-// silently on Postgres anyway. `NESSIE_QUEUE_PROVIDER=pubsub` is now a startup
-// error naming the retirement instead of a lie that starts.
-export const QueueProviderSchema = z.enum(['local'])
+// silently on Postgres anyway.
+//
+// The error map is the point of the block. A bare `z.enum(['local'])` rejects
+// `NESSIE_QUEUE_PROVIDER=pubsub` with zod's generic "Invalid enum value.
+// Expected 'local', received 'pubsub'", which tells an operator staring at a
+// crashed boot nothing about *why* their working configuration stopped being
+// legal. Naming the retirement in the message is what turns the rejection into
+// an answer.
+export const QueueProviderSchema = z.enum(['local'], {
+  errorMap: (issue, ctx) => {
+    if (issue.code !== z.ZodIssueCode.invalid_enum_value) {
+      return { message: ctx.defaultError }
+    }
+
+    return {
+      message:
+        `Unsupported queue provider '${String(issue.received)}'. Postgres is the queue; `
+        + "the 'pubsub' provider was retired and its adapter deleted "
+        + '(docs/standards/horizontal-scaling.md). Set NESSIE_QUEUE_PROVIDER=local or remove it.',
+    }
+  },
+})
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
 export const ModelProviderSchema = z.enum(['openai', 'kimi', 'deepseek'])

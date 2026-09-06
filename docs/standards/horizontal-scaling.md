@@ -548,6 +548,41 @@ the host's own restart still has to reap. This is the same refusal
 The general rule: when a sweep cannot reach the resource, it records that it
 could not, never a state it did not achieve.
 
+**Corollary — the address of a cloud resource is written before it is created,
+not after.** A reaper can only reclaim what the database names, so the reference
+has to be in the row before the call that spends money, not after it returns.
+`persistProvisionSuccess` was the only writer of
+`execution_environment_instances.provider_instance_ref`, and it commits in the
+same transaction that moves the lease to `completed` — so the column was NULL
+for exactly the crash the sweep above exists to catch (a worker killed between
+`gcloud compute instances create` returning and that transaction landing), and
+non-NULL only on rows whose lease the sweep no longer selects. The enqueue could
+never fire on a state any production path produced.
+`allocateExecutionEnvironmentInstance` therefore calls
+`persistDerivedProviderInstanceRef` **before** `provisionProviderInstance`.
+
+Two things make that safe rather than a second lie. First, the reference is
+derived, never guessed: `deriveGcloudProviderInstanceRef` and the provision path
+share `resolveGcloudVmTarget` / `resolveGcloudFunctionTarget`, so the string
+written beforehand and the string `persistProvisionSuccess` overwrites it with
+are produced by one function and cannot drift. Second, the window it opens —
+a row naming a machine that may never be created — resolves honestly, because
+`terminateGcloud` swallows a `not found` from `gcloud … delete` as already-gone.
+A provider whose reference is only knowable *after* the fact derives nothing:
+`docker`'s is the container id `docker run` prints, so a docker instance
+abandoned mid-provision carries no reference and gets the ordinary
+`EXECUTION_LEASE_EXPIRED`, which is the truth.
+
+**Corollary — a sweep every replica runs on an interval reads a bounded batch.**
+`expireExecutionLeases` takes the 50 oldest expired leases per pass and lets the
+next pass take the rest. Unbounded, the first tick after a full-fleet outage
+past the 5 min lease TTL loads the entire backlog into memory on every replica
+at once, and each row costs a transaction plus a workflow-continuation read.
+Batching is safe here because the work is claim-based: an expired lease leaves
+the predicate once it is `expired`, so successive passes make forward progress
+and skip nothing. Oldest first, so the machine billing longest is reclaimed
+first.
+
 ## 8. Instance identity is a UUID minted at boot, never `HOSTNAME`
 
 **And every row keyed by it carries a heartbeat and is reaped.**

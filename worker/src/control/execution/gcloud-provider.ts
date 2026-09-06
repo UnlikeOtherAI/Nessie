@@ -97,6 +97,111 @@ export const probeGcloud = async (): Promise<ProviderProbe> => {
   }
 }
 
+const gcloudLaunchConfig = (context: ProvisioningContext): Record<string, unknown> =>
+  mergeLaunchConfig(context.instance.template.launchConfig, context.instance.launchConfig)
+
+type GcloudVmTarget = {
+  metadata: Record<string, unknown>
+  name: string
+  projectId: string
+  providerInstanceRef: string
+  zone: string
+}
+
+type GcloudFunctionTarget = {
+  image: string
+  jobName: string
+  metadata: Record<string, unknown>
+  projectId: string
+  providerInstanceRef: string
+  region: string
+}
+
+// The single place a `gcloud:vm:…` reference is spelled, and the single place
+// the VM's name is decided. `buildGcloudVmArgs` and
+// `deriveGcloudProviderInstanceRef` both go through it, so the reference
+// written to the instance row *before* `gcloud compute instances create` runs
+// and the one written after it returns cannot drift apart. Returns null when
+// the launch config cannot name a target; the caller decides whether that is a
+// provisioning error or simply nothing to derive.
+const resolveGcloudVmTarget = (
+  context: ProvisioningContext,
+  config: Record<string, unknown>,
+): GcloudVmTarget | null => {
+  const projectId = parseString(config['projectId'])
+  const zone = parseString(config['zone'])
+  if (!projectId || !zone) {
+    return null
+  }
+
+  const name = parseString(config['instanceName']) ?? buildGcloudInstanceName(context.instance.id)
+
+  return {
+    metadata: {
+      instanceName: name,
+      projectId,
+      zone,
+    },
+    name,
+    projectId,
+    providerInstanceRef: `gcloud:vm:${projectId}:${zone}:${name}`,
+    zone,
+  }
+}
+
+// The same contract for Cloud Run jobs: one spelling of `gcloud:function:…`,
+// one decision about `jobName`, shared by the deploy/execute arg builder and
+// the pre-provision derivation.
+const resolveGcloudFunctionTarget = (
+  context: ProvisioningContext,
+  config: Record<string, unknown>,
+): GcloudFunctionTarget | null => {
+  const projectId = parseString(config['projectId'])
+  const region = parseString(config['region'])
+  const image = parseString(config['image']) ?? context.instance.template.image ?? undefined
+  if (!projectId || !region || !image) {
+    return null
+  }
+
+  const jobName = parseString(config['jobName']) ?? buildGcloudInstanceName(context.instance.id)
+
+  return {
+    image,
+    jobName,
+    metadata: {
+      jobName,
+      projectId,
+      region,
+    },
+    projectId,
+    providerInstanceRef: `gcloud:function:${projectId}:${region}:${jobName}`,
+    region,
+  }
+}
+
+// The reference a gcloud provision *will* create, computed before the provider
+// is called. Both names are deterministic — the launch config's explicit
+// `instanceName`/`jobName`, otherwise `buildGcloudInstanceName(instance.id)` —
+// so the full reference is knowable from the instance row alone, which is what
+// lets `allocateExecutionEnvironmentInstance` record the intent before the side
+// effect. Null means there is nothing to derive: an incomplete launch config
+// (the provision below is about to throw over the same fields) or a mode this
+// provider does not implement.
+export const deriveGcloudProviderInstanceRef = (
+  context: ProvisioningContext,
+): string | null => {
+  const config = gcloudLaunchConfig(context)
+
+  if (context.instance.template.mode === 'vm') {
+    return resolveGcloudVmTarget(context, config)?.providerInstanceRef ?? null
+  }
+  if (context.instance.template.mode === 'function') {
+    return resolveGcloudFunctionTarget(context, config)?.providerInstanceRef ?? null
+  }
+
+  return null
+}
+
 const buildGcloudVmArgs = async (
   context: ProvisioningContext,
 ): Promise<{
@@ -105,17 +210,13 @@ const buildGcloudVmArgs = async (
   metadata: Record<string, unknown>
   providerInstanceRef: string
 }> => {
-  const config = mergeLaunchConfig(
-    context.instance.template.launchConfig,
-    context.instance.launchConfig,
-  )
-  const projectId = parseString(config['projectId'])
-  const zone = parseString(config['zone'])
-  if (!projectId || !zone) {
+  const config = gcloudLaunchConfig(context)
+  const target = resolveGcloudVmTarget(context, config)
+  if (!target) {
     throw new Error('GCLOUD_VM_PROJECT_AND_ZONE_REQUIRED')
   }
+  const { name, projectId, zone } = target
 
-  const name = parseString(config['instanceName']) ?? buildGcloudInstanceName(context.instance.id)
   const args = [
     'compute',
     'instances',
@@ -223,12 +324,8 @@ const buildGcloudVmArgs = async (
   return {
     args,
     cleanup,
-    metadata: {
-      instanceName: name,
-      projectId,
-      zone,
-    },
-    providerInstanceRef: `gcloud:vm:${projectId}:${zone}:${name}`,
+    metadata: target.metadata,
+    providerInstanceRef: target.providerInstanceRef,
   }
 }
 
@@ -240,18 +337,13 @@ const buildGcloudFunctionArgs = (
   metadata: Record<string, unknown>
   providerInstanceRef: string
 } => {
-  const config = mergeLaunchConfig(
-    context.instance.template.launchConfig,
-    context.instance.launchConfig,
-  )
-  const projectId = parseString(config['projectId'])
-  const region = parseString(config['region'])
-  const image = parseString(config['image']) ?? context.instance.template.image ?? undefined
-  if (!projectId || !region || !image) {
+  const config = gcloudLaunchConfig(context)
+  const target = resolveGcloudFunctionTarget(context, config)
+  if (!target) {
     throw new Error('GCLOUD_FUNCTION_PROJECT_REGION_IMAGE_REQUIRED')
   }
+  const { image, jobName, projectId, region } = target
 
-  const jobName = parseString(config['jobName']) ?? buildGcloudInstanceName(context.instance.id)
   const env = parseStringRecord(config['env'])
   const tasks = parseString(config['tasks'])
   const maxRetries = parseString(config['maxRetries'])
@@ -268,12 +360,8 @@ const buildGcloudFunctionArgs = (
   return {
     deployArgs,
     executeArgs,
-    metadata: {
-      jobName,
-      projectId,
-      region,
-    },
-    providerInstanceRef: `gcloud:function:${projectId}:${region}:${jobName}`,
+    metadata: target.metadata,
+    providerInstanceRef: target.providerInstanceRef,
   }
 }
 

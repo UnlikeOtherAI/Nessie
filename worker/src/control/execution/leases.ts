@@ -194,6 +194,20 @@ const buildLeaseSweepActorContext = (input: {
   },
 })
 
+// One pass reclaims at most this many leases. Unbounded, the pass after a
+// full-fleet outage past the 5 min TTL loads every abandoned lease in the
+// database into memory on *every* worker at once, and each row costs a
+// transaction plus a workflow-continuation read — so the sweep that exists to
+// stop cloud machines billing is the sweep that stalls the reconcile interval.
+// 50 matches the other bounded control sweeps (`gmail-send-sweep`,
+// `board-source-webhooks-renew`) and, at the 15 s interval in
+// `worker/src/index.ts`, drains 200 leases a minute per replica. Batching is
+// safe because the work is claim-based: an expired lease leaves the predicate
+// once it is `expired`, so the next pass takes the next batch and nothing is
+// skipped. Oldest first, so the machine that has been billing longest is the
+// one reclaimed first.
+const EXPIRED_LEASE_SWEEP_BATCH = 50
+
 export const expireExecutionLeases = async (
   prisma: PrismaClient,
 ): Promise<number> => {
@@ -207,6 +221,10 @@ export const expireExecutionLeases = async (
         in: ['issued', 'acknowledged'],
       },
     },
+    orderBy: {
+      expiresAt: 'asc',
+    },
+    take: EXPIRED_LEASE_SWEEP_BATCH,
     select: {
       id: true,
       instanceId: true,
