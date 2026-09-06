@@ -258,7 +258,16 @@ const main = async (): Promise<void> => {
 
   const workers = mocks.map((mock, index) =>
     startProcess(`worker-${index + 1}`, resolve(REPO_ROOT, 'worker', 'dist', 'index.js'), {
-      ...shared, NESSIE_MODEL_BASE_URL: `${mock.url}/v1`,
+      ...shared,
+      NESSIE_MODEL_BASE_URL: `${mock.url}/v1`,
+      // The SIGKILL escalation below is compressed to two seconds, while the
+      // production drain deadline is 25 s and the run-drain grace 5 s — so at
+      // the defaults the chaos step can only ever observe the SIGKILL, never a
+      // drain. Compressed to match, which is what puts the abandoned job back
+      // to `pending` inside the window instead of leaving it on a dead lease.
+      ...(CHAOS
+        ? { NESSIE_RUN_DRAIN_GRACE_MS: '300', NESSIE_WORKER_DRAIN_TIMEOUT_MS: '300' }
+        : {}),
     }))
   const ready = (w: Managed): boolean => /"status": "ready"/.test(w.log())
   await Promise.all(workers.map((w) => waitFor(`${w.label} ready`, () => ready(w), 180_000)))
