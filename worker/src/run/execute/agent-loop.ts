@@ -32,6 +32,7 @@ import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
+import { createToolEffectLedger } from './tool-effect-ledger.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { runReplyIsRestricted } from './agent-message.js'
 import {
@@ -373,6 +374,15 @@ export const runExecutionAgentLoop = async (
     }
   }
 
+  // Durable tool idempotency (invariant 4 / plan 3.2): a side-effecting call is
+  // claimed in Postgres before it runs. Wrapped BELOW the loop's own recorder,
+  // which stays the fast path — the precedence, and why every
+  // `externalToolNames` dispatch is claimed, are in `tool-effect-ledger.ts`.
+  const effects = createToolEffectLedger(deps.prisma, {
+    externalToolNames,
+    runId: context.run.id,
+  }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
+
   const loopResult = await runAgenticLoop({
     budget: input.budget,
     cacheReadWeight: input.cacheReadWeight,
@@ -499,10 +509,10 @@ export const runExecutionAgentLoop = async (
         await input.crashCheckpoint.write(state)
       },
     },
-    executeTool: executeMainTool,
+    executeTool: effects.executeTool,
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
-    prepareTool: prepareMainTool,
+    ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
     runInference: (messages) =>
       input.inference.runMain(messages, [...input.toolDefs, ...mcpView.descriptors]),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,

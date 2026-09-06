@@ -161,9 +161,57 @@ matches no row. Beside it:
   before the last record could land last — dropping that record and re-running
   its tool. After N concurrent records the durable row holds all N.
 - **What the record guarantees, exactly.** A tool whose result reached durable
-  storage never runs again. The window that cannot be closed is between a tool's
-  side effect committing at the provider and its record committing in Postgres:
-  a worker that dies in there replays that one call.
+  storage never runs again. The window the record alone cannot cover is between
+  a tool's side effect committing at the provider and its record committing in
+  Postgres; that window is closed by the ledger below.
+- **A side-effecting call is claimed before it is dispatched.**
+  `run_tool_effects` is unique on `(run_id, tool_call_id)` and carries the tool
+  name, a state, the settled result and its timestamps.
+  `worker/src/run/execute/tool-effect-ledger.ts` commits a `dispatched` row **on
+  its own, before** the call runs — folded into any longer transaction it would
+  become durable only after the side effect, which is the window it exists for —
+  and settles it to `completed` (with the result) or `failed` afterwards. So a
+  later execution can tell three states apart: **no row**, the call never
+  started and runs normally; **`completed`**, it is answered from the recorded
+  result, without re-authorising; **`dispatched`**, the outcome is genuinely
+  unknown, and the call is **not** repeated — the model is told, in the tool
+  result, that the call was started, that its outcome was never recorded, and
+  that it has deliberately not been retried, so the agent checks rather than
+  acting on a fabricated success or failure.
+- **Precedence between the two, and it is structural.** The crash checkpoint's
+  recorded results are the fast path: the recorder wraps the ledger, so a call
+  this run already recorded is answered in memory and never reaches a query. The
+  ledger is the durable backstop, and only ever sees a call the checkpoint has
+  no record of — a crash before its write landed, state too large to persist, a
+  process that never saw the checkpoint at all. Both are keyed by the provider's
+  tool-call id within the run, so they cannot disagree about what "this call"
+  means.
+- **Scope, and why it is not every tool.** Claimed: a builtin that is not `safe`
+  **and** whose category is one whose effects leave the agent's own workspace
+  (`EFFECTFUL_TOOL_CATEGORY_IDS` in `@nessie/schemas` — mail, calendar, agent
+  mailbox, conversation, channels, calls, projects and tickets, scheduling,
+  agents, apps, browser, executors), plus everything structurally
+  approval-gated, plus every MCP, HTTP-connector and executor dispatch, whose
+  names are per installation and which leave Nessie by construction. Not
+  claimed: read-only tools, and the agent's own workspace — knowledge,
+  files, dashboards, workflows, to-dos, preferences — where a duplicate is
+  visible to the agent and correctable on its next turn, and where the writes
+  are frequent enough that a row per call would be paid where it buys least.
+  Membership is by declared category, never a hand-kept id list, so a new tool
+  inherits the decision from where it already had to say it belongs.
+- **Retention is fused to the status chokepoint.** `updateRunStatus` deletes a
+  run's claims on every terminal and suspended transition, beside the crash
+  state it already sheds: a terminal run is never resumed, and a suspended one
+  is continued by a NEW run whose tool calls carry new ids, so from that
+  statement onwards nothing can consult them. The `ON DELETE CASCADE` on
+  `run_id` is the backstop for a run deleted outright.
+- **What remains true.** Nothing short of a distributed transaction with the
+  provider makes a side effect and its record atomic, so the ledger does not
+  make a tool exactly-once: it makes the *ambiguity* durable and visible instead
+  of silently resolving it as "run it again". A call interrupted in that window
+  is reported to the agent as unknown, and the decision is the agent's. A
+  re-entered batch also still re-emits `agent.tool.start`/`end`, so a tool that
+  ran once can leave two `ToolCall` telemetry rows.
 - **Resume is in place, not a continuation.** `claimRunForExecution` reports the
   pre-claim status; a `running` one means a takeover, so `executeRunJob` loads
   the crash state and the loop restores the transcript, iteration count,
@@ -179,7 +227,7 @@ matches no row. Beside it:
   cleared so the next worker claims it on its next poll rather than waiting out
   the takeover window, and the job is nacked with reason `worker_drain`.
 
-Two things this finding still owes, both proved by the two-instance chaos smoke:
+What this finding still owes, proved by the two-instance chaos smoke:
 
 - **The handler is signalled at the drain deadline, not at its start.**
   `drainQueueSubscriptions` (`worker/src/lifecycle.ts`) stops the subscriptions
@@ -192,13 +240,6 @@ Two things this finding still owes, both proved by the two-instance chaos smoke:
   and did before this phase too. The fix is a second `AbortController` for
   in-flight handlers, aborted at the *start* of the drain, with the drain
   awaiting `subscription.done` after abandoning — invariant 6's territory.
-- **Tool idempotency is a checkpoint, not a constraint.** A
-  `run_tool_effects (run_id, tool_call_id)` unique row written before any
-  side-effecting builtin executes is plan row 3.2. The recorded results above
-  make a resumed run skip tools it already ran, but a tool interrupted between
-  its side effect and its result being recorded can still run twice. A re-entered
-  batch also re-emits `agent.tool.start`/`end`, so its `ToolCall` telemetry row
-  is written twice for a tool that ran once.
 
 ## 5. Boot connects and listens — nothing else
 
