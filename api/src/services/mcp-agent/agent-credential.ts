@@ -195,6 +195,17 @@ export const verifyAgentAccessCredential = async (
   // credential minted before it is as dead as that person's access tokens.
   // Without this, "sign me out everywhere" would quietly mean "everywhere
   // except the agents I lent my account to".
+  //
+  // This is deliberately NOT bound to the browser session that approved the
+  // pairing, which is the one place this credential diverges from
+  // `VoiceDeviceCredential` — that one stores a `sessionId` and dies with it,
+  // because a phone on a call is an extension of that particular sign-in. An
+  // agent is not: it runs for weeks on a machine the approver has walked away
+  // from, and closing the laptop tab that approved it must not stop it. The
+  // user-wide generation above is what covers the case that matters — "sign me
+  // out everywhere" — while an ordinary single-device logout leaves the agent
+  // running, which is what a person who paired it would expect. Revoking it
+  // deliberately is the Agent access page.
   if (!user || user.tokenVersion !== credential.tokenVersion) {
     return {
       code: 'AGENT_CREDENTIAL_REVOKED',

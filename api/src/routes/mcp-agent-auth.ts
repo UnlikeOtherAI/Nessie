@@ -116,13 +116,11 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         })
       }
 
-      // RFC 8628 §3.5 keeps polling errors at 400 with a machine-readable
-      // `error`, because a client implementing the standard already knows what
-      // each one means: keep waiting, back off, or stop.
-      const status = result.kind === 'slow_down' || result.kind === 'authorization_pending'
-        ? 400
-        : 400
-      return reply.code(status).send({
+      // RFC 8628 §3.5 keeps every polling outcome at 400 with a
+      // machine-readable `error` — including the ones that are not failures at
+      // all. A client implementing the standard already knows what each means:
+      // keep waiting, back off, or stop.
+      return reply.code(400).send({
         error: result.kind,
         ...(result.kind === 'slow_down' ? { interval: DEVICE_POLL_INTERVAL_SECONDS * 2 } : {}),
       })

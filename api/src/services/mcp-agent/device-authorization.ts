@@ -273,14 +273,3 @@ export const redeemDeviceAuthorization = async (
 
   return { credential, kind: 'issued' }
 }
-
-/** Housekeeping: pending rows past their expiry are not decisions to keep. */
-export const expireStaleAuthorizations = async (
-  prisma: PrismaClient,
-): Promise<number> => {
-  const expired = await prisma.agentAuthorizationRequest.updateMany({
-    data: { status: 'expired' },
-    where: { expiresAt: { lte: new Date() }, status: 'pending' },
-  })
-  return expired.count
-}
