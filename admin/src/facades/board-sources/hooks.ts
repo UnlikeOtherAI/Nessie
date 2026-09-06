@@ -128,8 +128,25 @@ export const useProjectSources = (projectId?: string) => {
     queryKey: projectKeys.sources(projectId ?? ''),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/sources`),
     enabled: Boolean(projectId),
+    // A sync is claimed by a sweep up to half a minute after the press and then
+    // runs for as long as the provider takes, so "Sync now" has nothing to
+    // report unless this asks again. Only while one is actually in flight —
+    // an idle board makes no extra request, which is what the connected-mail
+    // e2e (and the battery) require.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some(isSourceSyncing) ? 5000 : false,
   })
 }
+
+/**
+ * A run claimed but not finished. Exported because the strip renders it and the
+ * refetch decides on it, and two spellings of "is it syncing" would drift into
+ * a spinner that never stops.
+ */
+export const isSourceSyncing = (source: BoardSourceRecord): boolean =>
+  source.lastSyncStartedAt !== null &&
+  (source.lastSyncCompletedAt === null ||
+    Date.parse(source.lastSyncStartedAt) > Date.parse(source.lastSyncCompletedAt))
 
 export const useProjectSource = (projectId?: string, sourceId?: string) => {
   const apiClient = useApiClient()

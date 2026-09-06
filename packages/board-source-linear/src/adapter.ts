@@ -12,8 +12,10 @@ import {
   type OutboundChange,
   type SyncCheckpoint,
   type SyncPage,
+  SourceAuthError,
   SourceContainerGoneError,
   SourceCredentialRejectedError,
+  SourceHttpError,
   SourceRejectedError,
   type WebhookDelivery,
   type WebhookRegistration,
@@ -38,6 +40,8 @@ import {
   TEAMS_QUERY,
   TEAM_DESCRIPTION_QUERY,
   VIEWER_QUERY,
+  WEBHOOK_CREATE_MUTATION,
+  WEBHOOK_DELETE_MUTATION,
 } from './queries.js'
 
 export type LinearAdapterConfig = {
@@ -386,9 +390,56 @@ const verifyLinearApiKey = async (values: Record<string, string>): Promise<Conne
     return data.issues.nodes.map(normaliseLinearIssue)
   },
 
-  // Linear webhooks are configured once on the OAuth app and fire for every
-  // workspace that authorised it, so there is nothing to register per source.
-  ensureWebhook: async (): Promise<WebhookRegistration | null> => null,
+  /**
+   * Ask Linear to call this deployment when the team's issues change.
+   *
+   * An app-level webhook is the other way in, but it exists only where the
+   * deployment registered an OAuth app *and* configured one on it — which no
+   * install gets for free, and none at all gets for a pasted API key. So the
+   * source registers its own, and the deployment needs nothing configured to
+   * have a board that updates in seconds instead of five minutes.
+   *
+   * Linear only lets a workspace admin (or an OAuth grant carrying `admin`,
+   * which this adapter's `read,write` does not ask for) manage webhooks. That
+   * refusal is the expected answer for an ordinary member's key, not a fault,
+   * so it returns null and the declared poll stays the story.
+   */
+  ensureWebhook: async (
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    callback: { url: string },
+  ): Promise<WebhookRegistration | null> => {
+    let data: { webhookCreate: { success: boolean; webhook: LinearWebhook | null } }
+    try {
+      data = await linearGraphQl(ctx.credential.accessToken, WEBHOOK_CREATE_MUTATION, {
+        input: buildWebhookCreateInput(container, callback),
+      })
+    } catch (cause) {
+      if (isWebhookRegistrationRefused(cause)) return null
+      throw cause
+    }
+    const webhook = data.webhookCreate.webhook
+    if (!data.webhookCreate.success || !webhook) return null
+    return {
+      externalId: webhook.id,
+      // Linear webhooks do not expire; a disabled one is the workspace's own
+      // decision, and re-creating it behind their back would be wrong.
+      expiresAt: null,
+      // Handed over exactly once. Nothing reads it back, so a caller that does
+      // not persist it has silently downgraded itself to polling.
+      ...(webhook.secret ? { signingSecret: webhook.secret } : {}),
+    }
+  },
+
+  removeWebhook: async (
+    ctx: ConnectionContext,
+    _container: Record<string, unknown>,
+    externalId: string,
+  ): Promise<void> => {
+    await linearGraphQl(ctx.credential.accessToken, WEBHOOK_DELETE_MUTATION, {
+      id: externalId,
+    })
+  },
 
   verifyWebhook: (request: WebhookRequest, secrets: WebhookSecrets): boolean => {
     const signature = request.headers['linear-signature']
@@ -419,9 +470,13 @@ const verifyLinearApiKey = async (values: Record<string, string>): Promise<Conne
     }
     const externalId = parsed.data?.id
     return {
-      deliveryId: `${parsed.webhookId ?? 'linear'}:${externalId ?? 'none'}:${
-        parsed.webhookTimestamp ?? 0
-      }`,
+      // Linear has no delivery header; the payload names the webhook and the
+      // moment it fired, and a redelivery repeats both byte for byte. Without
+      // `webhookId` there is nothing provider-supplied to key on, so the
+      // caller hashes the body instead of keying on a partly-invented string.
+      deliveryId: parsed.webhookId
+        ? `${parsed.webhookId}:${externalId ?? 'none'}:${parsed.webhookTimestamp ?? 0}`
+        : null,
       containerKey: parsed.data?.team?.id ?? parsed.data?.teamId ?? null,
       externalIds: externalId ? [externalId] : [],
     }
@@ -464,6 +519,40 @@ const verifyLinearApiKey = async (values: Record<string, string>): Promise<Conne
     return normaliseLinearIssue(data.issueUpdate.issue)
   },
 })
+
+type LinearWebhook = { id: string; enabled: boolean; secret?: string | null }
+
+/**
+ * What `webhookCreate` is asked for: this team's issues, at this URL.
+ *
+ * `Issue` alone, deliberately. The mirror holds issues, and every extra
+ * resource type is a delivery the processor would fetch an issue for and then
+ * apply nothing from — §5.3 keeps comments out of the mirror on purpose.
+ */
+export const buildWebhookCreateInput = (
+  container: Record<string, unknown>,
+  callback: { url: string },
+): Record<string, unknown> => ({
+  url: callback.url,
+  teamId: String(container.teamId ?? ''),
+  resourceTypes: ['Issue'],
+  enabled: true,
+  label: 'Nessie board source',
+})
+
+/**
+ * Whether Linear said no, as opposed to something breaking on the way there.
+ *
+ * Only a workspace admin may manage webhooks, so an ordinary member's key being
+ * refused is the *common* case, not a fault — marking the source
+ * `misconfigured` for it would alert every such install about a board that is
+ * syncing perfectly well on its five-minute poll. A refusal arrives either
+ * inside a 200 (Linear's GraphQL errors, which `linearGraphQl` raises as
+ * `SourceHttpError`) or as a 401/403; anything else — a timeout, a DNS
+ * failure — is a real fault and is left to propagate.
+ */
+export const isWebhookRegistrationRefused = (cause: unknown): boolean =>
+  cause instanceof SourceHttpError || cause instanceof SourceAuthError
 
 /** The reverse of `LINEAR_PRIORITY_TOKENS`, for write-back. */
 const LINEAR_PRIORITY_NUMBERS: Record<string, number> = {

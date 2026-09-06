@@ -717,6 +717,30 @@ CHECK, the composite tenancy FK) were each proven to refuse against live
 Postgres, and five DB-backed tests cover the lifecycle claims; neutralising
 the provider-stop call fails exactly the two tests that assert it.
 
+**Amended 2026-09-06 — the connect URL is now persisted, sealed** (audit 8.1 /
+horizontal-scaling row 2.7). "Nothing is persisted" kept the CDP connect URL
+and the origin gate in one worker's memory and *only* there, which assumed one
+worker. A run that suspends for the §6.1 approval is re-enqueued and claimed by
+whichever worker is free; there the pool held nothing, so `acquireCdp` returned
+null, reopening refused with `SESSION_ALREADY_OPEN`, the browser billed to its
+TTL undriven — and `act-approval-gate` read the missing gate as "nothing to
+gate", passing the very write the person was being asked about. So
+`cloud_browser_sessions` now carries `connect_capability_ciphertext` and
+`origin_gate`. The URL is sealed with `sealSecret`/`openSecret`
+(`@nessie/runtime`, the AES-256-GCM packing executor command payloads use,
+keyed off `config.auth.secret`), written in the statement that flips the row to
+`active` so no session is live-and-unreachable, and cleared in the UPDATE that
+claims the release rather than at `released` — a sealed URL outliving its
+session is a bearer token with nothing bounding it. The gate is written beside
+it and on every change; `session-pool` became a read-through socket cache, and
+the act gate escalates when no gate can be read.
+
+**What an operator must assume:** a read of `cloud_browser_sessions` *plus* the
+auth secret is a live browser handle — signed-in, for a durable browser — until
+release or TTL (10 min default, 30 max), the assumption `executor_commands`
+already carries. A rotated auth secret reads as "connection lost" and escalates
+pending writes; nothing strands, the reaper needs the Browserbase key not this.
+
 **Phase 2 — agent browsers + login handoff. — BUILT 2026-09-02**, deltas in §5b.
 `AgentBrowser` + `AgentBrowserLogin`, context create/attach
 (`persist: true`), single-session claim per agent browser + the connection

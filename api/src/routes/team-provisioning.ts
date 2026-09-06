@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  isAdminActor,
+  OrganizationThemeSchema,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
@@ -314,8 +318,18 @@ export const registerTeamProvisioningRoutes = (
    * needs to enter a team asks `/api/hosts/team`, which is authenticated.
    *
    * What it does disclose is that an organisation of a given name exists on
-   * this domain, with its display name and mark. That is inherent in giving a
-   * tenant a public branded address at all.
+   * this domain, with its display name, mark and palette. That is inherent in
+   * giving a tenant a public branded address at all — every one of those is on
+   * screen the moment the page renders.
+   *
+   * The palette is the deliberate exception to "the sign-in screen is instance
+   * state, not tenant state"
+   * (docs/plans/2026-09-05-organisation-custom-theme.md §4.3). That rule exists
+   * because before sign-in nobody knows which organisation the visitor belongs
+   * to, and an org admin choosing the shared login screen would be choosing it
+   * for every other tenant. On a tenant hostname neither is true: the address
+   * names the organisation, and the choice reaches only that organisation's own
+   * address. `app.nessie.works` stays neutral, and §4.3 still governs it.
    */
   app.get('/api/hosts/resolve', { config: { public: true } }, async (request, reply) => {
     const query = parseInput(ResolveHostQuerySchema, request.query, reply)
@@ -328,6 +342,18 @@ export const registerTeamProvisioningRoutes = (
       const organisation = await resolveUoaOrgHost({ orgSlug: parsed.orgSlug }, rosterDeps)
       if (!organisation) return createApiResponse({ kind: null })
 
+      // The palette is this product's own record, keyed by the UOA id UOA just
+      // vouched for — so an unknown organisation cannot reach a local row, and
+      // a local row cannot be reached by any name UOA did not resolve first.
+      const local = await prisma.organization.findUnique({
+        select: { theme: true },
+        where: { externalOrgId: organisation.externalOrgId },
+      })
+      const parsedTheme = OrganizationThemeSchema.safeParse(local?.theme)
+      // A palette that no longer validates is dropped rather than sent: the
+      // page renders the default instead of a half-applied one.
+      const theme = parsedTheme.success ? parsedTheme.data : null
+
       // Where sign-in happens. A tenant host is never a registered OAuth
       // redirect target — UOA matches redirect URLs byte-for-byte and tenant
       // hostnames are created at runtime — so a signed-out visitor is handed
@@ -335,7 +361,11 @@ export const registerTeamProvisioningRoutes = (
       const signInOrigin =
         process.env.NESSIE_ADMIN_PUBLIC_URL ?? process.env.NESSIE_ADMIN_ORIGIN ?? null
 
-      return createApiResponse({ kind: parsed.kind, organisation, signInOrigin })
+      return createApiResponse({
+        kind: parsed.kind,
+        organisation: { ...organisation, theme },
+        signInOrigin,
+      })
     } catch (error) {
       if (error instanceof UoaRosterUnavailableError) {
         return createApiResponse({ kind: null })

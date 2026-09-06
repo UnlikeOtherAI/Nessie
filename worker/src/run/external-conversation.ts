@@ -35,6 +35,7 @@ import {
 import {
   claimRunForExecution,
   setAgentStatus,
+  startExecutorHeartbeat,
   updateRunStatus,
   updateTaskStatus,
 } from './execute/lifecycle.js'
@@ -323,10 +324,20 @@ export const runExternalConversation = async (
   prompt: string,
   options: ExternalConversationOptions = {},
 ): Promise<void> => {
-  const claimed = await claimRunForExecution(deps.prisma, context.run.id)
-  if (!claimed) {
+  // The claim stamps this run's fencing token into the surrounding job's
+  // context, so an external turn's terminal writes are fenced by the same
+  // chokepoint the inference path uses. The heartbeat keeps the claim alive
+  // while the external product is answering, and is stopped below.
+  const claim = await claimRunForExecution(deps.prisma, context.run.id)
+  if (!claim.claimed) {
+    // Terminal, or a live executor holds it: the turn is being driven
+    // elsewhere, so this one records nothing and lets the job be acked.
+    console.log(
+      `[worker] external run ${context.run.id} is terminal or held by a live executor; skipping`,
+    )
     return
   }
+  const heartbeat = startExecutorHeartbeat(deps.prisma, context.run.id)
 
   const secretResolver = options.secretResolver ?? deps.mcpSecrets?.resolver ?? defaultSecretResolver
   const callChat = options.callChat ?? defaultCallChat
@@ -419,5 +430,7 @@ export const runExternalConversation = async (
       // If even finalize fails, fall back to a bare terminal status write.
       return updateRunStatus(deps.prisma, context.run.id, 'failed').catch(() => undefined)
     })
+  } finally {
+    heartbeat.stop()
   }
 }

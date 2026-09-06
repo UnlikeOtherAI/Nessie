@@ -78,6 +78,12 @@ export const listChannelsForUser = async (
           principalUserId: { not: null },
           agent: { agentKind: 'personal_assistant' },
         },
+        // Participants are rendered in this order, so it has to be the same
+        // order every read. Unordered, Postgres is free to return the rows
+        // however it likes and the channel's PA list reshuffles between
+        // requests; the id breaks the ties two presences created in the same
+        // millisecond would otherwise leave open.
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: {
           agentId: true,
           id: true,

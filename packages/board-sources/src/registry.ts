@@ -45,6 +45,21 @@ export const resolveBoardSourceAdapter = (
   return factory()
 }
 
+/**
+ * How long this provider's board can lag when nothing is pushed to it, or null
+ * when the provider is not registered here at all. Non-throwing on purpose: a
+ * *read* of a source whose provider this deployment no longer configures must
+ * still answer, where a sync of one must park.
+ */
+export const boardSourcePollingIntervalMs = (
+  provider: BoardSourceProvider,
+): number | null => {
+  const intervalMs = registry.get(provider)?.().incrementalPollingIntervalMs
+  return typeof intervalMs === 'number' && Number.isFinite(intervalMs) && intervalMs > 0
+    ? intervalMs
+    : null
+}
+
 /** Registered adapters that ask for a periodic incremental sweep. */
 export const listPollingAdapters = (): Array<{
   provider: BoardSourceProvider

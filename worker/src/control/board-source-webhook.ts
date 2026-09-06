@@ -4,8 +4,11 @@ import {
   type BoardSourceProvider,
   resolveBoardSourceAdapter,
 } from '@nessie/board-sources'
+import { openSecret } from '@nessie/runtime'
 import {
   applyInboundItem,
+  autoMatchItemAssignees,
+  externalTenantKeyFor,
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
   loadIdentityLinks,
@@ -13,7 +16,7 @@ import {
   parseStateMapping,
 } from '@nessie/team-admin'
 
-import type { BoardSourceSyncDeps } from './board-source-sync.js'
+import { webhookCallbackUrl, type BoardSourceSyncDeps } from './board-source-sync.js'
 
 /**
  * A vendor webhook delivery.
@@ -57,7 +60,7 @@ export const processBoardSourceWebhook = async (
 
   let applied = 0
   for (const source of sources) {
-    if (!adapter.verifyWebhook(request, { tokenHash: source.webhookTokenHash ?? undefined })) {
+    if (!adapter.verifyWebhook(request, webhookSecrets(deps, source, job))) {
       // Not an error worth a health state: an unverifiable delivery is either a
       // forgery or a stale registration, and neither means the source is broken.
       continue
@@ -80,6 +83,11 @@ export const processBoardSourceWebhook = async (
         : []
     if (items.length === 0) continue
 
+    const tenant = {
+      organizationId: source.organizationId,
+      provider: source.provider,
+      externalTenantKey: externalTenantKeyFor(source),
+    }
     const applyContext = {
       id: source.id,
       organizationId: source.organizationId,
@@ -87,17 +95,11 @@ export const processBoardSourceWebhook = async (
       provider: source.provider,
       stateMapping: parseStateMapping(source.stateMapping),
       fieldMappings: parseFieldMappings(source.fieldMappings),
-      identityByExternalUserId: await loadIdentityLinks(prisma, {
-        organizationId: source.organizationId,
-        provider: source.provider,
-        externalTenantKey:
-          source.provider === 'linear'
-            ? source.connection.externalTenantId
-            : source.provider === 'jira'
-              ? String(container.cloudId ?? '')
-              : source.provider,
-      }),
+      identityByExternalUserId: await loadIdentityLinks(prisma, tenant),
     }
+    // The same rule as a sync page: a reassignment upstream to somebody we can
+    // recognise by email resolves on the delivery that carried it.
+    await autoMatchItemAssignees(prisma, tenant, items, applyContext.identityByExternalUserId)
 
     for (const item of items) {
       const outcome = await applyInboundItem(prisma, applyContext, item)
@@ -113,6 +115,29 @@ export const processBoardSourceWebhook = async (
   }
   return { applied }
 }
+
+/**
+ * What this source's deliveries are signed against.
+ *
+ * The signing secret is the one its own registration returned, so a deployment
+ * with no app-level webhook configured still verifies — that is the point of
+ * registering per source. The callback URL is rebuilt from the delivery's token
+ * rather than stored, because Trello signs `body + callbackURL` and a stored
+ * second spelling could drift from the URL Trello is actually calling.
+ */
+const webhookSecrets = (
+  deps: BoardSourceSyncDeps,
+  source: { webhookTokenHash: string | null; webhookSecretCiphertext: string | null },
+  job: BoardSourceWebhookJob,
+) => ({
+  ...(source.webhookTokenHash ? { tokenHash: source.webhookTokenHash } : {}),
+  ...(source.webhookSecretCiphertext
+    ? { signingSecret: openSecret(deps.encryptionSecret, source.webhookSecretCiphertext) }
+    : {}),
+  ...(deps.publicApiUrl && job.token
+    ? { callbackUrl: webhookCallbackUrl(deps.publicApiUrl, job.provider, job.token) }
+    : {}),
+})
 
 /**
  * Which sources a delivery belongs to. A container key narrows it to the

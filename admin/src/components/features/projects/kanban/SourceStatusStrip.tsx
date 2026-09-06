@@ -1,9 +1,15 @@
 import { Link } from 'react-router-dom'
 import type { BoardSourceRecord } from '../../../../facades/board-sources/hooks'
-import { PROVIDER_LABEL } from '../../../../facades/board-sources/hooks'
+import {
+  PROVIDER_LABEL,
+  isSourceSyncing,
+  useSourceAction,
+} from '../../../../facades/board-sources/hooks'
 import { Pill } from '../../../primitives/Pill'
+import { useToasts } from '../../../../providers/ToastProvider'
 
 type SourceStatusStripProps = {
+  canAdminister: boolean
   projectId: string
   sources: BoardSourceRecord[]
 }
@@ -13,6 +19,10 @@ type SourceStatusStripProps = {
  * docs/standards/capability-health-alerts.md, and the reason it is on the board
  * rather than only in Settings is that "is what I am looking at current?" is the
  * question a person answers immediately before dragging a card.
+ *
+ * The Sync control is here for the same reason. The answer to "this looks
+ * stale" is one press, and sending somebody to Settings to find it was a
+ * doorway missing from the screen where the question is asked.
  */
 const HEALTH: Record<
   BoardSourceRecord['healthState'],
@@ -37,22 +47,80 @@ const freshness = (iso: string | null): string => {
   return `synced ${Math.round(hours / 24)}d ago`
 }
 
-export const SourceStatusStrip = ({ projectId, sources }: SourceStatusStripProps) => {
+/**
+ * How this source hears about a change: pushed by the provider, or noticed on
+ * the next poll. Named because the difference is seconds against minutes, and
+ * because a person who has just pressed Sync twice deserves to know which one
+ * they are waiting for.
+ */
+const delivery = (source: BoardSourceRecord): string | null => {
+  if (source.webhookActive) return 'Live'
+  if (source.pollingIntervalMinutes === null) return null
+  return `every ${source.pollingIntervalMinutes} min`
+}
+
+export const SourceStatusStrip = ({
+  canAdminister,
+  projectId,
+  sources,
+}: SourceStatusStripProps) => {
+  const action = useSourceAction(projectId)
+  const { pushToast } = useToasts()
   if (sources.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {sources.map((source) => {
         const health = HEALTH[source.healthState]
+        const syncing = isSourceSyncing(source)
+        const mode = delivery(source)
         return (
-          <Link
-            key={source.id}
-            to={`/projects/${projectId}/settings?section=sources&source=${source.id}`}
-          >
-            <Pill size="sm" tone={health.tone} uppercase={false}>
-              {PROVIDER_LABEL[source.provider]} {source.name} ·{' '}
-              {health.remedy ?? freshness(source.lastSyncCompletedAt)}
-            </Pill>
-          </Link>
+          <span className="flex items-center gap-1" key={source.id}>
+            <Link to={`/projects/${projectId}/settings?section=sources&source=${source.id}`}>
+              <Pill size="sm" tone={health.tone} uppercase={false}>
+                {/* Freshness even mid-sync: the pill answers "is what I am
+                    looking at current?", which a running sync has not changed
+                    yet. The button is where a press reports back. */}
+                {PROVIDER_LABEL[source.provider]} {source.name} ·{' '}
+                {health.remedy ?? freshness(source.lastSyncCompletedAt)}
+                {mode && !health.remedy ? ` · ${mode}` : ''}
+              </Pill>
+            </Link>
+            {canAdminister ? (
+              <button
+                // The label is a Pill rather than sized text: `button { font:
+                // inherit }` in styles.css is unlayered, so it beats Tailwind's
+                // layered `.text-xs` and a text utility here renders at body
+                // size beside a 10px chip. Reusing the primitive also makes the
+                // action read as part of the strip rather than a stray word.
+                aria-label={`Sync ${source.name} from ${PROVIDER_LABEL[source.provider]} now`}
+                className="disabled:opacity-60"
+                disabled={syncing || action.isPending}
+                onClick={() =>
+                  action.mutate(
+                    { id: source.id, action: 'sync' },
+                    {
+                      // A press that changed nothing has to say so: the pill
+                      // still reads "synced 8h ago" either way, so silence here
+                      // is indistinguishable from a sync that has not started.
+                      onError: (cause) =>
+                        pushToast({
+                          body:
+                            cause instanceof Error
+                              ? cause.message
+                              : 'The sync could not be started.',
+                          title: `Could not sync ${source.name}`,
+                        }),
+                    },
+                  )
+                }
+                type="button"
+              >
+                <Pill radius="chip" size="sm" tone="outline" uppercase={false}>
+                  {syncing ? 'Syncing…' : 'Sync'}
+                </Pill>
+              </button>
+            ) : null}
+          </span>
         )
       })}
     </div>

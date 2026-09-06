@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   PROVIDER_LABEL,
+  isSourceSyncing,
   useDeleteProjectSource,
   useProjectSources,
   useSourceAction,
@@ -115,6 +116,17 @@ export const SourcesSettingsSection = ({
                   <span className="text-xs text-[color:var(--tx3)]">
                     {source.itemCount} items · as {source.connectionOwnerDisplayName ?? 'unknown'}
                   </span>
+                  {/* Whether the provider pushes changes here or the board waits
+                      for a poll. `misconfigured` for WEBHOOK_REGISTRATION_FAILED
+                      is a fault; falling back to the poll is not, so this is a
+                      statement of fact rather than a remedy. */}
+                  <Pill size="sm" tone={source.webhookActive ? 'info' : 'muted'} uppercase={false}>
+                    {source.webhookActive
+                      ? 'Live updates'
+                      : source.pollingIntervalMinutes === null
+                        ? 'Manual sync only'
+                        : `Checks every ${source.pollingIntervalMinutes} min`}
+                  </Pill>
                   {source.writeMode === 'read_write' ? (
                     <Pill size="sm" tone="info" uppercase={false}>
                       Read &amp; write
@@ -141,7 +153,9 @@ export const SourcesSettingsSection = ({
                   {canAdminister ? (
                     <>
                       <button
-                        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]
+                          disabled:opacity-50"
+                        disabled={isSourceSyncing(source)}
                         onClick={() =>
                           action.mutate(
                             { id: source.id, action: 'sync' },
@@ -154,7 +168,7 @@ export const SourcesSettingsSection = ({
                         }
                         type="button"
                       >
-                        Sync now
+                        {isSourceSyncing(source) ? 'Syncing…' : 'Sync now'}
                       </button>
                       <button
                         className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"

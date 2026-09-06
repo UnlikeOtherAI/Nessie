@@ -10,7 +10,7 @@ import {
   type BoardSourceWriteBack,
   type BoardSourceWriteBackError,
 } from './board-source-writeback.js'
-import { externalTenantKeyFor } from './board-source-structure.js'
+import { externalTenantKeyFor } from './board-source-identity.js'
 import {
   applyFieldValuesPatch,
   listTaskFieldDefinitions,

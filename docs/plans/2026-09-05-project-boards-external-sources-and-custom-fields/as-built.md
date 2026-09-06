@@ -10,6 +10,38 @@ fact. Read this before treating any section above as a description of the code.
 
 ### Deltas
 
+- **§5.8 email auto-matching shipped later than the rest of §5.8.** The column,
+  the `matchedBy: 'email'` vocabulary and the People table all shipped with the
+  first release; nothing wrote a match, so every provider user had to be mapped
+  by hand. It now runs in `packages/team-admin/src/board-source-identity.ts`
+  from three places: attaching a container matches the members the adapter
+  describes, and each sync page and webhook delivery matches the assignees the
+  items themselves name — which is what covers somebody who joined the upstream
+  team after the source was attached, without a second provider call. An
+  external user that already has a link row is never re-matched, so a person's
+  choice — including a deliberate *Not linked* — survives every sync.
+- **A mapping reaches the items already mirrored.** §5.8 did not say what
+  happens to the cards that were synced before a link existed, and the answer
+  was "nothing until somebody upstream touches them", because an unchanged item
+  fingerprints identically and is skipped. `reprojectIdentityLinks` re-applies
+  a changed link to every `TaskExternalLink` in the tenant that names that
+  provider user: the assignee, the `todo`-category `inbox`/`assigned` split,
+  and `remoteAssigneeDisplay`.
+- **§6.4 the unmapped-assignee pill is not "muted".** A muted chip is what a
+  *known* colleague and *Unassigned* both render as, so a third identical chip
+  claimed an account that does not exist. It ships as
+  `admin/src/components/kanban/RemotePersonPill.tsx`: the outlined chip the
+  item's own key pill uses, a crossed-out person glyph, and a title naming the
+  remedy. The `TaskDialog` says the same thing in words beside the assignee
+  picker, and the People table shows each member's address with a *Matched by
+  email* chip on the rows an address resolved.
+- **Two defects the above closed.** A link row that named nobody used to count
+  as a resolved identity, which cleared `remoteAssigneeDisplay` and left the
+  card reading *Unassigned* rather than naming the provider user; and saving the
+  People table rewrote every submitted row as `matchedBy: 'manual'`, which both
+  erased the provenance the table shows and created an empty row for every
+  stranger — the row that then blocks a later email match. The save now writes
+  only the rows whose identity actually changed.
 - **§3.7 the board filter** is stored, contract-checked and applied
   (`boardFilterWhere`), but **has no editor**. A board's filter can only be set
   through the API today. Deliberate: a control that narrows a board is only
@@ -39,9 +71,34 @@ fact. Read this before treating any section above as a description of the code.
 - **§5.6 `board-source.sync.sweep`** is not a queue topic. The worker's own
   30-second interval claims due sources directly, exactly as the dashboard
   refresher does, so there is no second scheduler.
+- **§6.1 the board's source strip** now carries *Sync* as well as the health
+  chip, and says whether the provider is pushing (*Live*) or the board is
+  waiting for the next poll (*every 5 min*). The sync action already existed;
+  the only door to it was Settings, which is not where "is this current?" is
+  asked.
 
 ### Superseded
 
+- **§5.1 "Webhooks" for Linear and GitHub is no longer app-level only.** Both
+  register a **per-source** webhook after the first successful sync — Linear
+  `webhookCreate` scoped to the team, GitHub a repository hook — so a deployment
+  that configured no app webhook, and every API-key connection, gets pushed
+  changes rather than a five-minute floor. Linear mints the signing secret and
+  returns it exactly once, so `WebhookRegistration.signingSecret` carries it to
+  `BoardSource.webhookSecretCiphertext`, sealed with the credential envelope;
+  GitHub takes the secret the caller offers. `ensureWebhook` returning `null`
+  now means "the provider declined", which is the ordinary answer for a Linear
+  key that is not a workspace admin's and for a repository the person cannot
+  administer — it leaves the declared poll running instead of raising
+  `WEBHOOK_REGISTRATION_FAILED`. GitHub Projects v2 still has no per-source hook.
+- **Removing a source un-registers its webhook** (`BoardSourceAdapter.removeWebhook`,
+  best-effort), which the design did not say and which matters now that the
+  registration is per-source rather than one app-level webhook for everything.
+- **§5.6 `WebhookSecrets.signingSecret` had two meanings.** Trello read the
+  *callback URL* out of it — it signs `body + callbackURL` — and nothing ever
+  passed one, so no Trello delivery could verify. The URL is now
+  `WebhookSecrets.callbackUrl`, rebuilt from the delivery's own token rather
+  than stored, so it cannot drift from the URL Trello is calling.
 - **§5.1 "Auth (deployment ↔ person)" is no longer OAuth-only for Linear.**
   `BoardSourceAdapter.oauth` is now `auth: { oauth?, apiKey? }`, and Linear
   declares both: a personal API key that needs nothing registered on the
@@ -63,9 +120,14 @@ vendor — see
 [configuration](../../deployment/configuration.md) → "Project board sources".
 The specific assumptions to check on first connect:
 
-- **Linear** — that app-level webhooks fire for every authorised workspace, and
-  that `Linear-Signature` is an HMAC-SHA256 of the raw body. A wrong assumption
-  here costs freshness only: the adapter declares a five-minute poll.
+- **Linear, webhooks** — that `webhookCreate` takes `{url, teamId,
+  resourceTypes: ['Issue'], enabled, label}` and returns the signing secret on
+  `webhook { secret }`; that a *personal API key belonging to a workspace admin*
+  may call it, since Linear documents the gate as "workspace admins, or OAuth
+  applications with the `admin` scope"; and that `Linear-Signature` is an
+  HMAC-SHA256 of the raw body. Every wrong assumption here costs freshness
+  only — a refusal is caught by name and the adapter's five-minute poll runs.
+  The board's source strip says which of the two is happening.
 - **Linear, API key** — that `Authorization: <key>` without a `Bearer` prefix is
   accepted (the shared `linearGraphQl` helper has always sent the token bare,
   so the OAuth path has the same assumption), and that `VIEWER_QUERY` returns

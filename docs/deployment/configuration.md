@@ -299,15 +299,35 @@ an app is refused by name, `PROVIDER_OAUTH_NOT_CONFIGURED`.
 | Variable | Provider | Where it comes from |
 | --- | --- | --- |
 | `NESSIE_BOARD_LINEAR_CLIENT_ID` / `_SECRET` | Linear | **Optional.** An OAuth application in Linear's workspace settings, to offer *sign in with Linear* as well as the API key. Redirect URI: `<NESSIE_API_PUBLIC_URL>/api/board-sources/connections/linear/callback` |
-| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | The signing secret of the app's webhook, if one is configured. Without it Linear syncs on its five-minute poll only — which is what an API-key connection always does, since an app-level webhook belongs to an app nobody registered. |
+| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | **Optional, and rarely needed.** The signing secret of an *app-level* webhook, for a deployment that configured one on its OAuth app. A source registers its own webhook first (below), which needs nothing here. |
 | `NESSIE_BOARD_JIRA_CLIENT_ID` / `_SECRET` | Jira Cloud | An OAuth 2.0 (3LO) app in the Atlassian developer console, with `read:jira-work write:jira-work read:jira-user offline_access`. Same callback path with `/jira/`. |
 | `NESSIE_BOARD_GITHUB_CLIENT_ID` / `_SECRET` | GitHub | An OAuth app or GitHub App. Scopes `repo read:project read:org`. Same callback path with `/github/`. |
-| `NESSIE_BOARD_GITHUB_WEBHOOK_SECRET` | GitHub | The app's webhook secret, for `X-Hub-Signature-256` verification. |
+| `NESSIE_BOARD_GITHUB_WEBHOOK_SECRET` | GitHub | **Optional.** An App-level webhook secret, for `X-Hub-Signature-256`. A repository source registers its own hook with a secret this deployment mints, so this is only for a Projects v2 board or an App webhook you already run. |
 | `NESSIE_BOARD_TRELLO_API_KEY` / `_API_SECRET` | Trello | A Power-Up's key and secret. Trello has no authorization-code flow: the person's token arrives in a URL fragment and is submitted once to `/api/board-sources/connections/trello/complete`, then encrypted. |
 
 `NESSIE_API_PUBLIC_URL` must be set for webhooks: it is what the worker uses to
 mint the callback URL it registers with the vendor. Without it, sources still
 sync on their polling interval.
+
+**A source registers its own callback.** After its first successful sync, the
+worker asks the provider to call
+`<NESSIE_API_PUBLIC_URL>/api/board-sources/webhooks/<provider>/<token>` for that
+container alone — Linear `webhookCreate` scoped to the team, Jira a JQL-scoped
+webhook, Trello a board webhook, GitHub a repository hook. So a deployment that
+registered no app-level webhook still gets changes in seconds rather than on the
+next poll, and an installation connected with a pasted API key gets them too.
+Removing a source un-registers it.
+
+Two of them will refuse, and that is not a fault: **only a Linear workspace
+admin may manage webhooks** (an OAuth grant would need the `admin` scope, which
+this adapter does not ask for), and a GitHub repository hook needs admin on the
+repository. A refusal leaves the source on its declared poll and the board says
+which it is running on — *Live* against *every 5 min* on the board's source
+strip. GitHub Projects v2 has no per-source hook at all and always polls.
+
+Where the provider mints the signing secret rather than accepting ours — Linear
+hands it back exactly once, at creation — it is sealed onto the source row with
+the same envelope credentials use and decrypted only to verify a delivery.
 
 Credentials are encrypted at rest with the deployment's `NESSIE_AUTH_SECRET`
 through the same sealed-secret seam the communications connector and the MCP
@@ -316,5 +336,7 @@ them, and only `loadBoardSourceConnectionContext` decrypts one.
 
 Jira's webhooks are unsigned and expire after 30 days, so a Jira source carries
 a per-source callback token whose **hash** is all that is stored; a delivery
-that cannot present the token is dropped. Every other provider signs its
-deliveries with the app secret above.
+that cannot present the token is dropped, and a renewal sweep re-registers
+before the 30 days are up. Every other provider signs its deliveries, against
+the secret that source's own registration returned and falling back to the
+app-level secret above.

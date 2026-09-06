@@ -20,7 +20,7 @@ import {
   releaseSessionControl,
   releaseSessionsForRun,
 } from '../src/session-lifecycle.js'
-import type { CloudBrowserDeps } from '../src/session-lifecycle.js'
+import type { CloudBrowserDeps, OpenSessionInput } from '../src/session-lifecycle.js'
 
 /**
  * The durable-browser rules are all storage-level or money-level: which
@@ -29,6 +29,20 @@ import type { CloudBrowserDeps } from '../src/session-lifecycle.js'
  * at a context before anything deletes it. None survives a stub.
  */
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
+
+/**
+ * These tests are about who may hold a browser, not about re-attaching to one,
+ * so the capability arguments are supplied once here rather than at every open.
+ */
+const openSession = (
+  deps: CloudBrowserDeps,
+  input: Omit<OpenSessionInput, 'encryptionSecret' | 'originGate'>,
+) =>
+  openCloudBrowserSession(deps, {
+    ...input,
+    encryptionSecret: 'test-auth-secret',
+    originGate: { authenticatedOrigins: [], touchedAuthenticated: false, currentUrl: null },
+  })
 
 type Seed = {
   organizationId: string
@@ -262,7 +276,7 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
       hasLogins: false,
     }
 
-    await openCloudBrowserSession(deps, {
+    await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -273,7 +287,7 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
 
     // Browserbase warns two sessions on one context make sites force logouts.
     await assert.rejects(
-      openCloudBrowserSession(deps, {
+      openSession(deps, {
         organizationId: s.organizationId,
         runId: s.secondRunId,
         threadId: s.threadId,
@@ -317,7 +331,7 @@ runDatabaseTest('a session on a browser with logins is authenticated from the fi
       serviceHint: 'Google — owner@example.com',
     })
 
-    const opened = await openCloudBrowserSession(deps, {
+    const opened = await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -419,7 +433,7 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
       agentVisibility: 'team',
       agentOwnerUserId: null,
     })
-    await openCloudBrowserSession(deps, {
+    await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -456,7 +470,7 @@ runDatabaseTest('handing back the controls marks the session authenticated', asy
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
     // An ephemeral session with no logins: nothing marks it authenticated at
     // open, which is exactly the case that used to lose the basis.
-    const opened = await openCloudBrowserSession(deps, {
+    const opened = await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -505,7 +519,7 @@ runDatabaseTest('only the holder can hand the controls back', async () => {
   const deps = depsFor(prisma, calls)
   try {
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
-    const opened = await openCloudBrowserSession(deps, {
+    const opened = await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -567,7 +581,7 @@ runDatabaseTest('a scheduled run never bills somebody’s personal account', asy
     }
 
     // A run the owner asked for is fine.
-    await openCloudBrowserSession(deps, {
+    await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -580,7 +594,7 @@ runDatabaseTest('a scheduled run never bills somebody’s personal account', asy
     // A scheduled one has no requester, so it must not spend their hours —
     // the count of logins is irrelevant, it is whose money it is.
     await assert.rejects(
-      openCloudBrowserSession(deps, {
+      openSession(deps, {
         organizationId: s.organizationId,
         runId: s.secondRunId,
         threadId: s.threadId,
@@ -604,7 +618,7 @@ runDatabaseTest('a session already being released cannot be claimed again', asyn
   const deps = depsFor(prisma, calls)
   try {
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
-    const opened = await openCloudBrowserSession(deps, {
+    const opened = await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,

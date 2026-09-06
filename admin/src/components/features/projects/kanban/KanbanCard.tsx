@@ -7,6 +7,7 @@ import type { TaskRecord } from '../../../../facades/tasks/hooks'
 import { useMemo } from 'react'
 import { Pill } from '../../../primitives/Pill'
 import { ExternalKeyPill } from './ExternalKeyPill'
+import { RemotePersonPill } from './RemotePersonPill'
 import { TaskFieldChips } from './TaskFieldChips'
 import { useTaskFields } from '../../../../facades/task-fields/hooks'
 import { useTaskAssignees } from '../../../../facades/tasks/hooks'
@@ -81,15 +82,21 @@ const KanbanCardContent = ({
           icon={faSignal}
           title={`${PRIORITY_LABEL[task.priority]} priority`}
         />
-        <Pill
-          className="max-w-[11rem] gap-1 truncate font-semibold"
-          size="sm"
-          uppercase={false}
-        >
-          {task.assigneeName ??
-            task.externalLink?.remoteAssigneeDisplay ??
-            'Unassigned'}
-        </Pill>
+        {task.assigneeName === null && task.externalLink?.remoteAssigneeDisplay ? (
+          <RemotePersonPill
+            className="max-w-[11rem]"
+            displayName={task.externalLink.remoteAssigneeDisplay}
+            provider={task.externalLink.provider}
+          />
+        ) : (
+          <Pill
+            className="max-w-[11rem] gap-1 truncate font-semibold"
+            size="sm"
+            uppercase={false}
+          >
+            {task.assigneeName ?? 'Unassigned'}
+          </Pill>
+        )}
         {task.dueDate || archived ? (
           <span className="ml-auto flex items-center gap-1.5">
             {task.dueDate ? (
