@@ -65,12 +65,17 @@ export const probeProvider = async (provider: ExecutionProvider): Promise<Provid
 // provider is called — so a worker that dies mid-provision can still leave the
 // instance row pointing at the machine it was about to launch.
 //
-// Only `gcloud` can answer: both its names are deterministic functions of the
-// launch config and the instance id. A `docker` reference is the container id
-// `docker run` prints, which does not exist until the container does, so docker
-// returns null and keeps exactly its current behaviour — an instance abandoned
-// mid-provision carries no reference and the lease sweep records the ordinary
-// `EXECUTION_LEASE_EXPIRED`, which is the honest outcome.
+// Answered only where the name belongs to this instance row and to no other.
+// `gcloud` can answer when it is naming the machine after the instance id; it
+// declines for a pinned `instanceName`/`jobName`, which every instance from
+// that template would share (`deriveGcloudProviderInstanceRef`). A `docker`
+// reference is the container id `docker run` prints, which does not exist until
+// the container does, so docker returns null.
+//
+// Null keeps exactly the behaviour that predates this write: the reference
+// appears only after a provision that succeeded, an instance abandoned
+// mid-provision carries none, and the lease sweep records the ordinary
+// `EXECUTION_LEASE_EXPIRED` without enqueuing a terminate it cannot aim.
 export const deriveProviderInstanceRef = (context: ProvisioningContext): string | null =>
   context.instance.template.provider === 'docker'
     ? null

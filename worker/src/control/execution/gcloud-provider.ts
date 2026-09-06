@@ -100,9 +100,17 @@ export const probeGcloud = async (): Promise<ProviderProbe> => {
 const gcloudLaunchConfig = (context: ProvisioningContext): Record<string, unknown> =>
   mergeLaunchConfig(context.instance.template.launchConfig, context.instance.launchConfig)
 
+// Where a target's name came from, which decides whether the reference may be
+// written to the instance row before the machine exists. `instance-id` means
+// the name is `buildGcloudInstanceName(instance.id)` and therefore belongs to
+// exactly one instance row. `launch-config` means it was pinned — see
+// `deriveGcloudProviderInstanceRef`.
+type GcloudNameSource = 'instance-id' | 'launch-config'
+
 type GcloudVmTarget = {
   metadata: Record<string, unknown>
   name: string
+  nameSource: GcloudNameSource
   projectId: string
   providerInstanceRef: string
   zone: string
@@ -112,6 +120,7 @@ type GcloudFunctionTarget = {
   image: string
   jobName: string
   metadata: Record<string, unknown>
+  nameSource: GcloudNameSource
   projectId: string
   providerInstanceRef: string
   region: string
@@ -121,9 +130,11 @@ type GcloudFunctionTarget = {
 // the VM's name is decided. `buildGcloudVmArgs` and
 // `deriveGcloudProviderInstanceRef` both go through it, so the reference
 // written to the instance row *before* `gcloud compute instances create` runs
-// and the one written after it returns cannot drift apart. Returns null when
-// the launch config cannot name a target; the caller decides whether that is a
-// provisioning error or simply nothing to derive.
+// and the one written after it returns cannot drift apart. It also reports
+// where the name came from, which is what lets the pre-provision write refuse a
+// name the instance row does not own. Returns null when the launch config
+// cannot name a target; the caller decides whether that is a provisioning error
+// or simply nothing to derive.
 const resolveGcloudVmTarget = (
   context: ProvisioningContext,
   config: Record<string, unknown>,
@@ -134,7 +145,8 @@ const resolveGcloudVmTarget = (
     return null
   }
 
-  const name = parseString(config['instanceName']) ?? buildGcloudInstanceName(context.instance.id)
+  const pinnedName = parseString(config['instanceName'])
+  const name = pinnedName ?? buildGcloudInstanceName(context.instance.id)
 
   return {
     metadata: {
@@ -143,6 +155,7 @@ const resolveGcloudVmTarget = (
       zone,
     },
     name,
+    nameSource: pinnedName ? 'launch-config' : 'instance-id',
     projectId,
     providerInstanceRef: `gcloud:vm:${projectId}:${zone}:${name}`,
     zone,
@@ -163,7 +176,8 @@ const resolveGcloudFunctionTarget = (
     return null
   }
 
-  const jobName = parseString(config['jobName']) ?? buildGcloudInstanceName(context.instance.id)
+  const pinnedName = parseString(config['jobName'])
+  const jobName = pinnedName ?? buildGcloudInstanceName(context.instance.id)
 
   return {
     image,
@@ -173,6 +187,7 @@ const resolveGcloudFunctionTarget = (
       projectId,
       region,
     },
+    nameSource: pinnedName ? 'launch-config' : 'instance-id',
     projectId,
     providerInstanceRef: `gcloud:function:${projectId}:${region}:${jobName}`,
     region,
@@ -180,26 +195,44 @@ const resolveGcloudFunctionTarget = (
 }
 
 // The reference a gcloud provision *will* create, computed before the provider
-// is called. Both names are deterministic — the launch config's explicit
-// `instanceName`/`jobName`, otherwise `buildGcloudInstanceName(instance.id)` —
-// so the full reference is knowable from the instance row alone, which is what
-// lets `allocateExecutionEnvironmentInstance` record the intent before the side
-// effect. Null means there is nothing to derive: an incomplete launch config
-// (the provision below is about to throw over the same fields) or a mode this
-// provider does not implement.
+// is called, so `allocateExecutionEnvironmentInstance` can record the intent
+// before the side effect. It comes from the same `resolveGcloud*Target` the
+// provision uses, so the string written beforehand and the one
+// `persistProvisionSuccess` overwrites it with cannot drift.
+//
+// Derived only when the name is `buildGcloudInstanceName(instance.id)`. A
+// pinned `instanceName`/`jobName` derives NOTHING, and that refusal is the
+// whole point: the pin lives on the template, so every instance launched from
+// that template resolves the identical name. Writing it early would make one
+// instance's row name a machine another instance's row also names. Instance A
+// provisions `builder` and is running; instance B derives the same reference,
+// gcloud rejects its create as already-exists, B is marked failed — and any
+// later terminate of B, user-requested or enqueued by the lease sweep, would
+// delete A's live VM. A reference the row cannot own exclusively is worse than
+// no reference: the sweep's job is to reclaim an abandoned machine, never to
+// take a healthy one with it. So a pinned-name template keeps exactly the
+// behaviour it had before this write existed — the reference appears only after
+// a provision that actually succeeded, in `persistProvisionSuccess`.
+//
+// Null also means an incomplete launch config (the provision is about to throw
+// over the same fields) or a mode this provider does not implement.
 export const deriveGcloudProviderInstanceRef = (
   context: ProvisioningContext,
 ): string | null => {
   const config = gcloudLaunchConfig(context)
 
-  if (context.instance.template.mode === 'vm') {
-    return resolveGcloudVmTarget(context, config)?.providerInstanceRef ?? null
-  }
-  if (context.instance.template.mode === 'function') {
-    return resolveGcloudFunctionTarget(context, config)?.providerInstanceRef ?? null
+  const target =
+    context.instance.template.mode === 'vm'
+      ? resolveGcloudVmTarget(context, config)
+      : context.instance.template.mode === 'function'
+        ? resolveGcloudFunctionTarget(context, config)
+        : null
+
+  if (!target || target.nameSource !== 'instance-id') {
+    return null
   }
 
-  return null
+  return target.providerInstanceRef
 }
 
 const buildGcloudVmArgs = async (

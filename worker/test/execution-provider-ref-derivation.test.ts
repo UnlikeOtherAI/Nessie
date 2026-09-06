@@ -8,10 +8,10 @@ import type { ExecutionMode, ExecutionProvider, ProvisioningContext } from '../s
 // `allocateExecutionEnvironmentInstance` writes this reference onto the
 // instance row *before* it calls the provider, so that a worker killed
 // mid-provision still leaves the lease sweep something to terminate. That is
-// only sound while the derived string is the one the provision itself would
-// produce — which is why `resolveGcloudVmTarget` /
-// `resolveGcloudFunctionTarget` are the single source of both, and why the
-// cases below pin the format and the fallback name.
+// sound under two conditions, and the cases below pin both: the derived string
+// must be the one the provision itself would produce (which is why
+// `resolveGcloudVmTarget` / `resolveGcloudFunctionTarget` are the single source
+// of both), and the name must belong to this instance row alone.
 
 const INSTANCE_ID = '3f1a5b7c-9d2e-4f60-8a13-c5e7d9b1f204'
 
@@ -62,16 +62,46 @@ test('a gcloud VM reference is derivable before the VM exists', () => {
   assert.equal(ref, `gcloud:vm:nessie-prod:europe-west4-a:${buildGcloudInstanceName(INSTANCE_ID)}`)
 })
 
-test('an explicit instanceName is what the derivation uses, as the provision would', () => {
-  const ref = deriveProviderInstanceRef(
-    contextFor({
-      launchConfig: { instanceName: 'pinned-name', projectId: 'nessie-prod', zone: 'europe-west4-a' },
-      mode: 'vm',
-      provider: 'gcloud',
-    }),
+// The pre-provision write may only name a machine this instance row owns
+// exclusively. A pinned `instanceName`/`jobName` lives on the template, so every
+// instance launched from it resolves the identical name — and writing that early
+// would make a failed instance's row name a *different*, live instance's
+// machine, which the next terminate would then delete. Deriving nothing leaves a
+// pinned-name template exactly as it behaved before the pre-provision write
+// existed: the reference appears only after a provision that succeeded.
+test('a pinned instanceName derives nothing, because two instances would share it', () => {
+  assert.equal(
+    deriveProviderInstanceRef(
+      contextFor({
+        launchConfig: {
+          instanceName: 'builder',
+          projectId: 'nessie-prod',
+          zone: 'europe-west4-a',
+        },
+        mode: 'vm',
+        provider: 'gcloud',
+      }),
+    ),
+    null,
   )
+})
 
-  assert.equal(ref, 'gcloud:vm:nessie-prod:europe-west4-a:pinned-name')
+test('a pinned jobName derives nothing either', () => {
+  assert.equal(
+    deriveProviderInstanceRef(
+      contextFor({
+        launchConfig: {
+          image: 'gcr.io/p/i',
+          jobName: 'nightly',
+          projectId: 'nessie-prod',
+          region: 'europe-west4',
+        },
+        mode: 'function',
+        provider: 'gcloud',
+      }),
+    ),
+    null,
+  )
 })
 
 test('a Cloud Run job reference is derivable before the job is deployed', () => {

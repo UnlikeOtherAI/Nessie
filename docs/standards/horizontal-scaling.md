@@ -541,12 +541,23 @@ terminate claimed elsewhere runs `docker rm -f` against the wrong daemon, gets
 `persistTermination` write `terminated`. That row would then say the container
 is gone while it is still running on the dead host. So the sweep enqueues
 nothing for `docker`; the instance keeps the honest terminal state it already
-has, `failed`, with `error_message` =
-`EXECUTION_INSTANCE_ABANDONED_HOST_LOCAL:docker:<ref>` naming what a person or
-the host's own restart still has to reap. This is the same refusal
+has, `failed` with `EXECUTION_LEASE_EXPIRED`, and **nothing automatic reclaims
+the container** — a person finds it on the runner's own host by the
+`nessie.instance-id` label the provision put on it, with the host named by
+`runnerLabel` in the instance metadata. This is the same refusal
 `loadProvisioningContext` makes on the way in (`EXECUTION_RUNNER_NOT_LOCAL`).
 The general rule: when a sweep cannot reach the resource, it records that it
 could not, never a state it did not achieve.
+
+The host-independence test in `enqueueAbandonedMachineTermination` is a guard,
+not a branch that fires today: `docker` derives no reference before provisioning
+and `persistProvisionSuccess` writes its container id in the same transaction
+that completes the lease, so no reclaim path ever meets a docker row carrying
+one. It stays because it is the single enforcement point for this invariant, for
+both callers, the day a host-local provider does start naming its resource
+early. A dead branch that *claimed* an abandoned container was named for an
+operator lived here until it was deleted; do not reintroduce one — an
+unreachable recovery reads as a recovery.
 
 **Corollary — the address of a cloud resource is written before it is created,
 not after.** A reaper can only reclaim what the database names, so the reference
@@ -561,7 +572,7 @@ never fire on a state any production path produced.
 `allocateExecutionEnvironmentInstance` therefore calls
 `persistDerivedProviderInstanceRef` **before** `provisionProviderInstance`.
 
-Two things make that safe rather than a second lie. First, the reference is
+Three things make that safe rather than a second lie. First, the reference is
 derived, never guessed: `deriveGcloudProviderInstanceRef` and the provision path
 share `resolveGcloudVmTarget` / `resolveGcloudFunctionTarget`, so the string
 written beforehand and the string `persistProvisionSuccess` overwrites it with
@@ -573,6 +584,45 @@ A provider whose reference is only knowable *after* the fact derives nothing:
 abandoned mid-provision carries no reference and gets the ordinary
 `EXECUTION_LEASE_EXPIRED`, which is the truth.
 
+**Third, and the constraint that makes the other two matter: a row may only
+name a machine no other row can name.** A launch config may pin
+`instanceName`/`jobName`, and that pin lives on the *template*, so every
+instance launched from it resolves the identical name. Written early, instance
+B's row would name instance A's live VM: B's create fails as already-exists, B
+is marked `failed`, and any later terminate of B — user-requested or enqueued by
+a reclaim path — deletes A's machine. So `deriveGcloudProviderInstanceRef`
+derives **only** when the name is `buildGcloudInstanceName(instance.id)`, and a
+pinned-name template keeps exactly its pre-existing behaviour: the reference
+appears only after a provision that succeeded. Pre-naming a resource is safe
+only in proportion to how exclusively the row owns the name.
+
+**Corollary — the failure path reclaims what it may have created.** A provider
+that throws has not necessarily created nothing: `provisionGcloud` runs `deploy`
+then `execute` for a Cloud Run job, so a throw from the second leaves a deployed
+job behind. `markProvisionFailure` marks the instance `failed` and finalizes the
+lease in one transaction, which puts the row permanently out of the lease
+sweep's reach — so before the derived reference existed, a partial creation was
+unreclaimable by construction. It now enqueues the *same*
+`execution.environment.terminate` the sweep does, through the same
+`enqueueAbandonedMachineTermination`: one host-independence rule, one actor
+context, one idempotency-key scheme (`…:lease-expired:` and
+`…:provision-failed:`, both namespaced apart from the API's user-requested
+`execution-environment:terminate:<id>` so neither suppresses the others).
+
+Both callers enqueue **only when their own write is the one that made the row
+terminal** (`updateMany … count === 1` over `pending`/`provisioning`). One
+instance can carry more than one non-terminal lease — `loadProvisioningContext`
+re-claims an instance that is already `provisioning`, so a retried allocate job
+mints a second lease while the first is still live — and expiring that first,
+orphaned lease reaches a row a later attempt has since driven to `ready`.
+Without the gate the sweep would terminate a machine that is running fine.
+Reclaiming is for rows this pass abandoned, never for rows someone else owns.
+
+`persistTermination` keeps a `failed` instance's `error_message` when it writes
+`terminated`, because both reclaim paths mark the row with *why* and then
+enqueue the terminate; clearing it would leave a `terminated` row and no record
+of the failure.
+
 **Corollary — a sweep every replica runs on an interval reads a bounded batch.**
 `expireExecutionLeases` takes the 50 oldest expired leases per pass and lets the
 next pass take the rest. Unbounded, the first tick after a full-fleet outage
@@ -582,6 +632,15 @@ Batching is safe here because the work is claim-based: an expired lease leaves
 the predicate once it is `expired`, so successive passes make forward progress
 and skip nothing. Oldest first, so the machine billing longest is reclaimed
 first.
+
+**And a bounded, oldest-first batch must isolate each row's failure.** The two
+properties combine into a starvation trap: a lease that throws deterministically
+never leaves the predicate, so it is at the front of the next batch, and the
+next, forever. One uncaught throw would mean no lease behind it is ever
+reclaimed while the whole fleet keeps billing. Each iteration therefore has its
+own `try`/`catch`; a poisoned row costs one slot of the batch per pass and is
+reported — with its instance id, lease id and error — on every pass, because
+nothing retires it and the machine it names may still be running.
 
 ## 8. Instance identity is a UUID minted at boot, never `HOSTNAME`
 
