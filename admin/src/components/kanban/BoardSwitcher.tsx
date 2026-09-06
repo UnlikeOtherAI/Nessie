@@ -29,7 +29,10 @@ export const BoardSwitcher = ({ boards, activeBoardId, onSelect }: BoardSwitcher
       ariaLabel="Boards"
       idPrefix="project-board"
       items={boards.map((board) => ({
-        label: board.name,
+        // The strip takes a plain string, so a board's emoji rides in front of
+        // its name — the same glyph the sidebar row shows, in the one place a
+        // board is chosen without the sidebar.
+        label: board.iconEmoji ? `${board.iconEmoji} ${board.name}` : board.name,
         testId: `board-tab-${board.id}`,
         value: board.id,
       }))}

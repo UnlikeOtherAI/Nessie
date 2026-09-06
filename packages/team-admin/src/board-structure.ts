@@ -111,6 +111,7 @@ export const mapBoard = (board: BoardWithColumns): BoardRecord => ({
   id: parseBoardId(board.id),
   projectId: parseProjectId(board.projectId),
   name: board.name,
+  iconEmoji: board.iconEmoji,
   style: board.style,
   isDefault: board.isDefault,
   position: board.position,
@@ -179,6 +180,7 @@ export const createBoard = async (
   project: { id: string; organizationId: string },
   input: {
     name: string
+    iconEmoji?: string | null
     style?: BoardStyle
     copyColumnsFromBoardId?: string
     createdByUserId?: string
@@ -213,6 +215,7 @@ export const createBoard = async (
       projectId: project.id,
       organizationId: project.organizationId,
       name: input.name,
+      iconEmoji: input.iconEmoji ?? null,
       style: input.style ?? 'kanban',
       position,
       createdByUserId: input.createdByUserId ?? null,
@@ -229,6 +232,9 @@ export const updateBoard = async (
   boardId: string,
   input: {
     name?: string
+    // `null` clears the emoji, back to the shared board icon, so `undefined`
+    // (absent) and `null` (cleared) have to stay distinguishable here.
+    iconEmoji?: string | null
     style?: BoardStyle
     filter?: BoardFilter
     position?: number
@@ -254,6 +260,7 @@ export const updateBoard = async (
       where: { id: boardId },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.iconEmoji !== undefined ? { iconEmoji: input.iconEmoji } : {}),
         ...(input.style !== undefined ? { style: input.style } : {}),
         ...(input.filter !== undefined
           ? { filter: input.filter as unknown as Prisma.InputJsonValue }

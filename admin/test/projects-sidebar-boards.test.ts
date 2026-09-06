@@ -122,10 +122,34 @@ test('every project section row carries a glyph, and Board is plural', () => {
   }
   assert.match(sections, /withCount\('Boards', assignedWorkCount\)/)
   assert.doesNotMatch(sections, /withCount\('Board', /)
-  // Each board under the section wears the section's own glyph, the way every
-  // channel wears the same `#`.
-  assert.match(sidebar, /rowIcon\(BOARD_ICON\)/)
   assert.match(sidebar, /rowIcon\(section\.icon\)/)
+  // A board carries its own glyph rather than the section's, because a board
+  // can be given an emoji; `BOARD_ICON` is what it falls back to.
+  assert.match(sidebar, /<BoardIcon/)
+  assert.match(source('components/kanban/BoardIcon.tsx'), /icon=\{BOARD_ICON\}/)
+})
+
+test('a board wears its own icon everywhere it is listed, and is given one where it is made', () => {
+  // One component decides the glyph, so the sidebar row, the settings list and
+  // the dialog that made the board cannot disagree about what it looks like.
+  assert.match(sidebar, /<BoardIcon[\s\S]{0,120}iconEmoji=\{board\.iconEmoji\}/)
+  assert.match(
+    source('pages/project/settings/BoardsSettingsSection.tsx'),
+    /<BoardIconField[\s\S]{0,200}iconEmoji=\{board\.iconEmoji\}/,
+  )
+  assert.match(source('components/kanban/BoardCreateDialog.tsx'), /<BoardIconField/)
+  // The header strip takes a plain string, so the emoji rides in front of the
+  // name rather than being dropped there.
+  assert.match(
+    source('components/kanban/BoardSwitcher.tsx'),
+    /board\.iconEmoji \? `\$\{board\.iconEmoji\} \$\{board\.name\}` : board\.name/,
+  )
+  // Setting one is an administrative change to the project's shape, gated the
+  // way every other board edit in that section is.
+  assert.match(
+    source('pages/project/settings/BoardsSettingsSection.tsx'),
+    /canAdminister \? \(\s*<BoardIconField/,
+  )
 })
 
 test('one board-create dialog serves both the sidebar and project settings', () => {

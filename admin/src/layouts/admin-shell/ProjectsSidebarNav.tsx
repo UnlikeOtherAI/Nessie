@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { BoardIcon } from '../../components/kanban/BoardIcon'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BoardCreateDialog } from '../../components/kanban/BoardCreateDialog'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
@@ -264,7 +265,10 @@ const ProjectSectionRows = ({
                         to={to}
                         {...prewarmRowHandlers(prewarm, section.to)}
                       >
-                        {rowIcon(BOARD_ICON)}
+                        <BoardIcon
+                          className="text-[color:var(--tx3)]"
+                          iconEmoji={board.iconEmoji}
+                        />
                         <span className="min-w-0 flex-1 truncate">{board.name}</span>
                       </Link>
                     )

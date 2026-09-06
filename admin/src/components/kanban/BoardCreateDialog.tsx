@@ -6,6 +6,7 @@ import { Dialog } from '../shared/Dialog'
 import { FormError } from '../shared/FormActions'
 import { Input, Select } from '../shared/FormControls'
 import { FormField } from '../shared/FormField'
+import { BoardIconField } from './BoardIconField'
 
 type BoardCreateDialogProps = {
   boards: BoardRecord[]
@@ -33,12 +34,14 @@ export const BoardCreateDialog = ({
 }: BoardCreateDialogProps) => {
   const createBoard = useCreateBoard(projectId)
   const [name, setName] = useState('')
+  const [iconEmoji, setIconEmoji] = useState<string | null>(null)
   const [style, setStyle] = useState<BoardStyle>('kanban')
   const [columnSource, setColumnSource] = useState<string>(DEFAULT_COLUMNS)
   const [error, setError] = useState<string | null>(null)
 
   const close = () => {
     setName('')
+    setIconEmoji(null)
     setStyle('kanban')
     setColumnSource(DEFAULT_COLUMNS)
     setError(null)
@@ -52,6 +55,7 @@ export const BoardCreateDialog = ({
     createBoard.mutate(
       {
         name: trimmed,
+        ...(iconEmoji ? { iconEmoji } : {}),
         style,
         ...(columnSource === DEFAULT_COLUMNS
           ? {}
@@ -76,16 +80,26 @@ export const BoardCreateDialog = ({
       title="New board"
     >
       <div className="grid gap-4">
-        <FormField label="Name">
-          <Input
-            autoFocus
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') submit()
-            }}
-            placeholder="Dev board"
-            value={name}
-          />
+        <FormField
+          help="The icon is how the board is listed in the Projects sidebar."
+          label="Name"
+        >
+          <div className="flex items-center gap-2">
+            <BoardIconField
+              disabled={createBoard.isPending}
+              iconEmoji={iconEmoji}
+              onChange={setIconEmoji}
+            />
+            <Input
+              autoFocus
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submit()
+              }}
+              placeholder="Dev board"
+              value={name}
+            />
+          </div>
         </FormField>
 
         <FormField

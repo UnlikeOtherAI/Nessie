@@ -7,6 +7,8 @@ import { Section } from '../../../components/shared/PageBody'
 import { useProjectSources } from '../../../facades/board-sources/hooks'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
 import { BoardCreateDialog } from '../../../components/kanban/BoardCreateDialog'
+import { BoardIconField } from '../../../components/kanban/BoardIconField'
+import { BoardIcon } from '../../../components/kanban/BoardIcon'
 
 const errorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? cause.message : fallback
@@ -112,6 +114,24 @@ export const BoardsSettingsSection = ({
               data-selected={board.id === selected?.id}
               key={board.id}
             >
+              {canAdminister ? (
+                <BoardIconField
+                  boardName={board.name}
+                  iconEmoji={board.iconEmoji}
+                  onChange={(iconEmoji) =>
+                    updateBoard.mutate(
+                      { id: board.id, iconEmoji },
+                      {
+                        onError: (cause) =>
+                          onSaveError(errorMessage(cause, 'Could not change the board icon')),
+                        onSuccess: onSaved,
+                      },
+                    )
+                  }
+                />
+              ) : (
+                <BoardIcon iconEmoji={board.iconEmoji} size="md" />
+              )}
               <button
                 className="min-w-0 flex-1 text-left text-sm text-[color:var(--tx)]"
                 onClick={() => onSelectBoard(board.id)}
