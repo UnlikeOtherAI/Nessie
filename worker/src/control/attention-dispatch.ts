@@ -199,6 +199,9 @@ export const handleAttentionDispatch = async (
     ...(deps.webPush ? { webPush: deps.webPush } : {}),
     deepLinkUrl: resolved.url,
     messageId: null,
+    // The durable alert row is the notification, and `attention:<alertId>` is
+    // already this topic's enqueue key, so a redelivered job claims nothing new.
+    notificationKey: `push:attention:${resolved.alert.id}`,
     now: deps.now ?? (() => new Date()),
     organizationId: resolved.alert.organizationId,
     payload: notification,

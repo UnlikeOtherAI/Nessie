@@ -457,6 +457,13 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  // `push.dispatch` is exactly-once per (notification, device). Every enqueue
+  // carries a deterministic idempotency key (`push:<messageId>` from the API,
+  // `push:reply:<runId>` from a run's interactive reply), so two enqueues
+  // collapse to one job; the handler then claims a `push_send_claims` row per
+  // endpoint before it calls a provider, so a job redelivered by a drain, a
+  // lock expiry or a nack sends nothing again. `push_deliveries` stays what it
+  // was — the post-send outcome log, not the guard.
   subscribe(
     'push.dispatch',
     async (job) => {

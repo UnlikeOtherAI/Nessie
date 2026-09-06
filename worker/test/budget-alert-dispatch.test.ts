@@ -32,6 +32,10 @@ type FakeState = {
 
 const makeFakePrisma = (state: FakeState): BudgetAlertDispatchPrisma =>
   ({
+    // The exactly-once claim (`push_send_claims`). A fresh fake always wins it;
+    // the losing side is proved against the real unique index in
+    // `test/db/push-dispatch-idempotency.test.ts`.
+    $executeRaw: async () => 1,
     pushCredential: {
       findMany: async () => [
         {

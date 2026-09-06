@@ -23,6 +23,14 @@ import {
  * The senders, prisma client, and auth secret are injected (see
  * {@link PushDispatchDeps}) so the handler is fully unit-testable without any
  * network or live database.
+ *
+ * **A redelivered job sends nothing twice.** The API enqueues with the
+ * idempotency key `push:<messageId>`, so two enqueues for one message collapse
+ * to one job row; this handler then passes `push:message:<messageId>` as the
+ * delivery core's `notificationKey`, and the core claims a `push_send_claims`
+ * row per endpoint before it calls a provider. A job that is redelivered — a
+ * dropped ack during a drain, a lock expiry, a nack-and-retry — loses every
+ * claim and rings no device again.
  */
 
 export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
@@ -221,6 +229,12 @@ export const handlePushDispatch = async (
         organizationId: payload.organizationId,
         deepLinkUrl,
         messageId: payload.messageId,
+        // The message IS the notification, and `push:message:<id>` is what the
+        // API's enqueue keys on, so a redelivered job re-derives the same claim
+        // key and every device it already rang is skipped. Both fan-out groups
+        // (mentioned / not) share it safely: a recipient is in exactly one, so
+        // no endpoint is ever reached by both.
+        notificationKey: `push:message:${payload.messageId}`,
         surface: {
           channelId: payload.channelId,
           kind: 'channel',

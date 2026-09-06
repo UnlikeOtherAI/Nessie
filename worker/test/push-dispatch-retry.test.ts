@@ -82,6 +82,10 @@ const baseState = (tokens: TokenRow[], creds: CredRow[] = [apnsCred(), fcmCred()
 
 const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
   ({
+    // The exactly-once claim (`push_send_claims`). A fresh fake always wins it;
+    // the losing side is proved against the real unique index in
+    // `test/db/push-dispatch-idempotency.test.ts`.
+    $executeRaw: async () => 1,
     agent: {
       findMany: async () => [],
     },

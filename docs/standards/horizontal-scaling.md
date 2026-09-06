@@ -85,6 +85,24 @@ choosing a key that is an external fact rather than a clock reading: the
 provider's delivery id, `run:<id>`, `mailbox:<messageId>`. The audit's
 "Enqueue sites without an idempotency key" list is the current debt.
 
+**A key on the enqueue is only half of it.** It coalesces two *enqueues*; it
+says nothing about the same *job row* being handed out twice — a dropped ack
+during a drain, a lease expiry, a nack-and-retry — which is exactly what N
+workers make routine. A handler whose writes are not already idempotent
+therefore claims its work before it acts. Push delivery (5.13) is the worked
+example: `push_deliveries` looked like a dedupe but is an outcome log written
+*after* the provider answers, with no unique key and its own retention, so
+`worker/src/control/push-send-claim.ts` inserts a `push_send_claims` row with a
+unique `(organization_id, notification_key, endpoint_key)` before any provider
+call. `notification_key` mirrors the topic's enqueue key one-for-one
+(`push:message:<id>`); the loser of the claim **skips the work and the job still
+succeeds**, because a job whose work is already done is not a failed job. Put
+the claim on its own table rather than on the log when the log is nullable
+where you would need the key, carries no column for the thing being claimed, or
+is pruned on a schedule that would re-arm the duplicate — all three were true
+of `push_deliveries`. The full push contract is in
+[docs/web-push.md](../web-push.md) → "One notification, one device, one send".
+
 ## 4. Every long-running handler is resumable
 
 **A fencing token on the run and a checkpoint at each iteration boundary.** A

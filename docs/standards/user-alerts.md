@@ -16,4 +16,7 @@ local organisation for bell visibility, and are deleted—not read-marked—when
 UOA no longer returns the invite or acceptance succeeds.
 
 Push transports (APNs/FCM and browser Web Push) are described in
-[docs/web-push.md](../web-push.md).
+[docs/web-push.md](../web-push.md), including the two-layer exactly-once
+contract every notification goes through — a deterministic enqueue idempotency
+key, then a `push_send_claims` row claimed per endpoint before any provider is
+called, so a redelivered job never rings a device twice.

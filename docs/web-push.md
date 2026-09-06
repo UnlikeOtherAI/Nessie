@@ -138,10 +138,48 @@ fan-out invoked from `handlePushDispatch` for the resolved recipient set:
 5. **Auto-prune dead subscriptions.** When the push service returns `404` or
    `410 Gone`, the subscription is deleted so it is never retried.
 
+Step 3 is preceded by the exactly-once claim described under **One
+notification, one device, one send** below — a subscription whose claim is
+already held is skipped, not POSTed to again.
+
 The path never throws out of its loop — one failed endpoint cannot abort the
 rest — and the Prisma surface, sender, and SSRF guard are injected so it is
 unit-testable without a live database or network
 (`worker/test/web-push-delivery.test.ts`).
+
+### One notification, one device, one send
+
+Delivery is exactly-once per (notification, endpoint), over both transports,
+and it takes two layers because either alone is insufficient.
+
+1. **Every enqueue carries a deterministic idempotency key.** `queue_jobs`
+   upserts on it, so two enqueues for one notification collapse to one job:
+   `push:<messageId>` from `api/src/services/message-delivery.ts`,
+   `push:reply:<runId>` from a run's interactive reply,
+   `attention:<alertId>`, `call:ring-dispatch:<callId>:<userId>`,
+   `budget-alert:<scope>:<periodStart>:<kind>`. `enqueuePushDispatch` takes the
+   key as a required argument so a caller cannot omit it.
+2. **The handler claims each endpoint before it calls a provider.** A key on
+   the enqueue does nothing about the *same* job being handed out twice — a
+   dropped ack during a drain, a lease expiry, a nack-and-retry — so
+   `worker/src/control/push-send-claim.ts` inserts a `push_send_claims` row
+   with a unique `(organization_id, notification_key, endpoint_key)`. The
+   winner sends; every later claimant **skips the send and still succeeds**,
+   because a job whose work is already done is not a failed job.
+   `notification_key` is the notification's own identity (`push:message:<id>`),
+   mirroring layer 1; `endpoint_key` is a SHA-256 over the transport plus the
+   device token or subscription endpoint, so no credential is copied into a
+   second table.
+
+`push_deliveries` is unchanged and is **not** the guard: it stays the post-send
+outcome log ops reads, one row per attempt with the provider, the status and
+the error code. Dead-endpoint pruning is unchanged too — it happens on the
+claimed path, so a `410 Gone` still deletes the row. The claim is taken before
+the send and never released, which makes the guarantee at-most-once per
+endpoint: a crash between claim and send drops that one notification rather
+than risking a duplicate, and the durable `UserAlert` row and the message
+itself are still there. Proven against a real unique index in
+`worker/test/db/push-dispatch-idempotency.test.ts`.
 
 ### Incoming calls
 
