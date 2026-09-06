@@ -40,6 +40,7 @@ import {
   ResumeAgentBrowserResponseSchema,
   AgentBrowserViewportResponseSchema,
   BrowserHomeResponseSchema,
+  BrowserSessionContinueResponseSchema,
   SetAgentBrowserViewportBodySchema,
 } from '../contracts/browser-cloud.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -134,6 +135,12 @@ export interface ViewableCloudBrowserSession {
   endedAt: Date | null
   controlledByUserId: string | null
   browserbaseSessionId: string | null
+  /**
+   * When the idle window closes. The client counts down against this rather
+   * than against a timer of its own, so a reload cannot silently restart it
+   * and show time remaining on a session the reaper has already taken.
+   */
+  expiresAt: Date
   connectionProjectId: string | null
   connectionApiKeyRef: string
   /**
@@ -175,6 +182,7 @@ const loadViewableSession = async (
       endedAt: true,
       controlledByUserId: true,
       browserbaseSessionId: true,
+      expiresAt: true,
       agent: { select: { name: true, visibility: true } },
       agentBrowser: {
         select: { principalUserId: true, viewportHeight: true, viewportWidth: true },
@@ -211,6 +219,7 @@ const loadViewableSession = async (
     endedAt: session.endedAt,
     controlledByUserId: session.controlledByUserId,
     browserbaseSessionId: session.browserbaseSessionId,
+    expiresAt: session.expiresAt,
     connectionProjectId: session.connection.projectId,
     connectionApiKeyRef: session.connection.apiKeyRef,
     shared: browserSessionIsShared({
@@ -432,12 +441,11 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     let tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }> = []
     const live = session.status === 'allocating' || session.status === 'active'
       || session.status === 'releasing'
-    // This read is the column polling while it is open, which is exactly
-    // "somebody is watching": a resumed session has no run to end it, so being
-    // watched is what keeps it alive.
-    if (live && session.runId === null) {
-      await touchResumedSession(prisma, { sessionId: session.id })
-    }
+    // Reading no longer extends. The column polls this route by itself every
+    // fifteen seconds, so treating a read as presence meant a browser left
+    // open on a second monitor renewed its own idle window until the hard TTL
+    // — a person who walked away kept billing. Presence is now an explicit
+    // press (`POST .../continue`), which is what the countdown asks for.
     if (live && session.browserbaseSessionId) {
       const apiKey = await secretResolver.resolve(session.connectionApiKeyRef)
       if (apiKey) {
@@ -474,6 +482,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         controlledByUserId: session.controlledByUserId,
         shared: session.shared,
         viewport: session.viewport,
+        expiresAt: session.expiresAt.toISOString(),
         liveViewUrl,
         tabs,
       }),
@@ -1178,6 +1187,49 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     return createApiResponse(
       AgentBrowserViewportResponseSchema.parse({ appliedToLiveSession, viewport }),
     )
+  })
+
+  /**
+   * "I am still here."
+   *
+   * The one thing that extends a resumed session's idle window. It used to be
+   * the column's own poll, which meant a browser left open renewed itself with
+   * nobody in front of it — a person who walked away from an open session kept
+   * a cloud browser billing until the hard TTL. The countdown in the panel asks
+   * for this press a minute before the window closes; no press, and the reaper
+   * takes it.
+   *
+   * Watching is enough to press it: presence is the point, and somebody who
+   * can see the session is somebody who is there. `touchResumedSession` is
+   * capped at `startedAt + ttlMs`, so pressing it forever cannot outlive the
+   * hard limit.
+   */
+  app.post('/api/browser-sessions/:sessionId/continue', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    const session = await loadViewableSession(prisma, {
+      actorContext,
+      sessionId,
+      findThreadForUser,
+    })
+    if (!session) {
+      sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
+      return reply
+    }
+    await touchResumedSession(prisma, { sessionId: session.id })
+    // Read back rather than compute: the cap may have clamped the extension,
+    // and the countdown must agree with the reaper, not with this route's
+    // arithmetic.
+    const extended = await prisma.cloudBrowserSession.findUnique({
+      select: { expiresAt: true },
+      where: { id: session.id },
+    })
+    return createApiResponse(BrowserSessionContinueResponseSchema.parse({
+      expiresAt: (extended?.expiresAt ?? session.expiresAt).toISOString(),
+    }))
   })
 
   /**

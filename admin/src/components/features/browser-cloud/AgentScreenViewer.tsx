@@ -5,10 +5,12 @@ import { BROWSER_VIEWPORT_PRESETS, type BrowserViewport } from '@nessie/schemas'
 import {
   useCloudBrowserSession,
   useEndResumedSession,
+  useKeepBrowserAlive,
   useSendBrowserHome,
   useSetAgentBrowserViewport,
   type BrowserControl,
 } from '../../../facades/browser-cloud/hooks'
+import { browserCountdown, formatCountdown } from './session-countdown'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
@@ -90,6 +92,19 @@ export const AgentScreenViewer = ({
   const resumed = session.data?.runId === null
   const endResumed = useEndResumedSession(threadId, agent?.id ?? null)
   const sendHome = useSendBrowserHome()
+  const keepAlive = useKeepBrowserAlive(sessionId)
+
+  // Ticks only while a resumed session is on screen: an agent's own session is
+  // ended by its run, so there is no idle window to count down and nothing to
+  // ask the reader for.
+  const [now, setNow] = useState(() => Date.now())
+  const countdownFor = session.data?.runId === null ? session.data?.expiresAt : null
+  useEffect(() => {
+    if (!countdownFor) return undefined
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [countdownFor])
+  const countdown = browserCountdown(countdownFor, now)
   const setViewport = useSetAgentBrowserViewport(threadId, agent?.id ?? null)
   // Whether signing in here signs in for other people is the session's answer.
   // Reading it off the agent's visibility said "shared" for every browser a
@@ -304,6 +319,29 @@ export const AgentScreenViewer = ({
             type="button"
           >
             Got it
+          </button>
+        </div>
+      ) : null}
+
+      {countdown?.warning && !countdown.expired ? (
+        <div
+          aria-live="polite"
+          className="mx-3 mb-2 flex flex-shrink-0 items-center gap-3 border border-[color:var(--warning)] bg-[color:var(--bg2)] px-3 py-2"
+        >
+          <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
+            This browser closes in{' '}
+            <span className="font-mono font-semibold text-[color:var(--tx)]">
+              {formatCountdown(countdown.secondsLeft)}
+            </span>
+            {' '}unless you are still using it. Anything signed in is saved either way.
+          </p>
+          <button
+            className="admin-button admin-button-primary admin-button-compact"
+            disabled={keepAlive.isPending}
+            onClick={() => keepAlive.mutate()}
+            type="button"
+          >
+            {keepAlive.isPending ? 'Keeping…' : 'Continue'}
           </button>
         </div>
       ) : null}
