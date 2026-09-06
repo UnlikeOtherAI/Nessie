@@ -216,3 +216,24 @@ export const useTransitionTask = () => {
     },
   })
 }
+
+/**
+ * One task, for a card shown in a conversation.
+ *
+ * Read through the ordinary task endpoint, which is entitlement-gated, so a
+ * ticket appearing in chat never grants anybody access to it — and somebody who
+ * loses access stops seeing it without any message having to be rewritten.
+ */
+export const usePresentedTask = (taskId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery<TaskRecord>({
+    // Id-keyed: a second card in the same conversation must not flash the
+    // previous ticket while its own load is in flight.
+    placeholderData: keepPreviousData,
+    queryKey: taskKeys.presented(taskId),
+    queryFn: () => apiClient.get(`/api/tasks/${taskId}`),
+    enabled: Boolean(taskId),
+    staleTime: 60_000,
+    retry: false,
+  })
+}

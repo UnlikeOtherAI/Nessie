@@ -8,6 +8,7 @@ import { useProjectSources } from '../../../facades/board-sources/hooks'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
 import { BoardCreateDialog } from '../../../components/features/projects/kanban/BoardCreateDialog'
+import { BoardWatchersEditor } from './BoardWatchersEditor'
 import { BoardIconField } from '../../../components/features/projects/kanban/BoardIconField'
 import { BoardIcon } from '../../../components/features/projects/kanban/BoardIcon'
 
@@ -248,6 +249,14 @@ export const BoardsSettingsSection = ({
             </div>
           )}
         </Section>
+      ) : null}
+
+      {selected && canAdminister ? (
+        <BoardWatchersEditor
+          boardId={selected.id}
+          boardName={selected.name}
+          projectId={projectId}
+        />
       ) : null}
 
       <BoardCreateDialog

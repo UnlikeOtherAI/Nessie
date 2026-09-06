@@ -54,6 +54,11 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // wrong belongs on the source's own page, where the remedy is a button.
     return 'A board source stopped syncing'
   }
+  if (alert.kind === 'board_ticket_changed') {
+    // Deliberately without the ticket's title: this reaches a lock screen, and
+    // the title is exactly what must not travel there. The row opens the card.
+    return 'A ticket you watch changed'
+  }
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
     // waiting for approval is exactly the thing that must not travel there.

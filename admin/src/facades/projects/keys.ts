@@ -11,6 +11,9 @@ export const projectKeys = {
   // read. The payload is the boards with their columns and carries no project
   // name, so this is about reachability, not about a rename showing through.
   boards: (projectId: string) => ['projects', projectId, 'boards'] as const,
+  // Nested under the board so deleting a board reaches its watcher list too.
+  boardWatchers: (projectId: string, boardId: string) =>
+    ['projects', projectId, 'boards', boardId, 'watchers'] as const,
   // Nested for the same reason as `boards`: a definition change alters what
   // every card of the project renders.
   fields: (projectId: string) => ['projects', projectId, 'fields'] as const,

@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 import { ColumnCategorySchema } from './board-lifecycle.js'
-import { BoardColumnIdSchema, BoardIdSchema, ProjectIdSchema } from './ids.js'
-import { NonEmptyStringSchema } from './schema-primitives.js'
+import { AgentIdSchema, BoardColumnIdSchema, BoardIdSchema, ProjectIdSchema, UserIdSchema } from './ids.js'
+import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 /**
  * Boards, their columns, and the filter that makes a board a *view* over its
@@ -146,3 +146,37 @@ export const BOARD_TASK_LIMIT = 500
  * a control is not offered to somebody whose click would be refused.
  */
 export const PROJECT_ADMIN_ROLES = ['owner', 'admin'] as const
+
+/**
+ * A board watcher: exactly one of `userId` / `agentId`, mirroring the CHECK on
+ * the row. A union rather than two optional fields, so a caller cannot express
+ * "both" or "neither" and have the server discover it.
+ */
+export const BoardWatcherSchema = z.union([
+  z.object({ kind: z.literal('user'), id: UserIdSchema }),
+  z.object({ kind: z.literal('agent'), id: AgentIdSchema }),
+])
+export type BoardWatcher = z.infer<typeof BoardWatcherSchema>
+
+export const BoardWatcherRecordSchema = z.object({
+  id: z.string().uuid(),
+  boardId: z.string().uuid(),
+  kind: z.enum(['user', 'agent']),
+  /** The user or agent id, whichever `kind` names. */
+  recipientId: z.string().uuid(),
+  /** For the chip, so the list renders without a second round trip. */
+  displayName: z.string(),
+  addedByUserId: UserIdSchema,
+  createdAt: TimestampSchema,
+})
+export type BoardWatcherRecord = z.infer<typeof BoardWatcherRecordSchema>
+
+/**
+ * The whole list, replaced at once. A watcher list is short and edited as a
+ * document — sending a diff would mean two orderings of the same edit and a
+ * merge nobody asked for.
+ */
+export const SetBoardWatchersBodySchema = z.object({
+  watchers: BoardWatcherSchema.array().max(50),
+})
+export type SetBoardWatchersBody = z.infer<typeof SetBoardWatchersBodySchema>

@@ -32,6 +32,9 @@ export const UserAlertKindSchema = z.enum([
   // reason as the two above: a board that has quietly stopped updating still
   // looks exactly like a board.
   'board_source_health',
+  // A ticket moved or changed on a board this person watches. Durable because
+  // somebody explicitly asked to be told: a push is missable, the bell is not.
+  'board_ticket_changed',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 

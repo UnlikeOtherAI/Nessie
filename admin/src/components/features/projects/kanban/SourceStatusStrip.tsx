@@ -82,6 +82,13 @@ export const SourceStatusStrip = ({
                     yet. The button is where a press reports back. */}
                 {PROVIDER_LABEL[source.provider]} {source.name} ·{' '}
                 {health.remedy ?? freshness(source.lastSyncCompletedAt)}
+              {/*
+                Whether a drag here reaches the provider is a property of the
+                source, and it was only ever visible on the source's own
+                settings page — so a person standing at the board could not tell
+                why a card sprang back. The pill links to the control.
+              */}
+              {source.writeMode === 'read_only' ? ' · read-only' : ''}
                 {mode && !health.remedy ? ` · ${mode}` : ''}
               </Pill>
             </Link>

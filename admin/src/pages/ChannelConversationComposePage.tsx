@@ -9,24 +9,18 @@ import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import {
-  buildRecipientOptions,
-  recipientKey,
   selectAddressableAgents,
   type Recipient,
-  type RecipientOption,
 } from '../lib/channel-compose-recipients'
 import { usePhoneLayout } from '../navigation/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
-import { AgentVisibilityPill } from '../components/shared/AgentVisibilityPill'
 import { DirectMessageAgentCreator } from '../components/features/channels/DirectMessageAgentCreator'
 import {
   DIRECT_MESSAGE_TARGET_VALUES,
   DirectMessageTargetTabs,
   type DirectMessageTarget,
 } from '../components/features/channels/DirectMessageTargetTabs'
-import { UserAvatar } from '../components/shared/UserAvatar'
-import { AgentAvatar } from '../components/shared/AgentAvatar'
 import {
   MentionInput,
   type AgentMention,
@@ -35,11 +29,10 @@ import {
 } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOwner } from '../facades/auth/hooks'
+import { RecipientBar } from '../components/shared/RecipientBar'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { useTabParam } from '../navigation/useTabParam'
-
-const optionKey = recipientKey
 
 const getRecipientName = (
   recipient: Recipient,
@@ -75,9 +68,6 @@ export const ChannelConversationComposePage = () => {
   )
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [newAgentVisibility, setNewAgentVisibility] = useState<'private' | 'team'>('private')
-  const [query, setQuery] = useState('')
-  const [addressFocused, setAddressFocused] = useState(false)
-  const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
@@ -117,20 +107,6 @@ export const ChannelConversationComposePage = () => {
     () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   )
-  const selectedKeys = useMemo(
-    () => new Set(recipients.map(optionKey)),
-    [recipients],
-  )
-  const options = useMemo<RecipientOption[]>(
-    () => buildRecipientOptions({
-      agents: target === 'agents' ? agents : [],
-      limit: 8,
-      query,
-      selectedKeys,
-      users: target === 'people' ? users : [],
-    }),
-    [agents, query, selectedKeys, target, users],
-  )
 
   const mentionEntities = useMemo<MentionEntity[]>(
     () =>
@@ -144,23 +120,12 @@ export const ChannelConversationComposePage = () => {
     [agentsById, recipients, usersById],
   )
 
-  const addRecipient = useCallback((option: RecipientOption) => {
-    setRecipients((current) => [...current, { id: option.id, kind: option.kind }])
-    setQuery('')
-    setHighlightedIndex(0)
-    window.setTimeout(() => addressInputRef.current?.focus(), 0)
-  }, [])
 
-  const removeRecipient = useCallback((recipient: Recipient) => {
-    setRecipients((current) =>
-      current.filter((item) => optionKey(item) !== optionKey(recipient)),
-    )
-  }, [])
 
   const selectTarget = useCallback((next: DirectMessageTarget) => {
     setTarget(next)
-    setQuery('')
-    setHighlightedIndex(0)
+    // The address bar owns its own query and highlight; switching sides only
+    // changes what it is offered, and the caret belongs back in the field.
     window.setTimeout(() => addressInputRef.current?.focus(), 0)
   }, [setTarget])
 
@@ -215,39 +180,9 @@ export const ChannelConversationComposePage = () => {
     [navigate, recipients, sendMessage, startConversation],
   )
 
-  const hasSelectableOptions = options.length > 0
 
-  const onAddressKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'ArrowDown' && hasSelectableOptions) {
-      event.preventDefault()
-      setHighlightedIndex((index) => Math.min(index + 1, options.length - 1))
-      return
-    }
-    if (event.key === 'ArrowUp' && hasSelectableOptions) {
-      event.preventDefault()
-      setHighlightedIndex((index) => Math.max(index - 1, 0))
-      return
-    }
-    if ((event.key === 'Enter' || event.key === 'Tab') && hasSelectableOptions) {
-      event.preventDefault()
-      const option = options[highlightedIndex] ?? options[0]
-      if (option) {
-        addRecipient(option)
-      }
-      return
-    }
-    if (event.key === 'Backspace' && query.length === 0 && recipients.length > 0) {
-      event.preventDefault()
-      setRecipients((current) => current.slice(0, -1))
-      return
-    }
-    if (event.key === 'Escape') {
-      setQuery('')
-    }
-  }
 
   const isPending = startConversation.isPending || sendMessage.isPending
-  const showOptions = addressFocused && hasSelectableOptions
 
   if (!me) {
     return null
@@ -315,116 +250,18 @@ export const ChannelConversationComposePage = () => {
               Or message an existing agent
             </p>
           ) : null}
-          <div className="relative flex-shrink-0 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
-            <div className="flex min-h-[38px] items-center gap-2">
-              <span className="w-8 flex-shrink-0 text-sm font-semibold text-[color:var(--tx2)]">
-                To
-              </span>
-              <div
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
-                onClick={() => {
-                  setAddressFocused(true)
-                  addressInputRef.current?.focus()
-                }}
-                role="presentation"
-              >
-                {recipients.map((recipient) => {
-                  const selectedAgent = recipient.kind === 'agent'
-                    ? agentsById.get(recipient.id)
-                    : undefined
-                  return (
-                    <span
-                      key={optionKey(recipient)}
-                      className={[
-                        'flex max-w-full items-center gap-1 rounded-md',
-                        'bg-[color:var(--overlay)] px-2 py-1 text-sm text-[color:var(--tx)]',
-                      ].join(' ')}
-                    >
-                      <span className="truncate">
-                        {getRecipientName(recipient, usersById, agentsById)}
-                      </span>
-                      {selectedAgent ? (
-                        <AgentVisibilityPill visibility={selectedAgent.visibility} />
-                      ) : null}
-                      <button
-                        aria-label={`Remove ${getRecipientName(recipient, usersById, agentsById)}`}
-                        className="flex h-4 w-4 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]"
-                        onClick={() => removeRecipient(recipient)}
-                        type="button"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )
-                })}
-                <input
-                  ref={addressInputRef}
-                  autoFocus
-                  className="min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                  onBlur={() => window.setTimeout(() => {
-                    if (document.activeElement !== addressInputRef.current) {
-                      setAddressFocused(false)
-                    }
-                  }, 120)}
-                  onChange={(event) => {
-                    setQuery(event.target.value)
-                    setHighlightedIndex(0)
-                  }}
-                  onFocus={() => setAddressFocused(true)}
-                  onKeyDown={onAddressKeyDown}
-                  placeholder={recipients.length === 0
-                    ? (target === 'people' ? 'Type a name or email address' : 'Type an agent name')
-                    : ''}
-                  value={query}
-                />
-              </div>
-            </div>
-
-            {showOptions ? (
-              <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-72 overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-xl">
-                {options.map((option, index) => (
-                  <button
-                    key={optionKey(option)}
-                    className={[
-                      'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
-                      index === highlightedIndex
-                        ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-                        : 'text-[color:var(--tx)] hover:bg-[color:var(--overlay-weak)]',
-                    ].join(' ')}
-                    onMouseDown={(event) => {
-                      event.preventDefault()
-                      addRecipient(option)
-                    }}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    type="button"
-                  >
-                    {option.kind === 'user' && option.user ? (
-                      <UserAvatar
-                        avatarAttachmentId={option.user.avatarAttachmentId ?? undefined}
-                        avatarUrl={option.user.avatarUrl ?? undefined}
-                        displayName={option.user.displayName}
-                        size={24}
-                        token={token}
-                        userId={option.user.id}
-                      />
-                    ) : (
-                      <AgentAvatar agentId={option.id} size={24} token={token} />
-                    )}
-                    <span className="min-w-0 flex flex-col">
-                      <span className="truncate">{option.label}</span>
-                      <span className="truncate text-xs opacity-60">{option.detail}</span>
-                    </span>
-                    <span className="ml-auto flex-shrink-0">
-                      {option.kind === 'agent' && option.agentVisibility ? (
-                        <AgentVisibilityPill visibility={option.agentVisibility} />
-                      ) : (
-                        <span className="text-xs opacity-60">{option.category}</span>
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
+          <div className="flex-shrink-0">
+            <RecipientBar
+              agents={target === 'agents' ? agents : []}
+              autoFocus
+              inputRef={addressInputRef}
+              label="To"
+              onChange={setRecipients}
+              placeholder={target === 'people' ? 'Type a name or email address' : 'Type an agent name'}
+              recipients={recipients}
+              token={token}
+              users={target === 'people' ? users : []}
+            />
           </div>
 
           <form

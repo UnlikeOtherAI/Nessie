@@ -33,7 +33,7 @@ const buildCardExcerpt = (value: string | null | undefined): string | null => {
   return `${normalized.slice(0, MAX_EXCERPT_CHARS).trimEnd()}...`
 }
 
-const KanbanCardContent = ({
+export const KanbanCardContent = ({
   task,
   showProject,
   projectName,
