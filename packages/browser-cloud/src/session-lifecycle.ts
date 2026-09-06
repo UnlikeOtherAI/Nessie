@@ -467,6 +467,58 @@ export const openCloudBrowserSession = async (
  * extension never passes `startedAt + ttlMs`: a forgotten window keeps
  * polling, and without the cap it would keep paying.
  */
+/**
+ * Take over the browser a person just handed back, instead of opening another.
+ *
+ * Done releases the claim and leaves the session up precisely so the agent can
+ * carry on without a cold start — but the session was opened by a person, so
+ * it carries no `run_id` and `findLiveSessionForRun` cannot see it. Opening a
+ * second one is refused by the one-live-session-per-browser rule, which is how
+ * "the agent picks the task back up" turned into "this agent's browser is
+ * already open in another run".
+ *
+ * So the run adopts it: one conditional update that both claims the session and
+ * proves nobody else did first. `run_id IS NULL` in the WHERE is the whole
+ * concurrency story — two runs racing to adopt, or a person re-taking the
+ * controls in between, and the loser simply opens its own browser.
+ */
+export const adoptHandedBackSession = async (
+  deps: CloudBrowserDeps,
+  input: { agentBrowserId: string; runId: string; encryptionSecret: string },
+): Promise<{ sessionId: string; connectUrl: string } | null> => {
+  const candidate = await deps.prisma.cloudBrowserSession.findFirst({
+    where: {
+      agentBrowserId: input.agentBrowserId,
+      runId: null,
+      status: 'active',
+      // Somebody has taken the controls again since the hand-back. Their claim
+      // is the answer; the agent waits rather than driving underneath them.
+      controlledByUserId: null,
+    },
+    select: { id: true },
+  })
+  if (!candidate) return null
+  const claimed = await deps.prisma.cloudBrowserSession.updateMany({
+    where: { id: candidate.id, runId: null, status: 'active', controlledByUserId: null },
+    data: { runId: input.runId },
+  })
+  if (claimed.count === 0) return null
+  const capability = await loadSessionCapability(deps.prisma, {
+    encryptionSecret: input.encryptionSecret,
+    sessionId: candidate.id,
+  })
+  if (!capability) {
+    // Adopted but undrivable — hand it straight back rather than holding a
+    // session this run cannot reach.
+    await deps.prisma.cloudBrowserSession.updateMany({
+      where: { id: candidate.id, runId: input.runId },
+      data: { runId: null },
+    })
+    return null
+  }
+  return { connectUrl: capability.connectUrl, sessionId: candidate.id }
+}
+
 export const touchResumedSession = async (
   prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
   input: { sessionId: string; now?: Date },

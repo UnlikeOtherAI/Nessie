@@ -2,6 +2,7 @@ import {
   actInBrowser,
   CLOUD_BROWSER_ERROR_CODES,
   CloudBrowserUnknownOutcomeError,
+  adoptHandedBackSession,
   ensureAgentBrowser,
   findLiveSessionForRun,
   isCloudBrowserError,
@@ -313,7 +314,22 @@ const runOpen = async (
       currentUrl: null,
       touchedAuthenticated: false,
     }
-    const opened = await openCloudBrowserSession(deps, {
+    // The person just handed this browser back and it is still up: take it
+    // over rather than opening another. Opening a second one is refused by the
+    // one-live-session-per-browser rule anyway — which is how "the agent picks
+    // the task back up" became "this agent's browser is already open in
+    // another run" — and a cold start is the delay the hand-over exists to
+    // avoid. Everything downstream is identical either way, so this only has
+    // to produce the same two fields.
+    const handback = context.run.browserHandback
+    const adopted = agentBrowser && handback && handback.agentBrowserId === agentBrowser.id
+      ? await adoptHandedBackSession(deps, {
+        agentBrowserId: agentBrowser.id,
+        encryptionSecret: capabilitySealSecret(),
+        runId: context.run.id,
+      })
+      : null
+    const opened = adopted ?? await openCloudBrowserSession(deps, {
       organizationId: context.channel.organizationId,
       runId: context.run.id,
       threadId: context.run.threadId,

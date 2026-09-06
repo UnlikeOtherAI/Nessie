@@ -149,3 +149,20 @@ test('without provenance an automated run is still refused', () => {
     'the schedule protection must not have moved',
   )
 })
+
+/**
+ * Proven against the real service on 2026-09-06: with the gate alone, the
+ * agent got through it and then failed with "this agent's browser is already
+ * open in another run" — the handed-back session carries no `run_id`, so
+ * `findLiveSessionForRun` cannot see it and `browser_open` tried to open a
+ * second one. The provenance therefore has to select *adoption*, not a second
+ * session; these assert the condition that chooses it.
+ */
+test('provenance for this browser is what selects adoption over a new session', () => {
+  const adopts = (handback: { agentBrowserId: string; byUserId: string } | null): boolean =>
+    Boolean(handback && handback.agentBrowserId === BROWSER)
+
+  assert.equal(adopts({ agentBrowserId: BROWSER, byUserId: PERSON }), true)
+  assert.equal(adopts({ agentBrowserId: 'browser-2', byUserId: PERSON }), false)
+  assert.equal(adopts(null), false, 'an ordinary run opens its own browser')
+})
