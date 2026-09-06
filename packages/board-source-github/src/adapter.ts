@@ -384,7 +384,10 @@ export const createGitHubAdapter = (config: GitHubAdapterConfig): BoardSourceAda
     // `fetchItems` re-reads with it.
     const issueId = parsed.issue?.number
     return {
-      deliveryId: request.headers['x-github-delivery'] ?? `github:${Date.now()}`,
+      // GitHub's own delivery uuid, identical across every redelivery of the
+      // same event. Null rather than a clock reading when it is absent: the
+      // caller hashes the body, which at least dedupes a retry.
+      deliveryId: request.headers['x-github-delivery'] ?? null,
       containerKey: parsed.repository?.full_name
         ? `repo:${parsed.repository.full_name}`
         : parsed.projects_v2_item?.node_id

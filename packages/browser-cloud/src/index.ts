@@ -65,6 +65,13 @@ export {
 } from './connection-management.js'
 
 export {
+  loadSessionCapability,
+  persistOriginGate,
+  sealConnectCapability,
+  type PersistedSessionCapability,
+} from './session-capability.js'
+
+export {
   describeAgentBrowser,
   ensureAgentBrowser,
   recordAgentBrowserLogin,

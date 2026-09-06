@@ -1576,6 +1576,10 @@ model Board {
   projectId      String     @map("project_id") @db.Uuid
   organizationId String     @map("organization_id") @db.Uuid
   name           String
+  /// The board's glyph in the Projects sidebar: one emoji, or NULL for the
+  /// shared board icon. Emoji only — no attachment, so a board decorates
+  /// itself without promising a picture to upload and crop.
+  iconEmoji      String?    @map("icon_emoji")
   style          BoardStyle @default(kanban)
   /// The board `/projects/:id/board` opens on with no `?board=`, and the one
   /// the personal assistant's ticket tools use when none is named. Exactly one
@@ -2817,6 +2821,18 @@ model Run {
   // back to the organization's Ledger route.
   modelSubscriptionId                 String?                         @map("model_subscription_id") @db.Uuid
   modelSubscriptionEpoch              Int?                            @map("model_subscription_epoch")
+  // Run-level executor fencing. The run row — not the queue lock — is the
+  // authority for who is executing it: `claimRunForExecution` mints a token in
+  // one conditional UPDATE, the winning executor refreshes
+  // `executorHeartbeatAt` every 30s while it works, and every terminal or
+  // suspended status write it makes carries `executor_token` in the WHERE. A
+  // run whose heartbeat has gone stale is claimable again, which is what keeps
+  // a genuinely crashed executor from stranding it; the fenced-out loser's
+  // writes then match zero rows and raise `RunFencedError` instead of
+  // overwriting the winner's outcome. Cleared when the run suspends, so the
+  // executor that resumes it can claim it cleanly.
+  executorToken                       String?                         @map("executor_token") @db.Uuid
+  executorHeartbeatAt                 DateTime?                       @map("executor_heartbeat_at")
   modelSubscription                   ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
   agent                               Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                              Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -7262,6 +7278,19 @@ model CloudBrowserSession {
   /// completed login handoff, or any control claim). Never clears — it is
   /// what makes the disclosure basis safe to evaluate per read.
   authenticated Boolean @default(false)
+
+  /// The CDP connect URL, sealed with the deployment auth secret (the same
+  /// AES-256-GCM packing executor command payloads use). It is here so a run
+  /// re-claimed by another worker after an approval can re-attach instead of
+  /// dead-ending on `SESSION_ALREADY_OPEN` while the browser bills to its TTL
+  /// (audit 8.1). Written when the row reaches `active`, cleared the moment it
+  /// leaves it: a live bearer capability must not outlive the session.
+  connectCapabilityCiphertext String? @map("connect_capability_ciphertext")
+  /// The cross-origin write gate as the worker's `OriginGateState`, serialised
+  /// — which origins this browser holds cookies for, whether it has visited
+  /// one, and the page it is on. Not a secret, but only meaningful while the
+  /// session is live, so it is cleared alongside the capability.
+  originGate                  Json?   @map("origin_gate")
 
   /// The person whose ask started the run, when there is one. NULL for an
   /// unattended run, which may never use a personal connection.

@@ -131,6 +131,11 @@ export const postSuspensionNotice = async (
  * only stamps `finishedAt` for the three terminal values — so the working
  * marker stays up and `ACTIVE_THREAD_RUN_STATUSES` keeps a second run from
  * starting in this thread while a person is deciding.
+ *
+ * The same statement releases the executor fencing token (see
+ * `updateRunStatus`): a parked run has no executor, and the one that resumes it
+ * after the approval or the card press must be able to claim it immediately
+ * rather than wait out the takeover window.
  */
 export const applySuspendedState = async (
   deps: ExecutionDependencies,

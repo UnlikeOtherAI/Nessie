@@ -33,9 +33,18 @@ import { requestBrowserLogin } from './login-request.js'
 import {
   noteVisitedOrigin,
   readAuthenticatedOrigins,
+  serialiseOriginGate,
   type OriginGateState,
 } from './origin-gate.js'
-import { acquireCdp, originGateFor, registerSession, releaseCdp } from './session-pool.js'
+import {
+  acquireCdp,
+  capabilitySealSecret,
+  originGateFor,
+  registerSession,
+  releaseCdp,
+  saveOriginGate,
+  type SessionPoolDeps,
+} from './session-pool.js'
 
 /**
  * What a browser verb reports. Failure is a value; ambiguity is a throw.
@@ -83,6 +92,13 @@ type BrowserToolContext = BuiltinToolRuntimeContext & {
 
 const depsFor = (context: BrowserToolContext): CloudBrowserDeps | null =>
   context.cloudBrowser ?? null
+
+/**
+ * The pool reads the session row on a miss, so every verb hands it the same
+ * Prisma client the lifecycle uses — that is what lets a second worker drive a
+ * browser this one never opened.
+ */
+const poolFor = (deps: CloudBrowserDeps): SessionPoolDeps => ({ prisma: deps.prisma })
 
 const unavailable: BrowserToolOutcome = {
   output:
@@ -205,6 +221,11 @@ const runOpen = async (
       }
     }
 
+    const gate: OriginGateState = {
+      authenticatedOrigins: new Set(),
+      currentUrl: null,
+      touchedAuthenticated: false,
+    }
     const opened = await openCloudBrowserSession(deps, {
       organizationId: context.channel.organizationId,
       runId: context.run.id,
@@ -212,13 +233,13 @@ const runOpen = async (
       agentId: context.agentId,
       requestedByUserId: context.run.principalUserId ?? null,
       teamId: context.channel.teamId ?? null,
+      // Sealed onto the row in the same statement that flips it to `active`,
+      // so no worker ever sees a live session it cannot re-attach to.
+      encryptionSecret: capabilitySealSecret(),
+      originGate: serialiseOriginGate(gate),
       ...(agentBrowser ? { agentBrowser } : {}),
     })
-    const gate: OriginGateState = {
-      authenticatedOrigins: new Set(),
-      currentUrl: null,
-      touchedAuthenticated: false,
-    }
+    const pool = poolFor(deps)
     registerSession(opened.sessionId, opened.connectUrl, gate)
     // Anything that fails from here on has a live remote session behind it,
     // which would otherwise bill to its TTL and hold this run's only slot
@@ -234,7 +255,7 @@ const runOpen = async (
 
     let cdp
     try {
-      cdp = await acquireCdp(opened.sessionId)
+      cdp = await acquireCdp(pool, opened.sessionId)
     } catch (error) {
       return abandon(`The browser could not be reached after opening: ${
         error instanceof Error ? error.message : String(error)}`)
@@ -250,6 +271,9 @@ const runOpen = async (
       }
       await cdp.call('Page.navigate', { url: parsed.data.url })
       noteVisitedOrigin(gate, parsed.data.url)
+      // The cookie read and the first navigation are what make the gate mean
+      // anything; a worker that resumes this run must not start from empty.
+      await saveOriginGate(pool, opened.sessionId, gate)
     } catch (error) {
       return abandon(`That page could not be opened: ${
         error instanceof Error ? error.message : String(error)}`)
@@ -276,7 +300,7 @@ const runObserve = async (
   const session = await liveSession(deps, context)
   if (!session.ok) return session.result
   try {
-    const cdp = await acquireCdp(session.sessionId)
+    const cdp = await acquireCdp(poolFor(deps), session.sessionId)
     if (!cdp) {
       return {
         output: 'The browser connection was lost. Open a new browser to continue.',
@@ -306,8 +330,9 @@ const runAct = async (
   }
   const session = await liveSession(deps, context)
   if (!session.ok) return session.result
+  const pool = poolFor(deps)
   try {
-    const cdp = await acquireCdp(session.sessionId)
+    const cdp = await acquireCdp(pool, session.sessionId)
     if (!cdp) {
       return {
         output: 'The browser connection was lost. Open a new browser to continue.',
@@ -316,10 +341,13 @@ const runAct = async (
     }
     // The cross-origin decision was already made at authorization, where it
     // can ask a person rather than dead-end the run.
-    const gate = originGateFor(session.sessionId)
+    const gate = await originGateFor(pool, session.sessionId)
     const result = await actInBrowser(cdp, parsed.data)
     const observation = await observeBrowser(cdp)
-    if (gate) noteVisitedOrigin(gate, observation.url)
+    if (gate) {
+      noteVisitedOrigin(gate, observation.url)
+      await saveOriginGate(pool, session.sessionId, gate)
+    }
     return {
       output: untrusted(
         [
@@ -382,8 +410,9 @@ const runDownload = async (
   }
   const session = await liveSession(deps, context)
   if (!session.ok) return session.result
+  const pool = poolFor(deps)
   try {
-    const cdp = await acquireCdp(session.sessionId)
+    const cdp = await acquireCdp(pool, session.sessionId)
     if (!cdp) {
       return {
         output: 'The browser connection was lost. Open a new browser to continue.',
@@ -391,7 +420,7 @@ const runDownload = async (
       }
     }
     return await downloadFromBrowser(cdp, context, {
-      gate: originGateFor(session.sessionId),
+      gate: await originGateFor(pool, session.sessionId),
       nodeId,
     })
   } catch (error) {

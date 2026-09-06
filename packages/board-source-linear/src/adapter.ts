@@ -419,9 +419,13 @@ const verifyLinearApiKey = async (values: Record<string, string>): Promise<Conne
     }
     const externalId = parsed.data?.id
     return {
-      deliveryId: `${parsed.webhookId ?? 'linear'}:${externalId ?? 'none'}:${
-        parsed.webhookTimestamp ?? 0
-      }`,
+      // Linear has no delivery header; the payload names the webhook and the
+      // moment it fired, and a redelivery repeats both byte for byte. Without
+      // `webhookId` there is nothing provider-supplied to key on, so the
+      // caller hashes the body instead of keying on a partly-invented string.
+      deliveryId: parsed.webhookId
+        ? `${parsed.webhookId}:${externalId ?? 'none'}:${parsed.webhookTimestamp ?? 0}`
+        : null,
       containerKey: parsed.data?.team?.id ?? parsed.data?.teamId ?? null,
       externalIds: externalId ? [externalId] : [],
     }

@@ -34,6 +34,46 @@ export type OriginGateState = {
   currentUrl: string | null
 }
 
+/**
+ * The gate as it is stored on `cloud_browser_sessions.origin_gate`.
+ *
+ * A `Set` does not survive JSON, and the gate has to survive: a run suspended
+ * for the cross-origin approval is resumed by whichever worker claims it, and
+ * one that rebuilt an empty gate would wave through exactly the write the
+ * person was asked about (audit 8.1).
+ */
+export const serialiseOriginGate = (state: OriginGateState): {
+  authenticatedOrigins: string[]
+  touchedAuthenticated: boolean
+  currentUrl: string | null
+} => ({
+  authenticatedOrigins: [...state.authenticatedOrigins],
+  touchedAuthenticated: state.touchedAuthenticated,
+  currentUrl: state.currentUrl,
+})
+
+/**
+ * The inverse. Anything unreadable rebuilds as a gate that has touched
+ * nothing, which is the shape that gates nothing — so callers must treat an
+ * absent row as "escalate", never as "an empty gate said yes".
+ */
+export const deserialiseOriginGate = (value: unknown): OriginGateState => {
+  const raw = (value ?? {}) as {
+    authenticatedOrigins?: unknown
+    touchedAuthenticated?: unknown
+    currentUrl?: unknown
+  }
+  return {
+    authenticatedOrigins: new Set(
+      Array.isArray(raw.authenticatedOrigins)
+        ? raw.authenticatedOrigins.filter((entry): entry is string => typeof entry === 'string')
+        : [],
+    ),
+    touchedAuthenticated: raw.touchedAuthenticated === true,
+    currentUrl: typeof raw.currentUrl === 'string' ? raw.currentUrl : null,
+  }
+}
+
 const originOf = (url: string): string | null => {
   try {
     return new URL(url).origin

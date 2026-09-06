@@ -75,7 +75,15 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       return 1
     },
     run: {
-      updateMany: async () => ({ count: 1 }),
+      // Both doors record the status. `updateRunStatus` writes through the
+      // conditional `updateMany` when a claim holds the run in the surrounding
+      // job's context, and through the plain `update` otherwise — which is this
+      // harness, since it drives the turn directly rather than through
+      // `executeRunJob`.
+      updateMany: async ({ data }: { data: { status: string } }) => {
+        captured.runStatus.push(data.status)
+        return { count: 1 }
+      },
       update: async ({ data }: { data: { status: string } }) => {
         captured.runStatus.push(data.status)
         return {}
@@ -489,11 +497,16 @@ test('a post-message realtime failure repairs status without writing a duplicate
   assert.equal(captured.messages.length, 1)
   assert.equal(lastMessage(captured).content, 'The one durable answer.')
   assert.ok(captured.runStatus.includes('failed'))
-  assert.ok(captured.queueJobs.some((job) =>
-    ((job as { values?: unknown[] }).values ?? []).some(
+  // `captured.queueJobs` holds every raw statement the turn issued, and not all
+  // of them are `Prisma.sql` objects — the run claim is a tagged template, so
+  // its first argument is a TemplateStringsArray whose `values` is the array
+  // iterator, not parameters. Only the parameterised ones are candidates here.
+  assert.ok(captured.queueJobs.some((job) => {
+    const values = (job as { values?: unknown }).values
+    return Array.isArray(values) && values.some(
       (value) => typeof value === 'string' && value.includes('recipientUserIds'),
-    ),
-  ))
+    )
+  }))
 })
 
 test('app-key auth failure is an admin repair, never a user reconnect prompt', async () => {
