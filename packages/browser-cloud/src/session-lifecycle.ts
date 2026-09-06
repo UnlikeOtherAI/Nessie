@@ -399,6 +399,12 @@ export const openCloudBrowserSession = async (
       // by the reaper and extended while somebody watches, and the remote
       // timeout must leave room for that.
       timeoutSeconds: Math.ceil(settings.ttlMs / 1000),
+      // A session with no run is one a person opened, and nothing holds its
+      // socket between the restore and the moment the live view's iframe
+      // dials in. Browserbase stops a session when its last connection drops,
+      // so without this the browser is gone before anybody can watch it — the
+      // reaper and the idle TTL remain what actually ends it.
+      keepAlive: input.runId === null,
       viewport: viewportForSession(input),
       ...(input.agentBrowser
         // `persist` is what makes tomorrow's run find the login still there.

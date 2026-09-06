@@ -77,6 +77,19 @@ export type CreateSessionInput = {
   contextId?: string
   persistContext?: boolean
   /**
+   * Keep the remote browser running when nothing is connected to it.
+   *
+   * Browserbase stops a session the moment its last CDP connection drops. A
+   * run is safe without this because the worker holds the socket from open to
+   * close — but a session a *person* resumed is created, has its tabs put
+   * back, and is then disconnected from, with nobody attached until the live
+   * view's iframe dials in. Measured against the real service, such a session
+   * ended two seconds after it started, so the panel polled a session that was
+   * already gone and showed "the browser is starting up" forever. It only ever
+   * appeared to work when the iframe won that race.
+   */
+  keepAlive?: boolean
+  /**
    * How big the browser's window is. Browserbase fixes it at session creation
    * and it cannot be changed for the session's life, so this is the only
    * moment a size can be chosen — a later CDP resize moves the rendered page
@@ -200,6 +213,7 @@ export const createBrowserbaseClient = (
           body: {
             ...projectScope,
             timeout: input.timeoutSeconds,
+            ...(input.keepAlive ? { keepAlive: true } : {}),
             browserSettings: {
               // See the file header: none of these are cosmetic.
               recordSession: false,
