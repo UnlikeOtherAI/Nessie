@@ -20,6 +20,7 @@ import {
   resolveGlobalAgentModel,
 } from '@nessie/team-admin'
 import type { FastifyReply } from 'fastify'
+import { isWebSearchConfigured } from './web-search.js'
 import {
   buildDesignerSystemPrompt,
   DESIGNER_TOOLS,
@@ -86,20 +87,13 @@ const writeSseEvent = (
  *
  * It used to scrape DuckDuckGo's HTML results page directly — a third-party
  * call with no Ledger provenance, predating and violating the Ledger-only rule
- * `AGENTS.md` states for `web_search`. It now posts to the same
- * `${LEDGER_PUBLIC_URL}/v1/serper/search` route the builtin does, through the
- * same `runWebSearch` (moved into `@nessie/runtime` so both processes call one
- * implementation), carrying `LEDGER_PROXY_TOKEN` and the signed identity
- * headers. A deployment without Ledger degrades honestly: no results and a
- * sentence saying why. There is deliberately no scraping fallback.
+ * `AGENTS.md` states for `web_search`. It now runs the same `runWebSearch`
+ * (moved into `@nessie/runtime` so both processes call one implementation),
+ * against whichever Ledger search route the deployment configures, carrying
+ * `LEDGER_PROXY_TOKEN` and the signed identity headers. A deployment without
+ * Ledger degrades honestly: no results and a sentence saying why. There is
+ * deliberately no scraping fallback.
  */
-export const isDesignerWebSearchConfigured = (
-  ledgerIdentity: LedgerIdentityService | null,
-  env: NodeJS.ProcessEnv = process.env,
-): boolean =>
-  Boolean(env.LEDGER_PUBLIC_URL?.trim())
-  && Boolean(env.LEDGER_PROXY_TOKEN?.trim())
-  && ledgerIdentity !== null
 
 const WEB_SEARCH_UNAVAILABLE =
   'Web search is not configured on this deployment, so there are no results. '
@@ -110,7 +104,7 @@ const executeWebSearch = async (
   usageContext: DesignerUsageContext,
   toolCallId: string,
 ): Promise<string> => {
-  if (!isDesignerWebSearchConfigured(usageContext.ledgerIdentity)) {
+  if (!isWebSearchConfigured(usageContext.ledgerIdentity)) {
     return WEB_SEARCH_UNAVAILABLE
   }
   try {
@@ -364,7 +358,7 @@ export const streamDesignerChat = async (
         formState: input.formState,
         organizationId: usageContext.actorContext.tenant.organizationId,
         ...(input.pageContext ? { pageContext: input.pageContext } : {}),
-        webSearchAvailable: isDesignerWebSearchConfigured(
+        webSearchAvailable: isWebSearchConfigured(
           usageContext.ledgerIdentity,
         ),
       }),

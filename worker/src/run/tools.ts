@@ -77,7 +77,7 @@ import {
   runScheduleTaskTool,
 } from './schedule-tools.js'
 import {
-  coercePage,
+  coercePositiveInteger,
   runDocumentReadTool,
   runWebFetchTool,
   runWebSearchTool,
@@ -342,10 +342,17 @@ const executeBuiltinToolUncorrected = async (
         const services = await dashboard.resolveServices(context.prisma)
         return dashboard.runTool(toolName, context, args, services)
       })
-    case 'web_search':
+    case 'web_search': {
+      const count = coercePositiveInteger(args.count)
+      const page = coercePositiveInteger(args.page)
       return wrapTool(inputSummary, () =>
-        runWebSearchTool(context, String(args.query ?? ''), coercePage(args.page)),
+        runWebSearchTool(context, String(args.query ?? ''), {
+          ...(count === undefined ? {} : { count }),
+          ...(page === undefined ? {} : { page }),
+          present: args.present === true,
+        }),
       )
+    }
     case 'web_fetch':
       return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
     case 'schedule_task':

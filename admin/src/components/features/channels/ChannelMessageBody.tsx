@@ -22,6 +22,7 @@ import { RunApprovalGate } from './RunApprovalGate'
 import { RunStopContinue } from './RunStopContinue'
 import { TodoProgressCard } from './TodoProgressCard'
 import { VoiceCallMessage, readVoiceCallRecord } from './VoiceCallMessage'
+import { WebSearchResultsCard } from './WebSearchResultsCard'
 import { WorkflowPreviewCard } from './WorkflowPreviewCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
 import { DashboardPresentation } from '../dashboards/DashboardPresentation'
@@ -91,6 +92,9 @@ export const ChannelMessageBody = ({
   const carriesAgentCard = Boolean(
     (message.metadata as { agentCard?: unknown } | undefined)?.agentCard,
   )
+  const carriesWebSearchCard = Boolean(
+    (message.metadata as { webSearch?: unknown } | undefined)?.webSearch,
+  )
   const threadRootMessageId = message.rootMessageId ?? message.id
   const broadcastRootId = getReplyBroadcastRootId(message.metadata)
   const openThread =
@@ -141,7 +145,7 @@ export const ChannelMessageBody = ({
         <>
           {/* A card message's `content` is the same card rendered as plain text.
               Other clients and the model use it; the feed renders the card once. */}
-          {carriesAgentCard || voiceCall ? null : (
+          {carriesAgentCard || carriesWebSearchCard || voiceCall ? null : (
             <MessageMarkdown renderInlineText={renderContent}>{message.content}</MessageMarkdown>
           )}
           {voiceCall ? (
@@ -190,6 +194,7 @@ export const ChannelMessageBody = ({
       {!isEditingMessage ? <RunStopContinue metadata={message.metadata} /> : null}
       {!isEditingMessage ? <RunApprovalGate metadata={message.metadata} /> : null}
       {!isEditingMessage ? <AgentCardMessage metadata={message.metadata} /> : null}
+      {!isEditingMessage ? <WebSearchResultsCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <TodoProgressCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <DocumentRefChip metadata={message.metadata} /> : null}
       {!isEditingMessage ? <AgentHandoffDoorway metadata={message.metadata} /> : null}

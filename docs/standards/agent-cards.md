@@ -65,6 +65,14 @@ afterwards. Spec:
   "may this viewer press" is a per-viewer server decision. Every transition —
   press, expiry sweep, run-cancel — is that same claim, so two presses or a
   press racing the sweep have exactly one winner.
+- **A page of web results is deliberately not one of these.** The search card
+  (`present: true` on `web_search`) is presentational: nothing is pressed,
+  nothing resolves, and every viewer sees the same thing, so it rides in the
+  message's own metadata rather than borrowing the press machinery — which
+  would have meant relaxing "a card with inputs needs an action" for a card
+  nobody acts on. The reasoning is in
+  [`web-search.md`](web-search.md) → "The search card"; it is the boundary of
+  this standard, not an exception to it.
 - **A closed block vocabulary, never a kind per integration.** `AgentCardSpec`
   = `blocks` (`text`, `fields`, `image`, `link`, `input`, `secret`) + up to four
   `actions`. A ticket, an email overview and a form are arrangements of the

@@ -121,10 +121,13 @@ test('runWebSearch routes through Ledger with signed exact provenance', async ()
   assert.equal(result.answer, '42')
   assert.equal(result.results.length, 2)
   assert.deepEqual(result.results[0], {
+    position: 1,
     title: 'First result',
     url: 'https://example.com/one',
     snippet: 'A snippet about the first result.',
+    source: 'example.com',
   })
+  assert.equal(result.provider, 'serper')
   assert.match(result.text, /Answer: 42/)
   assert.match(result.text, /1\. First result - https:\/\/example\.com\/one/)
 
@@ -284,4 +287,111 @@ test('runWebSearch reports no results without throwing', async () => {
   assert.equal(result.results.length, 0)
   assert.equal(result.answer, null)
   assert.match(result.text, /No web results found/)
+})
+
+const CANONICAL_BODY = {
+  search: {
+    provider: 'brave',
+    vertical: 'web',
+    q: 'meaning of life',
+    page: 2,
+    results: [
+      {
+        position: 1,
+        title: 'Canonical first',
+        url: 'https://example.org/one',
+        snippet: 'From whichever provider answered.',
+        date: '3 days ago',
+      },
+      { position: 2, title: 'No url', snippet: 'dropped' },
+      { position: 3, title: 'Canonical second', url: 'https://example.net/two' },
+    ],
+    knowledge_graph: {
+      title: 'Meaning of life',
+      url: 'https://example.org/panel',
+      description: 'A philosophical question.',
+    },
+    related: ['meaning of life 42', 'absurdism'],
+    fidelity: 'full',
+  },
+}
+
+test('a configured search Purpose API addresses the purpose route, not a provider', async () => {
+  const { fetchImpl, calls } = makeFakeFetch(
+    () =>
+      new Response(JSON.stringify(CANONICAL_BODY), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+  )
+
+  const result = await runWebSearch('meaning of life', options({
+    env: { ...ledgerEnv, NESSIE_LEDGER_SEARCH_PURPOSE_API_ID: 'pa_search_1' },
+    fetchImpl,
+    page: 2,
+  }))
+
+  assert.equal(calls[0]!.url, 'https://ledger.example/v1/purpose/pa_search_1/search')
+  // The Purpose API's request schema is strict: nothing may be added here.
+  assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), {
+    q: 'meaning of life',
+    num: 5,
+    page: 2,
+  })
+  // Whichever provider Ledger walked to is reported, not assumed.
+  assert.equal(result.provider, 'brave')
+  assert.equal(result.results.length, 2)
+  assert.deepEqual(result.results[0], {
+    position: 1,
+    title: 'Canonical first',
+    url: 'https://example.org/one',
+    snippet: 'From whichever provider answered.',
+    date: '3 days ago',
+    source: 'example.org',
+  })
+  // A dropped result renumbers rather than leaving a gap at rank 2.
+  assert.equal(result.results[1]!.position, 2)
+  assert.deepEqual(result.related, ['meaning of life 42', 'absurdism'])
+  assert.deepEqual(result.knowledgePanel, {
+    title: 'Meaning of life',
+    description: 'A philosophical question.',
+    url: 'https://example.org/panel',
+  })
+  assert.equal(result.answer, 'A philosophical question.')
+  assert.match(result.text, /Related searches: meaning of life 42, absurdism/)
+})
+
+test('hasMore is true only when the page came back full', async () => {
+  const oneResult = {
+    organic: [{ title: 'Only', link: 'https://example.com/only', snippet: 'one' }],
+  }
+  const { fetchImpl } = makeFakeFetch(
+    () =>
+      new Response(JSON.stringify(oneResult), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+  )
+
+  const short = await runWebSearch('query', options({ count: 5, fetchImpl }))
+  assert.equal(short.hasMore, false)
+
+  const full = await runWebSearch('query', options({ count: 1, fetchImpl }))
+  assert.equal(full.hasMore, true)
+})
+
+test('an unrecognised body is refused rather than reported as no results', async () => {
+  const { fetchImpl } = makeFakeFetch(
+    () =>
+      new Response(JSON.stringify({ unexpected: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+  )
+
+  await assert.rejects(
+    () => runWebSearch('query', options({ fetchImpl })),
+    (error: unknown) =>
+      error instanceof WebSearchError && /unexpected response shape/.test(error.message),
+  )
 })
