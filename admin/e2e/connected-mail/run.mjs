@@ -109,10 +109,19 @@ const desktopMail = async ({ browser, fixture }) => {
     await page.getByRole('button', { name: 'Next' }).click()
     await nextPage
     for (const pageSize of [10, 25, 50, 100]) {
-      await page.getByLabel('Items per page').selectOption(String(pageSize))
       // A previously viewed size may already be React Query-cached. Refresh
-      // makes this control's provider request observable either way.
+      // makes this control's provider request observable either way, so the
+      // wait is armed first and satisfied by whichever request actually
+      // happens — the uncached size's own fetch, or the one Refresh asks for.
       const resizedPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize, query: undefined })
+      await page.getByLabel('Items per page').selectOption(String(pageSize))
+      // Refresh reissues whatever key the mailbox has already rendered.
+      // Clicking before the new size reaches the address bar therefore asks
+      // the provider for the PREVIOUS size, and this wait never sees its own.
+      await page.waitForFunction(
+        (size) => new URL(window.location.href).searchParams.get('pageSize') === (size === 25 ? null : String(size)),
+        pageSize,
+      )
       await page.getByRole('button', { name: 'Refresh' }).click()
       await resizedPage
       assert(new URL(page.url()).searchParams.get('pageSize') === (pageSize === 25 ? null : String(pageSize)), `page size ${pageSize} was not reflected in the mailbox state`)

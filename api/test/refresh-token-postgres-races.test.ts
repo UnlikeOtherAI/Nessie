@@ -74,9 +74,14 @@ const rotate = (
   rawToken: string,
   wait?: Promise<void>,
   entered?: () => void,
+  committing?: () => void,
 ) => consumeRefreshToken(prisma, {
   authSecret: AUTH_SECRET,
-  advanceUoaSessionBinding: async () => undefined,
+  // The binding advance runs inside the committing transaction, after it has
+  // taken the family lock and claimed the presented token. It is therefore the
+  // one moment a test can start a competing writer and know it will queue
+  // behind this rotation rather than race it.
+  advanceUoaSessionBinding: async () => { committing?.() },
   rawToken,
   ttlSeconds: 3_600,
   refreshUoaSession: async (input) => {
@@ -168,9 +173,20 @@ runDatabaseTest('PostgreSQL refresh-family and user locks close cross-replica ra
     const issued = await issueUoaFamily(prisma, principal)
     const gate = deferred()
     const entered = deferred()
-    const rotation = rotate(prisma, issued.rawToken, gate.promise, entered.resolve)
+    // Upstream renewal deliberately holds no lock, so a logout started while it
+    // is in flight may legitimately win and leave the rotation nothing to
+    // rotate. The interleaving under test here is the other one: the logout is
+    // started from inside the committing transaction, so it can only revoke a
+    // successor this rotation has already created.
+    let logout: Promise<{ userId: string } | null> = Promise.resolve(null)
+    const rotation = rotate(
+      prisma,
+      issued.rawToken,
+      gate.promise,
+      entered.resolve,
+      () => { logout = revokeRefreshTokenByRaw(prisma, issued.rawToken) },
+    )
     await entered.promise
-    const logout = revokeRefreshTokenByRaw(prisma, issued.rawToken)
     gate.resolve()
     const result = await rotation
     await logout
