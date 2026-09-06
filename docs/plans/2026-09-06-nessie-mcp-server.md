@@ -121,14 +121,20 @@ by the next sync. That refusal is the interesting part of the design.
 | --- | --- |
 | `nessie_board_list` | `boards:read` |
 | `nessie_board_get` | `boards:read` |
-| `nessie_task_search` | `boards:read` |
 | `nessie_task_get` | `boards:read` |
 | `nessie_task_create` | `boards:write` |
 | `nessie_task_update` | `boards:write` |
 | `nessie_task_move` | `boards:write` |
 
-Each task result carries its `source` (`internal` or the provider) and, when
+Each task result carries its `origin` (`internal` or the provider) and, when
 mirrored, whether writes propagate — so the agent knows before it tries.
+
+The refusal itself comes from the platform, not from these tools. The mutating
+services already take the board-source write-back collaborator, and it answers
+better than anything composed here could: *"Linear owns this ticket. Switch the
+source to read & write in Settings → Sources to change it from here."* The tool
+passes that through and adds only whether retrying could ever help — `false` for
+a read-only source, `true` for an unreachable provider.
 
 ### Documents
 
@@ -137,20 +143,39 @@ mirrored, whether writes propagate — so the agent knows before it tries.
 | `nessie_space_list` | `documents:read` |
 | `nessie_doc_list` | `documents:read` |
 | `nessie_doc_get` | `documents:read` |
-| `nessie_doc_search` | `documents:read` |
 | `nessie_doc_create` | `documents:write` |
 | `nessie_doc_update` | `documents:write` |
-| `nessie_doc_publish` | `documents:write` |
 
-`nessie_doc_search` uses the existing embedding-backed search, which already
-fails closed on anything carrying a disclosure basis — so an agent cannot
-retrieve through search what its human could not read directly.
+**There is no publish tool, deliberately.** The HTTP route refuses publication
+outright for an agent actor — "agents draft; only a human may publish" — and
+sends them to an approval instead. An agent credential resolves as the human who
+approved it, so a publish tool here would walk straight past a gate written for
+exactly this kind of caller. Drafting and editing are the useful writes;
+publication stays a human act, and `nessie_doc_create` therefore always produces
+a draft.
+
+`nessie_doc_update` accepts the `expectedRevision` the agent read. Supplying it
+turns a stale edit into a refusal the agent can act on rather than a silent
+last-write-wins — the same choice the auto-saving editor gives a person.
+
+Writes are audited as the granting human with `via: 'mcp_agent_credential'`, so
+the log can tell a person's own edit from one their agent made for them.
+
+`nessie_doc_search` is not in this cut. It would need the embedding-backed
+search path, which fails closed on anything carrying a disclosure basis; worth
+having, but a larger surface than the CRUD above.
 
 ## Deliberately not in the first cut
 
 Chat, channels, runs and agent management. The request was boards and
 documents, and every surface added here is a surface to keep authorized
 correctly.
+
+Also absent: document publication (above), semantic document search, board and
+column administration, and task assignment. Assignment in particular writes
+through to the provider and fails in its own way — `ASSIGNEE_NOT_LINKED` when
+the person has no account on the other side — which deserves its own thought
+rather than being tacked on.
 
 ## Transport
 

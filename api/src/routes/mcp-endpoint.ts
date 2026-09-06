@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { createKnowledgeAccess } from './knowledge-base-access.js'
 import { sendApiError } from '../lib/api.js'
 import { buildNessieMcpServer } from '../mcp/server.js'
+import { checkPolicy } from '../services/policy.js'
 import { getTask } from '../services/tasks.js'
 import type { KnowledgeAccess } from '../mcp/tool-context.js'
 import type { RouteDeps } from './types.js'
@@ -22,17 +23,14 @@ import type { RouteDeps } from './types.js'
  * and nothing to pin a client to one replica for.
  */
 export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, isProjectAccessibleToActor } = deps
+  const { prisma, isProjectAccessibleToActor, listAccessibleProjectIds } = deps
 
   // Built once: it constructs the knowledge provider, which registers the
   // indexing and publication hooks. One per request would rebuild those.
   let knowledge: KnowledgeAccess | null = null
   try {
     const access = createKnowledgeAccess(deps)
-    knowledge = {
-      buildViewer: access.buildViewer,
-      provider: access.provider,
-    } as KnowledgeAccess
+    knowledge = { buildViewer: access.buildViewer, provider: access.provider }
   } catch (error) {
     console.error('[mcp] knowledge access unavailable; document tools will refuse', error)
   }
@@ -61,8 +59,25 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
 
       const server = buildNessieMcpServer({
         actorContext,
-        getTask: async (client, input) =>
-          getTask(client, input.taskId, actorContext.tenant.organizationId, undefined) as never,
+        authSecret: deps.authSecret,
+        checkPolicy: (client, actor, resourceType, action) =>
+          checkPolicy(client, actor, resourceType, action),
+        // The same narrowing the task routes apply. Owners see the whole
+        // organisation; everyone else is limited to their project memberships,
+        // and passing `undefined` here — as an earlier draft did — would have
+        // handed every agent an owner's reach over tasks.
+        getTask: async (taskId) => {
+          const accessible = await listAccessibleProjectIds(actorContext)
+          const visibility = accessible === 'all'
+            ? undefined
+            : { accessibleProjectIds: accessible, actorUserId: actorContext.actor.actorId }
+          return getTask(
+            prisma,
+            taskId,
+            actorContext.tenant.organizationId,
+            visibility,
+          ) as never
+        },
         isProjectAccessibleToActor,
         knowledge,
         prisma,

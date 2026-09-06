@@ -1,10 +1,6 @@
 import type { AgentAccessScope, PrismaClient } from '@prisma/client'
 import type { ZodTypeAny } from 'zod'
-import type {
-  KnowledgePageRecord,
-  KnowledgeSpaceRecord,
-  SpaceViewer,
-} from '@nessie/knowledge'
+import type { KnowledgeProvider, SpaceViewer } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 /**
@@ -20,14 +16,20 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
  */
 export type McpToolContext = {
   actorContext: AuthorizedActionContext
-  /** Shared with the routes: `listAccessibleProjectIds` narrowed per caller. */
-  getTask: (
+  /**
+   * The deployment auth secret, which the task mutations need: they build the
+   * board-source write-back collaborator from it, and that collaborator is what
+   * pushes a change to Linear or refuses because the source is read-only.
+   */
+  authSecret: string
+  /** The shared policy engine, exactly as the routes call it. */
+  checkPolicy: (
     prisma: PrismaClient,
-    input: { actorContext: AuthorizedActionContext; taskId: string },
-  ) => Promise<
-    | null
-    | { externalLink: { externalUrl: string; provider: string; writeMode: string } | null }
-  >
+    actorContext: AuthorizedActionContext,
+    resourceType: 'knowledge_page' | 'knowledge_space',
+    action: 'view' | 'read' | 'create' | 'edit' | 'approve',
+  ) => Promise<{ allowed: boolean; reasonCode: string }>
+  getTask: (taskId: string) => Promise<TaskWithOrigin | null>
   isProjectAccessibleToActor: (
     actorContext: AuthorizedActionContext,
     projectId: string,
@@ -35,35 +37,28 @@ export type McpToolContext = {
   /**
    * The knowledge-base access seam the routes build with
    * `createKnowledgeAccess` — the same provider and the same viewer builder, so
-   * a tool cannot read by a different rule than a click does. Null on a
-   * deployment without a knowledge provider configured.
+   * a tool cannot read or write by a different rule than a click does. Null on
+   * a deployment with no knowledge provider configured.
    */
   knowledge: KnowledgeAccess | null
   prisma: PrismaClient
   scopes: AgentAccessScope[]
 }
 
-/** The subset of `createKnowledgeAccess`'s result the tools actually use. */
+/** The parts of a task record these tools read. */
+export type TaskWithOrigin = {
+  externalLink: { externalUrl: string; provider: string; writeMode: string } | null
+  id: string
+}
+
+/**
+ * The knowledge seam, typed against the real provider interface rather than a
+ * local restatement of its shape — a second declaration is a second thing that
+ * can drift from the one that actually runs.
+ */
 export type KnowledgeAccess = {
   buildViewer: (actorContext: AuthorizedActionContext) => Promise<SpaceViewer>
-  provider: {
-    getPage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
-    getSpace: (
-      organizationId: string,
-      spaceId: string,
-    ) => Promise<KnowledgeSpaceRecord | null>
-    listPages: (input: {
-      organizationId: string
-      spaceId: string
-    }) => Promise<unknown[]>
-    listSpaces: (input: {
-      includePersonal?: boolean
-      limit?: number
-      organizationId: string
-      projectId?: string
-      viewer?: SpaceViewer
-    }) => Promise<{ data: KnowledgeSpaceRecord[] }>
-  }
+  provider: KnowledgeProvider
 }
 
 export type McpToolDefinition = {
@@ -71,8 +66,5 @@ export type McpToolDefinition = {
   /** Raw Zod shape, which is what the MCP SDK turns into a JSON schema. */
   inputSchema: Record<string, ZodTypeAny>
   name: string
-  run: (
-    context: McpToolContext,
-    input: Record<string, unknown>,
-  ) => Promise<unknown>
+  run: (context: McpToolContext, input: Record<string, unknown>) => Promise<unknown>
 }
