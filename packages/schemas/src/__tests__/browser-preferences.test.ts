@@ -93,6 +93,14 @@ test('a home page may not point at loopback, private or metadata addresses', () 
     'http://[::1]/',
     'http://[fe80::1]/',
     'http://0.0.0.0/',
+    // The parser normalises most alternate spellings to a dotted quad, but not
+    // these two, and both are the metadata endpoint a second time.
+    'http://[::ffff:169.254.169.254]/',
+    'http://[::ffff:127.0.0.1]/',
+    'http://metadata.google.internal./',
+    'http://localhost./',
+    'http://metadata/',
+    'http://100.64.0.1/',
   ]) {
     assert.equal(isNavigableHomepage(blocked), false, `${blocked} must be refused`)
   }
@@ -106,6 +114,10 @@ test('ordinary public addresses are still accepted, including near-miss ranges',
     'https://11.0.0.1/',
     'https://localhost.example.com/',
     'https://intranet.example/start',
+    // An IPv6 prefix test that is not gated on the host actually being IPv6
+    // refuses ordinary sites: both of these begin "fd"/"fc".
+    'https://fda.gov/',
+    'https://fcbarcelona.com/',
   ]) {
     assert.equal(isNavigableHomepage(allowed), true, `${allowed} must be accepted`)
   }
