@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { type AuthorizedActionContext } from '@nessie/schemas'
+import { type AuditAction, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import { AVATAR_CACHE_CONTROL, sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
 import {
   fetchUoaUserAvatar,
@@ -76,6 +77,20 @@ const CreateMemberInvitationSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   teamRole: z.string().trim().min(1).max(100).optional(),
 })
+
+/**
+ * What a relayed mutation records in the audit trail. Membership changes are
+ * privileged, tenant-visible acts and were not written to it at all — the trail
+ * had org/team member mutations missing while secrets and approvals were
+ * covered (2026-09-05 review, F5-1). Declared per route rather than remembered
+ * per handler, so a new relayed mutation cannot quietly skip it.
+ */
+type RelayAudit = {
+  action: AuditAction
+  metadata?: Record<string, unknown>
+  resourceId?: string
+  resourceType: string
+}
 
 const AddTeamMemberSchema = z.object({
   uoaSub: z.string().trim().min(1).max(200),
@@ -165,20 +180,27 @@ export const registerTeamMembersRoutes = (
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
 ): void => {
-  const { requireActorContext } = deps
+  const { requireActorContext, requireOrgAdmin } = deps
 
   /**
-   * Run one relayed operation behind the shared preconditions, in order:
-   * authorization, then body validation, then the team lookup, then the
-   * relay. `admin` picks the gate — the roster read is visible to any member of
-   * the team, everything else is owner/admin — and `parse` is the route's
-   * body schema, applied after the gate so an unauthorized caller learns
-   * nothing about the payload.
+   * Run one relayed **mutation** behind the shared preconditions, in order:
+   * authorization, then body validation, then the team lookup, then the relay.
+   * `parse` is the route's body schema, applied after the gate so an
+   * unauthorized caller learns nothing about the payload. Roster *reads* go
+   * through `relayPage`, which is visible to any member of the team.
+   *
+   * The owner/admin gate is defence in depth, not the authorization: UOA
+   * re-resolves the caller's live membership and capability from the subject
+   * assertion every relay carries, and that assertion is what actually
+   * authorizes the write. The local gate is here because the adjacent
+   * `routes/teams.ts` has one for the same class of relay and this file's own
+   * prose already claimed one (2026-09-05 review, FO1-7); the rule is recorded
+   * in `docs/standards/team-model.md`.
    */
   const relay = async <TResult, TBody = undefined>(
     request: FastifyRequest,
     reply: FastifyReply,
-    options: { parse?: () => TBody | null },
+    options: { audit?: RelayAudit; parse?: () => TBody | null },
     run: (
       team: UoaRosterTeam,
       body: TBody,
@@ -188,6 +210,7 @@ export const registerTeamMembersRoutes = (
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!requireOrgAdmin(actorContext, reply)) return reply
     const body = options.parse ? options.parse() : (undefined as TBody)
     if (body === null) return reply
 
@@ -195,7 +218,7 @@ export const registerTeamMembersRoutes = (
     if (!team) return reply
 
     try {
-      return createApiResponse(await run(
+      const result = await run(
         team,
         body as TBody,
         actorContext,
@@ -204,7 +227,18 @@ export const registerTeamMembersRoutes = (
           actorContext.actionContext.uoaIdentity,
           rosterDeps,
         ),
-      ))
+      )
+      if (options.audit) {
+        await emitAuditEvent(deps.prisma, {
+          actorContext,
+          action: options.audit.action,
+          outcome: 'success',
+          resourceType: options.audit.resourceType,
+          ...(options.audit.resourceId ? { resourceId: options.audit.resourceId } : {}),
+          ...(options.audit.metadata ? { metadata: options.audit.metadata } : {}),
+        })
+      }
+      return createApiResponse(result)
     } catch (error) {
       if (sendRelayError(request, reply, error)) return reply
       throw error
@@ -272,7 +306,16 @@ export const registerTeamMembersRoutes = (
     relay(
       request,
       reply,
-      { parse: () => parseInput(AddTeamMemberSchema, request.body, reply) },
+      {
+        audit: {
+          action: 'team.member_added',
+          resourceType: 'team_member',
+          ...(typeof (request.body as { uoaSub?: unknown } | undefined)?.uoaSub === 'string'
+            ? { resourceId: (request.body as { uoaSub: string }).uoaSub }
+            : {}),
+        },
+        parse: () => parseInput(AddTeamMemberSchema, request.body, reply),
+      },
       async (team, body, _actorContext, subjectDeps) => {
         await addTeamMember(team, body, subjectDeps)
         return { ok: true }
@@ -339,7 +382,14 @@ export const registerTeamMembersRoutes = (
       relay(
         request,
         reply,
-        { parse: () => parseInput(TeamRoleBodySchema, request.body, reply) },
+        {
+          audit: {
+            action: 'user.role_changed',
+            resourceId: request.params.uoaSub,
+            resourceType: 'team_member',
+          },
+          parse: () => parseInput(TeamRoleBodySchema, request.body, reply),
+        },
         async (team, body, _actorContext, subjectDeps) => {
           await updateTeamMemberRole(team, request.params.uoaSub, body.role, subjectDeps)
           return { ok: true }
@@ -350,7 +400,13 @@ export const registerTeamMembersRoutes = (
   app.delete<{ Params: { uoaSub: string } }>(
     '/api/team/members/:uoaSub',
     async (request, reply) =>
-      relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
+      relay(request, reply, {
+        audit: {
+          action: 'team.member_removed',
+          resourceId: request.params.uoaSub,
+          resourceType: 'team_member',
+        },
+      }, async (team, _body, _actorContext, subjectDeps) => {
         await removeTeamMember(team, request.params.uoaSub, subjectDeps)
         return { ok: true }
       }),
@@ -360,7 +416,14 @@ export const registerTeamMembersRoutes = (
     app.post<{ Params: { uoaSub: string } }>(
       `/api/team/members/:uoaSub/${action}`,
       async (request, reply) =>
-        relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
+        relay(request, reply, {
+          audit: {
+            action: 'user.updated',
+            metadata: { activation: action, scope: 'team' },
+            resourceId: request.params.uoaSub,
+            resourceType: 'team_member',
+          },
+        }, async (team, _body, _actorContext, subjectDeps) => {
           await setTeamMemberActivation(
             team,
             request.params.uoaSub,
@@ -381,7 +444,14 @@ export const registerTeamMembersRoutes = (
     relay(
       request,
       reply,
-      { parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply) },
+      {
+        audit: {
+          action: 'organization.member_invited',
+          metadata: { scope: 'team' },
+          resourceType: 'team_invitation',
+        },
+        parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply),
+      },
       async (team, body, _actorContext, subjectDeps) => {
         await createTeamInvitation(team, body, subjectDeps)
         return { ok: true }
@@ -406,7 +476,14 @@ export const registerTeamMembersRoutes = (
   app.post<{ Params: { inviteId: string } }>(
     '/api/team/invitations/:inviteId/revoke',
     async (request, reply) =>
-      relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
+      relay(request, reply, {
+        audit: {
+          action: 'organization.member_invitation_revoked',
+          metadata: { scope: 'team' },
+          resourceId: request.params.inviteId,
+          resourceType: 'team_invitation',
+        },
+      }, async (team, _body, _actorContext, subjectDeps) => {
         await revokeTeamInvitation(team, request.params.inviteId, subjectDeps)
         return { ok: true }
       }),
@@ -418,7 +495,14 @@ export const registerTeamMembersRoutes = (
     app.post<{ Params: { inviteId: string } }>(
       `/api/team/invitations/:inviteId/${action}`,
       async (request, reply) =>
-        relay(request, reply, {}, async (team, _body, _actorContext, subjectDeps) => {
+        relay(request, reply, {
+          audit: {
+            action: 'organization.member_invitation_reviewed',
+            metadata: { decision: action, scope: 'team' },
+            resourceId: request.params.inviteId,
+            resourceType: 'team_invitation',
+          },
+        }, async (team, _body, _actorContext, subjectDeps) => {
           await reviewTeamInvitation(
             team,
             request.params.inviteId,

@@ -24,6 +24,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import { emitAuditEvent } from '../../services/audit.js'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -224,6 +225,18 @@ export const registerMcpInstanceRoutes = (
 
     try {
       const instance = await createInstance(prisma, actorContext, body)
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'mcp.instance.created',
+        resourceType: 'mcp_instance',
+        resourceId: instance.id,
+        outcome: 'success',
+        metadata: {
+          catalogEntryId: body.catalogEntryId,
+          scopeType: body.scopeType,
+          scopeId: body.scopeId,
+        },
+      })
       return reply.code(201).send(createApiResponse(publicInstance(instance)))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
@@ -402,6 +415,20 @@ export const registerMcpInstanceRoutes = (
         secret: body.secret,
         shared: body.shared,
       })
+      // Where the credential landed, never the credential: the audit chain
+      // records that a secret was written for this instance and by whom.
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'mcp.credential.written',
+        resourceType: 'mcp_instance',
+        resourceId: instance.id,
+        outcome: 'success',
+        metadata: {
+          authMethod: catalogEntry.authMethod,
+          placement: result.placement,
+          scopeType: instance.scopeType,
+        },
+      })
       return createApiResponse({ placement: result.placement })
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
@@ -425,6 +452,13 @@ export const registerMcpInstanceRoutes = (
         sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
         return reply
       }
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'mcp.instance.deleted',
+        resourceType: 'mcp_instance',
+        resourceId: instanceId,
+        outcome: 'success',
+      })
       return reply.code(204).send()
     } catch (error) {
       if (sendMcpError(reply, error)) return reply

@@ -21,6 +21,29 @@ const dbStub = [
   '}',
   'export const enqueueQueueJob = async () => {}',
   'export const writeAuditEntryInTransaction = async () => {}',
+  // Reached only because services/audit.ts pulls in @nessie/mcp-manage, whose
+  // tool-registry projection imports @nessie/team-admin, whose access checks
+  // import these. None of them run here; the stub only has to satisfy the
+  // named exports so the module graph links.
+  'export const disconnectPrismaClient = async () => {}',
+  'export const getPrismaClient = () => {',
+  '  throw new Error("@nessie/db is stubbed in auth-rate-limit.test.ts")',
+  '}',
+  'export const buildVisibleAgentWhere = () => {',
+  '  throw new Error("agent visibility is not used by auth-rate-limit.test.ts")',
+  '}',
+  'export const buildAgentVisibilityWhere = () => {',
+  '  throw new Error("agent visibility is not used by auth-rate-limit.test.ts")',
+  '}',
+  'export const buildOwnedAgentWhere = () => {',
+  '  throw new Error("agent visibility is not used by auth-rate-limit.test.ts")',
+  '}',
+  'export const listVisibleAgentIdsForUser = async () => {',
+  '  throw new Error("agent visibility is not used by auth-rate-limit.test.ts")',
+  '}',
+  'export const visibleKnowledgeSpaceWhere = () => {',
+  '  throw new Error("knowledge-space visibility is not used by auth-rate-limit.test.ts")',
+  '}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

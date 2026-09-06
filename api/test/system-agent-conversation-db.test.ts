@@ -3,13 +3,14 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { GLOBAL_AGENT_BLUEPRINTS, listAgentsForUser } from '@nessie/team-admin'
-
 import {
   AGENT_DESIGNER_BLUEPRINT,
   ensureGlobalAgentsForUser,
+  GLOBAL_AGENT_BLUEPRINTS,
   globalAgentHomeDmKey,
-} from '../src/services/global-agents.js'
+  listAgentsForUser,
+} from '@nessie/team-admin'
+
 import { ensurePersonalAssistantBootstrap } from '../src/services/personal-assistant.js'
 import { resolveSystemAgentConversation } from '../src/services/system-agent-conversations.js'
 

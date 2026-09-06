@@ -12,6 +12,17 @@ import type {
  * this module is the one place a directory lives between the UOA read that
  * produced it and the `/api/auth/me` response that renders it.
  *
+ * **One bounded exception, and it is the only one.** A pending team invitation
+ * also becomes a durable `UserAlert` row carrying its `teamName` and
+ * `invitedBy` (`services/team-invite-alerts.ts`), because a notification a
+ * person has not opened yet has to survive the process that learned about it —
+ * an in-memory copy would make the bell empty on every replica but one. The
+ * exception is safe only because it is self-reconciling: `syncTeamInviteAlerts`
+ * rewrites the row from each verified directory and *deletes* every invitation
+ * UOA no longer lists, so the copy cannot outlive the invitation, and nothing
+ * reads it as authority — accepting or declining happens at UOA. Anything else
+ * UOA-owned still belongs here and nowhere else (2026-09-05 review, FO2-5).
+ *
  * Written wherever `fetchUoaTeamDirectory` succeeds: at login
  * (`syncUoaProductAccountLinks`) and at every UOA token rotation, including a
  * team switch (`advanceUoaBindingInTransaction`). Read by

@@ -10,7 +10,7 @@ import {
 } from '../../shared/MentionInput'
 import type { PendingAgentInvite } from '../../../facades/messages/hooks'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
-import { toolbarButtonClass } from './channel-helpers'
+import { toolbarButtonClass } from './channel-presentation'
 import { ComposerAttachments } from './ComposerAttachments'
 import { ComposerEmojiButton } from './ComposerEmojiButton'
 import { SecretCaptureDialog } from './SecretCaptureDialog'

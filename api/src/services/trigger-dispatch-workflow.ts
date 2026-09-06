@@ -10,7 +10,7 @@ import {
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
 import { resolveInstallationPinnedGraph } from '@nessie/team-admin'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import {
   type DispatchTriggerResult,
   isTriggerDeliveryDedupeConflict,

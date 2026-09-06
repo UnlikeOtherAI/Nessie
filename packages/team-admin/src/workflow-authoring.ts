@@ -9,6 +9,7 @@ import {
   WORKFLOW_SECRET_WRITE_ERROR,
   type WorkflowBindingSecretError,
 } from './workflow-secrets.js'
+import { WORKFLOW_REFERENCE_ERROR_CODES, WorkflowReferenceError } from './workflow-run-references.js'
 
 export type WorkflowTemplateAuthoringInput = {
   bindingSchema?: unknown
@@ -68,11 +69,18 @@ export const validateWorkflowEnvironmentTemplateIds = async (
     where: { id: { in: templateIds }, organizationId },
   })
   if (count !== templateIds.length) {
-    throw new Error('WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND')
+    throw new WorkflowReferenceError(
+      WORKFLOW_REFERENCE_ERROR_CODES.TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND,
+      'One or more required execution environment templates were not found',
+    )
   }
 }
 
-const validateInstallationChannel = async (
+// Exported so the api-side update path (`workflow-templates.ts`'s
+// `updateWorkflowInstallation`) can reuse the exact same tenancy check
+// instead of keeping a second copy — this install path and that update path
+// are each other's only other caller of a channel-tenancy lookup.
+export const validateWorkflowInstallationChannel = async (
   prisma: PrismaClient,
   organizationId: string,
   channelId: string | undefined,
@@ -83,7 +91,12 @@ const validateInstallationChannel = async (
     where: { id: channelId, organizationId, systemChannelType: null },
     select: { id: true },
   })
-  if (!channel) throw new Error('WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND')
+  if (!channel) {
+    throw new WorkflowReferenceError(
+      WORKFLOW_REFERENCE_ERROR_CODES.CHANNEL_NOT_FOUND,
+      'Workflow installation channel not found',
+    )
+  }
 }
 
 const resolveInstallationLifecycle = (input: {
@@ -148,7 +161,7 @@ export const installWorkflowTemplateForActor = async (
   if (input.concurrency !== undefined && !isWorkflowConcurrencyConfig(input.concurrency)) {
     throw new Error('WORKFLOW_CONCURRENCY_INVALID')
   }
-  await validateInstallationChannel(
+  await validateWorkflowInstallationChannel(
     prisma,
     actorContext.tenant.organizationId,
     input.channelId,

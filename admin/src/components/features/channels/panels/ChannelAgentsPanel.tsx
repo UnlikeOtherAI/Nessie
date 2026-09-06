@@ -6,11 +6,11 @@ import type {
 } from '../../../../lib/api-client'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
-import { AgentStatusDot } from '../../agents/AgentStatusDot'
+import { AgentStatusDot } from '../../../shared/AgentStatusDot'
 import { EmptyState } from '../../../shared/EmptyState'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { ChannelPersonalAssistantPresences } from './ChannelPersonalAssistantPresences'
-import { AgentVisibilityPill } from '../../agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../../shared/AgentVisibilityPill'
 
 /**
  * The Agents section of a *channel*: who works in this room, and the way

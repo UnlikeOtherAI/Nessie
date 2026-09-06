@@ -4,12 +4,11 @@ import {
   AgentManagementError,
 } from '../services/agents.js'
 import { AgentEditAuthorityError } from '../services/agent-management.js'
-import { LedgerAgentModelCatalogError } from '@nessie/team-admin'
+import { AgentAvatarGenerationError, LedgerAgentModelCatalogError } from '@nessie/team-admin'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,
 } from '../services/agent-tool-policy.js'
-import { AgentAvatarGenerationError } from '../services/agent-avatar-generation.js'
 
 export const sendAgentAvatarGenerationError = (
   reply: Parameters<typeof sendApiError>[0],

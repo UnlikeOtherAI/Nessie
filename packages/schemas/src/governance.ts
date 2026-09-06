@@ -1,16 +1,12 @@
 import { z } from 'zod'
 
 import {
-  AgentIdSchema,
-  ApprovalIdSchema,
   AuditLogIdSchema,
   ChannelIdSchema,
   OrganizationIdSchema,
   PolicyBindingIdSchema,
   PolicyIdSchema,
   ProjectIdSchema,
-  RunIdSchema,
-  TaskIdSchema,
   TeamIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
@@ -145,44 +141,15 @@ export const EffectivePolicySchema = z.object({
 export type EffectivePolicy = z.infer<typeof EffectivePolicySchema>
 
 // ─── Phase 2: Approval Gating ──────────────────────────────────────────────
-
-export const ApprovalStatusSchema = z.enum([
-  'pending',
-  'approved',
-  'rejected',
-  'expired',
-])
-export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>
-
-export const ApprovalRequestResponseSchema = z.object({
-  id: ApprovalIdSchema,
-  organizationId: OrganizationIdSchema,
-  projectId: ProjectIdSchema.optional(),
-  teamId: TeamIdSchema.optional(),
-  channelId: ChannelIdSchema.optional(),
-  taskId: TaskIdSchema.optional(),
-  runId: RunIdSchema.optional(),
-  agentId: AgentIdSchema,
-  requesterId: NonEmptyStringSchema,
-  action: NonEmptyStringSchema,
-  reason: z.string(),
-  context: z.record(z.string(), z.unknown()).optional(),
-  status: ApprovalStatusSchema,
-  resolverId: NonEmptyStringSchema.optional(),
-  resolvedAt: TimestampSchema.optional(),
-  resolution: z.enum(['approved', 'rejected']).optional(),
-  resolutionNote: z.string().optional(),
-  expiresAt: TimestampSchema,
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
-export type ApprovalRequestResponse = z.infer<typeof ApprovalRequestResponseSchema>
-
-export const ResolveApprovalBodySchema = z.object({
-  resolution: z.enum(['approved', 'rejected']),
-  note: z.string().max(2000).optional(),
-})
-export type ResolveApprovalBody = z.infer<typeof ResolveApprovalBodySchema>
+//
+// The approval-gate record and its resolve-body schema live in
+// `approval-records.ts` (`ApprovalRequestRecordSchema`,
+// `ResolveApprovalBodySchema`) — the ones `api/src/services/approvals.ts`
+// actually produces and `api/src/routes/approvals.ts` parses against. This
+// file previously carried a second, never-wired copy that used `.optional()`
+// where the real mapper returns `null`, so it could not have validated a
+// real response; removed rather than kept as a second definition of the same
+// concept.
 
 // ─── Phase 2: Audit Trail ──────────────────────────────────────────────────
 
@@ -219,6 +186,14 @@ export const AuditActionSchema = z.enum([
   'organization.automatic_membership.reconcile_started',
   'organization.automatic_membership.reconcile_finished',
   'organization.automatic_membership.reconcile_cancelled',
+  // A membership invitation, whether it admits someone into the organisation
+  // roster directly or through one of its teams. The action is shared across
+  // both routers (`routes/organization-members.ts`, `routes/team-members.ts`);
+  // `resourceType` ('organization_invitation' vs 'team_invitation') and the
+  // `scope` metadata field carry which one. Never carries the invitee's email.
+  'organization.member_invited',
+  'organization.member_invitation_revoked',
+  'organization.member_invitation_reviewed',
   'project.created',
   'project.updated',
   'project.deleted',
@@ -244,6 +219,15 @@ export const AuditActionSchema = z.enum([
   'agent.bound',
   'agent.unbound',
   'agent.todo_template.published',
+  // Agent triggers: arming an automation decides what runs unattended, on
+  // whose identity and how often, so its full lifecycle is audited.
+  'trigger.created',
+  'trigger.updated',
+  'trigger.deleted',
+  'trigger.fired',
+  'trigger.reauthorized',
+  'trigger.paused',
+  'trigger.resumed',
   'demonstration.started',
   'demonstration.stopped',
   'demonstration.generalized',
@@ -256,6 +240,31 @@ export const AuditActionSchema = z.enum([
   'personal_assistant.access_denied',
   'tool.granted',
   'tool.revoked',
+  // A human-in-the-loop card (a secret request, a todo confirmation, …)
+  // being answered. `resourceId` is the card id; the values a person typed
+  // never enter the metadata even through redaction.
+  'agent_card.responded',
+  // Personal secret vault (org/team/project/personal scoped secrets stored
+  // in the external Infisical vault). Reference and scope only — never the
+  // plaintext value.
+  'secret.created',
+  'secret.rotated',
+  'secret.revoked',
+  'secret.access_granted',
+  // A message whose body was overwritten after a secret typed into it was
+  // captured out to the vault — the plaintext must not linger in the
+  // channel history or in message memory recall.
+  'message.redacted',
+  // A scoped setting write (org/team/project/personal). Value shape is
+  // setting-specific, so the audit metadata carries the key and scope, not
+  // a fixed schema.
+  'setting.scoped.written',
+  // MCP connector instances and the credentials bound to them. The
+  // credential reference is audited, never the secret material itself.
+  'mcp.instance.created',
+  'mcp.instance.deleted',
+  'mcp.credential.written',
+  'mcp.credential.deleted',
   'executor.access_change.prepared',
   'executor.access_change.confirmed',
   'executor.access_change.rejected',

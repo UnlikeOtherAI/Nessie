@@ -3,6 +3,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
 import {
+  isAdminActor,
   type AuthorizedActionContext,
   type MeResponse,
 } from '@nessie/schemas'
@@ -25,15 +26,11 @@ import {
 import { createAuthSessionRevocationChecker } from '../services/auth-session-registry.js'
 import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import { createSessionIssuers } from '../services/session-issuers.js'
-import { createRequestRateLimitChecker } from './rate-limit.js'
 import { createRequestHelpers } from './request-helpers.js'
 import { createRateLimiter } from '../services/rate-limit.js'
 import { parseOriginList } from './server-origin-policy.js'
 
-export {
-  createFastifyTrustProxyConfig,
-  getRateLimitClientId,
-} from './rate-limit.js'
+export { createFastifyTrustProxyConfig } from './rate-limit.js'
 export {
   buildStreamCorsHeaders,
   createCorsOriginChecker,
@@ -50,6 +47,23 @@ export type AuthenticatedRequestState = {
 
 export type RequestWithRawBody = FastifyRequest & {
   rawBody?: Buffer
+}
+
+/**
+ * A deployment that cannot be started as configured.
+ *
+ * `createServerContext` used to `process.exit(1)` on a missing
+ * `NESSIE_AUTH_SECRET`. That made merely *importing* the module capable of
+ * killing the process, so no test could construct a context to assert the rule
+ * and any importer inherited the exit (2026-09-05 review, FO3-5). The refusal
+ * is unchanged — only its delivery: `startApiServer` catches this, logs it, and
+ * exits 1.
+ */
+export class ServerConfigurationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ServerConfigurationError'
+  }
 }
 
 const DEFAULT_LOCAL_PROVIDER_TYPE = 'local-bootstrap'
@@ -103,9 +117,10 @@ export const createServerContext = () => {
       console.warn('[auth] NESSIE_AUTH_SECRET not set — using ephemeral secret (tokens will not survive restarts)')
       return randomUUID()
     }
-    console.error('[FATAL] NESSIE_AUTH_SECRET is required for hosted/selfHosted modes.')
-    console.error('Multi-instance deployments WILL fail without a shared persistent secret.')
-    process.exit(1)
+    throw new ServerConfigurationError(
+      'NESSIE_AUTH_SECRET is required for hosted/selfHosted modes.'
+        + ' Multi-instance deployments WILL fail without a shared persistent secret.',
+    )
   })()
 
   let bootstrapTokenState: BootstrapTokenState | null = null
@@ -244,8 +259,19 @@ export const createServerContext = () => {
 
     // Deactivated members keep their row + history but lose access immediately
     // (their refresh tokens are revoked on deactivation, but a still-valid
-    // access token must be rejected too). Only a present-and-deactivated
-    // membership blocks; absent memberships (e.g. system actors) pass through.
+    // access token must be rejected too).
+    //
+    // An ABSENT membership is the other half. It has to keep passing through
+    // for the tenants that legitimately have none — the only writers of these
+    // rows are `db/seed.ts` (bootstrap), `services/users.ts` (local account
+    // creation) and `services/team-principal.ts` (a UOA login), and
+    // `buildLocalSession` falls back to the bootstrap organisation id for a
+    // user with no membership at all, so an unbound install can hold a session
+    // whose `org` claim names no live row. In a **UOA-bound** organisation
+    // there is no such principal: every session there was minted from a proven
+    // UOA membership, so an absent row means the membership was withdrawn
+    // (`reconcileUoaMembershipProjection`) and the still-valid access token
+    // must stop working now rather than at expiry (2026-09-05 review, FO2-1).
     const membership = await prisma.organizationMember.findUnique({
       where: {
         organizationId_userId: {
@@ -258,6 +284,21 @@ export const createServerContext = () => {
     if (membership?.deactivatedAt) {
       sendApiError(reply, 403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
       return null
+    }
+    if (!membership) {
+      const organization = await prisma.organization.findUnique({
+        where: { id: verification.claims.org },
+        select: { externalOrgId: true },
+      })
+      if (organization?.externalOrgId) {
+        sendApiError(
+          reply,
+          403,
+          'ORGANIZATION_MEMBERSHIP_REQUIRED',
+          'Your membership of this organisation is no longer held by UnlikeOtherAI',
+        )
+        return null
+      }
     }
 
     const actorContext = createActorContextFromClaims(verification.claims)
@@ -298,6 +339,31 @@ export const createServerContext = () => {
     }
 
     sendApiError(reply, 403, 'FORBIDDEN', 'Owner access required')
+    return false
+  }
+
+  /**
+   * Owner **or** organisation admin, the pair `ORGANIZATION_ADMIN_ROLES`
+   * defines. It sits beside `requireOwner` rather than replacing it: several
+   * decisions are still deliberately owner-only, and this is not a substitute
+   * for those.
+   *
+   * It exists because the same predicate was spelled inline in three route
+   * modules while the contract that owns it lived in `@nessie/schemas`
+   * (2026-09-05 review, FO1-3), so each new route re-decided which spelling
+   * applied. `actor.roles` is re-resolved from the live `OrganizationMember`
+   * row on every request (`authenticateRequest`), so a demotion lands here on
+   * the next call.
+   */
+  const requireOrgAdmin = (
+    actorContext: AuthorizedActionContext,
+    reply: FastifyReply,
+  ): boolean => {
+    if (isAdminActor(actorContext)) {
+      return true
+    }
+
+    sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
     return false
   }
 
@@ -430,7 +496,11 @@ export const createServerContext = () => {
     prisma,
     tokenTtlSeconds: config.auth.tokenTtlSeconds,
   })
-  const checkRateLimit = createRequestRateLimitChecker()
+  // One limiter, one store, one IP canonicalisation: the in-process `Map` that
+  // used to sit beside this one with its own hard-coded thresholds is gone
+  // (2026-09-05 review, FO3-3/FO4-1). The API-wide per-IP *check* is built by
+  // `registerGlobalAuthHook` from this limiter and `config`, so the context
+  // carries the limiter rather than a second, pre-bound closure over it.
   const rateLimiter = createRateLimiter(prisma)
 
   const requestHelpers = createRequestHelpers(prisma)
@@ -473,6 +543,7 @@ export const createServerContext = () => {
     authenticateRequest,
     requireActorContext,
     requireOwner,
+    requireOrgAdmin,
     requireSuperAdmin,
     resolveMembershipRole,
     requireUserActor,
@@ -487,7 +558,6 @@ export const createServerContext = () => {
     // process's cache immediately, instead of honouring the token for the
     // rest of the TTL on the very replica that performed the revocation.
     invalidateSessionRevocationCache: isSessionRevokedById.invalidate,
-    checkRateLimit,
     rateLimiter,
     disconnectPrismaClient,
     ...requestHelpers,

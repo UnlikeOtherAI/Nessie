@@ -2,7 +2,7 @@ import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
 import { enqueueAutomaticMembershipProvisioning } from './automatic-membership/signin.js'
 import { lockExternalOrganization } from './external-organization.js'
-import { seedDefaultPolicies } from './policy.js'
+import { seedDefaultPolicies } from './policy-seed.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
 import { projectUoaRoles, type UoaRoleClaims } from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
@@ -124,8 +124,10 @@ const resolvePrincipalUser = async (
 }
 
 // Ensure a user has org/project/team/channel membership for a team. The
-// upserts are create-only — they never resurrect a deactivated org membership
-// or rewrite a role behind UOA's back. Role *changes* come from exactly one
+// upserts are create-only — they never rewrite a role behind UOA's back, and
+// they resurrect a deactivated org membership in exactly one case, the
+// UOA-bound organisation explained at the org upsert below. Role *changes*
+// come from exactly one
 // place afterwards: `projectUoaRoles`, replaying the verified claims, so a
 // dimension UOA did not claim keeps whatever the row already held.
 // Exported for the account-bound recovery transaction in team-context.ts,
@@ -144,9 +146,21 @@ export const ensureTeamMemberships = async (
     teamRole: MemberRole
   },
 ): Promise<void> => {
+  // `deactivatedAt` is local state in an unbound organisation and a projection
+  // in a UOA-bound one: `reconcileUoaMembershipProjection` sets it when UOA
+  // stops placing this person in the organisation, so a freshly proven
+  // UOA-asserted team membership there must clear it again. Without that the
+  // withdrawal would be irreversible — a bound organisation has no local
+  // reactivation route (`routes/membership-mode-gate.ts`). An unbound
+  // organisation keeps the create-only rule: a locally deactivated member
+  // stays deactivated until an owner reactivates them.
+  const organization = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+    select: { externalOrgId: true },
+  })
   await prisma.organizationMember.upsert({
     where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
-    update: {},
+    update: organization?.externalOrgId ? { deactivatedAt: null } : {},
     create: { organizationId: input.organizationId, userId: input.userId, role: input.orgRole },
   })
   await prisma.projectMember.upsert({

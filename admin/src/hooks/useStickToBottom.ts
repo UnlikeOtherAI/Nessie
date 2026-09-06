@@ -138,9 +138,10 @@ export const useStickToBottom = (
     // that intermediate render includes the disappearing loading row in the
     // height delta and leaves the reader one status-row too high. A changed
     // page count is the durable proof that the prepend is in this render.
-    const pageArrived = Boolean(
-      olderContent && olderContent.pageCount > snapshot.pageCount,
-    )
+    // Field reads, never the loader object: the effect's dependency list is
+    // the individual fields, and `olderContent` is rebuilt by the caller on
+    // every render. `-1` stands for "no loader", which never counts as arrived.
+    const pageArrived = (olderContent?.pageCount ?? -1) > snapshot.pageCount
     if (!pageArrived && olderContent?.hasMore) return
 
     let addedHeight = container.scrollHeight - snapshot.scrollHeight
@@ -153,7 +154,7 @@ export const useStickToBottom = (
         currentAnchor.getBoundingClientRect().top - container.getBoundingClientRect().top
       addedHeight = nextAnchorTop - snapshot.anchorTop
     }
-    if (olderContent && olderContent.itemCount > snapshot.itemCount) {
+    if ((olderContent?.itemCount ?? -1) > snapshot.itemCount) {
       container.scrollTop = snapshot.scrollTop + Math.max(0, addedHeight)
     }
     prependSnapshotRef.current = null

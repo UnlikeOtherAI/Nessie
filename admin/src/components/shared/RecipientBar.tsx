@@ -13,9 +13,9 @@ import {
   type Recipient,
   type RecipientOption,
 } from '../../lib/channel-compose-recipients'
-import { AgentVisibilityPill } from '../features/agents/AgentVisibilityPill'
-import { UserAvatar } from '../primitives/UserAvatar'
-import { AgentAvatar } from '../shared/AgentAvatar'
+import { AgentVisibilityPill } from './AgentVisibilityPill'
+import { UserAvatar } from './UserAvatar'
+import { AgentAvatar } from './AgentAvatar'
 
 type RecipientBarProps = {
   /** Agents offered by the autocomplete. Already filtered to what may be addressed. */
@@ -99,7 +99,7 @@ export const RecipientBar = ({
       setHighlightedIndex(0)
       window.setTimeout(() => inputRef.current?.focus(), 0)
     },
-    [onChange, recipients],
+    [inputRef, onChange, recipients],
   )
 
   const remove = useCallback(

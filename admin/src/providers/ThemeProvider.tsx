@@ -17,6 +17,7 @@ import { useUpdatePreferences } from '../facades/auth/hooks'
 import { useCurrentOrganization } from '../facades/organization/hooks'
 import { useAuthSession } from './AuthSessionProvider'
 import { DEFAULT_THEME, resolveThemeChoice } from './theme-resolution'
+import { useTenantHost } from '../facades/team/tenant-host'
 import {
   forgetLegacyTheme,
   ORGANIZATION_THEME_STYLE_ID,
@@ -24,13 +25,14 @@ import {
   writeAppliedTheme,
   writeOrganizationThemeCss,
   writeThemeChoice,
+  type SignInTheme,
   type Theme,
-} from './theme-storage'
+} from '../lib/theme-storage'
 
 const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)'
 
 export type { AppliedTheme } from './theme-resolution'
-export type { Theme } from './theme-storage'
+export type { Theme } from '../lib/theme-storage'
 
 /**
  * The theme ids UnlikeOtherAI's hosted sign-in page understands
@@ -38,7 +40,6 @@ export type { Theme } from './theme-storage'
  * alone: that page has no access to a tenant's palette, and before sign-in
  * there is no tenant to ask.
  */
-export type SignInTheme = Exclude<Theme, 'organization' | 'system'>
 
 type ThemeOption = {
   description: string
@@ -151,6 +152,10 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
   const { me, sessionState } = useAuthSession()
   const { mutate: updatePreferences } = useUpdatePreferences()
   const { data: organization } = useCurrentOrganization()
+  // On a tenant hostname the organisation is known before anybody signs in, so
+  // the palette is too. Everywhere else this resolves to nothing and the rest
+  // of this file behaves exactly as it did.
+  const { data: tenantHost, isLoading: tenantHostLoading } = useTenantHost()
   const serverChoice = me?.user.preferences?.theme
   const [localChoice, setLocalChoice] = useState<Theme | null>(() => readThemeChoice())
   const [preview, setPreview] = useState<EvaluatedTheme | null>(null)
@@ -163,17 +168,28 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
   // The organisation's saved palette. `undefined` (still loading) is a
   // different answer from `null` (there is none): treating the first as the
   // second would repaint Sandstone for one round-trip on every warm load.
-  const savedTheme = organization?.theme ?? null
+  //
+  // The session's own organisation wins where there is one: somebody signed in
+  // is looking at the tenant they are actually in, which a hostname can only
+  // suggest. The hostname's palette is what paints before that exists.
+  const tenantTheme = tenantHost?.kind ? tenantHost.organisation.theme : null
+  const savedTheme = organization?.theme ?? tenantTheme
   const savedEvaluated = useMemo(
     () => (savedTheme ? evaluateOrganizationTheme(savedTheme) : null),
     [savedTheme],
   )
   const signedIn = sessionState === 'authenticated'
-  // Hold the first-paint palette only while a palette may still arrive. Signed
-  // out there is none to wait for — the sign-in screen is instance state, not
-  // tenant state (§4.3) — so the block is cleared rather than held.
+  // Hold the first-paint palette only while a palette may still arrive. On the
+  // canonical origin, signed out, there is none to wait for — the sign-in
+  // screen is instance state, not tenant state (§4.3) — so the block is
+  // cleared rather than held. A tenant hostname is the carve-out that rule's
+  // own reasoning implies: the address names the organisation, so there IS one
+  // to wait for, and it reaches nobody else's login.
   const awaitingOrganization = sessionState === 'loading'
     || (signedIn && organization === undefined)
+    // A tenant address has a palette on the way even with no session, so hold
+    // the first paint for it rather than flashing Sandstone and repainting.
+    || tenantHostLoading
   const organizationHasTheme = preview !== null || savedEvaluated !== null
 
   const { applied, choice } = resolveThemeChoice({

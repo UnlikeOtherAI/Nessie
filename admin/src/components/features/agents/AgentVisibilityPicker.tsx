@@ -2,7 +2,7 @@ import type { AgentVisibility } from '@nessie/schemas'
 
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { SectionLabel } from '../../primitives/SectionLabel'
-import { AgentVisibilityPill } from './AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 
 const VISIBILITY_OPTIONS: ReadonlyArray<TabBarItem<AgentVisibility>> = [
   {

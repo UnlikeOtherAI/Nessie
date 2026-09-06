@@ -7,11 +7,7 @@ import type {
   ModelClient,
 } from '@nessie/runtime'
 import { attributionFromActorContext } from '@nessie/runtime'
-
-import {
-  AgentAvatarGenerationError,
-  generateAgentAvatar,
-} from './agent-avatar-generation.js'
+import { AgentAvatarGenerationError, generateAgentAvatar } from '@nessie/team-admin'
 
 const PERSONAL_ASSISTANT_AVATAR_PURPOSE = [
   'A private personal AI assistant that helps its owner organise work,',

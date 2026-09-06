@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 
 import { parseAgentId, parseChannelId, parseTaskId } from '@nessie/schemas'
-import { createApiResponse, sendApiError } from '../lib/api.js'
+import { ApprovalRequestRecordSchema, ResolveApprovalBodySchema } from '../contracts/approvals.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   getApprovalRequest,
   getPendingApprovalCount,
@@ -9,6 +10,29 @@ import {
   resolveApprovalRequest,
 } from '../services/approvals.js'
 import type { RouteDeps } from './types.js'
+
+/**
+ * Keyed by the service's own error union (`Extract<...>['error']`) rather
+ * than a hand-copied list of strings: a new refusal `resolveApprovalRequest`
+ * returns and this map does not cover is a compile error, not a silent
+ * "Unknown error" 400 at runtime (see FO1-11).
+ */
+type ApprovalResolveErrorCode = Extract<
+  Awaited<ReturnType<typeof resolveApprovalRequest>>,
+  { error: string }
+>['error']
+
+const APPROVAL_RESOLVE_ERROR_MAP: Record<ApprovalResolveErrorCode, { code: number; message: string }> = {
+  ALREADY_RESOLVED: { code: 409, message: 'Approval already resolved' },
+  SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
+  // The strongest refusal on this surface: an approval pinned to a specific
+  // person cannot be resolved by anyone else, even another owner — a 403,
+  // not the generic 400 it used to fall through to.
+  APPROVER_REQUIRED: { code: 403, message: 'Only the named approver may resolve this request' },
+  EXPIRED: { code: 410, message: 'Approval request has expired' },
+  ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
+  RUN_NOT_WAITING: { code: 409, message: 'Approval is not ready to resolve' },
+}
 
 export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, realtimeHub, requireActorContext } = deps
@@ -27,7 +51,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
       limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
     })
 
-    return { data: result.data, meta: result.meta }
+    return { data: ApprovalRequestRecordSchema.array().parse(result.data), meta: result.meta }
   })
 
   app.get('/api/approvals/pending/count', async (request, reply) => {
@@ -49,7 +73,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
       return reply
     }
 
-    return createApiResponse(approval)
+    return createApiResponse(ApprovalRequestRecordSchema.parse(approval))
   })
 
   app.post('/api/approvals/:approvalId/resolve', async (request, reply) => {
@@ -57,12 +81,8 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
 
     const { approvalId } = request.params as { approvalId: string }
-    const body = request.body as { resolution: 'approved' | 'rejected'; note?: string }
-
-    if (!body?.resolution || !['approved', 'rejected'].includes(body.resolution)) {
-      sendApiError(reply, 400, 'INVALID_INPUT', 'resolution must be "approved" or "rejected"')
-      return reply
-    }
+    const body = parseInput(ResolveApprovalBodySchema, request.body, reply)
+    if (!body) return reply
 
     const result = await resolveApprovalRequest(
       prisma,
@@ -78,14 +98,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     }
 
     if ('error' in result && result.error) {
-      const errorMap: Record<string, { code: number; message: string }> = {
-        ALREADY_RESOLVED: { code: 409, message: 'Approval already resolved' },
-        SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
-        EXPIRED: { code: 410, message: 'Approval request has expired' },
-        ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
-        RUN_NOT_WAITING: { code: 409, message: 'Approval is not ready to resolve' },
-      }
-      const err = errorMap[result.error] ?? { code: 400, message: 'Unknown error' }
+      const err = APPROVAL_RESOLVE_ERROR_MAP[result.error]
       sendApiError(reply, err.code, result.error, err.message)
       return reply
     }
@@ -111,6 +124,6 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
       },
     )
 
-    return createApiResponse(result.approval)
+    return createApiResponse(ApprovalRequestRecordSchema.parse(result.approval))
   })
 }

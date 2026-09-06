@@ -1,5 +1,5 @@
 import type { MessageSearchResult } from '../../../lib/api-client'
-import { formatClock } from './channel-helpers'
+import { formatClock } from './channel-feed'
 
 interface ChannelSearchPanelProps {
   searchQuery: string

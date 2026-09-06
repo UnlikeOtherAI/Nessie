@@ -11,6 +11,7 @@ import type {
   UserRecord,
 } from '../../lib/api-client'
 import type { MentionEntity } from '../../components/shared/MentionInput'
+import { dashboardCloseTarget } from './dashboard-close-target'
 import { ChannelMembersPopup } from '../../components/shared/ChannelMembersPopup'
 import { ChannelSettingsDialog } from '../../components/shared/ChannelSettingsDialog'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
@@ -33,15 +34,12 @@ type VoiceCallOverlay = {
   state: VoiceCallState
 }
 import { ThreadReplyPanel } from '../../components/features/channels/thread-panel/ThreadReplyPanel'
-import type {
-  ChannelAgentParticipant,
-  MessageUserIdentity,
-} from '../../components/features/channels/channel-helpers'
+import type { ChannelAgentParticipant, MessageUserIdentity } from '../../components/features/channels/channel-participants'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { MessageHistoryStatus } from '../../components/features/channels/ChannelMessageFeed'
 import type { OlderContentLoader } from '../../hooks/useStickToBottom'
 import { ChannelInfoDrawers } from './ChannelInfoDrawers'
-import type { useReplyThread } from './useReplyThread'
+import type { useReplyThread } from '../../components/features/channels/useReplyThread'
 
 interface ChannelOverlaysProps {
   activeCall: CallRecord | null | undefined
@@ -157,15 +155,11 @@ export const ChannelOverlays = ({
   onSelectAgent,
   onSendAsFile,
 }: ChannelOverlaysProps) => {
-  const { dashboardId, threadId } = useParams()
+  const { dashboardId } = useParams()
   const navigate = useNavigate()
   const closeDashboard = () => {
     if (activeChannel) {
-      void navigate(
-        threadId
-          ? `/channels/${activeChannel.id}/threads/${threadId}`
-          : `/channels/${activeChannel.id}`,
-      )
+      void navigate(dashboardCloseTarget(activeChannel.id))
     }
   }
 
@@ -214,6 +208,7 @@ export const ChannelOverlays = ({
         channelUsers={channelUsers}
         currentUserId={me.user.id}
         personalAssistantPresences={personalAssistantPresences}
+        viewerCanManage={activeChannel.viewerCanManage}
         onClose={onCloseMembers}
         onGroupCreated={onGroupCreated}
         onSelectAgent={onSelectAgent}

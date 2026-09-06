@@ -10,7 +10,7 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import { createWorkflowChannelMessage } from '../control/workflow-message-send.js'
-import { collectWebFetchResult, collectWebSearchResults, coercePage } from './content-tools.js'
+import { collectWebFetchResult, collectWebSearchResults, coercePositiveInteger } from './content-tools.js'
 import { HttpFetchError } from './builtin-handlers/index.js'
 import { hashJsonValue, summarizeToolInput } from './tool-util.js'
 
@@ -73,9 +73,13 @@ export const executeWorkflowBuiltinTool = async (
           ? context.actorContext.actor.actorId
           : undefined
       const attributedAgentId = actionAgentId ?? actorAgentId
+      const count = coercePositiveInteger(args.count)
+      // `present` is deliberately not honoured here: a workflow step runs
+      // outside any conversation, so there is no thread to post a card into.
+      // A workflow that should show results sends them with `message_send`.
       const result = await collectWebSearchResults(
         query,
-        coercePage(args.page),
+        coercePositiveInteger(args.page),
         {
           attribution: attributionFromActorContext(context.actorContext, {
             agentId: attributedAgentId,
@@ -83,6 +87,7 @@ export const executeWorkflowBuiltinTool = async (
             runId: context.workflowRunId,
             systemComponent: 'workflow.web-search',
           }),
+          ...(count === undefined ? {} : { count }),
           ledgerIdentity: context.ledgerIdentity,
           toolCallId: context.workflowStepRunId,
         },

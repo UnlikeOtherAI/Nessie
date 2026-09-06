@@ -8,7 +8,9 @@ import {
   type NormalisedItem,
   type OAuthExchangeInput,
   type OutboundChange,
+  SourceAuthError,
   SourceContainerGoneError,
+  SourceHttpError,
   SourceRejectedError,
   type SyncCheckpoint,
   type SyncPage,
@@ -68,6 +70,26 @@ const graphql = async <T>(
 
 const isRepository = (container: Record<string, unknown>): boolean =>
   container.kind === 'repository'
+
+/**
+ * What a repository hook is asked for. `issues` and `label` only — the mirror
+ * holds issues and their labels, and every other event would be a delivery the
+ * processor fetched an issue for and applied nothing from.
+ */
+export const buildRepositoryHookBody = (callback: {
+  url: string
+  secret: string
+}): Record<string, unknown> => ({
+  name: 'web',
+  active: true,
+  events: ['issues', 'label'],
+  config: {
+    url: callback.url,
+    content_type: 'json',
+    insecure_ssl: '0',
+    secret: callback.secret,
+  },
+})
 
 /**
  * GitHub as a board source, in two shapes.
@@ -363,9 +385,65 @@ export const createGitHubAdapter = (config: GitHubAdapterConfig): BoardSourceAda
       .map(normaliseGitHubIssue)
   },
 
-  // Webhooks are configured once on the GitHub App and fire for every
-  // installation, so there is nothing to register per source.
-  ensureWebhook: async (): Promise<WebhookRegistration | null> => null,
+  /**
+   * A repository hook, signed with a secret this deployment chooses.
+   *
+   * The App-level webhook is the other way in and stays supported through
+   * `config.webhookSecret`, but it exists only where somebody configured one on
+   * the App — so a source registers its own and the deployment needs nothing
+   * set up to get pushed changes. A Projects v2 board has no per-source hook to
+   * register (its events belong to the org, not to any repo), so it keeps its
+   * declared poll.
+   */
+  ensureWebhook: async (
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    callback: { url: string; secret: string },
+  ): Promise<WebhookRegistration | null> => {
+    if (!isRepository(container)) return null
+    const owner = String(container.owner ?? '')
+    const repo = String(container.repo ?? '')
+    try {
+      const created = await sourceFetchJson<{ id?: number }>({
+        url: `https://${GITHUB_API_HOST}/repos/${owner}/${repo}/hooks`,
+        method: 'POST',
+        allowedHosts: GITHUB_ALLOWED_HOSTS,
+        headers: { ...restHeaders(ctx), 'content-type': 'application/json' },
+        body: JSON.stringify(buildRepositoryHookBody(callback)),
+      })
+      if (!created.id) return null
+      return {
+        externalId: String(created.id),
+        // A repository hook does not expire; GitHub disables one that keeps
+        // failing, which the poll covers.
+        expiresAt: null,
+        signingSecret: callback.secret,
+      }
+    } catch (cause) {
+      // Creating a hook needs admin on the repository, which a person who can
+      // read its issues frequently does not have. That refusal is the ordinary
+      // case, not a fault: the board keeps syncing on its poll rather than
+      // going `misconfigured` and alerting about nothing.
+      if (cause instanceof SourceHttpError || cause instanceof SourceAuthError) return null
+      throw cause
+    }
+  },
+
+  removeWebhook: async (
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    externalId: string,
+  ): Promise<void> => {
+    if (!isRepository(container)) return
+    await sourceFetchJson({
+      url: `https://${GITHUB_API_HOST}/repos/${String(container.owner ?? '')}/${String(
+        container.repo ?? '',
+      )}/hooks/${externalId}`,
+      method: 'DELETE',
+      allowedHosts: GITHUB_ALLOWED_HOSTS,
+      headers: restHeaders(ctx),
+    })
+  },
 
   verifyWebhook: (request: WebhookRequest, secrets: WebhookSecrets): boolean => {
     const signature = request.headers['x-hub-signature-256']
@@ -384,7 +462,10 @@ export const createGitHubAdapter = (config: GitHubAdapterConfig): BoardSourceAda
     // `fetchItems` re-reads with it.
     const issueId = parsed.issue?.number
     return {
-      deliveryId: request.headers['x-github-delivery'] ?? `github:${Date.now()}`,
+      // GitHub's own delivery uuid, identical across every redelivery of the
+      // same event. Null rather than a clock reading when it is absent: the
+      // caller hashes the body, which at least dedupes a retry.
+      deliveryId: request.headers['x-github-delivery'] ?? null,
       containerKey: parsed.repository?.full_name
         ? `repo:${parsed.repository.full_name}`
         : parsed.projects_v2_item?.node_id

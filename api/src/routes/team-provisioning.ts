@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { Prisma, type PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-import { writeAuditEntryInTransaction } from '@nessie/db'
-import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  isAdminActor,
+  OrganizationThemeSchema,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { forgetUoaTeamDirectory } from '../services/uoa-directory-cache.js'
 import {
   checkUoaSlugAvailability,
   createUoaOrganisation,
@@ -14,12 +15,12 @@ import {
   resolveUoaTeamAddress,
   resolveUoaTeamHost,
   createUoaTeamTeam,
+  provisionOnce,
   resolveUoaRosterTeam,
   UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
   withUoaRosterSubjectAssertion,
-  type UoaProvisionedTeam,
   type UoaRosterDeps,
 } from '../services/uoa-org-roster.js'
 import type { RouteDeps } from './types.js'
@@ -148,63 +149,6 @@ export const LEGACY_TEAM_CREATED_ACTIONS = [
 const NEEDS_UOA_SESSION =
   'Sign in with UnlikeOtherAI to create an organisation.'
 
-/**
- * Serialize one person's provisioning attempts across every API replica.
- *
- * Transaction-scoped, matching `lockUserSessions` and the audit chain's own
- * lock. Two clicks a few milliseconds apart would otherwise both pass the
- * replay check below and create two organisations.
- */
-const lockUserProvisioning = async (
-  tx: Prisma.TransactionClient,
-  userId: string,
-): Promise<void> => {
-  await tx.$executeRaw(Prisma.sql`
-    SELECT pg_advisory_xact_lock(
-      hashtextextended(${`nessie:org-provisioning:${userId}`}, 0)
-    )
-  `)
-}
-
-/**
- * The result of an earlier attempt carrying this idempotency key, if any.
- *
- * **The audit log is the ledger.** It already records who created what, it is
- * append-only and hash-chained, and using it means no second table mirroring
- * UOA's organisation ids — which is the whole point of this feature. Every
- * predicate but the JSON one is covered by an existing organisation-scoped
- * index (`audit_logs` carries several leading on `organization_id`), and the
- * 24-hour window bounds what is left, so only a handful of rows ever reach the
- * JSON comparison: no new index, and no walk of the organisation's history.
- */
-const findPriorProvisioning = async (
-  tx: Prisma.TransactionClient,
-  input: {
-    action: string
-    organizationId: string
-    userId: string
-    idempotencyKey: string
-  },
-): Promise<UoaProvisionedTeam | null> => {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const prior = await tx.auditLog.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      action: input.action,
-      actorId: input.userId,
-      outcome: 'success',
-      createdAt: { gte: since },
-      metadata: { path: ['idempotencyKey'], equals: input.idempotencyKey },
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { metadata: true },
-  })
-  const metadata = prior?.metadata as Record<string, unknown> | null | undefined
-  const externalOrgId = typeof metadata?.externalOrgId === 'string' ? metadata.externalOrgId : null
-  const externalTeamId = typeof metadata?.externalTeamId === 'string' ? metadata.externalTeamId : null
-  return externalOrgId && externalTeamId ? { externalOrgId, externalTeamId } : null
-}
-
 const auditRequestFields = (request: FastifyRequest) => ({
   requestId: request.id,
   ipAddress: request.ip ?? null,
@@ -212,69 +156,6 @@ const auditRequestFields = (request: FastifyRequest) => ({
     ? request.headers['user-agent']
     : null,
 })
-
-/**
- * Run one provisioning attempt exactly once per idempotency key.
- *
- * The UOA call happens INSIDE the interactive transaction, which is unusual
- * here and deliberate. Holding the per-user advisory lock across it is what
- * makes a double-submit impossible rather than merely unlikely, and the
- * alternative — a lock released before the call — leaves exactly the window
- * this exists to close. It is safe because the call is a single POST bounded by
- * the `/org/*` seam's own 10s timeout, well inside the transaction budget; the
- * long multi-step UOA exchanges that must stay outside transactions are a
- * different shape entirely.
- */
-const provisionOnce = async (
-  prisma: PrismaClient,
-  request: FastifyRequest,
-  input: {
-    action: string
-    organizationId: string
-    userId: string
-    idempotencyKey: string
-    name: string
-    slug?: string
-    resourceType: string
-  },
-  create: () => Promise<UoaProvisionedTeam>,
-): Promise<UoaProvisionedTeam> => prisma.$transaction(
-  async (tx) => {
-    await lockUserProvisioning(tx, input.userId)
-
-    const prior = await findPriorProvisioning(tx, input)
-    if (prior) return prior
-
-    const team = await create()
-
-    // The caller's cached team directory predates what they just made.
-    // The switch that normally follows re-primes it, but if that call fails
-    // they would otherwise be told their own new team does not exist for
-    // up to the cache TTL.
-    forgetUoaTeamDirectory(input.userId)
-
-    await writeAuditEntryInTransaction(tx, {
-      organizationId: input.organizationId,
-      actorType: 'user',
-      actorId: input.userId,
-      action: input.action,
-      resourceType: input.resourceType,
-      resourceId: team.externalOrgId,
-      outcome: 'success',
-      metadata: {
-        idempotencyKey: input.idempotencyKey,
-        name: input.name,
-        slug: input.slug ?? null,
-        externalOrgId: team.externalOrgId,
-        externalTeamId: team.externalTeamId,
-      },
-      ...auditRequestFields(request),
-    })
-
-    return team
-  },
-  { maxWait: 5_000, timeout: 25_000 },
-)
 
 /** Map a provisioning failure onto the API's error envelope. */
 const sendProvisioningError = (
@@ -369,7 +250,7 @@ export const registerTeamProvisioningRoutes = (
     try {
       const team = await provisionOnce(
         prisma,
-        request,
+        auditRequestFields(request),
         {
           action: ORG_CREATED_ACTION,
           organizationId: actorContext.tenant.organizationId,
@@ -437,8 +318,18 @@ export const registerTeamProvisioningRoutes = (
    * needs to enter a team asks `/api/hosts/team`, which is authenticated.
    *
    * What it does disclose is that an organisation of a given name exists on
-   * this domain, with its display name and mark. That is inherent in giving a
-   * tenant a public branded address at all.
+   * this domain, with its display name, mark and palette. That is inherent in
+   * giving a tenant a public branded address at all — every one of those is on
+   * screen the moment the page renders.
+   *
+   * The palette is the deliberate exception to "the sign-in screen is instance
+   * state, not tenant state"
+   * (docs/plans/2026-09-05-organisation-custom-theme.md §4.3). That rule exists
+   * because before sign-in nobody knows which organisation the visitor belongs
+   * to, and an org admin choosing the shared login screen would be choosing it
+   * for every other tenant. On a tenant hostname neither is true: the address
+   * names the organisation, and the choice reaches only that organisation's own
+   * address. `app.nessie.works` stays neutral, and §4.3 still governs it.
    */
   app.get('/api/hosts/resolve', { config: { public: true } }, async (request, reply) => {
     const query = parseInput(ResolveHostQuerySchema, request.query, reply)
@@ -451,6 +342,18 @@ export const registerTeamProvisioningRoutes = (
       const organisation = await resolveUoaOrgHost({ orgSlug: parsed.orgSlug }, rosterDeps)
       if (!organisation) return createApiResponse({ kind: null })
 
+      // The palette is this product's own record, keyed by the UOA id UOA just
+      // vouched for — so an unknown organisation cannot reach a local row, and
+      // a local row cannot be reached by any name UOA did not resolve first.
+      const local = await prisma.organization.findUnique({
+        select: { theme: true },
+        where: { externalOrgId: organisation.externalOrgId },
+      })
+      const parsedTheme = OrganizationThemeSchema.safeParse(local?.theme)
+      // A palette that no longer validates is dropped rather than sent: the
+      // page renders the default instead of a half-applied one.
+      const theme = parsedTheme.success ? parsedTheme.data : null
+
       // Where sign-in happens. A tenant host is never a registered OAuth
       // redirect target — UOA matches redirect URLs byte-for-byte and tenant
       // hostnames are created at runtime — so a signed-out visitor is handed
@@ -458,7 +361,11 @@ export const registerTeamProvisioningRoutes = (
       const signInOrigin =
         process.env.NESSIE_ADMIN_PUBLIC_URL ?? process.env.NESSIE_ADMIN_ORIGIN ?? null
 
-      return createApiResponse({ kind: parsed.kind, organisation, signInOrigin })
+      return createApiResponse({
+        kind: parsed.kind,
+        organisation: { ...organisation, theme },
+        signInOrigin,
+      })
     } catch (error) {
       if (error instanceof UoaRosterUnavailableError) {
         return createApiResponse({ kind: null })
@@ -613,7 +520,7 @@ export const registerTeamProvisioningRoutes = (
     try {
       const created = await provisionOnce(
         prisma,
-        request,
+        auditRequestFields(request),
         {
           action: TEAM_CREATED_ACTION,
           organizationId: actorContext.tenant.organizationId,

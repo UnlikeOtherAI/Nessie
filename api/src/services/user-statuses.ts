@@ -19,7 +19,7 @@ import type {
   UpdateUserStatusScheduleBody,
   UserActiveStatus,
   UserStatusRecord,
-} from '../contracts.js'
+} from '../contracts/users-presence.js'
 import { isScheduleActive } from './user-status-schedules.js'
 
 const statusInclude = {

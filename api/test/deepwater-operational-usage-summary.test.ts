@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
+import { ConnectorUsageMetadataSchema } from '@nessie/runtime'
 
 import { listIntegratedProducts } from '../src/services/integrations.js'
 import { getConnectorUsageSummary } from '../src/services/token-ledger.js'
@@ -25,10 +26,38 @@ test('connector operational summaries exclude every DeepWater cost marker', asyn
   assert.equal(summary.totalCost, 0)
   assert.equal(statements.length, 2)
   for (const statement of statements) {
-    assert.match(statement, /metadata->>'productSlug' = 'deep-water'/)
-    assert.match(statement, /metadata->>'source' = 'deep_water_run_update'/)
-    assert.match(statement, /THEN 0\s+ELSE cost_amount/)
+    // One predicate, on the field the single write door stamps — not a chain of
+    // spellings each writer might or might not have used.
+    assert.match(
+      statement,
+      /CASE WHEN metadata->>'metering' = 'operational_only' THEN 0 ELSE cost_amount END/,
+    )
+    for (const retiredSpelling of [
+      /metadata->>'productSlug'/,
+      /metadata->>'product_slug'/,
+      /metadata->>'product'/,
+      /metadata->>'source'/,
+    ]) {
+      assert.doesNotMatch(statement, retiredSpelling)
+    }
   }
+})
+
+test('DeepWater usage is written with the metering flag the cost report reads', async () => {
+  const metadata = ConnectorUsageMetadataSchema.parse({
+    metering: 'operational_only',
+    productSlug: 'deep-water',
+    source: 'deep_water_run_update',
+  })
+
+  assert.equal(metadata.metering, 'operational_only')
+  // Provenance keys are not governed, and are not dropped either.
+  assert.equal(metadata.source, 'deep_water_run_update')
+})
+
+test('an event with no metering of its own is recorded as billable', () => {
+  assert.equal(ConnectorUsageMetadataSchema.parse({}).metering, 'billable')
+  assert.throws(() => ConnectorUsageMetadataSchema.parse({ metering: 'free' }))
 })
 
 test('product registry queries never read the local operational ledger', async () => {

@@ -14,6 +14,7 @@ import {
   useUoaBillingHostedAction,
   useUoaBillingStatement,
 } from '../../../facades/billing/hooks'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { Card } from '../../shared/Card'
@@ -22,8 +23,12 @@ import { StatGrid, StatTile } from '../../shared/StatTile'
 import { UoaBillingCancellationDialog } from './UoaBillingCancellationDialog'
 import { UoaBillingStatementDetails } from './UoaBillingStatementDetails'
 
-const errorMessage = (error: unknown): string | null =>
-  error instanceof Error ? error.message : null
+const BILLING_ACTION_FALLBACK = 'Something went wrong. Try again.'
+
+// A mutation with no error carries `null`, not the fallback sentence — the
+// panel only renders an error block when there is one to show.
+const mutationErrorMessage = (error: unknown): string | null =>
+  error ? formErrorMessage(error, BILLING_ACTION_FALLBACK) : null
 
 const actionButtonClass = (
   action: BillingStatementAction,
@@ -77,8 +82,8 @@ export const UoaBillingStatementPanel = () => {
 
   const data = statement.data
   const actionError =
-    errorMessage(hostedAction.error)
-    ?? errorMessage(previewAction.error)
+    mutationErrorMessage(hostedAction.error)
+    ?? mutationErrorMessage(previewAction.error)
   const actionPending =
     hostedAction.isPending
     || previewAction.isPending
@@ -211,7 +216,7 @@ export const UoaBillingStatementPanel = () => {
       {(preview || confirmation) && (
         <UoaBillingCancellationDialog
           confirmation={confirmation}
-          error={errorMessage(confirmAction.error)}
+          error={mutationErrorMessage(confirmAction.error)}
           onClose={closeDialog}
           onConfirm={(selection) => {
             void confirmCancellation(selection)

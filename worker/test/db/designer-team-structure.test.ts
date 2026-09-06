@@ -72,6 +72,13 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const team = await prisma.team.create({
     data: { name: `designer-home-team-${suffix}`, projectId: project.id },
   })
+  // `canPlaceChannelInTeam` (packages/team-admin/src/channel-create.ts) now
+  // requires a `TeamMember`/`ProjectMember` row (or org owner/admin) before a
+  // channel can land in a team — `member` needs standing here for the
+  // "channel_create mirrors its route" case below to still exercise a success.
+  await prisma.teamMember.create({
+    data: { role: 'member', teamId: team.id, userId: member.id },
+  })
 
   // The real home DM: `system_agent`, the `gagent:` dmKey, the blueprint's own
   // agent row — the surface every identity-delegated tool call arrives on.
@@ -290,8 +297,10 @@ runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) 
   )
 
   // `channel_create` is deliberately NOT owner-gated: `POST /api/channels`
-  // carries only `requireActorContext`, and a tool mirrors its route exactly —
-  // no weaker, no stronger.
+  // carries only `requireActorContext` plus standing in the target team
+  // (`canPlaceChannelInTeam`), and a tool mirrors its route exactly — no
+  // weaker, no stronger. `member` holds a `TeamMember` row on `team.teamId`
+  // (seeded above), which is exactly the standing the route requires.
   const channelResult = await runChannelCreateTool(context, {
     label: 'Member room',
     teamId: team.teamId,
@@ -302,6 +311,33 @@ runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) 
     select: { visibility: true },
   })
   assert.equal(channel.visibility, 'private')
+})
+
+runDatabaseTest('channel_create refuses a team the caller has no standing in', async (t) => {
+  const prisma = new PrismaClient()
+  const team = await seed(prisma)
+  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const context = buildContext(prisma, team, team.memberId)
+
+  // A second team in the same organisation and project that `member` was
+  // never added to — no `TeamMember` row, no `ProjectMember` row, and `member`
+  // is not an organisation owner/admin, so `canPlaceChannelInTeam` has nothing
+  // to grant standing on.
+  const strangeTeam = await prisma.team.create({
+    data: { name: 'Someone else\'s team', projectId: team.projectId },
+  })
+
+  const channelsBefore = await prisma.channel.count({ where: { teamId: strangeTeam.id } })
+
+  const message = await refusal(
+    runChannelCreateTool(context, { label: 'Trespassing room', teamId: strangeTeam.id }),
+  )
+  assert.match(message, /not a member of that team/)
+
+  assert.equal(
+    await prisma.channel.count({ where: { teamId: strangeTeam.id } }),
+    channelsBefore,
+  )
 })
 
 runDatabaseTest('team_create refuses a cross-organisation projectId', async (t) => {

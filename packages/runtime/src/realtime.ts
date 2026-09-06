@@ -7,6 +7,10 @@ import {
   type WsScope,
 } from '@nessie/schemas'
 
+// The message announcement envelope rides this transport and is published by
+// both processes, so it is reachable wherever the transport is.
+export * from './message-envelope.js'
+
 const DEFAULT_NOTIFICATION_CHANNEL = 'nessie_realtime'
 const RECONNECT_DELAY_MS = 1_000
 

@@ -6,7 +6,9 @@ import {
   HttpFetchError,
   runWebSearch,
   type WebSearchOptions,
+  type WebSearchOutput,
 } from './builtin-handlers/index.js'
+import { postWebSearchCard } from './web-search-card.js'
 import { assertSafeUrl, safeFetch, UrlSafetyError } from './builtin-handlers/url-safety.js'
 import { hashJsonValue, MAX_TOOL_RESULT_CHARS, truncate } from './tool-util.js'
 import type {
@@ -66,7 +68,8 @@ const resolveDocsPath = (candidatePath: string): string | null => {
     : null
 }
 
-export const coercePage = (value: unknown): number | undefined => {
+/** A positive integer argument (page, count) or nothing — never a zero or a NaN. */
+export const coercePositiveInteger = (value: unknown): number | undefined => {
   const parsed =
     typeof value === 'number'
       ? value
@@ -76,27 +79,26 @@ export const coercePage = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }
 
+/**
+ * One entry point for every web search a run makes — the agent tool and the
+ * workflow step both come through here, so provenance and paging are decided
+ * in one place.
+ *
+ * The query is passed through verbatim. It used to have `search`, `latest`,
+ * `web` and friends stripped out of it by a regex, which mangled honest
+ * queries ("latest iPhone" → "iPhone", "web design" → "design"), only worked
+ * in English, and was exactly the content keyword-matching `AGENTS.md`
+ * forbids. Writing a good query is the model's job.
+ */
 export const collectWebSearchResults = async (
   query: string,
   page: number | undefined,
-  context: Omit<WebSearchOptions, 'count' | 'page'>,
-): Promise<{
-  query: string
-  page: number
-  answer: string | null
-  results: Array<{ title: string; url: string; snippet: string }>
-  text: string
-}> => {
-  const normalizedQuery = query
-    .replace(/\b(search|latest|look up|lookup|find on the web|web)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim() || query.trim()
-
-  return runWebSearch(normalizedQuery, {
+  context: Omit<WebSearchOptions, 'page'>,
+): Promise<WebSearchOutput> =>
+  runWebSearch(query, {
     ...context,
     page,
   })
-}
 
 const readResponseText = async (
   response: Response,
@@ -275,21 +277,37 @@ export const runWebFetchTool = async (prompt: string): Promise<ToolExecutionResu
 export const runWebSearchTool = async (
   context: BuiltinToolRuntimeContext,
   prompt: string,
-  page?: number,
+  options: { count?: number; page?: number; present?: boolean } = {},
 ): Promise<ToolExecutionResult> => {
-  const result = await collectWebSearchResults(prompt, page, {
+  const result = await collectWebSearchResults(prompt, options.page, {
     attribution: attributionFromActorContext(context.actorContext, {
       agentId: context.agentId,
       agentKind: context.agentKind,
       runId: context.run.id,
     }),
+    ...(options.count === undefined ? {} : { count: options.count }),
     ledgerIdentity: context.ledgerIdentity,
     toolCallId: context.toolCallId ?? '',
   })
 
+  // Presenting is a second, visible act: the model gets the same grounded
+  // results either way, and a card only appears because it asked for one.
+  const presented = options.present ? await postWebSearchCard(context, result) : null
+
   return {
-    inputSummary: result.page > 1 ? `${result.query} (page ${result.page})` : result.query,
-    outputPreview: truncate(result.text),
+    inputSummary:
+      [
+        result.query,
+        result.page > 1 ? `(page ${result.page})` : '',
+        presented ? '(presented)' : '',
+      ].filter(Boolean).join(' '),
+    outputPreview: truncate(
+      presented
+        ? `${result.text}\n\nPosted these results to the conversation as a search card `
+          + 'the person can page through. Do not repeat the list back to them; say what '
+          + 'it means.'
+        : result.text,
+    ),
     toolName: 'web_search',
   }
 }

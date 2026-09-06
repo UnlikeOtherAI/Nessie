@@ -6,12 +6,13 @@ import {
   touchVoiceDeviceCredential,
   verifyVoiceDeviceCredential,
 } from '../services/voice/voice-device-credential.js'
+import { createGlobalRateLimitCheck } from '../routes/auth-rate-limit.js'
 import { sendApiError } from './api.js'
 import type { ServerContext } from './server-context.js'
 
 type GlobalAuthHookDeps = Pick<
   ServerContext,
-  'authenticateRequest' | 'checkRateLimit'
+  'authenticateRequest' | 'config' | 'rateLimiter'
 > & { prisma: PrismaClient }
 
 /**
@@ -36,16 +37,27 @@ const bearerToken = (header: string | undefined): string | null => {
  */
 export const registerGlobalAuthHook = (
   app: FastifyInstance,
-  { authenticateRequest, checkRateLimit, prisma }: GlobalAuthHookDeps,
+  { authenticateRequest, config, prisma, rateLimiter }: GlobalAuthHookDeps,
 ): void => {
-  app.addHook('preHandler', async (request, reply) => {
-    const rateLimit = checkRateLimit(request)
-    if (rateLimit) {
-      reply.header('retry-after', String(rateLimit.retryAfterSeconds))
-      sendApiError(reply, 429, 'RATE_LIMITED', 'Too many requests')
-      return
-    }
+  // The API-wide per-IP check, built here from the shared limiter and the
+  // thresholds in config. It is bound at registration rather than handed in
+  // pre-built so there is exactly one place that decides which bucket governs
+  // a request (2026-09-05 review, FO3-3).
+  const checkRateLimit = createGlobalRateLimitCheck({ config, rateLimiter })
 
+  // Rate limiting runs at `onRequest`, before the JSON body parser buffers and
+  // parses the payload (and before multipart accepts up to
+  // `storage.maxUploadBytes`). The cheapest rejection a server can make must
+  // not be its most expensive one (2026-09-05 review, FO3-6). Actor
+  // resolution stays at `preHandler`, where the request is otherwise ready.
+  app.addHook('onRequest', async (request, reply) => {
+    if (!(await checkRateLimit(request, reply))) {
+      return reply
+    }
+    return undefined
+  })
+
+  app.addHook('preHandler', async (request, reply) => {
     if (request.routeOptions.config.public === true) {
       return
     }

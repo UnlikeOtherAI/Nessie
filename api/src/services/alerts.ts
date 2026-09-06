@@ -9,12 +9,7 @@ import {
   type PaginationMeta,
 } from '@nessie/schemas'
 
-import {
-  TeamInvitationAlertMetadataSchema,
-  type UserAlertRecord,
-} from '../contracts.js'
-
-// User alerts (#246): org-scoped, per-user reads of the durable UserAlert
+import { TeamInvitationAlertMetadataSchema, type UserAlertRecord } from '../contracts/alerts.js'// User alerts (#246): org-scoped, per-user reads of the durable UserAlert
 // store. Every query is pinned to BOTH the caller's organization and the
 // caller's user id — alerts are private to their recipient.
 

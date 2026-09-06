@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { scopedSettingKeys } from './keys'
 
 export type SettingScope = 'organization' | 'team' | 'user'
 
@@ -14,12 +15,6 @@ export type ResolvedSetting<T = unknown> = {
   canEdit: boolean
   /** Whether the level being viewed currently holds the lock. */
   lockedHere: boolean
-}
-
-export const scopedSettingKeys = {
-  all: ['scoped-settings'] as const,
-  list: (scope: SettingScope, teamId: string | null, keys: readonly string[]) =>
-    ['scoped-settings', scope, teamId ?? 'none', [...keys].sort().join(',')] as const,
 }
 
 /** The setting keys the cascade governs today. */

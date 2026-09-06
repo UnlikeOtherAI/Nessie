@@ -223,7 +223,7 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
 
     verifyWebhook: (request: WebhookRequest, secrets: WebhookSecrets): boolean => {
       const signature = request.headers['x-trello-webhook']
-      const callbackUrl = secrets.signingSecret
+      const callbackUrl = secrets.callbackUrl
       if (!signature || !callbackUrl) return false
       // Trello signs base64(HMAC-SHA1(body + callbackURL)) with the app secret,
       // so the callback URL is part of the signed material.
@@ -238,7 +238,10 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
         action?: { id?: string; data?: { card?: { id?: string }; board?: { id?: string } } }
       }
       return {
-        deliveryId: parsed.action?.id ?? `trello:${Date.now()}`,
+        // Trello identifies the action, not the delivery, and repeats that id
+        // on every retry of it. Null rather than a clock reading when the
+        // payload carries none — the caller hashes the body instead.
+        deliveryId: parsed.action?.id ?? null,
         containerKey: parsed.action?.data?.board?.id ?? null,
         externalIds: parsed.action?.data?.card?.id ? [parsed.action.data.card.id] : [],
       }

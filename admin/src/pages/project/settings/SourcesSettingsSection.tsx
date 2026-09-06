@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   PROVIDER_LABEL,
+  isSourceSyncing,
   useDeleteProjectSource,
   useProjectSources,
   useSourceAction,
@@ -10,11 +11,9 @@ import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { EmptyState } from '../../../components/shared/EmptyState'
 import { Section } from '../../../components/shared/PageBody'
 import { Pill } from '../../../components/primitives/Pill'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { ConnectSourceDialog } from './ConnectSourceDialog'
 import { SourceMappingPanel } from './SourceMappingPanel'
-
-const errorMessage = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
 
 /**
  * Each health state names the one thing that fixes it — the standard is
@@ -117,6 +116,17 @@ export const SourcesSettingsSection = ({
                   <span className="text-xs text-[color:var(--tx3)]">
                     {source.itemCount} items · as {source.connectionOwnerDisplayName ?? 'unknown'}
                   </span>
+                  {/* Whether the provider pushes changes here or the board waits
+                      for a poll. `misconfigured` for WEBHOOK_REGISTRATION_FAILED
+                      is a fault; falling back to the poll is not, so this is a
+                      statement of fact rather than a remedy. */}
+                  <Pill size="sm" tone={source.webhookActive ? 'info' : 'muted'} uppercase={false}>
+                    {source.webhookActive
+                      ? 'Live updates'
+                      : source.pollingIntervalMinutes === null
+                        ? 'Manual sync only'
+                        : `Checks every ${source.pollingIntervalMinutes} min`}
+                  </Pill>
                   {source.writeMode === 'read_write' ? (
                     <Pill size="sm" tone="info" uppercase={false}>
                       Read &amp; write
@@ -130,7 +140,7 @@ export const SourcesSettingsSection = ({
                           { id: source.id, action: remedy.action as 'sync' | 'pause' | 'resume' | 'retry' },
                           {
                             onError: (cause) =>
-                              onSaveError(errorMessage(cause, 'Could not change the source')),
+                              onSaveError(formErrorMessage(cause, 'Could not change the source')),
                             onSuccess: onSaved,
                           },
                         )
@@ -143,20 +153,22 @@ export const SourcesSettingsSection = ({
                   {canAdminister ? (
                     <>
                       <button
-                        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]
+                          disabled:opacity-50"
+                        disabled={isSourceSyncing(source)}
                         onClick={() =>
                           action.mutate(
                             { id: source.id, action: 'sync' },
                             {
                               onError: (cause) =>
-                                onSaveError(errorMessage(cause, 'Could not start a sync')),
+                                onSaveError(formErrorMessage(cause, 'Could not start a sync')),
                               onSuccess: onSaved,
                             },
                           )
                         }
                         type="button"
                       >
-                        Sync now
+                        {isSourceSyncing(source) ? 'Syncing…' : 'Sync now'}
                       </button>
                       <button
                         className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
@@ -213,7 +225,7 @@ export const SourcesSettingsSection = ({
           setRemoveTarget(null)
           if (!target) return
           removeSource.mutate(target.id, {
-            onError: (cause) => onSaveError(errorMessage(cause, 'Could not remove the source')),
+            onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not remove the source')),
             onSuccess: onSaved,
           })
         }}

@@ -15,7 +15,7 @@ import { useToasts } from '../../../../providers/ToastProvider'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { EmptyState } from '../../../shared/EmptyState'
 import { QueryState } from '../../../shared/QueryState'
-import { useIsOwner } from '../../../shared/OwnerGate'
+import { useIsOwner } from '../../../../facades/auth/hooks'
 import { TodoInstanceCard } from './TodoInstanceCard'
 
 type TodoInstancesProps = {

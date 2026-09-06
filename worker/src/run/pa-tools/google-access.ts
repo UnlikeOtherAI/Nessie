@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
-import { parseChannelId, parseThreadId } from '@nessie/schemas'
+import { publishMessageEnvelope } from '@nessie/runtime'
+import { parseThreadId } from '@nessie/schemas'
 import type { GoogleCapabilityId } from '@nessie/schemas'
 import { GmailDraftError } from '@nessie/team-admin'
 
@@ -106,22 +107,22 @@ export const requestGoogleCapability = async (
     },
     select: { id: true },
   })
-  await context.realtimeTransport.publishWs(
+  await publishMessageEnvelope(
+    context.realtimeTransport,
     buildRealtimeScopesForChannel({
       channelId: thread.channel.id,
       organizationId: context.channel.organizationId,
       systemChannelType: thread.channel.systemChannelType,
     }),
     {
-      data: {
+      channelId: thread.channel.id,
+      message: {
         agentId: context.agentId,
-        channelId: parseChannelId(thread.channel.id),
-        contentPreview: content.slice(0, 200),
-        messageId: message.id,
+        content,
+        id: message.id,
         role: 'assistant',
-        threadId: parseThreadId(threadId),
       },
-      event: 'message.new',
+      threadId,
     },
   )
   return `${content} I have put a Grant button in the chat.`

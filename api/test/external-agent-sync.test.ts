@@ -117,9 +117,15 @@ const makeFake = (
         messages.filter((m) => m.threadId === args.where.threadId).map((m) => ({ metadata: m.metadata })),
       create: async (args: { data: StoredMessage }) => {
         messages.push(args.data)
-        return { id: `msg-${messages.length}` }
+        return { id: `msg-${messages.length}`, ...args.data }
       },
     },
+    // A mirrored turn is written through `createSystemAuthoredMessage`, which
+    // commits the row and its (deliberately empty) follow set together.
+    messageThreadFollow: {
+      createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }),
+    },
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(self),
   }
   return self
 }

@@ -1,12 +1,40 @@
-import { z } from 'zod'
 import type { LedgerAttribution } from './ledger.js'
 import type { LedgerIdentityService } from './ledger-identity.js'
+import {
+  parseCanonicalSearchResponse,
+  parseSerperSearchResponse,
+  renderWebSearchText,
+  type WebSearchAnswerSource,
+  type WebSearchKnowledgePanel,
+  type WebSearchResult,
+} from './web-search-response.js'
 
+export type {
+  WebSearchAnswerSource,
+  WebSearchKnowledgePanel,
+  WebSearchResult,
+} from './web-search-response.js'
+
+/**
+ * The single-provider passthrough: Ledger injects the Serper key, meters the
+ * search, and returns Serper's own body. Used when the deployment has no search
+ * Purpose API configured.
+ */
 const LEDGER_SERPER_PATH = '/v1/serper/search'
-const LEDGER_SERPER_TIMEOUT_MS = 15_000
+/**
+ * The provider-agnostic route: a Purpose API whose route list Ledger walks in
+ * priority order, spilling to the next provider on saturation and answering in
+ * the canonical `search.v1` shape. Adding SerpAPI, Brave or Perplexity is a
+ * route added to that list — no Nessie change, which is the whole point of
+ * addressing a purpose rather than a provider.
+ */
+const ledgerPurposeSearchPath = (purposeApiId: string): string =>
+  `/v1/purpose/${encodeURIComponent(purposeApiId)}/search`
+
+const LEDGER_SEARCH_TIMEOUT_MS = 15_000
 const DEFAULT_RESULT_COUNT = 5
-const MAX_RESULT_COUNT = 10
-const MAX_PAGE = 10
+export const MAX_WEB_SEARCH_RESULT_COUNT = 10
+export const MAX_WEB_SEARCH_PAGE = 10
 const ALLOWED_IDENTITY_HEADERS = new Set([
   'x-nessie-context',
   'x-uoa-delegation',
@@ -20,17 +48,22 @@ export class WebSearchError extends Error {
   }
 }
 
-export type WebSearchResult = {
-  title: string
-  url: string
-  snippet: string
-}
-
 export type WebSearchOutput = {
+  /** Which provider Ledger actually used. */
+  provider: string
   query: string
   page: number
+  count: number
   answer: string | null
+  answerSource: WebSearchAnswerSource | null
+  knowledgePanel: WebSearchKnowledgePanel | null
   results: WebSearchResult[]
+  related: string[]
+  /**
+   * A full page implies another one. No provider reports a total, so this is
+   * the same inference a SERP's own "next" arrow makes.
+   */
+  hasMore: boolean
   text: string
 }
 
@@ -44,41 +77,49 @@ export type WebSearchOptions = {
   toolCallId: string
 }
 
-const SerperOrganicSchema = z.object({
-  title: z.string().optional(),
-  link: z.string().optional(),
-  snippet: z.string().optional(),
-})
+const clamp = (value: number | undefined, fallback: number, max: number): number =>
+  Math.min(Math.max(1, Math.trunc(value ?? fallback)), max)
 
-const SerperResponseSchema = z.object({
-  answerBox: z
-    .object({
-      answer: z.string().optional(),
-      snippet: z.string().optional(),
-    })
-    .optional(),
-  knowledgeGraph: z
-    .object({
-      title: z.string().optional(),
-      description: z.string().optional(),
-    })
-    .optional(),
-  organic: z.array(SerperOrganicSchema).optional(),
-})
+/**
+ * Resolve the Ledger endpoint this deployment searches through.
+ *
+ * `NESSIE_LEDGER_SEARCH_PURPOSE_API_ID` is the switch, mirroring
+ * `NESSIE_LEDGER_IMAGE_PURPOSE_API_ID` for image generation: set it and Ledger
+ * owns the provider chain behind one address; leave it unset and the single
+ * Serper service route answers, exactly as before.
+ */
+const resolveSearchEndpoint = (env: NodeJS.ProcessEnv): URL => {
+  const ledgerBaseUrl = env.LEDGER_PUBLIC_URL?.trim()
+  if (!ledgerBaseUrl) {
+    throw new WebSearchError(
+      'Web search requires LEDGER_PUBLIC_URL and LEDGER_PROXY_TOKEN.',
+    )
+  }
+  const purposeApiId = env.NESSIE_LEDGER_SEARCH_PURPOSE_API_ID?.trim()
 
-const resolveAnswer = (
-  parsed: z.infer<typeof SerperResponseSchema>,
-): string | null =>
-  parsed.answerBox?.answer ??
-  parsed.answerBox?.snippet ??
-  parsed.knowledgeGraph?.description ??
-  null
+  try {
+    const baseUrl = new URL(ledgerBaseUrl)
+    if (baseUrl.protocol !== 'https:' && baseUrl.protocol !== 'http:') {
+      throw new Error('unsupported protocol')
+    }
+    return new URL(
+      purposeApiId ? ledgerPurposeSearchPath(purposeApiId) : LEDGER_SERPER_PATH,
+      baseUrl.origin,
+    )
+  } catch {
+    throw new WebSearchError(
+      'Web search requires LEDGER_PUBLIC_URL to be a valid HTTP(S) URL.',
+    )
+  }
+}
 
 /**
  * Search the public web through Nessie's product-bound Ledger proxy. Ledger
- * injects the provider credential and records the raw Serper unit against the
+ * injects the provider credential and records the raw search unit against the
  * signed user/team/agent/run/tool provenance. There is deliberately no direct
- * provider-key or scraping fallback.
+ * provider-key or scraping fallback — and no per-provider branch here either:
+ * which engine ran is Ledger's decision, and both wire formats it can answer
+ * with normalise to one shape (`web-search-response.ts`).
  */
 export const runWebSearch = async (
   query: string,
@@ -90,9 +131,8 @@ export const runWebSearch = async (
   }
 
   const env = options.env ?? process.env
-  const ledgerBaseUrl = env.LEDGER_PUBLIC_URL?.trim()
   const ledgerProxyToken = env.LEDGER_PROXY_TOKEN?.trim()
-  if (!ledgerBaseUrl || !ledgerProxyToken) {
+  if (!ledgerProxyToken) {
     throw new WebSearchError(
       'Web search requires LEDGER_PUBLIC_URL and LEDGER_PROXY_TOKEN.',
     )
@@ -107,24 +147,9 @@ export const runWebSearch = async (
     throw new WebSearchError('Web search requires a stable tool call ID.')
   }
 
-  let endpoint: URL
-  try {
-    const baseUrl = new URL(ledgerBaseUrl)
-    if (baseUrl.protocol !== 'https:' && baseUrl.protocol !== 'http:') {
-      throw new Error('unsupported protocol')
-    }
-    endpoint = new URL(LEDGER_SERPER_PATH, baseUrl.origin)
-  } catch {
-    throw new WebSearchError(
-      'Web search requires LEDGER_PUBLIC_URL to be a valid HTTP(S) URL.',
-    )
-  }
-
-  const count = Math.min(
-    Math.max(1, Math.trunc(options.count ?? DEFAULT_RESULT_COUNT)),
-    MAX_RESULT_COUNT,
-  )
-  const page = Math.min(Math.max(1, Math.trunc(options.page ?? 1)), MAX_PAGE)
+  const endpoint = resolveSearchEndpoint(env)
+  const count = clamp(options.count, DEFAULT_RESULT_COUNT, MAX_WEB_SEARCH_RESULT_COUNT)
+  const page = clamp(options.page, 1, MAX_WEB_SEARCH_PAGE)
   const fetchImpl = options.fetchImpl ?? fetch
   const identityHeaders = await options.ledgerIdentity.requestHeaders(
     {
@@ -151,8 +176,10 @@ export const runWebSearch = async (
     response = await fetchImpl(endpoint, {
       method: 'POST',
       headers,
+      // The one body both routes accept: the Purpose API's request schema is
+      // strict, so nothing beyond these three fields may be sent.
       body: JSON.stringify({ q: trimmedQuery, num: count, page }),
-      signal: AbortSignal.timeout(LEDGER_SERPER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(LEDGER_SEARCH_TIMEOUT_MS),
     })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
@@ -169,44 +196,28 @@ export const runWebSearch = async (
   }
 
   const payload = (await response.json().catch(() => null)) as unknown
-  const parsed = SerperResponseSchema.safeParse(payload)
-  if (!parsed.success) {
+  // Canonical first: only the `search.v1` envelope carries a `search` object,
+  // so the two shapes cannot be confused and neither route is hard-coded here.
+  const parsed =
+    parseCanonicalSearchResponse(payload, count)
+    ?? parseSerperSearchResponse(payload, count)
+  if (!parsed) {
     throw new WebSearchError(
       'Ledger web search returned an unexpected response shape.',
     )
   }
 
-  const answer = resolveAnswer(parsed.data)
-  const results: WebSearchResult[] = (parsed.data.organic ?? [])
-    .slice(0, count)
-    .map((entry) => ({
-      title: entry.title?.trim() || 'Untitled result',
-      url: entry.link?.trim() || '',
-      snippet: entry.snippet?.trim() || '',
-    }))
-    .filter((entry) => entry.url.length > 0)
-
-  const lines: string[] = []
-  if (answer) {
-    lines.push(`Answer: ${answer}`, '')
-  }
-  results.forEach((entry, index) => {
-    lines.push(`${index + 1}. ${entry.title} - ${entry.url}`)
-    if (entry.snippet) {
-      lines.push(`   ${entry.snippet}`)
-    }
-  })
-
-  const text =
-    lines.length > 0
-      ? lines.join('\n')
-      : `No web results found for "${trimmedQuery}" (page ${page}).`
-
   return {
+    provider: parsed.provider,
     query: trimmedQuery,
     page,
-    answer,
-    results,
-    text,
+    count,
+    answer: parsed.answer,
+    answerSource: parsed.answerSource,
+    knowledgePanel: parsed.knowledgePanel,
+    results: parsed.results,
+    related: parsed.related,
+    hasMore: parsed.results.length >= count,
+    text: renderWebSearchText({ page, query: trimmedQuery, response: parsed }),
   }
 }

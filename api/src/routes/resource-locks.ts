@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 
-import { AcquireResourceLockBodySchema, ResourceLockRecordSchema } from '../contracts.js'
+import { AcquireResourceLockBodySchema, ResourceLockRecordSchema } from '../contracts/execution.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   acquireResourceLock,
@@ -8,6 +9,12 @@ import {
   releaseResourceLock,
 } from '../services/resource-locks.js'
 import type { RouteDeps } from './types.js'
+
+// Release names the holder. `AcquireResourceLockBodySchema` already carries an
+// `agentId`, so this is the same fact, restated by the caller giving it back.
+const ReleaseResourceLockBodySchema = z.object({
+  agentId: z.string().uuid(),
+}).strict()
 
 export const registerResourceLockRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner } = deps
@@ -59,7 +66,17 @@ export const registerResourceLockRoutes = (app: FastifyInstance, deps: RouteDeps
     }
 
     const { lockId } = request.params as { lockId: string }
-    const lock = await releaseResourceLock(prisma, actorContext.tenant.organizationId, lockId)
+    // The holder is named, not inferred. A lock belongs to the agent that
+    // acquired it; the organisation alone is not an entitlement to drop it.
+    const body = parseInput(ReleaseResourceLockBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const lock = await releaseResourceLock(prisma, actorContext.tenant.organizationId, {
+      agentId: body.agentId,
+      lockId,
+    })
     if (!lock) {
       sendApiError(reply, 404, 'RESOURCE_LOCK_NOT_FOUND', 'Resource lock not found')
       return reply

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
-import type { UserRecord } from '../contracts.js'
+import type { UserRecord } from '../contracts/users-presence.js'
 import { assertNotLastOwner } from './organization-owner-lock.js'
 import { revokeUserRefreshFamilies } from './refresh-session-management.js'
 import {

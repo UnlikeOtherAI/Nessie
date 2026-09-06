@@ -4,7 +4,7 @@ import type { FileService } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { z } from 'zod'
 
-import { toAttachmentRecord } from '../contracts.js'
+import { toAttachmentRecord } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   MARKDOWN_IMPORT_MAX_BYTES,
@@ -16,6 +16,7 @@ import {
 } from '../lib/markdown.js'
 import { ZIP_LIST_MAX_BYTES, listZipEntries, readZipEntryText } from '../lib/zip.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { KnowledgeFileRowError, storeFileWithRollback } from '../services/knowledge-file-store.js'
 import {
   actorAuthorType,
   attachPageEnvelope,
@@ -149,76 +150,70 @@ export const registerKnowledgeBaseFileRoutes = (
       }
     }
 
-    let attachmentId: string
+    let outcome
     try {
-      const stored = await fileService.store({
-        attribution: attributionFromActorContext(actorContext),
-        organizationId: actorContext.tenant.organizationId,
-        uploaderId: actorContext.actor.actorId,
-        filename,
-        mime,
-        body: file.file,
-        scope: { projectId: space.projectId, teamId: space.teamId, spaceId: space.id },
-      })
-      attachmentId = stored.attachment.id
-      if (file.file.truncated) {
-        await fileService.delete(
-          attachmentId,
-          actorContext.tenant.organizationId,
-          attributionFromActorContext(actorContext),
-        )
-        sendApiError(reply, 413, 'FILE_TOO_LARGE', 'File exceeds the upload limit')
-        return reply
-      }
+      outcome = await storeFileWithRollback(
+        fileService,
+        {
+          attribution: attributionFromActorContext(actorContext),
+          organizationId: actorContext.tenant.organizationId,
+          uploaderId: actorContext.actor.actorId,
+          filename,
+          mime,
+          body: file.file,
+          scope: { projectId: space.projectId, teamId: space.teamId, spaceId: space.id },
+        },
+        (attachmentId) =>
+          provider.createPage({
+            organizationId: actorContext.tenant.organizationId,
+            projectId: space.projectId,
+            spaceId,
+            kind: 'file',
+            title: query.title ?? filename,
+            parentPageId: query.parentPageId ?? null,
+            attachmentId,
+            authorId: actorContext.actor.actorId,
+            authorType: actorAuthorType(actorContext),
+            createdBy: actorContext.actor.actorId,
+          }),
+      )
     } catch (error) {
+      if (error instanceof KnowledgeFileRowError) {
+        return sendKnowledgeMutationError(request, reply, error.cause, {
+          code: 'KNOWLEDGE_PAGE_INVALID',
+          message: 'File node could not be created',
+          statusCode: 400,
+        })
+      }
       if (sendFileServiceError(reply, error)) return reply
       throw error
     }
 
-    try {
-      const page = await provider.createPage({
+    if (outcome.kind === 'truncated') {
+      sendApiError(reply, 413, 'FILE_TOO_LARGE', 'File exceeds the upload limit')
+      return reply
+    }
+    const { attachmentId, row: page } = outcome
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'kb.page.created',
+      resourceType: 'knowledge_page',
+      resourceId: page.id,
+      outcome: 'success',
+      metadata: { spaceId, title: page.title, kind: 'file' },
+      ...requestIds(request),
+    })
+    if (page.latestVersion) {
+      await enqueueKnowledgeExtract(prisma, {
         organizationId: actorContext.tenant.organizationId,
-        projectId: space.projectId,
-        spaceId,
-        kind: 'file',
-        title: query.title ?? filename,
-        parentPageId: query.parentPageId ?? null,
+        pageId: page.id,
+        versionId: page.latestVersion.id,
         attachmentId,
-        authorId: actorContext.actor.actorId,
-        authorType: actorAuthorType(actorContext),
-        createdBy: actorContext.actor.actorId,
-      })
-      await emitAuditEvent(prisma, {
-        actorContext,
-        action: 'kb.page.created',
-        resourceType: 'knowledge_page',
-        resourceId: page.id,
-        outcome: 'success',
-        metadata: { spaceId, title: page.title, kind: 'file' },
-        ...requestIds(request),
-      })
-      if (page.latestVersion) {
-        await enqueueKnowledgeExtract(prisma, {
-          organizationId: actorContext.tenant.organizationId,
-          pageId: page.id,
-          versionId: page.latestVersion.id,
-          attachmentId,
-          filename,
-          mime,
-        })
-      }
-      return reply.code(201).send(createApiResponse(attachPageEnvelope(page, decision)))
-    } catch (error) {
-      // Roll back the orphaned object if the page row could not be created.
-      await fileService
-        .delete(attachmentId, actorContext.tenant.organizationId, attributionFromActorContext(actorContext))
-        .catch(() => undefined)
-      return sendKnowledgeMutationError(request, reply, error, {
-        code: 'KNOWLEDGE_PAGE_INVALID',
-        message: 'File node could not be created',
-        statusCode: 400,
+        filename,
+        mime,
       })
     }
+    return reply.code(201).send(createApiResponse(attachPageEnvelope(page, decision)))
   })
 
   // ─── Upload a new version of a file node ──────────────────────────────────
@@ -241,65 +236,65 @@ export const registerKnowledgeBaseFileRoutes = (
     const mime = file.mimetype || 'application/octet-stream'
     const filename = file.filename || 'upload.bin'
 
-    let attachmentId: string
+    // `addFileVersion` returning null (the page vanished between the read
+    // above and now) is not a validation fault; it is wrapped so it reaches
+    // the 404 branch below instead of `sendKnowledgeMutationError`'s generic one.
+    class FileVersionPageNotFound extends Error {}
+
+    let outcome
     try {
-      const stored = await fileService.store({
-        attribution: attributionFromActorContext(actorContext),
-        organizationId: actorContext.tenant.organizationId,
-        uploaderId: actorContext.actor.actorId,
-        filename,
-        mime,
-        body: file.file,
-        scope: { projectId: page.projectId, teamId: page.teamId, spaceId: page.spaceId },
-      })
-      attachmentId = stored.attachment.id
-      if (file.file.truncated) {
-        await fileService.delete(
-          attachmentId,
-          actorContext.tenant.organizationId,
-          attributionFromActorContext(actorContext),
-        )
-        sendApiError(reply, 413, 'FILE_TOO_LARGE', 'File exceeds the upload limit')
-        return reply
-      }
+      outcome = await storeFileWithRollback(
+        fileService,
+        {
+          attribution: attributionFromActorContext(actorContext),
+          organizationId: actorContext.tenant.organizationId,
+          uploaderId: actorContext.actor.actorId,
+          filename,
+          mime,
+          body: file.file,
+          scope: { projectId: page.projectId, teamId: page.teamId, spaceId: page.spaceId },
+        },
+        async (attachmentId) => {
+          const version = await provider.addFileVersion({
+            organizationId: actorContext.tenant.organizationId,
+            pageId,
+            attachmentId,
+            authorId: actorContext.actor.actorId,
+            authorType: actorAuthorType(actorContext),
+          })
+          if (!version) throw new FileVersionPageNotFound()
+          return version
+        },
+      )
     } catch (error) {
+      if (error instanceof KnowledgeFileRowError) {
+        if (error.cause instanceof FileVersionPageNotFound) {
+          return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+        }
+        return sendKnowledgeMutationError(request, reply, error.cause, {
+          code: 'KNOWLEDGE_PAGE_INVALID',
+          message: 'File version could not be added',
+          statusCode: 400,
+        })
+      }
       if (sendFileServiceError(reply, error)) return reply
       throw error
     }
 
-    try {
-      const version = await provider.addFileVersion({
-        organizationId: actorContext.tenant.organizationId,
-        pageId,
-        attachmentId,
-        authorId: actorContext.actor.actorId,
-        authorType: actorAuthorType(actorContext),
-      })
-      if (!version) {
-        await fileService
-          .delete(attachmentId, actorContext.tenant.organizationId, attributionFromActorContext(actorContext))
-          .catch(() => undefined)
-        return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
-      }
-      await enqueueKnowledgeExtract(prisma, {
-        organizationId: actorContext.tenant.organizationId,
-        pageId,
-        versionId: version.id,
-        attachmentId,
-        filename,
-        mime,
-      })
-      return reply.code(201).send(createApiResponse(version))
-    } catch (error) {
-      await fileService
-        .delete(attachmentId, actorContext.tenant.organizationId, attributionFromActorContext(actorContext))
-        .catch(() => undefined)
-      return sendKnowledgeMutationError(request, reply, error, {
-        code: 'KNOWLEDGE_PAGE_INVALID',
-        message: 'File version could not be added',
-        statusCode: 400,
-      })
+    if (outcome.kind === 'truncated') {
+      sendApiError(reply, 413, 'FILE_TOO_LARGE', 'File exceeds the upload limit')
+      return reply
     }
+    const { attachmentId, row: version } = outcome
+    await enqueueKnowledgeExtract(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      pageId,
+      versionId: version.id,
+      attachmentId,
+      filename,
+      mime,
+    })
+    return reply.code(201).send(createApiResponse(version))
   })
 
   // ─── Convert a markdown file node into a native document ──────────────────

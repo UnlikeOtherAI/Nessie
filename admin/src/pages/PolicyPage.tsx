@@ -11,12 +11,13 @@ import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
-import { EMPTY_FORM_ERRORS, toFormErrors } from '../facades/form-errors'
+import { OwnerGate } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
+import { EMPTY_FORM_ERRORS, toFormErrors } from '../facades/forms/form-errors'
 import { policyKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { usePagedList } from '../facades/usePagedList'
+import { usePagedList } from '../facades/pagination/usePagedList'
 
 type PolicyRule = {
   id: string

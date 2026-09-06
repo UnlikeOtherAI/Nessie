@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client'
 import { unfollowReplyThread } from '@nessie/runtime'
 
 import { createThreadMessage } from '../src/services/message-create.js'
-import { listThreadMessages } from '../src/services/messages.js'
+import { listThreadMessages } from '../src/services/message-read-model.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 

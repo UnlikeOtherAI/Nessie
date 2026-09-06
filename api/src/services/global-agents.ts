@@ -4,8 +4,10 @@
  * The implementation lives in `@nessie/team-admin` because both the API
  * (bootstrap at login/provisioning) and the worker (blueprint lookup at run
  * start, `createAgentTrigger`'s refusal) need it, and `api/src/services/*` is
- * unreachable from the worker. This file is the thin re-export established
- * API callers import, exactly as the other shared services do.
+ * unreachable from the worker. Only the API-side bootstrap policy below lives
+ * here; everything else is imported from `@nessie/team-admin` directly. This
+ * file used to re-export fourteen of that package's symbols, which made it a
+ * second, silently-drifting name for the package (2026-09-05 review, FO4-7).
  */
 import type { PrismaClient } from '@prisma/client'
 import { ensureGlobalAgentsForUser } from '@nessie/team-admin'
@@ -31,22 +33,3 @@ export const attemptGlobalAgentsBootstrap = async (
   }
 }
 
-export {
-  AGENT_DESIGNER_BLUEPRINT,
-  AGENT_DESIGNER_SLUG,
-  DASHBOARD_DESIGNER_BLUEPRINT,
-  DASHBOARD_DESIGNER_SLUG,
-  ensureGlobalAgent,
-  ensureGlobalAgentBinding,
-  ensureGlobalAgentBootstrap,
-  ensureGlobalAgentChannel,
-  ensureGlobalAgentsForUser,
-  ensureGlobalAgentSystemTeam,
-  getGlobalAgentBlueprint,
-  globalAgentHomeDmKey,
-  listGlobalAgentBlueprints,
-  resolveGlobalAgentModel,
-  type GlobalAgentBlueprint,
-  type GlobalAgentBootstrapInput,
-  type GlobalAgentBootstrapResult,
-} from '@nessie/team-admin'

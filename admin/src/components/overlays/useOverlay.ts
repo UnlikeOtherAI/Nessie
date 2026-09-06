@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { useLocalBack } from '../../layouts/admin-shell/local-back/LocalBackContext'
-import { useNavigationLayout } from '../../lib/mobile-shell'
+import { useLocalBack } from '../../navigation/LocalBackContext'
+import { useNavigationLayout } from '../../navigation/mobile-shell'
 import {
   OVERLAY_BACK_PRIORITY,
   OVERLAY_LAYER,
@@ -9,8 +9,8 @@ import {
   type SheetSide,
 } from '../../navigation/overlay'
 import { useReducedMotion } from '../../navigation/reduced-motion'
-import { useModalA11y } from '../shared/useModalA11y'
-import { useOverlayDismiss } from '../shared/useOverlayDismiss'
+import { useModalA11y } from '../../hooks/useModalA11y'
+import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
 // The shared work every overlay does once (docs/navigation/overview.md §7): the Back
 // registration while open, Escape and the focus trap (modal, sheet and the

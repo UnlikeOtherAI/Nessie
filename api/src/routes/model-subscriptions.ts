@@ -19,7 +19,7 @@ import {
   pollDeviceAuthorization,
   startDeviceAuthorization,
 } from '../services/model-subscription-device.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -194,17 +194,11 @@ export const registerModelSubscriptionRoutes = (
   ): Promise<boolean> =>
     guardAuthRequest(
       deps.rateLimiter,
-      {
-        bucket: RATE_LIMIT_BUCKETS.subscriptionDeviceIp,
-        rule: deps.config.api.rateLimit.subscriptionDeviceIp,
-      },
+      rateLimitFor(deps.config, 'subscriptionDeviceIp'),
       request,
       reply,
       {
-        account: {
-          bucket: RATE_LIMIT_BUCKETS.subscriptionDeviceAccount,
-          rule: deps.config.api.rateLimit.subscriptionDeviceAccount,
-        },
+        account: rateLimitFor(deps.config, 'subscriptionDeviceAccount'),
         accountIdentity: actorId,
       },
     )

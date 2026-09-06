@@ -1,8 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { drainPendingThreadMessagesBestEffort } from '@nessie/db'
-import { applyReplyBookkeeping } from '@nessie/runtime'
 import { AuthorizedActionContextSchema } from '@nessie/schemas'
 import { z } from 'zod'
+import {
+  createSystemAuthoredMessage,
+  createSystemAuthoredReply,
+} from './system-authored-message.js'
 import { ResumeRollback, resumeSuspendedRun, type RunResumeFailure } from './run-resume-core.js'
 
 const ApprovalResumeStateSchema = z.object({
@@ -159,25 +162,33 @@ const terminalizeWaitingApprovalRun = async (
     const content = outcome === 'rejected'
       ? `Approval was declined for ${approval.toolName}. Reply to continue without that action.`
       : `Approval expired for ${approval.toolName}. Reply to try again.`
-    const message = await tx.message.create({
-      data: {
-        agentId: run.agentId,
-        content,
-        metadata: {
-          approvalGate: {
-            approvalId: approval.id,
-            runId: approval.runId,
-            status: outcome,
-            toolName: approval.toolName,
-          },
-        } as Prisma.InputJsonValue,
-        ...(run.principalUserId ? { onBehalfOfUserId: run.principalUserId } : {}),
-        role: 'assistant',
-        threadId: run.threadId,
-        ...(run.replyRootMessageId ? { rootMessageId: run.replyRootMessageId } : {}),
-      },
-      select: { createdAt: true, id: true },
-    })
+    // Follower decision: nobody new. The notice answers a gate the run's own
+    // participants are already waiting on, and the server is not a participant
+    // — adding a follow here would put the agent's housekeeping in an inbox
+    // nobody asked for.
+    const noticeInput = {
+      agentId: run.agentId,
+      content,
+      followedByUserIds: [],
+      metadata: {
+        approvalGate: {
+          approvalId: approval.id,
+          runId: approval.runId,
+          status: outcome,
+          toolName: approval.toolName,
+        },
+      } as Prisma.InputJsonValue,
+      onBehalfOfUserId: run.principalUserId,
+      role: 'assistant' as const,
+      threadId: run.threadId,
+    }
+    const message = run.replyRootMessageId
+      ? (await createSystemAuthoredReply(tx, {
+        ...noticeInput,
+        authorId: run.agentId,
+        rootMessageId: run.replyRootMessageId,
+      })).message
+      : await createSystemAuthoredMessage(tx, noticeInput)
     const basis = await tx.runBasisScope.findMany({
       where: { runId: approval.runId },
       select: { scopeId: true, scopeType: true },
@@ -191,13 +202,6 @@ const terminalizeWaitingApprovalRun = async (
           scopeType: scope.scopeType,
         })),
         skipDuplicates: true,
-      })
-    }
-    if (run.replyRootMessageId) {
-      await applyReplyBookkeeping(tx, {
-        authorId: run.agentId,
-        replyCreatedAt: message.createdAt,
-        rootMessageId: run.replyRootMessageId,
       })
     }
     await tx.task.updateMany({ where: { runId: approval.runId }, data: { status: taskStatus } })
@@ -271,25 +275,31 @@ export const expirePendingToolApprovalsForRun = async (
         status: 'cancelled',
         threadId: run.threadId,
       })
-      const message = await tx.message.create({
-        data: {
-          agentId: run.agentId,
-          content: `The run was cancelled before ${approval.toolName ?? 'this tool'} could be approved.`,
-          metadata: {
-            approvalGate: {
-              approvalId: approval.id,
-              runId,
-              status: 'cancelled',
-              toolName: approval.toolName,
-            },
-          } as Prisma.InputJsonValue,
-          ...(run.principalUserId ? { onBehalfOfUserId: run.principalUserId } : {}),
-          role: 'assistant',
-          threadId: run.threadId,
-          ...(run.replyRootMessageId ? { rootMessageId: run.replyRootMessageId } : {}),
-        },
-        select: { createdAt: true, id: true },
-      })
+      // Same follower decision as the rejected/expired notice above: the run's
+      // participants already follow, and the server adds nobody.
+      const cancelledInput = {
+        agentId: run.agentId,
+        content: `The run was cancelled before ${approval.toolName ?? 'this tool'} could be approved.`,
+        followedByUserIds: [],
+        metadata: {
+          approvalGate: {
+            approvalId: approval.id,
+            runId,
+            status: 'cancelled',
+            toolName: approval.toolName,
+          },
+        } as Prisma.InputJsonValue,
+        onBehalfOfUserId: run.principalUserId,
+        role: 'assistant' as const,
+        threadId: run.threadId,
+      }
+      const message = run.replyRootMessageId
+        ? (await createSystemAuthoredReply(tx, {
+          ...cancelledInput,
+          authorId: run.agentId,
+          rootMessageId: run.replyRootMessageId,
+        })).message
+        : await createSystemAuthoredMessage(tx, cancelledInput)
       if (basis.length > 0) {
         await tx.messageBasisScope.createMany({
           data: basis.map((scope) => ({
@@ -299,13 +309,6 @@ export const expirePendingToolApprovalsForRun = async (
             scopeType: scope.scopeType,
           })),
           skipDuplicates: true,
-        })
-      }
-      if (run.replyRootMessageId) {
-        await applyReplyBookkeeping(tx, {
-          authorId: run.agentId,
-          replyCreatedAt: message.createdAt,
-          rootMessageId: run.replyRootMessageId,
         })
       }
       await tx.agent.updateMany({

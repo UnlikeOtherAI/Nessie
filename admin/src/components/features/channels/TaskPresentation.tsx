@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { TaskPresentationMessageMetadataSchema } from '@nessie/schemas'
-import { KanbanCardContent } from '../../kanban/KanbanCard'
+import { KanbanCardContent } from '../projects/kanban/KanbanCard'
 import { usePresentedTask } from '../../../facades/tasks/hooks'
 import { SkeletonBlock } from '../../primitives/Skeleton'
 

@@ -2,7 +2,7 @@ import type { AgentRecord } from '../../../../lib/api-client'
 import { useAgentTodoTemplates, useAgentTodos } from '../../../../facades/agent-todos/hooks'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { EmptyState } from '../../../shared/EmptyState'
-import { useIsOwner } from '../../../shared/OwnerGate'
+import { useIsOwner } from '../../../../facades/auth/hooks'
 import { TodoInstances } from './TodoInstances'
 import { TodoTemplates } from './TodoTemplates'
 

@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { type AuthorizedActionContext } from '@nessie/schemas'
+import { type AuditAction, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import {
   addTeamMember,
   createTeamInvitation,
@@ -42,6 +43,19 @@ import type { RouteDeps } from './types.js'
  * here, people are named by their UOA subject, and mutations require an
  * owner/admin actor plus a live subject assertion of the caller.
  */
+
+/**
+ * What a relayed mutation records in the audit trail. Organisation membership
+ * changes are privileged, tenant-visible acts and were written nowhere
+ * (2026-09-05 review, F5-1); declaring the descriptor per route keeps a new
+ * relayed mutation from quietly skipping it.
+ */
+type RelayAudit = {
+  action: AuditAction
+  metadata?: Record<string, unknown>
+  resourceId?: string
+  resourceType: string
+}
 
 const OrgRoleBodySchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
@@ -180,11 +194,12 @@ export const registerOrganizationMembersRoutes = (
   const relay = async <TResult, TBody = undefined>(
     request: FastifyRequest,
     reply: FastifyReply,
-    options: { parse?: () => TBody | null },
+    options: { audit?: RelayAudit; parse?: () => TBody | null },
     run: (
       orgId: string,
       body: TBody,
       subjectDeps: UoaRosterDeps,
+      actorContext: AuthorizedActionContext,
     ) => Promise<TResult>,
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
@@ -197,7 +212,7 @@ export const registerOrganizationMembersRoutes = (
     if (!(await requireOrganizationAdministrator(actorContext, orgId, reply, rosterDeps))) return reply
 
     try {
-      return createApiResponse(await run(
+      const result = await run(
         orgId,
         body as TBody,
         withUoaOrgRosterSubjectAssertion(
@@ -205,7 +220,19 @@ export const registerOrganizationMembersRoutes = (
           actorContext.actionContext.uoaIdentity,
           rosterDeps,
         ),
-      ))
+        actorContext,
+      )
+      if (options.audit) {
+        await emitAuditEvent(deps.prisma, {
+          actorContext,
+          action: options.audit.action,
+          outcome: 'success',
+          resourceType: options.audit.resourceType,
+          ...(options.audit.resourceId ? { resourceId: options.audit.resourceId } : {}),
+          ...(options.audit.metadata ? { metadata: options.audit.metadata } : {}),
+        })
+      }
+      return createApiResponse(result)
     } catch (error) {
       if (sendRelayError(request, reply, error)) return reply
       throw error
@@ -282,7 +309,14 @@ export const registerOrganizationMembersRoutes = (
       relay(
         request,
         reply,
-        { parse: () => parseInput(RevokeInvitationSchema, request.body, reply) },
+        {
+          audit: {
+            action: 'organization.member_invitation_revoked',
+            resourceId: request.params.inviteId,
+            resourceType: 'organization_invitation',
+          },
+          parse: () => parseInput(RevokeInvitationSchema, request.body, reply),
+        },
         async (orgId, body, subjectDeps) => {
           await revokeTeamInvitation(
             { externalOrgId: orgId, externalTeamId: body.teamId },
@@ -298,7 +332,13 @@ export const registerOrganizationMembersRoutes = (
     relay(
       request,
       reply,
-      { parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply) },
+      {
+        audit: {
+          action: 'organization.member_invited',
+          resourceType: 'organization_invitation',
+        },
+        parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply),
+      },
       async (orgId, body, subjectDeps) => {
         const { teamId, ...invitation } = body
         await createTeamInvitation(
@@ -316,7 +356,14 @@ export const registerOrganizationMembersRoutes = (
       relay(
         request,
         reply,
-        { parse: () => parseInput(OrgRoleBodySchema, request.body, reply) },
+        {
+          audit: {
+            action: 'user.role_changed',
+            resourceId: request.params.uoaSub,
+            resourceType: 'organization_member',
+          },
+          parse: () => parseInput(OrgRoleBodySchema, request.body, reply),
+        },
         async (orgId, body, subjectDeps) => {
           await updateOrganisationMemberRole(orgId, request.params.uoaSub, body.role, subjectDeps)
           return { ok: true }
@@ -338,7 +385,7 @@ export const registerOrganizationMembersRoutes = (
         request,
         reply,
         { parse: () => parseInput(TeamAccessSchema, request.body, reply) },
-        async (orgId, body, subjectDeps) => {
+        async (orgId, body, subjectDeps, actorContext) => {
           const access = await listOrganisationMemberTeamAccess(
             orgId,
             request.params.uoaSub,
@@ -356,6 +403,19 @@ export const registerOrganizationMembersRoutes = (
           // UOA reauthorizes every exact-team write. Add first so replacing a
           // person's final team never briefly violates its last-team
           // invariant; UOA still enforces membership limits and freshness.
+          const auditTeamChange = async (
+            action: 'team.member_added' | 'team.member_removed',
+            externalTeamId: string,
+          ): Promise<void> => {
+            await emitAuditEvent(deps.prisma, {
+              actorContext,
+              action,
+              metadata: { externalTeamId, scope: 'organization' },
+              outcome: 'success',
+              resourceId: request.params.uoaSub,
+              resourceType: 'team_member',
+            })
+          }
           for (const team of access.items) {
             if (selected.has(team.id) && !team.hasAccess) {
               await addTeamMember(
@@ -363,6 +423,7 @@ export const registerOrganizationMembersRoutes = (
                 { uoaSub: request.params.uoaSub },
                 subjectDeps,
               )
+              await auditTeamChange('team.member_added', team.id)
             }
           }
           for (const team of access.items) {
@@ -372,6 +433,7 @@ export const registerOrganizationMembersRoutes = (
                 request.params.uoaSub,
                 subjectDeps,
               )
+              await auditTeamChange('team.member_removed', team.id)
             }
           }
           return { ok: true }
@@ -383,7 +445,14 @@ export const registerOrganizationMembersRoutes = (
     app.post<{ Params: { uoaSub: string } }>(
       `/api/organization/members/:uoaSub/${action}`,
       async (request, reply) =>
-        relay(request, reply, {}, async (orgId, _body, subjectDeps) => {
+        relay(request, reply, {
+          audit: {
+            action: 'user.updated',
+            metadata: { activation: action, scope: 'organization' },
+            resourceId: request.params.uoaSub,
+            resourceType: 'organization_member',
+          },
+        }, async (orgId, _body, subjectDeps) => {
           // Deactivation is already org-scoped upstream (posts to the org
           // path, not a team path) — reuse it unchanged.
           await setTeamMemberActivation(

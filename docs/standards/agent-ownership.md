@@ -39,6 +39,12 @@ file is the rule**.
   `GET /api/agents/paused-private-count` and never private rows or names;
   team agents keep running, no private detail is widened, and reactivation
   never resumes automation implicitly.
+  Run lifecycle actions are a derived-access rule on the same predicate rather
+  than a rule of their own: `loadRunForActor` (`api/src/services/run-access.ts`)
+  composes `buildAgentVisibilityWhere` with the channel predicate every channel
+  read takes (public in this organisation, or a channel the caller joined), so
+  cancel, restart and continue can never grant a run `listActiveRuns` itself
+  would not show.
   `loadAgentChildren` takes the viewer's scope for the same reason. Never
   backfill ownership: nothing recorded who created an agent, so old rows read
   `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree

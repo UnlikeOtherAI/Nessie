@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
 import { sweepDueGmailSends } from './control/gmail-send-sweep.js'
 import { pathToFileURL } from 'node:url'
@@ -8,11 +9,13 @@ import {
   createLedgerIdentityServiceFromEnv,
   createModelClient,
   createPgPool,
+  expireDeadQueueJobs,
   getStorage,
   isLedgerEndpoint,
   PgQueueProvider,
   PgRealtimeTransport,
   recordInferenceUsage,
+  type QueueSubscription,
 } from '@nessie/runtime'
 import {
   COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
@@ -40,6 +43,7 @@ import {
   AutomaticMembershipProvisionJobPayloadSchema,
   AutomaticMembershipReconcileJobPayloadSchema,
   AutomaticMembershipRevalidateJobPayloadSchema,
+  BUDGET_ALERT_DISPATCH_TOPIC,
   BudgetAlertDispatchJobPayloadSchema,
   TriggerHealthAlertJobPayloadSchema,
   WorkflowRunFailureDispatchJobPayloadSchema,
@@ -62,9 +66,11 @@ import {
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
 import { setCloudBrowserReleaseHook } from './run/browser-cloud/release-hook.js'
+import { drainQueueSubscriptions, startDeadQueueJobSweep } from './lifecycle.js'
 import {
   allocateExecutionEnvironmentInstance,
   expireExecutionLeases,
+  reapStaleExecutionRunners,
   registerExecutionRunners,
   renewExecutionLeases,
   terminateExecutionEnvironmentInstance,
@@ -180,6 +186,19 @@ const prisma = getPrismaClient({
   log: config.mode === 'local' ? ['warn', 'error'] : ['error'],
 })
 
+/**
+ * The package entry, so a cross-package test reaches these through
+ * `@nessie/worker`'s `dist` export rather than a relative path into
+ * `worker/src` (docs/standards/testing.md, "How tests are invoked"): only the
+ * Turbo path guarantees the `^build` CI performs, so a source-path import
+ * passes locally and fails with ERR_MODULE_NOT_FOUND under `pnpm test`.
+ */
+export { queueTriggerRun } from './control/trigger-run.js'
+export {
+  resolveDelegatedRequesterUserId,
+  resolveIdentityDelegatedToolIds,
+} from './run/delegated-identity.js'
+
 const isMainModule = (): boolean =>
   Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href
 
@@ -291,9 +310,22 @@ export const startWorker = async (
   })
 
   const abortController = new AbortController()
-  const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
+  // Identity is per process, not per host. `HOSTNAME` is unset outside a
+  // container — every local worker then shared the label `local-worker` and
+  // renewed the others' execution leases — and unique per boot inside one,
+  // which left two `execution_runners` rows behind on every restart.
+  const workerInstanceId = randomUUID()
+  const runnerLabelPrefix = `worker-${workerInstanceId.slice(0, 8)}`
+  // Every subscription's handle, so `stop()` can drain them: no new claims,
+  // then wait for the jobs already in flight before anything is closed.
+  const subscriptions: QueueSubscription[] = []
+  const subscribe: PgQueueProvider['subscribe'] = (topic, handler, subscribeOptions) => {
+    const subscription = queueProvider.subscribe(topic, handler, subscribeOptions)
+    subscriptions.push(subscription)
+    return subscription
+  }
 
-  queueProvider.subscribe(
+  subscribe(
     'call.ring-timeout',
     async (job) => {
       const payload = job.payload as { callId?: unknown }
@@ -303,7 +335,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'run.execute',
     async (job) => {
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
@@ -333,7 +365,7 @@ export const startWorker = async (
     },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     EXECUTOR_COMMAND_TOPIC,
     async (job) => {
       await executeExecutorCommandJob(prisma, config.auth.secret ?? '', job.payload)
@@ -341,7 +373,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'orchestrate.decide',
     async (job) => {
       const payload = OrchestrateDecideJobPayloadSchema.parse(job.payload)
@@ -377,7 +409,7 @@ export const startWorker = async (
     }
   }
 
-  queueProvider.subscribe(
+  subscribe(
     'call.ring-dispatch',
     async (job) => {
       const payload = CallRingDispatchJobPayloadSchema.parse(job.payload)
@@ -390,7 +422,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'call.ring-cancel',
     async (job) => {
       const payload = CallRingCancelJobPayloadSchema.parse(job.payload)
@@ -403,7 +435,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'attention.dispatch',
     async (job) => {
       const payload = AttentionDispatchJobPayloadSchema.parse(job.payload)
@@ -419,7 +451,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'push.dispatch',
     async (job) => {
       const payload = PushDispatchJobPayloadSchema.parse(job.payload)
@@ -435,8 +467,8 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
-    'budget.alert-dispatch',
+  subscribe(
+    BUDGET_ALERT_DISPATCH_TOPIC,
     async (job) => {
       const payload = BudgetAlertDispatchJobPayloadSchema.parse(job.payload)
       await handleBudgetAlertDispatch(
@@ -451,7 +483,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'trigger.health-alert',
     async (job) => {
       const payload = TriggerHealthAlertJobPayloadSchema.parse(job.payload)
@@ -467,7 +499,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'workflow.run.failure-dispatch',
     async (job) => {
       const payload = WorkflowRunFailureDispatchJobPayloadSchema.parse(job.payload)
@@ -483,7 +515,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     MEMORY_CONSOLIDATION_TOPIC,
     async (job) => {
       await executeRunMemoryConsolidationJob(
@@ -499,7 +531,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     KNOWLEDGE_EMBED_TOPIC,
     async (job) => {
       const payload = KnowledgeEmbedJobPayloadSchema.parse(job.payload)
@@ -508,7 +540,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     KNOWLEDGE_EXTRACT_TOPIC,
     async (job) => {
       const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
@@ -517,7 +549,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     ATTACHMENT_THUMBNAIL_TOPIC,
     async (job) => {
       const payload = AttachmentThumbnailJobPayloadSchema.parse(job.payload)
@@ -532,7 +564,7 @@ export const startWorker = async (
   // stops provisioning on rules that already exist — the routes alone cannot,
   // because they 404 when it is off and take the emergency stop with them.
   const automaticMembershipEnabled = config.automaticMembership.enabled
-  queueProvider.subscribe(
+  subscribe(
     AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
     async (job) => {
       const payload = AutomaticMembershipProvisionJobPayloadSchema.parse(job.payload)
@@ -544,7 +576,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
     async (job) => {
       const payload = AutomaticMembershipReconcileJobPayloadSchema.parse(job.payload)
@@ -556,7 +588,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
     async (job) => {
       const payload = AutomaticMembershipRevalidateJobPayloadSchema.parse(job.payload)
@@ -583,7 +615,7 @@ export const startWorker = async (
     realtimeTransport,
   }
 
-  queueProvider.subscribe(
+  subscribe(
     DASHBOARD_REFRESH_TOPIC,
     async (job) => {
       const payload = job.payload as { sourceId?: unknown }
@@ -593,7 +625,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'trigger.event.dispatch',
     async (job) => {
       const payload = TriggerEventDispatchJobPayloadSchema.parse(job.payload)
@@ -604,7 +636,7 @@ export const startWorker = async (
     },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'workflow.run.execute',
     async (job) => {
       const payload = WorkflowRunExecuteJobPayloadSchema.parse(job.payload)
@@ -620,7 +652,7 @@ export const startWorker = async (
     },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     DEMONSTRATION_GENERALIZE_TOPIC,
     async (job) => {
       const payload = DemonstrationGeneralizeJobPayloadSchema.parse(job.payload)
@@ -629,7 +661,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'execution.environment.allocate',
     async (job) => {
       const payload = ExecutionEnvironmentAllocateJobPayloadSchema.parse(job.payload)
@@ -643,7 +675,7 @@ export const startWorker = async (
     },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     'execution.environment.terminate',
     async (job) => {
       const payload = ExecutionEnvironmentTerminateJobPayloadSchema.parse(job.payload)
@@ -706,7 +738,7 @@ export const startWorker = async (
   }
 
   for (const topic of [BOARD_SOURCE_SYNC_INITIAL_TOPIC, BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC]) {
-    queueProvider.subscribe(
+    subscribe(
       topic,
       async (job) => {
         const payload = BoardSourceSyncJobPayloadSchema.parse(job.payload)
@@ -716,7 +748,7 @@ export const startWorker = async (
     )
   }
 
-  queueProvider.subscribe(
+  subscribe(
     BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
     async (job) => {
       const payload = BoardSourceWebhookJobPayloadSchema.parse(job.payload)
@@ -725,7 +757,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
     async (job) => {
       const payload = BoardSourceWebhooksRenewJobPayloadSchema.parse(job.payload)
@@ -734,7 +766,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     BOARD_SOURCE_HEALTH_ALERT_TOPIC,
     async (job) => {
       const payload = BoardSourceHealthAlertJobPayloadSchema.parse(job.payload)
@@ -743,7 +775,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     COMMS_SYNC_INITIAL_TOPIC,
     async (job) => {
       const payload = CommsSyncInitialJobPayloadSchema.parse(job.payload)
@@ -752,7 +784,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     COMMS_SYNC_INCREMENTAL_TOPIC,
     async (job) => {
       const payload = CommsSyncIncrementalJobPayloadSchema.parse(job.payload)
@@ -761,7 +793,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     COMMS_SYNC_INCREMENTAL_SWEEP_TOPIC,
     async (job) => {
       const payload = CommsIncrementalSweepJobPayloadSchema.parse(job.payload)
@@ -770,7 +802,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
     async (job) => {
       const payload = CommsSubscriptionsRenewJobPayloadSchema.parse(job.payload)
@@ -779,7 +811,7 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  queueProvider.subscribe(
+  subscribe(
     COMMS_WEBHOOK_PROCESS_TOPIC,
     async (job) => {
       const payload = CommsWebhookProcessJobPayloadSchema.parse(job.payload)
@@ -801,7 +833,7 @@ export const startWorker = async (
       transport: createAgentMailTransport(agentMailReadiness.config),
     }
 
-    queueProvider.subscribe(
+    subscribe(
       AGENT_EMAIL_INBOUND_TOPIC,
       async (job) => {
         const payload = AgentEmailInboundJobPayloadSchema.parse(job.payload)
@@ -810,7 +842,7 @@ export const startWorker = async (
       { signal: abortController.signal },
     )
 
-    queueProvider.subscribe(
+    subscribe(
       AGENT_EMAIL_SEND_TOPIC,
       async (job) => {
         const payload = AgentEmailSendJobPayloadSchema.parse(job.payload)
@@ -819,7 +851,7 @@ export const startWorker = async (
       { signal: abortController.signal },
     )
 
-    queueProvider.subscribe(
+    subscribe(
       AGENT_EMAIL_RETENTION_TOPIC,
       async (job) => {
         const payload = AgentEmailRetentionJobPayloadSchema.parse(job.payload)
@@ -903,11 +935,11 @@ export const startWorker = async (
       const claimed = await sweepDueDashboardSources(prisma, { limit: 20 })
       for (const source of claimed) {
         // One queued attempt per source: a slow fetch must not pile up.
-        await queueProvider.enqueue(
-          DASHBOARD_REFRESH_TOPIC,
-          { sourceId: source.sourceId },
-          { idempotencyKey: `dashboard:refresh:${source.sourceId}` },
-        )
+        await enqueueQueueJob(prisma, {
+          idempotencyKey: `dashboard:refresh:${source.sourceId}`,
+          payload: { sourceId: source.sourceId },
+          topic: DASHBOARD_REFRESH_TOPIC,
+        })
       }
     } catch (error) {
       console.error('[worker.dashboard-sweep] failed', error)
@@ -1071,10 +1103,16 @@ export const startWorker = async (
 
     try {
       await expireExecutionLeases(prisma)
+      // Ordered after the expiry on purpose: a runner is only collectable once
+      // its leases are terminal, so expiring first is what lets the next pass
+      // take the runner an hour-dead process left behind.
+      await reapStaleExecutionRunners(prisma)
     } catch (error) {
       console.error('[worker.execution-leases] reconcile failed', error)
     }
   }, 15_000)
+
+  const deadQueueSweepInterval = startDeadQueueJobSweep(() => expireDeadQueueJobs(pool))
 
   // Re-poll for pended thread messages whose in-flight run vanished without
   // draining (worker crash between terminal update and drain, or an API-side
@@ -1189,7 +1227,14 @@ export const startWorker = async (
   )
 
   const stop = async () => {
-    abortController.abort()
+    // Drain before anything closes (audit 5.1): `stop()` used to abort and end
+    // the pool while a handler was still running, so a long run died
+    // mid-inference with its terminal writes throwing on a closed pool. Stop
+    // claiming first, clear the sweeps, then wait for what is already in
+    // flight — and only abort what outlives the deadline.
+    for (const subscription of subscriptions) {
+      subscription.stop()
+    }
     clearInterval(triggerSweepInterval)
     clearInterval(gmailSendSweepInterval)
     clearInterval(activeCallExpiryInterval)
@@ -1202,11 +1247,22 @@ export const startWorker = async (
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)
     clearInterval(executionLeaseSweepInterval)
+    clearInterval(deadQueueSweepInterval)
     clearInterval(pendingBatchSweepInterval)
     clearInterval(commsRenewInterval)
     clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
     clearTimeout(registrySyncKickoff)
+    const { timedOut } = await drainQueueSubscriptions(subscriptions)
+    if (timedOut) {
+      console.warn(
+        '[worker.drain] deadline reached with handlers still in flight; their jobs were '
+        + 'released so another worker can claim them now.',
+      )
+    }
+    // Only once the drain is over: the sweeps' in-flight bodies read this, and
+    // nothing claims work after this point.
+    abortController.abort()
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()

@@ -19,8 +19,7 @@ import {
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
 } from './board-source-credential.js'
-import { externalTenantKeyFor } from './board-source-structure.js'
-import { loadIdentityLinks } from './board-source-apply.js'
+import { externalTenantKeyFor, loadIdentityLinks } from './board-source-identity.js'
 
 /**
  * Changing a mirrored item where it actually lives.

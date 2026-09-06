@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { resolveAvatarSource, uoaAvatarPath } from '../src/components/primitives/UserAvatar.js'
+import { resolveAvatarSource, uoaAvatarPath } from '../src/components/shared/UserAvatar.js'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -70,7 +70,7 @@ test('the team roster renders the shared avatar, not a second implementation', (
 })
 
 test('Gravatar is gone from the avatar chain and from the API contract', () => {
-  const avatar = readSource('../src/components/primitives/UserAvatar.tsx')
+  const avatar = readSource('../src/components/shared/UserAvatar.tsx')
   assert.equal(/gravatarUrl/.test(avatar), false)
 
   // Nothing in the admin may re-introduce it: it is derived from the email
@@ -81,7 +81,7 @@ test('Gravatar is gone from the avatar chain and from the API contract', () => {
 })
 
 test('the profile panel routes a UOA session to the relay, not the local attachment', () => {
-  const panel = readSource('../src/pages/settings/profile/AvatarPanel.tsx')
+  const panel = readSource('../src/components/features/settings/AvatarPanel.tsx')
 
   assert.match(panel, /const managedByUoa = me\.auth\.providerType === 'uoa'/)
   assert.match(panel, /await uploadUoaAvatar\.mutateAsync\(file\)/)

@@ -25,9 +25,9 @@ const read = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
     .replaceAll('\r\n', '\n')
 
-const rosterPanel = read('../src/pages/settings/MembersRosterPanel.tsx')
+const rosterPanel = read('../src/components/features/settings/MembersRosterPanel.tsx')
 const rulesPanel = read('../src/components/features/settings/AutomaticMembershipRulesPanel.tsx')
-const invitationDialog = read('../src/pages/settings/MemberInvitationDialog.tsx')
+const invitationDialog = read('../src/components/features/settings/MemberInvitationDialog.tsx')
 const domainRow = read('../src/components/features/settings/AutomaticMembershipDomainRow.tsx')
 const reconcileStatus = read(
   '../src/components/features/settings/AutomaticMembershipReconcileStatus.tsx',

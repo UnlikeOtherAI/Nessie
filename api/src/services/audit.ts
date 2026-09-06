@@ -1,38 +1,48 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntry } from '@nessie/db'
+import { isSecretKey } from '@nessie/mcp-manage'
 import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 import type { AuthorizedActionContext, AuditAction, AuditOutcome } from '@nessie/schemas'
 
-const REDACTED_FIELDS = new Set([
-  'password',
-  'passwordHash',
-  'secret',
-  'token',
-  'apiKey',
-  'credential',
-  'accessToken',
-  'refreshToken',
-  'bootstrapToken',
-  // A domain-verification challenge is published in DNS, but it is the proof
-  // an organisation controls a domain, so it never enters the audit chain.
-  'challenge',
-])
+/**
+ * Keys the instance's shared "secret-shaped key" predicate does not name, but
+ * the audit chain still refuses. A domain-verification challenge is published
+ * in DNS, so it is not a secret in the connector sense — but it is the proof an
+ * organisation controls a domain, so it never enters the audit chain.
+ */
+const AUDIT_ONLY_SECRET_KEYS = new Set(['challenge'])
 
-const redactMetadata = (
+const isAuditSecretKey = (key: string): boolean =>
+  AUDIT_ONLY_SECRET_KEYS.has(key) || isSecretKey(key)
+
+const redactValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(redactValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entryValue]) =>
+        isAuditSecretKey(key) ? [key, '[REDACTED]'] : [key, redactValue(entryValue)],
+      ),
+    )
+  }
+  return value
+}
+
+/**
+ * Audit metadata is redacted against the same key predicate as an MCP catalog
+ * response, and recurses into arrays.
+ *
+ * It used to match a hand-listed set of exact names and skip array values
+ * entirely, which made the guard on *audit output* — the one
+ * `docs/architecture.md` names first — the weakest of the instance's four
+ * redactors: `clientSecret`, `webhookSecret` and `apiToken` all passed it, and
+ * an array of credential objects passed unexamined. Every value is replaced,
+ * not just strings: a secret handed in as a nested object is still a secret.
+ */
+export const redactMetadata = (
   metadata: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined => {
   if (!metadata) return undefined
-  const redacted: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(metadata)) {
-    if (REDACTED_FIELDS.has(key)) {
-      redacted[key] = '[REDACTED]'
-    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      redacted[key] = redactMetadata(value as Record<string, unknown>)
-    } else {
-      redacted[key] = value
-    }
-  }
-  return redacted
+  return redactValue(metadata) as Record<string, unknown>
 }
 
 export type AuditEmitInput = {

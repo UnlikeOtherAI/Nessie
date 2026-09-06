@@ -16,6 +16,7 @@ import {
   WriteScopedSettingBodySchema,
 } from '../contracts/scoped-settings.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -211,6 +212,22 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
         updatedByUserId: userId,
         userId: body.scope === 'user' ? userId : null,
         value: (body.value ?? null) as never,
+      })
+      // A scoped setting is policy: which level it was written at, and whether
+      // it was locked against the levels below, is the part a later audit needs.
+      // The value itself rides along redacted by key like any other metadata.
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'setting.scoped.written',
+        resourceType: 'scoped_setting',
+        resourceId: key,
+        outcome: 'success',
+        metadata: {
+          locked: body.locked ?? false,
+          scope: body.scope,
+          setAtScope: resolved.setAtScope,
+          ...(body.scope === 'team' && body.teamId ? { teamId: body.teamId } : {}),
+        },
       })
       return createApiResponse(
         ResolvedSettingListSchema.parse({

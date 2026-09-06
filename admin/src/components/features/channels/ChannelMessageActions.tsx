@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type KeyboardEvent,
@@ -10,14 +9,13 @@ import {
 import {
   faCheck,
   faCopy,
-  faFaceSmile,
   faPen,
   faReply,
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MessageReaction } from '../../../lib/api-client'
-import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
+import { EmojiReactionButton } from '../../shared/EmojiReactionButton'
 import { ReactionPills, type ResolveReactorName } from './ReactionPills'
 
 type ChannelMessageActionsProps = {
@@ -56,26 +54,8 @@ export const ChannelMessageActions = ({
   onReply,
   onStartEdit,
 }: ChannelMessageActionsProps) => {
-  const pickerId = useId()
-  const pickerRef = useRef<HTMLDivElement>(null)
   const copiedTimer = useRef<number | null>(null)
   const [copied, setCopied] = useState(false)
-  const [pickerOpen, setPickerOpen] = useState(false)
-
-  useEffect(() => {
-    if (!pickerOpen) {
-      return undefined
-    }
-
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) {
-        setPickerOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [pickerOpen])
 
   useEffect(
     () => () => {
@@ -86,17 +66,7 @@ export const ChannelMessageActions = ({
     [],
   )
 
-  const addReaction = (emoji: string) => {
-    onAddReaction(messageId, emoji)
-    setPickerOpen(false)
-  }
-
-  const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation()
-      setPickerOpen(false)
-    }
-  }
+  const addReaction = (emoji: string) => onAddReaction(messageId, emoji)
 
   const copyMessage = () => {
     void navigator.clipboard.writeText(content).then(
@@ -126,7 +96,6 @@ export const ChannelMessageActions = ({
         className="admin-msg-actions"
         data-testid="message-actions"
         onClick={stopRowToggle}
-        onKeyDown={closeOnEscape}
         onPointerDown={stopRowToggle}
       >
         <button
@@ -138,25 +107,7 @@ export const ChannelMessageActions = ({
         >
           <FontAwesomeIcon icon={copied ? faCheck : faCopy} />
         </button>
-        <div className="relative" ref={pickerRef}>
-          <button
-            aria-controls={pickerOpen ? pickerId : undefined}
-            aria-expanded={pickerOpen}
-            aria-haspopup="dialog"
-            aria-label="Add emoji reaction"
-            className="admin-msg-action-button"
-            onClick={() => setPickerOpen((current) => !current)}
-            title="Add emoji reaction"
-            type="button"
-          >
-            <FontAwesomeIcon icon={faFaceSmile} />
-          </button>
-          {pickerOpen ? (
-            <div className="admin-msg-emoji-menu" id={pickerId} role="dialog">
-              <EmojiPickerPanel onSelect={addReaction} />
-            </div>
-          ) : null}
-        </div>
+        <EmojiReactionButton onSelect={addReaction} title="Add emoji reaction" />
         {onReply ? (
           <button
             aria-label="Reply in thread"

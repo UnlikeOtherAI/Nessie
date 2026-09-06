@@ -67,10 +67,19 @@ export const BoardColumnRecordSchema = z.object({
 })
 export type BoardColumnRecord = z.infer<typeof BoardColumnRecordSchema>
 
+/**
+ * A board's own glyph in the Projects sidebar. Emoji only, and `null` for the
+ * shared board icon every board wears by default — a board is a saved way of
+ * looking at a project's work, so it decorates itself without the upload,
+ * crop and attachment lifecycle a project avatar carries.
+ */
+export const BoardIconEmojiSchema = z.string().trim().min(1).max(32)
+
 export const BoardRecordSchema = z.object({
   id: BoardIdSchema,
   projectId: ProjectIdSchema,
   name: NonEmptyStringSchema,
+  iconEmoji: BoardIconEmojiSchema.nullable(),
   style: BoardStyleSchema,
   isDefault: z.boolean(),
   position: z.number().int(),
@@ -84,6 +93,8 @@ export type BoardRecord = z.infer<typeof BoardRecordSchema>
 export const CreateBoardBodySchema = z
   .object({
     name: NonEmptyStringSchema.max(120),
+    /** Absent or `null` leaves the board on the shared board icon. */
+    iconEmoji: BoardIconEmojiSchema.nullable().optional(),
     style: BoardStyleSchema.optional(),
     /** Start from this board's columns instead of the four defaults. */
     copyColumnsFromBoardId: z.string().uuid().optional(),
@@ -93,6 +104,8 @@ export const CreateBoardBodySchema = z
 export const UpdateBoardBodySchema = z
   .object({
     name: NonEmptyStringSchema.max(120).optional(),
+    /** `null` clears it, back to the shared board icon. */
+    iconEmoji: BoardIconEmojiSchema.nullable().optional(),
     style: BoardStyleSchema.optional(),
     filter: BoardFilterSchema.optional(),
     position: z.number().int().nonnegative().optional(),

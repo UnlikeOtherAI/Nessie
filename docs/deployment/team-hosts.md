@@ -23,9 +23,19 @@ curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records
 HTTP-01 challenge. Specific records (`api`, `app`, `www`) still win over the
 wildcard, so nothing existing moves.
 
-A DNS wildcard matches exactly one label, so `*.nessie.works` covers
-`acme.nessie.works` but **not** `design.acme.nessie.works`. Team hosts need a
-`*.<org>.nessie.works` record per organisation.
+**That one record is all the DNS you need — including for team hosts.** RFC 1034
+says a wildcard matches exactly one label, and on most providers it does. On
+Cloudflare it does not: `*.nessie.works` answers at any depth. Verified against
+the zone's own authoritative nameserver rather than a public resolver:
+
+```bash
+NS=$(dig +short NS nessie.works | head -1)
+dig +short A a.b.c.nessie.works "@$NS"   # → 178.105.82.46
+```
+
+So no `*.<org>.nessie.works` record is needed, and none exist. Re-run that check
+if the zone ever moves to another DNS provider — this is provider behaviour, not
+a standard, and a move would silently break every team address.
 
 ### 2. Caddy — named hosts, no rebuild
 
@@ -118,14 +128,21 @@ automatically for a named host.
 Then validate and reload, exactly as for any other site block:
 
 ```bash
-docker exec infra-caddy caddy validate --config /etc/caddy/Caddyfile
-docker exec infra-caddy caddy reload --config /etc/caddy/Caddyfile
+# Validate a CANDIDATE copy first — never reload an unvalidated file on a
+# proxy that fronts every other product on this host.
+docker cp /srv/infra/caddy/Caddyfile caddy:/tmp/Caddyfile.candidate
+docker exec caddy caddy validate --config /tmp/Caddyfile.candidate --adapter caddyfile
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-## Why not simply `*.nessie.works`
+## Why not simply a `*.nessie.works` site block
 
-Because a DNS wildcard matches exactly one label, and `*.*.nessie.works` is not
-valid DNS. `*.nessie.works` covers `acme.nessie.works` and stops there.
+DNS is not the obstacle here — Cloudflare's wildcard already answers at any
+depth (above). Caddy is. A Caddy wildcard **site address** matches exactly one
+label, so `*.nessie.works` would serve `acme.nessie.works` and never reach
+`design.acme.nessie.works`; `*.*.nessie.works` is not a valid site address
+either. And a wildcard *certificate* is a separate obstacle again: it can only
+be issued over DNS-01, which stock `caddy:2-alpine` cannot do.
 
 ## Why not on-demand TLS
 
@@ -141,7 +158,7 @@ that coupling entirely.
 # resolves to the host
 dig +short design.acme.nessie.works
 
-# certificate covers the wildcard, not the single name
+# certificate covers this exact hostname (one per host, issued over HTTP-01)
 echo | openssl s_client -connect design.acme.nessie.works:443 \
   -servername design.acme.nessie.works 2>/dev/null \
   | openssl x509 -noout -text | grep -A1 'Subject Alternative Name'

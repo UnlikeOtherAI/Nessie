@@ -1,7 +1,6 @@
-import { type PgRealtimeTransport } from '@nessie/runtime'
+import { publishMessageEnvelope, type PgRealtimeTransport } from '@nessie/runtime'
 import {
   parseAgentId,
-  parseThreadId,
   parseUserId,
   type WsScope,
 } from '@nessie/schemas'
@@ -47,16 +46,10 @@ export const publishReplyRunStarted = async ({
     ? scopes
     : [...scopes, { kind: 'agent' as const, agentId: parseAgentId(run.agentId) }]
 
-  await realtimeTransport.publishWs(publishScopes, {
-    data: {
-      agentId: parseAgentId(run.agentId),
-      channelId,
-      contentPreview: content.slice(0, 200),
-      messageId,
-      role,
-      threadId: parseThreadId(run.threadId),
-    },
-    event: 'message.new',
+  await publishMessageEnvelope(realtimeTransport, publishScopes, {
+    channelId,
+    message: { agentId: run.agentId, content, id: messageId, role },
+    threadId: run.threadId,
   })
 }
 

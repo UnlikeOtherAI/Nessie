@@ -59,3 +59,26 @@ export const syncProfileMirrorFromClaims = async (
 
   await client.user.update({ where: { id: userId }, data })
 }
+
+/**
+ * Drop the mirrored picture after the person changed it at UOA through Nessie
+ * (`PUT/DELETE /api/auth/me/avatar/uoa`).
+ *
+ * The relay writes the picture upstream and gets no URL back, so there is
+ * nothing to mirror — and the URL still held locally is now the *previous*
+ * picture. "Relay, then mirror from UOA's echo" is the rule the team and
+ * organisation renames follow; this is its degenerate case, and skipping it
+ * left every reader of `User.avatarUrl` showing the pre-upload image until the
+ * next login or rotation (2026-09-05 review, FO2-7). Clearing is safe: the
+ * client precedence falls through to the live UOA relay, and the next verified
+ * claim re-syncs the mirror.
+ */
+export const clearProfileAvatarMirror = async (
+  client: ProfileMirrorClient,
+  userId: string,
+): Promise<void> => {
+  await client.user.updateMany({
+    where: { id: userId, avatarUrl: { not: null } },
+    data: { avatarUrl: null },
+  })
+}

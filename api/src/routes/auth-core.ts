@@ -11,14 +11,13 @@ import {
 
 import { isBootstrapTokenExpired } from '../auth/bootstrap.js'
 import { hashPassword } from '../auth/password.js'
-import { verifySessionToken } from '../auth/session.js'
 import {
   AuthProviderAuthorizeQuerySchema,
   AuthProviderDescriptorSchema,
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
   SsoConfigQuerySchema,
-} from '../contracts.js'
+} from '../contracts/auth.js'
 import {
   BootstrapAlreadyInitializedError,
   seedBootstrapRecords,
@@ -41,7 +40,7 @@ import {
   isUoaConfigured,
   loadUoaSettings,
 } from '../services/uoa-auth.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import { registerAuthLogoutRoute } from './auth-logout.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
@@ -69,6 +68,7 @@ export const registerAuthCoreRoutes = (
     clearBootstrapState,
     config,
     getAuthorizationToken,
+    isTimingSafeMatch,
     prisma,
     rateLimiter,
     resolveBootstrapState,
@@ -121,10 +121,7 @@ export const registerAuthCoreRoutes = (
       if (
         !(await guardAuthRequest(
           rateLimiter,
-          {
-            bucket: RATE_LIMIT_BUCKETS.ssoAuthorizeIp,
-            rule: config.api.rateLimit.mcpOauthIp,
-          },
+          rateLimitFor(config, 'ssoAuthorizeIp'),
           request,
           reply,
         ))
@@ -253,10 +250,7 @@ export const registerAuthCoreRoutes = (
     if (
       !(await guardAuthRequest(
         rateLimiter,
-        {
-          bucket: RATE_LIMIT_BUCKETS.bootstrapIp,
-          rule: config.api.rateLimit.bootstrapIp,
-        },
+        rateLimitFor(config, 'bootstrapIp'),
         request,
         reply,
       ))
@@ -268,7 +262,10 @@ export const registerAuthCoreRoutes = (
       sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')
       return reply
     }
-    if (state.token !== body.bootstrapToken) {
+    // Timing-safe: the bootstrap token is the single credential that provisions
+    // the owner account, and `isTimingSafeMatch` already guards far less
+    // sensitive values on the same context object (2026-09-05 review, FO3-9).
+    if (!isTimingSafeMatch(state.token, body.bootstrapToken)) {
       sendApiError(reply, 401, 'TOKEN_INVALID', 'Invalid bootstrap token')
       return reply
     }
@@ -301,12 +298,7 @@ export const registerAuthCoreRoutes = (
       undefined,
       { userAgent: request.headers['user-agent'] ?? null },
     )
-    const verification = verifySessionToken(session.token, authSecret)
-    if (!verification.ok) {
-      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue bootstrap session')
-      return reply
-    }
-    const actorContext = createActorContextFromClaims(verification.claims)
+    const actorContext = createActorContextFromClaims(session.claims)
     await ensurePersonalAssistantBootstrap(prisma, {
       organizationId: actorContext.tenant.organizationId,
       teamId: actorContext.tenant.teamId!,
@@ -332,15 +324,15 @@ export const registerAuthCoreRoutes = (
     })
     await issueRefreshCookie(request, reply, {
       userId: result.user.id,
-      organizationId: verification.claims.org,
+      organizationId: session.claims.org,
       sessionId: session.sessionId,
-      providerId: verification.claims.providerId,
-      providerType: verification.claims.providerType,
+      providerId: session.claims.providerId,
+      providerType: session.claims.providerType,
     })
     return reply.code(201).send(createApiResponse({
       token: session.token,
       me: MeResponseSchema.parse(
-        await buildMeResponse(prisma, result.user, verification.claims, config),
+        await buildMeResponse(prisma, result.user, session.claims, config),
       ),
     }))
   })
@@ -373,22 +365,17 @@ export const registerAuthCoreRoutes = (
       undefined,
       { userAgent: request.headers['user-agent'] ?? null },
     )
-    const verification = verifySessionToken(session.token, authSecret)
-    if (!verification.ok) {
-      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue dev session')
-      return reply
-    }
     await issueRefreshCookie(request, reply, {
       userId: user.id,
-      organizationId: verification.claims.org,
+      organizationId: session.claims.org,
       sessionId: session.sessionId,
-      providerId: verification.claims.providerId,
-      providerType: verification.claims.providerType,
+      providerId: session.claims.providerId,
+      providerType: session.claims.providerType,
     })
     return createApiResponse({
       token: session.token,
       me: MeResponseSchema.parse(
-        await buildMeResponse(prisma, user, verification.claims, config),
+        await buildMeResponse(prisma, user, session.claims, config),
       ),
     })
   })

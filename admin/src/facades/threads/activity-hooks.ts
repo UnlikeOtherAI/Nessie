@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
-import { threadKeys } from '../../lib/query-keys'
+import { threadKeys } from './keys'
 import { useEventStream } from '../realtime/event-stream'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'

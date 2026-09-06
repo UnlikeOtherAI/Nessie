@@ -6,6 +6,7 @@ import {
   decryptWithKey,
   deriveSecretKey,
   encryptWithKey,
+  verifyHmacSignature,
 } from '@nessie/runtime'
 
 /**
@@ -80,14 +81,6 @@ export const setProductWebhookSecret = async (
   })
 }
 
-/** Strip a GitHub-style `sha256=` prefix from a signature header value. */
-const stripSignaturePrefix = (value: string): string => {
-  const trimmed = value.trim()
-  return trimmed.toLowerCase().startsWith('sha256=')
-    ? trimmed.slice('sha256='.length)
-    : trimmed
-}
-
 /**
  * Resolve which organization a signed webhook request belongs to by finding the
  * stored secret for `productSlug` whose HMAC-SHA256 over the raw body reproduces
@@ -102,13 +95,6 @@ export const resolveSignedWebhookOrg = async (
   if (!input.signatureHeader || input.signatureHeader.trim().length === 0) {
     return null
   }
-  let provided: Buffer
-  try {
-    provided = Buffer.from(stripSignaturePrefix(input.signatureHeader), 'hex')
-  } catch {
-    return null
-  }
-  if (provided.length === 0) return null
 
   const rows = await prisma.productWebhookSecret.findMany({
     where: { productSlug: input.productSlug },
@@ -128,12 +114,14 @@ export const resolveSignedWebhookOrg = async (
     } catch {
       continue
     }
-    const expected = crypto.createHmac('sha256', secret).update(input.rawBody).digest()
-    if (
-      expected.length === provided.length &&
-      crypto.timingSafeEqual(expected, provided) &&
-      matchedOrg === null
-    ) {
+    const matches = verifyHmacSignature({
+      encoding: 'hex',
+      payload: input.rawBody,
+      prefix: 'sha256=',
+      secret,
+      signature: input.signatureHeader,
+    })
+    if (matches && matchedOrg === null) {
       matchedOrg = row.organizationId
     }
   }

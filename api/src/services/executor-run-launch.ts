@@ -1,7 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { bindExecutorCandidateBundleInTransaction } from '@nessie/executor-manage'
 import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
-import { followReplyThread } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -14,7 +13,8 @@ import {
   type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
-import { mapMessageRecord, messageInclude } from './messages.js'
+import { mapMessageRecord } from './message-read-model.js'
+import { createSystemAuthoredMessage } from './system-authored-message.js'
 
 export type ExecutorRunLaunchResult =
   | { kind: 'agent_unavailable' }
@@ -78,17 +78,17 @@ export const launchExecutorRun = async (
       return { kind: 'thread_busy' as const }
     }
 
-    const message = await tx.message.create({
-      data: {
-        content: input.content,
-        metadata: { executorLaunch: { operationKeys: input.operationKeys } },
-        role: 'user',
-        threadId: thread.id,
-        userId: actorContext.actor.actorId,
-      },
-      include: messageInclude,
+    // Follower decision: the person launching. The launch message is the root
+    // of the conversation the executor run answers into, so its author follows
+    // it — the same participate-to-follow rule a typed post gets.
+    const message = await createSystemAuthoredMessage(tx, {
+      content: input.content,
+      followedByUserIds: [actorContext.actor.actorId],
+      metadata: { executorLaunch: { operationKeys: input.operationKeys } },
+      role: 'user',
+      threadId: thread.id,
+      userId: actorContext.actor.actorId,
     })
-    await followReplyThread(tx, { rootMessageId: message.id, userIds: [actorContext.actor.actorId] })
     const run = await tx.run.create({
       data: {
         agentId: agent.id,

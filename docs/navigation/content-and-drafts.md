@@ -20,7 +20,7 @@ for it. Four pieces, plus one cache underneath them all.
   `/dashboards/:id` → the dashboard, `/knowledge-base/spaces/:id` → the space
   and its pages, `/apps/:slug` → the app. Each entry calls the **exact
   `fetch*` function the destination's hook calls**, under the exact key from
-  `lib/query-keys.ts` — a URL spelled here would be a second fetcher, and the
+  the destination facade's `keys.ts` — a URL spelled here would be a second fetcher, and the
   first divergence would fill the cache under the right key with the wrong
   shape (pinned: `prewarm.ts` contains no `/api/` literal). No hover storms:
   a per-hook TTL map (`PREWARM_TTL_MS`, 10 s) makes a focus/pointerdown/touch

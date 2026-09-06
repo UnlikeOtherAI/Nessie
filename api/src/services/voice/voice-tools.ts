@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type { PrismaClient, VoiceSession } from '@prisma/client'
+import type { Prisma, PrismaClient, VoiceSession } from '@prisma/client'
 import {
   attributionFromActorContext,
   runWebSearch,
@@ -9,7 +9,7 @@ import {
 } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { listThreadMessages } from '../messages.js'
+import { listThreadMessages } from '../message-read-model.js'
 import { VoiceSessionError } from './voice-session.js'
 
 /**
@@ -232,4 +232,88 @@ export const runVoiceTool = async (
     throw new VoiceSessionError('VOICE_TOOL_UNKNOWN', `Unknown tool: ${name}`, 400)
   }
   return tool.run(args, context)
+}
+
+export type RunVoiceToolCallInput = {
+  session: VoiceSession
+  name: string
+  args: Record<string, unknown>
+  providerCallId: string
+  context: VoiceToolContext
+}
+
+export type RunVoiceToolCallResult = {
+  result: Record<string, unknown>
+  replayed: boolean
+}
+
+/**
+ * The whole `POST /tool-call` workflow: idempotency lookup, the per-call
+ * spend ceiling, execution, and the transactional write — one place, so the
+ * billing-relevant invariant (a replay never re-runs, a call over the ceiling
+ * never runs at all) cannot drift between call sites.
+ *
+ * Gemini's own call id is the idempotency key: it retries a call it did not
+ * see answered, and the work must not run twice. Different arguments under an
+ * already-used id is a different action wearing a used name, and is refused
+ * rather than replayed.
+ */
+export const runVoiceToolCall = async (
+  prisma: PrismaClient,
+  input: RunVoiceToolCallInput,
+): Promise<RunVoiceToolCallResult> => {
+  if (!isVoiceTool(input.name)) {
+    throw new VoiceSessionError('VOICE_TOOL_UNKNOWN', `Unknown tool: ${input.name}`, 400)
+  }
+
+  const argumentsHash = hashToolArguments(input.args)
+  const existing = await prisma.voiceToolCall.findUnique({
+    where: {
+      voiceSessionId_providerCallId: {
+        voiceSessionId: input.session.id,
+        providerCallId: input.providerCallId,
+      },
+    },
+  })
+  if (existing) {
+    if (existing.argumentsHash !== argumentsHash) {
+      throw new VoiceSessionError(
+        'VOICE_TOOL_CALL_MISMATCH',
+        'That call id was already used with different arguments.',
+        409,
+      )
+    }
+    return { result: (existing.result ?? {}) as Record<string, unknown>, replayed: true }
+  }
+
+  // The per-call ceiling is real spend protection: each tool result is
+  // re-sent to Gemini on every later turn of the conversation.
+  if (input.session.toolCallCount >= input.session.maxToolCalls) {
+    throw new VoiceSessionError(
+      'VOICE_TOOL_LIMIT',
+      'This call has used all the tool calls it is allowed.',
+      429,
+    )
+  }
+
+  const result = await runVoiceTool(input.name, input.args, input.context)
+
+  await prisma.$transaction([
+    prisma.voiceToolCall.create({
+      data: {
+        voiceSessionId: input.session.id,
+        providerCallId: input.providerCallId,
+        toolName: input.name,
+        argumentsHash,
+        // Prisma's JSON input type does not accept a bare index signature.
+        result: result as Prisma.InputJsonValue,
+      },
+    }),
+    prisma.voiceSession.update({
+      where: { id: input.session.id },
+      data: { toolCallCount: { increment: 1 } },
+    }),
+  ])
+
+  return { result, replayed: false }
 }

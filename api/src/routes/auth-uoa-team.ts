@@ -18,7 +18,7 @@ import {
   parseSessionClientType,
   SESSION_CLIENT_HEADER,
 } from '../services/session-client.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import { completeConsumedAuthSession } from './auth-session-completion.js'
 import type { RouteDeps } from './types.js'
 
@@ -79,7 +79,7 @@ export const registerAuthUoaTeamRoute = (
     }
     if (!(await guardAuthRequest(
       rateLimiter,
-      { bucket: RATE_LIMIT_BUCKETS.refreshIp, rule: config.api.rateLimit.refreshIp },
+      rateLimitFor(config, 'refreshIp'),
       request,
       reply,
     ))) return reply
@@ -91,10 +91,7 @@ export const registerAuthUoaTeamRoute = (
       tokenHint
       && !(await guardAuthRequest(
         rateLimiter,
-        {
-          bucket: RATE_LIMIT_BUCKETS.refreshAccount,
-          rule: config.api.rateLimit.refreshAccount,
-        },
+        rateLimitFor(config, 'refreshAccount'),
         request,
         reply,
         { accountIdentity: tokenHint.userId },

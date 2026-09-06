@@ -12,8 +12,9 @@ import { useTaskAssignees } from '../../../facades/tasks/hooks'
 import { useTaskFields } from '../../../facades/task-fields/hooks'
 import { ChoiceGroup } from '../../../components/shared/ChoiceGroup'
 import { Select } from '../../../components/shared/FormControls'
+import { Pill } from '../../../components/primitives/Pill'
 import { Section } from '../../../components/shared/PageBody'
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/kanban/kanban-config'
+import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
 
 type SourceMappingPanelProps = {
   canAdminister: boolean
@@ -67,6 +68,10 @@ export const SourceMappingPanel = ({
   }, [source])
 
   if (!source) return null
+
+  const linkByExternalUserId = new Map(
+    source.identityLinks.map((link) => [link.externalUserId, link]),
+  )
 
   const save = (
     next: BoardSourceStateMapping[],
@@ -236,32 +241,47 @@ export const SourceMappingPanel = ({
       </Section>
 
       <Section
-        description="Who upstream is who here. Auto-matched by exact email where the provider exposes one; everything else is chosen."
+        description={`Who upstream is who here. Matched automatically on an exact email address where ${PROVIDER_LABEL[source.provider]} exposes one; everything else is chosen, and a choice made here always wins. Anybody left "Not linked" keeps their ${PROVIDER_LABEL[source.provider]} name on the card, marked as somebody Nessie does not know.`}
         title="People"
       >
         <div className="grid gap-2">
-          {source.members.map((member) => (
-            <div className="flex items-center gap-2" key={member.externalUserId}>
-              <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
-                {member.displayName}
-              </span>
-              <Select
-                aria-label={`Nessie identity for ${member.displayName}`}
-                className="max-w-[220px]"
-                disabled={!canAdminister}
-                onChange={(event) => setPerson(member.externalUserId, event.target.value)}
-                size="compact"
-                value={identity[member.externalUserId] ?? ''}
-              >
-                <option value="">Not linked</option>
-                {assignees.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.displayName}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          ))}
+          {source.members.map((member) => {
+            const link = linkByExternalUserId.get(member.externalUserId)
+            return (
+              <div className="flex items-center gap-2" key={member.externalUserId}>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-[color:var(--tx)]">
+                    {member.displayName}
+                  </span>
+                  {member.email ? (
+                    <span className="block truncate text-xs text-[color:var(--tx3)]">
+                      {member.email}
+                    </span>
+                  ) : null}
+                </span>
+                {link?.matchedBy === 'email' && link.userId ? (
+                  <Pill size="sm" tone="success" uppercase={false}>
+                    Matched by email
+                  </Pill>
+                ) : null}
+                <Select
+                  aria-label={`Nessie identity for ${member.displayName}`}
+                  className="max-w-[220px]"
+                  disabled={!canAdminister}
+                  onChange={(event) => setPerson(member.externalUserId, event.target.value)}
+                  size="compact"
+                  value={identity[member.externalUserId] ?? ''}
+                >
+                  <option value="">Not linked</option>
+                  {assignees.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.displayName}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )
+          })}
           {source.members.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">
               Waiting for the first sync to read this container&rsquo;s members.

@@ -44,6 +44,17 @@ creating files, moving code, reusing logic, or widening an existing service.
   must keep the lint gate attached to the build path.
 - Do not leave docs describing a retired topology, port, public contract, or
   workflow. Update or move obsolete docs to `docs/done/` in the same change.
+- Do not leave an audit write to whichever route happens to call a mutation.
+  The write belongs inside the service/transaction that performs the
+  mutation, the way `provisionOnce` (team provisioning) writes its audit
+  entry inside the same transaction as the row it provisions — so a second
+  entry point to that mutation (another route, a worker job, a CLI script)
+  gets the audit trail for free instead of having to remember it.
+- Do not validate request bodies with `parseInput` + zod while leaving path
+  and query params as hand-written casts. Params go through the same
+  `parseInput` + zod convention as bodies. A raw `request.params as {...}`
+  cast is acceptable only when the param is a single UUID-shaped id; a raw
+  `request.body as {...}` cast is never acceptable.
 
 ## Preferred Shape
 
@@ -61,13 +72,25 @@ creating files, moving code, reusing logic, or widening an existing service.
   resource access, SSRF rejection, redaction, rate-limit identity, and build or
   deploy gates.
 - Admin route and team headers own their actions as typed
-  `PageHeaderAction` values and render them through
-  `ResponsivePageHeader`/`AdminPageHeader`. Give each action an explicit
-  priority, preserve one primary action where applicable, and let the shared
-  measured overflow menu decide what moves into **More**. Use the typed
-  `leading`, `eyebrow`, and `titleInput` options for the small number of headers
-  with navigation context or an editable title; do not add page-specific
-  breakpoint hiding or arbitrary React-node action slots.
+  `PageHeaderAction` values and render them through `ScreenHeader`, the one
+  entry point for a route's own header; `ResponsivePageHeader` is the
+  underlying primitive for bars that are not a route's screen header. Give
+  each action an explicit priority, preserve one primary action where
+  applicable, and let the shared measured overflow menu decide what moves
+  into **More**. Use the typed `leading`, `eyebrow`, and `titleInput` options
+  for the small number of headers with navigation context or an editable
+  title; do not add page-specific breakpoint hiding or arbitrary React-node
+  action slots.
+- `admin/src` is ten ordered layers and every import runs downward: `lib` →
+  `hooks` → `navigation`/`facades` → `providers`/`bridges` →
+  `components/primitives` → `components/overlays` → `components/shared` →
+  `components/features` → `layouts` → `pages` (with `router.tsx`/`main.tsx`
+  above all of it). A layer may import from itself and from anything below it,
+  never upward; `scripts/lint-admin-layers.mjs` enforces it on every
+  `pnpm lint`, with one named exception and a shrinking, self-checking
+  allowlist of individual edges. The full table and the reasoning are in
+  [provider-system-and-frontend-architecture.md](provider-system-and-frontend-architecture.md)
+  §5.4.
 - Keep docs next to architecture changes. If behavior, topology, ports,
   deployment, MCP surface, or workflow changes, update the corresponding
   document before committing.

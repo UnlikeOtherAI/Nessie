@@ -1,6 +1,6 @@
 # Configuration reference
 
-Chapter of [deployment.md](../deployment.md). Config layering and the full environment-variable table: Google scopes and Meet, object storage, agent email, connected mailboxes, the MCP secret store.
+Chapter of [deployment.md](../deployment.md). Config layering and the full environment-variable table: Google scopes and Meet, graceful shutdown and health probes, object storage, agent email, connected mailboxes, the MCP secret store.
 
 ## Configuration reference
 
@@ -12,18 +12,22 @@ production settings:
 |---------|-------|-------|
 | Mode | `NESSIE_MODE` | `selfHosted` (disables dev login, requires CORS allowlist) |
 | DB URL | `DATABASE_URL` / `NESSIE_DB_URL` | `postgresql://nessie:***@nessie-postgres:5432/nessie` |
+| DB pool size | `NESSIE_DB_POOL_MAX`, `NESSIE_DB_POOL_MIN` | optional; per-process Postgres pool bounds, default `10` / `2`. One API replica opens `poolMax` Prisma connections + `poolMax` on the shared `pg.Pool` (realtime fan-out, memory capture and thought search all use that one pool) + 1 dedicated LISTEN client — `poolMax * 2 + 1`, i.e. 21 by default. Multiply by replica count and keep the total under Postgres `max_connections`; lower `poolMax` before adding replicas rather than after exhausting connections. |
+| API bind port | `NESSIE_API_PORT`, `PORT` | `NESSIE_API_PORT` wins and is what production pins (the API container's internal `5554`). `PORT` is a lower-precedence fallback for runtimes that choose the port for you (Cloud Run, Heroku, Fly) and inject nothing else; unset, both fall back to `5454`. |
+| Shutdown deadline | `NESSIE_SHUTDOWN_TIMEOUT_MS` | optional; default `25000`. Hard ceiling on the API's and gateway's graceful drain — see "Graceful shutdown and health probes" below. Keep it under the orchestrator's own grace period (`terminationGracePeriodSeconds`, `docker stop -t`) or the runtime SIGKILLs first and the drain buys nothing. |
 | CORS | `NESSIE_CORS_ORIGINS` | `https://app.nessie.works,https://nessie.unlikeotherai.com` (Tauri origins are allowed in code: `tauri://localhost`, `http://tauri.localhost`) |
 | Trusted proxy hops | `NESSIE_API_TRUSTED_PROXY_HOPS` | `1` behind the production Caddy proxy; default `0` ignores `X-Forwarded-For`. Also the single trust decision for all auth rate-limit client IP keys — set it correctly or every proxied client shares the proxy's IP bucket. |
-| Auth brute-force limits | `NESSIE_RATE_LIMIT_*` (`_MAX` / `_WINDOW_MS` per rule) | Postgres-backed fixed-window counters (`rate_limit_buckets`) on login (`LOGIN_IP` 10/10min, `LOGIN_ACCOUNT` 5/10min), refresh (`REFRESH_IP` 30, `REFRESH_ACCOUNT` 20), bootstrap (`BOOTSTRAP_IP` 10), MCP OAuth start/callback (`MCP_OAUTH_IP` 20), MCP secret writes (`MCP_SECRET_WRITE_IP` 20, `MCP_SECRET_WRITE_ACCOUNT` 10), executor daemon challenges (`EXECUTOR_DAEMON_IP` 60), and step-up password re-proof (`STEP_UP_IP` 10, `STEP_UP_ACCOUNT` 5). Trips return 429 + `Retry-After` and emit an `auth.rate_limit.lockout` audit event; the store fails open with a loud log on outage. Counters on `/api/ops/health`. Full table: [rate-limiting.md](../rate-limiting.md) |
+| Auth brute-force limits | `NESSIE_RATE_LIMIT_*` (`_MAX` / `_WINDOW_MS` per rule) | Postgres-backed fixed-window counters (`rate_limit_buckets`) on login (`LOGIN_IP` 10/10min, `LOGIN_ACCOUNT` 5/10min), refresh (`REFRESH_IP` 30, `REFRESH_ACCOUNT` 20), bootstrap (`BOOTSTRAP_IP` 10), MCP OAuth start/callback (`MCP_OAUTH_IP` 20), MCP secret writes (`MCP_SECRET_WRITE_IP` 20, `MCP_SECRET_WRITE_ACCOUNT` 10), executor daemon challenges (`EXECUTOR_DAEMON_IP` 60), step-up password re-proof (`STEP_UP_IP` 10, `STEP_UP_ACCOUNT` 5), and personal model-subscription device codes (`SUBSCRIPTION_DEVICE_IP` 240, `SUBSCRIPTION_DEVICE_ACCOUNT` 120). Trips return 429 + `Retry-After` and emit an `auth.rate_limit.lockout` audit event; the store fails open with a loud log on outage. Counters on `/api/ops/health`. Full table: [rate-limiting.md](../rate-limiting.md) |
 | Public API origin | `NESSIE_API_PUBLIC_URL` | `https://api.nessie.works` in production. Used to mint OAuth redirect URIs outside an HTTP request (personal-assistant `connector_authorize`); defaults to `http://localhost:<port>` |
 | Public admin origin | `NESSIE_ADMIN_PUBLIC_URL` | `https://app.nessie.works` in production. UOA separately pins this origin on Nessie's billing lifecycle app key and authors Checkout/Portal return URLs; callers cannot supply or widen them through Nessie. |
-| Ledger routing | `LEDGER_PUBLIC_URL`, `LEDGER_PROXY_TOKEN`, `LEDGER_DEEPWATER_MCP_URL`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | `LEDGER_PUBLIC_URL=https://ledger.unlikeotherai.com`; DeepWater uses `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; builtin web search uses `/v1/serper/search`; configure inference with `https://ledger.unlikeotherai.com/v1/openai`, which Nessie rewrites per request to Ledger's `/v1/:serviceId/*` route for OpenAI, Kimi, MiniMax, DeepSeek, or a custom adapter. `LEDGER_PROXY_TOKEN` is Nessie's dedicated, product-bound Ledger app API key used for DeepWater and Serper; `NESSIE_MODEL_API_KEY` is configured with that same Nessie key for the Ledger model transport. Never reuse another product's app key or a webhook signing secret. Inference signing is best-effort by deployment and mandatory once available: with the `UOA_*` signer configured, every Ledger inference request carries signed non-null user/org/team/agent/run attribution, requires a linked SSO identity with UOA delegation, and fails before fetch when that identity is missing; with no signer configured at all, inference dispatches on `NESSIE_MODEL_API_KEY` alone and Ledger enforces per token whether signed provenance is also required (see "Ledger inference without UOA" below). Tool calls also carry their stable tool-call id. Direct provider keys, including `SERPER_API_KEY`, are not consumed. The deployment-wide model URL wins; when it is absent and an approved organization provider record resolves to Ledger, Nessie signs after route resolution. User-triggered background jobs persist origin and fail before provider dispatch if it cannot be resolved. Workflow execution additionally checks queued actor/scope against its durable run and installation. DeepWater enablement fails closed when its adapter URL, Nessie app API key, UOA signing/client settings, or first-party catalog is absent. Integration-managed instances reject generic test, refresh, healthcheck, secret, and delete operations; the Integrations toggle is their sole lifecycle path. Personal DeepWater credentials are unsupported. |
+| Ledger routing | `LEDGER_PUBLIC_URL`, `LEDGER_PROXY_TOKEN`, `LEDGER_DEEPWATER_MCP_URL`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | `LEDGER_PUBLIC_URL=https://ledger.unlikeotherai.com`; DeepWater uses `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; builtin web search uses `/v1/serper/search`, or a multi-provider Purpose API when `NESSIE_LEDGER_SEARCH_PURPOSE_API_ID` is set (next row); configure inference with `https://ledger.unlikeotherai.com/v1/openai`, which Nessie rewrites per request to Ledger's `/v1/:serviceId/*` route for OpenAI, Kimi, MiniMax, DeepSeek, or a custom adapter. `LEDGER_PROXY_TOKEN` is Nessie's dedicated, product-bound Ledger app API key used for DeepWater and Serper; `NESSIE_MODEL_API_KEY` is configured with that same Nessie key for the Ledger model transport. Never reuse another product's app key or a webhook signing secret. Inference signing is best-effort by deployment and mandatory once available: with the `UOA_*` signer configured, every Ledger inference request carries signed non-null user/org/team/agent/run attribution, requires a linked SSO identity with UOA delegation, and fails before fetch when that identity is missing; with no signer configured at all, inference dispatches on `NESSIE_MODEL_API_KEY` alone and Ledger enforces per token whether signed provenance is also required (see "Ledger inference without UOA" below). Tool calls also carry their stable tool-call id. Direct provider keys, including `SERPER_API_KEY`, are not consumed. The deployment-wide model URL wins; when it is absent and an approved organization provider record resolves to Ledger, Nessie signs after route resolution. User-triggered background jobs persist origin and fail before provider dispatch if it cannot be resolved. Workflow execution additionally checks queued actor/scope against its durable run and installation. DeepWater enablement fails closed when its adapter URL, Nessie app API key, UOA signing/client settings, or first-party catalog is absent. Integration-managed instances reject generic test, refresh, healthcheck, secret, and delete operations; the Integrations toggle is their sole lifecycle path. Personal DeepWater credentials are unsupported. |
 | UOA commercial billing boundary | `UOA_BILLING_APP_KEY_NESSIE`, `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`, `UOA_BASE_URL` | Nessie's own `uoa_app_` customer-lifecycle key bound in UOA to the `nessie` service, exact actor issuer/audience/key, public half of the dedicated RS256 actor key, and `https://app.nessie.works` return origin. The app key and private JWK are separate GitHub Actions secrets. The deploy runner cryptographically validates both before its dependency-free host installer atomically updates the root-readable `.env`; neither may be reused by Ledger or another product. Every credits/add-on read, top-up/automatic-top-up/add-on action, customer-statement, Checkout, Portal, cancellation-preview, cancellation-confirm, and direct-session access-confirmation request carries a fresh 45-second actor JWT for the exact linked UOA user/org/team, with the audience pinned to the exact endpoint path that request hits (derived from the validated request path at the point the request is built, never a hard-coded list). Direct access is confirmed only after direct SSO exchange and before local session issuance; UOA failure blocks login and indirect product use never calls the seam. Nessie fixed-allowlists UOA's action id/path/body and renders UOA's display-ready remaining-credit model; browsers cannot provide upstream paths, action bodies, return URLs, app keys, actor assertions, balances, or commercial calculations. |
 | DeepSignal MCP boundary | `DEEPSIGNAL_MCP_APP_KEY` | DeepSignal-issued, Nessie-only `dsk_` application key. Required at API and worker startup in hosted/self-hosted modes and installed into the production host `.env` from the same-named GitHub Actions secret. It must differ from every configured secret-bearing environment credential (Ledger/model/billing, UOA signing/client, auth/session, DB, storage, email/admin, provider, push, or webhook credentials) and every encrypted per-org DeepSignal webhook signing secret; API and worker startup validate both boundaries. The user-scoped managed instance stores only this env reference; each outbound chat/history/digest/action request adds exact `ai.invoke` UOA delegation and fresh signed Nessie provenance independently. There is no OAuth or personal-credential fallback. |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](../deployment-modes-and-auth-spec/overview.md) |
 | Model (chat) | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat through Ledger; direct provider keys are not used by Nessie. A Ledger `NESSIE_MODEL_BASE_URL` always takes its bearer from `NESSIE_MODEL_API_KEY` and never inherits `OPENAI_API_KEY`/`OPENAI_CHAT_API_KEY`; startup fails if a Ledger URL is set with no key at all. |
 | Agent avatar images | `NESSIE_LEDGER_IMAGE_PURPOSE_API_ID` | Optional. When set, agent-avatar "Generate with AI" routes image generation through this Ledger **Purpose API** (`/v1/purpose/:id/images/generations`) on `NESSIE_MODEL_BASE_URL`'s Ledger host, so Ledger owns the image provider fallback chain (e.g. Gemini image primary, OpenAI `gpt-image-2` fallback) behind one endpoint. Unset keeps the direct `/v1/openai/images/generations` service route, which fails when OpenAI's key is exhausted. Uses the same `NESSIE_MODEL_API_KEY` bearer and signed identity as chat; the token must hold a grant for that Purpose API. |
+| Web search | `NESSIE_LEDGER_SEARCH_PURPOSE_API_ID` | Optional. When set, builtin `web_search` and the search card's pager post to this Ledger **Purpose API** (`/v1/purpose/:id/search`) instead of the single-provider `/v1/serper/search` route, so Ledger walks a priority list of search providers (Serper, SerpAPI, Brave, Perplexity…), spills to the next one on a 429, and answers in its canonical `search.v1` shape. Adding a provider is then a Ledger route change with no Nessie deploy. Uses the same `LEDGER_PROXY_TOKEN` bearer and signed identity; the token must hold a grant for that Purpose API. Unset keeps the Serper route. [Standard](../standards/web-search.md) |
 | Model (embeddings) | `NESSIE_EMBEDDING_PROVIDER`, `NESSIE_EMBEDDING_MODEL`, `NESSIE_EMBEDDING_SERVICE_ID`, `NESSIE_EMBEDDING_BASE_URL`, `NESSIE_EMBEDDING_API_KEY` | Optional; every unset field inherits the chat provider, so a deployment that sets none of these embeds exactly as before. Set them when the chat provider serves no embeddings endpoint — DeepSeek does not, and Ledger answers `403 embeddings is not allowed for deepseek`. `NESSIE_EMBEDDING_SERVICE_ID` is the Ledger `/v1/:serviceId/*` segment embeddings are rewritten to; without it the segment defaults to the provider name, which is meaningless for `openai-compatible`. Production uses `openai-compatible` + `jina` + `jina-embeddings-v3`, inheriting the Ledger host and key. **Changing the embedding model is a schema change** — see "Embedding model and vector width" below. |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
 | Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |
@@ -59,6 +63,46 @@ Communications connectors register from env at API and worker startup via
 `@nessie/comms-providers`; a provider whose vars are unset simply does not
 register, and its sync jobs park cleanly on `ConnectorNotRegisteredError`.
 Startup logs one line listing the registered providers (no secrets).
+
+### Graceful shutdown and health probes
+
+Three endpoints, three different questions. Point each probe at the right one.
+
+| Endpoint | Question | Fails (503) when |
+|----------|----------|------------------|
+| `GET /api/health` | Is this process alive? | It has begun draining (`status: "draining"`). Nothing else. |
+| `GET /api/health/ready` | May this replica take new requests? | Its `SELECT 1` fails, or it is draining. |
+| `GET /api/ops/health` | How is the deployment doing? | Never — it is a super-admin **report** (worker heartbeats, queue depth, dead jobs, rate-limiter counters), not a probe. |
+
+**Point the load balancer at `/api/health/ready`.** Worker heartbeats
+deliberately do not gate it. They used to, which meant a worker outage — or an
+ordinary worker deploy — would 503 every API replica at once and empty the
+pool, taking the product down over a subsystem the API does not need in order
+to answer a request. That signal now lives only on `/api/ops/health`, where a
+person reads it.
+
+On `SIGTERM`/`SIGINT` the API drains rather than dying where it stands:
+
+1. readiness flips to 503, so the load balancer stops sending new work;
+2. every SSE stream gets a final `retry: 2000` + `event: shutdown` frame and is
+   ended, and every WebSocket is closed with code `1012` ("service restart") —
+   clients reconnect to a surviving replica in about a second instead of
+   waiting out a full backoff on a reset socket. Fastify will not do this
+   itself: `forceCloseConnections` defaults to `'idle'`, and an open stream is
+   an in-flight request, so `close()` alone would wait for a client that may
+   never hang up;
+3. `app.close()` runs the shutdown hooks — LISTEN client, pools, Prisma,
+   maintenance timers, and in `local` mode the embedded worker;
+4. exit `0`. A drain still unfinished after `NESSIE_SHUTDOWN_TIMEOUT_MS`
+   (default 25 s) exits `1`, so a wedged shutdown shows up as a non-zero exit
+   instead of a silent SIGKILL.
+
+The push gateway does the same, minus step 2 (it holds no client connections):
+its `app.close()` is what ends the APNs HTTP/2 session with a GOAWAY, and
+without it every deploy dropped the dead-token verdicts still in flight.
+
+Both processes handle the signal only when started as the main module, so an
+embedder keeps its own signal handling.
 
 ### Google scopes, capabilities and verification tiers
 
@@ -256,15 +300,35 @@ an app is refused by name, `PROVIDER_OAUTH_NOT_CONFIGURED`.
 | Variable | Provider | Where it comes from |
 | --- | --- | --- |
 | `NESSIE_BOARD_LINEAR_CLIENT_ID` / `_SECRET` | Linear | **Optional.** An OAuth application in Linear's workspace settings, to offer *sign in with Linear* as well as the API key. Redirect URI: `<NESSIE_API_PUBLIC_URL>/api/board-sources/connections/linear/callback` |
-| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | The signing secret of the app's webhook, if one is configured. Without it Linear syncs on its five-minute poll only — which is what an API-key connection always does, since an app-level webhook belongs to an app nobody registered. |
+| `NESSIE_BOARD_LINEAR_WEBHOOK_SECRET` | Linear | **Optional, and rarely needed.** The signing secret of an *app-level* webhook, for a deployment that configured one on its OAuth app. A source registers its own webhook first (below), which needs nothing here. |
 | `NESSIE_BOARD_JIRA_CLIENT_ID` / `_SECRET` | Jira Cloud | An OAuth 2.0 (3LO) app in the Atlassian developer console, with `read:jira-work write:jira-work read:jira-user offline_access`. Same callback path with `/jira/`. |
 | `NESSIE_BOARD_GITHUB_CLIENT_ID` / `_SECRET` | GitHub | An OAuth app or GitHub App. Scopes `repo read:project read:org`. Same callback path with `/github/`. |
-| `NESSIE_BOARD_GITHUB_WEBHOOK_SECRET` | GitHub | The app's webhook secret, for `X-Hub-Signature-256` verification. |
+| `NESSIE_BOARD_GITHUB_WEBHOOK_SECRET` | GitHub | **Optional.** An App-level webhook secret, for `X-Hub-Signature-256`. A repository source registers its own hook with a secret this deployment mints, so this is only for a Projects v2 board or an App webhook you already run. |
 | `NESSIE_BOARD_TRELLO_API_KEY` / `_API_SECRET` | Trello | A Power-Up's key and secret. Trello has no authorization-code flow: the person's token arrives in a URL fragment and is submitted once to `/api/board-sources/connections/trello/complete`, then encrypted. |
 
 `NESSIE_API_PUBLIC_URL` must be set for webhooks: it is what the worker uses to
 mint the callback URL it registers with the vendor. Without it, sources still
 sync on their polling interval.
+
+**A source registers its own callback.** After its first successful sync, the
+worker asks the provider to call
+`<NESSIE_API_PUBLIC_URL>/api/board-sources/webhooks/<provider>/<token>` for that
+container alone — Linear `webhookCreate` scoped to the team, Jira a JQL-scoped
+webhook, Trello a board webhook, GitHub a repository hook. So a deployment that
+registered no app-level webhook still gets changes in seconds rather than on the
+next poll, and an installation connected with a pasted API key gets them too.
+Removing a source un-registers it.
+
+Two of them will refuse, and that is not a fault: **only a Linear workspace
+admin may manage webhooks** (an OAuth grant would need the `admin` scope, which
+this adapter does not ask for), and a GitHub repository hook needs admin on the
+repository. A refusal leaves the source on its declared poll and the board says
+which it is running on — *Live* against *every 5 min* on the board's source
+strip. GitHub Projects v2 has no per-source hook at all and always polls.
+
+Where the provider mints the signing secret rather than accepting ours — Linear
+hands it back exactly once, at creation — it is sealed onto the source row with
+the same envelope credentials use and decrypted only to verify a delivery.
 
 Credentials are encrypted at rest with the deployment's `NESSIE_AUTH_SECRET`
 through the same sealed-secret seam the communications connector and the MCP
@@ -273,5 +337,7 @@ them, and only `loadBoardSourceConnectionContext` decrypts one.
 
 Jira's webhooks are unsigned and expire after 30 days, so a Jira source carries
 a per-source callback token whose **hash** is all that is stored; a delivery
-that cannot present the token is dropped. Every other provider signs its
-deliveries with the app secret above.
+that cannot present the token is dropped, and a renewal sweep re-registers
+before the 30 days are up. Every other provider signs its deliveries, against
+the secret that source's own registration returned and falling back to the
+app-level secret above.

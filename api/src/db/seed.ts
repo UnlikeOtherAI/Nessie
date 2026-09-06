@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient, type User } from '@prisma/client'
 import { parseUserId } from '@nessie/schemas'
 import { seedDefaultBoard } from '@nessie/team-admin'
-import { seedDefaultPolicies } from '../services/policy.js'
+import { seedDefaultPolicies } from '../services/policy-seed.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from '../services/user-session-lock.js'
 import { createBootstrapSeedPlan, type BootstrapUserSeedInput } from './bootstrap.js'
 

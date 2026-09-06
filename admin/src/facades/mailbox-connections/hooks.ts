@@ -6,7 +6,7 @@ import type {
   MailboxDiscoveryResult,
   MailboxTransportSecurity,
 } from '../../lib/api-client'
-import { mailboxConnectionKeys } from '../../lib/query-keys'
+import { mailboxConnectionKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**

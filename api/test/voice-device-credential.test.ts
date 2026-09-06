@@ -250,7 +250,8 @@ const appWithRoutes = async (prisma: PrismaClient) => {
     // Never reached by these cases: a voice credential is resolved before the
     // session verifier, and an unauthenticated request never gets that far.
     authenticateRequest: async () => null,
-    checkRateLimit: () => null,
+    config: { api: { rateLimit: {} } } as never,
+    rateLimiter: { guard: async () => ({ allowed: true }) } as never,
     prisma,
   } as never)
   app.post('/api/voice/sessions/:id/usage', { config: { voiceCredential: true } }, async () => ({
@@ -314,7 +315,8 @@ dbTest('a device credential cannot mint another one', async () => {
     const app = Fastify()
     registerGlobalAuthHook(app, {
       authenticateRequest: async () => null,
-      checkRateLimit: () => null,
+      config: { api: { rateLimit: {} } } as never,
+      rateLimiter: { guard: async () => ({ allowed: true }) } as never,
       prisma,
     } as never)
     // Registered exactly as the real one is: no voice-credential marker.

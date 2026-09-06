@@ -8,9 +8,9 @@ import {
   type RefObject,
   type TouchEvent as ReactTouchEvent,
 } from 'react'
-import { useNavigationLayout } from '../../lib/mobile-shell'
+import { useNavigationLayout } from '../../navigation/mobile-shell'
 import type { SheetSide } from '../../navigation/overlay'
-import { isPhoneBackSwipeClaimableTarget } from '../../layouts/admin-shell/phone-navigation-gesture'
+import { isPhoneBackSwipeClaimableTarget } from '../../navigation/phone-navigation-gesture'
 import {
   isSheetSwipeAligned,
   resolveSheetSwipeOutcome,

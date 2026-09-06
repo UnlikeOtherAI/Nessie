@@ -1,52 +1,22 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { iterationKeys, taskKeys } from '../../lib/query-keys'
+import type {
+  TaskPriority,
+  TaskRecord as SharedTaskRecord,
+  TaskStatus,
+} from '@nessie/schemas'
+
+import { iterationKeys } from '../iterations/keys'
+import { taskKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export type TaskStatus =
-  | 'inbox'
-  | 'assigned'
-  | 'in_progress'
-  | 'review'
-  | 'done'
-  | 'failed'
-  | 'cancelled'
-  | 'awaiting_approval'
+export type { TaskPriority, TaskStatus }
 
-export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
-
-export type TaskRecord = {
-  id: string
-  projectId: string | null
-  /** The board this task lives on; null ⇒ the project's default board. */
-  boardId: string | null
-  iterationId: string | null
-  storyPoints: number | null
-  fieldValues: Record<string, unknown>
-  /** Present only on a task mirrored from an external source. */
-  externalLink: {
-    sourceId: string
-    provider: 'jira' | 'linear' | 'trello' | 'github'
-    externalKey: string
-    externalUrl: string
-    remoteStateName: string | null
-    remoteAssigneeDisplay: string | null
-    lastInboundAt: string | null
-    writeMode: 'read_only' | 'read_write'
-  } | null
-  status: TaskStatus
-  priority: TaskPriority
-  dueDate: string | null
-  archivedAt: string | null
-  title: string | null
-  purpose: string | null
-  detail: string | null
-  assigneeUserId: string | null
-  assigneeAgentId: string | null
-  assigneeName: string | null
-  ownerName: string | null
-  createdAt: string
-  updatedAt: string
-}
+// The server-enforced shape (`TaskRecordSchema`, parsed on every response in
+// `api/src/routes/tasks.ts`) rather than a hand-copied type, so a field the
+// server adds (organizationId, agentId, parentTaskId, runId, ownerUserId,
+// createdByUserId, …) reaches this client automatically instead of silently
+// drifting out of the hand-written copy.
+export type TaskRecord = SharedTaskRecord
 
 export type AssignableUser = {
   id: string

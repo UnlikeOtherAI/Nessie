@@ -8,7 +8,11 @@ import { createThreadMessage } from '../src/services/message-create.js'
 // A channel with one bound agent ("Bound"); the org also has a shared agent
 // "Scout" that is NOT a member of this channel.
 const makePrisma = () => {
-  const calls = { agentFindManyWhere: [] as unknown[], messageUpdates: [] as unknown[] }
+  // `messageCreates` is where the mentions must land: the agent-mention merge
+  // used to be a second `message.update` after the create transaction had
+  // already committed, so a crash between them left a message whose stored
+  // mentions omitted every agent mention the client had already been shown.
+  const calls = { agentFindManyWhere: [] as unknown[], messageCreates: [] as unknown[] }
   const candidates = [
     { id: 'agent-scout', name: 'Scout', ownerUserId: null, visibility: 'team' },
     { id: 'agent-secret', name: 'Secret', ownerUserId: 'user-2', visibility: 'private' },
@@ -37,26 +41,20 @@ const makePrisma = () => {
       }),
     },
     message: {
-      create: async () => ({
-        id: 'message-1',
-        role: 'user',
-        content: '@Scout and @Bound please help',
-        metadata: {},
-        reactions: [],
-        user: { id: 'user-1', displayName: 'User One' },
-        agent: null,
-      }),
-      update: async (input: unknown) => {
-        calls.messageUpdates.push(input)
+      create: async (input: unknown) => {
+        calls.messageCreates.push(input)
         return {
-        id: 'message-1',
-        role: 'user',
-        content: '@Scout and @Bound please help',
-        metadata: {},
-        reactions: [],
-        user: { id: 'user-1', displayName: 'User One' },
-        agent: null,
+          id: 'message-1',
+          role: 'user',
+          content: '@Scout and @Bound please help',
+          metadata: {},
+          reactions: [],
+          user: { id: 'user-1', displayName: 'User One' },
+          agent: null,
         }
+      },
+      update: async () => {
+        throw new Error('message metadata must be written by the create, not a later update')
       },
     },
     agent: {
@@ -174,10 +172,10 @@ test('a structured mention selects one bound agent when an unbound agent has the
   if (result.kind !== 'created') return
   assert.deepEqual(result.pendingAgentInvites, [])
   assert.deepEqual(result.channelAgents.map((candidate) => candidate.id), [selectedId])
-  const update = calls.messageUpdates[0] as {
+  const created = calls.messageCreates[0] as {
     data: { metadata: { mentions: unknown } }
   }
-  assert.deepEqual(update.data.metadata.mentions, {
+  assert.deepEqual(created.data.metadata.mentions, {
     agentIds: [selectedId],
     agentMentions: [mention],
     broadcast: null,
@@ -243,10 +241,10 @@ test('a PA mention is validated by its binding ids and stored as structured meta
     role: 'assistant',
     systemPrompt: null,
   }])
-  const update = calls.messageUpdates[0] as {
+  const created = calls.messageCreates[0] as {
     data: { metadata: { mentions: unknown } }
   }
-  assert.deepEqual(update.data.metadata.mentions, {
+  assert.deepEqual(created.data.metadata.mentions, {
     agentIds: [],
     agentMentions: [mention],
     broadcast: null,

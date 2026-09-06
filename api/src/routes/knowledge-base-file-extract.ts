@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { KnowledgeInferenceOriginError } from '@nessie/knowledge'
 import { KNOWLEDGE_EXTRACT_TOPIC } from '@nessie/schemas'
 
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { emitAuditEvent } from '../services/audit.js'
 import {
   getKnowledgeInferenceActorContext,

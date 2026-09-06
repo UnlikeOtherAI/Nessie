@@ -21,7 +21,7 @@ import {
   ConnectCloudBrowserBodySchema,
 } from '../contracts/browser-cloud.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { findThreadForUser } from '../services/messages.js'
+import { findThreadForUser } from '../services/message-read-state.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -54,6 +54,21 @@ const sendCloudBrowserError = (reply: FastifyReply, error: unknown): boolean => 
  * who can see the thread. An unauthorized session is shaped exactly like an
  * absent one.
  */
+export interface ViewableCloudBrowserSession {
+  id: string
+  threadId: string
+  agentId: string
+  agentName: string
+  runId: string
+  status: string
+  startedAt: Date
+  endedAt: Date | null
+  controlledByUserId: string | null
+  browserbaseSessionId: string | null
+  connectionProjectId: string
+  connectionApiKeyRef: string
+}
+
 const loadViewableSession = async (
   prisma: RouteDeps['prisma'],
   input: {
@@ -61,7 +76,7 @@ const loadViewableSession = async (
     sessionId: string
     findThreadForUser: typeof findThreadForUser
   },
-): Promise<{ id: string; threadId: string } | null> => {
+): Promise<ViewableCloudBrowserSession | null> => {
   const session = await prisma.cloudBrowserSession.findFirst({
     where: {
       id: input.sessionId,
@@ -73,6 +88,15 @@ const loadViewableSession = async (
       agentBrowserId: true,
       authenticated: true,
       requestedByUserId: true,
+      agentId: true,
+      runId: true,
+      status: true,
+      startedAt: true,
+      endedAt: true,
+      controlledByUserId: true,
+      browserbaseSessionId: true,
+      agent: { select: { name: true } },
+      connection: { select: { projectId: true, apiKeyRef: true } },
     },
   })
   if (!session) return null
@@ -98,7 +122,20 @@ const loadViewableSession = async (
       if (signedIn === 0) return null
     }
   }
-  return { id: session.id, threadId: session.threadId }
+  return {
+    id: session.id,
+    threadId: session.threadId,
+    agentId: session.agentId,
+    agentName: session.agent.name,
+    runId: session.runId,
+    status: session.status,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    controlledByUserId: session.controlledByUserId,
+    browserbaseSessionId: session.browserbaseSessionId,
+    connectionProjectId: session.connection.projectId,
+    connectionApiKeyRef: session.connection.apiKeyRef,
+  }
 }
 
 export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -291,52 +328,15 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     if (!actorContext) return reply
 
     const { sessionId } = request.params as { sessionId: string }
-    // Session ids are global uuids, so organization is re-checked here and not
-    // inferred from the thread gate alone — the document-stream rule verbatim.
-    const session = await prisma.cloudBrowserSession.findFirst({
-      where: { id: sessionId, organizationId: actorContext.tenant.organizationId },
-      select: {
-        id: true,
-        agentId: true,
-        runId: true,
-        threadId: true,
-        status: true,
-        startedAt: true,
-        endedAt: true,
-        agentBrowserId: true,
-        authenticated: true,
-        requestedByUserId: true,
-        controlledByUserId: true,
-        browserbaseSessionId: true,
-        agent: { select: { name: true } },
-        connection: { select: { projectId: true, apiKeyRef: true } },
-      },
+    const session = await loadViewableSession(prisma, {
+      actorContext,
+      sessionId,
+      findThreadForUser,
     })
-
-    const notFound = (): FastifyReply => {
+    if (!session) {
       // An unauthorized session is shaped exactly like an absent one.
       sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
       return reply
-    }
-    if (!session) return notFound()
-
-    const thread = await findThreadForUser(
-      prisma,
-      session.threadId,
-      actorContext.actor.actorId,
-      actorContext.tenant.organizationId,
-    )
-    if (!thread) return notFound()
-    if (session.authenticated && session.requestedByUserId !== actorContext.actor.actorId) {
-      const signedIn = session.agentBrowserId
-        ? await prisma.agentBrowserLogin.count({
-          where: {
-            agentBrowserId: session.agentBrowserId,
-            userId: actorContext.actor.actorId,
-          },
-        })
-        : 0
-      if (signedIn === 0) return notFound()
     }
 
     let liveViewUrl: string | null = null
@@ -344,12 +344,12 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     const live = session.status === 'allocating' || session.status === 'active'
       || session.status === 'releasing'
     if (live && session.browserbaseSessionId) {
-      const apiKey = await secretResolver.resolve(session.connection.apiKeyRef)
+      const apiKey = await secretResolver.resolve(session.connectionApiKeyRef)
       if (apiKey) {
         try {
           const client = createBrowserbaseClient({
             apiKey,
-            projectId: session.connection.projectId,
+            projectId: session.connectionProjectId,
           })
           const view = await client.liveView(session.browserbaseSessionId)
           liveViewUrl = view.debuggerFullscreenUrl
@@ -371,7 +371,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       CloudBrowserSessionDetailSchema.parse({
         id: session.id,
         agentId: session.agentId,
-        agentName: session.agent.name,
+        agentName: session.agentName,
         runId: session.runId,
         status: session.status,
         startedAt: session.startedAt.toISOString(),

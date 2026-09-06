@@ -107,6 +107,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 ## Linting
 
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
+- **React hooks**: `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` run as errors over `admin/src`, `admin/test` and `packages/sign-in-surface/src`; a deliberate omission needs an `eslint-disable-next-line` with the reason beside it, never a silent one.
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
 ## Natural-language intent is model-judged — never string-matched
@@ -233,11 +234,13 @@ when one changes, the same turn updates it, not this section.
   is unique only inside it, so a flat `<team>.<base>` is forbidden rather than
   merely discouraged. Resolving a hostname is a lookup that grants nothing — the
   team switch that follows is the authorization — and matching one is a
-  label comparison, never a suffix test, or `evil-nessie.works` passes. The edge
-  needs one DNS record and one wildcard certificate **per organisation**, and
-  why it is per organisation rather than per team is a rate limit with teeth:
+  label comparison, never a suffix test, or `evil-nessie.works` passes. On a
+  tenant hostname the tenant is the brand, palette included, which is the one
+  carve-out from "the sign-in screen is instance state". The edge needs no DNS
+  record per tenant but **one certificate line per hostname**, and the reasons
+  it cannot be a wildcard are three separate constraints on a shared proxy:
   read [docs/standards/team-hosts.md](docs/standards/team-hosts.md) before
-  touching host routing, CORS, or the edge.
+  touching host routing, CORS, tenant branding, or the edge.
 - **Automatic team access by verified email domain — Nessie holds the policy,
   UOA still authorizes every grant.** Every grant is a relay to `addTeamMember`
   carrying a fresh org-scoped subject assertion for the administrator who
@@ -280,8 +283,9 @@ when one changes, the same turn updates it, not this section.
   is a `TaskBoardPlacement` pin over it that is ignored once its column's
   category no longer matches. Placement is resolved server-side by
   `resolveBoardPlacement` (`@nessie/team-admin`) — never in the client — and
-  board/column/field/source administration is gated by `canAdministerProject`,
-  not organisation ownership.
+  board/column/field/source administration, plus iteration
+  create/update/delete, is gated by `canAdministerProject`
+  (`requireProjectAdmin` at the route), not organisation ownership.
   Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
   before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call
@@ -345,9 +349,11 @@ when one changes, the same turn updates it, not this section.
   UOA-authored display models and stores no commercial state.
   Read [`docs/standards/customer-billing.md`](docs/standards/customer-billing.md)
   before writing code here.
-- **Builtin `web_search` is a Ledger-only Serper route.** Every call posts to
-  Ledger's `/v1/serper/search` with signed provenance; direct
-  `google.serper.dev` calls and `SERPER_API_KEY` fallbacks are forbidden.
+- **Builtin `web_search` is Ledger-only, and Ledger picks the engine.** Every
+  call posts to Ledger with signed provenance — the multi-provider Purpose API
+  route when one is configured, else the single Serper route — so adding
+  SerpAPI or Brave is a Ledger route change, not a Nessie deploy; `present`
+  posts the page as a search card whose pager is a human search door.
   Read [`docs/standards/web-search.md`](docs/standards/web-search.md)
   before writing code here.
 - deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.

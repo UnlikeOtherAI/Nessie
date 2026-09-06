@@ -8,7 +8,7 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
-import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts.js'
+import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts/team.js'
 import {
   canManageChannel,
   channelTeamInclude,
@@ -78,6 +78,12 @@ export const listChannelsForUser = async (
           principalUserId: { not: null },
           agent: { agentKind: 'personal_assistant' },
         },
+        // Participants are rendered in this order, so it has to be the same
+        // order every read. Unordered, Postgres is free to return the rows
+        // however it likes and the channel's PA list reshuffles between
+        // requests; the id breaks the ties two presences created in the same
+        // millisecond would otherwise leave open.
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: {
           agentId: true,
           id: true,
@@ -125,6 +131,28 @@ export const listChannelsForUser = async (
   const defaultThreadIds = channels.map((channel) => channel.threads[0]!.id)
   const unreadCountsByThread = await loadUnreadCountsByThread(prisma, defaultThreadIds, userId)
   const lastMessageAtByThread = await loadLastMessageAtByThread(prisma, defaultThreadIds)
+
+  // `viewerCanManage` mirrors `canManageChannel` (`@nessie/team-admin`), batched
+  // rather than looked up per row: the viewer's channel-member role is already
+  // loaded above, so only the organisation role (one row for this viewer) and
+  // the team roles across the distinct teams on this page are fetched, once
+  // each, instead of once per channel.
+  const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
+    prisma.organizationMember.findFirst({
+      where: { organizationId, userId },
+      select: { role: true },
+    }),
+    prisma.teamMember.findMany({
+      where: { userId, teamId: { in: [...new Set(channels.map((channel) => channel.teamId))] } },
+      select: { role: true, teamId: true },
+    }),
+  ])
+  const isManagerRole = (role: string | null | undefined): boolean =>
+    role === 'owner' || role === 'admin'
+  const viewerIsOrgManager = isManagerRole(viewerOrgMember?.role)
+  const viewerTeamRoleByTeamId = new Map(
+    viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
+  )
 
   const principalUserIds = [...new Set(
     channels.flatMap((channel) =>
@@ -185,6 +213,11 @@ export const listChannelsForUser = async (
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
+    viewerCanManage: !channel.systemChannelType && (
+      isManagerRole(channel.members[0]?.role)
+      || viewerIsOrgManager
+      || isManagerRole(viewerTeamRoleByTeamId.get(channel.teamId))
+    ),
     personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),

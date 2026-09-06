@@ -1,9 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
-import {
-  DeletePersonalAssistantPresenceBodySchema,
-  PersonalAssistantBootstrapResponseSchema,
-} from '../contracts.js'
+import { DeletePersonalAssistantPresenceBodySchema } from '../contracts/team.js'
+import { PersonalAssistantBootstrapResponseSchema } from '../contracts/agents.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -73,7 +71,7 @@ export const registerPersonalAssistantRoutes = (
 
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'personal_assistant.bootstrap' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'personal_assistant.bootstrap',
       outcome: 'success',
       resourceId: bootstrap.agentId,
       resourceType: 'agent',

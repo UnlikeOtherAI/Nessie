@@ -18,7 +18,8 @@ import {
   AgentCardValueError,
 } from '@nessie/team-admin'
 
-import { findThreadForUser } from './messages.js'
+import { toInputJson } from '../db/prisma-json.js'
+import { findThreadForUser } from './message-read-state.js'
 
 /**
  * Reading and answering an agent chat card.
@@ -46,6 +47,12 @@ export const loadReadableCard = async (
     select: {
       agent: { select: { id: true, name: true, role: true, systemPrompt: true } },
       agentId: true,
+      // Load-bearing for the press announcement, not decoration: a delegated
+      // system DM (the Personal Assistant's, or a global agent's home) is
+      // announced to the channel scope alone, and a press that published the
+      // organization scope too would put the response preview in front of the
+      // whole organisation (docs/standards/disclosure-boundaries.md).
+      channel: { select: { systemChannelType: true } },
       channelId: true,
       expiresAt: true,
       id: true,
@@ -281,13 +288,15 @@ export const buildResponseMetadata = (input: {
   actionKey: string
   cardId: string
 }): Prisma.InputJsonValue =>
-  AgentCardResponseMetadataSchema.parse({
-    agentCardResponse: {
-      actionKey: input.actionKey,
-      cardId: input.cardId,
-      schemaVersion: 1,
-    },
-  }) as unknown as Prisma.InputJsonValue
+  toInputJson(
+    AgentCardResponseMetadataSchema.parse({
+      agentCardResponse: {
+        actionKey: input.actionKey,
+        cardId: input.cardId,
+        schemaVersion: 1,
+      },
+    }),
+  )
 
 export const validateSubmission = (input: {
   actionKey: string

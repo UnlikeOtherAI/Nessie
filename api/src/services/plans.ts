@@ -6,12 +6,24 @@ import {
   parseRunId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-import type { PlanRecord, PlanStepRecord } from '../contracts.js'
+import type { PlanRecord, PlanStepRecord } from '../contracts/plans-mailbox.js'
 import {
   parseOptional,
   toInputJsonObjectWithDefault,
   toJsonRecord,
 } from './contract-helpers.js'
+
+export const PLAN_ERROR_CODES = {
+  STEP_SEQUENCE_CONFLICT: 'PLAN_STEP_SEQUENCE_CONFLICT',
+} as const
+
+export class PlanError extends Error {
+  override readonly name = 'PlanError'
+
+  constructor(public readonly code: string, message: string) {
+    super(message)
+  }
+}
 
 const mapPlanRecord = (plan: {
   agentId: string | null
@@ -204,7 +216,10 @@ export const addPlanStep = async (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new Error('PLAN_STEP_SEQUENCE_CONFLICT')
+        throw new PlanError(
+          PLAN_ERROR_CODES.STEP_SEQUENCE_CONFLICT,
+          'A step with this sequence already exists for the plan',
+        )
       }
       throw error
     }

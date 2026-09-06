@@ -1,7 +1,7 @@
 import type { FastifyReply } from 'fastify'
 import { MeResponseSchema } from '@nessie/schemas'
 
-import { type SessionTokenClaims, verifySessionToken } from '../auth/session.js'
+import type { SessionTokenClaims } from '../auth/session.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
 import { buildMeResponse } from '../services/auth.js'
@@ -27,7 +27,6 @@ export const completeConsumedAuthSession = async (
   },
 ): Promise<unknown> => {
   const {
-    authSecret,
     buildLocalSession,
     buildSessionForUser,
     config,
@@ -81,10 +80,6 @@ export const completeConsumedAuthSession = async (
         },
         { sessionId: consumed.sessionId, userAgent: input.userAgent },
       )
-  const verification = verifySessionToken(session.token, authSecret)
-  if (!verification.ok) {
-    return sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
-  }
   const remainingTtlSeconds = Math.max(
     1,
     Math.ceil((consumed.expiresAt.getTime() - Date.now()) / 1_000),
@@ -98,7 +93,7 @@ export const completeConsumedAuthSession = async (
   return createApiResponse({
     token: session.token,
     me: MeResponseSchema.parse(
-      await buildMeResponse(prisma, user, verification.claims, config),
+      await buildMeResponse(prisma, user, session.claims, config),
     ),
   })
 }

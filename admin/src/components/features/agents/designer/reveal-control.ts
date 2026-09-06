@@ -14,6 +14,9 @@ export const revealDesignerControl = (id: string): void => {
   // Restart the highlight when the assistant makes a second change quickly.
   void control.offsetWidth
   control.classList.add('designer-control-highlight')
+  // Fire-once DOM animation with no owner to unmount against: if `control`
+  // is gone by the time this fires, classList.remove on a detached node is a
+  // harmless no-op, so no clearTimeout/cleanup is needed.
   window.setTimeout(() => control.classList.remove('designer-control-highlight'), highlightDurationMs)
 
   const focusTarget = control.matches('input, textarea, select, button')

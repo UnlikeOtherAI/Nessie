@@ -3,11 +3,9 @@ import type { BoardColumnRecord, ColumnCategory } from '../../../facades/boards/
 import { useCreateColumn, useDeleteColumn, useUpdateColumn } from '../../../facades/boards/hooks'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/kanban/kanban-config'
+import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
 import { Pill } from '../../../components/primitives/Pill'
-
-const errorMessage = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 
 const CategorySelect = ({
   value,
@@ -85,7 +83,7 @@ const ColumnRow = ({
     update.mutate(
       { id: column.id, name: trimmed },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not rename column')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not rename column')),
         onSuccess: onSaved,
       },
     )
@@ -96,7 +94,7 @@ const ColumnRow = ({
       { id: column.id, category },
       {
         onError: (cause) =>
-          onSaveError(errorMessage(cause, 'Could not change column category')),
+          onSaveError(formErrorMessage(cause, 'Could not change column category')),
         onSuccess: onSaved,
       },
     )
@@ -127,7 +125,7 @@ const ColumnRow = ({
             ],
       },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not change what this column shows')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not change what this column shows')),
         onSuccess: onSaved,
       },
     )
@@ -270,7 +268,7 @@ export const BoardColumnsEditor = ({
     createColumn.mutate(
       { name: trimmed, category: newCategory },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not add column')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not add column')),
         onSuccess: () => setNewName(''),
       },
     )

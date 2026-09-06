@@ -171,7 +171,8 @@ const buildAppWithActor = (prisma: PrismaClient) => {
   const app = Fastify({ logger: false })
   registerGlobalAuthHook(app, {
     authenticateRequest: authenticateRequest as never,
-    checkRateLimit: () => null,
+    config: { api: { rateLimit: {} } } as never,
+    rateLimiter: { guard: async () => ({ allowed: true }) } as never,
     prisma,
   })
   registerAuthSecurityRoutes(

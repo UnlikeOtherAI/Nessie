@@ -23,7 +23,7 @@ import {
   updateBoardColumn,
 } from '@nessie/team-admin'
 
-import { BoardTaskRecordSchema } from '../contracts.js'
+import { BoardTaskRecordSchema } from '../contracts/tasks-board.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
 

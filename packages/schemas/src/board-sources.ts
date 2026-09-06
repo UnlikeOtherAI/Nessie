@@ -164,7 +164,23 @@ export const BoardSourceRecordSchema = z.object({
   healthReason: z.string().nullable(),
   healthDetail: z.string().nullable(),
   lastSyncCompletedAt: TimestampSchema.nullable(),
+  /**
+   * When the run now in flight began. On the record rather than derived,
+   * because "Sync now" has to be able to say it is doing something: a claimed
+   * source shows a start with no completion after it, and that is the only
+   * honest signal that a sweep picked the job up.
+   */
+  lastSyncStartedAt: TimestampSchema.nullable(),
   lastErrorCode: z.string().nullable(),
+  /**
+   * Whether the provider is pushing changes at this deployment, rather than the
+   * board waiting for the next poll. It answers the question a person actually
+   * has in front of a stale-looking board — "will this update on its own?" —
+   * and it is a real difference: seconds against `pollingIntervalMinutes`.
+   */
+  webhookActive: z.boolean(),
+  /** How long the board can lag when nothing is pushed. Null: no poll declared. */
+  pollingIntervalMinutes: z.number().int().nullable(),
   /** Whose delegated authority the sync runs under. */
   connectionOwnerUserId: UserIdSchema,
   connectionOwnerDisplayName: z.string().nullable(),

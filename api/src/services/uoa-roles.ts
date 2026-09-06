@@ -197,3 +197,143 @@ export const projectUoaRoles = async (
   }
   return { orgRole }
 }
+
+/**
+ * What UOA asserted about this person's teams, keyed by external organisation
+ * id. Built from the verified rotation directory (`/org/me`, which spans every
+ * organisation the person can switch into) and, for the organisation the
+ * session is standing in, unioned with the `org.teams` claim carried by the
+ * signed access token itself.
+ */
+export type UoaAssertedTeams = ReadonlyMap<string, ReadonlySet<string>>
+
+export const buildUoaAssertedTeams = (input: {
+  activeExternalOrgId?: string
+  claimedTeamIds?: readonly string[]
+  entries: readonly { organizationId: string; teamId: string }[]
+}): UoaAssertedTeams => {
+  const asserted = new Map<string, Set<string>>()
+  const add = (organizationId: string, teamId: string): void => {
+    const teams = asserted.get(organizationId)
+    if (teams) {
+      teams.add(teamId)
+      return
+    }
+    asserted.set(organizationId, new Set([teamId]))
+  }
+  for (const entry of input.entries) {
+    add(entry.organizationId, entry.teamId)
+  }
+  if (input.activeExternalOrgId) {
+    for (const teamId of input.claimedTeamIds ?? []) {
+      add(input.activeExternalOrgId, teamId)
+    }
+  }
+  return asserted
+}
+
+/**
+ * The revocation half of the projection.
+ *
+ * `projectUoaRoles` re-applies the roles UOA claims; without this, nothing ever
+ * removes a membership UOA has withdrawn, so the local rows — which
+ * `authenticateRequest` reads as the live authorization — were append-only and
+ * outlived the UOA membership that authorized them (2026-09-05 API review,
+ * FO2-1). Run inside the rotation transaction, against the same verified
+ * directory the switcher is rendered from.
+ *
+ * Only **UOA-bound** rows are reconciled: a `Team` with no `externalTeamId`
+ * (a local team, a `systemManaged` surface) and an `Organization` with no
+ * `externalOrgId` (the unbound local install) have no upstream authority to be
+ * reconciled against, and are left exactly as they are. An organisation the
+ * directory does not name at all is one UOA no longer places this person in,
+ * so its membership is deactivated rather than deleted — the row and its audit
+ * history stay, and `ensureTeamMemberships` clears the flag again the moment
+ * UOA re-asserts a team there.
+ */
+export const reconcileUoaMembershipProjection = async (
+  tx: Prisma.TransactionClient,
+  input: { asserted: UoaAssertedTeams; userId: string },
+): Promise<{ deactivatedOrganizationIds: string[]; revokedTeamIds: string[] }> => {
+  const memberships = await tx.teamMember.findMany({
+    where: {
+      team: {
+        externalTeamId: { not: null },
+        project: { organization: { externalOrgId: { not: null } } },
+      },
+      userId: input.userId,
+    },
+    select: {
+      team: {
+        select: {
+          externalTeamId: true,
+          id: true,
+          projectId: true,
+          project: { select: { organization: { select: { externalOrgId: true } } } },
+        },
+      },
+    },
+  })
+  const revoked = memberships.filter(({ team }) => {
+    const externalOrgId = team.project.organization.externalOrgId
+    if (!externalOrgId || !team.externalTeamId) return false
+    return !input.asserted.get(externalOrgId)?.has(team.externalTeamId)
+  }).map(({ team }) => team)
+
+  if (revoked.length > 0) {
+    await tx.teamMember.deleteMany({
+      where: { teamId: { in: revoked.map((team) => team.id) }, userId: input.userId },
+    })
+    // A project row is the team row's other half (`ensureTeamMemberships`
+    // writes them together), so it follows the team out — unless another team
+    // this person still holds hangs off the same project, which the schema
+    // still permits (`Team.projectId` has no `@unique`).
+    const stillHeld = new Set((await tx.teamMember.findMany({
+      where: { userId: input.userId },
+      select: { team: { select: { projectId: true } } },
+    })).map(({ team }) => team.projectId))
+    const orphanedProjectIds = [...new Set(revoked.map((team) => team.projectId))]
+      .filter((projectId) => !stillHeld.has(projectId))
+    if (orphanedProjectIds.length > 0) {
+      await tx.projectMember.deleteMany({
+        where: { projectId: { in: orphanedProjectIds }, userId: input.userId },
+      })
+    }
+  }
+
+  const organizationMemberships = await tx.organizationMember.findMany({
+    where: {
+      deactivatedAt: null,
+      organization: { externalOrgId: { not: null } },
+      userId: input.userId,
+    },
+    select: { organizationId: true },
+  })
+  const deactivatedOrganizationIds: string[] = []
+  for (const membership of organizationMemberships) {
+    // Any team at all — including a local one inside a bound organisation —
+    // keeps the membership: the question here is whether UOA still places this
+    // person in the organisation, not which teams they hold.
+    const teams = await tx.teamMember.count({
+      where: {
+        team: { project: { organizationId: membership.organizationId } },
+        userId: input.userId,
+      },
+    })
+    if (teams > 0) continue
+    await tx.organizationMember.updateMany({
+      where: {
+        deactivatedAt: null,
+        organizationId: membership.organizationId,
+        userId: input.userId,
+      },
+      data: { deactivatedAt: new Date() },
+    })
+    deactivatedOrganizationIds.push(membership.organizationId)
+  }
+
+  return {
+    deactivatedOrganizationIds,
+    revokedTeamIds: revoked.map((team) => team.id),
+  }
+}

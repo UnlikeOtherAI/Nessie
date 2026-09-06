@@ -1,5 +1,6 @@
 import type { PrismaClient, RunReplyPlacement } from '@prisma/client'
 import type { RunStatus } from '@nessie/schemas'
+import { buildAgentVisibilityWhere } from '@nessie/team-admin'
 
 // Statuses a run can be in while it is still live — the set the status surface
 // lists and the only set from which a run can be cancelled.
@@ -16,9 +17,9 @@ export const ACTIVE_RUN_STATUSES: RunStatus[] = [
 // it is covered here.
 export const RESTARTABLE_RUN_STATUSES: RunStatus[] = ['failed', 'cancelled']
 
-// A run scoped to the caller's organization, with the trigger message's metadata
+// A run the caller is entitled to reach, with the trigger message's metadata
 // hydrated so the handoff-guard can inspect it without a second query.
-export type OrgRun = {
+export type AccessibleRun = {
   id: string
   agentId: string
   // Present only for a PA shared-channel presence. Lifecycle actions must
@@ -39,13 +40,35 @@ export type OrgRun = {
   replyPlacement: RunReplyPlacement | null
 }
 
-export const loadRunForOrg = async (
+/**
+ * The one entitlement every run lifecycle action asks.
+ *
+ * Cancel, restart and continue are stronger acts than reading a run, so they
+ * take at least the gate the run *list* takes: `buildAgentVisibilityWhere`
+ * (`listActiveRuns`) plus the channel predicate every channel read composes
+ * (public in this organisation, or a channel this person joined). Scoping by
+ * organisation alone let any member who obtained a run's bare UUID stop, replay
+ * or resume a private agent's work inside a channel they cannot open.
+ */
+export const loadRunForActor = async (
   prisma: PrismaClient,
   runId: string,
-  organizationId: string,
-): Promise<OrgRun | null> => {
+  actor: { organizationId: string; userId: string },
+): Promise<AccessibleRun | null> => {
   const run = await prisma.run.findFirst({
-    where: { id: runId, thread: { channel: { organizationId } } },
+    where: {
+      id: runId,
+      agent: buildAgentVisibilityWhere(actor),
+      thread: {
+        channel: {
+          organizationId: actor.organizationId,
+          OR: [
+            { visibility: 'public' },
+            { members: { some: { userId: actor.userId } } },
+          ],
+        },
+      },
+    },
     select: {
       id: true,
       agentId: true,

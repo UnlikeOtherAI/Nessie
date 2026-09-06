@@ -27,6 +27,11 @@ export const registerActivityRoutes = (app: FastifyInstance, deps: RouteDeps): v
       send: (message) => {
         sendJson(message)
       },
+      // Lets a drain close this socket with 1012 ("service restart") — the hub
+      // tracks the connection but never sees the socket.
+      close: (code, reason) => {
+        socket.close(code, reason)
+      },
     })
     let currentScopes: WsScope[] = []
     let idleTimer: NodeJS.Timeout

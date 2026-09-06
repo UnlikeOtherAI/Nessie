@@ -2,19 +2,21 @@ import type { PrismaClient } from '@prisma/client'
 import type { FastifyReply, FastifyRequest, FastifyInstance } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { attributionFromActorContext } from '@nessie/runtime'
-import { mapPage, pageInclude, type KnowledgePageRecord } from '@nessie/knowledge'
+import {
+  ensureMyDocsSpace,
+  ensureProjectDocumentsSpace,
+  ensureTaskFolder,
+  mapPage,
+  pageInclude,
+  type KnowledgePageRecord,
+  type TaskFolderTask,
+} from '@nessie/knowledge'
 import {
   CreateTaskDocumentBodySchema,
   MyDocsSpaceResponseSchema,
 } from '../contracts/knowledge-base.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import {
-  ensureMyDocsSpace,
-  ensureProjectDocumentsSpace,
-  ensureTaskFolder,
-  type TaskFolderTask,
-} from '../services/knowledge-provisioning.js'
 import { sendFileServiceError } from './uploads.js'
 import {
   actorAuthorType,

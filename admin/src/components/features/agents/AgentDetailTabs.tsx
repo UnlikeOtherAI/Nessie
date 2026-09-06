@@ -22,10 +22,8 @@ import { SubAgentTree } from './SubAgentTree'
 import { AgentEmailSection } from './AgentEmailSection'
 import { ToolExecutionLog } from './ToolExecutionLog'
 import { AgentTodosTab } from './todos/AgentTodosTab'
-import {
-  useDesignerAssistantPanel,
-  type DesignerPageContext,
-} from './designer/DesignerAssistantPanelContext'
+import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelContext'
+import type { DesignerPageContext } from '../../../facades/designer/types'
 
 type Tab =
   | 'edit'

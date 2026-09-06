@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import type { AppDetailRecord } from '@nessie/schemas'
 
 import { useAddCustomApp } from '../../../facades/apps/connect-hooks'
-import { toFormErrors, type FormErrors } from '../../../facades/form-errors'
+import { toFormErrors, type FormErrors } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { FormField } from '../../shared/FormField'
 import { Input } from '../../shared/FormControls'

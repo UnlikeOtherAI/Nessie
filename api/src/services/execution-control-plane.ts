@@ -3,8 +3,8 @@ import type {
   AuthorizedActionContext,
   ExecutionEnvironmentTerminateJobPayload,
 } from '@nessie/schemas'
-import type { ExecutionEnvironmentInstanceRecord } from '../contracts.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import type { ExecutionEnvironmentInstanceRecord } from '../contracts/execution.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { mapExecutionEnvironmentInstance } from './execution-environments.js'
 
 const asObject = (value: unknown): Record<string, unknown> =>

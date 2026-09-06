@@ -2,20 +2,6 @@ import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscription
 import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
-
-// Load .env from project root (parent of api/) before config is parsed
-const envFile = resolve(import.meta.dirname, '../../.env')
-if (existsSync(envFile)) {
-  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq < 1) continue
-    const key = trimmed.slice(0, eq).trim()
-    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
-    if (!(key in process.env)) process.env[key] = val
-  }
-}
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
@@ -26,14 +12,16 @@ import {
   createDeepSignalMcpIdentityServiceFromEnv,
   createLedgerIdentityServiceFromEnv,
   createModelClient,
-  createPgPool,
   getStorage,
   isLedgerEndpoint,
   ModelUsageTracker,
 } from '@nessie/runtime'
 import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
+import { registerRawBodyJsonParser } from './lib/raw-body-json-parser.js'
+import { registerApiErrorHandler } from './lib/error-handler.js'
+import { createLifecycleState, installApiShutdownHandlers } from './lifecycle.js'
 import { createRealtimeHub } from './realtime/hub.js'
-import { seedDefaultPolicies } from './services/policy.js'
+import { seedDefaultPolicies } from './services/policy-seed.js'
 import { backfillProtectedMcpToolGrants } from './services/agent-tool-policy-registry.js'
 import { reconcilePersonalAssistantDefaultToolGrantsAtStartup } from './services/personal-assistant-default-tool-grants.js'
 import {
@@ -48,7 +36,8 @@ import {
   createCorsOriginChecker,
   createFastifyTrustProxyConfig,
   createServerContext,
-  type RequestWithRawBody,
+  ServerConfigurationError,
+  type ServerContext,
 } from './lib/server-context.js'
 import { registerApiRoutes } from './register-api-routes.js'
 import type { RouteDeps } from './routes/types.js'
@@ -61,31 +50,63 @@ import { registerToolBundleRoutes } from './routes/tools-bundles.js'
 
 export { createCorsOriginChecker } from './lib/server-context.js'
 
-const serverContext = createServerContext()
-const {
-  config,
-  prisma,
-  databaseUrl,
-  authSecret,
-  allowedCorsOrigins,
-  teamHostBaseDomain,
-  resolveBootstrapState,
-  logBootstrapUrl,
-  authenticateRequest,
-  requireActorContext,
-  requireOwner,
-  requireSuperAdmin,
-  canAccessChannelRealtimeEvent,
-  canAccessDashboardRealtimeEvent,
-  checkRateLimit,
-  rateLimiter,
-  disconnectPrismaClient,
-} = serverContext
+/**
+ * Fold the repo-root `.env` into `process.env` before any config is parsed.
+ *
+ * This used to run at module scope, which made importing this file — for
+ * `createCorsOriginChecker`, or for a test that wanted `buildApp` — read the
+ * filesystem and mutate the environment (2026-09-05 review, FO3-5). It now
+ * runs only on the paths that are about to construct a server context. Keys
+ * already present in the environment always win, so calling it twice is a
+ * no-op.
+ */
+const loadRootEnvFile = (): void => {
+  const envFile = resolve(import.meta.dirname, '../../.env')
+  if (!existsSync(envFile)) return
+  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq < 1) continue
+    const key = trimmed.slice(0, eq).trim()
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
+    if (!(key in process.env)) process.env[key] = val
+  }
+}
 
-const apiUsageTracker = new ModelUsageTracker()
-let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
+/**
+ * The composition root: `.env`, then config, then the Prisma pool and every
+ * auth helper built over it. Nothing here happens at import time — an importer
+ * of this module gets functions, not a database connection.
+ */
+const createDefaultServerContext = (): ServerContext => {
+  loadRootEnvFile()
+  return createServerContext()
+}
 
-export const buildApp = async () => {
+export const buildApp = async (
+  options: { serverContext?: ServerContext } = {},
+) => {
+  const serverContext = options.serverContext ?? createDefaultServerContext()
+  const {
+    config,
+    prisma,
+    databaseUrl,
+    authSecret,
+    allowedCorsOrigins,
+    teamHostBaseDomain,
+    authenticateRequest,
+    requireActorContext,
+    requireOwner,
+    requireSuperAdmin,
+    canAccessChannelRealtimeEvent,
+    canAccessDashboardRealtimeEvent,
+    rateLimiter,
+    disconnectPrismaClient,
+  } = serverContext
+
+  const apiUsageTracker = new ModelUsageTracker()
+  let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
   let ledgerIdentity: import('@nessie/runtime').LedgerIdentityService | null = null
   const app = Fastify({
     trustProxy: createFastifyTrustProxyConfig(config.api.trustedProxyHops),
@@ -101,27 +122,8 @@ export const buildApp = async () => {
       },
     },
   })
-
-  app.addContentTypeParser(
-    /^application\/([a-z0-9.+-]+\+)?json($|;)/i,
-    { parseAs: 'buffer' },
-    (request, body, done) => {
-      ;(request as RequestWithRawBody).rawBody = Buffer.isBuffer(body)
-        ? body
-        : Buffer.from(body)
-
-      if (body.length === 0) {
-        done(null, null)
-        return
-      }
-
-      try {
-        done(null, JSON.parse(body.toString('utf8')))
-      } catch (error) {
-        done(error as Error)
-      }
-    },
-  )
+  registerApiErrorHandler(app)
+  registerRawBodyJsonParser(app)
 
   // Create a single shared model client for all LLM calls (orchestrator, designer, memory)
   const modelApiKey = isLedgerEndpoint(config.model.baseUrl)
@@ -186,10 +188,17 @@ export const buildApp = async () => {
     prisma,
   })
 
-  const memoryPool = createPgPool(databaseUrl, {
-    max: config.database.poolMax,
-    min: config.database.poolMin,
-  })
+  // Memory capture, thought search and the realtime fan-out all speak raw SQL
+  // to the same database, so they share the hub's pool rather than opening a
+  // second one. Connection ceiling per API replica after this:
+  //   Prisma pool (config.database.poolMax, default 10)
+  // + this pg.Pool     (config.database.poolMax, default 10)
+  // + 1 dedicated LISTEN client held by PgRealtimeTransport
+  //   = poolMax * 2 + 1, i.e. 21 by default — down from 31, because the
+  //     separate memory pool was a third pool on the same URL. Multiply by
+  //     replica count against Postgres `max_connections`, and size with
+  //     NESSIE_DB_POOL_MAX / NESSIE_DB_POOL_MIN.
+  const memoryPool = realtimeHub.pool
   const messageMemoryCaptureConfig = sharedModelClient
     ? { pool: memoryPool, modelClient: sharedModelClient }
     : null
@@ -291,13 +300,15 @@ export const buildApp = async () => {
     runKnowledgeInferenceRequestContext(done)
   })
 
+  // Ordering matters and is unchanged: the hub goes first (it stops the LISTEN
+  // client before ending the pool it owns — the same pool `memoryPool` aliases,
+  // so there is no second `end()` here), then Prisma disconnects.
   app.addHook('onClose', async () => {
     await realtimeHub.close()
-    await memoryPool.end()
     await disconnectPrismaClient()
   })
 
-  registerGlobalAuthHook(app, { authenticateRequest, checkRateLimit, prisma })
+  registerGlobalAuthHook(app, { authenticateRequest, config, prisma, rateLimiter })
 
   // Per-domain route modules. Each `register<Domain>Routes(app, deps)` closes
   // over the shared `RouteDeps` (server context + buildApp-local resources),
@@ -330,8 +341,14 @@ export const buildApp = async () => {
     }`,
   )
 
+  // This server's drain flag: created here, read by the health routes, flipped
+  // by the drain. One per built app, so an embedder hosting two of them drains
+  // them independently (`src/lifecycle.ts`).
+  const lifecycle = createLifecycleState()
+
   const deps: RouteDeps = {
     ...serverContext,
+    lifecycle,
     realtimeHub,
     sharedModelClient,
     messageMemoryCaptureConfig,
@@ -400,11 +417,30 @@ export const buildApp = async () => {
     stopApiMaintenance()
   })
 
-  return app
+  // The hub and the drain flag travel with the app because a drain has to reach
+  // the live connections the hub tracks (Fastify's own close leaves in-flight
+  // requests alone, and an open SSE stream is an in-flight request) and has to
+  // flip the flag the health routes read (`src/lifecycle.ts`).
+  return { app, lifecycle, realtimeHub }
 }
 
 export const startApiServer = async () => {
-  const app = await buildApp()
+  let serverContext: ServerContext
+  try {
+    serverContext = createDefaultServerContext()
+  } catch (error) {
+    if (error instanceof ServerConfigurationError) {
+      // The refusal that used to be a `process.exit(1)` inside
+      // `createServerContext`. It still ends the process — but now only when a
+      // process is actually being started, not when the module is imported.
+      console.error(`[FATAL] ${error.message}`)
+      process.exit(1)
+    }
+    throw error
+  }
+  const { config, logBootstrapUrl, prisma, resolveBootstrapState } = serverContext
+
+  const { app, lifecycle, realtimeHub } = await buildApp({ serverContext })
   await runRefreshCredentialSweep(prisma, true)
   const initialBootstrapState = await resolveBootstrapState()
   if (initialBootstrapState) {
@@ -429,9 +465,21 @@ export const startApiServer = async () => {
     port: config.api.port,
   })
 
-  return app
+  // `config` travels with the result because the composition root no longer
+  // keeps one at module scope: the signal handler below needs the shutdown
+  // deadline, and this process's config is only knowable from here.
+  return { app, config, lifecycle, realtimeHub }
 }
 
+// Only a standalone API process owns the OS signals — the same guard the worker
+// uses (`worker/src/index.ts`), so an embedder that imports `buildApp` keeps its
+// own SIGINT/SIGTERM instead of having this drain hijack them.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await startApiServer()
+  const { app, config, lifecycle, realtimeHub } = await startApiServer()
+  installApiShutdownHandlers({
+    app,
+    hub: realtimeHub,
+    lifecycle,
+    timeoutMs: config.shutdownTimeoutMs,
+  })
 }

@@ -1,15 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client'
 import { useTabParam } from '../../navigation/useTabParam'
-import {
-  CHANNEL_TABS,
-  isAgentsTabAvailable,
-  isConversationAgentTabAvailable,
-  isConversationTriggersTabAvailable,
-  isConversationTodosTabAvailable,
-  resolveConversationAgent,
-  type ChannelTab,
-} from '../../components/features/channels/channel-helpers'
+import { CHANNEL_TABS, isAgentsTabAvailable, isConversationAgentTabAvailable, isConversationTriggersTabAvailable, isConversationTodosTabAvailable, resolveConversationAgent, type ChannelTab } from '../../components/features/channels/channel-tabs'
 
 // Which section of a conversation is showing, in one place.
 //
@@ -99,10 +91,13 @@ export const useChannelTab = ({
 
   // A channel whose last agent left keeps `?tab=agents` in the address bar
   // otherwise, and the URL would then describe a tab nobody can see. The
-  // writer is deliberately outside the dependency list: it is re-created each
-  // render, and the facts above are what the reset actually depends on.
+  // writer is re-created every render (it closes over the router's current
+  // search params), so it is read through a ref: the facts below are what the
+  // reset actually depends on.
+  const setActiveTabRef = useRef(setActiveTab)
+  setActiveTabRef.current = setActiveTab
   useEffect(() => {
-    if (participantsSettled && !selectedTabAvailable) setActiveTab('messages')
+    if (participantsSettled && !selectedTabAvailable) setActiveTabRef.current('messages')
   }, [
     activeTab,
     participantsSettled,

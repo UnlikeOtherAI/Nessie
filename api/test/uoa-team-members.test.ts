@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import Fastify from 'fastify'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 import type { PinnedFetch } from '@nessie/runtime'
 
 import { registerTeamMembersRoutes } from '../src/routes/team-members.js'
@@ -171,6 +171,19 @@ const makeApp = async (
     {
       prisma: makePrisma(),
       requireActorContext: () => actorContext,
+      // The real guard: owner-or-admin locally, then UOA authorizes the write
+      // from the caller's own subject assertion (docs/standards/team-model.md,
+      // "Who may ask, and who authorizes it").
+      requireOrgAdmin: (
+        context: AuthorizedActionContext,
+        reply: { code: (status: number) => { send: (body: unknown) => unknown } },
+      ) => {
+        if (isAdminActor(context)) return true
+        reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Owner or admin access required' },
+        })
+        return false
+      },
     } as unknown as Parameters<typeof registerTeamMembersRoutes>[1],
     deps,
   )
@@ -442,25 +455,29 @@ test('the roster read is open to any member of the team', async () => {
   })
 })
 
-test('the API relays UOA membership decisions instead of applying local roles', async () => {
+/**
+ * Reads follow UOA's own verdict; mutations pass a local owner/admin gate
+ * first. Both halves matter: this file used to claim the gate in prose while
+ * `relay` had none, and its sibling `routes/teams.ts` enforced one for the same
+ * class of relay (2026-09-05 review, FO1-7). The gate is a consistency check on
+ * who may ask — UOA still authorizes the write from the caller's assertion.
+ */
+test('a member below owner/admin is refused locally and never reaches UOA', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
       actorContextFor(['viewer']),
-      rosterDeps(calls, (call) =>
-        call.method === 'GET'
-          ? json({
-              data: [],
-              total: 0,
-              meta: { hasMore: false, nextCursor: null, prevCursor: null },
-              permissions: { createInvitation: false, viewPendingInvitations: false },
-            })
-          : json({ ok: true })),
+      rosterDeps(calls, () => json({
+        data: [],
+        total: 0,
+        meta: { hasMore: false, nextCursor: null, prevCursor: null },
+        permissions: { createInvitation: false, viewPendingInvitations: false },
+      })),
     )
 
     try {
       const invitations = await app.inject({ method: 'GET', url: '/api/team/invitations' })
-      assert.equal(invitations.statusCode, 200)
+      assert.equal(invitations.statusCode, 200, 'the read stays open to any member')
       assert.equal(invitations.json().data.permissions.addMember, false)
 
       const addMember = await app.inject({
@@ -468,10 +485,9 @@ test('the API relays UOA membership decisions instead of applying local roles', 
         url: '/api/team/members',
         payload: { uoaSub: 'usr_grace' },
       })
-      assert.equal(addMember.statusCode, 200)
-      assert.equal(calls.length, 2)
-      assert.equal(calls[1]?.method, 'POST')
-      assert.ok(calls[1]?.subjectAssertion)
+      assert.equal(addMember.statusCode, 403)
+      assert.equal(addMember.json().error.code, 'FORBIDDEN')
+      assert.equal(calls.length, 1, 'only the read reached UOA')
     } finally {
       await app.close()
     }

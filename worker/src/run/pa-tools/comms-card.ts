@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
-import { parseChannelId, parseThreadId } from '@nessie/schemas'
+import { publishMessageEnvelope } from '@nessie/runtime'
+import { parseThreadId } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildRealtimeScopesForChannel } from './message-destination.js'
 
@@ -46,22 +47,22 @@ const postConnectCard = async (
     select: { id: true },
   })
 
-  await context.realtimeTransport.publishWs(
+  await publishMessageEnvelope(
+    context.realtimeTransport,
     buildRealtimeScopesForChannel({
       channelId: thread.channel.id,
       organizationId: context.channel.organizationId,
       systemChannelType: thread.channel.systemChannelType,
     }),
     {
-      data: {
+      channelId: thread.channel.id,
+      message: {
         agentId: context.agentId,
-        channelId: parseChannelId(thread.channel.id),
-        contentPreview: input.content.slice(0, 200),
-        messageId: message.id,
+        content: input.content,
+        id: message.id,
         role: 'assistant',
-        threadId: parseThreadId(threadId),
       },
-      event: 'message.new',
+      threadId,
     },
   )
 

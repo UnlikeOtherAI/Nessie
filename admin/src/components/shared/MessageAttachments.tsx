@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { ApiResponse } from '@nessie/schemas'
-import { getBaseUrl } from '../../lib/api-client'
 import {
   attachmentPath,
   attachmentThumbnailPath,
@@ -8,6 +6,7 @@ import {
   useAuthedObjectUrlFromPath,
   type AttachmentRecord,
 } from '../../lib/uploads'
+import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { canViewAttachment } from './AttachmentViewer'
 
@@ -129,6 +128,8 @@ const DownloadChip = ({
     setDownloading(true)
     const headers = new Headers()
     if (token) headers.set('authorization', `Bearer ${token}`)
+    // Raw fetch: the api client unwraps a JSON envelope, and a download needs
+    // the response body as a blob to hand to an object URL.
     fetch(attachmentUrl(attachment.id), { headers })
       .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then((blob) => {
@@ -164,7 +165,7 @@ const hasPreview = (attachment: AttachmentRecord): boolean =>
   attachment.hasThumbnail === true || attachment.kind === 'image'
 
 export const useMessageAttachments = (messageId: string | null): AttachmentRecord[] => {
-  const { token } = useAuthSession()
+  const apiClient = useApiClient()
   const [attachments, setAttachments] = useState<AttachmentRecord[]>([])
 
   useEffect(() => {
@@ -173,14 +174,10 @@ export const useMessageAttachments = (messageId: string | null): AttachmentRecor
       setAttachments([])
       return
     }
-    const headers = new Headers()
-    if (token) headers.set('authorization', `Bearer ${token}`)
-    fetch(`${getBaseUrl()}/api/messages/${messageId}/attachments`, { headers })
-      .then((res) =>
-        res.ok ? (res.json() as Promise<ApiResponse<AttachmentRecord[]>>) : Promise.reject(),
-      )
-      .then((payload) => {
-        if (!cancelled) setAttachments(payload.data)
+    apiClient
+      .get<AttachmentRecord[]>(`/api/messages/${messageId}/attachments`)
+      .then((records) => {
+        if (!cancelled) setAttachments(records)
       })
       .catch(() => {
         if (!cancelled) setAttachments([])
@@ -188,7 +185,7 @@ export const useMessageAttachments = (messageId: string | null): AttachmentRecor
     return () => {
       cancelled = true
     }
-  }, [messageId, token])
+  }, [apiClient, messageId])
 
   return attachments
 }

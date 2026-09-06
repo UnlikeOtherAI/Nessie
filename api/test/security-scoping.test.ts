@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { WsScope } from '@nessie/schemas'
+import { buildAccessibleChannelWhere } from '@nessie/team-admin'
 import { shouldDeliverWsNotification } from '../src/realtime/hub.js'
-import { buildAccessibleChannelWhere } from '../src/services/agents.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const otherOrganizationId = '00000000-0000-4000-8000-000000000010'

@@ -8,7 +8,7 @@ import {
   type AuthorizedActionContext,
   type OrchestrateDecideJobPayload,
 } from '@nessie/schemas'
-import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
+import { enqueueOrchestrateDecide } from '@nessie/db'
 
 // `channel` is here because the enqueue chokepoint resolves the destination's
 // system-DM kind itself rather than trusting each wake path to pass it.

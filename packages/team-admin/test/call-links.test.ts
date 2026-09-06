@@ -39,10 +39,22 @@ const fakePrisma = (callProvider = 'google_meet'): PrismaClient => ({
   organizationMember: {
     findFirst: async () => ({ id: 'membership-1' }),
   },
+  teamMember: {
+    findUnique: async () => ({ id: 'team-membership-1' }),
+  },
   commsConnection: {
     updateMany: async () => ({ count: 1 }),
   },
 } as unknown as PrismaClient)
+
+// Every caller here names the team itself, so `team_member` is the entitlement
+// it must hold. `startCallForUser` is the `channel_member` caller.
+const teamMemberInput = {
+  entitlement: 'team_member',
+  organizationId: ORGANIZATION_ID,
+  teamId: TEAM_ID,
+  userId: USER_ID,
+} as const
 
 const baseDependencies = (): CreateCallLinkDependencies => ({
   encryptionSecret: 'encryption-secret',
@@ -58,7 +70,7 @@ test('dispatches Google Meet through the selected user credential', async () => 
   let receivedAccessToken: string | undefined
   const result = await createCallLinkForTeamUser(
     fakePrisma(),
-    { teamId: TEAM_ID, userId: USER_ID },
+    teamMemberInput,
     {
       ...baseDependencies(),
       createGoogleMeeting: async (accessToken) => {
@@ -79,7 +91,7 @@ test('dispatches Jitsi without loading a Google credential', async () => {
   let loadedGoogle = false
   const result = await createCallLinkForTeamUser(
     fakePrisma('jitsi'),
-    { teamId: TEAM_ID, userId: USER_ID },
+    teamMemberInput,
     {
       ...baseDependencies(),
       env: { NESSIE_JITSI_DOMAIN: 'jitsi.example.com' },
@@ -102,7 +114,7 @@ test('Microsoft Teams is a typed unconfigured provider', async () => {
   await assert.rejects(
     createCallLinkForTeamUser(
       fakePrisma('microsoft_teams'),
-      { teamId: TEAM_ID, userId: USER_ID },
+      teamMemberInput,
       baseDependencies(),
     ),
     (error: unknown) => error instanceof CallLinkError
@@ -121,7 +133,7 @@ for (const [credentialCode, callLinkCode] of credentialErrorCases) {
     await assert.rejects(
       createCallLinkForTeamUser(
         fakePrisma(),
-        { teamId: TEAM_ID, userId: USER_ID },
+        teamMemberInput,
         {
           ...baseDependencies(),
           loadGoogleCredential: async () => {
@@ -139,7 +151,7 @@ test('maps a Meet provider failure to MEET_LINK_FAILED', async () => {
   await assert.rejects(
     createCallLinkForTeamUser(
       fakePrisma(),
-      { teamId: TEAM_ID, userId: USER_ID },
+      teamMemberInput,
       {
         ...baseDependencies(),
         createGoogleMeeting: async () => {

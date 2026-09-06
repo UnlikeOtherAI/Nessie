@@ -12,7 +12,7 @@ import {
   selectAddressableAgents,
   type Recipient,
 } from '../lib/channel-compose-recipients'
-import { usePhoneLayout } from '../lib/mobile-shell'
+import { usePhoneLayout } from '../navigation/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
 import { DirectMessageAgentCreator } from '../components/features/channels/DirectMessageAgentCreator'
@@ -28,7 +28,7 @@ import {
   type MentionInputHandle,
 } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { RecipientBar } from '../components/shared/RecipientBar'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'

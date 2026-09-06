@@ -7,7 +7,8 @@ import type {
   ColumnCategory,
 } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
-import { projectKeys, taskKeys } from '../../lib/query-keys'
+import { projectKeys } from '../projects/keys'
+import { taskKeys } from '../tasks/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { TaskRecord } from '../tasks/hooks'
 
@@ -73,6 +74,7 @@ export const useCreateBoard = (projectId: string) => {
   return useMutation({
     mutationFn: (input: {
       name: string
+      iconEmoji?: string | null
       style?: BoardStyle
       copyColumnsFromBoardId?: string
     }) => apiClient.post<BoardRecord>(`/api/projects/${projectId}/boards`, input),
@@ -87,6 +89,9 @@ export const useUpdateBoard = (projectId: string) => {
     mutationFn: (input: {
       id: string
       name?: string
+      // `null` clears it, back to the shared board icon, so `undefined` and
+      // `null` have to stay distinguishable all the way to the request body.
+      iconEmoji?: string | null
       style?: BoardStyle
       filter?: BoardFilter
       position?: number

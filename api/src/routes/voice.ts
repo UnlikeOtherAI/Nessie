@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 
 import {
@@ -26,11 +25,7 @@ import {
   rotateVoiceSession,
   startVoiceSession,
 } from '../services/voice/voice-session.js'
-import {
-  hashToolArguments,
-  isVoiceTool,
-  runVoiceTool,
-} from '../services/voice/voice-tools.js'
+import { runVoiceToolCall } from '../services/voice/voice-tools.js'
 
 import { registerVoiceCallRecordRoute } from './voice-call-record.js'
 import { registerVoiceConversationRoutes } from './voice-conversation.js'
@@ -303,74 +298,16 @@ export const registerVoiceRoutes = (app: FastifyInstance, deps: RouteDeps): void
         sessionId,
         userId: actorContext.actor.actorId,
       })
-      if (!isVoiceTool(body.name)) {
-        return sendApiError(reply, 400, 'VOICE_TOOL_UNKNOWN', `Unknown tool: ${body.name}`)
-      }
 
-      const argumentsHash = hashToolArguments(body.args)
-      const existing = await prisma.voiceToolCall.findUnique({
-        where: {
-          voiceSessionId_providerCallId: {
-            voiceSessionId: session.id,
-            providerCallId: body.providerCallId,
-          },
-        },
-      })
-      if (existing) {
-        // A retry replays its answer. Different arguments under the same id is
-        // a different action wearing a used name, and is refused.
-        if (existing.argumentsHash !== argumentsHash) {
-          return sendApiError(
-            reply,
-            409,
-            'VOICE_TOOL_CALL_MISMATCH',
-            'That call id was already used with different arguments.',
-          )
-        }
-        return createApiResponse(
-          VoiceToolCallResponseSchema.parse({
-            result: (existing.result ?? {}) as Record<string, unknown>,
-            replayed: true,
-          }),
-        )
-      }
-
-      // The per-call ceiling is real spend protection: each tool result is
-      // re-sent to Gemini on every later turn of the conversation.
-      if (session.toolCallCount >= session.maxToolCalls) {
-        return sendApiError(
-          reply,
-          429,
-          'VOICE_TOOL_LIMIT',
-          'This call has used all the tool calls it is allowed.',
-        )
-      }
-
-      const result = await runVoiceTool(body.name, body.args, {
-        actorContext,
-        ledgerIdentity,
-        prisma,
+      const { result, replayed } = await runVoiceToolCall(prisma, {
         session,
+        name: body.name,
+        args: body.args,
+        providerCallId: body.providerCallId,
+        context: { actorContext, ledgerIdentity, prisma, session },
       })
 
-      await prisma.$transaction([
-        prisma.voiceToolCall.create({
-          data: {
-            voiceSessionId: session.id,
-            providerCallId: body.providerCallId,
-            toolName: body.name,
-            argumentsHash,
-            // Prisma's JSON input type does not accept a bare index signature.
-            result: result as Prisma.InputJsonValue,
-          },
-        }),
-        prisma.voiceSession.update({
-          where: { id: session.id },
-          data: { toolCallCount: { increment: 1 } },
-        }),
-      ])
-
-      return createApiResponse(VoiceToolCallResponseSchema.parse({ result, replayed: false }))
+      return createApiResponse(VoiceToolCallResponseSchema.parse({ result, replayed }))
     } catch (error) {
       return sendVoiceError(reply, error) ?? Promise.reject(error)
     }

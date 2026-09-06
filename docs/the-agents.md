@@ -1495,7 +1495,7 @@ When capacity is exhausted:
 
 When multiple agents work in the same project:
 
-- **File locks**: Advisory locks via `resource_locks` table. Agent acquires lock before file write, releases on step completion or timeout (60s).
+- **File locks (not yet wired in)**: `api/src/services/resource-locks.ts` implements advisory locking over the `resource_locks` table (`pg_advisory_xact_lock` on `(org, resourcePath)`) and it is exposed as three REST endpoints (`api/src/routes/resource-locks.ts`), but nothing in the worker, executor, or any file-write path acquires a lock before writing — the mechanism described here is not connected to agent file writes today. `releaseResourceLock` scopes release to the owning agent: it requires the caller's `agentId` and only updates a row still `releasedAt: null`, so one agent cannot release another's lock and a second release is a no-op rather than a double-write. See [docs/known-limitations.md](known-limitations.md).
 - **Conflict detection**: If two agents modify the same file in overlapping runs, the second write detects the conflict and either merges (if possible) or escalates to human.
 - **Plan-level write sets**: Plans declare expected write targets upfront. The orchestrator prevents concurrent plans with overlapping write sets.
 - **External resource locks**: For deploys, migrations, and shared environments — same lock table, longer timeouts.

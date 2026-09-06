@@ -1,48 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
+import type { UserAlertRecord as SharedUserAlertRecord } from '@nessie/schemas'
 import type { SseFrame } from '../../lib/sse'
-import { alertKeys } from '../../lib/query-keys'
+import { alertKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useEventStream } from '../realtime/event-stream'
 
-export type UserAlertRecord = {
-  id: string
-  kind:
-    | 'mention'
-    | 'task_assigned'
-    | 'knowledge_published'
-    | 'trigger_health'
-    | 'call_missed'
-    | 'team_invitation'
-    | 'approval_requested'
-    | 'automatic_membership_health'
-    | 'board_source_health'
-    | 'board_ticket_changed'
-  messageId: string | null
-  rootMessageId: string | null
-  threadId: string | null
-  channelId: string | null
-  channelLabel: string | null
-  projectId: string | null
-  taskId: string | null
-  knowledgePageId: string | null
-  triggerId: string | null
-  boardSourceId: string | null
-  metadata: {
-    inviteId: string
-    organizationId: string
-    teamId: string
-    teamName: string
-    invitedBy?: string
-    expiresAt?: string
-  } | null
-  actorUserId: string | null
-  actorAgentId: string | null
-  actorDisplayName: string | null
-  readAt: string | null
-  createdAt: string
-}
+// The server-enforced shape (`UserAlertRecordSchema`, parsed on every
+// response in `api/src/routes/alerts.ts`) rather than a hand-copied type —
+// a field the server adds (like `callId`) reaches this client automatically
+// instead of silently drifting out of the hand-written copy.
+export type UserAlertRecord = SharedUserAlertRecord
 
 export type AttentionSummary = {
   assignedWork: AttentionSummarySection
@@ -178,7 +147,7 @@ export const useAlertEvents = (): void => {
 // row that merely marks itself read.
 export const getAlertLink = (
   alert: UserAlertRecord,
-): { to: string; state?: { highlightMessageId: string } } | null => {
+): { to: string; state?: { highlightCallId?: string; highlightMessageId?: string } } | null => {
   if (alert.kind === 'trigger_health' && alert.triggerId) {
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
@@ -191,16 +160,6 @@ export const getAlertLink = (
       to: `/projects/${alert.projectId}/settings?section=sources&source=${alert.boardSourceId}`,
     }
   }
-  if (alert.kind === 'board_ticket_changed' && alert.projectId) {
-    // Straight to the board carrying the ticket that moved. The task id opens
-    // its card, so the reader lands on the thing that changed rather than on a
-    // board they then have to scan.
-    return {
-      to: alert.taskId
-        ? `/projects/${alert.projectId}/board?task=${alert.taskId}`
-        : `/projects/${alert.projectId}/board`,
-    }
-  }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }
   }
@@ -210,11 +169,17 @@ export const getAlertLink = (
   if (alert.kind === 'call_missed' && alert.channelId) {
     // A missed call belongs to its channel's call record/message, never to a
     // reply thread. Keep this separate from generic mentions so this durable
-    // attention kind has an explicit owning surface.
-    return {
-      to: `/channels/${alert.channelId}`,
-      state: alert.messageId ? { highlightMessageId: alert.messageId } : undefined,
-    }
+    // attention kind has an explicit owning surface. `callId` travels in
+    // state the same way `highlightMessageId` does for every other kind, so
+    // the channel surface can jump straight to the call once it reads it.
+    const state =
+      alert.callId || alert.messageId
+        ? {
+            ...(alert.callId ? { highlightCallId: alert.callId } : {}),
+            ...(alert.messageId ? { highlightMessageId: alert.messageId } : {}),
+          }
+        : undefined
+    return { to: `/channels/${alert.channelId}`, state }
   }
   if (alert.channelId) {
     if (alert.threadId && alert.rootMessageId) {

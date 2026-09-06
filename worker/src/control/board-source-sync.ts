@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
@@ -14,9 +14,12 @@ import {
   BOARD_SOURCE_BACKOFF_CEILING_MS,
   BOARD_SOURCE_CLAIM_TIMEOUT_MS,
 } from '@nessie/schemas'
+import { sealSecret } from '@nessie/runtime'
 import {
   applyInboundItem,
+  autoMatchItemAssignees,
   type BoardWatchEvent,
+  externalTenantKeyFor,
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
   loadIdentityLinks,
@@ -117,6 +120,11 @@ export const executeBoardSourceSync = async (
   }
 
   const container = source.container as Record<string, unknown>
+  const tenant = {
+    organizationId: source.organizationId,
+    provider: source.provider,
+    externalTenantKey: externalTenantKeyFor(source),
+  }
   const applyContext = {
     id: source.id,
     organizationId: source.organizationId,
@@ -124,11 +132,7 @@ export const executeBoardSourceSync = async (
     provider: source.provider,
     stateMapping: parseStateMapping(source.stateMapping),
     fieldMappings: parseFieldMappings(source.fieldMappings),
-    identityByExternalUserId: await loadIdentityLinks(prisma, {
-      organizationId: source.organizationId,
-      provider: source.provider,
-      externalTenantKey: externalTenantKey(source.provider, container, source.connection),
-    }),
+    identityByExternalUserId: await loadIdentityLinks(prisma, tenant),
   }
 
   await prisma.boardSource.update({
@@ -151,6 +155,15 @@ export const executeBoardSourceSync = async (
       const result = await adapter.fetchPage(context, container, checkpoint, {
         syncWindowDays: source.syncWindowDays,
       })
+      // Before the page is applied, not after: an assignee this run can
+      // recognise by email must land on the very items that named them, rather
+      // than on whatever changes next.
+      await autoMatchItemAssignees(
+        prisma,
+        tenant,
+        result.items,
+        applyContext.identityByExternalUserId,
+      )
       for (const item of result.items) {
         const outcome = await applyInboundItem(prisma, applyContext, item)
         if (outcome.applied === 'unmapped_state') {
@@ -223,21 +236,6 @@ export const executeBoardSourceSync = async (
 const pollingIntervalMs = (adapter: { incrementalPollingIntervalMs?: number }): number =>
   adapter.incrementalPollingIntervalMs ?? 15 * 60 * 1000
 
-/**
- * The tenant one identity mapping covers. Jira's is the site (a 3LO token spans
- * sites, so the container carries it); Linear's is the workspace; the others
- * have no tenant of their own, so the provider name is the key.
- */
-const externalTenantKey = (
-  provider: string,
-  container: Record<string, unknown>,
-  connection: { externalTenantId: string },
-): string => {
-  if (provider === 'jira') return String(container.cloudId ?? '')
-  if (provider === 'linear') return connection.externalTenantId
-  return provider
-}
-
 const ensureWebhook = async (
   deps: BoardSourceSyncDeps,
   adapter: ReturnType<typeof resolveBoardSourceAdapter>,
@@ -248,10 +246,15 @@ const ensureWebhook = async (
   if (source.webhookExternalId) return
   const token = randomUUID()
   try {
-    const registration = await adapter.ensureWebhook(context, container, {
-      url: `${deps.publicApiUrl}/api/board-sources/webhooks/${adapter.provider}/${token}`,
-      token,
-    })
+    const registration = await adapter.ensureWebhook(
+      context,
+      container,
+      buildWebhookCallback(deps, adapter.provider, token),
+    )
+    // Null is the provider declining, not a failure — an ordinary member's
+    // Linear key may not create webhooks, and a repository the person can read
+    // but not administer has no hook to hang. The declared poll covers both,
+    // and the board says which it is running on.
     if (!registration) return
     await deps.prisma.boardSource.update({
       where: { id: source.id },
@@ -262,6 +265,9 @@ const ensureWebhook = async (
         // the provider holds, and a leaked database row must not be enough to
         // forge a delivery.
         webhookTokenHash: createHash('sha256').update(token).digest('hex'),
+        webhookSecretCiphertext: registration.signingSecret
+          ? sealSecret(deps.encryptionSecret, registration.signingSecret)
+          : null,
       },
     })
   } catch {
@@ -273,6 +279,36 @@ const ensureWebhook = async (
     })
   }
 }
+
+/**
+ * The callback one registration is made against: where the provider calls, the
+ * token that identifies the source in that URL, and a signing secret offered to
+ * providers that let the caller choose one. A provider that mints its own
+ * ignores the offer and returns what it minted.
+ *
+ * A fresh token *and* a fresh secret every registration, so a re-registration
+ * rotates away from a leaked callback rather than re-blessing it.
+ */
+export const buildWebhookCallback = (
+  deps: Pick<BoardSourceSyncDeps, 'publicApiUrl'>,
+  provider: string,
+  token: string,
+): { url: string; token: string; secret: string } => ({
+  url: webhookCallbackUrl(deps.publicApiUrl ?? '', provider, token),
+  token,
+  secret: randomBytes(32).toString('hex'),
+})
+
+/**
+ * The one place a callback URL is spelled. Trello signs `body + callbackURL`,
+ * so verification rebuilds this from the delivery's own token — a second
+ * spelling would verify against a URL the provider is not calling.
+ */
+export const webhookCallbackUrl = (
+  publicApiUrl: string,
+  provider: string,
+  token: string,
+): string => `${publicApiUrl}/api/board-sources/webhooks/${provider}/${token}`
 
 const handleSyncFailure = async (
   deps: BoardSourceSyncDeps,

@@ -8,7 +8,7 @@ import {
   UpdateUserStatusRuleBodySchema,
   UpdateUserStatusScheduleBodySchema,
   UserStatusRecordSchema,
-} from '../contracts.js'
+} from '../contracts/users-presence.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   clearActiveUserStatus,

@@ -4,7 +4,7 @@ import {
   getPhoneNavigationSeedChain,
   isCrossSectionOrigin,
   type PhoneNavigationScreen,
-} from './phone-navigation'
+} from '../../navigation/phone-navigation'
 
 // The pure half of the phone navigation stack. The viewport owns React and
 // DOM; this module owns which screens exist and which one is current, so the

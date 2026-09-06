@@ -11,7 +11,7 @@ import {
   type MeResponse,
 } from '@nessie/schemas'
 import type { SessionTokenClaims } from '../auth/session.js'
-import type { AuthProviderDescriptor } from '../contracts.js'
+import type { AuthProviderDescriptor } from '../contracts/auth.js'
 import {
   deriveUoaTeamDirectoryFromTeams,
   readUoaTeamDirectory,

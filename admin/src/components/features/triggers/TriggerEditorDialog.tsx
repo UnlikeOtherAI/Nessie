@@ -152,6 +152,7 @@ export const TriggerEditorDialog = ({
     form.targetChannelId,
     form.targetKind,
     selectedAgent,
+    setForm,
   ])
 
   useEffect(() => {
@@ -167,7 +168,7 @@ export const TriggerEditorDialog = ({
       ...current,
       workflowInstallationId: workflowInstallations[0]?.id ?? '',
     }))
-  }, [form.targetKind, selectedWorkflowInstallation, workflowInstallations])
+  }, [form.targetKind, selectedWorkflowInstallation, setForm, workflowInstallations])
 
   // Dismissing is not discarding: the draft stays under this trigger's key.
   const handleClose = () => {

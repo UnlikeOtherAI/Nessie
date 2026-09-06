@@ -66,6 +66,11 @@ export type ChannelRecord = {
   memberRole?: 'owner' | 'admin' | 'member' | 'viewer' | null
   // Whether the caller has muted notifications for this channel (per-member).
   muted?: boolean
+  // Server-computed: may the viewer add or remove a member of this channel
+  // right now (`canManageChannel` — channel owner/admin, team owner/admin, or
+  // organisation owner/admin). Required, not optional, so a client can never
+  // default into showing a control the service will refuse.
+  viewerCanManage: boolean
   // A channel-scoped PA participant is deliberately not an AgentRecord: other
   // channel members never receive the singleton's private configuration.
   personalAssistantPresences?: PersonalAssistantPresenceParticipant[]

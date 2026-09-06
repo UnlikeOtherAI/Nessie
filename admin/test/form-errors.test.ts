@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { ApiClientError } from '@nessie/client-core'
 
-import { toFormErrors } from '../src/facades/form-errors.js'
+import { toFormErrors } from '../src/facades/forms/form-errors.js'
 
 test('a validation failure lands on the fields it is about', () => {
   const error = new ApiClientError('Invalid request payload', 'VALIDATION_ERROR', 400, {

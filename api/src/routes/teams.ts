@@ -6,6 +6,7 @@ import {
   isCallLinkProviderConfigured,
   listTeamsForOrganization,
   ProjectValidationError,
+  UoaBoundOrganizationError,
   type CallLinkProvider,
 } from '@nessie/team-admin'
 import { z } from 'zod'
@@ -23,7 +24,7 @@ import {
   type UoaRosterDeps,
 } from '../services/uoa-org-roster.js'
 import { mirrorExternalTeamName } from '../services/team-target.js'
-import { requireLocalMembershipManagement } from './membership-mode-gate.js'
+import { requireUnboundMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -67,9 +68,9 @@ export const registerTeamRoutes = (
   rosterDeps: UoaRosterDeps = {},
 ): void => {
   const {
-    config,
     prisma,
     requireActorContext,
+    requireOrgAdmin,
     requireOwner,
     resolveMembershipRole,
     MEMBERSHIP_ROLES,
@@ -192,6 +193,12 @@ export const registerTeamRoutes = (
         sendApiError(reply, 400, 'INVALID_INPUT', error.message)
         return reply
       }
+      if (error instanceof UoaBoundOrganizationError) {
+        // A team in a UOA-bound organisation is a UOA team; this door writes
+        // only locally, so it points at the one that relays.
+        sendApiError(reply, 403, 'TEAM_CREATION_OWNED_BY_IDP', error.message)
+        return reply
+      }
       throw error
     }
     if (!team) {
@@ -201,7 +208,7 @@ export const registerTeamRoutes = (
 
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'team.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'team.created',
       resourceType: 'team',
       resourceId: team.id,
       outcome: 'success',
@@ -217,9 +224,13 @@ export const registerTeamRoutes = (
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
-    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { teamId } = request.params as { teamId: string }
+    if (!await requireUnboundMembershipManagement(prisma, reply, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId,
+    })) return reply
+
     const body = request.body as { userId?: string; role?: string } | undefined
     if (!body?.userId) {
       sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
@@ -273,11 +284,7 @@ export const registerTeamRoutes = (
   app.patch('/api/teams/:teamId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const roles = actorContext.actor.roles ?? []
-    if (!roles.includes('owner') && !roles.includes('admin')) {
-      sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
-      return reply
-    }
+    if (!requireOrgAdmin(actorContext, reply)) return reply
 
     const body = parseInput(RenameTeamBodySchema, request.body, reply)
     if (!body) return reply
@@ -332,11 +339,7 @@ export const registerTeamRoutes = (
   app.patch('/api/teams/:teamId/settings', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const roles = actorContext.actor.roles ?? []
-    if (!roles.includes('owner') && !roles.includes('admin')) {
-      sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
-      return reply
-    }
+    if (!requireOrgAdmin(actorContext, reply)) return reply
 
     const body = parseInput(UpdateTeamSettingsBodySchema, request.body, reply)
     if (!body) return reply

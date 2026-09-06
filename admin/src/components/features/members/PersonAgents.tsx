@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { AgentRecord } from '../../../lib/api-client'
 import { AgentAvatar } from '../../shared/AgentAvatar'
-import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 
 /**
  * The agents one person stewards, rendered under their roster row — the

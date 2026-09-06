@@ -5,15 +5,14 @@ import {
   AgentCardRespondBodySchema,
   AgentCardSpecSchema,
   detectSecrets,
-  parseChannelId,
-  parseOrganizationId,
   parseThreadId,
-  parseUserId,
 } from '@nessie/schemas'
 import { forgetMessageThoughts } from '@nessie/memory'
-import { applyReplyBookkeeping } from '@nessie/runtime'
+import type { ReplyRootMetadata } from '@nessie/runtime'
 import { inheritAgentCardResponseBasis } from '@nessie/team-admin'
+import { enqueueOrchestrateDecide } from '@nessie/db'
 
+import { toInputJson } from '../db/prisma-json.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
@@ -32,8 +31,9 @@ import {
   rollbackAgentCardSecretPlacements,
   storeAgentCardSecrets,
 } from '../services/agent-card-secret-placement.js'
+import { publishMessageReply } from '../services/message-delivery.js'
+import { createSystemAuthoredReply } from '../services/system-authored-message.js'
 import { ResumeRollback, resumeSuspendedRun } from '../services/run-resume-core.js'
-import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -47,7 +47,7 @@ export const registerAgentCardRoutes = (
   app: FastifyInstance,
   deps: RouteDeps & { dashboardCredentials: CredentialStore },
 ): void => {
-  const { prisma, realtimeHub, requireActorContext } = deps
+  const { buildChannelRealtimeScopes, prisma, realtimeHub, requireActorContext } = deps
 
   app.get('/api/agent-cards/:cardId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -185,8 +185,8 @@ export const registerAgentCardRoutes = (
       responseMessageId: string
       responseRestricted: boolean
       resumedRunId: string | null
-      rootMessageId: string | null
-      replyMetadata: Awaited<ReturnType<typeof applyReplyBookkeeping>> | null
+      rootMessageId: string
+      replyMetadata: ReplyRootMetadata | null
       secretOutcomes: Record<string, unknown>
     }
     try {
@@ -195,7 +195,7 @@ export const registerAgentCardRoutes = (
         // expiry sweep, have exactly one winner.
         const claimed = await tx.agentCard.updateMany({
           data: {
-            resolutionValues: submission.values as unknown as Prisma.InputJsonValue,
+            resolutionValues: toInputJson(submission.values),
             resolvedActionKey: body.actionKey,
             resolvedAt: new Date(),
             resolvedByUserId: userId,
@@ -234,26 +234,29 @@ export const registerAgentCardRoutes = (
         })
 
         const rootMessageId = card.message.rootMessageId ?? card.messageId
-        const responseMessage = await tx.message.create({
-          data: {
+        // The press writes a message the person authored through a form, so it
+        // goes through the same door as any other server-authored row rather
+        // than a ninth hand-rolled `message.create`. Follower decision: the
+        // presser, because answering a card *is* participating in the reply
+        // thread the card opened (docs/standards/reply-threads.md), and the
+        // agent's answer to their press has to reach their Threads inbox.
+        const { message: responseMessage, replyMetadata } = await createSystemAuthoredReply(
+          tx,
+          {
+            authorId: userId,
             content,
+            followedByUserIds: [userId],
             metadata: buildResponseMetadata({ actionKey: body.actionKey, cardId: card.id }),
             role: 'user',
             rootMessageId,
             threadId: card.threadId,
             userId,
           },
-          select: { createdAt: true, id: true },
-        })
+        )
         await inheritAgentCardResponseBasis(tx, {
           organizationId,
           responseMessageId: responseMessage.id,
           sourceBasis: card.message.basisScopes,
-        })
-        const replyMetadata = await applyReplyBookkeeping(tx, {
-          authorId: userId,
-          replyCreatedAt: responseMessage.createdAt,
-          rootMessageId,
         })
 
         await tx.agentCard.update({
@@ -352,7 +355,7 @@ export const registerAgentCardRoutes = (
     }
 
     await emitAuditEvent(prisma, {
-      action: 'agent_card.responded' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'agent_card.responded',
       actorContext,
       metadata: {
         actionKey: body.actionKey,
@@ -366,10 +369,17 @@ export const registerAgentCardRoutes = (
       resourceType: 'agent_card',
     })
 
-    const scopes = [
-      { channelId: parseChannelId(card.channelId), kind: 'channel' as const },
-      { kind: 'organization' as const, organizationId: parseOrganizationId(organizationId) },
-    ]
+    // Every announcement below is scoped by the destination, not by the
+    // organisation the presser happens to belong to: a card answered inside a
+    // delegated system DM — the Personal Assistant's, or a global agent's home
+    // — announces to that channel alone. This route used to build the pair by
+    // hand and always included the organization scope, so a press in a private
+    // assistant DM put its response preview on every connected member's socket.
+    const scopes = buildChannelRealtimeScopes({
+      channelId: card.channelId,
+      organizationId,
+      systemChannelType: card.channel.systemChannelType,
+    })
 
     for (const [key, value] of Object.entries(outcome.secretOutcomes)) {
       const stored = value as { kind?: string; redactedMessageId?: string; reference?: string
@@ -379,7 +389,7 @@ export const registerAgentCardRoutes = (
       // A secret saved through a card belongs in the same audit trail as one
       // saved on the Secrets screen, or that trail is silently incomplete.
       await emitAuditEvent(prisma, {
-        action: 'secret.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+        action: 'secret.created',
         actorContext,
         metadata: { cardId: card.id, fieldKey: key, scopeType: stored.scopeType },
         outcome: 'success',
@@ -401,7 +411,7 @@ export const registerAgentCardRoutes = (
         ).catch(() => undefined)
       }
       await emitAuditEvent(prisma, {
-        action: 'message.redacted' as Parameters<typeof emitAuditEvent>[1]['action'],
+        action: 'message.redacted',
         actorContext,
         metadata: { cardId: card.id, fieldKey: key },
         outcome: 'success',
@@ -430,20 +440,24 @@ export const registerAgentCardRoutes = (
       event: 'card.updated',
     })
     // The response is an ordinary reply, so the feed and the reply panel
-    // refresh through the path they already use.
-    await realtimeHub.publishWs(scopes, {
-      data: {
-        authorUserId: parseUserId(userId),
-        channelId: parseChannelId(card.channelId),
-        ...(outcome.responseRestricted
-          ? { restricted: true }
-          : { contentPreview: content.slice(0, 200) }),
-        messageId: outcome.responseMessageId,
-        role: 'user' as const,
-        rootMessageId: outcome.rootMessageId ?? undefined,
-        threadId: parseThreadId(card.threadId),
+    // refresh through the path they already use — and through the one
+    // announcement envelope and the one channel-scope rule, so this press
+    // cannot drift from a typed reply.
+    await publishMessageReply({ buildChannelRealtimeScopes, realtimeHub }, {
+      channel: {
+        id: card.channelId,
+        organizationId,
+        systemChannelType: card.channel.systemChannelType,
       },
-      event: 'message.reply',
+      message: {
+        content,
+        id: outcome.responseMessageId,
+        ...(outcome.responseRestricted ? { restricted: true } : {}),
+        role: 'user',
+        userId,
+      },
+      rootMessageId: outcome.rootMessageId,
+      threadId: card.threadId,
     })
 
     return createApiResponse({

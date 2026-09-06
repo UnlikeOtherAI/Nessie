@@ -263,7 +263,10 @@ press did not, in an agent whose whole interaction style is card-driven.
 The rule now lives in two places, in descending order of strength:
 
 - **One chokepoint for the human-turn wake path.** `enqueueOrchestrateDecide`
-  (`api/src/queue/pgqueue.ts`) resolves the destination channel itself and
+  (`packages/db/src/queue.ts`, shared with the worker, whose `send_message`
+  tool wakes the same `orchestrate.decide` topic; re-exported from
+  `api/src/queue/pgqueue.ts` for existing API import paths) resolves the
+  destination channel itself and
   applies `withDelegatedSystemDmIdentity` (`@nessie/schemas`). A typed message,
   a card press and an invited agent's mention replay all go through it, and so
   does a fourth wake path whose author has never read this section. The

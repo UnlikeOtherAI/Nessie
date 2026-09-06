@@ -281,6 +281,11 @@ export const SetMessageThreadFollowBodySchema = z.object({
 })
 export type SetMessageThreadFollowBody = z.infer<typeof SetMessageThreadFollowBodySchema>
 
+export const ToggleMessageReactionBodySchema = z.object({
+  emoji: z.string().trim().min(1).max(64),
+})
+export type ToggleMessageReactionBody = z.infer<typeof ToggleMessageReactionBodySchema>
+
 export const MessageSearchResultSchema = z.object({
   id: z.string().uuid(),
   threadId: ThreadIdSchema,

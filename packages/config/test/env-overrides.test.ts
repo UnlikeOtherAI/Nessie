@@ -57,3 +57,52 @@ test('an emptied mapped variable is skipped rather than written as ""', () => {
 
   assert.notEqual(config.model.provider, '')
 })
+
+// Pool sizing had no env mapping at all: only `nessie.config.json` could move
+// it, so a containerised deployment was pinned to 10/2 and the per-replica
+// connection ceiling could not be tuned as replicas were added.
+test('NESSIE_DB_POOL_MAX and NESSIE_DB_POOL_MIN override the pool defaults', () => {
+  const config = load({ NESSIE_DB_POOL_MAX: '4', NESSIE_DB_POOL_MIN: '1' })
+
+  assert.equal(config.database.poolMax, 4)
+  assert.equal(config.database.poolMin, 1)
+})
+
+test('pool sizing falls back to the 10/2 defaults when unset', () => {
+  const config = load({})
+
+  assert.equal(config.database.poolMax, 10)
+  assert.equal(config.database.poolMin, 2)
+})
+
+test('NESSIE_SHUTDOWN_TIMEOUT_MS overrides the drain deadline, default 25000', () => {
+  assert.equal(load({}).shutdownTimeoutMs, 25_000)
+  assert.equal(load({ NESSIE_SHUTDOWN_TIMEOUT_MS: '8000' }).shutdownTimeoutMs, 8_000)
+})
+
+// Cloud Run, Heroku and Fly inject `PORT` and nothing else, so the API must
+// bind it — but an operator who pinned `NESSIE_API_PORT` (production pins the
+// container's internal 5554) must keep winning over whatever the platform set.
+test('PORT feeds api.port when NESSIE_API_PORT is absent', () => {
+  const config = load({ PORT: '8080' })
+
+  assert.equal(config.api.port, 8080)
+})
+
+test('NESSIE_API_PORT wins over PORT', () => {
+  const config = load({ PORT: '8080', NESSIE_API_PORT: '5554' })
+
+  assert.equal(config.api.port, 5554)
+})
+
+test('an emptied NESSIE_API_PORT falls back to PORT', () => {
+  const config = load({ PORT: '8080', NESSIE_API_PORT: '' })
+
+  assert.equal(config.api.port, 8080)
+})
+
+test('neither PORT nor NESSIE_API_PORT leaves the 5454 default', () => {
+  const config = load({})
+
+  assert.equal(config.api.port, 5454)
+})

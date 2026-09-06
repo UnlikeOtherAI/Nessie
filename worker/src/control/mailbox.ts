@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
-import type { PgRealtimeTransport } from '@nessie/runtime'
+import { publishMessageEnvelope, type PgRealtimeTransport } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -395,22 +395,22 @@ export const dispatchNextMailboxMessage = async (
     return true
   }
 
-  await realtimeTransport.publishWs(
+  await publishMessageEnvelope(
+    realtimeTransport,
     buildScopes({
       agentId: message.toAgentId,
       channelId: thread.channelId,
       organizationId: message.organizationId,
     }),
     {
-      data: {
-        agentId: parseAgentId(message.toAgentId),
-        channelId: parseChannelId(thread.channelId),
-        contentPreview: message.body.slice(0, 200),
-        messageId: publishPayload.messageId,
+      channelId: thread.channelId,
+      message: {
+        agentId: message.toAgentId,
+        content: message.body,
+        id: publishPayload.messageId,
         role: 'user',
-        threadId: parseThreadId(targetThreadId),
       },
-      event: 'message.new',
+      threadId: targetThreadId,
     },
   )
 

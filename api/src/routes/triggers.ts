@@ -7,8 +7,9 @@ import {
   CreateAgentTriggerBodySchema,
   FireAgentTriggerBodySchema,
   UpdateAgentTriggerBodySchema,
-} from '../contracts.js'
+} from '../contracts/triggers.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import { checkPolicy } from '../services/policy.js'
 import {
   createAgentTrigger,
@@ -156,6 +157,18 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    // Arming an automation decides what runs unattended, on whose identity and
+    // how often — audited like every other privileged mutation, alongside
+    // update/delete/fire and the lifecycle transitions.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.created',
+      resourceType: 'agent_trigger',
+      resourceId: trigger.id,
+      outcome: 'success',
+      metadata: { agentId, type: body.type },
+    })
+
     return reply.code(201).send(createApiResponse(AgentTriggerRecordSchema.parse(trigger)))
   })
 
@@ -170,7 +183,11 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -186,11 +203,20 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const updated = await updateAgentTrigger(prisma, triggerId, body)
+    const updated = await updateAgentTrigger(prisma, scope, body)
     if (!updated) {
       sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply
     }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.updated',
+      resourceType: 'agent_trigger',
+      resourceId: triggerId,
+      outcome: 'success',
+      metadata: { fields: Object.keys(body) },
+    })
 
     return createApiResponse(AgentTriggerRecordSchema.parse(updated))
   })
@@ -206,7 +232,11 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -217,7 +247,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const deleted = await deleteAgentTrigger(prisma, triggerId)
+    const deleted = await deleteAgentTrigger(prisma, scope)
     if (!deleted) {
       sendApiError(
         reply,
@@ -227,6 +257,14 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       )
       return reply
     }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.deleted',
+      resourceType: 'agent_trigger',
+      resourceId: triggerId,
+      outcome: 'success',
+    })
 
     return reply.code(204).send()
   })
@@ -242,7 +280,11 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -318,6 +360,15 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.fired',
+      resourceType: 'agent_trigger',
+      resourceId: triggerId,
+      outcome: 'success',
+      metadata: { existing: dispatched.existing, runId: dispatched.runId, source: 'manual' },
+    })
+
     return reply.code(202).send(
       createApiResponse({
         delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
@@ -340,7 +391,11 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const scope = {
+      organizationId: actorContext.tenant.organizationId,
+      triggerId,
+    }
+    const trigger = await getAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -359,7 +414,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
     const limit = Math.min(Math.max(parsedLimit, 1), 100)
 
-    const deliveries = await listAgentTriggerDeliveries(prisma, triggerId, limit)
+    const deliveries = await listAgentTriggerDeliveries(prisma, scope, limit)
     return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
   })
 

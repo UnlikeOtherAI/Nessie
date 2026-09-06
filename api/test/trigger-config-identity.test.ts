@@ -185,7 +185,10 @@ test('updateAgentTrigger cannot overwrite persisted launch identity', async () =
   let persistedConfig: unknown
   const prisma = {
     agentTrigger: {
-      findUnique: async () => ({
+      // The scope is folded into the `where`, so the by-id read is a
+      // `findFirst`; the tenancy itself is proved DB-backed in
+      // `trigger-tenancy-scope.test.ts`.
+      findFirst: async () => ({
         agentId: AGENT_ID,
         config: existingConfig,
         id: TRIGGER_ID,
@@ -201,7 +204,10 @@ test('updateAgentTrigger cannot overwrite persisted launch identity', async () =
     },
   } as unknown as PrismaClient
 
-  const updated = await updateAgentTrigger(prisma, TRIGGER_ID, {
+  const updated = await updateAgentTrigger(prisma, {
+    organizationId: launchOrigin.organizationId,
+    triggerId: TRIGGER_ID,
+  }, {
     config: {
       createdByUserId: '00000000-0000-4000-8000-00000000000f',
       interval_minutes: 120,

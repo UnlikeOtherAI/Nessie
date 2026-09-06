@@ -1,16 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 
 import { followReplyThread, unfollowReplyThread } from '@nessie/runtime'
-import {
-  SetMessageThreadFollowBodySchema,
-  ThreadMessageRecordSchema,
-} from '../contracts.js'
+import { SetMessageThreadFollowBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
-  findThreadForUser,
   mapMessageRecordWithAttachments,
   messageInclude,
-} from '../services/messages.js'
+} from '../services/message-read-model.js'
+import { findThreadForUser } from '../services/message-read-state.js'
 import type { RouteDeps } from './types.js'
 
 // Message-level reply threads (#233): single-message read (with the viewer's

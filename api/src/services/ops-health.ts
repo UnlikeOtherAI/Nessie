@@ -1,9 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import type {
-  OpsHealthResponse,
-  ReadinessResponse,
-  WorkerHealthStatus,
-} from '../contracts.js'
+import type { OpsHealthResponse, ReadinessResponse, WorkerHealthStatus } from '../contracts/ops-budget.js'
 import type { RateLimiter } from './rate-limit.js'
 
 // The worker refreshes heartbeatAt on its runner rows every 30s (worker/src/index.ts
