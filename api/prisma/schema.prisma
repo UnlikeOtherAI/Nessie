@@ -1759,6 +1759,11 @@ model BoardSource {
   /// SHA-256 of the per-source callback token, for providers that do not sign
   /// their deliveries (Jira).
   webhookTokenHash  String?   @map("webhook_token_hash")
+  /// The signing secret for this source's own webhook, sealed with the same
+  /// `sealSecret` seam credentials use. Present when the registration is
+  /// per-source rather than app-level: Linear mints one and returns it exactly
+  /// once, GitHub takes the one we offered. Never leaves the worker.
+  webhookSecretCiphertext String? @map("webhook_secret_ciphertext")
 
   createdByUserId String   @map("created_by_user_id") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at")

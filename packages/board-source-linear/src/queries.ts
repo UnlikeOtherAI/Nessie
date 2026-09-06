@@ -76,3 +76,23 @@ export const ISSUE_UPDATE_MUTATION = `
     }
   }
 `
+
+/**
+ * Registering this deployment's own callback, rather than depending on a
+ * webhook configured once on an OAuth app. `secret` is Linear's to mint and is
+ * returned exactly once, here — there is no query that reads it back later.
+ */
+export const WEBHOOK_CREATE_MUTATION = `
+  mutation WebhookCreate($input: WebhookCreateInput!) {
+    webhookCreate(input: $input) {
+      success
+      webhook { id enabled secret }
+    }
+  }
+`
+
+export const WEBHOOK_DELETE_MUTATION = `
+  mutation WebhookDelete($id: String!) {
+    webhookDelete(id: $id) { success }
+  }
+`

@@ -1,9 +1,14 @@
 import { Link } from 'react-router-dom'
 import type { BoardSourceRecord } from '../../facades/board-sources/hooks'
-import { PROVIDER_LABEL } from '../../facades/board-sources/hooks'
+import {
+  PROVIDER_LABEL,
+  isSourceSyncing,
+  useSourceAction,
+} from '../../facades/board-sources/hooks'
 import { Pill } from '../primitives/Pill'
 
 type SourceStatusStripProps = {
+  canAdminister: boolean
   projectId: string
   sources: BoardSourceRecord[]
 }
@@ -13,6 +18,10 @@ type SourceStatusStripProps = {
  * docs/standards/capability-health-alerts.md, and the reason it is on the board
  * rather than only in Settings is that "is what I am looking at current?" is the
  * question a person answers immediately before dragging a card.
+ *
+ * The Sync control is here for the same reason. The answer to "this looks
+ * stale" is one press, and sending somebody to Settings to find it was a
+ * doorway missing from the screen where the question is asked.
  */
 const HEALTH: Record<
   BoardSourceRecord['healthState'],
@@ -37,22 +46,54 @@ const freshness = (iso: string | null): string => {
   return `synced ${Math.round(hours / 24)}d ago`
 }
 
-export const SourceStatusStrip = ({ projectId, sources }: SourceStatusStripProps) => {
+/**
+ * How this source hears about a change: pushed by the provider, or noticed on
+ * the next poll. Named because the difference is seconds against minutes, and
+ * because a person who has just pressed Sync twice deserves to know which one
+ * they are waiting for.
+ */
+const delivery = (source: BoardSourceRecord): string | null => {
+  if (source.webhookActive) return 'Live'
+  if (source.pollingIntervalMinutes === null) return null
+  return `every ${source.pollingIntervalMinutes} min`
+}
+
+export const SourceStatusStrip = ({
+  canAdminister,
+  projectId,
+  sources,
+}: SourceStatusStripProps) => {
+  const action = useSourceAction(projectId)
   if (sources.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {sources.map((source) => {
         const health = HEALTH[source.healthState]
+        const syncing = isSourceSyncing(source)
+        const mode = delivery(source)
         return (
-          <Link
-            key={source.id}
-            to={`/projects/${projectId}/settings?section=sources&source=${source.id}`}
-          >
-            <Pill size="sm" tone={health.tone} uppercase={false}>
-              {PROVIDER_LABEL[source.provider]} {source.name} ·{' '}
-              {health.remedy ?? freshness(source.lastSyncCompletedAt)}
-            </Pill>
-          </Link>
+          <span className="flex items-center gap-1" key={source.id}>
+            <Link to={`/projects/${projectId}/settings?section=sources&source=${source.id}`}>
+              <Pill size="sm" tone={health.tone} uppercase={false}>
+                {PROVIDER_LABEL[source.provider]} {source.name} ·{' '}
+                {health.remedy ??
+                  (syncing ? 'syncing…' : freshness(source.lastSyncCompletedAt))}
+                {mode && !health.remedy ? ` · ${mode}` : ''}
+              </Pill>
+            </Link>
+            {canAdminister ? (
+              <button
+                className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]
+                  disabled:opacity-50"
+                disabled={syncing || action.isPending}
+                onClick={() => action.mutate({ id: source.id, action: 'sync' })}
+                title={`Sync ${source.name} from ${PROVIDER_LABEL[source.provider]} now`}
+                type="button"
+              >
+                {syncing ? 'Syncing…' : 'Sync'}
+              </button>
+            ) : null}
+          </span>
         )
       })}
     </div>

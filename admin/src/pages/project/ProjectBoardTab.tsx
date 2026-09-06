@@ -6,6 +6,7 @@ import type { BoardRecord } from '../../facades/boards/hooks'
 import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
+import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { useProjectSources } from '../../facades/board-sources/hooks'
@@ -21,6 +22,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
   const { data: sources = [] } = useProjectSources(projectId)
+  const canAdminister = useCanAdministerProject(projectId)
   const moveTask = useMoveTask()
   useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
 
@@ -71,7 +73,11 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
-      <SourceStatusStrip projectId={projectId} sources={sources} />
+      <SourceStatusStrip
+        canAdminister={canAdminister}
+        projectId={projectId}
+        sources={sources}
+      />
       {tasksQuery.data?.truncated ? (
         <div className="text-xs text-[color:var(--tx3)]">
           Showing the 500 most recently updated cards.

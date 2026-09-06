@@ -198,12 +198,38 @@ export interface BoardSourceAdapter {
     externalIds: string[],
   ): Promise<NormalisedItem[]>
 
-  /** Register or refresh the vendor webhook; null when the provider has none. */
+  /**
+   * Register the vendor webhook that pushes changes at this deployment.
+   *
+   * `null` means "this provider will not register one here" — no app-level
+   * webhook, or a credential without the authority to create one — and is a
+   * legitimate answer rather than a failure: every adapter declares
+   * `incrementalPollingIntervalMs`, so the board stays correct and only loses
+   * freshness. Throwing is reserved for a registration that *should* have
+   * worked, which the sync turns into `WEBHOOK_REGISTRATION_FAILED`.
+   *
+   * `callback.secret` is offered for providers that let the caller choose the
+   * signing secret (GitHub, Trello); one that mints its own (Linear) ignores it
+   * and returns the minted one as `signingSecret`.
+   */
   ensureWebhook(
     ctx: ConnectionContext,
     container: Record<string, unknown>,
-    callback: { url: string; token: string },
+    callback: { url: string; token: string; secret: string },
   ): Promise<WebhookRegistration | null>
+
+  /**
+   * Un-register a webhook this adapter created, so removing a source does not
+   * leave the person's Linear or GitHub holding a callback at a URL that will
+   * never answer again. Best-effort by contract: the caller ignores a refusal,
+   * because a source must still be removable when the upstream is unreachable.
+   * Absent on providers that never register one.
+   */
+  removeWebhook?(
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    externalId: string,
+  ): Promise<void>
 
   verifyWebhook(request: WebhookRequest, secrets: WebhookSecrets): boolean
 
