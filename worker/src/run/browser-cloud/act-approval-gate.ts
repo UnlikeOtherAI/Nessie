@@ -5,7 +5,7 @@ import { ExecutorBrowserActArgumentsSchema } from '@nessie/schemas'
 
 import type { RunContext } from '../execute/types.js'
 import { evaluateOriginGate, noteVisitedOrigin } from './origin-gate.js'
-import { acquireCdp, originGateFor } from './session-pool.js'
+import { acquireCdp, originGateFor, saveOriginGate } from './session-pool.js'
 
 /**
  * The cross-origin write gate, as an approval rather than a refusal.
@@ -34,20 +34,41 @@ export const buildBrowserActApprovalHook = (
     const session = await findLiveSessionForRun(prisma, context.run.id)
     if (!session) return { escalate: false }
 
-    // No pooled state means this worker cannot drive the session at all, so
-    // there is nothing to gate — the handler will say the connection is lost.
-    const gate = originGateFor(session.id)
-    if (!gate) return { escalate: false }
+    // The gate comes from the session row, not from this process: a run that
+    // suspended for one of these approvals is resumed by whichever worker
+    // claims it, and that worker opened nothing. This used to read a pool miss
+    // as "nothing to gate" and pass — which let the resumed run make exactly
+    // the write the person was asked about (audit 8.1).
+    const pool = { prisma }
+    const gate = await originGateFor(pool, session.id)
+    if (!gate) {
+      // Genuinely absent: released, expired, or a capability this deployment
+      // cannot open. The write may still be the cross-origin one, and nothing
+      // here can say it is not, so a person decides.
+      return {
+        escalate: true,
+        reason:
+          'This browser’s cross-origin safety state could not be read, so there is no '
+          + 'way to tell whether this action types into a site the browser is signed in '
+          + 'to or into a different one. If this is part of what you asked for, approve '
+          + 'it; otherwise ask the agent to open a fresh browser.',
+        contextExtra: { browserAction: parsed.data.action },
+        requiredApproverUserId: context.run.principalUserId ?? null,
+      }
+    }
 
     // Asked, not remembered: a page can redirect itself between two tool
     // calls, and a gate keyed on the last URL *we* navigated to would judge
     // an attacker's origin to be the signed-in one. Falls back to the cached
     // value only if the browser cannot answer.
-    const cdp = await acquireCdp(session.id).catch(() => null)
+    const cdp = await acquireCdp(pool, session.id).catch(() => null)
     const liveUrl = cdp ? await currentPageUrl(cdp) : null
     const url = liveUrl ?? gate.currentUrl
     if (!url) return { escalate: false }
-    if (liveUrl) noteVisitedOrigin(gate, liveUrl)
+    if (liveUrl) {
+      noteVisitedOrigin(gate, liveUrl)
+      await saveOriginGate(pool, session.id, gate)
+    }
 
     const verdict = evaluateOriginGate(gate, url, parsed.data)
     if (verdict.allowed) return { escalate: false }

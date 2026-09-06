@@ -7263,6 +7263,19 @@ model CloudBrowserSession {
   /// what makes the disclosure basis safe to evaluate per read.
   authenticated Boolean @default(false)
 
+  /// The CDP connect URL, sealed with the deployment auth secret (the same
+  /// AES-256-GCM packing executor command payloads use). It is here so a run
+  /// re-claimed by another worker after an approval can re-attach instead of
+  /// dead-ending on `SESSION_ALREADY_OPEN` while the browser bills to its TTL
+  /// (audit 8.1). Written when the row reaches `active`, cleared the moment it
+  /// leaves it: a live bearer capability must not outlive the session.
+  connectCapabilityCiphertext String? @map("connect_capability_ciphertext")
+  /// The cross-origin write gate as the worker's `OriginGateState`, serialised
+  /// — which origins this browser holds cookies for, whether it has visited
+  /// one, and the page it is on. Not a secret, but only meaningful while the
+  /// session is live, so it is cleared alongside the capability.
+  originGate                  Json?   @map("origin_gate")
+
   /// The person whose ask started the run, when there is one. NULL for an
   /// unattended run, which may never use a personal connection.
   requestedByUserId String? @map("requested_by_user_id") @db.Uuid

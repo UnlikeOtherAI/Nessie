@@ -9,6 +9,7 @@ import {
   type BrowserbaseCredentials,
 } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
+import { sealConnectCapability } from './session-capability.js'
 
 /**
  * Connection resolution and the session state machine.
@@ -170,6 +171,19 @@ export type OpenSessionInput = {
   runId: string
   threadId: string
   agentId: string
+  /**
+   * The deployment auth secret. The connect URL is sealed with it and written
+   * beside the `active` flip, so a worker that did not open this session can
+   * still re-attach — see `session-capability.ts`.
+   */
+  encryptionSecret: string
+  /**
+   * The cross-origin write gate to store with it, serialised by the caller
+   * (the worker owns its shape). An `active` row always carries one, so a
+   * re-attaching worker can tell "no gate persisted" — which escalates — from
+   * "a gate that permits this".
+   */
+  originGate: Prisma.InputJsonValue
   /** The channel's team, which is one level of the connection cascade. */
   teamId: string | null
   requestedByUserId: string | null
@@ -212,6 +226,18 @@ export const openCloudBrowserSession = async (
   const settings = cloudBrowserSettings()
   const now = deps.now?.() ?? new Date()
   const expiresAt = new Date(now.getTime() + settings.ttlMs)
+
+  // Checked before anything is claimed or created: sealing the connect URL is
+  // not optional — a session nobody but this process can re-attach to is the
+  // defect this argument exists to close — and a deployment missing the secret
+  // must find out before it has paid for a browser it cannot hand on.
+  if (!input.encryptionSecret) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+      'This deployment has no auth secret configured, so a cloud browser session '
+        + 'cannot be stored for other workers to resume. Set NESSIE_AUTH_SECRET.',
+    )
+  }
 
   // A durable browser dictates its own connection: its context belongs to
   // the account that created it and cannot be opened with another key.
@@ -333,9 +359,19 @@ export const openCloudBrowserSession = async (
         .update({ where: { id: input.agentBrowser.id }, data: { lastUsedAt: new Date() } })
         .catch(() => undefined)
     }
+    // One statement, so a row is never `active` without the capability that
+    // makes it drivable from another worker (audit 8.1).
     await deps.prisma.cloudBrowserSession.updateMany({
       where: { id: rowId, status: 'allocating' },
-      data: { status: 'active', browserbaseSessionId: session.id },
+      data: {
+        status: 'active',
+        browserbaseSessionId: session.id,
+        connectCapabilityCiphertext: sealConnectCapability(
+          input.encryptionSecret,
+          session.connectUrl,
+        ),
+        originGate: input.originGate,
+      },
     })
     return {
       sessionId: rowId,
@@ -412,7 +448,10 @@ export const releaseCloudBrowserSession = async (
   // overwriting the winner's `released` row.
   const claimed = await deps.prisma.cloudBrowserSession.updateMany({
     where: { id: input.sessionId, status: { in: ['allocating', 'active', 'unknown'] } },
-    data: { status: 'releasing' },
+    // The capability dies with the claim, not with the remote stop: from here
+    // the session is not drivable by anyone, and a sealed connect URL sitting
+    // in a released row is a bearer token with no session to bound it.
+    data: { status: 'releasing', connectCapabilityCiphertext: null, originGate: Prisma.DbNull },
   })
   if (claimed.count !== 1) return false
 
