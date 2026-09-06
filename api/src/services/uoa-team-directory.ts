@@ -67,14 +67,45 @@ const parseAvatarImageUrl = (
   }
 }
 
+/**
+ * The organisation block of a `/org/me` answer, or null when UOA returned none.
+ *
+ * `{ ok: true }` with no `org` is UOA saying it could not resolve an
+ * organisation context for this token on this domain — a different answer from
+ * "you belong to no teams", and the two must not collapse, or a cached empty
+ * directory suppresses the local fallback for the whole TTL.
+ */
+const orgBlock = (payload: unknown): Record<string, unknown> | null => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const org = (payload as { org?: unknown }).org
+  if (!org || typeof org !== 'object' || Array.isArray(org)) return null
+  return org as Record<string, unknown>
+}
+
 const parseTeamDirectoryEntries = (
   payload: unknown,
   baseUrl: string,
 ): UoaTeamDirectoryEntry[] => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
-  const org = (payload as { org?: unknown }).org
-  if (!org || typeof org !== 'object' || Array.isArray(org)) return []
-  const teams = (org as { teams?: unknown }).teams
+  const org = orgBlock(payload)
+  if (!org) return []
+  /**
+   * `team_directory`, NOT `teams`.
+   *
+   * UOA's `/org/me` carries both, and they are different types. `org.teams` is
+   * the legacy array of team ID STRINGS from the JWT `org` claim
+   * (`org-context.service.ts`: `teams: string[]`); `org.team_directory` is the
+   * list of team objects the picker is built from — `teamId`, `orgId`, `name`,
+   * `orgName`, `avatarImageUrl`, and the rest.
+   *
+   * Reading `teams` here did not fail loudly. Every element is a string, so
+   * every element was dropped by the object check below and the directory came
+   * back EMPTY, every time, for everyone. Nessie then fell back to a team list
+   * derived from its own local rows — so the app showed a different set of
+   * teams from the one UnlikeOtherAI shows, which is exactly the parallel
+   * structure UOA ownership exists to prevent. UOA's own route comments warn
+   * about this pair by name.
+   */
+  const teams = org.team_directory
   if (!Array.isArray(teams)) return []
   return teams.flatMap((team) => {
     if (!team || typeof team !== 'object' || Array.isArray(team)) return []
@@ -98,10 +129,9 @@ const parseTeamDirectoryEntries = (
 const parsePendingTeamInvites = (
   payload: unknown,
 ): UoaPendingTeamInvite[] => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
-  const org = (payload as { org?: unknown }).org
-  if (!org || typeof org !== 'object' || Array.isArray(org)) return []
-  const pendingInvites = (org as { pending_invites?: unknown }).pending_invites
+  const org = orgBlock(payload)
+  if (!org) return []
+  const pendingInvites = org.pending_invites
   if (!Array.isArray(pendingInvites)) return []
   return pendingInvites.flatMap((invite) => {
     if (!invite || typeof invite !== 'object' || Array.isArray(invite)) return []
@@ -163,10 +193,31 @@ export const fetchUoaTeamDirectory = async (
       },
       signal: AbortSignal.timeout(10_000),
     }, uoaFetchOptions(deps))
-    return response.ok
-      ? parseTeamDirectory(await response.json(), settings.baseUrl)
-      : undefined
-  } catch {
+    if (!response.ok) {
+      console.warn(`[uoa] team directory read failed: HTTP ${response.status}`)
+      return undefined
+    }
+
+    const payload: unknown = await response.json()
+    // No `org` block means UOA could not resolve an organisation context for
+    // this token on this domain. Returning `undefined` rather than an empty
+    // directory matters: `rememberUoaTeamDirectory` ignores `undefined` and
+    // keeps the last verified copy, and the caller falls back to the local
+    // team-derived list. Caching an empty one instead would pin "you have no
+    // teams" for the whole TTL and suppress that fallback.
+    if (!orgBlock(payload)) {
+      console.warn('[uoa] team directory read returned no organisation context')
+      return undefined
+    }
+
+    return parseTeamDirectory(payload, settings.baseUrl)
+  } catch (error) {
+    // Never silent. A directory read that fails leaves the product showing a
+    // locally derived team list, which can disagree with UnlikeOtherAI — the
+    // one thing nobody should have to discover from a screenshot.
+    console.warn(
+      `[uoa] team directory read threw: ${error instanceof Error ? error.message : 'unknown'}`,
+    )
     return undefined
   }
 }

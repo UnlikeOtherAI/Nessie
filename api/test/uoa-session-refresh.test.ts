@@ -92,7 +92,12 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
           )
           return new Response(JSON.stringify({
             org: {
-              teams: [{
+              // `team_directory` is where UOA puts the team objects; `teams` is
+              // the legacy array of id strings. This fixture agreed with the
+              // parser's own mistake, which is how an always-empty directory
+              // reached production.
+              teams: ['team-active'],
+              team_directory: [{
                 avatarImageUrl: '/teams/team-active/avatar',
                 name: 'Fresh team',
                 orgId: 'org-active',

@@ -108,7 +108,13 @@ const withTokenResponse = async <T>(
       return new Response(JSON.stringify({
         ok: true,
         org: {
-          teams: [
+          // `team_directory`, not `teams`. UOA sends the legacy `teams` as an
+          // array of id STRINGS from the JWT `org` claim; the objects a picker
+          // is built from live here. This fixture used to put the objects
+          // under `teams`, which agreed with the parser's own mistake and hid
+          // the fact that the directory was empty in production.
+          teams: ['team-active', 'team-other'],
+          team_directory: [
             {
               avatarImageUrl: '/public/teams/team-active/avatar',
               orgId: 'org-active',
@@ -272,7 +278,7 @@ test('exchangeUoaSession treats an absent pending_invites field as verified empt
   await withUoaEnv(async () => {
     const previousFetch = globalThis.fetch
     globalThis.fetch = async (input) => new URL(String(input)).pathname === '/org/me'
-      ? new Response(JSON.stringify({ org: { teams: [] } }), { status: 200 })
+      ? new Response(JSON.stringify({ org: { team_directory: [] } }), { status: 200 })
       : new Response(JSON.stringify({
           access_token: jwtForClaims(completeSessionClaims),
           expires_in: 1_800,
