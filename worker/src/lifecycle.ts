@@ -21,6 +21,18 @@ export const DEFAULT_WORKER_DRAIN_TIMEOUT_MS = 25_000
 // 25 s + 5 s stays comfortably inside the sixty-second grace invariant 6 names.
 export const DEFAULT_WORKER_ABANDON_SETTLE_MS = 5_000
 
+// The third and last window: how long `stop()` will wait for the transports
+// themselves to close once the drain is over. `pool.end()` resolves only when
+// every checked-out client has been returned, so an abandoned handler whose
+// final write is blocked on a row lock the successor now holds keeps its client
+// out indefinitely — and an unbounded close hands back exactly what the settle
+// window was bounded to prevent: the process outlives its termination grace and
+// is SIGKILLed anyway, which loses more than closing under a straggler does.
+//
+// 25 s drain + 5 s settle + 10 s teardown is 40 s, comfortably inside the sixty
+// seconds invariant 6 names.
+export const DEFAULT_WORKER_TEARDOWN_TIMEOUT_MS = 10_000
+
 // Read straight from the environment rather than through `@nessie/config`'s
 // `ConfigEnvMap`: the worker is the only consumer, and the config module is
 // being edited by a sibling change in the same programme. A bad value would
@@ -135,4 +147,79 @@ export const drainQueueSubscriptions = async (
   )
 
   return { settleTimedOut, timedOut: true }
+}
+
+export type TeardownStep = {
+  close: () => Promise<unknown>
+  label: string
+}
+
+export type TeardownResult = {
+  // The steps that had not finished when the deadline won. Empty on a clean
+  // close, and named rather than counted so the log says which transport hung.
+  unfinished: string[]
+  // True when the hard deadline is what ended the teardown, rather than the
+  // transports closing.
+  timedOut: boolean
+}
+
+// The teardown, under a hard deadline. Steps run in order — the ordering above
+// this call is what matters (nothing closes while a handler is still inside its
+// settle window), and the ordering between transports is preserved here — but
+// the whole sequence shares one budget, so a straggler already written off
+// cannot hold shutdown open past the platform's grace.
+//
+// A step that rejects is logged and does not stop the ones after it: a failed
+// close and a hung close both leave the process exiting, and the remaining
+// transports still deserve the attempt.
+export const closeTransportsWithDeadline = async (
+  steps: readonly TeardownStep[],
+  options: { timeoutMs?: number } = {},
+): Promise<TeardownResult> => {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_WORKER_TEARDOWN_TIMEOUT_MS
+  const unfinished = new Set(steps.map((step) => step.label))
+
+  const closed = (async () => {
+    for (const step of steps) {
+      try {
+        await step.close()
+      } catch (error) {
+        console.error(`[worker.teardown] ${step.label} failed to close`, error)
+      }
+      unfinished.delete(step.label)
+    }
+  })()
+
+  const timedOut = await raceDeadline(closed, timeoutMs)
+  if (timedOut) {
+    console.warn(
+      `[worker.teardown] hard deadline of ${timeoutMs}ms ended the shutdown with `
+      + `${[...unfinished].join(', ')} still closing; a handler written off at the settle `
+      + 'window is holding a client that will never come back, so the process exits now '
+      + 'rather than being killed by the platform.',
+    )
+  }
+
+  return { timedOut, unfinished: [...unfinished] }
+}
+
+// `SIGINT` and `SIGTERM` are both registered, so an operator pressing Ctrl-C
+// during an orchestrator's `SIGTERM` drain used to call `stop()` twice and get
+// two concurrent drains: the second `pool.end()` is rejected by pg
+// ("Called end on pool more than once"), and because the signal handler calls
+// `stop()` as a floating promise that surfaced as an unhandled rejection —
+// which on this runtime ends the process abruptly, precisely the death the
+// drain exists to avoid.
+//
+// Memoised, the second signal joins the first shutdown and waits for the same
+// promise instead of starting another one. The promise is kept after it settles
+// as well, so a late third caller gets the finished shutdown rather than a
+// replay of it.
+export const memoiseShutdown = (run: () => Promise<void>): (() => Promise<void>) => {
+  let started: Promise<void> | null = null
+
+  return (): Promise<void> => {
+    started ??= run()
+    return started
+  }
 }

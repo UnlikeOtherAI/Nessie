@@ -71,7 +71,12 @@ import {
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
 import { setCloudBrowserReleaseHook } from './run/browser-cloud/release-hook.js'
-import { drainQueueSubscriptions, startDeadQueueJobSweep } from './lifecycle.js'
+import {
+  closeTransportsWithDeadline,
+  drainQueueSubscriptions,
+  memoiseShutdown,
+  startDeadQueueJobSweep,
+} from './lifecycle.js'
 import {
   allocateExecutionEnvironmentInstance,
   expireExecutionLeases,
@@ -1285,7 +1290,11 @@ export const startWorker = async (
     ),
   )
 
-  const stop = async () => {
+  // Memoised, so the second signal joins the first shutdown instead of starting
+  // a second drain and a second `pool.end()` — pg rejects that one, and the
+  // signal handler's floating promise turned the rejection into an unhandled
+  // rejection that ends the process mid-drain.
+  const stop = memoiseShutdown(async () => {
     // Drain before anything closes (audit 5.1): `stop()` used to abort and end
     // the pool while a handler was still running, so a long run died
     // mid-inference with its terminal writes throwing on a closed pool.
@@ -1335,18 +1344,33 @@ export const startWorker = async (
     // is what left a released run looking held by a live executor.
     abortController.abort()
     modelClient.close()
-    await realtimeTransport.close()
-    await pool.end()
-    await prisma.$disconnect()
-  }
+    // ...and under a hard deadline, because the wait above is bounded and this
+    // one was not: `pool.end()` resolves only when every checked-out client is
+    // back, so a handler already written off at the settle window — parked on a
+    // row lock its successor now holds — would keep the process alive until the
+    // platform SIGKILLed it, defeating the bound the settle window exists to
+    // provide.
+    await closeTransportsWithDeadline([
+      { close: () => realtimeTransport.close(), label: 'realtime transport' },
+      { close: () => pool.end(), label: 'postgres pool' },
+      { close: () => prisma.$disconnect(), label: 'prisma client' },
+    ])
+  })
 
   if (standalone) {
-    process.once('SIGINT', () => {
-      void stop().finally(() => process.exit(0))
-    })
-    process.once('SIGTERM', () => {
-      void stop().finally(() => process.exit(0))
-    })
+    // `.catch` before `.finally`, not a bare floating promise: a shutdown that
+    // throws must be logged and still exit, never surface as an unhandled
+    // rejection that kills the process ahead of its own teardown.
+    const shutdown = (signal: string): void => {
+      void stop()
+        .catch((error: unknown) => {
+          console.error(`[worker.shutdown] ${signal} shutdown failed`, error)
+        })
+        .finally(() => process.exit(0))
+    }
+
+    process.once('SIGINT', () => shutdown('SIGINT'))
+    process.once('SIGTERM', () => shutdown('SIGTERM'))
   }
 
   return { stop }
