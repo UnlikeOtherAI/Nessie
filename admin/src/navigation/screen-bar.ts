@@ -24,9 +24,23 @@
 
 import { useSyncExternalStore } from 'react'
 
+/**
+ * The glyphs the native bar can draw, as a closed set.
+ *
+ * The bar is text-first on purpose (`mobile/src/lib/native-screen-bar.ts`):
+ * an open icon vocabulary maintained in two repositories is the part most
+ * likely to rot, and an action must never be droppable for want of an icon.
+ * A closed union keeps both properties — every name here is mapped once on
+ * the native side, and anything it does not recognise falls back to the
+ * label rather than disappearing.
+ */
+export type ScreenBarIconName = 'panel-right'
+
 export type ScreenBarAction = {
   checked: boolean | null
   disabled: boolean
+  /** Drawn instead of the label where the bar knows the glyph. */
+  icon?: ScreenBarIconName | null
   id: string
   items: ScreenBarMenuItem[] | null
   kind: 'button' | 'link' | 'menu' | 'toggle'

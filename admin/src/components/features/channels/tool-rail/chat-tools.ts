@@ -7,6 +7,7 @@
  * needs its mark in `ChatToolRail` and the column it opens in `ChatToolDock`.
  */
 
+import { faTableColumns } from '@fortawesome/free-solid-svg-icons'
 import type { PageHeaderAction } from '../../../shared/ResponsivePageHeader'
 
 export const CHAT_TOOL_IDS = ['browser'] as const
@@ -90,6 +91,14 @@ export const chatToolHeaderActions = ({
 }): PageHeaderAction[] =>
   chatToolDoorway({ hasConversationAgent, single }) === 'header'
     ? CHAT_TOOLS.map((tool) => ({
+        // The two-pane glyph, in both vocabularies: the conversation on the
+        // left and the panel it opens on the right, which is what pressing it
+        // does — the screen arrives from the right over the conversation
+        // (`navigation/motion.ts`, `topAt(1)` = translate3d(100%, 0, 0)).
+        // `label` stays the accessible name and the fallback anywhere the
+        // glyph is unknown.
+        barIcon: 'panel-right' as const,
+        icon: faTableColumns,
         id: `chat-tool-${tool.id}`,
         label: tool.label,
         onSelect: () => onOpenTool(tool.id),

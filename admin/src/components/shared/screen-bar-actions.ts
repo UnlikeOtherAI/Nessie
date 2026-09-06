@@ -77,6 +77,7 @@ export const toScreenBarActions = (
 ): ScreenBarAction[] => (actions ?? []).map((action) => ({
   checked: action.kind === 'toggle' ? action.checked : null,
   disabled: action.disabled ?? false,
+  icon: action.barIcon ?? null,
   id: action.id,
   items: action.kind === 'menu' ? action.items.map(toMenuItem) : null,
   kind: action.kind ?? 'button',

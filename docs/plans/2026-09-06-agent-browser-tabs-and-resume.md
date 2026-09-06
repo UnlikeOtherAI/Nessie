@@ -11,8 +11,9 @@ now stale; the invariants that did not change are still stated there.
   conversation with one agent has a persistent tool rail beside it
   (`components/features/channels/tool-rail/`); Browser is its first tool and
   opens the browser panel as a column at `xl`+, a layer below that. A
-  single-column layout has no rail: the doorway is the Browser row on the
-  conversation info screen, and the panel is the route
+  single-column layout has no rail: the doorway is a primary Browser action in
+  the conversation header (`chatToolDoorway`), drawn as the two-pane glyph and
+  the only action the iOS bar shows inline, and the panel is the route
   `/channels/:channelId/tools/browser`. There is no session id in any URL, no
   thinking-bubble chip, and no thumbnail in the info drawer (its only link
   was a 404). The sign-in card's "Open the browser" now points at the route.

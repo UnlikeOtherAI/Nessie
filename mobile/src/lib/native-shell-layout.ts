@@ -80,9 +80,20 @@ export type NativeScreenBarMenuItem = {
  * and reconstructing that natively would be a second implementation of the
  * header's semantics.
  */
+/**
+ * The glyphs this bar can draw, mirroring `ScreenBarIconName` in the admin.
+ *
+ * Closed on purpose: the bar stays text-first, and an icon vocabulary that
+ * could grow freely across two repositories is the part most likely to rot.
+ * A name this build does not know falls back to the label, so an action can
+ * never be dropped for want of an icon.
+ */
+export type NativeScreenBarIconName = 'panel-right'
+
 export type NativeScreenBarAction = {
   checked: boolean | null
   disabled: boolean
+  icon?: NativeScreenBarIconName | string | null
   id: string
   items: NativeScreenBarMenuItem[] | null
   kind: 'button' | 'link' | 'menu' | 'toggle'
