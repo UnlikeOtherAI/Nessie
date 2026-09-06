@@ -40,10 +40,13 @@ export type GlobalAgentCatalogueFacts = {
   /** Null when the model catalogue could not be read; never a stale guess. */
   models: AgentModelOption[] | null
   /**
-   * The look this person's generated portraits are drawn in, when a level of
-   * the settings cascade has decided one. Null where the face cannot resolve
-   * it — the page's sidebar fills a form and draws no pictures — and the
-   * catalogue then says nothing about it rather than guessing.
+   * The look this person's generated portraits are drawn in.
+   *
+   * Three states, deliberately: a string is the style in force, `null` is
+   * "resolved, and nobody has chosen one", and **absent** is "this face did
+   * not resolve it" — the page's sidebar fills a form and draws no pictures.
+   * Collapsing absent into null would have the block tell the model somebody
+   * has never chosen a style when they have.
    */
   avatarStyle?: string | null
   /**
@@ -77,7 +80,25 @@ const RESTRICTION_LABEL: Record<AgentToolRestriction, string> = {
 const describeRestricted = (entry: AgentToolCatalogRestrictedEntry): string =>
   bullet(`${entry.key} — ${RESTRICTION_LABEL[entry.restriction]}`)
 
-const parametersSection = (avatarStyle: string | null | undefined): string[] => [
+const avatarLine = (facts: GlobalAgentCatalogueFacts): string => {
+  const drawing = facts.writeSurface === 'agent_tools'
+    ? 'a portrait is generated automatically at creation, and '
+      + 'agent_avatar_generate draws a replacement in a style they name.'
+    : 'a portrait is generated automatically at creation; it can be replaced '
+      + 'with a generated or uploaded one afterwards.'
+  if (facts.avatarStyle === undefined) return bullet(`avatar — ${drawing}`)
+  return bullet(
+    `avatar — ${drawing} `
+    + (facts.avatarStyle
+      ? `This person's portraits are drawn "${facts.avatarStyle}"; that is `
+        + 'already applied, so pass a style only when they ask for a different one.'
+      : 'This person has never chosen a style, so portraits use the default '
+        + 'look until they say what they like — the style they state is '
+        + 'remembered for every portrait after it.'),
+  )
+}
+
+const parametersSection = (avatarLineText: string): string[] => [
   'Agent parameters, exactly as the product stores them:',
   bullet('name, role — free text; role is a short label like "researcher".'),
   bullet(
@@ -111,16 +132,7 @@ const parametersSection = (avatarStyle: string | null | undefined): string[] => 
     + 'unless the policy says false; connector tools and explicit-grant tools '
     + 'are OFF unless the policy says true.',
   ),
-  bullet(
-    'avatar — a portrait is generated automatically at creation, and '
-    + 'agent_avatar_generate draws a replacement in a named style. '
-    + (avatarStyle
-      ? `This person's portraits are drawn "${avatarStyle}"; that is already `
-        + 'applied, so pass a style only when they ask for a different one.'
-      : 'This person has never chosen a style, so portraits use the default '
-        + 'look until they say what they like — the style they state is '
-        + 'remembered for every portrait after it.'),
-  ),
+  avatarLineText,
   bullet(
     'bindings — which channels an agent works in. Organisation owners only, '
     + 'and only channels they belong to; system conversations and private '
@@ -221,7 +233,7 @@ export const buildGlobalAgentCatalogueBlock = (
   return [
     'Agent design catalogue (generated from this team, not remembered):',
     '',
-    ...parametersSection(facts.avatarStyle),
+    ...parametersSection(avatarLine(facts)),
     '',
     `Tools you can give an agent (${facts.catalogue.togglable.length}), by tool `
     + 'policy key:',
