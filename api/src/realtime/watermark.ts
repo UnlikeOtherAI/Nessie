@@ -27,7 +27,9 @@ export type RealtimeFanOutLogger = {
 }
 
 // The default keeps a hub built without a logger from swallowing the warning.
-const defaultFanOutLogger: RealtimeFanOutLogger = {
+// Exported because the fan-out warns about more than watermarks: a control
+// notification it cannot act on is reported through the same logger.
+export const defaultFanOutLogger: RealtimeFanOutLogger = {
   warn: (details, message) => console.warn(message, details),
 }
 

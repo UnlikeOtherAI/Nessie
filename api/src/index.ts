@@ -14,7 +14,6 @@ import {
   createModelClient,
   getStorage,
   isLedgerEndpoint,
-  ModelUsageTracker,
 } from '@nessie/runtime'
 import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
 import { registerRawBodyJsonParser } from './lib/raw-body-json-parser.js'
@@ -100,7 +99,6 @@ export const buildApp = async (
     disconnectPrismaClient,
   } = serverContext
 
-  const apiUsageTracker = new ModelUsageTracker()
   let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
   let ledgerIdentity: import('@nessie/runtime').LedgerIdentityService | null = null
   const app = Fastify({
@@ -152,7 +150,10 @@ export const buildApp = async (
       },
       {
         embedding: config.embedding,
-        tracker: apiUsageTracker,
+        // No `tracker`: the API constructed a process-wide usage accumulator
+        // here and never read a byte of it (audit 1.12). `recordUsage` writes
+        // the durable ledger, which is the authority; the model client still
+        // keeps its own counters for the callers that read `client.usage`.
         recordUsage: (invocations, attribution) =>
           recordModelUsage(prisma, app.log, invocations, attribution),
         requestHeaders:
@@ -179,6 +180,10 @@ export const buildApp = async (
     canAccessDashboardEvent: canAccessDashboardRealtimeEvent,
     databaseUrl,
     logger: app.log,
+    // A revocation announced by any replica drops the sid from this one's
+    // cache immediately; the 30 s TTL stays as the backstop for a replica
+    // whose LISTEN was down when the NOTIFY went out.
+    onSessionRevoked: serverContext.invalidateSessionRevocationCache,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
     prisma,

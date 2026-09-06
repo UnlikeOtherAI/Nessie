@@ -97,8 +97,16 @@ export const registerAuthSecurityRoutes = (
     }
     // This replica just ended the session; drop its cached verdict so the very
     // next request on this process re-reads and rejects, rather than honouring
-    // the access token for the remainder of the cache TTL.
+    // the access token for the remainder of the cache TTL. The NOTIFY beside
+    // it does the same on every other replica, which would otherwise each wait
+    // out their own TTL; a failed broadcast only costs that wait back, so it
+    // never fails the request.
     deps.invalidateSessionRevocationCache?.(sessionId)
+    try {
+      await deps.realtimeHub.publishSessionRevocation(sessionId)
+    } catch (err) {
+      request.log.error({ err }, 'session_revocation_broadcast_failed')
+    }
     await clearPushSurfacePresenceForUser(prisma, actorContext.actor.actorId)
     if (currentSessionId(request) === sessionId) clearRefreshCookie(reply, config)
     return createApiResponse({ revoked })

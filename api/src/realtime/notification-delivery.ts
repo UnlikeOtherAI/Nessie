@@ -9,7 +9,11 @@ import {
   createEntitlementGate,
   type RealtimeDeliveryEntitlements,
 } from './delivery-entitlements.js'
-import { createWatermarkDuplicateWarning, type RealtimeFanOutLogger } from './watermark.js'
+import {
+  createWatermarkDuplicateWarning,
+  defaultFanOutLogger,
+  type RealtimeFanOutLogger,
+} from './watermark.js'
 
 /**
  * The subset of a Node `ServerResponse` an SSE connection writes through. Named
@@ -283,8 +287,19 @@ export const createWsNotificationDelivery = (input: {
   logger?: RealtimeFanOutLogger
   /** Clock behind the per-connection entitlement cache's TTL. */
   now?: () => number
+  /**
+   * Drop one `sid` from this process's session-revocation cache. Called for
+   * the cross-replica control notification, so a logout on any replica is
+   * honoured everywhere at once rather than after each cache's own TTL.
+   */
+  onSessionRevoked?: (sessionId: string) => void
 }) => {
   const warnDuplicate = createWatermarkDuplicateWarning(input.logger)
+  const logger = input.logger ?? defaultFanOutLogger
+  // One line per process, not one per logout. A hub built without the handler
+  // gets the same control notification on every sign-out, and a line each would
+  // bury the fact that this replica is serving revoked sessions to its TTL.
+  let warnedMissingRevocationHandler = false
   const threadSseConnections = new Set<ThreadSseConnection>()
   const userSseConnections = new Set<UserSseConnection>()
   const wsConnections = new Set<WsConnection>()
@@ -393,6 +408,40 @@ export const createWsNotificationDelivery = (input: {
           connection.lastSequence = notification.sequence
         }
       }
+      return
+    }
+
+    // A control message between replicas: no connection receives it. It has to
+    // be answered ahead of the `message` guard below, which would otherwise
+    // drop the payload — it deliberately carries no `message` — before the
+    // revocation had been applied to this process's cache.
+    if (notification.kind === 'auth') {
+      // The envelope is `JSON.parse`d and cast, never validated, so the id is
+      // only a `string` by declaration. Invalidating `undefined` would evict
+      // nothing, leave the real sid cached, and look exactly like success.
+      const sessionId: unknown = notification.sessionId
+      if (typeof sessionId !== 'string' || sessionId.length === 0) {
+        logger.warn(
+          { sessionIdType: typeof sessionId },
+          'auth revocation notification carried no session id; dropped',
+        )
+        return
+      }
+      // The handler is optional on this type, so a hub wired without it would
+      // otherwise swallow every revocation in silence and keep serving the
+      // session for the rest of its cache TTL on this replica.
+      if (!input.onSessionRevoked) {
+        if (!warnedMissingRevocationHandler) {
+          warnedMissingRevocationHandler = true
+          logger.warn(
+            {},
+            'auth revocation notification arrived with no handler; '
+              + 'this replica honours revocations only at its cache TTL',
+          )
+        }
+        return
+      }
+      input.onSessionRevoked(sessionId)
       return
     }
 

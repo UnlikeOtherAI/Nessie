@@ -2,8 +2,6 @@ import type { PrismaClient, UserPresenceManualState } from '@prisma/client'
 
 import { resolveActiveStatus, type StatusWithRelations } from './user-statuses.js'
 
-const DEFAULT_ACTIVE_WITHIN_MS = 30_000
-
 // A presence row is considered live while its `lastSeenAt` heartbeat is recent.
 // Clients heartbeat every ~25s, so two missed beats fall through to offline.
 const OFFLINE_AFTER_MS = 70_000
@@ -27,6 +25,10 @@ export type OrgPresenceEntry = {
 
 type PresencePrisma = Pick<PrismaClient, 'userPresence'>
 
+// Opening a stream is a heartbeat, not a counter bump. There is deliberately
+// no matching `markDisconnected`: a per-process connection count is leaked
+// forever by any hard kill, while a closed stream stops heartbeating and the
+// row ages out of `OFFLINE_AFTER_MS` on its own (audit 2.4).
 export const markConnected = async (
   prisma: PresencePrisma,
   userId: string,
@@ -38,28 +40,11 @@ export const markConnected = async (
     create: {
       userId,
       organizationId,
-      connections: 1,
       lastSeenAt: now,
     },
     update: {
       organizationId,
-      connections: { increment: 1 },
       lastSeenAt: now,
-    },
-  })
-}
-
-export const markDisconnected = async (
-  prisma: PresencePrisma,
-  userId: string,
-): Promise<void> => {
-  await prisma.userPresence.updateMany({
-    where: {
-      userId,
-      connections: { gt: 0 },
-    },
-    data: {
-      connections: { decrement: 1 },
     },
   })
 }
@@ -72,23 +57,6 @@ export const touch = async (
     where: { userId },
     data: { lastSeenAt: new Date() },
   })
-}
-
-export const isUserActive = async (
-  prisma: PresencePrisma,
-  userId: string,
-  withinMs = DEFAULT_ACTIVE_WITHIN_MS,
-): Promise<boolean> => {
-  const activePresence = await prisma.userPresence.findFirst({
-    where: {
-      userId,
-      connections: { gt: 0 },
-      lastSeenAt: { gte: new Date(Date.now() - withinMs) },
-    },
-    select: { userId: true },
-  })
-
-  return activePresence !== null
 }
 
 // Periodic client heartbeat: `lastSeenAt` always refreshes (liveness, drives
@@ -107,7 +75,6 @@ export const recordHeartbeat = async (
     create: {
       userId,
       organizationId,
-      connections: 0,
       lastSeenAt: now,
       lastActiveAt: active ? now : null,
     },
@@ -134,7 +101,6 @@ export const setManualState = async (
     create: {
       userId,
       organizationId,
-      connections: 0,
       lastSeenAt: now,
       lastActiveAt: now,
       manualState: state,

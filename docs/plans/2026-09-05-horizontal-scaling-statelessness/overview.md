@@ -153,7 +153,7 @@ Nothing here is speculative; each line maps to a finding in areas 6 and 7.
 
 | # | Fixes | Item | Size |
 |---|---|---|---|
-| 5.1 | 2.4 | Delete `user_presence.connections` and `isUserActive`; presence already resolves from `lastSeenAt`. | S |
+| 5.1 | 2.4 | Stop writing `user_presence.connections` and delete `isUserActive`; presence already resolves from `lastSeenAt`. Dropping the column itself is 5.10. | S |
 | 5.2 | 5.8, 8.2 | Lease expiry enqueues `execution.environment.terminate` for instances with a provider ref. | S |
 | 5.3 | 5.6 | Automatic-membership rate limits move to a Postgres token-bucket row with a conditional UPDATE. | M |
 | 5.4 | 2.7, 2.9 | NOTIFY payloads over the cap notify by id and the listener re-reads the row; replay returns a truncation marker the client turns into a REST bootstrap. `thread_stream_events` gets the same retention as `realtime_events`. | M |
@@ -161,7 +161,8 @@ Nothing here is speculative; each line maps to a finding in areas 6 and 7.
 | 5.6 | 1.8 | Logout invalidates the local revocation cache like session-delete does; revocations publish on the realtime channel so other replicas drop the sid immediately. | S |
 | 5.7 | 6.4 | Signed-URL redirect for downloads above a size threshold. | M |
 | 5.8 | 9.2 | Trigger intake and DeepSignal insight events enqueue and ack like every other receiver. | M |
-| 5.9 | 1.12, 1.13, 5.14 | Delete `apiUsageTracker`, `pubsub-queue.ts` and the Redis config branch; per-process limiter stats are read from `rate_limit_buckets`. | S |
+| 5.9 | 1.13 | Per-process limiter stats on `/api/ops/health` are read from `rate_limit_buckets`. (The three deletions this row also carried — `apiUsageTracker` (1.12), `pubsub-queue.ts` with the worker's fallback warning (5.14), and the Redis config stub with its `hasRedis` capability — have landed. `config.queue.provider` still accepts `'pubsub'`; retiring that enum value goes with the Pub/Sub terraform module in 4.5.) | S |
+| 5.10 | 2.4 | Drop the now-dead `user_presence.connections` column in a deploy of its own. Precondition: 5.1 is deployed and every replica has cycled onto a build that never writes it — migrations run before the blue-green swap, so a drop shipped alongside 5.1 would fail the still-serving previous build's presence upsert with P2022. | S |
 
 ## Order, dependencies and effort
 

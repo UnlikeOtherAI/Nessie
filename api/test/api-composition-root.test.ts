@@ -9,7 +9,8 @@ import { promisify } from 'node:util'
  * FO3-5).
  *
  * `api/src/index.ts` used to parse the repo-root `.env`, call
- * `createServerContext()` and construct a `ModelUsageTracker` at module scope.
+ * `createServerContext()` and construct a model-usage accumulator at module
+ * scope.
  * Importing it therefore read the filesystem, mutated `process.env`, opened a
  * Prisma pool — and, in a hosted mode with no `NESSIE_AUTH_SECRET`, called
  * `process.exit(1)` from inside an import. That made the refusal untestable

@@ -220,12 +220,12 @@ export const startWorker = async (
     min: config.database.poolMin,
   })
 
-  // Queue provider is config-switchable (prereq #12)
-  let queueProvider: PgQueueProvider
-  if (config.queue.provider === 'pubsub') {
-    console.warn('[worker] Pub/Sub queue provider configured but not yet available — using PgQueueProvider')
-  }
-  queueProvider = new PgQueueProvider(pool)
+  // Postgres is the queue, by decision, not by fallback: the polling loop is
+  // correct at N instances and the half-built Pub/Sub adapter beside it was
+  // push-mode, could not delay a job, and deduplicated per process
+  // (docs/standards/horizontal-scaling.md; audit 5.14). It and the branch that
+  // warned about it are gone.
+  const queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
   // Same chokepoint the api builds (api/src/index.ts) — the worker only ever
   // reads bytes back out (knowledge.extract), it never stores/deletes, but the
