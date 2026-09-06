@@ -587,6 +587,7 @@ export default [
       'worker/src/control/knowledge-extract.ts', // `loggedSkips` — log-once dedupe; the worst N-instance outcome is N warnings.
       'worker/src/run/browser-cloud/release-hook.ts', // in-process wiring seam for the release chokepoint, set once at startup.
       'worker/src/run/browser-cloud/session-pool.ts', // 8.1 fixed in Phase 2.7 — now a read-through socket cache; the sealed capability on the session row is the authority, and a miss re-attaches from it.
+      'worker/src/run/browser-cloud/tab-capture.ts', // single-flight guard for tab captures over THIS process's socket (the pool above); a replica has its own socket and its own guard, the rows in agent_browser_tabs are the authority, and a restart loses only a best-effort capture.
       'worker/src/run/pa-tools/agent-email-context.ts', // memoised mail deployment config/transport; derived from immutable config.
       'worker/src/run/pa-tools/dashboard-context.ts', // memoised dashboard tool services (the FileService chokepoint), one per process.
       'worker/src/run/pa-tools/people.ts', // short-TTL roster cache per (org, UOA org, UOA team); UOA stays the authority.
