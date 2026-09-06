@@ -3229,9 +3229,13 @@ model RunToolEffect {
   /// what "this call" means.
   toolCallId   String    @map("tool_call_id")
   toolName     String    @map("tool_name")
-  /// `dispatched` | `completed` | `failed`. A string rather than an enum so the
-  /// worker can add a state without a migration, exactly as `RunCheckpoint`
-  /// treats its `reason`.
+  /// `dispatched` | `completed` | `failed` | `interrupted`. A string rather than
+  /// an enum so the worker can add a state without a migration, exactly as
+  /// `RunCheckpoint` treats its `reason` — `interrupted` was added that way.
+  /// Two of the four say the outcome is unknown and the call must NOT be
+  /// repeated: `dispatched` (claimed, never settled) and `interrupted` (the
+  /// dispatch threw, so the tool reported nothing at all). Only `failed` — a
+  /// result the tool RETURNED saying it failed — is repeatable.
   state        String
   /// The settled `ExecutedToolResult` fields a resume replays: inputSummary,
   /// output, success, toolName. Null while `dispatched`.

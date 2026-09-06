@@ -32,7 +32,7 @@ import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
-import { createToolEffectLedger } from './tool-effect-ledger.js'
+import { createToolEffectLedger, externalDispatchPredicate } from './tool-effect-ledger.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { runReplyIsRestricted } from './agent-message.js'
 import {
@@ -376,10 +376,21 @@ export const runExecutionAgentLoop = async (
 
   // Durable tool idempotency (invariant 4 / plan 3.2): a side-effecting call is
   // claimed in Postgres before it runs. Wrapped BELOW the loop's own recorder,
-  // which stays the fast path — the precedence, and why every
-  // `externalToolNames` dispatch is claimed, are in `tool-effect-ledger.ts`.
+  // which stays the fast path — the precedence, and why every external dispatch
+  // is claimed, are in `tool-effect-ledger.ts`.
+  //
+  // The predicate is built over the SAME two live objects `executeAuthorizedTool`
+  // routes on, and asked per call rather than snapshotted here: `mcpView` is
+  // mutable by the run itself (`mcp_load_tools` / `mcp_drop_tools`), so a copy
+  // taken at setup is a second source of truth that could send a call to a
+  // connector with no claim behind it. `builtinMetaNames` is left out on
+  // purpose: the tool-spec meta tool only rewrites this run's own view of its
+  // tool list, so a durable row per call would buy nothing.
   const effects = createToolEffectLedger(deps.prisma, {
-    externalToolNames,
+    isExternalDispatch: externalDispatchPredicate({
+      executorToolset: input.executorToolset,
+      mcpView,
+    }),
     runId: context.run.id,
   }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
 

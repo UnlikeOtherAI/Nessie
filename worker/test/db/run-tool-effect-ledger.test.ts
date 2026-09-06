@@ -344,6 +344,59 @@ runDatabaseTest(
   },
 )
 
+runDatabaseTest(
+  'a claim left `interrupted` — the dispatch threw — is read as unknown, not as a failure that may be repeated',
+  async () => {
+    const harnessed = await useHarness()
+    const { pipeline } = harnessed
+    const scope = await harnessed.harnessModule.seedScope(pipeline.prisma, 'tool-effect-threw')
+    const seeded = await harnessed.harnessModule.seedRun(
+      pipeline.prisma,
+      scope,
+      'Schedule the weekly digest.',
+    )
+
+    try {
+      // The other half of the crash this exists for. The tool was dispatched and
+      // the dispatch THREW: an executor command that committed on the person's
+      // machine before a later write hit a transient database error, or an MCP
+      // call the server executed whose response was lost to a timeout. Nothing
+      // was reported, so nothing is known — and the ledger says so with a state
+      // of its own rather than calling it `failed`, which would license a repeat.
+      await pipeline.pool.query(
+        `INSERT INTO run_tool_effects
+           (id, run_id, tool_call_id, tool_name, state, dispatched_at, settled_at)
+         VALUES (gen_random_uuid(), $1::uuid, $2, 'schedule_task', 'interrupted', now(), now())`,
+        [seeded.runId, SCHEDULE_CALL_ID],
+      )
+
+      await harnessed.runJob.executeRunJob(
+        pipeline.deps,
+        seeded.payload,
+        { attempt: 1, maxAttempts: 3 },
+      )
+
+      assert.equal(
+        (await triggers(harnessed, scope.agentId)).length,
+        0,
+        'a throw after the claim is NOT a durable failure: the tool was not run a second time',
+      )
+      const toolCalls = await pipeline.prisma.toolCall.findMany({
+        select: { outputPreview: true },
+        where: { runId: seeded.runId, toolName: 'schedule_task' },
+      })
+      assert.equal(toolCalls.length, 1)
+      assert.match(
+        toolCalls[0]?.outputPreview ?? '',
+        /NOT known whether it took effect/,
+        'the model was told the outcome is unknown, exactly as for a claim never settled at all',
+      )
+    } finally {
+      await finish(harnessed, seeded.threadId, scope, [seeded.runId])
+    }
+  },
+)
+
 runDatabaseTest('harness teardown', async () => {
   if (!harness) return
   await harness.pipeline.stop()

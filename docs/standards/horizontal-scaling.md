@@ -169,15 +169,51 @@ matches no row. Beside it:
   name, a state, the settled result and its timestamps.
   `worker/src/run/execute/tool-effect-ledger.ts` commits a `dispatched` row **on
   its own, before** the call runs — folded into any longer transaction it would
-  become durable only after the side effect, which is the window it exists for —
-  and settles it to `completed` (with the result) or `failed` afterwards. So a
-  later execution can tell three states apart: **no row**, the call never
-  started and runs normally; **`completed`**, it is answered from the recorded
-  result, without re-authorising; **`dispatched`**, the outcome is genuinely
-  unknown, and the call is **not** repeated — the model is told, in the tool
-  result, that the call was started, that its outcome was never recorded, and
-  that it has deliberately not been retried, so the agent checks rather than
-  acting on a fabricated success or failure.
+  become durable only after the side effect, which is the window it exists for.
+  **Only the absence of a row lets a call run.** A later execution reads:
+  - **no row** — the call never started, and runs normally;
+  - **`completed`** or **`failed`** — the tool RETURNED, reporting success or
+    reporting failure, so the outcome was observed and its result is durable.
+    Either way the call is answered from that recorded result, without
+    re-authorising and without running again. It is the same answer the crash
+    checkpoint gives for the same result on its fast path, and the two are
+    required to agree. (A model that wants to retry a failed call issues a new
+    call, with a new id, which has no row.)
+  - **`dispatched`** or **`interrupted`** — the outcome is genuinely unknown, and
+    the call is **not** repeated. `dispatched` is a claim nothing ever settled;
+    `interrupted` is a dispatch that **threw**. A throw is not a failure: the
+    tool reported nothing at all, and the claim was already committed, so the
+    call may well have reached the far side and come apart afterwards — an
+    executor command that ran on the person's machine before a later audit write
+    hit a transient database error, an MCP call the server executed whose
+    response was lost to a timeout. Both are answered with the same tool result,
+    which tells the model that the call was started, that its outcome was never
+    recorded, and that it has deliberately not been retried, so the agent checks
+    rather than acting on a fabricated success or failure. An unrecognised state
+    — a row from a newer deploy — is read the same way, which is the safe read of
+    a state this code cannot interpret.
+
+  Because every row that exists answers, there is no fall-through on which a
+  claimed call is executed a second time. There used to be: a row the ledger
+  declined to answer ran the tool again **without a fresh claim**, and since the
+  settle is scoped to `dispatched` it matched no row — so the repeat went
+  unrecorded and a third execution was free to run the call a third time.
+
+  A throw raised *before* the transport (an authorization gate hitting a dead
+  database, say) is indistinguishable from one raised after it and is treated as
+  unknown too. That costs a call the agent can make again, and the
+  unknown-outcome text asks it to; the opposite mistake costs a duplicate nobody
+  can take back.
+- **The claim is keyed on the provider's tool-call id, and the key is checked.**
+  An **empty** id is not a key — every id-less call in the run would collide on
+  one row and be answered from the first one's output — so a call without an id
+  falls through and runs unclaimed, which is what a run with no idempotency to
+  offer honestly is. A **reused** id is caught by comparing the stored tool name:
+  a conflicting row whose `tool_name` is not this call's name describes somebody
+  else's call, so it is reported to the model as a collision and the tool does
+  **not** run. Replaying the row would answer this call with a stranger's output;
+  running it would write this call's outcome over the other call's row and lose
+  the guarantee for both.
 - **Precedence between the two, and it is structural.** The crash checkpoint's
   recorded results are the fast path: the recorder wraps the ledger, so a call
   this run already recorded is answered in memory and never reaches a query. The
@@ -193,12 +229,27 @@ matches no row. Beside it:
   agents, apps, browser, executors), plus everything structurally
   approval-gated, plus every MCP, HTTP-connector and executor dispatch, whose
   names are per installation and which leave Nessie by construction. Not
-  claimed: read-only tools, and the agent's own workspace — knowledge,
-  files, dashboards, workflows, to-dos, preferences — where a duplicate is
-  visible to the agent and correctable on its next turn, and where the writes
-  are frequent enough that a row per call would be paid where it buys least.
-  Membership is by declared category, never a hand-kept id list, so a new tool
-  inherits the decision from where it already had to say it belongs.
+  claimed: read-only tools, the builtin tool-spec meta tool (it only rewrites
+  this run's own view of its tool list and reaches nothing outside Nessie), and
+  the agent's own workspace — knowledge, files, dashboards, workflows, to-dos,
+  preferences — where a duplicate is visible to the agent and correctable on its
+  next turn, and where the writes are frequent enough that a row per call would
+  be paid where it buys least. Membership is by declared category, never a
+  hand-kept id list, so a new tool inherits the decision from where it already
+  had to say it belongs.
+- **The claim decision asks the live tool view, not a copy of it.** Whether a
+  call is external is a *function* over `mcpView.handledNames` and
+  `executorToolset.handledNames` (`externalDispatchPredicate`), evaluated per
+  call, because `agent-loop.ts` routes the dispatch by asking those same two
+  objects at the same moment. A set snapshotted at loop setup would be a second
+  source of truth, and the day the two disagreed the disagreement would be a
+  tool dispatched to a connector with no claim behind it. The MCP view is
+  mutable by the run itself — `mcp_load_tools` / `mcp_drop_tools` rewrite what
+  the model can see mid-run — and `handledNames` deliberately stays the wider,
+  stable set of everything the view will dispatch, loaded or not, so a name the
+  model remembered from `mcp_find_tools` is still claimed. That property is
+  pinned by its own test in `mcp-toolset-deferred.test.ts`; the ledger does not
+  assume it.
 - **One exception the category rule does not catch: `delegate`.** It declares
   `safe: true`, so the `!safe` half of the test excludes it even though its
   category is effectful. Its sub-agent is a nested loop for discovery, but the

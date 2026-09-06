@@ -37,12 +37,56 @@ import type { RecordedToolResult } from '../loop-resume.js'
 // The two agree by construction because they are keyed the same way — by the
 // provider's tool-call id within the run.
 
-/** The three states a claimed call can be in. `dispatched` is the whole point. */
+/**
+ * The states a claimed call can be in — two that OBSERVED an outcome and two
+ * that did not. The split is the whole of the file's logic:
+ *
+ * - `completed` — the tool returned, reporting success. Replayed.
+ * - `failed` — the tool returned, reporting failure. Also replayed: the result
+ *   is durable and is the one the model already saw, so a later execution hands
+ *   back the same text rather than making the call again. This is what the
+ *   crash checkpoint does with the same result on the fast path, and the two
+ *   mechanisms are required to agree.
+ * - `dispatched` — claimed, and nothing settled it. Either the call is in
+ *   flight, or the execution making it died before it could settle.
+ * - `interrupted` — the call was dispatched and the dispatch THREW. A throw is
+ *   not a failure; see the `catch` in `dispatch` for why.
+ *
+ * The last two answer identically (`unknownOutcome`), so nothing downstream
+ * branches on which. They stay separate because they record different
+ * histories: an operator reading the table can tell a claim abandoned in flight
+ * (`dispatched`, `settled_at` null) from one that ended in an error nobody
+ * could interpret (`interrupted`, `settled_at` set) — and `dispatched` is also
+ * what a fresh claim leaves, so folding them would erase that.
+ *
+ * **No state is repeatable.** Every row that exists answers the call it belongs
+ * to, whether by replaying a result or by reporting an unknown outcome, so
+ * there is no path on which a claimed call is executed a second time while its
+ * row says something else. (A model that wants to retry a failed call issues a
+ * new call, with a new id, which has no row.) `state` is a free-text column
+ * precisely so a state can be added without a migration — see the
+ * `RunToolEffect.state` comment in `schema.prisma` — and an unrecognised one,
+ * from a newer deploy, reads as unknown.
+ *
+ * Rows written by the previous deploy need no migration and get no wrong
+ * answer. It wrote `completed` for every call that returned, success or not, so
+ * those rows still replay their recorded result; and it wrote `failed` only
+ * from the `catch`, so such a row carries no result, fails the shape check in
+ * `readRecordedResult`, and is read as unknown — which is what a throw meant
+ * then and means now.
+ */
 export const TOOL_EFFECT_STATES = {
   completed: 'completed',
   dispatched: 'dispatched',
   failed: 'failed',
+  interrupted: 'interrupted',
 } as const
+
+/** States in which the tool RETURNED, so `result` is the outcome it reported. */
+const OBSERVED_STATES: ReadonlySet<string> = new Set([
+  TOOL_EFFECT_STATES.completed,
+  TOOL_EFFECT_STATES.failed,
+])
 
 /**
  * What a resumed run tells the model about a call whose outcome nobody knows.
@@ -94,6 +138,33 @@ const replay = (
   toolCallId: string,
 ): ExecutedToolResult => ({ ...recorded, toolCallId })
 
+/**
+ * What the model is told when the claim it collided with belongs to a DIFFERENT
+ * tool.
+ *
+ * `(run_id, tool_call_id)` is unique, so a row whose `tool_name` is not this
+ * call's name means the provider reused an id within the run. The row's result
+ * is another tool's; replaying it would answer this call with a stranger's
+ * output, and reading its state would report an unknown outcome for a call that
+ * never started. Neither is defensible, so the collision is reported as what it
+ * is and the tool does NOT run — running it would write this call's outcome
+ * over the other call's row, losing the guarantee for both.
+ */
+const idCollision = (
+  toolName: string,
+  claimedToolName: string,
+  toolCallId: string,
+): ExecutedToolResult => ({
+  inputSummary: `${toolName} (tool-call id collision)`,
+  output:
+    `The tool-call id \`${toolCallId}\` was already used in this run for a call to `
+    + `\`${claimedToolName}\`, so this call to \`${toolName}\` cannot be told apart from it. `
+    + 'It has NOT been executed. Issue the call again with a distinct tool-call id.',
+  success: false,
+  toolCallId,
+  toolName,
+})
+
 const unknownOutcome = (
   toolName: string,
   toolCallId: string,
@@ -115,9 +186,45 @@ export type ToolEffectLedger = {
   prepareTool: PrepareToolFn | undefined
 }
 
+/** The name sets a run's dispatch consults, held by reference. */
+export type ExternalDispatchSources = {
+  executorToolset: { handledNames: ReadonlySet<string> }
+  mcpView: { handledNames: ReadonlySet<string> }
+}
+
+/**
+ * Does this name reach a transport that leaves Nessie?
+ *
+ * A FUNCTION over the live sets, never a set copied at loop setup, because the
+ * MCP view is mutable by the run itself: `mcp_load_tools` / `mcp_drop_tools`
+ * rewrite what the model can see mid-run, and `agent-loop.ts` decides where to
+ * dispatch a call by asking `mcpView.handledNames` and
+ * `executorToolset.handledNames` at the moment of the call. The claim decision
+ * has to ask the same two objects at the same moment: a snapshot is a second
+ * source of truth, and the day the two disagree the disagreement is a tool
+ * dispatched to a connector with no claim behind it — which is the whole window
+ * this file exists to close.
+ *
+ * (Today `handledNames` holds every entry the view can dispatch whether its
+ * schema is currently loaded or not, so a snapshot would in fact still agree.
+ * That is a property of `mcp-toolset-deferred.ts`, pinned by its own test, not
+ * something this file may assume.)
+ */
+export const externalDispatchPredicate = (
+  sources: ExternalDispatchSources,
+): ((toolName: string) => boolean) =>
+  (toolName) =>
+    sources.mcpView.handledNames.has(toolName)
+    || sources.executorToolset.handledNames.has(toolName)
+
 export type ToolEffectScope = {
-  /** Names the run dispatches through a transport that leaves Nessie. */
-  externalToolNames: ReadonlySet<string>
+  /**
+   * Asked per call, never once: see `externalDispatchPredicate`. Deliberately
+   * NOT the same value the authorization gate's `externalToolNames` carries —
+   * that set also holds the builtin tool-spec meta tool, which only rewrites
+   * this run's own view of its tool list and reaches nothing outside Nessie.
+   */
+  isExternalDispatch: (toolName: string) => boolean
   runId: string
 }
 
@@ -133,9 +240,9 @@ export type ToolEffectScope = {
  */
 export const toolCallNeedsEffectRecord = (
   toolName: string,
-  externalToolNames: ReadonlySet<string>,
+  isExternalDispatch: (toolName: string) => boolean,
 ): boolean =>
-  EFFECTFUL_BUILTIN_TOOL_IDS.has(toolName) || externalToolNames.has(toolName)
+  EFFECTFUL_BUILTIN_TOOL_IDS.has(toolName) || isExternalDispatch(toolName)
 
 /**
  * Claim the dispatch, in its own committed transaction.
@@ -227,25 +334,41 @@ export const createToolEffectLedger = (
   scope: ToolEffectScope,
   seams: { executeTool: ExecuteToolFn; prepareTool?: PrepareToolFn },
 ): ToolEffectLedger => {
+  /**
+   * TOTAL by construction: a row that exists always answers the call it
+   * belongs to. There is no arm that returns "run it again", so no path on
+   * which a claimed call is executed a second time — the fall-through that used
+   * to exist ran the tool WITHOUT taking a fresh claim, and since the settle is
+   * scoped to `dispatched` it matched no row, leaving the repeat unrecorded and
+   * a third execution free to run the call a third time.
+   */
   const answerFromRow = (
     row: EffectRow,
     toolName: string,
     toolCallId: string,
-  ): ExecutedToolResult | null => {
-    if (row.state === TOOL_EFFECT_STATES.completed) {
+  ): ExecutedToolResult => {
+    // The id guard, before any state is read. `(run_id, tool_call_id)` is
+    // unique, so a stored name that is not this call's means the provider
+    // reused an id: this row describes somebody else's call and answers
+    // nothing about this one. An empty stored name is an older row this module
+    // wrote before it recorded one, and is trusted as before.
+    if (row.toolName && row.toolName !== toolName) {
+      return idCollision(toolName, row.toolName, toolCallId)
+    }
+    if (OBSERVED_STATES.has(row.state)) {
       const recorded = readRecordedResult(row)
       if (recorded) return replay(recorded, toolCallId)
-      // Completed, but the result is unreadable: the outcome is known to have
-      // happened and unknown in detail, which is the `dispatched` answer.
+      // The tool returned, but its recorded result is unreadable: what happened
+      // is known to have happened and unknown in detail, which is exactly the
+      // unknown answer.
       return unknownOutcome(row.toolName || toolName, toolCallId)
     }
-    if (row.state === TOOL_EFFECT_STATES.dispatched) {
-      return unknownOutcome(row.toolName || toolName, toolCallId)
-    }
-    // `failed`: the tool ran and reported failure, and that failure was
-    // durable. Nothing was left half-done that a repeat would duplicate, so the
-    // call is executed again exactly as it would be without a ledger.
-    return null
+    // `dispatched` (claimed, never settled) and `interrupted` (dispatched, then
+    // threw): nobody observed an outcome, and an unobserved outcome is never
+    // resolved by repeating the call. An unrecognised state — a row from a
+    // newer deploy — lands here too, the safe read of a state this code cannot
+    // interpret.
+    return unknownOutcome(row.toolName || toolName, toolCallId)
   }
 
   const dispatch = async (
@@ -253,18 +376,39 @@ export const createToolEffectLedger = (
     toolCallId: string,
     execute: () => Promise<ExecutedToolResult>,
   ): Promise<ExecutedToolResult> => {
-    if (!(await claimDispatch(prisma, scope.runId, toolCallId, toolName))) {
+    // Two rounds at most. A conflicting row answers the call; the only way it
+    // does not is that it was deleted between the conflict and the read (a
+    // competing executor's run reaching a terminal status sheds every claim),
+    // and the answer to that is to claim it again — never to run the tool on a
+    // row this execution does not hold.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (await claimDispatch(prisma, scope.runId, toolCallId, toolName)) break
       const row = await loadEffect(prisma, scope.runId, toolCallId)
-      const answer = row ? answerFromRow(row, toolName, toolCallId) : null
-      if (answer) return answer
+      if (row) return answerFromRow(row, toolName, toolCallId)
     }
     let result: ExecutedToolResult
     try {
       result = await execute()
     } catch (error) {
+      // A THROW IS NOT A FAILURE. `failed` means the tool returned and said so;
+      // a throw means the tool reported nothing at all, and the claim was
+      // already committed, so the dispatch may have reached the far side and
+      // come apart afterwards — an executor command that ran on the person's
+      // machine before a later audit write hit a transient database error, an
+      // MCP call the server executed whose response was lost to a timeout. The
+      // row therefore settles `interrupted`, which `answerFromRow` reads as
+      // unknown, so a later execution reports the unknown outcome instead of
+      // sending a second command or filing a second ticket.
+      //
+      // This is deliberately conservative at one edge: a throw raised BEFORE
+      // the transport — an authorization gate hitting a dead database, say —
+      // is indistinguishable from one raised after it, and is treated as
+      // unknown too. That costs a tool call the agent can make again; the
+      // unknown-outcome text tells it exactly that, and asks it to check first.
+      // The opposite mistake costs a duplicate nobody can take back.
       await settleDispatch(prisma, scope.runId, toolCallId, {
         result: null,
-        state: TOOL_EFFECT_STATES.failed,
+        state: TOOL_EFFECT_STATES.interrupted,
       }).catch(() => undefined)
       throw error
     }
@@ -278,9 +422,14 @@ export const createToolEffectLedger = (
         .catch(() => undefined)
       return result
     }
+    // The tool returned, so the outcome was observed either way. Which of the
+    // two observed states is recorded changes nothing about what a later
+    // execution is told — both replay `result` — but it keeps the column
+    // honest: `failed` is a failure the tool REPORTED, and is the only thing
+    // that ever writes it.
     await settleDispatch(prisma, scope.runId, toolCallId, {
       result: asRecorded(toolName, result),
-      state: TOOL_EFFECT_STATES.completed,
+      state: result.success ? TOOL_EFFECT_STATES.completed : TOOL_EFFECT_STATES.failed,
     })
     return result
   }
@@ -293,10 +442,28 @@ export const createToolEffectLedger = (
     return row ? answerFromRow(row, toolName, toolCallId) : null
   }
 
+  /**
+   * Is this call claimable at all?
+   *
+   * The claim is keyed on `(runId, toolCallId)`, so an id the provider left
+   * empty is not a key: every id-less call in the run would collide on the same
+   * row and be answered from the first one's output. A run with no id has no
+   * idempotency to offer, and saying so by running the tool unclaimed is
+   * strictly better than answering the second call with the first's result.
+   *
+   * The `typeof` is not redundant with the parameter's type: the id comes from
+   * a provider's response, and a missing one arrives as `undefined` however the
+   * signature is written.
+   */
+  const claimable = (toolName: string, toolCallId: string): boolean =>
+    typeof toolCallId === 'string'
+    && toolCallId.trim().length > 0
+    && toolCallNeedsEffectRecord(toolName, scope.isExternalDispatch)
+
   const { prepareTool } = seams
   return {
     executeTool: async (toolName, args, toolCallId) => {
-      if (!toolCallNeedsEffectRecord(toolName, scope.externalToolNames)) {
+      if (!claimable(toolName, toolCallId)) {
         return seams.executeTool(toolName, args, toolCallId)
       }
       const answer = await answerBeforeAuthorizing(toolName, toolCallId)
@@ -305,7 +472,7 @@ export const createToolEffectLedger = (
     },
     prepareTool: prepareTool
       ? async (toolName, args, toolCallId) => {
-        if (!toolCallNeedsEffectRecord(toolName, scope.externalToolNames)) {
+        if (!claimable(toolName, toolCallId)) {
           return prepareTool(toolName, args, toolCallId)
         }
         const answer = await answerBeforeAuthorizing(toolName, toolCallId)
