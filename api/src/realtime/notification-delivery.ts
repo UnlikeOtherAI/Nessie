@@ -9,6 +9,7 @@ import {
   createEntitlementGate,
   type RealtimeDeliveryEntitlements,
 } from './delivery-entitlements.js'
+import { createWatermarkDuplicateWarning, type RealtimeFanOutLogger } from './watermark.js'
 
 /**
  * The subset of a Node `ServerResponse` an SSE connection writes through. Named
@@ -130,6 +131,19 @@ const writeThreadSseEvent = (
 export const formatUserSseEvent = (event: RealtimeReplayEvent) =>
   `id: ${event.id.toString()}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`
 
+/**
+ * The same frame with no `id:`, for a notification that carries no `eventId`.
+ * Those come from an older publisher mid rolling deploy, and they still have to
+ * reach the user lane: a client parked on a new replica would otherwise see
+ * nothing at all from an old one for the whole length of the deploy. But the
+ * `realtime_events` id such an event would replay from is unknown here, so
+ * writing any `id:` would move the client's Last-Event-ID onto a value its next
+ * reconnect cannot resume from. Delivered live, never bookkept — the same
+ * bargain an ephemeral thread event strikes.
+ */
+export const formatLiveUserSseEvent = (message: WsEventMessage) =>
+  `event: ${message.event}\ndata: ${JSON.stringify(message)}\n\n`
+
 // The last frame a draining replica writes to an SSE stream. `retry:` resets
 // the EventSource reconnection time to 2 s for any native-EventSource client;
 // the admin runs its own fetch-based loop (`admin/src/lib/sse.ts` drops the
@@ -172,13 +186,23 @@ export const shouldDeliverWsNotification = async (
     notificationScopes: WsScope[]
   },
 ): Promise<boolean> => {
-  const notificationChannelScopes = input.notificationScopes.filter(
+  // A notification is whatever a *publisher on another replica* put on the
+  // wire, so its shape is not guaranteed by this build's types. A publisher
+  // ahead of this one can send an envelope whose `scopes` this build has never
+  // heard of, and dereferencing it unchecked is not a caught error: the fan-out
+  // runs in a promise, so a TypeError here is an unhandled rejection and Node
+  // 22 ends the process. Missing or malformed means "addressed to nobody this
+  // build can identify" — deliver to no connection and stay up.
+  const notificationScopes: WsScope[] = Array.isArray(input.notificationScopes)
+    ? input.notificationScopes
+    : []
+  const notificationChannelScopes = notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
   )
-  const notificationUserScopes = input.notificationScopes.filter(
+  const notificationUserScopes = notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
   )
-  const notificationDashboardScopes = input.notificationScopes.filter(
+  const notificationDashboardScopes = notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'dashboard' }> => scope.kind === 'dashboard',
   )
   if (notificationUserScopes.length > 0) {
@@ -188,7 +212,7 @@ export const shouldDeliverWsNotification = async (
       ),
     )
   }
-  const notificationScopeKeys = new Set(input.notificationScopes.map(toScopeKey))
+  const notificationScopeKeys = new Set(notificationScopes.map(toScopeKey))
 
   if (notificationChannelScopes.length > 0) {
     if (!input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))) {
@@ -223,7 +247,7 @@ export const shouldDeliverWsNotification = async (
   // again, so a deactivated member kept the org feed and a person who lost
   // sight of an agent kept its updates for as long as the socket stayed open.
   // Both are now re-asked here, the same shape the channel branch above pays.
-  for (const scope of input.notificationScopes) {
+  for (const scope of notificationScopes) {
     if (scope.kind === 'organization' && !(await input.canAccessOrganization(scope.organizationId))) {
       return false
     }
@@ -238,11 +262,11 @@ export const shouldDeliverWsNotification = async (
 /**
  * The LISTEN-side fan-out, exported so it can be exercised without a live
  * pg LISTEN connection. It never writes to `realtime_events`: the publisher
- * persisted the row before NOTIFYing (`PgRealtimeTransport.publishWs`), so
- * with N api replicas listening, N appends here would corrupt the shared
- * Last-Event-ID sequence. A notification carrying no `eventId` comes from an
- * older publisher mid rolling deploy and is fanned out live with no replay
- * bookkeeping.
+ * inserted the row and issued the NOTIFY inside one locked transaction
+ * (`PgRealtimeTransport.publishWs`), so with N api replicas listening, N
+ * appends here would corrupt the shared Last-Event-ID sequence. A notification
+ * carrying no `eventId` comes from an older publisher mid rolling deploy and is
+ * fanned out live with no replay bookkeeping.
  */
 export const createWsNotificationDelivery = (input: {
   canAccessChannelEvent?: (input: {
@@ -256,9 +280,11 @@ export const createWsNotificationDelivery = (input: {
     userId: string
   }) => Promise<boolean>
   entitlements?: Partial<RealtimeDeliveryEntitlements>
+  logger?: RealtimeFanOutLogger
   /** Clock behind the per-connection entitlement cache's TTL. */
   now?: () => number
 }) => {
+  const warnDuplicate = createWatermarkDuplicateWarning(input.logger)
   const threadSseConnections = new Set<ThreadSseConnection>()
   const userSseConnections = new Set<UserSseConnection>()
   const wsConnections = new Set<WsConnection>()
@@ -343,6 +369,12 @@ export const createWsNotificationDelivery = (input: {
         // Sequence filtering and the watermark only apply to durable events;
         // an ephemeral notification's sequence is a placeholder.
         if (!ephemeral && connection.lastSequence >= notification.sequence) {
+          warnDuplicate({
+            lane: 'thread',
+            lastSequence: connection.lastSequence,
+            sequence: notification.sequence,
+            threadId: connection.threadId,
+          })
           continue
         }
 
@@ -364,13 +396,25 @@ export const createWsNotificationDelivery = (input: {
       return
     }
 
-    // The publisher persisted the row before NOTIFYing and carried its id in
-    // the payload; a listener must never append — with N api replicas that
-    // wrote N copies of the same event and duplicated every replay.
+    // The publisher persisted the row and notified in one transaction and
+    // carried the row id in the payload; a listener must never append — with N
+    // api replicas that wrote N copies of the same event and duplicated every
+    // replay.
     // During a rolling deploy an old publisher still sends payloads without
     // an id: those are fanned out live only, with no replay bookkeeping, so
     // the mixed-version window can miss a row from replay but never writes a
     // duplicate.
+
+    // The other half of the same guard as `shouldDeliverWsNotification`'s: an
+    // envelope from a publisher ahead of this build may carry no `message` at
+    // all — the compact ref form deliberately does not — and every branch below
+    // dereferences it. There is nothing to deliver without one, and the row it
+    // refers to reaches the client on its next reconnect replay, so drop it
+    // rather than throw inside an unawaited promise.
+    if (!notification.message) {
+      return
+    }
+
     const replayEventId =
       typeof notification.eventId === 'string'
         ? parseLastRealtimeEventId(notification.eventId)
@@ -387,51 +431,70 @@ export const createWsNotificationDelivery = (input: {
           }
         : null
 
-    if (replayEvent) {
-      for (const connection of userSseConnections) {
-        if (connection.lastEventId >= replayEvent.id) {
-          continue
-        }
-
-        const gates = gatesFor(connection, {
-          organizationId: connection.organizationId,
+    for (const connection of userSseConnections) {
+      // The watermark is replay bookkeeping, so it only judges an event that
+      // has a row id. An id-less one is never a duplicate this side can detect
+      // and is never compared against the watermark it must not move.
+      if (replayEvent && connection.lastEventId >= replayEvent.id) {
+        warnDuplicate({
+          eventId: replayEvent.id.toString(),
+          lane: 'user',
+          lastEventId: connection.lastEventId.toString(),
           userId: connection.userId,
         })
-        const shouldDeliver = await shouldDeliverWsNotification({
-          connectionScopes: connection.scopes,
-          notificationScopes: notification.scopes,
-          canAccessAgent: gates.agent,
-          canAccessOrganization: gates.organization,
-          canAccessChannel: async (channelId) =>
-            input.canAccessChannelEvent
-              ? input.canAccessChannelEvent({
-                  channelId,
-                  organizationId: connection.organizationId,
-                  userId: connection.userId,
-                })
-              : connection.channelIds.has(channelId),
-          canAccessDashboard: async (dashboardId) =>
-            input.canAccessDashboardEvent
-              ? input.canAccessDashboardEvent({
-                  dashboardId,
-                  organizationId: connection.organizationId,
-                  userId: connection.userId,
-                })
-              : false,
-        })
-
-        if (!shouldDeliver) {
-          continue
-        }
-
-        if (connection.hydrating) {
-          connection.pending.push(replayEvent)
-          continue
-        }
-
-        connection.response.write(formatUserSseEvent(replayEvent))
-        connection.lastEventId = replayEvent.id
+        continue
       }
+
+      const gates = gatesFor(connection, {
+        organizationId: connection.organizationId,
+        userId: connection.userId,
+      })
+      const shouldDeliver = await shouldDeliverWsNotification({
+        connectionScopes: connection.scopes,
+        notificationScopes: notification.scopes,
+        canAccessAgent: gates.agent,
+        canAccessOrganization: gates.organization,
+        canAccessChannel: async (channelId) =>
+          input.canAccessChannelEvent
+            ? input.canAccessChannelEvent({
+                channelId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : connection.channelIds.has(channelId),
+        canAccessDashboard: async (dashboardId) =>
+          input.canAccessDashboardEvent
+            ? input.canAccessDashboardEvent({
+                dashboardId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : false,
+      })
+
+      if (!shouldDeliver) {
+        continue
+      }
+
+      if (!replayEvent) {
+        // Live-only, exactly as the mixed-version window is documented to
+        // behave: written with no `id:` and no watermark move. A hydrating
+        // connection drops it instead of queueing — `pending` is drained in id
+        // order and this has no id, and the bootstrap the client just ran
+        // covers the gap by construction.
+        if (!connection.hydrating) {
+          connection.response.write(formatLiveUserSseEvent(notification.message))
+        }
+        continue
+      }
+
+      if (connection.hydrating) {
+        connection.pending.push(replayEvent)
+        continue
+      }
+
+      connection.response.write(formatUserSseEvent(replayEvent))
+      connection.lastEventId = replayEvent.id
     }
 
     for (const connection of wsConnections) {

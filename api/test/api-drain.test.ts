@@ -70,8 +70,8 @@ dbTest('drain ends every SSE stream with a shutdown frame and closes WebSockets 
     databaseUrl: databaseUrl!,
     poolMax: 2,
     poolMin: 0,
-    // The hub only uses prisma for the durable append on `publishWs`, which
-    // this test never calls.
+    // The hub uses prisma only for delivery entitlements, which this test's
+    // single unscoped thread stream never consults.
     prisma: {} as unknown as PrismaClient,
   })
 

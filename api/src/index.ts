@@ -178,6 +178,7 @@ export const buildApp = async (
     canAccessChannelEvent: canAccessChannelRealtimeEvent,
     canAccessDashboardEvent: canAccessDashboardRealtimeEvent,
     databaseUrl,
+    logger: app.log,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
     prisma,

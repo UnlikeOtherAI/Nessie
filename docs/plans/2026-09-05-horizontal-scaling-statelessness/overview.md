@@ -75,8 +75,10 @@ Two decisions are settled here rather than left open:
    `file_*` builtins are fatal at boot outside `local` mode.
 8. Instance identity is a UUID minted at boot, never `HOSTNAME`. Rows keyed
    by it carry a heartbeat and are reaped.
-9. Realtime persists and notifies in one transaction, and a listener never
-   advances a connection watermark past an id it did not deliver.
+9. Realtime persists and notifies in one transaction holding a per-scope
+   advisory lock across both, so within a watermark's span commit order is id
+   order, and a listener never advances a connection watermark past an id it
+   did not deliver.
 
 ## Phase 0 — Guardrails and the two-instance harness
 

@@ -11,7 +11,11 @@ file is the rule**.
   feed a per-run recorder whose *live* lane publishes each provider chunk over
   `publishSseEphemeral` (notify-only) and whose *durable* lane coalesces
   separately for bootstrap — two lanes precisely so a slow INSERT cannot delay
-  a token. The drain loop calls the recorder synchronously; anything that would
+  a token. That split is also why the live lane takes **no** lock: a durable
+  publish serialises per thread on `pg_advisory_xact_lock` so its id order is
+  its commit order (horizontal-scaling invariant 9), while an ephemeral one
+  writes no row and moves no watermark, so it must never wait behind that lock.
+  The drain loop calls the recorder synchronously; anything that would
   make the provider read wait belongs on a lane, not in the callback. Session
   identity is `(runId, invocationId, toolCallId)` because indexes restart per
   attempt and retries re-issue the same iteration. Never publish a document
