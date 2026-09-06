@@ -17,8 +17,6 @@ export type ResumeAgentBrowserInput = {
   /** The person resuming. Never null: a resume is somebody's ask. */
   userId: string
   encryptionSecret: string
-  /** Test seam, the `SessionPoolDeps.connect` shape. */
-  connect?: (connectUrl: string) => Promise<CdpClient>
 }
 
 /**
@@ -81,7 +79,7 @@ export const resumeAgentBrowser = async (
   // Nothing else drives this session, so there is no rival connection to
   // worry about — and a session that cannot be reached is released rather
   // than left billing behind a column that shows nothing.
-  const dial = input.connect ?? connectCdp
+  const dial = deps.connect ?? connectCdp
   let cdp: CdpClient | null = null
   try {
     cdp = await dial(opened.connectUrl)

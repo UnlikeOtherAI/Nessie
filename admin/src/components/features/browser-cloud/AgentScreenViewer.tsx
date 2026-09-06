@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useBrowserControl, useCloudBrowserSession } from '../../../facades/browser-cloud/hooks'
 import { useTabParam } from '../../../navigation/useTabParam'
@@ -9,6 +9,13 @@ type AgentScreenViewerProps = {
   sessionId: string
   /** Full-screen gets more chrome and a bigger frame; the panel is compact. */
   variant: 'panel' | 'fullscreen'
+  /**
+   * Take the controls as soon as the session is live. Set when the person
+   * opened the browser for themselves — a resume — where waiting for a second
+   * press of "Take control" is a step nobody asked for. Never set for a
+   * session an agent is driving.
+   */
+  claimOnLive?: boolean
   /**
    * The agent whose browser this is, when known. A team agent's browser
    * is shared with everyone who can reach it, which the banner says before
@@ -45,7 +52,12 @@ const STATUS_LABEL: Record<string, string> = {
  * detail route decides. The claim is what makes the *agent* stand down, since
  * every browser verb is refused server-side while it is held.
  */
-export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenViewerProps) => {
+export const AgentScreenViewer = ({
+  agent,
+  claimOnLive = false,
+  sessionId,
+  variant,
+}: AgentScreenViewerProps) => {
   const session = useCloudBrowserSession(sessionId)
   // Control is only offered full-screen: the panel is a glance, and handing
   // somebody the keyboard in a 400px column is not the affordance.
@@ -71,6 +83,17 @@ export const AgentScreenViewer = ({ agent, sessionId, variant }: AgentScreenView
 
   const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
   const live = session.data?.status === 'active' || session.data?.status === 'allocating'
+
+  // Once, when the session first reports live and nobody else holds it. The
+  // ref rather than state, so a failed claim does not retry on every poll.
+  const claimed = useRef(false)
+  const { take } = control
+  useEffect(() => {
+    if (!claimOnLive || variant !== 'fullscreen' || claimed.current) return
+    if (session.data?.status !== 'active' || session.data.controlledByUserId) return
+    claimed.current = true
+    take()
+  }, [claimOnLive, session.data, take, variant])
 
   // Follow the agent by default: the hook reads an id the session no longer
   // has as its fallback, so when the agent closes the tab being watched the

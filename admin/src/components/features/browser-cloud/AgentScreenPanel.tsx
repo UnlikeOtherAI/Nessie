@@ -9,6 +9,7 @@ import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
+import { THREAD_PANEL_WIDTH_STORAGE_KEY } from '../channels/thread-panel/thread-panel-layout'
 import { AgentScreenViewer } from './AgentScreenViewer'
 import { BrowserLastState } from './BrowserLastState'
 
@@ -45,9 +46,30 @@ type AgentScreenPanelProps = {
  * the last state into the screen with no further thought from the caller.
  */
 export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentScreenPanelProps) => {
-  const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY)
+  // The reply thread stands immediately to this column's left, and the handle
+  // between them belongs to this column. Naming the thread's key is
+  // unconditional: the link is made only while a thread panel is on screen.
+  const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY, {
+    linkedLeftKey: THREAD_PANEL_WIDTH_STORAGE_KEY,
+  })
   const phoneLayout = useNavigationLayout() === 'single'
   const [fullscreen, setFullscreen] = useState(false)
+  // A resume is "open it for me": the session arrives a poll later, and when
+  // it does the column goes full screen and claims the keyboard, which is the
+  // only container where a person can drive. Held as intent rather than set
+  // directly, because full screen with no session yet is an empty layer.
+  const [openForPerson, setOpenForPerson] = useState(false)
+  const [claimForPerson, setClaimForPerson] = useState(false)
+  useEffect(() => {
+    if (sessionId !== null && openForPerson) {
+      setFullscreen(true)
+      setClaimForPerson(true)
+      setOpenForPerson(false)
+    }
+  }, [openForPerson, sessionId])
+  useEffect(() => {
+    if (!fullscreen) setClaimForPerson(false)
+  }, [fullscreen])
 
   // The takeover is full-bleed rather than a centred card, so it is not the
   // shared `Dialog` — but it owes the same shared work every overlay does
@@ -139,7 +161,12 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
           </header>
           )}
           {sessionId === null ? null : (
-            <AgentScreenViewer agent={agent} sessionId={sessionId} variant="fullscreen" />
+            <AgentScreenViewer
+              agent={agent}
+              claimOnLive={claimForPerson}
+              sessionId={sessionId}
+              variant="fullscreen"
+            />
           )}
         </div>
       </OverlayPortal>
@@ -185,7 +212,11 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
       </header>
       )}
       {sessionId === null ? (
-        <BrowserLastState agent={agent} threadId={threadId} />
+        <BrowserLastState
+          agent={agent}
+          onResumed={() => setOpenForPerson(true)}
+          threadId={threadId}
+        />
       ) : (
         <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
       )}

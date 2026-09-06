@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 
-import type { CdpClient } from './cdp-client.js'
+import { connectCdp, type CdpClient } from './cdp-client.js'
+import { loadSessionCapability } from './session-capability.js'
 
 /**
  * The tabs an agent's browser was last seen with.
@@ -246,3 +247,39 @@ export const captureSessionTabs = async (
   }
 }
 
+
+/**
+ * Capture the tabs of a session nobody is driving — one a person resumed.
+ *
+ * A run's session is captured over the worker's own socket, because a second
+ * automation connection beside a live one can end the session. A resumed
+ * session has no worker and no socket, so this dials its own, takes the
+ * pictures, and hangs up. Used when the person hands the controls back and
+ * when the session is released, so "when I'm done it just saves" holds for
+ * every way of being done — including the reaper.
+ */
+export const captureUndrivenSessionTabs = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession' | '$transaction'>,
+  input: {
+    sessionId: string
+    encryptionSecret: string
+    connect?: (connectUrl: string) => Promise<CdpClient>
+  },
+): Promise<boolean> => {
+  if (!input.encryptionSecret) return false
+  const capability = await loadSessionCapability(prisma, {
+    sessionId: input.sessionId,
+    encryptionSecret: input.encryptionSecret,
+  })
+  if (!capability) return false
+  let cdp: CdpClient | null = null
+  try {
+    cdp = await (input.connect ?? connectCdp)(capability.connectUrl)
+    await cdp.attachToPage()
+    return await captureSessionTabs(prisma, { cdp, sessionId: input.sessionId })
+  } catch {
+    return false
+  } finally {
+    cdp?.close()
+  }
+}

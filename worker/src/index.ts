@@ -310,6 +310,9 @@ export const startWorker = async (
   const cloudBrowser: CloudBrowserDeps = {
     prisma,
     resolveSecret: (ref) => mcpSecrets.resolver.resolve(ref),
+    // Lets the reaper write a resumed session's last state before stopping
+    // it: nothing drives that session, so the capture dials the capability.
+    encryptionSecret: config.auth.secret ?? '',
   }
   setCloudBrowserReleaseHook(async (runId) => {
     // The terminal transition is the last moment the pages exist, and the

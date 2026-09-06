@@ -85,6 +85,7 @@ export {
 export {
   AGENT_BROWSER_TAB_LIMIT,
   captureSessionTabs,
+  captureUndrivenSessionTabs,
   listAgentBrowserTabs,
   persistAgentBrowserTabs,
   restoreBrowserTabs,

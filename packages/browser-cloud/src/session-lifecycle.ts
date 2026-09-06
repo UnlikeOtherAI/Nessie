@@ -9,6 +9,8 @@ import {
   type BrowserbaseCredentials,
 } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
+import { captureUndrivenSessionTabs } from './agent-browser-tabs.js'
+import type { CdpClient } from './cdp-client.js'
 import { sealConnectCapability } from './session-capability.js'
 
 /**
@@ -25,8 +27,16 @@ export type SecretResolve = (ref: string) => Promise<string | null>
 export type CloudBrowserDeps = {
   prisma: PrismaClient
   resolveSecret: SecretResolve
+  /**
+   * The deployment auth secret, which unseals a session's connect capability.
+   * Needed to capture a resumed session's tabs before it is released, since no
+   * worker holds a socket to it; absent, that capture is skipped.
+   */
+  encryptionSecret?: string
   /** Test seam. */
   clientFactory?: (credentials: BrowserbaseCredentials) => BrowserbaseClient
+  /** Test seam for the capture that dials a resumed session itself. */
+  connect?: (connectUrl: string) => Promise<CdpClient>
   now?: () => Date
 }
 
@@ -491,6 +501,21 @@ export const releaseCloudBrowserSession = async (
   deps: CloudBrowserDeps,
   input: { sessionId: string; releasedBy: string },
 ): Promise<boolean> => {
+  // A resumed session's last state is written here, before the claim clears
+  // the capability: a run's session was captured by its worker, but nothing
+  // drives a resumed one, and this is its last moment with pages.
+  if (deps.encryptionSecret) {
+    const resumed = await deps.prisma.cloudBrowserSession.count({
+      where: { id: input.sessionId, runId: null, status: 'active', agentBrowserId: { not: null } },
+    })
+    if (resumed === 1) {
+      await captureUndrivenSessionTabs(deps.prisma, {
+        sessionId: input.sessionId,
+        encryptionSecret: deps.encryptionSecret,
+        connect: deps.connect,
+      })
+    }
+  }
   // `releasing` is deliberately NOT claimable: three writers can race here
   // (the tool, the terminal transition, the reaper) and including it let two
   // of them both call Browserbase, with the loser's failure path then

@@ -123,7 +123,14 @@ export const useReplyThread = ({
     resizePanel,
     resizePanelWithKeyboard,
     viewportWidth,
-  } = useSidePanelGeometry(THREAD_PANEL_WIDTH_STORAGE_KEY)
+  } = useSidePanelGeometry(THREAD_PANEL_WIDTH_STORAGE_KEY, {
+    // This hook runs for every conversation, thread or no thread, so the
+    // geometry outlives the panel. The tool column to the right resizes the
+    // boundary it shares with this panel, and it finds this panel by its
+    // storage key — so a closed thread must not answer, or dragging the
+    // browser column's handle would push a width nobody can see.
+    isPresent: openRootMessageId !== null,
+  })
 
   const rootQuery = useThreadMessage(activeThreadId, openRootMessageId ?? undefined)
   const repliesQuery = useThreadReplies(activeThreadId, openRootMessageId ?? undefined)

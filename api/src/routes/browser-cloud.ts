@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { z } from 'zod'
 
 import {
   claimSessionControl,
@@ -6,6 +7,7 @@ import {
   createBrowserbaseClient,
   disconnectCloudBrowser,
   isCloudBrowserError,
+  captureUndrivenSessionTabs,
   listAgentBrowserTabs,
   listCloudBrowserConnections,
   releaseSessionControl,
@@ -408,6 +410,13 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     agentId: string
     userId: string
   }): Promise<{ channelId: string; teamId: string | null } | null> => {
+    // Path ids reach Prisma as uuid columns, and a malformed one throws there
+    // rather than matching nothing — which a client would see as a 500 for
+    // what is simply an address that names nothing.
+    if (!z.string().uuid().safeParse(input.threadId).success
+      || !z.string().uuid().safeParse(input.agentId).success) {
+      return null
+    }
     const thread = await findThreadForUser(prisma, input.threadId, input.userId, input.organizationId)
     if (!thread) return null
     const bound = await prisma.agentBinding.count({
@@ -493,7 +502,11 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
 
     try {
       const resumed = await resumeAgentBrowser(
-        { prisma, resolveSecret: (ref) => secretResolver.resolve(ref) },
+        {
+          prisma,
+          resolveSecret: (ref) => secretResolver.resolve(ref),
+          encryptionSecret: authSecret ?? '',
+        },
         {
           organizationId,
           agentId,
@@ -713,6 +726,26 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sessionId,
       userId: actorContext.actor.actorId,
     })
+    // Handing back is "I'm done" on a resumed session — the person signed in
+    // somewhere, or moved the browser on — so the last state is written now
+    // rather than minutes later when the idle window closes it. A run's
+    // session is left alone: its worker holds the socket and captures itself.
+    const resumed = await prisma.cloudBrowserSession.findFirst({
+      where: {
+        id: sessionId,
+        organizationId: actorContext.tenant.organizationId,
+        runId: null,
+        status: 'active',
+        agentBrowserId: { not: null },
+      },
+      select: { id: true },
+    })
+    if (resumed) {
+      await captureUndrivenSessionTabs(prisma, {
+        sessionId,
+        encryptionSecret: authSecret ?? '',
+      })
+    }
     return reply.code(204).send()
   })
 }
