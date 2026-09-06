@@ -34,15 +34,12 @@ type VoiceCallOverlay = {
   state: VoiceCallState
 }
 import { ThreadReplyPanel } from '../../components/features/channels/thread-panel/ThreadReplyPanel'
-import type {
-  ChannelAgentParticipant,
-  MessageUserIdentity,
-} from '../../components/features/channels/channel-helpers'
+import type { ChannelAgentParticipant, MessageUserIdentity } from '../../components/features/channels/channel-participants'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { MessageHistoryStatus } from '../../components/features/channels/ChannelMessageFeed'
 import type { OlderContentLoader } from '../../hooks/useStickToBottom'
 import { ChannelInfoDrawers } from './ChannelInfoDrawers'
-import type { useReplyThread } from './useReplyThread'
+import type { useReplyThread } from '../../components/features/channels/useReplyThread'
 
 interface ChannelOverlaysProps {
   activeCall: CallRecord | null | undefined

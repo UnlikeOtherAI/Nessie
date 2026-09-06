@@ -4,7 +4,7 @@
 // the viewport can follow it. Pure and React-free, unit-tested in
 // `admin/test/document-markdown.test.ts`.
 //
-// Split out of `document-stream-helpers.ts`, which owns the *wire* side — the
+// Split out of `document-stream-entries.ts`, which owns the *wire* side — the
 // entry state and the delta/edit merge. Two responsibilities, two files.
 
 type OpenFence = { char: string; length: number } | null

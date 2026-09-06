@@ -5,8 +5,8 @@ import * as ReactNamespace from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { DesktopWindowFrame } from '../src/components/desktop/DesktopWindowFrame.js'
-import type { DesktopWindowFrameAdapter } from '../src/components/desktop/desktop-window-adapter.js'
+import { DesktopWindowFrame } from '../src/layouts/DesktopWindowFrame.js'
+import type { DesktopWindowFrameAdapter } from '../src/layouts/desktop-window-adapter.js'
 
 ;(globalThis as typeof globalThis & { React: typeof ReactNamespace }).React = ReactNamespace
 

@@ -23,9 +23,11 @@ once in `navigation/overlay.ts` and mirrored as tokens:
 (45) is the other layer without a kind: a hover hint owns no Back, traps no
 focus and is never dismissed, but the two the rail and the sidebar portal
 beside themselves are `position: fixed` and had picked 90 and 80 out of the
-air — which put a hover hint over an open dialog. Nothing else in the admin
-declares a z-index (the lint gate lands in step 15 once the fifty overlays have
-adopted the scale). No scale, ever: a dialog rises 4 px.
+air — which put a hover hint over an open dialog. `scripts/lint-layers.mjs`
+enforces the scale everywhere else in `admin/src`: any literal z-index outside
+its seeded, shrinking `ALLOWLIST` fails the build, and a file comes off the
+list the moment its last offense is converted. No scale, ever: a dialog rises
+4 px.
 
 ### Every overlay leaves the page tree
 
@@ -89,16 +91,12 @@ split two ways, each pinned by `admin/test/dialog-adopters.test.ts`:
   independently-scrolling list none of the four geometries express),
   `SessionDebugDialog` (phone-tuned chrome: safe-area insets, a 44px close
   target, a dvh scrolling flex column), `AttachmentViewer` (locks page
-  scroll), `AgentAvatarQuickEdit` (an avatar-centred card with no title-bar
-  header), `DocumentStreamDialog` (branches its scrim on phone layout),
+  scroll), `DocumentStreamDialog` (branches its scrim on phone layout),
   `ThoughtProcessDialog` (a fixed-header / scrolling-log / fixed-footer
   split), `AgentScreenPanel`'s full-screen takeover (full-bleed rather than a
   centred card — it is the whole viewport, so it has no scrim to dismiss),
-  `UoaBillingCancellationDialog` and
-  `DeepWaterResearchLauncherDialog` (each its own `admin-card` panel family,
-  the second with a sticky in-scroll header), and `TriggerEditorDialog` (a
-  680px panel with a `text-sm` subtitle, neither of which is one of the
-  shell's four geometries). `ChannelConversationComposePage` is the
+  and `UoaBillingCancellationDialog` (its own `admin-card` panel family).
+  `ChannelConversationComposePage` is the
   exception among exceptions: a Flow, not a modal — on `single` it is
   already a full screen in the phone-navigation stack, so it registers
   `useOverlay` only on `split`, where it visually is a centred dialog over
@@ -142,7 +140,7 @@ and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
 hover hint, not a dismissible anchored surface.
 
-**`Card`** (`components/overlays/Card.tsx`) is the ambient kind, and one
+**`OverlayCard`** (`components/overlays/OverlayCard.tsx`) is the ambient kind, and one
 **`CardViewport`** per shell (mounted by `ToastProvider`) is the region it lives
 in: top-right on `split`, above the tab bar on `single`, decided from
 `useNavigationLayout()` — which is what replaced the toast viewport's own

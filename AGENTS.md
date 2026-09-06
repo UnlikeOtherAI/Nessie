@@ -107,6 +107,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 ## Linting
 
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
+- **React hooks**: `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` run as errors over `admin/src`, `admin/test` and `packages/sign-in-surface/src`; a deliberate omission needs an `eslint-disable-next-line` with the reason beside it, never a silent one.
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
 ## Natural-language intent is model-judged — never string-matched

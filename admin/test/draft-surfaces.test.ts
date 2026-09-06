@@ -20,7 +20,7 @@ const ADOPTED_SURFACES: { file: string; key: string; label: string }[] = [
     label: 'message inline edit',
   },
   {
-    file: 'components/kanban/TaskDialog.tsx',
+    file: 'components/features/projects/kanban/TaskDialog.tsx',
     key: "draftKey('task', task?.id ?? 'new')",
     label: 'the task dialog',
   },

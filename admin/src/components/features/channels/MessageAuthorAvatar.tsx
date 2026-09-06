@@ -1,5 +1,5 @@
-import { UserAvatar } from '../../primitives/UserAvatar'
-import { identityRingRadius } from '../../primitives/identity-shape'
+import { UserAvatar } from '../../shared/UserAvatar'
+import { identityRingRadius } from '../../../lib/identity-shape'
 import { AgentAvatar, type AgentAvatarSource } from '../../shared/AgentAvatar'
 
 /** Every message avatar in the feed and the reply panel is this size. */

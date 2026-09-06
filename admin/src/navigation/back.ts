@@ -1,9 +1,9 @@
-import type { LocalBackSnapshot } from '../layouts/admin-shell/local-back/local-back-registry'
+import type { LocalBackSnapshot } from './local-back-registry'
 import {
   type PhoneHistoryLedger,
   resolvePhoneLedgerBackAction,
-} from '../layouts/admin-shell/phone-navigation-ledger'
-import { getPhoneNavigationBackTarget } from '../layouts/admin-shell/phone-navigation'
+} from './phone-navigation-ledger'
+import { getPhoneNavigationBackTarget } from './phone-navigation'
 
 // The one Back decision. Every entry point — the header button, the edge
 // swipe, Android hardware Back, Escape, a browser POP landing on a parent —

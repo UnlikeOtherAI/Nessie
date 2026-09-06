@@ -5,7 +5,7 @@ import {
   matchesDeepWaterInstanceFilter,
   readDeepWaterInstanceFilter,
   type DeepWaterToolFilterCandidate,
-} from '../src/facades/deep-water-tool-filter.js'
+} from '../src/facades/tools/deep-water-tool-filter.js'
 
 const updater: DeepWaterToolFilterCandidate = {
   builtin: true,

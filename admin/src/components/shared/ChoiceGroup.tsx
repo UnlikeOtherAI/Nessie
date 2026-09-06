@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useId } from 'react'
 import { SectionLabel } from '../primitives/SectionLabel'
 import { TabBar } from '../primitives/TabBar'
@@ -23,6 +24,8 @@ export type ChoiceOption<T extends string> = {
   /** A second line explaining the option; only the `card` variant renders it. */
   description?: string
   disabled?: boolean
+  /** Leading icon shown beside the label; only the `card` variant renders it. */
+  icon?: ReactNode
   label: string
   value: T
 }
@@ -104,8 +107,20 @@ export const ChoiceGroup = <T extends string>({
                   type="radio"
                   value={option.value}
                 />
-                <span className="block text-sm font-semibold text-[color:var(--tx)]">
-                  {option.label}
+                <span className="flex items-center gap-2">
+                  {option.icon ? (
+                    <span
+                      className={[
+                        'flex h-3.5 w-3.5 items-center justify-center',
+                        selected ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
+                      ].join(' ')}
+                    >
+                      {option.icon}
+                    </span>
+                  ) : null}
+                  <span className="block text-sm font-semibold text-[color:var(--tx)]">
+                    {option.label}
+                  </span>
                 </span>
                 {option.description ? (
                   <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">

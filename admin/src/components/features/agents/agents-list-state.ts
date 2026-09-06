@@ -1,4 +1,4 @@
-import type { AgentScope } from './agent-scope'
+import type { AgentScope } from '../../shared/agent-scope'
 import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
 
 // The Agents page's per-tab page number is local state, which resets whenever

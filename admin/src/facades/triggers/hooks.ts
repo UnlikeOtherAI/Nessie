@@ -4,7 +4,10 @@ import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
 } from '../../lib/api-client'
-import { agentKeys, runKeys, triggerKeys, workflowKeys } from '../../lib/query-keys'
+import { agentKeys } from '../agents/keys'
+import { runKeys } from '../runs/keys'
+import { workflowKeys } from '../workflows/keys'
+import { triggerKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useTriggers = (enabled = true) => {

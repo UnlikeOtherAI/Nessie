@@ -6,8 +6,8 @@ import { FormField } from '../../../components/shared/FormField'
 import { Input } from '../../../components/shared/FormControls'
 import { LogoPanel } from './LogoPanel'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
-import { toFormErrors } from '../../../facades/form-errors'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
+import { toFormErrors } from '../../../facades/forms/form-errors'
 
 /**
  * Who the organisation is: its name and its logo.
@@ -34,6 +34,8 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
     if (organization) {
       setName(organization.name)
     }
+    // `organization` is read at this render, never a dependency — see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId])
 
   const saveName = async (event: FormEvent<HTMLFormElement>) => {

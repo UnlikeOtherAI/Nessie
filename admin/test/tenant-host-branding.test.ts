@@ -17,7 +17,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
   location: { hostname: 'design.acme.nessie.works', href: 'https://design.acme.nessie.works/' },
 }
 
-const { TeamHostSignIn } = await import('../src/components/tenant/TeamHostSignIn.js')
+const { TeamHostSignIn } = await import('../src/layouts/tenant/TeamHostSignIn.js')
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -43,14 +43,14 @@ test("a team address signed out shows the tenant's brand and a way in", () => {
 })
 
 test('it never names the team behind the address', () => {
-  const source = readSource('../src/components/tenant/TeamHostSignIn.tsx')
+  const source = readSource('../src/layouts/tenant/TeamHostSignIn.tsx')
   // The component takes no team at all, so no future edit can render one
   // without also widening its props — which is the point.
   assert.doesNotMatch(source, /teamName|team\.name|useTenantTeam/)
 })
 
 test('the gate shows it only once the session has settled as signed out', () => {
-  const source = readSource('../src/components/tenant/TenantHostGate.tsx')
+  const source = readSource('../src/layouts/tenant/TenantHostGate.tsx')
 
   assert.match(
     source,
@@ -63,8 +63,8 @@ test('the gate shows it only once the session has settled as signed out', () => 
 })
 
 test('the organisation portal and a team address share one brand frame', () => {
-  const portal = readSource('../src/components/tenant/OrgPortal.tsx')
-  const teamHost = readSource('../src/components/tenant/TeamHostSignIn.tsx')
+  const portal = readSource('../src/layouts/tenant/OrgPortal.tsx')
+  const teamHost = readSource('../src/layouts/tenant/TeamHostSignIn.tsx')
 
   for (const source of [portal, teamHost]) {
     assert.match(source, /TenantBrandFrame/)
@@ -94,7 +94,7 @@ test('a return address is accepted only in the shape one of ours can take', () =
 })
 
 test('the shape check is not the only gate — the host must really be a tenant', () => {
-  const source = readSource('../src/components/tenant/TenantReturnHandoff.tsx')
+  const source = readSource('../src/layouts/tenant/TenantReturnHandoff.tsx')
 
   // An attacker-supplied host passes the shape check as easily as a real one;
   // what it cannot pass is resolution against this deployment.
@@ -113,7 +113,7 @@ test('the handoff sits above the router so every sign-in path is under it', () =
   // that, and a bare replaceState leaves the ledger holding a location it
   // never saw. The parameter is left where it is instead.
   assert.doesNotMatch(
-    readSource('../src/components/tenant/TenantReturnHandoff.tsx'),
+    readSource('../src/layouts/tenant/TenantReturnHandoff.tsx'),
     /history\.(?:replaceState|pushState)\(/,
   )
   // Sign-in finishes on more than one screen — /login, /login/completing, and
@@ -122,7 +122,7 @@ test('the handoff sits above the router so every sign-in path is under it', () =
 })
 
 test('a kept address is consumed once', () => {
-  const source = readSource('../src/components/tenant/TenantReturnHandoff.tsx')
+  const source = readSource('../src/layouts/tenant/TenantReturnHandoff.tsx')
   const forgot = source.indexOf('forgetTenantReturn()')
   const went = source.indexOf('window.location.assign(target)')
   assert.ok(forgot !== -1 && went !== -1 && forgot < went, 'clear before navigating, not after')

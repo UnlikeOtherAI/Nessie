@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 
 import { useSetAppConnectionSecret } from '../../../facades/apps/connect-hooks'
-import { toFormErrors, type FormErrors } from '../../../facades/form-errors'
+import { toFormErrors, type FormErrors } from '../../../facades/forms/form-errors'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 import { FormField } from '../../shared/FormField'

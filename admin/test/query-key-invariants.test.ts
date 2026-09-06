@@ -1,22 +1,26 @@
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
-
-import * as queryKeys from '../src/lib/query-keys.js'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 /**
  * The prefix rule, enforced instead of asserted.
  *
- * query-keys.ts exists so "invalidating a family's root reaches the whole
- * family" is checkable in one place. A prose list of exceptions in its header
- * is the same thing that rotted everywhere else — it drifts the moment someone
+ * The key factories exist so "invalidating a family's root reaches the whole
+ * family" is checkable in one place. A prose list of exceptions in a header is
+ * the same thing that rotted everywhere else — it drifts the moment someone
  * adds a key and does not read it. So the rule is a test, and every deliberate
  * exception is data with a reason attached.
  *
  * Adding a key outside its family root fails this test. Removing the need for a
  * listed exception fails it too, so the list cannot outlive its reasons.
+ *
+ * The families live one per facade (`src/facades/<domain>/keys.ts`), plus the
+ * cross-cutting handful in `src/lib/query-keys.ts`, so the check enumerates
+ * them from the filesystem rather than from one module's exports: a domain that
+ * moved its keys out of the central module must not thereby move them out of
+ * the check, and a new facade is covered the moment its `keys.ts` exists.
  */
 
 // key = `${family}.${member}`. The reason is why nesting would cost more than
@@ -55,16 +59,81 @@ const emit = (member: unknown): readonly unknown[] | null => {
   return isKeyArray(produced) ? produced : null
 }
 
-const families = Object.entries(queryKeys).filter(
-  (entry): entry is [string, Record<string, unknown>] =>
-    entry[0].endsWith('Keys') && typeof entry[1] === 'object' && entry[1] !== null,
-)
+const SOURCE_ROOT = fileURLToPath(new URL('../src/', import.meta.url))
+const FACADES_ROOT = join(SOURCE_ROOT, 'facades')
+
+/** Where the literals live; every other file must import from one of these. */
+const CENTRAL_KEY_MODULE = 'lib/query-keys.ts'
+
+/**
+ * A filesystem walk, not `git ls-files`: a `keys.ts` that has just been written
+ * is covered by this test before it is ever staged, which is the point at which
+ * a root escape is cheapest to fix.
+ */
+const keyModules = (): string[] => {
+  const found = [join(SOURCE_ROOT, CENTRAL_KEY_MODULE)]
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      if (entry.isDirectory()) walk(join(dir, entry.name))
+      else if (entry.name === 'keys.ts') found.push(join(dir, entry.name))
+    }
+  }
+  walk(FACADES_ROOT)
+  return found
+}
+
+const KEY_MODULE_PATHS = keyModules()
+const KEY_MODULE_FILES = new Set(KEY_MODULE_PATHS.map((path) => relative(SOURCE_ROOT, path)))
+
+/** `[module, familyName, family]` for every `*Keys` object in every key module. */
+const families: [string, string, Record<string, unknown>][] = (
+  await Promise.all(
+    KEY_MODULE_PATHS.map(async (path) => {
+      const loaded = (await import(pathToFileURL(path).href)) as Record<string, unknown>
+      return Object.entries(loaded)
+        .filter(
+          (entry): entry is [string, Record<string, unknown>] =>
+            entry[0].endsWith('Keys') && typeof entry[1] === 'object' && entry[1] !== null,
+        )
+        .map(([name, family]): [string, string, Record<string, unknown>] => [
+          relative(SOURCE_ROOT, path),
+          name,
+          family,
+        ])
+    }),
+  )
+).flat()
+
+const familyNamed = (name: string): Record<string, unknown> | null =>
+  families.find(([, familyName]) => familyName === name)?.[2] ?? null
+
+test('the key modules are enumerated from the facades, not from one module', () => {
+  assert.ok(
+    KEY_MODULE_FILES.has(CENTRAL_KEY_MODULE),
+    'expected the cross-cutting module in the enumeration',
+  )
+  assert.ok(
+    KEY_MODULE_PATHS.length > 30,
+    `expected a keys.ts per domain facade, found ${KEY_MODULE_PATHS.length}`,
+  )
+  const duplicated = families
+    .map(([, name]) => name)
+    .filter((name, index, all) => all.indexOf(name) !== index)
+  assert.deepEqual(
+    duplicated,
+    [],
+    'A family name is declared in two key modules; one of them is a second cache identity for the '
+      + 'same records:\n' + duplicated.join('\n'),
+  )
+})
 
 test('every key family is reachable from its own root', () => {
-  assert.ok(families.length > 20, 'expected the module to export the admin key families')
+  assert.ok(families.length > 20, 'expected the walk to reach the admin key families')
 
   const escapes: string[] = []
-  for (const [familyName, family] of families) {
+  for (const [, familyName, family] of families) {
     const root = family.all
     if (!isKeyArray(root)) continue
 
@@ -93,12 +162,11 @@ test('no exception outlives its reason', () => {
   const stale: string[] = []
   for (const qualified of Object.keys(ROOT_EXCEPTIONS)) {
     const [familyName, memberName] = qualified.split('.')
-    const family = (queryKeys as Record<string, unknown>)[familyName ?? '']
-    if (typeof family !== 'object' || family === null) {
+    const record = familyNamed(familyName ?? '')
+    if (!record) {
       stale.push(`${qualified}: family no longer exists`)
       continue
     }
-    const record = family as Record<string, unknown>
     const root = record.all
     const key = emit(record[memberName ?? ''])
     if (!key) {
@@ -115,19 +183,102 @@ test('no exception outlives its reason', () => {
 
 test('every family root is the exact prefix its own children are built from', () => {
   // A child that re-spells its root's string is a second definition of the
-  // prefix, which is the drift this module removes. Spot-check the families
+  // prefix, which is the drift the factories remove. Spot-check the families
   // whose roots exist only as a spread base.
+  const appKeys = familyNamed('appKeys') as {
+    all: readonly string[]
+    detail: (slug: string) => readonly unknown[]
+  }
+  const dashboardKeys = familyNamed('dashboardKeys') as {
+    widgetDataView: (widgetId: string, suffix: string) => readonly unknown[]
+  }
+  const workflowKeys = familyNamed('workflowKeys') as {
+    run: (id: string) => readonly unknown[]
+    runs: readonly string[]
+  }
+
+  assert.deepEqual(appKeys.detail('slug').slice(0, appKeys.all.length), [...appKeys.all])
   assert.deepEqual(
-    queryKeys.appKeys.detail('slug').slice(0, queryKeys.appKeys.all.length),
-    [...queryKeys.appKeys.all],
-  )
-  assert.deepEqual(
-    queryKeys.dashboardKeys.widgetDataView('w-1', '').slice(0, 3),
+    dashboardKeys.widgetDataView('w-1', '').slice(0, 3),
     ['dashboards', 'widget-data', 'w-1'],
   )
+  assert.deepEqual(workflowKeys.run('r-1').slice(0, workflowKeys.runs.length), [...workflowKeys.runs])
+})
+
+/**
+ * One key, one owner — across facades.
+ *
+ * Now that the families live in forty-odd files, the cheapest mistake to make
+ * is for a second facade to re-declare a key the owning one already builds:
+ * two names for one cache entry, and the second is the one nobody remembers to
+ * invalidate. Sharing the SAME array is the opposite and is how a sub-resource
+ * stays reachable — `agentTodoKeys.all` IS `agentKeys.all`, imported across the
+ * facade boundary — so identity, not equality, separates the two.
+ *
+ * Collisions inside one family are its own business: `knowledgeKeys.space` and
+ * `knowledgeKeys.scopedSpaces` take disjoint id namespaces and only look equal
+ * under this test's placeholder argument.
+ */
+test('no two facades claim the same key', () => {
+  const claims = new Map<string, { qualified: string; family: string; value: readonly unknown[] }[]>()
+  for (const [, familyName, family] of families) {
+    for (const [memberName, member] of Object.entries(family)) {
+      const key = emit(member)
+      if (!key) continue
+      const serialised = JSON.stringify(key)
+      claims.set(serialised, [
+        ...(claims.get(serialised) ?? []),
+        { qualified: `${familyName}.${memberName}`, family: familyName, value: key },
+      ])
+    }
+  }
+
+  const collisions = [...claims.entries()]
+    .filter(([, claimants]) => {
+      if (new Set(claimants.map((claim) => claim.family)).size < 2) return false
+      return new Set(claimants.map((claim) => claim.value)).size > 1
+    })
+    .map(([key, claimants]) => `${key} <- ${claimants.map((c) => c.qualified).join(', ')}`)
+
   assert.deepEqual(
-    queryKeys.workflowKeys.run('r-1').slice(0, queryKeys.workflowKeys.runs.length),
-    [...queryKeys.workflowKeys.runs],
+    collisions,
+    [],
+    'These keys are declared by more than one facade. Import the owning facade\'s keys.ts instead '
+      + 'of spelling a second one:\n' + collisions.join('\n'),
+  )
+})
+
+/**
+ * A `*Keys` object anywhere but a `keys.ts` is the F2 shape: a family invisible
+ * to every check above, because the enumeration walks `keys.ts` files. Five of
+ * them had accumulated in facade `hooks.ts` files before this gate existed.
+ */
+test('a facade declares its key family in keys.ts and nowhere else', () => {
+  const strays: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (entry.name === 'keys.ts' || !isSourceFile(entry.name)) continue
+      readFileSync(full, 'utf8').split('\n').forEach((line, index) => {
+        if (/^export const [A-Za-z]*Keys\b/.test(line)) {
+          strays.push(`${relative(SOURCE_ROOT, full)}:${index + 1}  ${line.trim()}`)
+        }
+      })
+    }
+  }
+  walk(FACADES_ROOT)
+
+  assert.deepEqual(
+    strays,
+    [],
+    'A key family declared outside a facade\'s keys.ts is checked by nothing — move it to '
+      + 'keys.ts beside its facade:\n' + strays.join('\n'),
   )
 })
 
@@ -142,17 +293,12 @@ test('every family root is the exact prefix its own children are built from', ()
  * rest — which is the answer to whether a header comment is enough.
  *
  * The violation is textual, so the check is a scan of the source on disk rather
- * than of the imported module. It reads every file under `admin/src` (the
- * module itself excepted, since that is where the literals belong) and refuses
- * an array literal handed to `queryKey` or passed positionally to the query
- * filters. A key built by a factory — `secretKeys.all`,
+ * than of the imported module. It reads every file under `admin/src` (the key
+ * modules themselves excepted, since that is where the literals belong) and
+ * refuses an array literal handed to `queryKey` or passed positionally to the
+ * query filters. A key built by a factory — `secretKeys.all`,
  * `threadKeys.messages(id)` — is what passes.
  */
-
-const SOURCE_ROOT = fileURLToPath(new URL('../src/', import.meta.url))
-
-/** Where the literals live; every other file must import from it. */
-const KEY_MODULE = 'lib/query-keys.ts'
 
 /**
  * `queryKey: [...]`, `queryKey = [...]`, and `invalidateQueries([...])`.
@@ -191,9 +337,9 @@ const sourceFiles = (): string[] => {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
       a.name.localeCompare(b.name),
     )) {
-      const relative = prefix ? `${prefix}/${entry.name}` : entry.name
-      if (entry.isDirectory()) walk(join(dir, entry.name), relative)
-      else if (entry.isFile() && isSourceFile(entry.name)) found.push(relative)
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(join(dir, entry.name), relativePath)
+      else if (entry.isFile() && isSourceFile(entry.name)) found.push(relativePath)
     }
   }
   walk(SOURCE_ROOT, '')
@@ -212,14 +358,17 @@ const isCommentLine = (line: string) => {
   return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')
 }
 
-test('no raw query-key literal outside query-keys.ts', () => {
+test('no raw query-key literal outside a key module', () => {
   const files = sourceFiles()
   assert.ok(files.length > 100, 'expected the scan to reach the admin source tree')
-  assert.ok(files.includes(KEY_MODULE), `expected ${KEY_MODULE} in the scanned tree`)
+  assert.ok(
+    files.includes(CENTRAL_KEY_MODULE),
+    `expected ${CENTRAL_KEY_MODULE} in the scanned tree`,
+  )
 
   const violations: string[] = []
   for (const file of files) {
-    if (file === KEY_MODULE) continue
+    if (KEY_MODULE_FILES.has(file)) continue
     const contents = readFileSync(join(SOURCE_ROOT, file), 'utf8')
     contents.split('\n').forEach((line, index) => {
       if (isCommentLine(line)) return
@@ -232,7 +381,8 @@ test('no raw query-key literal outside query-keys.ts', () => {
   assert.deepEqual(
     violations,
     [],
-    'These call sites spell a cache key inline instead of calling a factory in lib/query-keys.ts. '
+    'These call sites spell a cache key inline instead of calling a factory in the owning facade\'s '
+      + 'keys.ts. '
       + 'A literal is a second definition of the same cache identity and stops matching the moment '
       + 'either side moves — add or reuse a factory:\n' + violations.join('\n'),
   )

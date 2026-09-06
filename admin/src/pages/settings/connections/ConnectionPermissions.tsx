@@ -7,7 +7,7 @@ import type {
 import { Pill, type PillTone } from '../../../components/primitives/Pill'
 import { FormError } from '../../../components/shared/FormActions'
 import { Row, RowList } from '../../../components/shared/RowList'
-import { sectionTitleClass } from '../settings-shared'
+import { sectionTitleClass } from '../settings-presentation'
 import {
   useStartCommsConnection,
   useUpdateCommsCapabilities,

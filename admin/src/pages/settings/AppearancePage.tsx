@@ -1,5 +1,5 @@
 import { ColoursPanel } from './appearance/ColoursPanel'
-import { SettingsPanel, type SettingsTabHostProps } from './settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { TypePanel } from './appearance/TypePanel'
 
 /**

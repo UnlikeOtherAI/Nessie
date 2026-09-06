@@ -2,8 +2,10 @@
  * One live subscription for every dashboard currently mounted in the app.
  *
  * Conversation history can contain several cards and the side panel can show
- * one of them at the same time. Registering those ids here keeps that state on
- * one authenticated socket rather than opening a socket per card.
+ * one of them at the same time. Registering those ids here collects them into
+ * one scope rather than one per card. The transport is not this provider's:
+ * the ids join the tab's single `/api/activity` connection
+ * (`facades/agents/activity-socket.ts`) alongside the shell's own scope.
  */
 
 import {
@@ -17,7 +19,7 @@ import {
   type PropsWithChildren,
 } from 'react'
 import { useAgentRealtime } from '../../../facades/agents/realtime'
-import type { RealtimeConnectionState } from '../../../facades/agents/keys'
+import type { RealtimeConnectionState } from '../../../facades/agents/realtime-snapshot'
 
 type DashboardRealtimeApi = {
   connectionState: RealtimeConnectionState

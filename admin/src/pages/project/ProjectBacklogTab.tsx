@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { isArchivedStatus, statusLabel } from '../../components/kanban/kanban-config'
-import { NewTaskButton } from '../../components/kanban/NewTaskButton'
-import { taskStatusTone } from '../../components/kanban/task-status-presentation'
+import { isArchivedStatus, statusLabel } from '../../components/features/projects/kanban/kanban-config'
+import { NewTaskButton } from '../../components/features/projects/kanban/NewTaskButton'
+import { taskStatusTone } from '../../components/features/projects/kanban/task-status-presentation'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { Input } from '../../components/shared/FormControls'
 import { PageBody, Section } from '../../components/shared/PageBody'
@@ -20,7 +20,7 @@ import {
   useTasks,
   useUpdateTaskPoints,
 } from '../../facades/tasks/hooks'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../../facades/auth/hooks'
 
 const PointsInput = ({ task }: { task: TaskRecord }) => {
   const update = useUpdateTaskPoints()
@@ -174,7 +174,9 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   const isOwner = useIsOwner()
   const iterationsQuery = useIterations(projectId)
   const tasksQuery = useTasks(projectId)
-  const iterations = iterationsQuery.data ?? []
+  // Memoised so the empty-array fallback is not a fresh literal every render;
+  // the planning/completed memos below key off this identity.
+  const iterations = useMemo(() => iterationsQuery.data ?? [], [iterationsQuery.data])
   const tasks = tasksQuery.data ?? []
   const createIteration = useCreateIteration(projectId)
   const [newName, setNewName] = useState('')

@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { isReactNativeWebView, useNativeIPadApp } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
+import { useNativeIPadApp } from '../../navigation/mobile-shell'
 import { TopBarSearch } from './TopBarSearch'
 import { useTransientMenu } from './TransientMenuContext'
 
@@ -35,9 +36,14 @@ export const NativeSearchOverlay = () => {
     }
   }, [close, openMenu])
 
+  // A route change dismisses the overlay. `open` is read through a ref so it
+  // is not a dependency: as a dependency it would close the overlay the moment
+  // it opened, which is the opposite of what this effect is for.
+  const openRef = useRef(open)
+  openRef.current = open
   useEffect(() => {
-    if (open) close()
-  }, [location.pathname])
+    if (openRef.current) close()
+  }, [close, location.pathname])
 
   useEffect(() => {
     postOverlayState(open)

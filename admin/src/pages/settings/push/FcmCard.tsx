@@ -7,7 +7,7 @@ import {
 } from '../../../facades/platform-push/hooks'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
-import { PushResultBanner, PushStatusRow } from './shared'
+import { PushResultBanner, PushStatusRow } from './push-status'
 
 type FcmCardProps = {
   status: FcmStatus | { configured: false } | undefined

@@ -17,7 +17,8 @@ import {
 } from '../../facades/secrets/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTabParam } from '../../navigation/useTabParam'
-import { FeedbackBanner, SettingsPanel, type SettingsFeedback } from './settings-shared'
+import { FeedbackBanner, type SettingsFeedback } from './FeedbackBanner'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 const SECRETS_TABS = ['active', 'revoked'] as const
 

@@ -4,7 +4,7 @@ import type {
   UnreadDirectMessageRecord,
   UnreadDirectMessagesResponse,
 } from '../../lib/api-client'
-import { threadKeys } from '../../lib/query-keys'
+import { threadKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useUnreadDirectMessages = () => {

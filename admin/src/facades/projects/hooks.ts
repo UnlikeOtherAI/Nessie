@@ -4,7 +4,9 @@ import type {
   ProjectRecord,
   TeamRecord,
 } from '../../lib/api-client'
-import { channelKeys, projectKeys, teamKeys } from '../../lib/query-keys'
+import { channelKeys } from '../channels/keys'
+import { teamKeys } from '../team/keys'
+import { projectKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useProjects = () => {

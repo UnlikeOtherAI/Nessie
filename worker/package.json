@@ -18,6 +18,7 @@
     "test:db": "node --test --test-concurrency=1 --import tsx \"test/db/*.test.ts\"",
     "test:load": "tsx test-harness/load.ts",
     "test:smoke": "tsx test-harness/smoke.ts",
+    "test:smoke:multi": "tsx test-harness/smoke-multi.ts",
     "test:triggers": "tsx test-harness/trigger-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

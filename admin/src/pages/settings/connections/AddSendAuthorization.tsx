@@ -7,7 +7,7 @@ import {
   type SendGrant,
 } from '../../../facades/gmail/hooks'
 import { SendBoundaryEditor } from './SendBoundaryEditor'
-import { agentSelectionLabel } from '../../../components/features/agents/AgentVisibilityPill'
+import { agentSelectionLabel } from '../../../components/shared/AgentVisibilityPill'
 
 /**
  * Turning on "act without asking", from settings rather than from an approval.

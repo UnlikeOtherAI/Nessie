@@ -56,7 +56,11 @@ export type VisibleStarredEntry =
   | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }
   | { type: 'user'; person: SidebarPerson }
 
-export type AdminShellOutletContext = {
+// The shell actions a routed or seeded page may call — named for what it is
+// now, not for the `useOutletContext` mechanism it replaced (the shell
+// renders a captured route element, not a live `<Outlet>`; see
+// `AdminShellLayout.tsx`'s own `useOutlet()`).
+export type ShellActions = {
   onCreateAgent: () => void
   onCreateChannel: (target?: CreateChannelTarget) => void
   onSelectAgent: (agentId: string) => void

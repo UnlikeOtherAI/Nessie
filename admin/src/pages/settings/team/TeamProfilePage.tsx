@@ -5,7 +5,7 @@ import { FormActions, FormError, FormSuccess } from '../../../components/shared/
 import { FormField } from '../../../components/shared/FormField'
 import { Input } from '../../../components/shared/FormControls'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { TeamAvatarPanel } from './TeamAvatarPanel'
 import { useRenameTeam } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -38,9 +38,13 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  // Seed the input from the loaded team once per team id. Keying on the whole
+  // record would let a background refetch clobber an unsaved rename, so `team`
+  // is read at this render rather than depended on.
   const teamId = team?.id
   useEffect(() => {
     if (team) setName(team.name)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId])
 
   const externallyManaged = team?.externallyManaged ?? false

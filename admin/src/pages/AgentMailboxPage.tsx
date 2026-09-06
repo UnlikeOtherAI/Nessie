@@ -11,7 +11,7 @@ import {
   useMailboxConversations,
 } from '../facades/agent-mailbox/hooks'
 import { useAgents } from '../facades/agents/queries'
-import { useNavigationLayout } from '../lib/mobile-shell'
+import { useNavigationLayout } from '../navigation/mobile-shell'
 import { useTabParam } from '../navigation/useTabParam'
 
 type MailboxFilter = 'all' | 'inbox' | 'sent'
@@ -41,7 +41,11 @@ export const AgentMailboxPage = () => {
   const mailboxQuery = useAgentMailbox(agentId)
   const conversationsQuery = useMailboxConversations(agentId, filter)
 
-  const conversations = conversationsQuery.data?.data ?? []
+  // Memoised so the empty-array fallback is not a fresh literal every render.
+  const conversations = useMemo(
+    () => conversationsQuery.data?.data ?? [],
+    [conversationsQuery.data?.data],
+  )
   const selectedId = searchParams.get('conversation') ?? conversations[0]?.id
   const messagesQuery = useMailboxConversation(agentId, selectedId)
 

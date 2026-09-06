@@ -10,7 +10,7 @@ import { FormError } from '../../shared/FormActions'
 import { Row, RowList } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
-import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 
 /**
  * Per-agent access list for one tool. Each row flips an `allowed` grant on/off

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { KnowledgeSearchHit } from '../search/hooks'
-import { knowledgeKeys } from '../../lib/query-keys'
+import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 const WIKILINK_SUGGESTION_LIMIT = 6

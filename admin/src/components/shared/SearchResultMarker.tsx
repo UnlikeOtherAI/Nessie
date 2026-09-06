@@ -2,7 +2,7 @@ import type { ProjectRecord, UserRecord } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { IdentityTile } from '../primitives/IdentityTile'
 import { ProjectAvatar } from '../primitives/ProjectAvatar'
-import { UserAvatar } from '../primitives/UserAvatar'
+import { UserAvatar } from './UserAvatar'
 
 /** What a search hit is, for the purpose of the tile in front of it. */
 export type SearchMarkerSubject =
