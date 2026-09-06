@@ -52,19 +52,33 @@ export const useDisconnectCloudBrowser = () => {
   })
 }
 
+/** Watching a browser: fast enough that the status pill is not a lie. */
+export const WATCHING_POLL_MS = 5_000
+
 /**
- * Live sessions in a thread. Polled rather than pushed in phase 1: the panel
- * is only mounted while somebody is looking at it, and a session's lifetime is
- * minutes, so a short poll costs less than a new realtime event family.
+ * Idling: the chat tool rail keeps a live dot for every open agent
+ * conversation, so it asks four times less often than a viewer does. Still a
+ * poll rather than a pushed event — a session's lifetime is minutes, and a new
+ * realtime event family costs more than this does.
  */
-export const useThreadBrowserSessions = (threadId: string | null) => {
+export const RAIL_POLL_MS = 20_000
+
+/**
+ * Live sessions in a thread. Polled rather than pushed in phase 1: a session's
+ * lifetime is minutes, so a short poll costs less than a new realtime event
+ * family. The caller picks the rate from what it is doing with the answer.
+ */
+export const useThreadBrowserSessions = (
+  threadId: string | null,
+  options: { refetchInterval?: number } = {},
+) => {
   const apiClient = useApiClient()
   return useQuery<{ sessions: CloudBrowserSessionSummary[] }>({
     queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
     queryFn: () =>
       apiClient.get(`/api/threads/${threadId}/browser-sessions?active=1`),
     enabled: threadId !== null,
-    refetchInterval: 5_000,
+    refetchInterval: options.refetchInterval ?? WATCHING_POLL_MS,
     placeholderData: keepPreviousData,
   })
 }

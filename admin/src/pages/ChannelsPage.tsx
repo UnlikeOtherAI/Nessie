@@ -30,6 +30,8 @@ import { channelComposerDraftKey } from '../components/features/channels/compose
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useShareRestrictedMessage } from '../facades/messages/hooks'
+import { ChatToolDock } from '../components/features/channels/tool-rail/ChatToolDock'
+import { useChatToolRail } from '../components/features/channels/tool-rail/useChatToolRail'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
 import { useChannelCall } from './channels/useChannelCall'
@@ -50,13 +52,7 @@ export const ChannelsPage = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
-  const { browserSessionId: routeBrowserSessionId, channelId } = useParams()
-  // `/channels/:id/threads/:threadId/browser/:sessionId` — deep-linkable in the
-  // same shape as an open reply thread.
-  const watchedBrowserSessionId = routeBrowserSessionId ?? null
-  const closeBrowserSession = useCallback(() => {
-    navigate(channelId ? `/channels/${channelId}` : '/channels')
-  }, [channelId, navigate])
+  const { channelId, dashboardId } = useParams()
   const { me, token } = useAuthSession()
   const { onSelectAgent } = useShellActions()
   const { data: channels = [], isPending: channelsPending } = useChannels()
@@ -136,6 +132,10 @@ export const ChannelsPage = () => {
       && !(isPersonalAssistantConversation && personalAssistantPending),
     personalAssistantAgent,
   })
+  // The tools this conversation puts within reach, and which one is open.
+  // Keyed by the agent rather than the room: its browser is its browser
+  // wherever you reached it from.
+  const toolRail = useChatToolRail(conversationAgent?.id ?? null)
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
   const personalAssistantChannel =
     personalAssistantState?.channel ?? activeChannel
@@ -520,7 +520,6 @@ export const ChannelsPage = () => {
         agents={agents}
         allUsers={allUsers}
         boundAgents={boundAgents}
-        browserSessionId={watchedBrowserSessionId}
         channelUsers={channelUsers}
         callerCallActionError={callActionError}
         callerCallActionPending={callActionPending}
@@ -571,7 +570,6 @@ export const ChannelsPage = () => {
         threadPendingMessages={threadPendingMessages}
         token={token}
         onCancelOversizePaste={() => setOversizePaste(null)}
-        onCloseBrowserSession={closeBrowserSession}
         onCloseMembers={() => setShowMembersPopup(false)}
         onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
         onCloseSelectedUser={() => setSelectedMessageUser(null)}
@@ -594,6 +592,14 @@ export const ChannelsPage = () => {
         onSelectAgent={onSelectAgent}
         onSendAsFile={sendAsFile}
       />
+      {conversationAgent ? (
+        <ChatToolDock
+          agent={conversationAgent}
+          otherPanelOpen={Boolean(replyThread.openRootMessageId) || Boolean(dashboardId)}
+          rail={toolRail}
+          threadId={activeChannel?.defaultThreadId ?? null}
+        />
+      ) : null}
       {activeChannel ? (
         <ConversationInfoFlow
           activeChannel={activeChannel}
@@ -601,8 +607,10 @@ export const ChannelsPage = () => {
           allUsers={allUsers}
           canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
+          hasAgentTools={conversationAgent !== null}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
+          onOpenTool={toolRail.toggle}
         />
       ) : null}
       {executorLauncher.dialog}
