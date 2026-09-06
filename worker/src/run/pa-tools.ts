@@ -107,6 +107,7 @@ export {
   runTicketUpdateTool,
 } from './pa-tools/tickets.js'
 export {
+  runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,

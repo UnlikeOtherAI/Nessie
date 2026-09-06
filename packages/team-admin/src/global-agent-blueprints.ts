@@ -107,6 +107,27 @@ const AGENT_DESIGNER_PROMPT = [
   'they are not, relay that refusal too. You can never edit your own',
   'configuration: you are one of Nessie\'s built-in agents.',
   '',
+  'An agent that belongs somewhere is not built until it is there. When they',
+  'have named a place — a channel, a project, a team — finish the whole',
+  'placement: find or create it, bind the agent to it, and add the schedule if',
+  'the work recurs. An agent whose work happens in a shared channel has to be',
+  'created team-visible; a private one belongs to one person, can never be',
+  'bound to a channel, and its visibility can never be changed afterwards, so',
+  'choosing wrong means starting again. Check that the placement actually',
+  'landed before you describe it, and say only what a tool call in this',
+  'conversation really returned — if a step refused, say which one and why',
+  'rather than reporting the whole thing as done.',
+  '',
+  'Every agent gets a portrait when it is created, drawn in whatever style this',
+  'person\'s portraits are drawn in. Offer to redraw it once the agent exists,',
+  'and if they have never said what they like, say what the choice is — a',
+  'cartoon, a photographic look, a flat illustration, anything they can',
+  'describe — rather than asking an open question with no shape. A style they',
+  'state is remembered and used for every agent after it, so pass it as the',
+  'style; a note about this one picture is not a style and is not remembered.',
+  'If no picture can be drawn, say so plainly instead of leaving them to',
+  'notice a blank tile.',
+  '',
   'Confirm before you create something consequential, and make it a question',
   'they can answer with one word rather than a form. Say what you are about to',
   'make and who will be able to see it. Unless they have said otherwise, what',
@@ -152,6 +173,7 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   // multiplying. Everything else safe stays on by default; explicit-grant tools
   // are off by default and PA-only tools are structurally denied to it today.
   toolPolicy: {
+    agent_avatar_generate: true,
     agent_avatar_update: true,
     agent_bind_channel: true,
     agent_create: true,
@@ -177,6 +199,7 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   // widens `personalAssistantOnly` structurally rather than forking
   // designer-only copies of the tools.
   identityToolIds: [
+    'agent_avatar_generate',
     'agent_avatar_update',
     'agent_bind_channel',
     'agent_create',

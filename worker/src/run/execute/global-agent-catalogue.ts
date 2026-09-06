@@ -8,6 +8,7 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   listLedgerAgentModels,
   loadAgentToolCatalog,
+  resolveAgentAvatarStyleSafely,
 } from '@nessie/team-admin'
 
 import type { RunContext } from './types.js'
@@ -56,7 +57,13 @@ export const loadGlobalAgentCatalogueBlock = async (
     return null
   }
 
-  const [catalogue, models] = await Promise.all([
+  // The person this run acts as. A design run in a home DM always has one —
+  // the identity gate would have withheld the write verbs otherwise — but the
+  // block is also assembled for the shared-channel read-only face, where the
+  // portrait style is nobody's in particular and stays unresolved.
+  const requesterUserId = input.actorContext.actionContext.effectiveUserId ?? null
+
+  const [catalogue, models, avatarStyle] = await Promise.all([
     loadAgentToolCatalog(prisma, {
       organizationId: context.channel.organizationId,
     }),
@@ -70,9 +77,17 @@ export const loadGlobalAgentCatalogueBlock = async (
         ledgerIdentity: input.ledgerIdentity,
       }).catch(() => ({})),
     }).catch(() => null),
+    requesterUserId
+      ? resolveAgentAvatarStyleSafely(prisma, {
+        organizationId: context.channel.organizationId,
+        teamId: input.actorContext.tenant.teamId ?? null,
+        userId: requesterUserId,
+      })
+      : null,
   ])
 
   return buildGlobalAgentCatalogueBlock({
+    avatarStyle,
     catalogue,
     models,
     writeSurface: IDENTITY_WRITE_TOOL_IDS.some((toolId) =>

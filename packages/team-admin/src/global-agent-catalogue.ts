@@ -40,6 +40,13 @@ export type GlobalAgentCatalogueFacts = {
   /** Null when the model catalogue could not be read; never a stale guess. */
   models: AgentModelOption[] | null
   /**
+   * The look this person's generated portraits are drawn in, when a level of
+   * the settings cascade has decided one. Null where the face cannot resolve
+   * it — the page's sidebar fills a form and draws no pictures — and the
+   * catalogue then says nothing about it rather than guessing.
+   */
+  avatarStyle?: string | null
+  /**
    * How this face of the Designer actually changes an agent, which decides the
    * one closing instruction. The two transports genuinely differ — the DM holds
    * the write tools, the sidebar drives the open form control-by-control — and
@@ -70,7 +77,7 @@ const RESTRICTION_LABEL: Record<AgentToolRestriction, string> = {
 const describeRestricted = (entry: AgentToolCatalogRestrictedEntry): string =>
   bullet(`${entry.key} — ${RESTRICTION_LABEL[entry.restriction]}`)
 
-const parametersSection = (): string[] => [
+const parametersSection = (avatarStyle: string | null | undefined): string[] => [
   'Agent parameters, exactly as the product stores them:',
   bullet('name, role — free text; role is a short label like "researcher".'),
   bullet(
@@ -105,8 +112,14 @@ const parametersSection = (): string[] => [
     + 'are OFF unless the policy says true.',
   ),
   bullet(
-    'avatar — generated automatically at creation; replaceable with an '
-    + 'attachment afterwards.',
+    'avatar — a portrait is generated automatically at creation, and '
+    + 'agent_avatar_generate draws a replacement in a named style. '
+    + (avatarStyle
+      ? `This person's portraits are drawn "${avatarStyle}"; that is already `
+        + 'applied, so pass a style only when they ask for a different one.'
+      : 'This person has never chosen a style, so portraits use the default '
+        + 'look until they say what they like — the style they state is '
+        + 'remembered for every portrait after it.'),
   ),
   bullet(
     'bindings — which channels an agent works in. Organisation owners only, '
@@ -208,7 +221,7 @@ export const buildGlobalAgentCatalogueBlock = (
   return [
     'Agent design catalogue (generated from this team, not remembered):',
     '',
-    ...parametersSection(),
+    ...parametersSection(facts.avatarStyle),
     '',
     `Tools you can give an agent (${facts.catalogue.togglable.length}), by tool `
     + 'policy key:',

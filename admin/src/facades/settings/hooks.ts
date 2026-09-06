@@ -19,6 +19,10 @@ export type ResolvedSetting<T = unknown> = {
 
 /** The setting keys the cascade governs today. */
 export const SETTING_KEYS = {
+  // The look this person's generated agent portraits are drawn in. It is a
+  // setting rather than a per-generation option because the Agent Designer
+  // draws in it too, in a conversation with no dialog to read.
+  agentAvatarStyle: 'agentAvatar.style',
   browserConnection: 'browser.connection',
   callsProvider: 'calls.provider',
 } as const
