@@ -200,15 +200,13 @@ export const mayUseSignedInBrowser = (input: {
   originatingUserId?: string | null
   /** Whose jar this is, or null when the browser is shared with a team. */
   principalUserId: string | null
-  /** The browser being opened, to match against a hand-back. */
-  agentBrowserId?: string
   /**
-   * Set when this run exists because a person just handed this browser back.
-   * It is not a claim that somebody is in the conversation — the run has no
-   * live turn behind it — only that this exact browser was released to the
-   * agent, by the person whose jar it is, moments ago.
+   * Who handed this browser back recently, from the browser's own row — null
+   * once it has aged out. It is not a claim that somebody is in the
+   * conversation: the waking run has no live turn behind it. It says only
+   * that this browser was released to the agent, moments ago, by a person.
    */
-  handback?: { agentBrowserId: string; byUserId: string } | null
+  handedBackByUserId?: string | null
 }): boolean => {
   if (input.loginCount <= 0) return true
   const forThisPerson = (userId: string | null | undefined): boolean =>
@@ -219,14 +217,7 @@ export const mayUseSignedInBrowser = (input: {
   // `interactive` also decides delegated identity, agent handoff, app setup
   // and whether the budget treats the run as a human — so it is answered by
   // its own provenance instead.
-  if (
-    input.handback
-    && input.agentBrowserId !== undefined
-    && input.handback.agentBrowserId === input.agentBrowserId
-    && forThisPerson(input.handback.byUserId)
-  ) {
-    return true
-  }
+  if (input.handedBackByUserId && forThisPerson(input.handedBackByUserId)) return true
   if (input.interactive !== true) return false
   return forThisPerson(input.originatingUserId)
 }
@@ -246,6 +237,7 @@ const runOpen = async (
       id: string
       connectionId: string
       browserbaseContextId: string
+      handedBackByUserId: string | null
       hasLogins: boolean
       viewport: BrowserViewport
     } | undefined
@@ -277,8 +269,7 @@ const runOpen = async (
       // colleague reaching the same system-managed agent must not drive a jar
       // somebody else signed in.
       if (!mayUseSignedInBrowser({
-        agentBrowserId: browser.id,
-        handback: context.run.browserHandback,
+        handedBackByUserId: browser.handedBackByUserId,
         interactive: context.run.interactive,
         loginCount: browser.loginCount,
         originatingUserId: context.run.originatingUserId,
@@ -298,6 +289,7 @@ const runOpen = async (
         id: browser.id,
         connectionId: browser.connectionId,
         browserbaseContextId: browser.browserbaseContextId,
+        handedBackByUserId: browser.handedBackByUserId,
         hasLogins: browser.loginCount > 0,
         viewport: browser.viewport,
       }
@@ -321,8 +313,7 @@ const runOpen = async (
     // another run" — and a cold start is the delay the hand-over exists to
     // avoid. Everything downstream is identical either way, so this only has
     // to produce the same two fields.
-    const handback = context.run.browserHandback
-    const adopted = agentBrowser && handback && handback.agentBrowserId === agentBrowser.id
+    const adopted = agentBrowser && agentBrowser.handedBackByUserId
       ? await adoptHandedBackSession(deps, {
         agentBrowserId: agentBrowser.id,
         encryptionSecret: capabilitySealSecret(),

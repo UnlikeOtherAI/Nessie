@@ -1,7 +1,14 @@
 import type { PrismaClient } from '@prisma/client'
 import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import { createSystemAuthoredMessage } from '@nessie/team-admin'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  parseAgentId,
+  parseChannelId,
+  parseRunId,
+  parseTaskId,
+  parseThreadId,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 
 /**
  * Telling the agent that a person has finished with its browser.
@@ -92,7 +99,9 @@ export const nudgeAgentAfterHandover = async (
         // turn. `interactive` decides delegated identity, agent handoff, app
         // setup and whether the budget treats this as a human — none of which
         // a person who has walked away should be granting. The one capability
-        // this run does need travels as `browserHandback` instead.
+        // this run does need is recorded on the browser itself, which is
+        // also why it survives being batched into a follow-up run: a pended
+        // kickoff carries columns, not payload fields.
         interactive: false,
         messageId: message.id,
       },
@@ -128,25 +137,19 @@ export const nudgeAgentAfterHandover = async (
           ...input.actorContext,
           actionContext: {
             ...input.actorContext.actionContext,
-            agentId: input.agentId,
-            channelId: input.channelId,
-            taskId: task.id,
-            threadId: input.threadId,
+            agentId: parseAgentId(input.agentId),
+            channelId: parseChannelId(input.channelId),
+            taskId: parseTaskId(task.id),
+            threadId: parseThreadId(input.threadId),
           },
         },
-        agentId: input.agentId,
-        // The whole reason this run may touch a signed-in browser, and the
-        // only thing it may do with that permission.
-        browserHandback: {
-          agentBrowserId: input.agentBrowserId,
-          byUserId: input.byUserId,
-        },
+        agentId: parseAgentId(input.agentId),
         interactive: false,
         messageId: message.id,
-        runId: run.id,
-        taskId: task.id,
-        threadId: input.threadId,
-      } as Parameters<typeof enqueueRunExecution>[1],
+        runId: parseRunId(run.id),
+        taskId: parseTaskId(task.id),
+        threadId: parseThreadId(input.threadId),
+      },
       `run:${run.id}`,
     )
     return { runId: run.id }

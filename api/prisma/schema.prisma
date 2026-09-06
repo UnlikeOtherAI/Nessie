@@ -7727,6 +7727,18 @@ model AgentBrowser {
   /// Retained on a tombstoned row so the delete job still has its target.
   browserbaseContextId String @map("browserbase_context_id")
 
+  /// Who last handed this browser back, and when.
+  ///
+  /// The agent may pick a signed-in browser up again after a person finishes
+  /// with it — that is the whole point of the sign-in hand-over — but only
+  /// briefly, and only for the person whose jar it is. Recorded on the browser
+  /// rather than on the waking run because a run is not where this belongs: a
+  /// kickoff that has to queue behind an in-flight run is batched into a
+  /// follow-up, and a payload field is silently lost on that path while a
+  /// column is not.
+  handedBackByUserId   String?   @map("handed_back_by_user_id") @db.Uuid
+  handedBackAt         DateTime? @map("handed_back_at")
+
   /// The window the browser opens at, remembered per browser so an agent whose
   /// work needs a wider page keeps it across sessions. NULL means the default
   /// laptop window (`DEFAULT_BROWSER_VIEWPORT`); a pair is always set or

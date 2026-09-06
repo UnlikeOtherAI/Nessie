@@ -300,6 +300,27 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
     setControlling(false)
   }, [sessionId])
 
+  // ...and it ends when the *server* says it has, even though the session has
+  // not changed. Pressing Done releases the claim and deliberately leaves the
+  // session up for the agent to adopt — so the session id stays the same, the
+  // reset above never fires, and the renewal below would go on re-claiming
+  // every thirty seconds: the person's browser tab quietly taking the keyboard
+  // back off the agent it had just handed it to, forever. The same
+  // reconciliation covers a claim that simply expired.
+  //
+  // Only against a read taken *after* the last claim, or the optimistic flag
+  // set by `take` would be undone by a poll that predates it.
+  const claimedAt = useRef(0)
+  const session = useCloudBrowserSession(controlling ? sessionId : null)
+  const serverHolder = session.data?.controlledByUserId ?? null
+  const serverAnsweredAt = session.dataUpdatedAt
+  useEffect(() => {
+    if (!controlling || serverHolder !== null) return
+    if (serverAnsweredAt <= claimedAt.current) return
+    claimedSessionId.current = null
+    setControlling(false)
+  }, [controlling, serverAnsweredAt, serverHolder])
+
 
   const invalidate = () => {
     void queryClient.invalidateQueries({
@@ -312,6 +333,7 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
       apiClient.post<{ controlling: boolean }>(`/api/browser-sessions/${sessionId}/control`, {}),
     onSuccess: () => {
       claimedSessionId.current = sessionId
+      claimedAt.current = Date.now()
       setControlling(true)
       invalidate()
     },

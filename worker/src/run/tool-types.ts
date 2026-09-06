@@ -135,11 +135,6 @@ export type BuiltinToolRuntimeContext = {
     id: string
     /** True only for a live human conversational turn, never automation. */
     interactive?: boolean
-    /**
-     * The browser a person has just handed back, when that is why this run
-     * exists. Narrow on purpose — see `RunExecuteJobPayloadSchema`.
-     */
-    browserHandback?: { agentBrowserId: string; byUserId: string } | null
     messageId: string
     originatingUserId?: string | null
     principalUserId?: string | null

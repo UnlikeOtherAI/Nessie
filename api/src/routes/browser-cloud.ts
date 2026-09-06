@@ -849,10 +849,15 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     // context attach, and seconds of nothing — to act on the sign-in it had
     // just asked for. The browser stays up, the claim is released, and the
     // idle window closes it if nothing comes of the hand-over.
-    await releaseSessionControl(prisma, {
+    // Answering false means this caller did not hold the claim — an expired
+    // 90-second claim, or somebody else driving. Capturing their page and
+    // waking the agent over a browser another person may now be controlling
+    // is not this press's to do, so it stops here.
+    const released = await releaseSessionControl(prisma, {
       sessionId,
       userId: actorContext.actor.actorId,
     })
+    if (!released) return reply.code(204).send()
     // The state is saved now rather than when the window closes, so the agent
     // is told where the browser actually is.
     await captureUndrivenSessionTabs(prisma, {
@@ -872,6 +877,14 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         where: { threads: { some: { id: session.threadId } } },
       })
       if (channel) {
+        // The permission the waking agent needs, recorded on the browser
+        // rather than on the run: a kickoff that has to queue behind an
+        // in-flight run is batched into a follow-up, and a payload field is
+        // lost on that path while a column survives it.
+        await prisma.agentBrowser.update({
+          data: { handedBackAt: new Date(), handedBackByUserId: actorContext.actor.actorId },
+          where: { id: browser.id },
+        })
         const tabs = await listAgentBrowserTabs(prisma, {
           organizationId: channel.organizationId,
           agentBrowserId: browser.id,

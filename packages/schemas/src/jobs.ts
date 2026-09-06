@@ -22,23 +22,6 @@ export const RunExecuteJobPayloadSchema = z.object({
   // and scheduled runs leave this unset — they are background automation and are
   // subject to budget throttling regardless of who initiated them.
   interactive: z.boolean().optional(),
-  /**
-   * The browser a person has just finished with, when this run exists only
-   * because they handed it back.
-   *
-   * Deliberately its own field rather than `interactive: true`. Handing a
-   * browser back is a button press, not a conversational turn, and
-   * `interactive` is read by four other gates — delegated identity, agent
-   * handoff, app setup and the budget's notion of a human — so claiming it
-   * here would open a person's private conversation with a specialist on a
-   * run they started by pressing a button and walking away. This grants one
-   * capability instead: the agent may pick this exact browser back up, and
-   * only for the person whose jar it is.
-   */
-  browserHandback: z.object({
-    agentBrowserId: z.string().uuid(),
-    byUserId: z.string().uuid(),
-  }).optional(),
   messageId: NonEmptyStringSchema,
   parentPlanId: z.string().uuid().optional(),
   parentPlanStepId: z.string().uuid().optional(),

@@ -85,8 +85,6 @@ test('a shared team jar is usable by anyone whose turn it is', () => {
   )
 })
 
-const BROWSER = 'browser-1'
-
 /**
  * The hand-over is the point of the sign-in flow, and it has to work on a run
  * with no live turn behind it — the person pressed Done and may already have
@@ -98,8 +96,7 @@ const BROWSER = 'browser-1'
 test('a hand-back lets the agent pick that browser back up with no live turn', () => {
   assert.equal(
     mayUseSignedInBrowser({
-      agentBrowserId: BROWSER,
-      handback: { agentBrowserId: BROWSER, byUserId: PERSON },
+      handedBackByUserId: PERSON,
       interactive: false,
       loginCount: 1,
       principalUserId: PERSON,
@@ -108,25 +105,25 @@ test('a hand-back lets the agent pick that browser back up with no live turn', (
   )
 })
 
-test('a hand-back is not a key to every other browser', () => {
+test('a hand-back that has aged out is no longer a key', () => {
+  // `handedBackByUserId` is already null by the time it reaches here once the
+  // grace window has passed — resolved on the browser row, so no caller has to
+  // know the rule.
   assert.equal(
     mayUseSignedInBrowser({
-      agentBrowserId: 'browser-2',
-      handback: { agentBrowserId: BROWSER, byUserId: PERSON },
+      handedBackByUserId: null,
       interactive: false,
       loginCount: 1,
       principalUserId: PERSON,
     }),
     false,
-    'provenance names one browser, and only that one',
   )
 })
 
 test('a hand-back by somebody else does not open a person’s own jar', () => {
   assert.equal(
     mayUseSignedInBrowser({
-      agentBrowserId: BROWSER,
-      handback: { agentBrowserId: BROWSER, byUserId: COLLEAGUE },
+      handedBackByUserId: COLLEAGUE,
       interactive: false,
       loginCount: 1,
       principalUserId: PERSON,
@@ -138,8 +135,7 @@ test('a hand-back by somebody else does not open a person’s own jar', () => {
 test('without provenance an automated run is still refused', () => {
   assert.equal(
     mayUseSignedInBrowser({
-      agentBrowserId: BROWSER,
-      handback: null,
+      handedBackByUserId: null,
       interactive: false,
       loginCount: 1,
       originatingUserId: PERSON,
@@ -150,19 +146,3 @@ test('without provenance an automated run is still refused', () => {
   )
 })
 
-/**
- * Proven against the real service on 2026-09-06: with the gate alone, the
- * agent got through it and then failed with "this agent's browser is already
- * open in another run" — the handed-back session carries no `run_id`, so
- * `findLiveSessionForRun` cannot see it and `browser_open` tried to open a
- * second one. The provenance therefore has to select *adoption*, not a second
- * session; these assert the condition that chooses it.
- */
-test('provenance for this browser is what selects adoption over a new session', () => {
-  const adopts = (handback: { agentBrowserId: string; byUserId: string } | null): boolean =>
-    Boolean(handback && handback.agentBrowserId === BROWSER)
-
-  assert.equal(adopts({ agentBrowserId: BROWSER, byUserId: PERSON }), true)
-  assert.equal(adopts({ agentBrowserId: 'browser-2', byUserId: PERSON }), false)
-  assert.equal(adopts(null), false, 'an ordinary run opens its own browser')
-})

@@ -227,6 +227,8 @@ export type OpenSessionInput = {
     browserbaseContextId: string
     /** Any recorded login makes every read through it that person's material. */
     hasLogins: boolean
+    /** Set while a person's hand-back is recent enough to act on. */
+    handedBackByUserId?: string | null
     /**
      * The window this browser opens at, from its own row. Required rather
      * than optional on purpose: Browserbase fixes the window at creation and
@@ -491,6 +493,7 @@ export const adoptHandedBackSession = async (
       agentBrowserId: input.agentBrowserId,
       runId: null,
       status: 'active',
+      expiresAt: { gt: new Date() },
       // Somebody has taken the controls again since the hand-back. Their claim
       // is the answer; the agent waits rather than driving underneath them.
       controlledByUserId: null,
@@ -498,9 +501,24 @@ export const adoptHandedBackSession = async (
     select: { id: true },
   })
   if (!candidate) return null
+  // A fresh window, not the person's leftovers. The resumed session was on the
+  // short idle TTL and may be seconds from its cap; inheriting that would have
+  // the reaper close the browser under a run that had only just picked it up,
+  // and every verb would start answering "session expired" mid-task.
+  const settings = cloudBrowserSettings()
   const claimed = await deps.prisma.cloudBrowserSession.updateMany({
-    where: { id: candidate.id, runId: null, status: 'active', controlledByUserId: null },
-    data: { runId: input.runId },
+    where: {
+      id: candidate.id,
+      runId: null,
+      status: 'active',
+      controlledByUserId: null,
+      // Never adopt a row the reaper has simply not reached yet.
+      expiresAt: { gt: new Date() },
+    },
+    data: {
+      runId: input.runId,
+      expiresAt: new Date(Date.now() + settings.ttlMs),
+    },
   })
   if (claimed.count === 0) return null
   const capability = await loadSessionCapability(deps.prisma, {
