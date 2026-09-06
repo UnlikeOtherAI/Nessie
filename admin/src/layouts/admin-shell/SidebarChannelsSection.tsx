@@ -1,6 +1,7 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
-import { channelHashClassName, renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
+import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';

@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   connectErrorPresentation,
   normalizeConnectError,
-} from '../src/components/features/apps/connect-error-copy.js'
+} from '../src/facades/apps/connect-error-copy.js'
 import {
   CONNECT_AUTHORIZATION_TIMEOUT_MS,
   CONNECT_STILL_WAITING_MS,
@@ -20,12 +20,12 @@ import {
   serializeConnectMarker,
   type ConnectEvent,
   type ConnectState,
-} from '../src/components/features/apps/connect-flow.js'
+} from '../src/facades/apps/connect-flow.js'
 import {
   authPopupFeatures,
   createWindowAuthLauncher,
   type ExternalAuthWindow,
-} from '../src/components/features/apps/external-auth-launcher.js'
+} from '../src/facades/apps/external-auth-launcher.js'
 
 /**
  * The connect flow's hard cases are all timing cases — a window closed before

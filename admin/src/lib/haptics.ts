@@ -1,4 +1,4 @@
-import { isReactNativeWebView } from './mobile-shell'
+import { isReactNativeWebView } from './native-shell'
 
 export type HapticKind = 'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error'
 

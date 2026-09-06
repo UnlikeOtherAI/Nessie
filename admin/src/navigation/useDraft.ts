@@ -243,12 +243,15 @@ export const useDraft = <T,>(
     setSaveError(null)
   }, [key, persistLocal])
 
-  // First mount: restore a present draft.
+  // First mount: restore a present draft. It reads `keyRef` rather than `key`
+  // so a later key change cannot re-run it — the key-change effect above owns
+  // every switch, and on mount the two hold the same value anyway.
   useEffect(() => {
-    if (!key) {
+    const mountKey = keyRef.current
+    if (!mountKey) {
       return
     }
-    const stored = readStored(key)
+    const stored = readStored(mountKey)
     if (stored === null) {
       return
     }
@@ -267,8 +270,9 @@ export const useDraft = <T,>(
     setDraftState(hydrated)
     setRestored(true)
     setRevision((current) => current + 1)
-    // Mount-only: the key-change effect above owns every later switch.
-  }, [])
+    // Mount-only: `isDraftEmpty` is a stable callback, so this list never
+    // changes and the key-change effect above owns every later switch.
+  }, [isDraftEmpty])
 
   const scheduleLanes = useCallback(
     () => {

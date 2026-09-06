@@ -1,5 +1,5 @@
 import type { ToolCallEntry } from '@nessie/schemas';
-import { toolCallOutcomeTone } from './agent-presentation';
+import { toolCallOutcomeTone } from '../../shared/agent-presentation';
 import { Card } from '../../shared/Card';
 import { EmptyState } from '../../shared/EmptyState';
 import { Pill } from '../../primitives/Pill';

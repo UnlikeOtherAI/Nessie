@@ -1,4 +1,4 @@
-import { useNativeIOSPhoneApp, useNavigationLayout } from '../lib/mobile-shell'
+import { useNativeIOSPhoneApp, useNavigationLayout } from './mobile-shell'
 import { useScreenBarLayerKey } from './ScreenBarLayer'
 import { useScreenBarPublisher } from './useScreenBar'
 import type { ScreenBar } from './screen-bar'

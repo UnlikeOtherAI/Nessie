@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { QueueHandler, QueueJob, QueueProvider } from './queue.js'
+import type { QueueHandler, QueueJob, QueueProvider, QueueSubscription } from './queue.js'
 
 type PubSubClient = {
   topic(name: string): PubSubTopic
@@ -130,8 +130,21 @@ export class PubSubQueueProvider implements QueueProvider {
     topic: string,
     handler: QueueHandler,
     _options?: { pollIntervalMs?: number; signal?: AbortSignal },
-  ): void {
+  ): QueueSubscription {
     this.handlers.set(topic, handler)
+
+    // Push mode has no claim loop to drain: a message is in flight only for the
+    // duration of the HTTP request that delivered it, and unsubscribing is just
+    // forgetting the handler.
+    return {
+      abandon: async (): Promise<void> => {
+        this.handlers.delete(topic)
+      },
+      done: Promise.resolve(),
+      stop: (): void => {
+        this.handlers.delete(topic)
+      },
+    }
   }
 
   async handlePushMessage(raw: PushMessage): Promise<void> {
@@ -151,7 +164,7 @@ export class PubSubQueueProvider implements QueueProvider {
 
     this.inFlightIds.add(job.id)
     try {
-      await handler(job)
+      await handler(job, { signal: new AbortController().signal })
       // Only commit to processedIds after the handler resolves successfully,
       // so a thrown handler does not silently swallow concurrent redeliveries.
       this.processedIds.set(job.id, true)

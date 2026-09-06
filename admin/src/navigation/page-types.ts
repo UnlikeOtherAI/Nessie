@@ -20,12 +20,6 @@ export type SurfaceParent = {
   pathname: string
 }
 
-// A Flow is a full screen on a single-column layout and a centred panel on a
-// split one. Every flow that exists today is a full page, so `screen` is the
-// only value in use; the field exists so the split layout (step 5) reads a
-// declaration rather than a heuristic.
-export type SurfaceFlowPresentation = 'panel' | 'screen'
-
 // The params a route reads beyond its path (`docs/navigation/overview.md` §8). A name
 // under `consume` is a one-shot instruction carried in the search string
 // (highlight this message, open this connect dialog); `hash` is the same in
@@ -49,7 +43,6 @@ export type Surface = {
   // Numeric depth inside the section's stack. Roots are 0; each push deeper
   // is one more. Direction (push vs pop) is decided from depth alone.
   depth: number
-  flowPresentation?: SurfaceFlowPresentation
   // Folds same-screen siblings onto one identity: a channel's whole info
   // chain, a project's tab routes, a designer's edit targets.
   identityOf?: (match: RegExpMatchArray) => string

@@ -106,7 +106,6 @@ export const SURFACES: Surface[] = [
     // while opening it from the root pushes. Listed before the conversation
     // row, which would otherwise swallow `/channels/new` as a channel id.
     depth: 1,
-    flowPresentation: 'screen',
     identityOf: () => 'compose',
     keyScope: () => 'compose',
     parentOf: toChannels,

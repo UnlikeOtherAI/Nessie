@@ -10,7 +10,9 @@ import type {
   BoardSourceStateMapping,
   BoardSourceWriteMode,
 } from '@nessie/schemas'
-import { boardSourceKeys, projectKeys, taskKeys } from '../../lib/query-keys'
+import { projectKeys } from '../projects/keys'
+import { taskKeys } from '../tasks/keys'
+import { boardSourceKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type {

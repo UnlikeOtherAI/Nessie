@@ -3,8 +3,8 @@ import { useChannelPlaceableAgents } from '../../../facades/agents/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { AgentStatusDot } from '../agents/AgentStatusDot'
-import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
+import { AgentStatusDot } from '../../shared/AgentStatusDot'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
   DashboardSectionCard,

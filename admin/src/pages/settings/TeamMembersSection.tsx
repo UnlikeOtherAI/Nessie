@@ -15,10 +15,10 @@ import {
   TeamMemberRow,
   TEAM_TEAM_ROLE_OPTIONS,
 } from './TeamMemberPeople'
-import { FeedbackBanner } from './settings-shared'
+import { FeedbackBanner } from './FeedbackBanner'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { toFormErrors } from '../../facades/form-errors'
+import { formErrorMessage, toFormErrors } from '../../facades/forms/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { FormActions, FormError, FormSuccess } from '../../components/shared/FormActions'
@@ -33,9 +33,6 @@ import { Section } from '../../components/shared/PageBody'
  * is no accept flow here, and there is no "add member with a password" form:
  * an invitation is how somebody joins.
  */
-
-const errorMessage = (caught: unknown, fallback: string): string =>
-  caught instanceof Error ? caught.message : fallback
 
 // `GET /team/members` has no member or invitation parameter. A 404 from
 // the relay therefore identifies its active UOA team, even though the
@@ -64,7 +61,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
     try {
       await run()
     } catch (caught) {
-      setError(errorMessage(caught, fallback))
+      setError(formErrorMessage(caught, fallback))
     }
   }
 
@@ -191,7 +188,7 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
     } catch (caught) {
       const { fieldErrors: nextFieldErrors, formError: nextFormError } = toFormErrors(caught)
       setFieldErrors(nextFieldErrors)
-      setFormError(nextFormError ?? errorMessage(caught, 'Failed to send invitation.'))
+      setFormError(nextFormError ?? formErrorMessage(caught, 'Failed to send invitation.'))
     }
   }
 
@@ -304,7 +301,7 @@ export const TeamMembersSection = ({
     try {
       await onReconnect()
     } catch (error) {
-      setReconnectError(errorMessage(error, 'Unable to reconnect this team.'))
+      setReconnectError(formErrorMessage(error, 'Unable to reconnect this team.'))
     } finally {
       setIsReconnecting(false)
     }

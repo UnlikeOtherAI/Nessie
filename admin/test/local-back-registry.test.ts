@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createLocalBackRegistry } from '../src/layouts/admin-shell/local-back/local-back-registry'
+import { createLocalBackRegistry } from '../src/navigation/local-back-registry'
 
 const registration = (overrides: Record<string, unknown>) => ({
   active: true,

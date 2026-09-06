@@ -16,7 +16,8 @@ import {
   type PushSurfaceReport,
 } from '../../lib/push-surface'
 import type { SseFrame } from '../../lib/sse'
-import { channelKeys, threadKeys } from '../../lib/query-keys'
+import { channelKeys } from '../channels/keys'
+import { threadKeys } from '../threads/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useEventStream } from '../realtime/event-stream'

@@ -8,7 +8,7 @@ import type {
   CommsResourceToggle,
   GoogleCapabilityId,
 } from '../../lib/api-client'
-import { commsKeys } from '../../lib/query-keys'
+import { commsKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**

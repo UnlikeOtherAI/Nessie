@@ -9,9 +9,10 @@ import type { MeResponse } from '@nessie/schemas'
  *
  * Five owner-only pages rendered the same sentence in byte-identical markup
  * and 26 call sites re-derived `roleIds.includes('owner')`. Both halves now
- * come from `OwnerGate.tsx`, so the two tests below pin the two halves: the
- * derivation's truth table, and the sentence the gate actually renders when
- * the session it reads is not an owner's.
+ * come from one place each — the derivation from `facades/auth/hooks.ts`, the
+ * refusal from `OwnerGate.tsx` — so the two tests below pin the two halves:
+ * the derivation's truth table, and the sentence the gate actually renders
+ * when the session it reads is not an owner's.
  */
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -23,7 +24,8 @@ const { createElement } = React
 const { renderToStaticMarkup } = await import('react-dom/server')
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 const { AuthSessionProvider } = await import('../src/providers/AuthSessionProvider.js')
-const { OwnerGate, isOwnerSession } = await import('../src/components/shared/OwnerGate.js')
+const { OwnerGate } = await import('../src/components/shared/OwnerGate.js')
+const { isOwnerSession } = await import('../src/facades/auth/hooks.js')
 
 // The production Vite transform injects the JSX runtime. Node's lightweight
 // tsx loader uses the classic transform for imported TSX modules.

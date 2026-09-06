@@ -8,7 +8,7 @@ import {
   type SessionPayload,
 } from '@nessie/client-core'
 import { completeExternalAuthCallback } from '../src/lib/external-auth-completion.js'
-import { createExternalAuthCallbackHub } from '../src/providers/external-auth-callback.js'
+import { createExternalAuthCallbackHub } from '../src/lib/external-auth-callback.js'
 import {
   beginExternalAuth,
   clearPendingExternalAuth,

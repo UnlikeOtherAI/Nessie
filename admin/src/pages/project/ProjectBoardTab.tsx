@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { KanbanBoard } from '../../components/kanban/KanbanBoard'
-import type { BoardColumnView } from '../../components/kanban/kanban-config'
+import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
+import type { BoardColumnView } from '../../components/features/projects/kanban/kanban-config'
 import type { BoardRecord } from '../../facades/boards/hooks'
 import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -10,7 +10,7 @@ import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { useProjectSources } from '../../facades/board-sources/hooks'
-import { SourceStatusStrip } from '../../components/kanban/SourceStatusStrip'
+import { SourceStatusStrip } from '../../components/features/projects/kanban/SourceStatusStrip'
 import { EmptyState } from '../../components/shared/EmptyState'
 
 type ProjectBoardTabProps = {

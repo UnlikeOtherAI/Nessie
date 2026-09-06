@@ -3,7 +3,7 @@ import type {
   KnowledgePageRecord,
   SavePageInput,
 } from '../../../facades/knowledge/hooks'
-import { toFormErrors } from '../../../facades/form-errors'
+import { toFormErrors } from '../../../facades/forms/form-errors'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { FormError } from '../../shared/FormActions'

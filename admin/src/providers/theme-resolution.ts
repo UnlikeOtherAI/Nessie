@@ -1,4 +1,4 @@
-import type { Theme } from './theme-storage'
+import type { Theme } from '../lib/theme-storage'
 
 /**
  * Which theme is in force, and why

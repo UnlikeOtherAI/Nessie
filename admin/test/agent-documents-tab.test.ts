@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentDocumentsTab } from '../src/components/features/agents/AgentDocumentsTab.js'
 import { buildKnowledgeWorkspaceActions } from '../src/components/features/knowledge/knowledge-workspace-actions.js'
 import { ResponsivePageHeader } from '../src/components/shared/ResponsivePageHeader.js'
-import { agentKeys } from '../src/lib/query-keys.js'
+import { agentKeys } from '../src/facades/agents/keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React

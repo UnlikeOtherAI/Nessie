@@ -11,7 +11,7 @@ import {
 import {
   createPhoneHistoryLedger,
   recordPhoneHistory,
-} from '../src/layouts/admin-shell/phone-navigation-ledger'
+} from '../src/navigation/phone-navigation-ledger'
 
 const ledgerOf = (paths: string[]) => {
   let ledger = createPhoneHistoryLedger('k0', paths[0] ?? '/channels')

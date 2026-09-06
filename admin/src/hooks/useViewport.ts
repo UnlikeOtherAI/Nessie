@@ -218,7 +218,7 @@ const serverStore: ViewportStore = {
 // dev error on every page load.
 let lazyStore: ViewportStore | null = null
 // Registrations arriving before first use (module-level callers like
-// lib/mobile-shell.ts) are buffered so they never force store creation at
+// navigation/mobile-shell.ts) are buffered so they never force store creation at
 // import time; they replay onto the real store when it is first created.
 const pendingQueries: Array<[string, string]> = []
 const resolveStore = (): ViewportStore => {

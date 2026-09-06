@@ -8,7 +8,7 @@ import {
   identityInitials,
   identityRingRadius,
   identityTileRadius,
-} from '../src/components/primitives/identity-shape.js'
+} from '../src/lib/identity-shape.js'
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 
@@ -85,7 +85,7 @@ test('the native chrome uses the same shape contract as the web', () => {
   // The Expo app does not build against the admin bundle, so the contract is
   // duplicated. A drift here is a native header whose tiles disagree with the
   // WebView an inch below it.
-  const web = readFileSync(join(SRC, 'components/primitives/identity-shape.ts'), 'utf8')
+  const web = readFileSync(join(SRC, 'lib/identity-shape.ts'), 'utf8')
   const native = readFileSync(
     fileURLToPath(new URL('../../mobile/src/lib/identity-shape.ts', import.meta.url)),
     'utf8',

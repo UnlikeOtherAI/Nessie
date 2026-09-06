@@ -48,12 +48,6 @@ type WorkflowNodeInspectorProps = {
 const fieldLabelClass =
   'text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tx3)]'
 
-// The designer's inspector sits on `--surface-inverse`, a light "canvas"
-// surface every theme declares independently of the dark app chrome around
-// it — these were hard-coded approximations of that surface's own nebula
-// values (`bg-white`≈`--surface-inverse`, `#433349`≈`--ink`,
-// `#7445c7`≈`--accent`) that never changed with the theme, sitting beside
-// tokens from the same family that do.
 const inspectorInputClass =
   'w-full rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] px-2.5 py-1.5 text-sm text-[var(--ink)] outline-none focus:border-[var(--accent)]'
 

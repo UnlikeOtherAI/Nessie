@@ -7,7 +7,7 @@
 // all (the read-only info drawers) hold a real store object.
 
 import { useEffect, useState } from 'react'
-import type { DocumentStreamEntry } from './document-stream-helpers'
+import type { DocumentStreamEntry } from './document-stream-entries'
 
 export type DocumentStreamStore = {
   read: (sessionId: string) => DocumentStreamEntry | undefined

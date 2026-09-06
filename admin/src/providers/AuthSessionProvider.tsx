@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -10,8 +9,6 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
-  captureTeamSessionSource,
-  classifyTeamSessionPayload,
   createAuthSessionApi,
   createSessionMutationCoordinator,
   type AuthSessionState,
@@ -20,7 +17,6 @@ import {
   type ExpectedTeamTarget,
   type ExternalLoginInput,
   type LoginInput,
-  type RecoverTeamSessionInput,
   type SessionPayload,
   type SwitchContextInput,
   type SwitchUoaTeamInput,
@@ -39,7 +35,6 @@ import { getSessionClientType } from '../lib/session-client'
 import {
   clearSessionIfCurrent,
   createImportedSessionApplyTracker,
-  IMPORTED_SESSION_SCOPE_MESSAGE,
   isSessionCredentialCurrent,
   resolveSessionRefreshAction,
   resolveTerminatingSessionCredential,
@@ -49,14 +44,17 @@ import { resolveImportedSession } from '../lib/session-debug-import'
 import {
   NATIVE_PUSH_UNREGISTER_EVENT,
 } from '../lib/native-push-registration'
-import { isReactNativeWebView } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
 import { createAmbientRefreshGateHost } from './ambient-refresh-gate-host'
 import {
   createSessionQueryBoundary,
   isCurrentSessionResponse,
 } from './auth-session-query-reset'
+import { isSameMeResponse } from './me-response-identity'
 import { performTerminalSessionLogout } from './terminal-session-logout'
 import { useAccessTokenRenewal } from './useAccessTokenRenewal'
+import { useSessionRestoration } from './useSessionRestoration'
+import { useTeamSessionRecovery } from './useTeamSessionRecovery'
 
 type AuthSessionContextValue = {
   applyMeResponse: (nextMe: MeResponse) => void
@@ -90,9 +88,6 @@ type AuthSessionContextValue = {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
 
-const RETRY_DELAYS_MS = [1_000, 2_500, 5_000, 10_000, 30_000] as const
-const retryDelay = (attempt: number): number =>
-  RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 30_000
 const unregisterNativePushDevice = (): Promise<void> =>
   new Promise((resolve) => {
     window.dispatchEvent(
@@ -238,7 +233,11 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
         refresh: authApi.refresh,
       }),
     // coordinatorGeneration is not read inside the factory; it only re-runs
-    // the memo after the previous coordinator went terminal.
+    // the memo after the previous coordinator went terminal. That is exactly
+    // the "unnecessary dependency" exhaustive-deps objects to, and removing it
+    // would leave a retired coordinator in place — so the rule is silenced for
+    // this array only. Every other entry here is a real read: keep them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ambientRefreshGate, applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
   )
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
@@ -256,7 +255,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       return Promise.resolve(null)
     }
     return sessionMutations.reconcile()
-  }, [sessionMode, sessionMutations, token])
+  }, [ambientRefreshGate, sessionMode, sessionMutations, token])
 
   const refreshAccessToken = useCallback(async (
     expected?: SessionCredentialSnapshot,
@@ -276,7 +275,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       await clearImportedSession(currentToken)
     }
     return null
-  }, [clearImportedSession, sessionMutations])
+  }, [ambientRefreshGate, clearImportedSession, sessionMutations])
 
   const readSessionCredential = useCallback((): SessionCredentialSnapshot => {
     const currentToken = tokenRef.current
@@ -338,63 +337,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     [readSessionCredential, refreshSessionFor],
   )
 
-  useEffect(() => {
-    // Safari can revive a document from its back/forward cache while its
-    // startup /auth/me request was suspended during an external SSO launch.
-    // Reconcile again when that document becomes live; otherwise the shell can
-    // remain in its loading state forever with no request in flight.
-    const reconcileReturnedDocument = (event: PageTransitionEvent): void => {
-      if (!event.persisted) return
-      void refreshSession().catch(() => undefined)
-    }
-
-    window.addEventListener('pageshow', reconcileReturnedDocument)
-    return () => window.removeEventListener('pageshow', reconcileReturnedDocument)
-  }, [refreshSession])
-
-  // A network outage, rate limit, or server error during restore is not a
-  // logout. Keep the bearer token in localStorage and retry until the API is
-  // reachable. An explicit refresh 401 resolves normally after clearSession,
-  // so it does not enter this retry loop.
-  useEffect(() => {
-    const expected = readSessionCredential()
-    let cancelled = false
-    let restoring = false
-    let retryTimer: ReturnType<typeof setTimeout> | null = null
-    let attempt = 0
-
-    const restoreSession = async (): Promise<void> => {
-      if (cancelled || restoring || ambientRefreshGate.isBlocked()) return
-      restoring = true
-      try {
-        await refreshSessionFor(expected)
-        attempt = 0
-      } catch {
-        if (cancelled) return
-        const delay = retryDelay(attempt)
-        attempt += 1
-        retryTimer = setTimeout(() => void restoreSession(), delay)
-      } finally {
-        restoring = false
-      }
-    }
-
-    const retryWhenOnline = (): void => {
-      if (retryTimer) {
-        clearTimeout(retryTimer)
-        retryTimer = null
-      }
-      void restoreSession()
-    }
-
-    window.addEventListener('online', retryWhenOnline)
-    void restoreSession()
-    return () => {
-      cancelled = true
-      window.removeEventListener('online', retryWhenOnline)
-      if (retryTimer) clearTimeout(retryTimer)
-    }
-  }, [readSessionCredential, refreshSessionFor])
+  useSessionRestoration({ ambientRefreshGate, readSessionCredential, refreshSessionFor })
 
   useAccessTokenRenewal({
     clearImportedSession,
@@ -403,24 +346,29 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     token,
   })
 
-  const applyMeResponse = (nextMe: MeResponse): void => {
+  const applyMeResponse = useCallback((nextMe: MeResponse): void => {
     if (!isCurrentSessionResponse(meRef.current, nextMe)) return
+    // A response that says exactly what the current one says is not a change.
+    // `me` is read by every screen, so republishing an equal object would
+    // re-render the whole tree — and revert optimistic state that is still
+    // ahead of the server — for nothing.
+    if (isSameMeResponse(meRef.current, nextMe)) return
     meRef.current = nextMe
     setMe(nextMe)
     setBootstrapState(null)
     setSessionState('authenticated')
-  }
+  }, [])
 
-  const bootstrap = async (input: BootstrapInput): Promise<void> => {
+  const bootstrap = useCallback(async (input: BootstrapInput): Promise<void> => {
     await sessionMutations.run(() => authApi.bootstrap(input))
     // Applied explicit session creation reopens ambient refresh.
     ambientRefreshGate.reopen()
-  }
+  }, [ambientRefreshGate, sessionMutations])
 
-  const devLogin = async (): Promise<void> => {
+  const devLogin = useCallback(async (): Promise<void> => {
     await sessionMutations.run(() => authApi.devLogin())
     ambientRefreshGate.reopen()
-  }
+  }, [ambientRefreshGate, sessionMutations])
 
   const importAccessToken = useCallback(async (accessToken: string): Promise<void> => {
     importedMutationsInFlightRef.current += 1
@@ -435,94 +383,21 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     }
   }, [importedApplyTracker, sessionMutations])
 
-  const login = async (input: LoginInput): Promise<void> => {
+  const login = useCallback(async (input: LoginInput): Promise<void> => {
     await sessionMutations.run(() => authApi.login(input))
     ambientRefreshGate.reopen()
-  }
+  }, [ambientRefreshGate, sessionMutations])
 
-  const recoveryExchange = async (
-    input: ExternalLoginInput,
-    expectedTeam: ExpectedTeamTarget,
-  ): Promise<SessionPayload> => {
-    if (input.providerId !== 'uoa') {
-      throw new Error('Team session recovery is only supported for the UOA provider.')
-    }
-    // The bearer AND the source session are captured lexically inside the
-    // queued thunk — immediately before the request is sent — so the
-    // classification compares against the session that is current when the
-    // mutation actually runs, not when it was enqueued. The guard closure
-    // reads that same lexical binding for BOTH the direct payload and the one
-    // opaque-refresh winner, whose raw response carries no request-local
-    // proof — nothing is ever attached to the payload itself.
-    let capturedSource: ReturnType<typeof captureTeamSessionSource> = null
-    const recovered = sessionMutations.runGuarded(
-      () => {
-        const currentToken = tokenRef.current
-        if (typeof currentToken !== 'string' || currentToken.length === 0) {
-          throw new Error('Team session recovery requires an active session.')
-        }
-        const currentMe = meRef.current
-        if (!currentMe) {
-          throw new Error('Team session recovery requires an active session.')
-        }
-        const source = captureTeamSessionSource(currentMe)
-        if (!source) {
-          throw new Error('Team session recovery is only supported for the UOA provider.')
-        }
-        capturedSource = source
-        const recoveryInput: RecoverTeamSessionInput = {
-          code: input.code,
-          codeVerifier: input.codeVerifier,
-          expectedTeam,
-          providerId: 'uoa',
-          redirectUri: input.redirectUri,
-          ...(input.theme === undefined ? {} : { theme: input.theme }),
-        }
-        return authApi.recoverTeamSession(currentToken, recoveryInput)
-      },
-      (payload) => {
-        // Defense in depth behind the API's pre-issuance rejection, as a
-        // three-way classification against the lexically captured source:
-        // exact target succeeds; the preserved source session is applied but
-        // the recovery rejects as a non-switch; anything else is foreign. If
-        // the thunk never captured a source the guard fails closed (foreign).
-        if (!capturedSource) {
-          return {
-            kind: 'foreign',
-            message: 'The renewed session could not be verified. Try switching again.',
-          }
-        }
-        return classifyTeamSessionPayload(payload, expectedTeam, capturedSource)
-      },
-    )
-    const payload = await recovered
-    // A valid explicit recovery — exact target applied — reopens ambient
-    // refresh; a rejected non-switch or foreign payload never does.
-    ambientRefreshGate.reopen()
-    return payload
-  }
+  const { recoveryExchange, switchContext, switchUoaTeam } = useTeamSessionRecovery({
+    ambientRefreshGate,
+    authApi,
+    importedSessionTokenRef,
+    meRef,
+    sessionMutations,
+    tokenRef,
+  })
 
-  const switchContext = async (input: SwitchContextInput): Promise<void> => {
-    if (
-      tokenRef.current
-      && importedSessionTokenRef.current === tokenRef.current
-    ) {
-      throw new Error(IMPORTED_SESSION_SCOPE_MESSAGE)
-    }
-    await sessionMutations.run(() => authApi.switchContext(tokenRef.current, input))
-  }
-
-  const switchUoaTeam = async (input: SwitchUoaTeamInput): Promise<void> => {
-    if (
-      tokenRef.current
-      && importedSessionTokenRef.current === tokenRef.current
-    ) {
-      throw new Error(IMPORTED_SESSION_SCOPE_MESSAGE)
-    }
-    await sessionMutations.run(() => authApi.switchUoaTeam(tokenRef.current, input))
-  }
-
-  const logout = async (): Promise<void> => {
+  const logout = useCallback(async (): Promise<void> => {
     // Capture the ending credential before terminate synchronously clears
     // tokenRef; the terminal payload's bearer (if any) still wins. Native
     // cleanup must start while the authenticated bridge is still mounted, so
@@ -545,7 +420,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       terminate: (finalize) => sessionMutations.terminate(finalize),
       unregisterNative: unregisterNativePushDevice,
     })
-  }
+  }, [importedApplyTracker, readSessionCredential, sessionMutations])
 
   const value = useMemo<AuthSessionContextValue>(
     () => ({
@@ -568,14 +443,22 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       token,
     }),
     [
+      applyMeResponse,
+      bootstrap,
       bootstrapState,
+      devLogin,
       importAccessToken,
+      login,
+      logout,
       me,
       reconcileSession,
+      recoveryExchange,
       refreshAccessToken,
       refreshSession,
       sessionMode,
       sessionState,
+      switchContext,
+      switchUoaTeam,
       token,
     ],
   )

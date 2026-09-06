@@ -7,7 +7,7 @@ import {
   AGENT_TODO_TEMPLATE_DESCRIPTION_MAX,
   AGENT_TODO_TEMPLATE_NAME_MAX,
 } from '@nessie/schemas'
-import { EMPTY_FORM_ERRORS, toFormErrors } from '../../../../facades/form-errors'
+import { EMPTY_FORM_ERRORS, toFormErrors } from '../../../../facades/forms/form-errors'
 import { FormActions, FormError } from '../../../shared/FormActions'
 import { FormField } from '../../../shared/FormField'
 import { Input, Textarea } from '../../../shared/FormControls'

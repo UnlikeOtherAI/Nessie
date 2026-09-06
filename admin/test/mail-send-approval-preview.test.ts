@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { approvalKeys } from '../src/lib/query-keys.js'
+import { approvalKeys } from '../src/facades/approvals/keys.js'
 
 const source = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')

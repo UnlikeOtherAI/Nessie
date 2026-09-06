@@ -1,5 +1,5 @@
 import { CloudBrowserPanel } from '../../../components/features/browser-cloud/CloudBrowserPanel'
-import { SettingsPanel, type SettingsTabHostProps } from '../settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import type { TeamRecord } from '../../../lib/api-client'
 
 /**

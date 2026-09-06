@@ -10,9 +10,10 @@ import {
   useExecutorAvailability,
   useLaunchExecutorRun,
 } from '../../../facades/executors/hooks'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { FormError } from '../../shared/FormActions'
-import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
+import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]
@@ -86,9 +87,6 @@ const scopeLabel = (scopeKind: ExecutorAvailabilityCandidate['scopeKind']): stri
   }
 }
 
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Unable to check executor availability.'
-
 /**
  * Human-only execution doorway. A person picks a bound agent and an opaque
  * ready choice; server-side binding revalidates every grant at commit time.
@@ -156,7 +154,7 @@ export const ExecutorRunLauncherDialog = ({
         setSelectedHandle(onlyCandidate.handle)
       }
     }).catch((error: unknown) => {
-      if (!cancelled) setAvailabilityError(errorMessage(error))
+      if (!cancelled) setAvailabilityError(formErrorMessage(error, 'Unable to check executor availability.'))
     })
     return () => { cancelled = true }
   }, [agentId, open, operationValue, projectId, resolveAvailability])
@@ -259,7 +257,7 @@ export const ExecutorRunLauncherDialog = ({
           />
         </label>
 
-        <FormError>{launch.error ? errorMessage(launch.error) : undefined}</FormError>
+        <FormError>{launch.error ? formErrorMessage(launch.error, 'Unable to check executor availability.') : undefined}</FormError>
 
         <div className="flex justify-end gap-2">
           <button className="admin-button admin-button-secondary" onClick={close} type="button">Cancel</button>

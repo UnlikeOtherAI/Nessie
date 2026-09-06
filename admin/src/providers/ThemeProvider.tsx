@@ -24,13 +24,14 @@ import {
   writeAppliedTheme,
   writeOrganizationThemeCss,
   writeThemeChoice,
+  type SignInTheme,
   type Theme,
-} from './theme-storage'
+} from '../lib/theme-storage'
 
 const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)'
 
 export type { AppliedTheme } from './theme-resolution'
-export type { Theme } from './theme-storage'
+export type { Theme } from '../lib/theme-storage'
 
 /**
  * The theme ids UnlikeOtherAI's hosted sign-in page understands
@@ -38,7 +39,6 @@ export type { Theme } from './theme-storage'
  * alone: that page has no access to a tenant's palette, and before sign-in
  * there is no tenant to ask.
  */
-export type SignInTheme = Exclude<Theme, 'organization' | 'system'>
 
 type ThemeOption = {
   description: string

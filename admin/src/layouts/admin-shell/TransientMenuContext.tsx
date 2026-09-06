@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
 
 type TransientMenuContextValue = {
   activeMenuId: string | null

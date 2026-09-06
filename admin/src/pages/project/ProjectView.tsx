@@ -1,11 +1,11 @@
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
 import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
-import { TaskDialog } from '../../components/kanban/TaskDialog'
+import { TaskDialog } from '../../components/features/projects/kanban/TaskDialog'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoards } from '../../facades/boards/hooks'
-import { BoardSwitcher } from '../../components/kanban/BoardSwitcher'
-import { usePhoneLayout } from '../../lib/mobile-shell'
+import { BoardSwitcher } from '../../components/features/projects/kanban/BoardSwitcher'
+import { usePhoneLayout } from '../../navigation/mobile-shell'
 import { useTabParam } from '../../navigation/useTabParam'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -42,8 +42,6 @@ export const ProjectView = () => {
   const [activeBoardId, selectBoard] = useTabParam('board', boardIds, defaultBoardId)
   const board = boards.find((item) => item.id === activeBoardId) ?? null
 
-  if (!projectId) return null
-
   const project = projects.find((p) => p.id === projectId)
   // Backlog and Insights are project-level, so they appear when *any* board of
   // this project runs sprints — not only when the one on screen does.
@@ -51,6 +49,11 @@ export const ProjectView = () => {
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
+
+  // `projectId` only goes missing on a malformed URL, and the guard sits below
+  // every hook so the hook order never depends on it (rules-of-hooks). The
+  // queries above already no-op on an undefined id.
+  if (!projectId) return null
   // A project's sections are chosen in the Projects sidebar, which draws them
   // as the project's subpages (`navigation/project-sections.ts`). The header
   // carries no section dropdown: two doorways to the same seven routes only

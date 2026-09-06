@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
-import { toFormErrors } from '../../../facades/form-errors'
+import { toFormErrors } from '../../../facades/forms/form-errors'
 import { ChoiceGroup } from '../../shared/ChoiceGroup'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'

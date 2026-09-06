@@ -5,7 +5,7 @@ import { useZipEntries, useZipEntryText } from '../../../facades/knowledge/file-
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { QueryState } from '../../shared/QueryState'
 import { Row, RowList } from '../../shared/RowList'
-import { iconForFilename } from './file-icons'
+import { iconForFilename } from '../../shared/file-icons'
 
 const formatBytes = (n: number): string => {
   if (n < 1024) return `${n} B`
@@ -42,7 +42,11 @@ export const ZipContents = ({ pageId, versionId }: ZipContentsProps) => {
         }}
       >
         {() => {
-          const entries = [...listing.data!.entries].sort((a, b) => {
+          // QueryState only calls this once `isError` is false, and `isError`
+          // above already covers "not loading and no data" — so this is
+          // unreachable in practice, but `data` still needs narrowing here.
+          if (!listing.data) return null
+          const entries = [...listing.data.entries].sort((a, b) => {
             if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
             return a.name.localeCompare(b.name)
           })

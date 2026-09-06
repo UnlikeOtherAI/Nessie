@@ -13,15 +13,13 @@ import {
   matchPrewarm,
   prewarmRowHandlers,
 } from '../src/navigation/prewarm.js'
-import {
-  agentKeys,
-  appKeys,
-  channelKeys,
-  dashboardKeys,
-  knowledgeKeys,
-  projectKeys,
-  threadKeys,
-} from '../src/lib/query-keys.js'
+import { agentKeys } from '../src/facades/agents/keys.js'
+import { appKeys } from '../src/facades/apps/keys.js'
+import { channelKeys } from '../src/facades/channels/keys.js'
+import { dashboardKeys } from '../src/facades/dashboards/keys.js'
+import { knowledgeKeys } from '../src/facades/knowledge/keys.js'
+import { projectKeys } from '../src/facades/projects/keys.js'
+import { threadKeys } from '../src/facades/threads/keys.js'
 
 // Step 10 of docs/done/2026-09-01-navigation-motion-system.md (§4.10),
 // docs/navigation/overview.md §"Arriving with content".

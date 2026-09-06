@@ -2,7 +2,7 @@ import type { AgentChild } from '@nessie/schemas'
 import { AgentRow } from '../../shared/AgentRow'
 import { EmptyState } from '../../shared/EmptyState'
 import { SectionLabel } from '../../primitives/SectionLabel'
-import { AgentStatusDot } from './AgentStatusDot'
+import { AgentStatusDot } from '../../shared/AgentStatusDot'
 
 type SubAgentTreeProps = {
   onSelect: (agentId: string) => void

@@ -132,7 +132,10 @@ test('the compose route retains the channel team and hides mobile navigation chr
   const nativeShell = readSource('../../mobile/App.tsx')
 
   assert.match(router, /path: '\/channels',\n        element: <ChannelsPage \/>/)
-  assert.match(router, /path: 'new',\n            element: <ChannelConversationComposePage \/>/)
+  // Route-level code splitting (05-pages-routing.md F1): the compose screen
+  // is lazy-loaded through the shared `lazyElement` Suspense wrapper rather
+  // than a static import, so the element is no longer a bare JSX literal.
+  assert.match(router, /path: 'new',\n            element: lazyElement\(ChannelConversationComposePage, 'list'\)/)
   assert.match(shell, /mobileLayout && !nativeShell && !isComposeRoute/)
   assert.match(nativeShell, /isFullScreenTaskRoute\(currentPath\)/)
 })
