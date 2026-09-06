@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useReducer,
   useRef,
   useState,
@@ -9,12 +8,7 @@ import {
 } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useConsumedIntents } from '../navigation/intent'
-import {
-  WsEventSchema,
-  parseChannelId,
-  parseUserId,
-  type CallIncomingEvent,
-} from '@nessie/schemas'
+import { parseChannelId, parseUserId, type CallIncomingEvent } from '@nessie/schemas'
 import { ApiClientError } from '@nessie/client-core'
 import { IncomingCallDialog, type IncomingCallPresentation } from '../components/shared/IncomingCallDialog'
 import { mapAcceptResponse, isWithinCallQuietHours } from '../facades/calls/call-presentation'
@@ -22,18 +16,21 @@ import {
   initialIncomingCallState,
   liveIncomingCalls,
   reduceIncomingCallEvent,
-  type IncomingCallEvent,
   type IncomingCallState,
 } from '../facades/calls/incoming-call-reducer'
-import { CallRealtimeContext } from '../facades/calls/realtime-context'
-import { getBaseUrl, type CallRecord } from '../lib/api-client'
+import {
+  parseIncomingCallEvent,
+  resolveRingIntent,
+} from '../facades/calls/incoming-call-stream'
+import { useEventStream } from '../facades/realtime/event-stream'
+import type { EventStreamConnection } from '../facades/realtime/event-stream-fanout'
+import type { CallRecord } from '../lib/api-client'
 import { parseChannelIdFromPath } from '../lib/channel-route'
 import { isDesktopApp } from '../lib/desktop'
 import { haptic, stopHaptic } from '../lib/haptics'
-import { isReactNativeWebView } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
 import { openExternalUrl } from '../lib/open-external-url'
-import { readSseStream, type SseFrame } from '../lib/sse'
-import { classifyStreamResponse, runStreamConnectionLoop, type StreamAttemptOutcome } from '../facades/threads/stream-retry'
+import type { SseFrame } from '../lib/sse'
 import { useApiClient } from './ApiClientProvider'
 import { useAuthSession } from './AuthSessionProvider'
 import { useFocusMode } from './FocusModeProvider'
@@ -56,26 +53,6 @@ const initialReducer = (): IncomingCallState => initialIncomingCallState()
 const incomingCallReducer = (state: IncomingCallState, action: ReducerAction): IncomingCallState => {
   if (action.type === 'reset') return initialIncomingCallState()
   return reduceIncomingCallEvent(state, action.value)
-}
-
-const parseIncomingCallEvent = (frame: SseFrame): IncomingCallEvent | null => {
-  if (!frame.data || !frame.id || !frame.event?.startsWith('call.')) return null
-  try {
-    const parsed = WsEventSchema.safeParse(JSON.parse(frame.data))
-    if (!parsed.success) return null
-    if (parsed.data.event === 'call.incoming') {
-      return { data: parsed.data.data, event: 'call.incoming' }
-    }
-    if (parsed.data.event === 'call.invite.updated') {
-      return { data: parsed.data.data, event: 'call.invite.updated' }
-    }
-    if (parsed.data.event === 'call.updated') {
-      return { data: parsed.data.data, event: 'call.updated' }
-    }
-  } catch {
-    // One malformed persisted event must not end a user's ring stream.
-  }
-  return null
 }
 
 const asIncomingCall = (call: CallRecord): CallIncomingEvent | null => {
@@ -148,13 +125,14 @@ const useRingtone = (enabled: boolean): void => {
   }, [enabled, ready])
 }
 
-/**
- * Owns the fourth, deliberately independent user-SSE reader. Its replay input
- * is reconciled against the live call route before it can make sound; an event
- * stream proves delivery, never that a stale ring still deserves attention.
- */
 const CALL_INTENTS = ['incomingCall', 'acceptCall'] as const
 
+/**
+ * Rings the phone off the one shared `/api/events/stream` connection
+ * (`facades/realtime/event-stream.ts`). A replayed ring is reconciled against
+ * the live call route before it can make sound; an event stream proves
+ * delivery, never that a stale ring still deserves attention.
+ */
 export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
   const apiClient = useApiClient()
   const { me, token } = useAuthSession()
@@ -194,59 +172,25 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
     }
   }, [apiClient, currentUserId])
 
-  useEffect(() => {
-    if (!token || !currentUserId) return undefined
-
-    let cancelled = false
-    let controller: AbortController | null = null
-    let lastEventId = ''
-
-    const attempt = async (): Promise<StreamAttemptOutcome> => {
-      const reconnecting = lastEventId !== ''
-      const request = new AbortController()
-      controller = request
-      try {
-        const headers: Record<string, string> = { authorization: `Bearer ${token}` }
-        if (lastEventId) headers['Last-Event-ID'] = lastEventId
-        const response = await fetch(`${getBaseUrl()}/api/events/stream`, {
-          headers,
-          signal: request.signal,
-        })
-        const outcome = classifyStreamResponse(response)
-        if (outcome !== 'connected' || !response.body) return outcome
-
-        await readSseStream(response.body, (frame) => {
-          if (frame.id) lastEventId = frame.id
-          const event = parseIncomingCallEvent(frame)
-          if (!event || !frame.id) return
-          dispatch({
-            type: 'event',
-            value: { currentUserId, event, eventId: frame.id, now: Date.now() },
-          })
-          if (event.event === 'call.incoming') {
-            if (reconnecting) {
-              void verifyLiveRing(event.data)
-            } else if (Date.parse(event.data.expiresAt) > Date.now()) {
-              setVerifiedSoundCallId(event.data.callId)
-            }
-          }
-        })
-        return 'connected'
-      } finally {
-        if (controller === request) controller = null
-      }
-    }
-
-    void runStreamConnectionLoop({
-      attempt,
-      isCancelled: () => cancelled,
-      sleep: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
+  const onFrame = useCallback((frame: SseFrame, connection: EventStreamConnection): void => {
+    if (!currentUserId || !frame.id) return
+    const event = parseIncomingCallEvent(frame)
+    if (!event) return
+    const receivedAt = Date.now()
+    dispatch({
+      type: 'event',
+      value: { currentUserId, event, eventId: frame.id, now: receivedAt },
     })
-    return () => {
-      cancelled = true
-      controller?.abort()
+    if (event.event !== 'call.incoming') return
+    const intent = resolveRingIntent({ call: event.data, connection, now: receivedAt })
+    if (intent === 'verify') {
+      void verifyLiveRing(event.data)
+    } else if (intent === 'ring') {
+      setVerifiedSoundCallId(event.data.callId)
     }
-  }, [currentUserId, token, verifyLiveRing])
+  }, [currentUserId, verifyLiveRing])
+
+  useEventStream({ enabled: Boolean(token && currentUserId), onFrame })
 
   const incomingCalls = liveIncomingCalls(state, now)
   const currentIncomingCall = incomingCalls.find((call) => !dismissedCallIds.has(call.callId)) ?? null
@@ -348,13 +292,8 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
     // `callIntent.serial` re-runs this for a second link to the same call.
   }, [acceptCallId, apiClient, callIntent.serial, channelId, currentUserId, incomingCallId])
 
-  const realtimeValue = useMemo(() => ({
-    inviteUpdates: state.inviteUpdates,
-    updates: state.updates,
-  }), [state.inviteUpdates, state.updates])
-
   return (
-    <CallRealtimeContext.Provider value={realtimeValue}>
+    <>
       {children}
       <IncomingCallDialog
         call={displayedCall}
@@ -365,6 +304,6 @@ export const IncomingCallProvider = ({ children }: PropsWithChildren) => {
         pending={pending}
         presentation={presentation}
       />
-    </CallRealtimeContext.Provider>
+    </>
   )
 }

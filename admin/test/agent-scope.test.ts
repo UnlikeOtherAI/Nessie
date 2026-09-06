@@ -5,7 +5,7 @@ import type { AgentRecord } from '../src/lib/api-client'
 import {
   getAgentScope,
   isAgentScopeEditable,
-} from '../src/components/features/agents/agent-scope.js'
+} from '../src/components/shared/agent-scope.js'
 
 const agent = (overrides: Partial<AgentRecord>): AgentRecord =>
   ({

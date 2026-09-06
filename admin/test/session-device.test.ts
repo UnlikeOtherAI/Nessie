@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { describeSessionDevice } from '../src/pages/settings/session-device.ts'
+import { describeSessionDevice } from '../src/lib/session-device.ts'
 
 test('session device labels identify native shells before interpreting their WebKit agent', () => {
   assert.deepEqual(

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
-import { appKeys } from '../../lib/query-keys'
+import { appKeys } from './keys'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AppDetailRecord, McpServerScopeType } from '@nessie/schemas'
 
-import { normalizeConnectError } from '../../components/features/apps/connect-error-copy'
+import { normalizeConnectError } from './connect-error-copy'
 import {
   CONNECT_AUTHORIZATION_TIMEOUT_MS,
   CONNECT_STILL_WAITING_MS,
@@ -16,7 +16,7 @@ import {
   resolveApiOrigin,
   serializeConnectMarker,
   type ConnectState,
-} from '../../components/features/apps/connect-flow'
+} from './connect-flow'
 import {
   createNativeConnectorAuthorizationLauncher,
   createWindowAuthLauncher,
@@ -24,13 +24,13 @@ import {
   type ExternalAuthLauncher,
   type ExternalAuthHost,
   type NativeConnectorAuthorizationHost,
-} from '../../components/features/apps/external-auth-launcher'
+} from './external-auth-launcher'
 import { getBaseUrl } from '../../lib/api-client'
 import {
   isNativeAppForegroundEvent,
   NATIVE_APP_FOREGROUND_EVENT,
 } from '../../lib/native-app-foreground'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { APPS_QUERY_KEY } from './hooks'
 

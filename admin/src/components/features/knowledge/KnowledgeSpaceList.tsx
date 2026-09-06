@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
-import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
+import { sidebarAriaCurrent } from '../../shared/row-a11y'
 import { prewarmRowHandlers, usePrewarm } from '../../../navigation/prewarm'
 import { Skeleton } from '../../primitives/Skeleton'
 import { PaginationFooter } from '../../shared/PaginationFooter'

@@ -8,7 +8,7 @@ import {
   faPaperclip,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { toFormErrors } from '../../../facades/form-errors'
+import { toFormErrors } from '../../../facades/forms/form-errors'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'

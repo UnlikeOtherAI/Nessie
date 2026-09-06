@@ -1,8 +1,8 @@
 import { useNavigateToDm } from '../../../facades/channels/dm-navigation'
 import { useProjectMembers } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { UserAvatar } from '../../primitives/UserAvatar'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { UserAvatar } from '../../shared/UserAvatar'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { Skeleton } from '../../primitives/Skeleton'
 import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {

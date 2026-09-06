@@ -1,10 +1,11 @@
 import { createContext, useContext, useMemo, type PropsWithChildren } from 'react'
 import { isDesktopApp, readDesktopPlatform, type DesktopPlatform } from '../lib/desktop'
-import { isReactNativeWebView, useNativeShellInfo } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
+import { useNativeShellInfo } from '../navigation/mobile-shell'
 
 // ShellEnvironment from docs/plans/2026-08-13-responsive-coherence.md §D: platform
 // facts stay orthogonal to viewport bands. This context only wraps the existing
-// probes (lib/mobile-shell.ts, lib/desktop.ts) into one value — pages keep using
+// probes (navigation/mobile-shell.ts, lib/desktop.ts) into one value — pages keep using
 // today's hooks until the Phase-4 call-site migration decides, per site, whether a
 // behaviour belongs to the shell or to available width.
 

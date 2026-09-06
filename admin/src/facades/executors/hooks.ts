@@ -18,7 +18,8 @@ import {
   type ExecutorScope,
 } from '@nessie/schemas'
 
-import { executorKeys, threadKeys } from '../../lib/query-keys'
+import { threadKeys } from '../threads/keys'
+import { executorKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useExecutors = () => {

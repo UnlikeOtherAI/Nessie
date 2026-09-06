@@ -53,7 +53,7 @@ test('the viewport reads the shell layout, and the breakpoint fork is gone', () 
 })
 
 test('a card never owns Back and never traps focus', () => {
-  const card = read('components/overlays/Card.tsx')
+  const card = read('components/overlays/OverlayCard.tsx')
   assert.match(card, /role="status"/)
   assert.match(card, /kind: 'card'/)
   // The Back registry and the focus trap live in useOverlay; a card composes
@@ -109,7 +109,7 @@ const React = await import('react')
 const { act, createElement: h } = React
 const { createRoot } = await import('react-dom/client')
 const { CardViewport } = await import('../src/components/overlays/CardViewport.js')
-const { useNavigationLayout } = await import('../src/lib/mobile-shell.js')
+const { useNavigationLayout } = await import('../src/navigation/mobile-shell.js')
 
 const domGlobals = {
   document: dom.window.document,

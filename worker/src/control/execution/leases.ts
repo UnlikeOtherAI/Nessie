@@ -8,6 +8,9 @@ import type { ExecutionProvider } from './types.js'
 
 export const DEFAULT_LEASE_TTL_MS = 5 * 60_000
 export const DEFAULT_RUNNER_STALE_MS = 90_000
+// An hour is two orders of magnitude past the 30 s heartbeat, so a row this
+// old belongs to a process that is gone rather than to one that is slow.
+export const RUNNER_RETENTION_MS = 60 * 60_000
 
 export const selectRunner = async (
   tx: Prisma.TransactionClient,
@@ -89,6 +92,34 @@ export const renewExecutionLeases = async (
   })
 
   return updated.count
+}
+
+// Every worker process now registers its own `execution_runners` rows (one per
+// provider, keyed by a per-boot label), so without a reaper the table grows two
+// rows per restart forever. Deleting is only safe while the runner holds no
+// non-terminal lease: `execution_leases.runner_id` is a cascading FK, so a
+// delete would take a live lease with it. `expireExecutionLeases` runs first in
+// the same sweep, which is what turns an abandoned lease terminal in time for
+// the next pass to collect its runner.
+export const reapStaleExecutionRunners = async (
+  prisma: PrismaClient,
+): Promise<number> => {
+  const deleted = await prisma.executionRunner.deleteMany({
+    where: {
+      heartbeatAt: {
+        lt: new Date(Date.now() - RUNNER_RETENTION_MS),
+      },
+      leases: {
+        none: {
+          status: {
+            in: ['issued', 'acknowledged'],
+          },
+        },
+      },
+    },
+  })
+
+  return deleted.count
 }
 
 export const finalizeLease = async (

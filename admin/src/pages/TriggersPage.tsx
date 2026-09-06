@@ -3,10 +3,8 @@ import { TriggerEditorDialog } from '../components/features/triggers/TriggerEdit
 import { TriggerListColumn } from '../components/features/triggers/TriggerListColumn'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { OwnerGate } from '../components/shared/OwnerGate'
-import { usePhoneLayout } from '../lib/mobile-shell'
-import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
-import { useTriggersPageState } from './triggers/useTriggersPageState'
+import { usePhoneLayout } from '../navigation/mobile-shell'
+import { useTriggersPageState } from '../components/features/triggers/useTriggersPageState'
 
 export const TriggersPage = () => {
   const phoneLayout = usePhoneLayout()
@@ -20,8 +18,6 @@ export const TriggersPage = () => {
       filteredTriggers={state.filteredTriggers}
       isPending={state.isPending}
       key="triggers"
-      leading={<PhoneNavigationButton />}
-      ownsScreen
       onCreate={() => state.setCreateDialogOpen(true)}
       onSearchChange={state.setSearchQuery}
       onSelect={state.setSelectedTriggerId}
@@ -56,29 +52,27 @@ export const TriggersPage = () => {
   }
 
   return (
-    <OwnerGate>
-      <div className="h-full w-full">
-        <ColumnBrowserViewport
-          activeColumn={phoneLayout && state.selectedTriggerId && selectedTrigger ? 1 : 0}
-          columns={columns}
-        />
-        <TriggerEditorDialog
-          agents={state.agents}
-          channels={state.channels}
-          defaultTarget={state.defaultCreateTarget}
-          onClose={() => {
-            state.setCreateDialogOpen(false)
-            state.setEditingTriggerId(undefined)
-          }}
-          onSaved={(trigger) => {
-            state.setSelectedTriggerId(trigger.id)
-          }}
-          open={state.isCreateDialogOpen || Boolean(state.editingTrigger)}
-          trigger={state.editingTrigger}
-          workflowInstallations={state.workflowInstallations}
-          workflowTemplates={state.workflowTemplates}
-        />
-      </div>
-    </OwnerGate>
+    <div className="h-full w-full">
+      <ColumnBrowserViewport
+        activeColumn={phoneLayout && state.selectedTriggerId && selectedTrigger ? 1 : 0}
+        columns={columns}
+      />
+      <TriggerEditorDialog
+        agents={state.agents}
+        channels={state.channels}
+        defaultTarget={state.defaultCreateTarget}
+        onClose={() => {
+          state.setCreateDialogOpen(false)
+          state.setEditingTriggerId(undefined)
+        }}
+        onSaved={(trigger) => {
+          state.setSelectedTriggerId(trigger.id)
+        }}
+        open={state.isCreateDialogOpen || Boolean(state.editingTrigger)}
+        trigger={state.editingTrigger}
+        workflowInstallations={state.workflowInstallations}
+        workflowTemplates={state.workflowTemplates}
+      />
+    </div>
   )
 }

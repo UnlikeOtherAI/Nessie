@@ -1,6 +1,6 @@
 import { useAuthedObjectUrlFromPath } from '../../lib/uploads'
 import { IdentityTile } from './IdentityTile'
-import { identityInitials } from './identity-shape'
+import { identityInitials } from '../../lib/identity-shape'
 
 // The company picture UnlikeOtherAI holds for a team. The relay needs a
 // bearer token, so it is fetched as an object URL rather than dropped into an

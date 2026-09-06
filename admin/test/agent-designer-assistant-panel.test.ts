@@ -9,11 +9,11 @@ const readSource = (relativePath: string): string =>
 test('agent detail keeps one full-height Design Assistant drawer beside every tab', () => {
   const tabs = readSource('../src/components/features/agents/AgentDetailTabs.tsx')
   const page = readSource('../src/pages/AgentDetailPage.tsx')
-  const drawer = readSource('../src/components/features/agents/designer/DesignerAssistantDrawer.tsx')
+  const drawer = readSource('../src/components/features/agents/designer/DesignerAssistantDock.tsx')
 
   assert.match(tabs, /pageContextForTab/)
   assert.match(tabs, /title: 'Tools'/)
-  assert.match(page, /<DesignerAssistantDrawer \/>/)
+  assert.match(page, /<DesignerAssistantDock \/>/)
   assert.match(drawer, /aria-label="Design Assistant"/)
   assert.match(drawer, /Open Design Assistant/)
   assert.match(drawer, /transition-\[width,height,opacity\]/)

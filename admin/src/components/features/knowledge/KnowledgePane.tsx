@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useScreenBarLayer } from '../../../navigation/ScreenBarLayer'
-import { toScreenBarActions } from '../../../navigation/screen-bar-actions'
+import { toScreenBarActions } from '../../shared/screen-bar-actions'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,

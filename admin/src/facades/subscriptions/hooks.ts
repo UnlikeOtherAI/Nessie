@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { agentKeys } from '../../lib/query-keys'
+import { agentKeys } from '../agents/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { subscriptionKeys } from './keys'
 
 /**
  * React-Query facade for personal model subscriptions.
@@ -34,11 +35,6 @@ export type ModelSubscription = {
   models: { model: string; displayName: string; description?: string }[]
   provider: string
   status: 'active' | 'needs_reauthorization' | 'disconnected' | 'error'
-}
-
-export const subscriptionKeys = {
-  list: ['model-subscriptions'] as const,
-  providers: ['model-subscriptions', 'providers'] as const,
 }
 
 export const useModelSubscriptionProviders = () => {

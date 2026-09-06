@@ -15,7 +15,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { DashboardWidgetProjection } from '@nessie/schemas'
-import { dashboardKeys } from '../../../lib/query-keys'
+import { dashboardKeys } from '../../../facades/dashboards/keys'
 import { SkeletonBlock } from '../../primitives/Skeleton'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { DashboardWidgetCard, type WidgetSurface } from './DashboardWidgetCard'

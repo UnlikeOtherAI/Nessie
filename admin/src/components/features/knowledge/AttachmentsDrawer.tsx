@@ -16,7 +16,7 @@ import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { QueryState } from '../../shared/QueryState'
 import { Row, RowList } from '../../shared/RowList'
-import { iconForMime } from './file-icons'
+import { iconForMime } from '../../shared/file-icons'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 
 // Right-hand attachments drawer: a 360 px sheet on a split layout, covering the

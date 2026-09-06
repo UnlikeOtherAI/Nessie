@@ -19,7 +19,7 @@ import {
 } from '../../lib/workflow-designer/constants'
 import { getCanvasInsertionPoint } from '../../lib/workflow-designer/geometry'
 import { formatJson, readJsonObject } from '../../lib/workflow-designer/json'
-import { getLinearWorkflowNodes } from '../../lib/workflow-designer/serialization'
+import { getLinearWorkflowNodes } from '../../lib/workflow-designer/canvas-structure'
 import {
   getWorkflowNodeInitialConfig,
   getWorkflowNodeLabel,

@@ -11,7 +11,7 @@ import {
   type ThreadMessagePage,
   type ThreadMessagePages,
 } from '../src/facades/threads/queries.js'
-import { threadKeys } from '../src/lib/query-keys.js'
+import { threadKeys } from '../src/facades/threads/keys.js'
 
 const message = (
   id: string,

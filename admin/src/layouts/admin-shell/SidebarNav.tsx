@@ -1,12 +1,13 @@
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { useLocation } from 'react-router-dom';
 import { useScrollMemory } from '../../hooks/useScrollMemory';
-import { isReactNativeWebView } from '../../lib/mobile-shell';
+import { isReactNativeWebView } from '../../lib/native-shell';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
-import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
+import { renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import type {
   CreateChannelTarget,
   EditProjectTarget,

@@ -2,7 +2,7 @@
  * Initials for a display name.
  *
  * The implementation lives with the tile that draws it
- * (`components/primitives/identity-shape.ts`) so shape and fallback stay one
+ * (`lib/identity-shape.ts`) so shape and fallback stay one
  * decision; this re-export keeps the many existing import sites working.
  *
  * The agent gradient and the indexed DM gradients that used to live here are
@@ -11,4 +11,4 @@
  * tile in the sidebar and a palette-coloured portrait in the channel; the DM
  * gradients had no reader at all.
  */
-export { identityInitials as getInitials } from '../components/primitives/identity-shape'
+export { identityInitials as getInitials } from './identity-shape'

@@ -5,13 +5,11 @@ import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { useProjectSources } from '../../../facades/board-sources/hooks'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
-import { BoardCreateDialog } from '../../../components/kanban/BoardCreateDialog'
-import { BoardIconField } from '../../../components/kanban/BoardIconField'
-import { BoardIcon } from '../../../components/kanban/BoardIcon'
-
-const errorMessage = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
+import { BoardCreateDialog } from '../../../components/features/projects/kanban/BoardCreateDialog'
+import { BoardIconField } from '../../../components/features/projects/kanban/BoardIconField'
+import { BoardIcon } from '../../../components/features/projects/kanban/BoardIcon'
 
 type BoardsSettingsSectionProps = {
   boards: BoardRecord[]
@@ -74,7 +72,7 @@ export const BoardsSettingsSection = ({
     updateBoard.mutate(
       { id: board.id, name: trimmed },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not rename board')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not rename board')),
         onSuccess: onSaved,
       },
     )
@@ -90,7 +88,7 @@ export const BoardsSettingsSection = ({
         ...(board.isDefault && replacement ? { newDefaultBoardId: replacement.id } : {}),
       },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not delete board')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not delete board')),
         onSuccess: () => {
           if (board.id === selectedBoardId && replacement) onSelectBoard(replacement.id)
           onSaved()
@@ -123,7 +121,7 @@ export const BoardsSettingsSection = ({
                       { id: board.id, iconEmoji },
                       {
                         onError: (cause) =>
-                          onSaveError(errorMessage(cause, 'Could not change the board icon')),
+                          onSaveError(formErrorMessage(cause, 'Could not change the board icon')),
                         onSuccess: onSaved,
                       },
                     )
@@ -155,7 +153,7 @@ export const BoardsSettingsSection = ({
                       { id: board.id, isDefault: true },
                       {
                         onError: (cause) =>
-                          onSaveError(errorMessage(cause, 'Could not set the default board')),
+                          onSaveError(formErrorMessage(cause, 'Could not set the default board')),
                         onSuccess: onSaved,
                       },
                     )
@@ -217,7 +215,7 @@ export const BoardsSettingsSection = ({
                     { id: selected.id, style: event.target.value as BoardStyle },
                     {
                       onError: (cause) =>
-                        onSaveError(errorMessage(cause, 'Could not change board style')),
+                        onSaveError(formErrorMessage(cause, 'Could not change board style')),
                       onSuccess: onSaved,
                     },
                   )

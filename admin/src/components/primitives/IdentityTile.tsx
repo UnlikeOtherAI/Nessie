@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
-import { identityTileRadius } from './identity-shape'
+import { identityTileRadius } from '../../lib/identity-shape'
 
 /**
  * What is drawn when there is no picture. Every identity has one — an absent

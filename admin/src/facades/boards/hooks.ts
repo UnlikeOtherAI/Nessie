@@ -7,7 +7,8 @@ import type {
   ColumnCategory,
 } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
-import { projectKeys, taskKeys } from '../../lib/query-keys'
+import { projectKeys } from '../projects/keys'
+import { taskKeys } from '../tasks/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { TaskRecord } from '../tasks/hooks'
 

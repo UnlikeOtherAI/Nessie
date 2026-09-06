@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { tenantHostKeys } from '../../lib/query-keys'
+import { tenantHostKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**

@@ -1,29 +1,21 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { DashboardRealtimeProvider } from '../components/features/dashboards/DashboardRealtimeProvider';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
-import {
-  isReactNativeWebView,
-  useMobileLayout,
-  useNativeLargePhoneLandscapeApp,
-  useNativeIPadApp,
-  useNativePhoneApp,
-  useNavigationLayout,
-} from '../lib/mobile-shell';
-import { NotificationsProvider } from '../providers/NotificationsProvider';
+import { isReactNativeWebView } from '../lib/native-shell';
+import { useMobileLayout, useNativeLargePhoneLandscapeApp, useNativeIPadApp, useNativePhoneApp, useNavigationLayout } from '../navigation/mobile-shell';
+import { MessageNotificationBridge } from '../bridges/MessageNotificationBridge';
 import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
-import { PushSurfacePresenceHeartbeat } from '../providers/PushSurfacePresenceHeartbeat';
-import { AttentionDisplayManager } from '../providers/AttentionDisplayManager';
+import { PushSurfacePresenceHeartbeat } from '../bridges/PushSurfacePresenceHeartbeat';
+import { AttentionDisplayManager } from '../bridges/AttentionDisplayManager';
 import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
-import { AccountMenuProvider } from './admin-shell/AccountMenuContext';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
-import { LocalBackProvider } from './admin-shell/local-back/LocalBackContext';
-import { MobileNavProvider } from './admin-shell/MobileNavContext';
+import { LocalBackProvider } from '../navigation/LocalBackContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
@@ -33,7 +25,7 @@ import { SHELL_MAIN_ID, SkipToContentLink } from '../navigation/SkipToContentLin
 import {
   isPhoneTabRoot,
   phoneTabRootHasContextualList,
-} from './admin-shell/phone-navigation';
+} from '../navigation/phone-navigation';
 import { PhoneNavigationProvider } from './admin-shell/PhoneNavigationProvider';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
@@ -57,9 +49,8 @@ import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/a
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
 
-import { ShellActionsProvider } from './admin-shell/ShellActionsContext';
-import type { AdminShellOutletContext } from './admin-shell/types';
-export type { AdminShellOutletContext } from './admin-shell/types';
+import { ShellStateProvider, type ShellState } from './admin-shell/ShellStateContext';
+export type { ShellActions } from './admin-shell/types';
 
 // A phone has room for one primary decision at a time. Its tab root therefore
 // renders the tab's existing contextual navigation as the page, while tablet
@@ -143,9 +134,12 @@ const AuthenticatedAdminShellLayout = () => {
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
   const nativePhoneApp = useNativePhoneApp();
   const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
+  // The callback, not `shell`: the shell object is rebuilt every render, so an
+  // effect depending on it would close the drawer on every render.
+  const closeMobileDrawer = shell.closeMobileDrawer;
   useEffect(() => {
-    if (showPhoneTabRoot) shell.closeMobileDrawer();
-  }, [shell.closeMobileDrawer, showPhoneTabRoot]);
+    if (showPhoneTabRoot) closeMobileDrawer();
+  }, [closeMobileDrawer, showPhoneTabRoot]);
 
   const isComposeRoute = shell.pathname === '/channels/new';
   // The web tab bar is only for mobile *web*; the native app draws its own
@@ -164,12 +158,30 @@ const AuthenticatedAdminShellLayout = () => {
   // would resolve both layers against the new route and duplicate the incoming
   // page instead of preserving the outgoing one.
   const outlet = useOutlet();
-  // The shell's actions reach every page — routed or seeded — as one context.
-  const shellActions: AdminShellOutletContext = {
-    onCreateAgent: shell.navigateToAgentDesigner,
-    onCreateChannel: shell.openCreateChannel,
-    onSelectAgent: shell.selectAgent,
-  };
+  // The shell's actions, the mobile drawer's open callback, and the header
+  // account-menu's visibility reach every page — routed or seeded — as one
+  // memoised context value (07-F10: three single-purpose contexts collapsed
+  // into one, so an unrelated shell re-render does not force every
+  // `ResponsivePageHeader`/`PhoneNavigationButton` in the tree to re-render).
+  const showHeaderAccountMenu = hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp;
+  const shellState: ShellState = useMemo(
+    () => ({
+      onCreateAgent: shell.navigateToAgentDesigner,
+      onCreateChannel: shell.openCreateChannel,
+      onLogout: shell.logoutAndRedirect,
+      onSelectAgent: shell.selectAgent,
+      openDrawer: shell.openMobileDrawer,
+      showHeaderAccountMenu,
+    }),
+    [
+      shell.logoutAndRedirect,
+      shell.navigateToAgentDesigner,
+      shell.openCreateChannel,
+      shell.openMobileDrawer,
+      shell.selectAgent,
+      showHeaderAccountMenu,
+    ],
+  );
 
   const sidebarNavElement = (
     <SidebarNav
@@ -366,13 +378,9 @@ const AuthenticatedAdminShellLayout = () => {
       <AttentionDisplayManager />
       <PushSurfacePresenceHeartbeat />
       <ToastProvider>
-        <NotificationsProvider>
+        <MessageNotificationBridge>
           <TransientMenuProvider>
-            <AccountMenuProvider
-              onLogout={shell.logoutAndRedirect}
-              showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
-            >
-              <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
+            <ShellStateProvider value={shellState}>
                 <SkipToContentLink />
                 <div className={frameClassName} data-navigation={navigationLayout}>
                   {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
@@ -384,7 +392,6 @@ const AuthenticatedAdminShellLayout = () => {
                     />
                   )}
 
-                  <ShellActionsProvider value={shellActions}>
                   <div className="admin-shell">
                     {!mobileLayout && (
                       <SidebarRail
@@ -403,7 +410,6 @@ const AuthenticatedAdminShellLayout = () => {
                       contentRegion
                     )}
                   </div>
-                  </ShellActionsProvider>
                 </div>
 
                 {showWebTabBar && <MobileTabBar />}
@@ -441,10 +447,9 @@ const AuthenticatedAdminShellLayout = () => {
                   onClose={shell.closeAgentDrawer}
                   onSelectAgent={shell.selectAgent}
                 />
-              </MobileNavProvider>
-            </AccountMenuProvider>
+            </ShellStateProvider>
           </TransientMenuProvider>
-        </NotificationsProvider>
+        </MessageNotificationBridge>
       </ToastProvider>
     </PresenceProvider>
     </AgentIdentityProvider>

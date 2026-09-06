@@ -10,10 +10,10 @@ import type { AuthSessionState } from '@nessie/client-core'
 import { completeExternalAuthCallback, EXPIRED_SIGN_IN_MESSAGE } from '../lib/external-auth-completion'
 import { completedExternalAuthCallbackCache } from '../lib/pkce'
 import { isDesktopApp } from '../lib/desktop'
-import { isReactNativeWebView } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
 import { NATIVE_EXTERNAL_AUTH_EVENT } from '../lib/native-external-auth'
 import { useAuthSession } from './AuthSessionProvider'
-import { createExternalAuthCallbackHub } from './external-auth-callback'
+import { createExternalAuthCallbackHub } from '../lib/external-auth-callback'
 import {
   ExternalAuthNavigationContext,
   type ExternalAuthNavigation,

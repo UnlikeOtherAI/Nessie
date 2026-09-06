@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiClientError } from '@nessie/client-core'
 import type { DashboardWidgetKind } from '@nessie/schemas'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
+import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
 import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useDashboard, useDashboardSourceNotes, useSaveLayout } from '../../../facades/dashboards/hooks'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
@@ -136,8 +136,10 @@ export const DashboardWorkspacePanel = ({
             {dashboard.data ? `Revision ${dashboard.data.revision} · ${realtime}` : 'Loading dashboard'}
           </p>
         </div>
-        {dashboard.data ? (
-          editing ? (
+        {(() => {
+          const dashboardData = dashboard.data
+          if (!dashboardData) return null
+          return editing ? (
             <button
               className="admin-button admin-button-primary text-xs"
               disabled={saveLayout.isPending}
@@ -155,7 +157,7 @@ export const DashboardWorkspacePanel = ({
               Edit layout
             </button>
           )
-        ) : null}
+        })()}
         {phoneLayout ? null : (
           <button
             aria-label="Close dashboard workspace"

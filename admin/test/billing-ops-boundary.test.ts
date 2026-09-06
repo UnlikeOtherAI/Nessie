@@ -22,8 +22,10 @@ test('customer credits page cannot import Nessie operational billing logic', () 
 test('local calculations remain on the owner-only operations surface', () => {
   const telemetry = readSource('../src/pages/OperationalTelemetryPage.tsx')
   const router = readSource('../src/router.tsx')
+  // The ADMIN_NAV table itself moved to admin-nav-items.tsx (06-F1);
+  // AdminSidebarNav.tsx is the component that renders it.
   const navigation = readSource(
-    '../src/layouts/admin-shell/AdminSidebarNav.tsx',
+    '../src/layouts/admin-shell/admin-nav-items.tsx',
   )
 
   // The refusal sentence moved into the shared <OwnerGate>; what this line

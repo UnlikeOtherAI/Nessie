@@ -1,6 +1,6 @@
 import type { SessionClientType } from '@nessie/schemas'
 import { isDesktopApp } from './desktop'
-import { isReactNativeWebView } from './mobile-shell'
+import { isReactNativeWebView } from './native-shell'
 
 type NativeShellWindow = Window & {
   __nessieNativeShell?: { platform?: string }

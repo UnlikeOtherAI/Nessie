@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { NAV_ITEMS } from './nav-items';
+import { NAV_ITEMS } from '../../navigation/nav-items';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 import { useCloseTransientMenus } from './TransientMenuContext';
 

@@ -7,7 +7,7 @@ import {
 import type { AgentRecord, ProjectRecord, UserRecord } from '../../../lib/api-client'
 import { useCreateExecutor } from '../../../facades/executors/hooks'
 import { FormError } from '../../shared/FormActions'
-import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 
 type ExecutorCreatePanelProps = {
   agents: AgentRecord[]

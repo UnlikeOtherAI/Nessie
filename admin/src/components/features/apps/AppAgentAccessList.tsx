@@ -7,7 +7,7 @@ import {
   useAppAgentAccessSource,
   useSetAppAgentAccess,
 } from '../../../facades/apps/agent-access-hooks'
-import { mcpInstanceToolsPath } from '../../../facades/mcp-instance-tool-filter'
+import { mcpInstanceToolsPath } from '../../../facades/tools/mcp-instance-tool-filter'
 import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 import { AgentAvatar } from '../../shared/AgentAvatar'

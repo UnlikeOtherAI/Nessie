@@ -5,7 +5,7 @@ import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { BoardIcon } from '../src/components/kanban/BoardIcon.js'
+import { BoardIcon } from '../src/components/features/projects/kanban/BoardIcon.js'
 
 // The production Vite transform injects the JSX runtime. Node's lightweight
 // tsx loader uses the classic transform for imported TSX modules.

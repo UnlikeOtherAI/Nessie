@@ -93,7 +93,7 @@ test('the breakpoint scale is exactly the five Tailwind defaults', () => {
 
 test('named one-off media lanes pass through the snapshot untouched', () => {
   // The 600x600 tablet gate is two-dimensional, so it rides a named lane owned
-  // by lib/mobile-shell.ts rather than the width-only band scale.
+  // by navigation/mobile-shell.ts rather than the width-only band scale.
   const snapshot = deriveSnapshot(atWidth(768), NO_CAPABILITIES, { tabletMin: true })
   assert.equal(snapshot.band, 'md')
   assert.deepEqual(snapshot.media, { tabletMin: true })

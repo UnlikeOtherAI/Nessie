@@ -4,7 +4,7 @@ import type {
   PersonalAssistantConfigSummary,
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
-import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
+import { sidebarAriaCurrent } from '../../shared/row-a11y'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'

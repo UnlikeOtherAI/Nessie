@@ -6,7 +6,7 @@ import {
   NAV_ITEMS,
   activeNavSection,
   matchesAdminRoute,
-} from '../src/layouts/admin-shell/nav-items.js'
+} from '../src/navigation/nav-items.js'
 
 test('integrations is no longer a top-level rail item', () => {
   assert.equal(NAV_ITEMS.some((item) => item.id === 'integrations'), false)

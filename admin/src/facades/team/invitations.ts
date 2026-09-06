@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { UoaPendingTeamInvite } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
 
-import { alertKeys } from '../../lib/query-keys'
+import { alertKeys } from '../alerts/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 

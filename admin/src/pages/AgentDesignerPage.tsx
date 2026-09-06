@@ -17,11 +17,11 @@ import {
   buildRunLimits,
   readAgentRunLimits,
   runLimitsToForm,
-} from '../components/features/agents/designer/run-limits'
+} from '../facades/designer/run-limits'
 import { saveBlockedReason } from '../components/features/agents/designer/save-readiness'
 import { QueryState } from '../components/shared/QueryState'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
-import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
+import type { AgentFormState } from '../facades/designer/types'
 import {
   useAgentModelOptions,
   useAgents,
@@ -34,7 +34,7 @@ import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/too
 import type { AgentRecord } from '../lib/api-client'
 import { useTabParam } from '../navigation/useTabParam'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 
 export const AgentDesignerPage = () => {

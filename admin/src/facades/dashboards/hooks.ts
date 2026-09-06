@@ -15,7 +15,7 @@ import type {
   WidgetDefinition,
 } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
-import { dashboardKeys } from '../../lib/query-keys'
+import { dashboardKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type DashboardRecord = {

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
