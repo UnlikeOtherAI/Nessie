@@ -454,11 +454,50 @@ is invisible to the next tool call on another. The `docker` execution provider
 shells out to the local daemon and its terminate job is routed to any worker
 (6.3/8.2, `worker/src/control/execution/docker-provider.ts:105-177`).
 
-**Corollary.** Boot is **fatal** outside `local` mode when storage is
-`filesystem`, when the `docker` execution provider is enabled, or when a
-toolset bundle configures `allowedRoots`. Fail at boot, not at the first tool
-call — the silent version of this defect is data written to a disk that
-disappears.
+**Corollary, as built.** All three are refused outside `local` mode, and the
+refusal names the setting, the mode it is illegal in, and what to use instead.
+`local` keeps every one of them: it is the single-instance developer path, and
+there the API runs the worker embedded in its own process — one disk, one
+daemon.
+
+The three descriptors, the message and the assertion live in one file,
+`packages/config/src/local-only.ts`, so the inventory this invariant forbids is
+one list rather than three scattered guards. Where each is *enforced* differs,
+and the difference is not stylistic — only one of the three is configuration:
+
+- **`filesystem` storage** is `storage.provider`, so it is refused in
+  `loadConfig` (`packages/config/src/index.ts`), which both the API and the
+  worker call before anything else. This is the boot-fatal one, and it is the
+  case that matters most because `filesystem` is the **default**: a deployment
+  that never sets `NESSIE_STORAGE_PROVIDER` now fails to start instead of
+  writing uploads to a disk that disappears. It is also already wrong at one
+  host — the API and the worker are separate containers with no shared volume.
+- **The `docker` execution provider** is a column on
+  `execution_environment_templates`, per-organisation data that configuration
+  cannot see, so it is refused at the one chokepoint every probe, provision and
+  terminate passes through
+  (`worker/src/control/execution/providers.ts`). Provision and terminate
+  **throw**; the probe **answers** `available: false` carrying the same
+  sentence, because it runs in the boot-time runner-registration loop over every
+  provider, where a refusal is a fact about the deployment rather than a boot
+  failure. Terminate throwing is the point: the defect was that it swallowed
+  "No such container" and recorded `terminated` while the container kept
+  running.
+- **The `file_read`/`file_write`/`file_glob` builtins** take their
+  `allowedRoots` from a column on `tool_registry_entries`, also
+  per-organisation data, so they are refused in
+  `worker/src/run/sandboxed-tool-dispatch.ts` — the single dispatcher for
+  exactly those three. The refusal is a **failed tool result**, not a throw: the
+  model asked for the tool, and what it needs back is the sentence saying the
+  tool does not exist on this deployment and what to reach for instead.
+
+**Residual.** Creating an execution environment template with provider `docker`
+still succeeds on a non-`local` deployment; the refusal comes when it is first
+used. The write door is
+`createExecutionEnvironmentTemplate` in `api/src/services/execution-environments.ts`,
+which is already past the 500-line file cap, so closing it there is a refactor
+rather than a guard. Nothing is silently wrong in the meantime — the template is
+inert and says so the first time anyone launches it.
 
 ## 8. Instance identity is a UUID minted at boot, never `HOSTNAME`
 

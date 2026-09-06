@@ -1,6 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { z } from 'zod'
+import { assertLocalOnlyCapability, FILESYSTEM_STORAGE } from './local-only.js'
+
+// The single-host capability rule lives in its own module (this file is long
+// enough); it is re-exported here because `.` is the package's only entry.
+export {
+  assertLocalOnlyCapability,
+  DOCKER_EXECUTION_PROVIDER,
+  FILESYSTEM_BUILTIN_TOOLS,
+  FILESYSTEM_STORAGE,
+  localOnlyCapabilityMessage,
+  SingleInstanceCapabilityError,
+} from './local-only.js'
+export type { LocalOnlyCapability } from './local-only.js'
 
 export const NessieModeSchema = z.enum(['hosted', 'selfHosted', 'local'])
 export type NessieMode = z.infer<typeof NessieModeSchema>
@@ -705,5 +718,15 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
     loadCliOverrides(argv),
   )
 
-  return NessieConfigSchema.parse(merged)
+  const config = NessieConfigSchema.parse(merged)
+
+  // Invariant 7 (docs/standards/horizontal-scaling.md). This is the one
+  // single-host capability that is configuration, and both the API and the
+  // worker load config before they do anything else, so this is the earliest
+  // point at which either can refuse it.
+  if (config.storage.provider === 'filesystem') {
+    assertLocalOnlyCapability(config.mode, FILESYSTEM_STORAGE)
+  }
+
+  return config
 }

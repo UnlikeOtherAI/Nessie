@@ -30,7 +30,16 @@ const apiDir = fileURLToPath(new URL('..', import.meta.url))
 const indexUrl = pathToFileURL(fileURLToPath(new URL('../src/index.ts', import.meta.url))).href
 
 const childEnv = (): NodeJS.ProcessEnv => {
-  const env = { ...process.env, NESSIE_MODE: 'selfHosted' }
+  const env = {
+    ...process.env,
+    NESSIE_MODE: 'selfHosted',
+    // The missing secret is the only thing wrong with this deployment. Object
+    // storage is named because `loadConfig` refuses the default `filesystem`
+    // provider outside `local` (horizontal-scaling invariant 7) and would
+    // otherwise throw first, hiding the refusal this test is about.
+    NESSIE_STORAGE_PROVIDER: 's3',
+    NESSIE_STORAGE_BUCKET: 'nessie',
+  }
   delete env.DATABASE_URL
   delete env.NESSIE_AUTH_SECRET
   return env
