@@ -127,3 +127,29 @@ test('a kept address is consumed once', () => {
   const went = source.indexOf('window.location.assign(target)')
   assert.ok(forgot !== -1 && went !== -1 && forgot < went, 'clear before navigating, not after')
 })
+
+test("a tenant address paints in the organisation's colours before anyone signs in", () => {
+  const provider = readSource('../src/providers/ThemeProvider.tsx')
+
+  // §4.3 keeps the SHARED login neutral because it cannot know whose visitor
+  // it has. A tenant hostname can, so the palette follows the address.
+  assert.match(provider, /useTenantHost\(\)/)
+  assert.match(provider, /const tenantTheme = tenantHost\?\.kind \? tenantHost\.organisation\.theme : null/)
+  // The session's own organisation still wins: somebody signed in is looking
+  // at the tenant they are actually in, which a hostname can only suggest.
+  assert.match(provider, /const savedTheme = organization\?\.theme \?\? tenantTheme/)
+  // And the first paint waits for it rather than flashing the default.
+  assert.match(provider, /\|\| tenantHostLoading/)
+})
+
+test('the palette travels on the public resolver, checked before it is trusted', () => {
+  const route = readSource('../../api/src/routes/team-provisioning.ts')
+
+  // Keyed by the id UOA just vouched for — a name UOA does not resolve can
+  // never reach a local row.
+  assert.match(route, /where: \{ externalOrgId: organisation\.externalOrgId \}/)
+  // A stored palette that no longer validates renders as the default rather
+  // than half-applied.
+  assert.match(route, /OrganizationThemeSchema\.safeParse\(local\?\.theme\)/)
+  assert.match(route, /parsedTheme\.success \? parsedTheme\.data : null/)
+})

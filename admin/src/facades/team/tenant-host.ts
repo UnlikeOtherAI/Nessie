@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import type { OrganizationTheme } from '@nessie/schemas'
 
 import { tenantHostKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -26,6 +27,17 @@ export type TenantOrganisation = {
   name: string
   slug: string
   iconUrl: string | null
+  /**
+   * The organisation's own palette, so a tenant address paints in their
+   * colours before anybody signs in.
+   *
+   * The deliberate exception to "the sign-in screen is instance state, not
+   * tenant state" (docs/plans/2026-09-05-organisation-custom-theme.md §4.3):
+   * that rule holds because the shared login cannot know whose visitor it has,
+   * and one tenant must not choose it for the rest. A tenant hostname knows,
+   * and reaches only itself.
+   */
+  theme: OrganizationTheme | null
 }
 
 export type TenantTeam = {
