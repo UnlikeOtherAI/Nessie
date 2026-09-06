@@ -8,6 +8,7 @@ import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { Checkbox } from '../../components/primitives/Checkbox'
 import { CodeInput } from '../../components/primitives/CodeInput'
 import { Pill } from '../../components/primitives/Pill'
+import { defaultGrantedScopes } from '../../facades/agent-access/scope-defaults'
 import {
   useAgentAccessCredentials,
   useDecideAgentAuthorization,
@@ -41,10 +42,18 @@ const SCOPE_COPY: Record<AgentAccessScope, { detail: string; label: string }> = 
     label: 'Read documents',
   },
   documents_write: {
-    detail: 'Create and edit documents as drafts. It cannot publish.',
+    detail: 'Create and edit documents as drafts.',
     label: 'Write documents',
   },
+  documents_publish: {
+    detail:
+      'Make drafts visible to everyone who can read the space. Publishing is '
+      + 'normally a person\'s decision — most agents do not need this.',
+    label: 'Publish documents',
+  },
 }
+
+
 
 const formatWhen = (value: string | null): string => {
   if (!value) return 'never'
@@ -76,10 +85,10 @@ export const AgentAccessPage = () => {
     [pending.data?.requestedScopes],
   )
 
-  // Default to everything the agent asked for. Granting less is the deliberate
-  // act, so it is the one that takes a click.
+  // Default to everything the agent asked for — except the scopes whose
+  // granting is itself the deliberate act.
   useEffect(() => {
-    setGranted(requested)
+    setGranted(defaultGrantedScopes(requested))
   }, [requested])
 
   const rows = credentials.data?.credentials ?? []

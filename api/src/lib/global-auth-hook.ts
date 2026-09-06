@@ -13,6 +13,7 @@ import {
 } from '../services/mcp-agent/agent-credential.js'
 import { createGlobalRateLimitCheck } from '../routes/auth-rate-limit.js'
 import { sendApiError } from './api.js'
+import { resolvePublicOrigin } from './public-origin.js'
 import type { ServerContext } from './server-context.js'
 
 type GlobalAuthHookDeps = Pick<
@@ -30,6 +31,23 @@ const bearerToken = (header: string | undefined): string | null => {
   if (!header?.startsWith('Bearer ')) return null
   const token = header.slice('Bearer '.length).trim()
   return token.length > 0 ? token : null
+}
+
+/**
+ * Where a client can learn how to authenticate to the MCP endpoint.
+ *
+ * Returns null on a deployment with no public origin configured: a challenge
+ * pointing nowhere is worse than none, because a client would follow it.
+ */
+const agentResourceMetadataUrl = (
+  request: Parameters<typeof resolvePublicOrigin>[0],
+  config: Parameters<typeof resolvePublicOrigin>[1],
+): string | null => {
+  try {
+    return `${resolvePublicOrigin(request, config)}/.well-known/oauth-protected-resource`
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -65,6 +83,19 @@ export const registerGlobalAuthHook = (
   app.addHook('preHandler', async (request, reply) => {
     if (request.routeOptions.config.public === true) {
       return
+    }
+
+    // RFC 9728 §5.1, set before verification so EVERY refusal on an
+    // agent-credential route carries it — a missing bearer, an expired one, a
+    // revoked one. Setting it inside the route handler would have been
+    // pointless: an unauthenticated request is rejected here and never reaches
+    // one, which is exactly how it ends up an opaque 401 with nothing for a
+    // client to act on.
+    if (request.routeOptions.config.agentCredential === true) {
+      const metadataUrl = agentResourceMetadataUrl(request, config)
+      if (metadataUrl) {
+        reply.header('www-authenticate', `Bearer resource_metadata="${metadataUrl}"`)
+      }
     }
 
     // The voice-scoped device credential, accepted only where a route opts in.

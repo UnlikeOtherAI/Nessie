@@ -74,12 +74,14 @@ start and the poll through the existing limiter.
 
 ### Discovery: RFC 9728
 
-`/.well-known/oauth-protected-resource` advertises the resource and its
-supported schemes, so an MCP client that speaks the spec's auth discovery finds
-its way in instead of failing with an opaque 401. Nessie already publishes a
-Client ID Metadata Document as an OAuth *client*
-(`api/src/routes/well-known-oauth-client.ts`); this is the mirror of that on
-the resource side.
+`/.well-known/oauth-protected-resource` describes the resource, and the 401 from
+`POST /mcp` carries a `WWW-Authenticate` challenge pointing at it — which is
+what turns an opaque refusal into something a client can act on.
+
+The document says plainly that **no authorization server runs here** and names
+the device-authorization endpoints instead. Advertising an `authorization_servers`
+list this deployment cannot honour would fail later and less legibly than
+telling the truth up front.
 
 Full OAuth 2.1 authorization-code + PKCE is a deliberate **later** step. It
 buys browser-based clients a nicer first run; it does not help the headless
@@ -93,10 +95,19 @@ nobody sets correctly:
 
 | Scope | Grants |
 | --- | --- |
-| `boards:read` | list projects/boards/columns, read and search tasks |
-| `boards:write` | create, update, move, assign tasks |
-| `documents:read` | list spaces, read and search pages |
-| `documents:write` | create, update, publish, move pages |
+| `boards_read` | list projects/boards/columns, read tasks |
+| `boards_write` | create, update and move tasks |
+| `documents_read` | list spaces, read pages |
+| `documents_write` | create and edit pages, as drafts |
+| `documents_publish` | publish a draft |
+
+`documents_publish` is separated from `documents_write` deliberately, and is the
+one scope the approval screen does **not** pre-tick. "Agents draft; only a human
+may publish" is a rule this product enforces for its own agents by refusing an
+`agent` actor outright — and an MCP credential resolves as the human who
+approved it, so that check does not catch it. Rather than drop the rule or
+refuse publication forever, the decision stays human and moves to pairing time:
+a person ticks a box that says this agent may publish, once, and can revoke it.
 
 Enforced at the tool boundary **and** underneath by the service functions'
 own authorization. The scope narrows; it never widens.
@@ -161,9 +172,26 @@ last-write-wins — the same choice the auto-saving editor gives a person.
 Writes are audited as the granting human with `via: 'mcp_agent_credential'`, so
 the log can tell a person's own edit from one their agent made for them.
 
+Publishing is `nessie_doc_publish`, behind its own scope (above).
+
 `nessie_doc_search` is not in this cut. It would need the embedding-backed
 search path, which fails closed on anything carrying a disclosure basis; worth
 having, but a larger surface than the CRUD above.
+
+### The identity a credential carries
+
+A credential stores the approving human's `uoaIdentity` and replays it into the
+actor context, exactly as a scheduled trigger replays `launchOrigin.uoaIdentity`
+and for the same reason: **work an agent starts can outlive the call.** Creating
+a document enqueues an embedding job, and on a signing deployment that job's
+Ledger call needs the originating person's UOA workspace — which the account
+link cannot supply, because it proves subject, status and epoch but not which
+workspace they were acting in.
+
+Without it the tool reports success and the indexing fails later, in the
+background, where nobody is looking. So a signing deployment refuses to grant
+document scopes to a session carrying no UOA identity, while there is still
+somebody to tell — the same refusal the scheduled-trigger create route makes.
 
 ## Deliberately not in the first cut
 

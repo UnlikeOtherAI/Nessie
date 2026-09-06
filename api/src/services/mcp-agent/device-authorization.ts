@@ -158,6 +158,8 @@ export const decideDeviceAuthorization = async (
     projectId: string
     requestId: string
     teamId: string | null
+    /** The approving human's UOA workspace, replayed by the credential later. */
+    uoaIdentity?: unknown
     userId: string
   },
 ): Promise<ApprovalOutcome> => {
@@ -179,6 +181,9 @@ export const decideDeviceAuthorization = async (
           approvedProjectId: input.projectId,
           approvedScopes: granted,
           approvedTeamId: input.teamId,
+          ...(input.uoaIdentity === undefined || input.uoaIdentity === null
+            ? {}
+            : { approvedUoaIdentity: input.uoaIdentity as never }),
           status: 'approved',
         }
       : { status: 'denied' },
@@ -262,6 +267,7 @@ export const redeemDeviceAuthorization = async (
     projectId: request.approvedProjectId,
     scopes: request.approvedScopes,
     teamId: request.approvedTeamId,
+    uoaIdentity: request.approvedUoaIdentity,
     userId: request.approvedByUserId,
   })
 
