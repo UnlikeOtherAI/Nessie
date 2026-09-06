@@ -1,5 +1,6 @@
 import type { Socket } from 'node:net'
 
+import { normalizeAddress } from './address.js'
 import { dialPlain, dialTls, upgradeToTls, type DialOptions, type MailEndpoint } from './dial.js'
 import { MailWire } from './wire.js'
 
@@ -22,6 +23,8 @@ export class SmtpError extends Error {
     readonly code: number | null,
     /** Auth failures are the connection's problem to fix, not a transient. */
     readonly kind: 'auth' | 'protocol' | 'recipient' | 'transient',
+    /** Once DATA is accepted, a lost response can no longer safely be retried. */
+    readonly deliveryMayHaveStarted = false,
   ) {
     super(message)
     this.name = 'SmtpError'
@@ -44,11 +47,18 @@ const readReply = async (wire: MailWire): Promise<SmtpReply> => {
   }
 }
 
-const expect = async (wire: MailWire, ok: (code: number) => boolean, what: string) => {
+const expect = async (
+  wire: MailWire,
+  ok: (code: number) => boolean,
+  what: string,
+  deliveryMayHaveStarted = false,
+) => {
   const reply = await readReply(wire)
   if (!ok(reply.code)) {
     const kind = reply.code >= 500 ? 'protocol' : 'transient'
-    throw new SmtpError(`${what} (${reply.code} ${reply.lines[0] ?? ''})`.trim(), reply.code, kind)
+    throw new SmtpError(
+      `${what} (${reply.code} ${reply.lines[0] ?? ''})`.trim(), reply.code, kind, deliveryMayHaveStarted,
+    )
   }
   return reply
 }
@@ -123,6 +133,22 @@ const dotStuff = (mime: string): string =>
   mime.replace(/\r\n/g, '\n').split('\n').map((line) => (line.startsWith('.') ? `.${line}` : line))
     .join('\r\n')
 
+const envelopeAddress = (label: string, value: string): string => {
+  if (/[\r\n]/.test(value)) throw new SmtpError(`${label} cannot contain a line break.`, null, 'protocol')
+  const normalized = normalizeAddress(value)
+  if (!normalized || normalized !== value.trim().toLowerCase()) {
+    throw new SmtpError(`${label} must be a bare email address.`, null, 'protocol')
+  }
+  return normalized
+}
+
+const clientName = (value: string): string => {
+  if (!/^[a-z0-9.-]+$/i.test(value) || /[\r\n]/.test(value)) {
+    throw new SmtpError('SMTP client name is invalid.', null, 'protocol')
+  }
+  return value
+}
+
 export type SmtpSession = {
   wire: MailWire
   capabilities: SmtpReply
@@ -162,6 +188,7 @@ export const runSmtpHandshake = async (
   credentials: { username: string; password: string },
   options: DialOptions & { clientName: string; maxBufferBytes?: number },
 ): Promise<SmtpSession> => {
+  const greetingName = clientName(options.clientName)
   const wireOptions = {
     maxBufferBytes: options.maxBufferBytes ?? 1_000_000,
     timeoutMs: options.timeoutMs,
@@ -173,7 +200,7 @@ export const runSmtpHandshake = async (
     await expect(wire, (code) => code === 220, 'The mail server refused the connection')
     let capabilities = await command(
       wire,
-      `EHLO ${options.clientName}`,
+      `EHLO ${greetingName}`,
       (code) => code === 250,
       'The mail server rejected our greeting',
     )
@@ -193,7 +220,7 @@ export const runSmtpHandshake = async (
       // Capabilities before TLS are unauthenticated and must be discarded.
       capabilities = await command(
         wire,
-        `EHLO ${options.clientName}`,
+        `EHLO ${greetingName}`,
         (code) => code === 250,
         'The mail server rejected our greeting after TLS',
       )
@@ -212,13 +239,15 @@ export const sendOverSmtp = async (
   message: { from: string; recipients: string[]; mime: string },
 ): Promise<void> => {
   const { wire } = session
+  const from = envelopeAddress('SMTP sender', message.from)
+  const recipients = message.recipients.map((recipient) => envelopeAddress('SMTP recipient', recipient))
   await command(
     wire,
-    `MAIL FROM:<${message.from}>`,
+    `MAIL FROM:<${from}>`,
     (code) => code === 250,
     'The mail server rejected the sender',
   )
-  for (const recipient of message.recipients) {
+  for (const recipient of recipients) {
     wire.write(`RCPT TO:<${recipient}>\r\n`)
     const reply = await readReply(wire)
     if (reply.code !== 250 && reply.code !== 251) {
@@ -231,7 +260,7 @@ export const sendOverSmtp = async (
   }
   await command(wire, 'DATA', (code) => code === 354, 'The mail server refused the message body')
   wire.write(`${dotStuff(message.mime)}\r\n.\r\n`)
-  await expect(wire, (code) => code === 250, 'The mail server did not accept the message')
+  await expect(wire, (code) => code === 250, 'The mail server did not accept the message', true)
 }
 
 export const closeSmtpSession = (session: SmtpSession): void => {

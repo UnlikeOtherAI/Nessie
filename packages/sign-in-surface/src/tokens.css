@@ -1,7 +1,7 @@
-/* Space White tokens for a host without a theme system (the nessie.works
-   landing). The values mirror the `[data-theme="space-white"]` block in
-   admin/src/styles.css, which stays the source of truth for the product
-   theme; change them there first. The admin never imports this file. */
+/* The doorway palette for a host without a theme system (the nessie.works
+   landing). These values are self-contained: the package owns them, and the
+   landing is the only host that imports this file. The admin never imports
+   it — it supplies its own theme tokens to the same `.signin-*` classes. */
 
 @font-face {
   font-family: 'Starleague';
@@ -27,8 +27,10 @@
   --accent-hover: #1a1a1a;
   --accent-soft: rgba(10, 10, 10, 0.08);
   --on-accent: #ffffff;
-  --surface-inverse: #000000;
-  --surface-inverse-2: #222222;
+  --signin-stage: #0a0a0a;
+  --signin-on-stage: #ffffff;
+  --signin-stage-card: #ffffff;
+  --signin-stage-card-fg: #0a0a0a;
   --scrim: rgba(10, 10, 10, 0.18);
   --scrim-strong: rgba(10, 10, 10, 0.42);
   --danger-soft: rgba(214, 59, 59, 0.1);

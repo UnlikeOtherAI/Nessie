@@ -4,6 +4,8 @@ import type { ChannelRecord, MeResponse, UserRecord } from '../../../lib/api-cli
 import { getConversationRoute } from '../../../lib/conversation-navigation'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
+import { usePhoneNavigation } from '../../../layouts/admin-shell/PhoneNavigationProvider'
+import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useAddChannelMember, useRemoveChannelMember, useSetChannelMute } from '../../../facades/channels/hooks'
 import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/MemberUserRow'
 import { UserAvatar } from '../../primitives/UserAvatar'
@@ -27,19 +29,51 @@ const matchPerson = (person: UserRecord, query: string): boolean => {
   return `${person.displayName} ${person.email}`.toLocaleLowerCase().includes(normalized)
 }
 
+// This flow is a `fixed inset-0` screen drawn over the conversation's own
+// layer, so on the iOS shell it publishes its bar over the conversation's and
+// stops drawing a header of its own — otherwise the native bar would name the
+// channel underneath while this screen says "Conversation info", with the
+// channel's call and search actions attached to it.
 const FlowHeader = ({
   action,
+  onAdd,
   title,
 }: {
   action?: ReactNode
+  onAdd?: { label: string, onSelect: () => void }
   title: string
-}) => (
-  <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-4">
-    <PhoneNavigationButton />
-    <h1 className="min-w-0 flex-1 truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
-    {action ? <div className="flex flex-shrink-0 items-center">{action}</div> : null}
-  </header>
-)
+}) => {
+  const navigation = usePhoneNavigation()
+  const { hidden } = useNativeBarHeader({
+    actions: onAdd
+      ? [{
+        checked: null,
+        disabled: false,
+        id: 'add-people',
+        items: null,
+        kind: 'button' as const,
+        label: onAdd.label,
+        perform: onAdd.onSelect,
+        primary: true,
+        priority: 100,
+        selected: false,
+        submit: false,
+        tone: null,
+      }]
+      : [],
+    back: { label: 'Back', onBack: () => navigation?.performBack() },
+    title,
+  })
+  if (hidden) return null
+
+  return (
+    <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-4">
+      <PhoneNavigationButton />
+      <h1 className="min-w-0 flex-1 truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
+      {action ? <div className="flex flex-shrink-0 items-center">{action}</div> : null}
+    </header>
+  )
+}
 
 const Disclosure = ({
   detail,
@@ -299,7 +333,11 @@ export const ConversationInfoFlow = ({
       ? `${memberCount} member${memberCount === 1 ? '' : 's'}`
       : 'Add people'
   const mobileClassName = phoneLayout
-    ? 'fixed inset-0 z-[80] flex min-h-0 flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
+    // The bottom pad is the iPhone shell's tab-bar clearance where that shell
+    // publishes one: this overlay is outside `.phone-navigation-page`, so the
+    // spacer that lifts a page's last row above the native tab bar never
+    // reaches it. Everywhere else it falls back to the safe-area inset.
+    ? 'fixed inset-0 z-[80] flex min-h-0 flex-col bg-[color:var(--main)] pb-[var(--nessie-native-phone-tabbar-clearance,env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)]'
     : 'absolute inset-y-0 right-0 z-50 flex w-[min(420px,100%)] min-h-0 flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'
 
   return (
@@ -315,6 +353,14 @@ export const ConversationInfoFlow = ({
               Add
             </button>
           ) : undefined
+        }
+        onAdd={
+          route.step === 'members' && canAddPeople
+            ? {
+              label: 'Add',
+              onSelect: () => void navigate(`/channels/${activeChannel.id}/info/members/add`),
+            }
+            : undefined
         }
         title={title}
       />

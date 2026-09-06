@@ -4,15 +4,31 @@ import { useResizeHandleReveal } from '../../hooks/useResizeHandleReveal'
 import { useViewport } from '../../hooks/useViewport'
 import { getCookie, setCookie } from '../../lib/storage'
 
-const SIDEBAR_WIDTH_COOKIE = 'sidebarWidthPercent'
+// The pre-section cookie. It is still read as the starting point for a
+// section a person has never resized, so the one width they had chosen
+// carries into all four rather than snapping back to the default.
+const LEGACY_SIDEBAR_WIDTH_COOKIE = 'sidebarWidthPercent'
 const DEFAULT_SIDEBAR_WIDTH_PX = 260
 const MIN_SIDEBAR_WIDTH_PX = 200
 const MAX_SIDEBAR_WIDTH_PERCENT = 35
 const KEYBOARD_STEP_PERCENT = 1
 
+/**
+ * The shell sections that own a secondary navigation column. Each keeps its
+ * own width: the lists differ in kind (a project tree is not a channel list),
+ * so a width chosen for one is not a width chosen for the others.
+ */
+export type SidebarSection = 'channels' | 'projects' | 'knowledge' | 'admin'
+
+// Hyphenated rather than dotted because getCookie builds a RegExp from the
+// name, and a dot there would match any character.
+export const sidebarWidthCookieName = (section: SidebarSection): string =>
+  `${LEGACY_SIDEBAR_WIDTH_COOKIE}-${section}`
+
 type ResizableSidebarProps = {
   children: ReactNode
   fixed?: boolean
+  section: SidebarSection
 }
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
@@ -38,23 +54,41 @@ export const parseStoredSidebarWidthPercent = (storedValue: string | null): numb
   return Number.isFinite(value) ? value : null
 }
 
-const readStoredSidebarWidthPercent = (): number | null =>
-  parseStoredSidebarWidthPercent(getCookie(SIDEBAR_WIDTH_COOKIE))
+/** A section's own width wins; the pre-section preference is the fallback. */
+export const resolveStoredSidebarWidthPercent = (
+  sectionValue: string | null,
+  legacyValue: string | null,
+): number | null =>
+  parseStoredSidebarWidthPercent(sectionValue) ?? parseStoredSidebarWidthPercent(legacyValue)
 
-const initialSidebarWidthPercent = (): number => {
+const readStoredSidebarWidthPercent = (section: SidebarSection): number | null =>
+  resolveStoredSidebarWidthPercent(
+    getCookie(sidebarWidthCookieName(section)),
+    getCookie(LEGACY_SIDEBAR_WIDTH_COOKIE),
+  )
+
+const initialSidebarWidthPercent = (section: SidebarSection): number => {
   const viewportWidth = window.innerWidth
-  const storedWidth = readStoredSidebarWidthPercent()
+  const storedWidth = readStoredSidebarWidthPercent(section)
   const defaultWidth = (DEFAULT_SIDEBAR_WIDTH_PX / viewportWidth) * 100
 
   return clampSidebarWidthPercent(storedWidth ?? defaultWidth, viewportWidth)
 }
 
 /**
- * Owns the width of the desktop/tablet secondary navigation. The persisted
- * value is deliberately viewport-relative so a device resize retains the
- * proportion a person chose, rather than a stale pixel width.
+ * Owns the width of one section's desktop/tablet secondary navigation. The
+ * persisted value is deliberately viewport-relative so a device resize
+ * retains the proportion a person chose, rather than a stale pixel width.
+ *
+ * Mounted per section by ResizableSidebar below: the width is state seeded
+ * from that section's cookie, so a section change has to re-read it rather
+ * than carry the previous section's width — and, worse, persist it there.
  */
-export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarProps) => {
+const SectionResizableSidebar = ({
+  children,
+  fixed = false,
+  section,
+}: ResizableSidebarProps) => {
   const sidebarRef = useRef<HTMLDivElement>(null)
   const [isResizing, setIsResizing] = useState(false)
   const { capabilities: { coarsePointer } } = useViewport()
@@ -64,7 +98,7 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
     revealHandle,
     scheduleHandleHide,
   } = useResizeHandleReveal(coarsePointer)
-  const [widthPercent, setWidthPercent] = useState(initialSidebarWidthPercent)
+  const [widthPercent, setWidthPercent] = useState(() => initialSidebarWidthPercent(section))
   // Continuous geometry is allowlisted from the useViewport band store (the
   // plan's §C.5): the percent minimum changes continuously with width, so a
   // breakpoint subscription cannot recompute it.
@@ -97,9 +131,9 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
   // the cookie write happens when (and only when) the gesture finishes.
   useEffect(() => {
     if (!isResizing) {
-      setCookie(SIDEBAR_WIDTH_COOKIE, String(widthPercent))
+      setCookie(sidebarWidthCookieName(section), String(widthPercent))
     }
-  }, [isResizing, widthPercent])
+  }, [isResizing, section, widthPercent])
 
   // Tears down a captured drag's pending frame if the component unmounts or
   // the gesture is cancelled mid-drag, so no stale frame writes afterwards.
@@ -179,9 +213,9 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
       event.preventDefault()
       const nextWidthPercent = clampSidebarWidthPercent(nextWidth, viewportWidth)
       setWidthPercent(nextWidthPercent)
-      setCookie(SIDEBAR_WIDTH_COOKIE, String(nextWidthPercent))
+      setCookie(sidebarWidthCookieName(section), String(nextWidthPercent))
     },
-    [viewportWidth, widthPercent],
+    [section, viewportWidth, widthPercent],
   )
 
   return (
@@ -231,3 +265,15 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
     </div>
   )
 }
+
+/**
+ * The secondary navigation column. Remounting per section is the mechanism
+ * that keeps the four widths independent: the inner component reads its
+ * cookie once, at mount, so the key is what makes it read again when a
+ * person moves between Channels, Projects, Knowledge and Admin.
+ */
+export const ResizableSidebar = ({ children, fixed, section }: ResizableSidebarProps) => (
+  <SectionResizableSidebar fixed={fixed} key={section} section={section}>
+    {children}
+  </SectionResizableSidebar>
+)

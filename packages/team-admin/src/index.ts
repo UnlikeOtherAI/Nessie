@@ -52,8 +52,18 @@ export * from './call-realtime.js'
 export * from './call-start.js'
 export * from './comms-connection-management.js'
 export * from './comms-credential-coordinator.js'
+export * from './connected-mail.js'
+export * from './mailbox-send-actions.js'
 export * from './ledger-agent-model-catalog.js'
 export * from './policy-check.js'
+export * from './board-structure.js'
+export * from './task-fields.js'
+export * from './board-source-apply.js'
+export * from './board-source-structure.js'
+export * from './board-source-writeback.js'
+export * from './board-source-credential.js'
+export * from './board-placement.js'
+export * from './project-administration.js'
 export * from './project-structure.js'
 export * from './project-task-move.js'
 export * from './project-task-attention.js'
@@ -73,6 +83,9 @@ export * from './uoa-org-roster.js'
 export * from './uoa-org-roster-pages.js'
 export { createTeamInvitations } from './uoa-org-roster-invitations.js'
 export * from './uoa-org-members.js'
+export * from './automatic-membership-dns.js'
+export * from './automatic-membership-grant.js'
+export * from './automatic-membership-rules.js'
 export * from './uoa-role-capabilities.js'
 export * from './uoa-settings.js'
 export * from './workflow-binding-grammar.js'
@@ -112,6 +125,9 @@ export {
   readDraftForUser,
   sendDraftForUser,
   dispatchClaimedDraft,
+  resolveStaleGmailDispatches,
+  resolveStaleGmailDraftValidations,
+  resolveStaleGmailDraftUpdates,
   undoHeldSend,
   discardDraftForUser,
   attachDraftMessage,
@@ -171,3 +187,9 @@ export {
   type MailboxAccessErrorCode,
   type ReachableMailbox,
 } from './mailbox-connection-access.js'
+
+export {
+  ConnectedMailPresentationError,
+  resolveConnectedMailPresentationAccess,
+  type ConnectedMailPresentationAccess,
+} from './connected-mail-presentation.js'

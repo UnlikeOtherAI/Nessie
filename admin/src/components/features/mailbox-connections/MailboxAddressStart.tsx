@@ -1,10 +1,11 @@
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { FormEvent, RefObject } from 'react'
 
 import type { MailboxDiscoveryResult } from '../../../lib/api-client'
 import {
   isHighConfidenceDiscovery,
   isUsableEmailAddress,
-  providerMark,
+  providerIcon,
 } from './mailbox-onboarding'
 import { MailboxTechnicalDetails } from './MailboxTechnicalDetails'
 
@@ -25,23 +26,38 @@ type MailboxAddressStartProps = {
   onOtherProvider: () => void
   onProvider: (provider: 'google' | 'microsoft') => void
   pending: boolean
+  /**
+   * Providers this deployment can actually finish a connect for. `undefined`
+   * while the answer is still loading: the rows stay enabled rather than
+   * flickering to unavailable and back.
+   */
+  providerAvailability: Partial<Record<'google' | 'microsoft', boolean>>
   technicalDetails: string[]
 }
 
+/**
+ * `unavailable` is a deployment fact, not a transient state, so the row says
+ * so in place instead of disappearing: a person who expected Google here needs
+ * to learn that this server has not been given the credentials for it.
+ */
 const ProviderRow = ({
   icon,
   label,
   onClick,
+  unavailable = false,
 }: {
   icon: string
   label: string
   onClick: () => void
+  unavailable?: boolean
 }) => (
   <button
     className={[
       'flex w-full items-center gap-3 border-b border-[color:var(--sep)] px-1 py-3 text-left',
       'last:border-b-0',
+      unavailable ? 'cursor-not-allowed opacity-60' : '',
     ].join(' ')}
+    disabled={unavailable}
     onClick={onClick}
     type="button"
   >
@@ -49,12 +65,15 @@ const ProviderRow = ({
       aria-hidden="true"
       className={[
         'flex h-7 w-7 shrink-0 items-center justify-center rounded border',
-        'border-[color:var(--sep)] text-sm font-semibold text-[color:var(--tx2)]',
+        'border-[color:var(--sep)] text-base text-[color:var(--tx2)]',
       ].join(' ')}
     >
-      {providerMark(icon, label)}
+      <FontAwesomeIcon icon={providerIcon(icon)} />
     </span>
     <span className="font-medium text-[color:var(--tx)]">{label}</span>
+    {unavailable ? (
+      <span className="ml-auto text-xs text-[color:var(--tx3)]">Not set up on this server</span>
+    ) : null}
   </button>
 )
 
@@ -74,6 +93,7 @@ export const MailboxAddressStart = ({
   onOtherProvider,
   onProvider,
   pending,
+  providerAvailability,
   technicalDetails,
 }: MailboxAddressStartProps) => (
   <form className="grid gap-5" onSubmit={onContinue}>
@@ -116,10 +136,20 @@ export const MailboxAddressStart = ({
 
     <div>
       <p className="mb-1 text-sm text-[color:var(--tx2)]">Choose your provider</p>
-      <ProviderRow icon="google" label="Google" onClick={() => onProvider('google')} />
-      <ProviderRow icon="microsoft" label="Microsoft" onClick={() => onProvider('microsoft')} />
+      <ProviderRow
+        icon="google"
+        label="Google"
+        onClick={() => onProvider('google')}
+        unavailable={providerAvailability.google === false}
+      />
+      <ProviderRow
+        icon="microsoft"
+        label="Microsoft"
+        onClick={() => onProvider('microsoft')}
+        unavailable={providerAvailability.microsoft === false}
+      />
       <ProviderRow icon="icloud" label="iCloud" onClick={onICloud} />
-      <ProviderRow icon="?" label="Other provider" onClick={onOtherProvider} />
+      <ProviderRow icon="generic" label="Other provider" onClick={onOtherProvider} />
     </div>
 
     {helpOpen ? (

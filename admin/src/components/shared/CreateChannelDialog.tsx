@@ -2,11 +2,15 @@ import { toChannelNameInput, toChannelSlug } from '@nessie/schemas'
 import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateChannel } from '../../facades/channels/hooks'
+import type { ChannelRecord } from '../../lib/api-client'
 import { Dialog } from './Dialog'
 import { fieldErrorAria, fieldErrorProps } from './FormFieldError'
 
 type CreateChannelDialogProps = {
   onClose: () => void
+  // Fires with the new channel before the navigation to it, so a sidebar
+  // section that is closed can open in the same paint the row appears in.
+  onCreated?: (channel: ChannelRecord) => void
   open: boolean
   projectName?: string
   scope?: 'standalone'
@@ -14,7 +18,7 @@ type CreateChannelDialogProps = {
 }
 
 export const CreateChannelDialog = (
-  { onClose, open, projectName, scope, teamId }: CreateChannelDialogProps,
+  { onClose, onCreated, open, projectName, scope, teamId }: CreateChannelDialogProps,
 ) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
@@ -47,6 +51,7 @@ export const CreateChannelDialog = (
         teamId,
         visibility,
       })
+      onCreated?.(created)
       handleClose()
       void navigate(`/channels/${created.id}`)
     } catch (error) {

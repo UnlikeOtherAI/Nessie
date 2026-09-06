@@ -1,6 +1,7 @@
-import { useMutation } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
+import { teamProvisioningKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -27,7 +28,59 @@ export type ProvisionedTeam = {
 export const newIdempotencyKey = (): string =>
   globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
 
-type CreateInput = { name: string; idempotencyKey: string }
+type CreateInput = { name: string; slug?: string; idempotencyKey: string }
+
+/** Why UOA will not accept an address, in UOA's own vocabulary. */
+export type SlugUnavailableReason =
+  | 'taken'
+  | 'too_short'
+  | 'too_long'
+  | 'charset'
+  | 'double_hyphen'
+  | 'all_digits'
+  | 'reserved'
+
+export type SlugAvailability = {
+  /** `null` means UOA could not be reached — unknown, not unavailable. */
+  available: boolean | null
+  slug?: string
+  reason?: SlugUnavailableReason
+}
+
+/**
+ * Whether an address is free.
+ *
+ * Every rule lives in UOA, which owns the labels; Nessie deliberately keeps no
+ * second copy of them, so even "too short" is UOA's answer rather than a local
+ * guess that could drift out of step with the authority that decides.
+ */
+export const useSlugAvailability = (input: {
+  slug: string
+  scope: 'organisation' | 'team'
+  orgId?: string
+  enabled: boolean
+}) => {
+  const apiClient = useApiClient()
+
+  return useQuery({
+    queryKey: teamProvisioningKeys.slugAvailability(input.scope, input.orgId ?? '', input.slug),
+    enabled: input.enabled && input.slug.length > 0,
+    // The field debounces by not asking until typing pauses; this keeps a
+    // recently-answered label from being asked again on every render.
+    staleTime: 30_000,
+    // Hold the previous answer while the next one is in flight, so the status
+    // line under the field does not blank out between keystrokes. Nothing
+    // private is replayed — the answer is a yes/no about a label the person is
+    // currently typing.
+    placeholderData: keepPreviousData,
+    retry: false,
+    queryFn: () => {
+      const query = new URLSearchParams({ slug: input.slug, scope: input.scope })
+      if (input.orgId) query.set('orgId', input.orgId)
+      return apiClient.get<SlugAvailability>(`/api/teams/slug-available?${query.toString()}`)
+    },
+  })
+}
 
 const useProvisionAndSwitch = (path: string) => {
   const apiClient = useApiClient()

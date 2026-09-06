@@ -39,7 +39,10 @@ import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
-import { ResizableSidebar } from './admin-shell/ResizableSidebar';
+import {
+  ResizableSidebar,
+  type SidebarSection,
+} from './admin-shell/ResizableSidebar';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
@@ -193,6 +196,7 @@ const AuthenticatedAdminShellLayout = () => {
       personalAssistantChannelId={shell.personalAssistantChannelId}
       personalAssistantUnreadCount={shell.personalAssistantUnreadCount}
       projectsCollapsed={shell.projectsCollapsed}
+      revealedChannel={shell.revealedChannel}
       setSidebarMenu={shell.setSidebarMenu}
       sidebarAgentDms={shell.sidebarAgentDms}
       sidebarGroupDms={shell.sidebarGroupDms}
@@ -220,6 +224,17 @@ const AuthenticatedAdminShellLayout = () => {
     />
   );
 
+  // Which section that column belongs to. Its width is persisted per section
+  // (ResizableSidebar's SidebarSection), so this branch and secNavElement's
+  // below have to keep agreeing on which section is active.
+  const sidebarSection: SidebarSection = shell.isKnowledgeRoute
+    ? 'knowledge'
+    : shell.isProjectsRoute
+      ? 'projects'
+      : shell.isAdminRoute
+        ? 'admin'
+        : 'channels';
+
   // The contextual secondary nav for the active section. Knowledge needs the
   // KnowledgeProvider (wrapped below). Feedback has no
   // secondary column on desktop; everything else falls back to the
@@ -227,7 +242,14 @@ const AuthenticatedAdminShellLayout = () => {
   const secNavElement = shell.isKnowledgeRoute ? (
     <KnowledgeSidebarNav />
   ) : shell.isProjectsRoute ? (
-    <ProjectsSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
+    <ProjectsSidebarNav
+      isOwner={shell.isOwner}
+      onToggleStar={shell.toggleStar}
+      pathname={shell.pathname}
+      starredCollapsed={shell.starredCollapsed}
+      starredProjectIds={shell.starredProjectIds}
+      toggleStarredCollapsed={shell.toggleStarredCollapsed}
+    />
   ) : shell.isAdminRoute ? (
     <AdminSidebarNav
       canManageOrganization={shell.canManageOrganization}
@@ -320,7 +342,9 @@ const AuthenticatedAdminShellLayout = () => {
   ) : (
     <>
       {secNavElement ? (
-        <ResizableSidebar fixed={nativeLargePhoneLandscape}>{secNavElement}</ResizableSidebar>
+        <ResizableSidebar fixed={nativeLargePhoneLandscape} section={sidebarSection}>
+          {secNavElement}
+        </ResizableSidebar>
       ) : null}
       {mainContent}
     </>
@@ -407,6 +431,7 @@ const AuthenticatedAdminShellLayout = () => {
                   createProjectOpen={shell.createProjectOpen}
                   onCloseCreateChannel={shell.closeCreateChannel}
                   onCloseCreateProject={shell.closeCreateProject}
+                  onCreatedChannel={shell.revealCreatedChannel}
                   editProjectTarget={shell.editProjectTarget}
                   onCloseEditProject={shell.closeEditProject}
                 />

@@ -50,6 +50,8 @@ type ToolPolicyEvaluation =
       policyRuleId?: string
       policySource: string
       reviewMode?: 'auto'
+      /** Exact current tool/args/continuation proof, verified but not claimed. */
+      verifiedApprovalId?: string
     }
   | {
       allowed: false
@@ -102,7 +104,6 @@ export const evaluateToolInvokePolicy = async (
   context: RunContext,
   toolName: string,
   args: Record<string, unknown>,
-  options: { consumeApprovalProof?: boolean } = {},
 ): Promise<ToolPolicyEvaluation> => {
   const chain = buildScopeChain(actorContext, {
     agentId: context.agent.id,
@@ -138,38 +139,42 @@ export const evaluateToolInvokePolicy = async (
     defaultVerdict: 'allow',
   })
 
-  // The pure shared evaluator only accepts a verified boolean, never a raw
-  // token. Claim the actual proof only after that evaluator confirmed this
-  // call used it, so an explicit deny cannot burn an approval credential.
-  if (
-    decision.allowed
-    && decision.approvalProofUsed
-    && verifiedApproval
-    && approvalProof
-    && options.consumeApprovalProof !== false
-  ) {
-    if (!await consumeToolApprovalProof(prisma, {
-      ...approvalProofInput,
-      approvalId: verifiedApproval.id,
-      proof: approvalProof,
-    })) {
-      return deniedPolicyDecision(resolveDecision(policyRules, chain, {
-        approvalSatisfied: false,
-        defaultVerdict: 'allow',
-      }))
-    }
-  }
-
   if (decision.allowed) {
     return {
       allowed: true,
       policyRuleId: decision.policyRuleId,
       policySource: decision.policySource,
       reviewMode: decision.reviewMode,
+      ...(verifiedApproval ? { verifiedApprovalId: verifiedApproval.id } : {}),
     }
   }
 
   return deniedPolicyDecision(decision)
+}
+
+/**
+ * The authorizer alone calls this at final dispatch, after structural and
+ * automatic review gates have finished. Preflight therefore verifies a proof
+ * without spending it, while every real execution claims it exactly once.
+ */
+export const consumeVerifiedToolApproval = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+  args: Record<string, unknown>,
+  approvalId: string,
+): Promise<boolean> => {
+  const proof = actorContext.approval?.approvalProof
+  if (!proof) return false
+  return consumeToolApprovalProof(prisma, {
+    approvalId,
+    argsHash: hashJsonValue(args),
+    continuationRunId: context.run.id,
+    organizationId: context.channel.organizationId,
+    proof,
+    toolName,
+  })
 }
 
 const deniedPolicyDecision = (

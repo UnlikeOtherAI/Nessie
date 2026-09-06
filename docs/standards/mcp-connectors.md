@@ -109,8 +109,8 @@ forbidden — full rule in `AGENTS.md`.
 Outbound egress to any caller-, operator- or model-supplied address goes
 through `@nessie/runtime` `safeFetch` (or `pinnedFetch` where the caller
 handles redirects itself), never `assertSafeUrl` + plain `fetch` — full rule,
-caller list, and the DNS-rebinding rationale in `AGENTS.md` → "Outbound egress
-is IP-pinned"; see also
+caller list, and the DNS-rebinding rationale in
+[docs/standards/egress.md](egress.md); see also
 [docs/security-audit-2026-06.md](../security-audit-2026-06.md). User-authored
 MCP connectors are HTTP/SSE remote endpoints only (no stdio), and deep.agent
 crawl scanning stays behind the MCP connector path — both rules in `AGENTS.md`.

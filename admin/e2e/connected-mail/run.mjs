@@ -1,0 +1,528 @@
+#!/usr/bin/env node
+// Connected mail is deliberately proven through the real admin application.
+// The provider boundary is intercepted with stable data so this suite neither
+// needs a human mailbox nor risks reading or sending real email.
+//
+//   pnpm --filter @nessie/admin test:e2e:connected-mail
+
+import { mkdir, rm } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { chromium } from 'playwright-core'
+
+import { createMailFixtures } from './fixtures.mjs'
+import { adminUrl, startAdmin } from './servers.mjs'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const screenshots = resolve(here, '..', '..', '..', 'e2e', 'screenshots', 'connected-mail')
+const chromiumPath = process.env.CHROMIUM_PATH?.trim() || undefined
+
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message)
+}
+
+const shot = (page, name) => page.screenshot({ path: resolve(screenshots, `${name}.png`), fullPage: true })
+
+const newPage = async (browser, fixture, { height, name, width }) => {
+  const context = await browser.newContext({
+    deviceScaleFactor: 2,
+    hasTouch: name !== 'desktop',
+    viewport: { height, width },
+  })
+  await context.addInitScript(() => {
+    localStorage.setItem('nessie.admin.token', 'connected-mail-e2e-token')
+    // The shell's realtime subscription is outside mail's assertion boundary.
+    // A quiet, protocol-shaped socket preserves the running shell without a
+    // failed network connection masquerading as a page error.
+    class QuietWebSocket extends EventTarget {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSING = 2
+      static CLOSED = 3
+      readyState = QuietWebSocket.OPEN
+      close() { this.readyState = QuietWebSocket.CLOSED; this.dispatchEvent(new Event('close')) }
+      send() {}
+    }
+    window.WebSocket = QuietWebSocket
+  })
+  await context.route('**/api/**', (route, request) => fixture.respond(route, request))
+  await context.route('https://tracker.example/**', (route) => route.fulfill({
+    body: 'fixture-image', contentType: 'image/png', status: 200,
+  }))
+  const page = await context.newPage()
+  page.setDefaultTimeout(20_000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(`page: ${String(error)}`))
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(`console: ${message.text()} (${message.location().url})`)
+  })
+  return { close: () => context.close(), errors, page }
+}
+
+const expectNoErrors = (errors, fixture) => {
+  assert(fixture.unhandled.length === 0, `unexpected API calls:\n${JSON.stringify(fixture.unhandled)}`)
+  // These scenarios deliberately model a server that completed the Gmail
+  // action but whose response was lost. Chromium reports that expected 504 as
+  // a console error; every other browser error remains a failure.
+  const unexpectedErrors = errors.filter((error) => !error.includes('status of 504')
+    || !error.includes('/api/mail/accounts/gmail/gmail-1/send'))
+  assert(unexpectedErrors.length === 0, `browser errors:\n${unexpectedErrors.join('\n')}`)
+}
+
+const waitForThreads = (page, source, accountId, expected) => page.waitForResponse((response) => {
+  if (response.request().method() !== 'GET') return false
+  const url = new URL(response.url())
+  if (url.pathname !== `/api/mail/accounts/${source}/${accountId}/threads`) return false
+  return Object.entries(expected).every(([key, value]) =>
+    value === undefined ? !url.searchParams.has(key) : url.searchParams.get(key) === String(value))
+})
+
+// The size the mailbox treats as its default, and therefore the one it leaves
+// out of the address bar.
+const DEFAULT_PAGE_SIZE = 25
+
+/**
+ * Choose a page size and wait until the app is actually on it.
+ *
+ * `selectOption` resolves as soon as the DOM value is set and `change` is
+ * dispatched — *before* React has re-rendered onto the new size. Refresh
+ * refetches whatever query key the current render holds, so a click landing in
+ * that window refetches the previous size instead. For a size this session has
+ * already loaded that is fatal rather than merely wasteful: the new key then
+ * mounts from a cache still inside the admin's five-minute `staleTime` and
+ * issues no request at all, leaving `waitForThreads` nothing to match and
+ * burning its whole timeout. That is the intermittent 20s failure this suite
+ * used to hit under CI load, where the render reliably loses the race that it
+ * wins on an idle machine.
+ *
+ * The size is a URL write, made in the same discrete-event flush as the render
+ * it triggers, so seeing it in the address bar means the render landed.
+ */
+const choosePageSize = async (page, pageSize) => {
+  await page.getByLabel('Items per page').selectOption(String(pageSize))
+  await page.waitForFunction(
+    (expected) => new URL(window.location.href).searchParams.get('pageSize') === expected,
+    pageSize === DEFAULT_PAGE_SIZE ? null : String(pageSize),
+  )
+}
+
+const fillCompose = async (page, subject) => {
+  await page.getByRole('textbox', { name: 'To', exact: true }).fill('casey@acme.example')
+  await page.getByRole('textbox', { name: 'Subject', exact: true }).fill(subject)
+  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Thanks — I will take this from here.')
+}
+
+const desktopMail = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    await page.goto(`${adminUrl}/mail`)
+    await page.getByRole('heading', { name: 'Mail' }).waitFor()
+    await page.getByText('Alex work').waitFor()
+    await shot(page, 'desktop-account-chooser')
+
+    await page.getByRole('button', { name: 'Open mail' }).first().click()
+    await page.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
+    await page.getByText('Launch checklist').waitFor()
+    const first = page.locator('#mailbox-thread-thread-1')
+    assert(await first.getAttribute('tabindex') === '0', 'the first unselected conversation must be the keyboard tab stop')
+    await first.focus()
+    assert(await first.evaluate((element) => document.activeElement === element), 'the first conversation could not receive keyboard focus')
+
+    const refresh = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 25, query: undefined })
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await refresh
+    assert(!new URL(page.url()).searchParams.has('query'), 'Refresh leaked a provider query into the address bar')
+
+    const nextPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: 'next-page', pageSize: 25, query: undefined })
+    await page.getByRole('button', { name: 'Next' }).click()
+    await nextPage
+    for (const pageSize of [10, 25, 50, 100]) {
+      // Armed before the control rather than between it and Refresh: a size
+      // that is not cached fetches on the select itself, and React Query hands
+      // a Refresh landing mid-flight the in-flight promise instead of starting
+      // a second request — so that first response can be the only one there is.
+      const resizedPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize, query: undefined })
+      await choosePageSize(page, pageSize)
+      // A size already in cache fetches nothing on the select, so Refresh is
+      // still what makes this control's provider request observable.
+      await page.getByRole('button', { name: 'Refresh' }).click()
+      await resizedPage
+      assert(new URL(page.url()).searchParams.get('pageSize') === (pageSize === DEFAULT_PAGE_SIZE ? null : String(pageSize)), `page size ${pageSize} was not reflected in the mailbox state`)
+    }
+
+    const mailboxThreads = waitForThreads(page, 'mailbox', 'mailbox-1', { cursor: undefined, pageSize: 100, query: undefined })
+    const mailboxNavigation = page.waitForURL(/\/mail\/mailbox\/mailbox-1/)
+    await page.getByLabel('Mail account').selectOption('mailbox:mailbox-1')
+    await Promise.all([mailboxThreads, mailboxNavigation])
+    assert(new URL(page.url()).pathname === '/mail/mailbox/mailbox-1', 'account switching did not navigate to the selected mailbox')
+    const gmailNavigation = page.waitForURL(/\/mail\/gmail\/gmail-1/)
+    const gmailThreads = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 100, query: undefined })
+    await page.getByLabel('Mail account').selectOption('gmail:gmail-1')
+    await gmailNavigation
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await gmailThreads
+
+    const defaultPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: DEFAULT_PAGE_SIZE, query: undefined })
+    await choosePageSize(page, DEFAULT_PAGE_SIZE)
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await defaultPage
+    await page.getByLabel('Search mail').fill('private provider query')
+    const search = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 25, query: 'private provider query' })
+    await page.getByRole('button', { name: 'Search' }).click()
+    await search
+    assert(!new URL(page.url()).searchParams.has('query'), 'provider query leaked into the address bar')
+
+    await first.focus()
+    await first.press('ArrowDown')
+    await page.waitForURL(/threads\/thread-2/)
+    await page.locator('#mailbox-thread-thread-2').waitFor({ state: 'attached' })
+    await page.waitForFunction(() => document.querySelector('#mailbox-thread-thread-2')?.getAttribute('aria-selected') === 'true')
+    await page.locator('#mailbox-thread-thread-1').click()
+    await page.getByText('Remote images are blocked so the sender cannot tell you opened this.').waitFor()
+    assert(await page.locator('.email-body img').getAttribute('data-blocked-src') === 'https://tracker.example/pixel.png', 'remote image was not held behind the sanitizer affordance')
+    await page.getByRole('button', { name: 'Load images' }).click()
+    assert(await page.locator('.email-body img').getAttribute('src') === 'https://tracker.example/pixel.png', 'remote image did not reveal after explicit consent')
+    await shot(page, 'desktop-thread-reader')
+
+    await page.getByRole('button', { name: 'Reply' }).click()
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    const from = page.getByRole('textbox', { name: 'From', exact: true })
+    assert(await from.isDisabled(), 'From must be pinned by the account')
+    assert(await from.inputValue() === 'alex@example.com', 'From must display the selected account')
+    await fillCompose(page, 'Re: Launch checklist')
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await page.getByTestId('connected-mail-sent').waitFor()
+    await page.getByText('Your email is queued to send.').waitFor()
+    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/drafts')), 'Gmail draft creation was not driven')
+    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')), 'Gmail held send was not driven')
+    await shot(page, 'desktop-gmail-held-send')
+    await page.reload()
+    await page.getByTestId('connected-mail-sent').waitFor()
+    await page.getByRole('button', { name: 'Undo send' }).waitFor()
+    await shot(page, 'desktop-gmail-held-send-reloaded')
+    await page.getByRole('button', { name: 'Undo send' }).click()
+    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/undo')), 'Gmail undo did not reach the held provider draft')
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    assert(await page.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Re: Launch checklist', 'Undo did not restore the held Gmail draft in the composer')
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Thanks — I will take this from here.', 'Undo did not hydrate the provider draft body')
+    await shot(page, 'desktop-gmail-undo-restored')
+    await page.getByRole('button', { name: 'Back to mail' }).click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1$/)
+
+    // A server-held send whose response dies after the action is persisted
+    // must recover as Undo on reload, never as a fresh send attempt.
+    fixture.loseNextGmailSendResponse()
+    await page.goto(`${adminUrl}/mail/gmail/gmail-1/compose`)
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    await fillCompose(page, 'Lost held-send response')
+    const lostSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await lostSend
+    const gmailSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length
+    await page.reload()
+    await page.getByTestId('connected-mail-sent').waitFor()
+    await page.getByRole('button', { name: 'Undo send' }).click()
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === gmailSendCount, 'lost held response retried a Gmail send')
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+
+    // Once dispatch has claimed the action, recovery remains an explicit,
+    // locked outcome — there is neither a second send nor an Undo promise.
+    fixture.loseNextGmailSendResponse()
+    await page.goto(`${adminUrl}/mail/gmail/gmail-1/compose?threadId=thread-1&reply=message-1`)
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    await fillCompose(page, 'Dispatching held-send response')
+    const dispatchingSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await dispatchingSend
+    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'dispatching' })
+    const dispatchingSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length
+    await page.reload()
+    await page.getByText('Your email is being delivered. It will not be sent again.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a dispatching email offered Undo')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === dispatchingSendCount, 'dispatching recovery retried a Gmail send')
+    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'delivery_unknown' })
+    await page.getByText('Delivery is unconfirmed. Check the provider’s Sent mail; this action will not be resent.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'an unconfirmed delivery offered Undo')
+    await page.getByRole('button', { name: 'I checked Sent — start a new email' }).click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1\/compose\?compose=/)
+    await page.waitForFunction(() => {
+      const field = document.querySelector('input[aria-label="To"]')
+      return field instanceof HTMLInputElement && field.value === ''
+    })
+    const freshRecipient = await page.getByRole('textbox', { name: 'To', exact: true }).inputValue()
+    assert(freshRecipient === '', `the unconfirmed action reopened its old recipient: ${freshRecipient}`)
+    await page.getByRole('textbox', { name: 'To', exact: true }).fill('fresh@acme.example')
+    await page.waitForTimeout(350)
+    await page.reload()
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'fresh@acme.example', 'a fresh-compose reload lost its new draft')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === dispatchingSendCount, 'starting a new email retried delivery')
+
+    // A provider update is likewise an incomplete action. It must stay out of
+    // the editable form, poll to draft, then reopen Send without a reload.
+    fixture.loseNextGmailSendResponse()
+    await fillCompose(page, 'Restoring Gmail draft')
+    const updatingSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await updatingSend
+    fixture.setGmailDraftActionStatus({ state: 'updating' })
+    await page.reload()
+    await page.getByText('Your draft is being restored. It will be available shortly.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a restoring draft offered Undo')
+    assert(await page.getByRole('button', { name: 'Send email' }).count() === 0, 'a restoring draft exposed Send')
+    fixture.setGmailDraftActionStatus({ state: 'draft' })
+    const restoredSend = page.getByRole('button', { name: 'Send email' })
+    await restoredSend.waitFor()
+    assert(await restoredSend.isEnabled(), 'a restored Gmail draft did not become editable without reload')
+
+    fixture.loseNextGmailSendResponse()
+    await fillCompose(page, 'Expired held-send response')
+    const expiredSend = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/gmail/gmail-1/send'))
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await expiredSend
+    fixture.setGmailDraftActionStatus({ sendAfter: '2020-01-01T00:00:00.000Z', state: 'sending' })
+    const expiredSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length
+    await page.reload()
+    await page.getByText('Your email is being checked before delivery. It will not be sent again.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'an expired held send offered Undo')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/gmail/gmail-1/send')).length === expiredSendCount, 'expired held-send recovery retried delivery')
+
+    await page.goto(`${adminUrl}/mail/mailbox/mailbox-1/compose`)
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    const mailboxSendCount = fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/mailbox/mailbox-1/send')).length
+    await page.getByRole('textbox', { name: 'To', exact: true }).fill('Operations <inbox@team.example>')
+    await page.getByRole('textbox', { name: 'Subject', exact: true }).fill('Operations update')
+    await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Thanks — I will take this from here.')
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await page.getByRole('alert').filter({ hasText: 'Recipients must be bare email addresses.' }).waitFor()
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).getAttribute('aria-invalid') === 'true', 'invalid recipients must be associated with their field error')
+    assert(fixture.calls.filter((call) => call.method === 'POST' && call.pathname.endsWith('/mailbox/mailbox-1/send')).length === mailboxSendCount, 'invalid recipients reached the send mutation')
+    await page.getByRole('textbox', { name: 'To', exact: true }).fill('inbox@team.example')
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await page.getByText('Your email was sent.').waitFor()
+    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/mailbox/mailbox-1/send')), 'mailbox send was not driven')
+    assert(!fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/mailbox/mailbox-1/drafts')), 'mailbox incorrectly requested a Gmail-style provider draft')
+
+    fixture.setGmailCapabilities({ canCompose: false, canSend: false })
+    await page.goto(`${adminUrl}/mail/gmail/gmail-1/compose`)
+    await page.getByText('Drafting email is not available for this account.').waitFor()
+    await page.getByRole('button', { name: 'Open mailbox settings' }).waitFor()
+    assert(await page.getByRole('button', { name: 'Send email' }).count() === 0, 'an account without compose capability exposed an active email form')
+    fixture.setGmailCapabilities({ canCompose: true, canSend: true })
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+const approvalsMailSendPreview = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    fixture.showPendingGmailApproval()
+    await page.goto(`${adminUrl}/approvals`)
+    await page.getByRole('heading', { name: 'Approvals' }).waitFor()
+    const approve = page.getByRole('button', { name: 'Approve' })
+    await approve.waitFor()
+    assert(await approve.isDisabled(), 'mail approval was enabled before its exact private preview loaded')
+    fixture.releasePendingGmailApprovalPreview()
+    const preview = page.getByTestId('mailbox-send-approval-preview')
+    await preview.waitFor()
+    assert(await approve.isEnabled(), 'mail approval stayed disabled after its exact private preview loaded')
+    for (const value of [
+      'alex@example.com', 'recipient@example.com', 'team@example.com', 'audit@example.com',
+      'Exact Gmail approval subject', 'Exact private Gmail body.',
+    ]) await preview.getByText(value, { exact: true }).waitFor()
+    await shot(page, 'approvals-mail-send-preview')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+const responsiveMail = async ({ browser, fixture }) => {
+  const tablet = await newPage(browser, fixture, { height: 1024, name: 'tablet', width: 768 })
+  try {
+    await tablet.page.goto(`${adminUrl}/mail/gmail/gmail-1/threads/thread-1`)
+    await tablet.page.getByTestId('mailbox-workspace').waitFor()
+    assert(await tablet.page.getByTestId('mailbox-workspace').getAttribute('data-layout') === 'split', 'tablet must keep list and reader split')
+    const readerBounds = await tablet.page.getByTestId('connected-mail-conversation').boundingBox()
+    const readerWidth = Math.round(readerBounds?.width ?? 0)
+    assert(readerWidth >= 240, `tablet reader is too narrow to read email copy (${readerWidth}px)`)
+    console.log(`connected-mail e2e: tablet reader ${readerWidth}px wide`)
+    await shot(tablet.page, 'tablet-thread-split')
+  } finally {
+    expectNoErrors(tablet.errors, fixture)
+    await tablet.close()
+  }
+
+  const phone = await newPage(browser, fixture, { height: 844, name: 'phone', width: 390 })
+  try {
+    await phone.page.emulateMedia({ reducedMotion: 'reduce' })
+    await phone.page.goto(`${adminUrl}/mail/gmail/gmail-1`)
+    await phone.page.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
+    await phone.page.locator('body').evaluate((body) => { body.style.zoom = '200%' })
+    await shot(phone.page, 'phone-list-200-percent-reduced-motion')
+    await phone.page.locator('[role="option"]', { hasText: 'Launch checklist' }).click()
+    await phone.page.waitForURL(/threads\/thread-1/)
+    await phone.page.getByTestId('connected-mail-conversation').waitFor()
+    assert(await phone.page.getByTestId('connected-mail-conversation').isVisible(), 'phone reader did not become the active nested flow')
+    await phone.page.goBack()
+    await phone.page.waitForURL(/\/mail\/gmail\/gmail-1$/)
+    await phone.page.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
+    await shot(phone.page, 'phone-back-to-list')
+  } finally {
+    expectNoErrors(phone.errors, fixture)
+    await phone.close()
+  }
+}
+
+const chatDoorway = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    await page.getByRole('heading', { name: 'Email triage' }).waitFor()
+    assert(await page.getByTestId('mail-surface-doorway').count() === 0, 'doorway should not exist before the message refetch')
+    fixture.showDoorway()
+    // The response changes after the conversation has already mounted; a
+    // product reload is the stable browser-level refetch seam (and avoids
+    // reaching into React Query internals from the test).
+    await page.reload()
+    await page.getByTestId('mail-surface-doorway').waitFor()
+    await page.getByRole('dialog', { name: 'Email ready to review' }).waitFor()
+    await page.getByTestId('connected-mail-conversation').waitFor()
+    await shot(page, 'chat-doorway-auto-popup')
+
+    await page.getByRole('button', { name: 'Close' }).click()
+    await page.getByRole('dialog').waitFor({ state: 'detached' })
+    await page.reload()
+    await page.getByTestId('mail-surface-doorway').waitFor()
+    assert(await page.getByRole('dialog').count() === 0, 'the same message reopened a session-scoped automatic popup')
+
+    fixture.denyDoorway()
+    const opener = page.getByRole('button', { name: 'Open mail' })
+    await opener.click()
+    await page.getByText('This email is no longer available to you.').waitFor()
+    assert(await page.getByRole('dialog').count() === 0, 'doorway opened after live entitlement was removed')
+    fixture.allowDoorway()
+    await opener.click()
+    await page.getByRole('dialog', { name: 'Email ready to review' }).waitFor()
+    await page.getByRole('button', { name: 'Close' }).click()
+    await page.getByRole('dialog').waitFor({ state: 'detached' })
+    assert(await opener.evaluate((element) => document.activeElement === element), 'dialog close did not restore focus to the mail doorway')
+
+    await opener.click()
+    await page.getByRole('dialog', { name: 'Email ready to review' }).waitFor()
+    await page.getByRole('button', { name: 'Open full mail' }).click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-1$/)
+    await page.getByTestId('connected-mail-conversation').waitFor()
+
+    // A second chat render carries a Gmail draft pointer. The form is the
+    // same production composer used by Mail; it is not an email-shaped card.
+    fixture.showComposeDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const composeOpener = page.getByRole('button', { name: 'Open mail' })
+    await composeOpener.waitFor()
+    await composeOpener.click()
+    await page.getByRole('dialog', { name: 'Email draft ready' }).waitFor()
+    assert(await page.getByRole('textbox', { name: 'From', exact: true }).isDisabled(), 'chat draft form exposed a mutable From field')
+    await page.getByRole('textbox', { name: 'Subject', exact: true }).waitFor()
+    await shot(page, 'chat-doorway-compose-form')
+    await page.getByRole('textbox', { name: 'Message', exact: true }).fill('The doorway draft is ready to send.')
+    // This doorway fetched the existing draft's `draft` status before Send.
+    // The held result must atomically replace it rather than letting that
+    // stale read erase the newly persisted Undo identity.
+    await page.getByRole('button', { name: 'Send email' }).click()
+    await page.getByText('Your email is queued to send.').waitFor()
+    await page.getByRole('button', { name: 'Close' }).click()
+
+    // This route carries the provider action id, not a local-draft key. Its
+    // reload still has to recover the held Undo doorway without sending again.
+    await page.reload()
+    await composeOpener.click()
+    await page.getByRole('button', { name: 'Undo send' }).waitFor()
+    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'dispatching' })
+    await page.getByRole('button', { name: 'Close' }).click()
+    await page.reload()
+    await composeOpener.click()
+    await page.getByText('Your email is being delivered. It will not be sent again.').waitFor()
+    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a reloaded doorway dispatch offered Undo')
+    await page.getByRole('button', { name: 'Close' }).click()
+
+    // Account doorways carry the real, entitlement-scoped mailbox list into
+    // chat. Selecting its row must enter the normal reader route, not an
+    // email-shaped summary card with a second navigation implementation.
+    fixture.showAccountDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const accountOpener = page.getByRole('button', { name: 'Open mail' })
+    await accountOpener.click()
+    const accountDialog = page.getByRole('dialog', { name: 'Mail ready to review' })
+    await accountDialog.waitFor()
+    const accountPreview = accountDialog.getByTestId('mailbox-workspace')
+    await accountPreview.waitFor()
+    assert(await accountPreview.getAttribute('data-layout') === 'single', 'account doorway did not embed the canonical mailbox list')
+    await accountDialog.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
+    await shot(page, 'chat-doorway-account-preview')
+    await accountDialog.locator('#mailbox-thread-thread-1').click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-1$/)
+    await page.getByTestId('connected-mail-conversation').waitFor()
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+const phoneDoorway = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 844, name: 'phone', width: 390 })
+  const { page } = target
+  try {
+    fixture.showDoorway()
+    await page.addInitScript(() => {
+      sessionStorage.setItem('mail-doorway-offered:88888888-8888-4888-8888-888888888888', 'offered')
+    })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const opener = page.getByRole('button', { name: 'Open mail' })
+    await opener.waitFor()
+    await opener.click()
+    const dialog = page.getByRole('dialog', { name: 'Email ready to review' })
+    await dialog.waitFor()
+    const bounds = await dialog.boundingBox()
+    assert((bounds?.width ?? 0) >= 350, `phone doorway is not a useful full-surface Flow (${bounds?.width ?? 0}px)`)
+    await page.locator('body').evaluate((body) => { body.style.zoom = '200%' })
+    await shot(page, 'phone-doorway-200-percent-reduced-motion')
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'detached' })
+    assert(await opener.evaluate((element) => document.activeElement === element), 'phone doorway Back did not restore focus to its opener')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+const main = async () => {
+  await rm(screenshots, { force: true, recursive: true })
+  await mkdir(screenshots, { recursive: true })
+  const server = await startAdmin()
+  const browser = await chromium.launch({ ...(chromiumPath ? { executablePath: chromiumPath } : {}), headless: true })
+  const fixture = createMailFixtures()
+  try {
+    await desktopMail({ browser, fixture })
+    await approvalsMailSendPreview({ browser, fixture })
+    await responsiveMail({ browser, fixture })
+    await chatDoorway({ browser, fixture })
+    await phoneDoorway({ browser, fixture })
+  } finally {
+    await browser.close()
+    await server.stop()
+  }
+  assert(fixture.unhandled.length === 0, `unhandled API requests: ${JSON.stringify(fixture.unhandled)}`)
+  console.log(`connected-mail e2e: passed; screenshots in ${screenshots}`)
+}
+
+await main()

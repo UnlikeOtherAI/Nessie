@@ -9,7 +9,7 @@ import {
   listMemberInvitationTargets,
   listOrganisationMemberInvitations,
   listOrganisationMembers,
-  listOrganisationMemberWorkspaceAccess,
+  listOrganisationMemberTeamAccess,
   removeTeamMember,
   resolveLocalUserIdsByUoaSub,
   revokeTeamInvitation,
@@ -61,8 +61,8 @@ const CreateMemberInvitationSchema = z.object({
   teamRole: z.string().trim().min(1).max(100).optional(),
 })
 
-const WorkspaceAccessSchema = z.object({
-  workspaceIds: z.array(z.string().trim().min(1).max(200)).max(100),
+const TeamAccessSchema = z.object({
+  teamIds: z.array(z.string().trim().min(1).max(200)).max(100),
 })
 
 const RevokeInvitationSchema = z.object({
@@ -325,50 +325,50 @@ export const registerOrganizationMembersRoutes = (
   )
 
   app.get<{ Params: { uoaSub: string } }>(
-    '/api/organization/members/:uoaSub/workspaces',
+    '/api/organization/members/:uoaSub/teams',
     async (request, reply) =>
       relay(request, reply, {}, async (orgId, _body, subjectDeps) =>
-        listOrganisationMemberWorkspaceAccess(orgId, request.params.uoaSub, subjectDeps)),
+        listOrganisationMemberTeamAccess(orgId, request.params.uoaSub, subjectDeps)),
   )
 
   app.put<{ Params: { uoaSub: string } }>(
-    '/api/organization/members/:uoaSub/workspaces',
+    '/api/organization/members/:uoaSub/teams',
     async (request, reply) =>
       relay(
         request,
         reply,
-        { parse: () => parseInput(WorkspaceAccessSchema, request.body, reply) },
+        { parse: () => parseInput(TeamAccessSchema, request.body, reply) },
         async (orgId, body, subjectDeps) => {
-          const access = await listOrganisationMemberWorkspaceAccess(
+          const access = await listOrganisationMemberTeamAccess(
             orgId,
             request.params.uoaSub,
             subjectDeps,
           )
-          const available = new Map(access.items.map((workspace) => [workspace.id, workspace]))
-          const selected = new Set(body.workspaceIds)
+          const available = new Map(access.items.map((team) => [team.id, team]))
+          const selected = new Set(body.teamIds)
           if (
-            !access.permissions.changeWorkspaceAccess
-            || [...selected].some((workspaceId) => !available.has(workspaceId))
+            !access.permissions.changeTeamAccess
+            || [...selected].some((teamId) => !available.has(teamId))
           ) {
-            throw new UoaRosterRejectedError('[uoa] workspace access selection is not permitted', 403)
+            throw new UoaRosterRejectedError('[uoa] team access selection is not permitted', 403)
           }
 
           // UOA reauthorizes every exact-team write. Add first so replacing a
-          // person's final workspace never briefly violates its last-workspace
+          // person's final team never briefly violates its last-team
           // invariant; UOA still enforces membership limits and freshness.
-          for (const workspace of access.items) {
-            if (selected.has(workspace.id) && !workspace.hasAccess) {
+          for (const team of access.items) {
+            if (selected.has(team.id) && !team.hasAccess) {
               await addTeamMember(
-                { externalOrgId: orgId, externalTeamId: workspace.id },
+                { externalOrgId: orgId, externalTeamId: team.id },
                 { uoaSub: request.params.uoaSub },
                 subjectDeps,
               )
             }
           }
-          for (const workspace of access.items) {
-            if (!selected.has(workspace.id) && workspace.hasAccess) {
+          for (const team of access.items) {
+            if (!selected.has(team.id) && team.hasAccess) {
               await removeTeamMember(
-                { externalOrgId: orgId, externalTeamId: workspace.id },
+                { externalOrgId: orgId, externalTeamId: team.id },
                 request.params.uoaSub,
                 subjectDeps,
               )

@@ -48,6 +48,55 @@ reports, notifications, summaries, or inter-agent messages.
 Humans can receive `reveal` only through a future step-up-authenticated flow.
 Agents can receive `use` only. An agent can never receive `reveal`.
 
+## How a secret is captured
+
+Two doorways, and both end at the same vault seam
+(`api/src/services/secret-vault-write.ts`):
+
+1. **The person types it.** The structural scanner
+   (`packages/schemas/src/secret-scan.ts`) runs in the composer and again at
+   every ingress route, which refuse with `422 SECRET_INTERCEPTED` so the value
+   never reaches PostgreSQL. The composer raises the capture dialog instead.
+2. **An agent asks for it, or spots one.** Every agent's system prompt carries
+   `AGENT_SECRET_SAFETY_INSTRUCTION`, which names the one thing it can do:
+   post a card with a `secret` block whose destination is `vault_secret`, with
+   the name pre-filled. This is the path for a credential the scanner cannot
+   recognise — an in-house token format, or a secret sitting in prose — because
+   the judgement is the model's rather than a pattern's.
+
+The second doorway is also the only one that can act after the fact. A model
+notices a credential *already stored*, so its card may name one message in its
+own thread (`redactMessageId`); pressing the card rewrites that message to the
+masked form in the same transaction, and deletes the `thoughts` rows captured
+from it, so the value is gone from every later context window — a message is
+copied into memory at send time, and rewriting the message alone would leave
+recall handing the credential straight back. The replacement is computed by the
+server from the value the person typed — an agent chooses the target, never the
+text — and the rewrite is floored at twelve characters so it cannot be used to
+scribble over a message rather than scrub one.
+
+Masking is a structural provider prefix plus twelve `•`: enough to recognise
+which credential it was, never enough to reconstruct it.
+
+## Where the scanner runs
+
+The scanner is not one gate but every sink a value can reach, because each is
+a different kind of leak:
+
+| Sink | Where |
+| --- | --- |
+| Human ingress (message, edit, upload, voice transcript) | `422 SECRET_INTERCEPTED`, before persistence |
+| Card press, plain `input` values | `422 SECRET_INTERCEPTED` |
+| Agent ingress (`send_message`) | Redacted, not refused — a model mid-run has nowhere to put a refusal |
+| Live SSE stream | Emission trails the stream so a key split across chunks is caught |
+| Provider boundary, loop context, tool results | Redacted |
+| Tool-call arguments | Redacted, because they are replayed on every later turn |
+| Demonstration capture | Redacted — key-name redaction alone missed values under ordinary keys |
+
+The live stream is the subtle one: it is a separate broadcast from the finished
+message, so masking the message alone still showed every viewer the key as the
+model typed it.
+
 ## Authority split
 
 Infisical is the vault and owns secret values, encryption, versions, rotation,
@@ -69,7 +118,7 @@ the four separate capabilities:
 Every vault location is hard-partitioned as
 `/nessie/<organizationId>/<scopeType>/<scopeId>`, using only stable structural
 IDs. Personal paths use the owner user ID, team paths the team ID, project paths
-the project ID, and team paths the organisation ID. Nessie uses the same
+the project ID, and organisation paths the organisation ID. Nessie uses the same
 path for create, rotate, and revoke; `vaultReference` records that exact path
 with the server-minted opaque secret name. Display names never enter a vault
 path, and secret values are neither returned nor logged. The folder hierarchy
@@ -83,13 +132,64 @@ returns a secret value.
 ## Scope
 
 A secret has exactly one home scope: `personal`, `team`, `project`, or
-`team`. A personal secret is bound to its owner. Team, team, and
-project mutation is owner-gated and confirms the requested target belongs to
-the caller's organisation. Reads are entitlement-scoped: an owner sees all
-metadata; other users see their own personal secrets and explicit user grants.
+`organization`. A personal secret is bound to its owner. Team, project and
+organisation mutation is owner-gated and confirms the requested target belongs
+to the caller's organisation.
 
-Phase 1 exposes Personal and Project selection in the UI. Team and Team
-are preserved in the metadata model and API for an owner-managed surface.
+### The cascade, and the lock
+
+Scopes resolve as one cascade, in the containment order of
+[the team model](standards/team-model.md) — **organisation → team → project →
+personal** — and the rule is the sentence
+[`ScopedSetting`](standards/scoped-settings.md) already states for settings:
+**walk from the organisation down, take the most specific secret for a name,
+and stop at the first level marked `locked`.** The organisation is the base
+everyone inherits; a team overrides it; a person overrides both.
+
+`Secret.locked` is how a level says "this is the credential for everyone
+below". It is refused at `personal`, which has nothing beneath it. While a lock
+stands:
+
+- `POST /api/secrets` refuses a narrower write for that name with
+  `409 SECRET_LOCKED_ABOVE`, and so does an agent card's `vault_secret` press —
+  both doors, because one seam cannot accept a row the resolver would then
+  never consult.
+- Rows already saved below stay visible and are **greyed out**, saying which
+  level decided, exactly as `ScopedSettingGate` treats a locked control.
+  Hiding them would leave a person wondering where their credential went.
+
+One implementation resolves this for both ends: `@nessie/schemas`
+`secret-precedence.ts` (`computeSecretPrecedence` for the screen,
+`findSecretLockAbove` for the write). A second ordering beside either caller is
+the defect, not the pattern.
+
+### Reads
+
+An owner sees all metadata. Everyone else sees their own personal secrets,
+their explicit user grants, **the organisation's secrets, and those of every
+team and project they belong to** — the levels above them are what the cascade
+on their own page is made of, and a member whose personal secret silently
+stopped applying had nothing on screen to explain why. This exposes no value,
+ciphertext or vault path: a `Secret` row holds none (see "Authority split"), and
+using a secret still runs through `SecretGrant`.
+
+### The three screens
+
+One page per level, all three the same component
+(`admin/src/pages/settings/SecretsPanel.tsx`):
+
+| Page | Route | Shows | "New secret" writes |
+| --- | --- | --- | --- |
+| User → Secrets | `/settings/secrets` | organisation + team + project + own | personal, or a project |
+| Team → Secrets | `/settings/team/secrets` | organisation + this team | this team |
+| Organization → Secrets | `/settings/organization/secrets` | organisation | the organisation |
+
+Each page splits Active from Revoked with a `TabBar` in a `?tab=` param, and
+the organisation page drops the Scope column — every row there is the
+organisation's. The two upper pages are owner-only doorways, matching
+`canManageSecretScope`; a member reaches what their team and organisation set
+through their own page, where it is the part of the cascade that applies to
+them.
 
 ## Capture and ingestion
 

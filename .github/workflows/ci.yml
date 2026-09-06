@@ -14,6 +14,22 @@ concurrency:
   group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Jobs deliberately declare no `needs`. Lint and Type Check used to gate the
+# other six, which idled every runner for the 5m40s those two took and made a
+# lint failure hide whether the tests passed at all. Both are still REQUIRED
+# status checks on main, so nothing merges without them — only the ordering is
+# gone, not the gate. Root `pnpm build` also keeps its own internal lint gate.
+env:
+  # Pin Turbo's filesystem cache so actions/cache restores exactly what Turbo
+  # writes. Left alone, Turbo caches under the *git root*, which is not the
+  # workspace root in every checkout layout.
+  TURBO_CACHE_DIR: .turbo/cache
+  # The ref `--affected` compares against. Every job checks out full history so
+  # this merge-base resolves; on a shallow checkout Turbo silently treats every
+  # package as changed.
+  TURBO_SCM_BASE: origin/main
+  TURBO_TELEMETRY_DISABLED: 1
+
 jobs:
   lint:
     name: Lint
@@ -35,9 +51,20 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-lint-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-lint-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Deliberately NOT narrowed by scope. Lint is the cheapest job and the
+      # one every other gate leans on, and the root lint scripts
+      # (markdown structure, breakpoints, navigation surfaces, layers,
+      # migrations) scan the whole repo rather than a package subset.
       - name: Lint all packages
         run: pnpm lint
 
@@ -47,6 +74,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -57,25 +86,43 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-typecheck-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-typecheck-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
         run: pnpm --filter @nessie/api prisma:generate
 
+      # Through Turbo rather than pnpm so the result is cached like every other
+      # build. These three are the only packages whose dist the typecheck graph
+      # can need ahead of time.
       - name: Build shared packages
-        run: |
-          pnpm --filter @nessie/schemas build
-          pnpm --filter @nessie/config build
-          pnpm --filter @nessie/runtime build
+        run: pnpm exec turbo run build --filter=@nessie/schemas --filter=@nessie/config --filter=@nessie/runtime
 
-      - name: Typecheck all packages
+      # `typecheck` keeps its `dependsOn: ["^typecheck"]` edge in turbo.json.
+      # Dropping it would let 32 tsc runs go parallel, but it also removes the
+      # dependency from each task's cache hash: measured on this repo, editing
+      # packages/schemas left @nessie/memory's typecheck hash byte-identical, so
+      # a cached pass would replay green over a breaking change. The speed comes
+      # from the cache instead — unchanged packages replay in milliseconds.
+      - name: Typecheck packages
         run: pnpm typecheck
+        env:
+          TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
 
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -95,19 +142,35 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-build-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-build-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Still the lint-gated root build, per AGENTS.md — the gate is inside
+      # `pnpm build` and must not be swapped for a raw turbo invocation.
       - name: Build all packages
         run: pnpm build
+        env:
+          TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
 
   linux-desktop:
     name: Linux Desktop Bundle
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -118,7 +181,18 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # The bundle takes its frontend from https://app.nessie.works, not from a
+      # local admin build, so admin/api/worker changes cannot affect it. Its
+      # real inputs are desktop/, the executor/windows-provenance crate it
+      # depends on by path, and assets/. A change to none of them skips the
+      # 6-minute Rust build; the job still reports success, which is what a
+      # required check needs.
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
       - name: Install Linux desktop dependencies
+        if: steps.scope.outputs.desktop == '1'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
@@ -126,26 +200,33 @@ jobs:
             desktop-file-utils
 
       - name: Install dependencies
+        if: steps.scope.outputs.desktop == '1'
         run: pnpm install --frozen-lockfile
 
       - name: Build Linux desktop packages
+        if: steps.scope.outputs.desktop == '1'
         run: pnpm --filter @nessie/desktop run tauri:build:linux
 
       - name: Record artifact checksums
+        if: steps.scope.outputs.desktop == '1'
         run: |
           cd desktop/src-tauri/target/release/bundle
           sha256sum deb/*.deb appimage/*.AppImage > SHA256SUMS
 
       - name: Upload Linux desktop packages
+        if: steps.scope.outputs.desktop == '1'
         uses: actions/upload-artifact@v4
         with:
           name: nessie-linux-x86_64
           path: desktop/src-tauri/target/release/bundle/{deb,appimage,SHA256SUMS}
 
+      - name: Report skip
+        if: steps.scope.outputs.desktop != '1'
+        run: echo "No desktop/, executor/windows-provenance/ or assets/ change — desktop bundle not rebuilt."
+
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
     services:
       postgres:
         # pgvector image (Postgres 16 + the `vector` extension) — the schema's
@@ -169,6 +250,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -179,28 +262,48 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-test-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-test-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Serialized before the concurrent phase on purpose: concurrent Prisma
+      # generators can temporarily erase exports while sibling packages compile.
       - name: Generate Prisma client
         run: pnpm --filter @nessie/api prisma:generate
-
-      - name: Build shared packages
-        # Build every shared package, not a hand-picked subset: tested packages
-        # import siblings through their dist exports (e.g. memory → retrieval),
-        # so a missing build breaks the run with ERR_MODULE_NOT_FOUND.
-        run: pnpm --filter "./packages/*" build
 
       - name: Apply database migrations
         run: pnpm --filter @nessie/api prisma:migrate:deploy
 
+      # Through Turbo, per AGENTS.md: the `test` task's `^build` compiles each
+      # suite's workspace dependencies, which is what the old hand-rolled
+      # "build every package under packages/*" step was standing in for. It also
+      # preserves the `@nessie/api#test` after `@nessie/worker#test` ordering
+      # that turbo.json pins by hand — the worker DB suites need a database no
+      # api trigger-dispatch suite is mid-flight on.
+      #
+      # Concurrency 4 matches what `pnpm -r` was already doing (its default), so
+      # the shared-database contention profile is unchanged. `test` stays
+      # `"cache": false` in turbo.json: its result depends on a database Turbo
+      # cannot hash.
       - name: Run tests
-        run: pnpm -r --if-present test
+        run: pnpm test
+        env:
+          TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
+          TURBO_CONCURRENCY: 4
 
   upgrade-path:
     name: Upgrade Path
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
     services:
       postgres:
         # Same pgvector image as the test job: the fixture replay includes the
@@ -224,6 +327,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -234,30 +339,44 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
       - name: Install dependencies
+        if: steps.scope.outputs.code == '1'
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:generate
 
       # Restore the checked-in snapshot taken N migrations behind HEAD (see
       # api/prisma/upgrade-fixtures/baseline.json), then prove the self-host
       # upgrade path: migrate deploy from HEAD must converge it.
       - name: Restore baseline fixture
+        if: steps.scope.outputs.code == '1'
         run: gunzip -c api/prisma/upgrade-fixtures/baseline.sql.gz | psql -v ON_ERROR_STOP=1 -q "$DATABASE_URL"
 
       - name: Run migrations from HEAD
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:migrate:deploy
 
       - name: Validate schema
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api db:validate
 
       - name: Smoke-test upgraded database
+        if: steps.scope.outputs.code == '1'
         run: cd api && node scripts/upgrade-smoke.mjs
+
+      - name: Report skip
+        if: steps.scope.outputs.code != '1'
+        run: echo "Documentation-only change — no migration or schema code to replay."
+
   smoke:
     name: Mock-LLM Smoke
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -279,6 +398,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -289,16 +410,34 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-smoke-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-smoke-
+
       - name: Install dependencies
+        if: steps.scope.outputs.code == '1'
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:generate
 
-      - name: Build shared packages
-        run: pnpm --filter "./packages/*" build
+      # Only the worker's own dependency closure, not every package: the smoke
+      # harness is a worker script. `@nessie/worker...` is Turbo's "this package
+      # and everything it depends on".
+      - name: Build worker dependencies
+        if: steps.scope.outputs.code == '1'
+        run: pnpm exec turbo run build --filter=@nessie/worker...
 
       - name: Apply database migrations
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:migrate:deploy
 
       # End-to-end smoke: seeded org → run.execute enqueue → agentic loop →
@@ -306,12 +445,16 @@ jobs:
       # by @nessie/mock-llm (no provider tokens). Asserts terminal state, the
       # tool-call row, token-ledger events, and the run.timing TaskEvent.
       - name: Run mock-LLM smoke test
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/worker test:smoke
+
+      - name: Report skip
+        if: steps.scope.outputs.code != '1'
+        run: echo "Documentation-only change — no runtime code for the smoke pipeline to exercise."
 
   navigation-e2e:
     name: Navigation Transitions
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -336,6 +479,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -346,29 +491,41 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-navigation-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-navigation-
+
       - name: Install dependencies
+        if: steps.scope.outputs.code == '1'
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:generate
 
-      - name: Build shared packages
-        run: pnpm --filter "./packages/*" build
-
-      # The suite runs the API in local mode, which starts the worker
-      # in-process from its built dist.
-      - name: Build worker
-        run: pnpm --filter @nessie/worker build
-
-      - name: Build admin bundle
-        run: pnpm --filter @nessie/admin build
+      # One Turbo invocation instead of three sequential pnpm builds. The suite
+      # runs the API in local mode, which starts the worker in-process from its
+      # built dist, and serves the admin bundle from admin/dist — both are
+      # declared Turbo outputs, so an unchanged tree restores them from cache.
+      - name: Build admin, api and worker
+        if: steps.scope.outputs.code == '1'
+        run: pnpm exec turbo run build --filter=@nessie/admin... --filter=@nessie/api... --filter=@nessie/worker...
 
       - name: Apply database migrations
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:migrate:deploy
 
       # playwright-core ships the same `install` CLI as the playwright
       # package, so the repo needs no extra dependency for this.
       - name: Install Chromium
+        if: steps.scope.outputs.code == '1'
         run: pnpm exec playwright-core install --with-deps chromium
 
       # Real-browser navigation transitions: each case freezes the actual
@@ -376,12 +533,31 @@ jobs:
       # asserts layer positions and scrollLeft numerically, and saves the
       # frames (docs/navigation/overview.md → "Verification").
       - name: Run navigation transition suite
+        if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
+      # Connected mail uses a deterministic provider boundary, but renders the
+      # production admin shell, mailbox and chat doorway in Chromium.
+      - name: Run connected mail browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:connected-mail
+
       - name: Upload transition frames
-        if: always()
+        if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
         with:
           name: navigation-transition-frames
           path: e2e/screenshots/navigation
           if-no-files-found: warn
+
+      - name: Upload connected mail screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: connected-mail-screenshots
+          path: e2e/screenshots/connected-mail
+          if-no-files-found: warn
+
+      - name: Report skip
+        if: steps.scope.outputs.code != '1'
+        run: echo "Documentation-only change — no UI or API code for the browser suites to render."

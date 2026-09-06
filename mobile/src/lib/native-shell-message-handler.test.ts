@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { handleNativeShellMessage } from './native-shell-message-handler'
-import { DEFAULT_LAST_KNOWN_SCREEN, type LastKnownScreen } from './native-shell-layout'
+import {
+  DEFAULT_LAST_KNOWN_SCREEN,
+  type LastKnownScreen,
+  type NativeScreenBar,
+} from './native-shell-layout'
 import { TABS } from './tabs'
 
 const buildInput = () => {
@@ -11,6 +15,7 @@ const buildInput = () => {
     index: 0,
     lastBackDepth: undefined as boolean | undefined,
     lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN as LastKnownScreen,
+    screenBar: null as NativeScreenBar | null,
     voiceCalls: [] as Array<{ action: string; detail?: unknown }>,
   }
   const screenActiveRef = { current: false }
@@ -39,6 +44,8 @@ const buildInput = () => {
       state.index = typeof value === 'function' ? value(state.index) : value
     },
     setLastKnownScreen: (screen: LastKnownScreen) => { state.lastKnownScreen = screen },
+    setScreenBar: (bar: NativeScreenBar | null) => { state.screenBar = bar },
+    startScreenBarTransition: () => undefined,
     setNativeVoiceCallMuted: (muted: boolean) => {
       state.voiceCalls.push({ action: 'mute', detail: muted })
     },
@@ -189,4 +196,34 @@ test('the two in-call controls reach the native call', () => {
     { action: 'mute', detail: true },
     { action: 'end' },
   ])
+})
+
+test('the native bar reads the admin\'s per-layer descriptor, not the screen message', () => {
+  const { input, state } = buildInput()
+  handleNativeShellMessage({
+    type: 'nessie:screen-bar',
+    actions: [],
+    layerKey: 'channels:2:channels:channel',
+    title: 'Design review',
+    back: { label: 'Channels' },
+  } as never, input)
+  assert.deepEqual(state.screenBar, {
+    actions: [],
+    back: { label: 'Channels' },
+    layerKey: 'channels:2:channels:channel',
+    title: 'Design review',
+  })
+
+  // A stage over a root publishes its own bar under its own layer. Keyed by
+  // pathname — or derived from the screen message's `screenType` — this would
+  // read as a root and show the team switcher over an open editor.
+  handleNativeShellMessage({
+    type: 'nessie:screen-bar',
+    actions: [],
+    layerKey: 'knowledge:1:stage:knowledge:editor',
+    title: 'Onboarding',
+    back: { label: 'Back to folder' },
+  } as never, input)
+  assert.equal(state.screenBar?.title, 'Onboarding')
+  assert.equal(state.lastKnownScreen.type, 'root')
 })

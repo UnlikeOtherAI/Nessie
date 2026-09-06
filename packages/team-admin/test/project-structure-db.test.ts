@@ -95,18 +95,22 @@ runDatabaseTest('a created project holds its creator and nobody else', async (t)
   assert.equal(project.teamCount, 0)
 
   // The board a clicked project gets, on a project created from chat.
-  const columns = await prisma.boardColumn.findMany({
+  const boards = await prisma.board.findMany({
     where: { projectId: project.id },
-    orderBy: { position: 'asc' },
-    select: { category: true, name: true, organizationId: true },
+    include: { columns: { orderBy: { position: 'asc' } } },
   })
-  assert.deepEqual(columns.map((column) => column.category), [
+  assert.equal(boards.length, 1)
+  const board = boards[0]
+  assert.ok(board)
+  assert.equal(board.isDefault, true)
+  assert.equal(board.style, 'kanban')
+  assert.deepEqual(board.columns.map((column) => column.category), [
     'todo',
     'in_progress',
     'review',
     'done',
   ])
-  assert.ok(columns.every((column) => column.organizationId === team.organizationId))
+  assert.ok(board.columns.every((column) => column.organizationId === team.organizationId))
 })
 
 runDatabaseTest('a project, a team in it, and a channel in that team', async (t) => {

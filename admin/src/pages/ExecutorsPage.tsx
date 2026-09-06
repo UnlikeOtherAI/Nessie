@@ -219,13 +219,15 @@ export const ExecutorsPage = () => {
             id: 'pair-executor',
             label: showCreate ? 'Close pairing' : 'Pair executor',
             onSelect: () => setShowCreate((open) => !open),
-            primary: true,
+            // Primary while it opens the pairing form; closing that form again
+            // is not the action this screen exists for.
+            primary: !showCreate,
             priority: 100,
           },
         ]}
         eyebrow="Agents"
         subtitle={
-          <p className="max-w-3xl">
+          <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
             Pair governed sandboxes and coding sessions. Executors are separate from connectors:
             connectors provide remote services; executors run approved work on a paired machine or guest runtime.
           </p>
@@ -241,6 +243,7 @@ export const ExecutorsPage = () => {
           label="Back to executors"
           onBack={() => setShowCreate(false)}
           priority={LOCAL_BACK_PRIORITY.executorsCreate}
+          title="New executor"
         >
           {me ? (
             <ExecutorCreatePanel

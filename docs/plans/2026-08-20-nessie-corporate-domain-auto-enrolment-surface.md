@@ -1,6 +1,16 @@
 # Nessie corporate-domain auto-enrolment surface
 
-**Status:** Proposed
+**Status:** Superseded (2026-09-04) by
+[2026-09-04-automatic-team-membership-by-verified-domain.md](2026-09-04-automatic-team-membership-by-verified-domain.md).
+This plan made Nessie a pure relay of a *UOA-owned* domain claim, gated on a
+`corporate_domain_auto_enrolment_management` signed-config flag and an
+`X-UOA-Management-Assertion`. UOA shipped none of it and no date was set, so
+none of this ever reached code. The successor keeps the invariant this plan was
+protecting — UOA owns and authorizes membership — while holding the policy
+(which domain, which teams, DNS proof, audit, reconciliation) in Nessie. Kept
+for the reasoning in "UOA remains the authority", which the successor follows.
+
+**Original status:** Proposed
 **Scope:** Nessie is a secondary owner interface for the UOA corporate-domain
 auto-enrolment capability. The primary hosted interface remains UOA Auth.
 **Dependency:** `UnlikeOtherAuthenticator/Docs/plans/2026-08-20-corporate-domain-auto-enrolment.md`

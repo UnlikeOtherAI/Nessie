@@ -145,7 +145,12 @@ const makeFake = (seed: {
         return row
       },
     },
-    boardColumn: { createMany: async () => (record('boardColumn.createMany'), { count: 0 }) },
+    // A project's default board is created nested, so the fake needs the
+    // `board` delegate `seedDefaultBoard` reaches for, not `boardColumn`.
+    board: {
+      count: async () => (record('board.count'), 0),
+      create: async () => (record('board.create'), { id: 'board-1' }),
+    },
     channel: {
       findFirst: async () => (record('channel.findFirst'), state.channels[0] ?? null),
       create: async ({ data }: { data: Row }) => {
@@ -433,7 +438,7 @@ test('the conditional claim runs BEFORE the target existing-or-create branch', a
   assert.equal(state.calls.includes('team.findUnique'), false)
   assert.equal(state.calls.includes('team.create'), false)
   assert.equal(state.calls.includes('project.create'), false)
-  assert.equal(state.calls.includes('boardColumn.createMany'), false)
+  assert.equal(state.calls.includes('board.create'), false)
   assert.equal(state.calls.includes('channel.create'), false)
   assert.equal(state.orgMembers.length, 0)
   assert.equal(state.teamMembers.length, 0)

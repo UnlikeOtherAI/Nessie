@@ -1,8 +1,14 @@
 import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
+import { useLocalBackSnapshot } from '../../layouts/admin-shell/local-back/LocalBackContext'
+import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
+import { useScreenBarLayerKey } from '../../navigation/ScreenBarLayer'
+import { useScreenBarPublisher } from '../../navigation/useScreenBar'
+import type { ScreenBarBack } from '../../navigation/screen-bar'
+import { toScreenBarActions } from '../../navigation/screen-bar-actions'
 import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
 import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
-import { useNavigationLayout } from '../../lib/mobile-shell'
+import { useNativeIOSPhoneApp, useNavigationLayout } from '../../lib/mobile-shell'
 import { publishScreenTitle, retireScreenTitle } from '../../navigation/screen'
 import { surfaceParent } from '../../navigation/surface-lookup'
 import {
@@ -32,10 +38,9 @@ import {
 //     where the shell turns it into `document.title` and the native shell's
 //     `nessie:screen` message.
 //
-// `subtitle` and `tabs` are slots inside the one header block — the subtitle
-// carries entity metadata, state, or the meaning of the active tab, while
-// generic page explanations stay out. A Tab host's `TabBar` row is the other
-// slot; neither becomes a second header beneath it. The measured leading/actions partition stays in
+// `subtitle` and `tabs` are slots inside the one header block — the hero
+// headers' description lines and a Tab host's `TabBar` row — never a second
+// header beneath it. The measured leading/actions partition stays in
 // `ResponsivePageHeader`, which this composes rather than forks.
 
 export type ScreenHeaderProps = {
@@ -84,6 +89,16 @@ export const ScreenHeader = ({
   const location = useLocation()
   const layout = useNavigationLayout()
   const single = layout === 'single'
+  const navigation = usePhoneNavigation()
+  // The iOS shell draws this bar natively, so the web must not draw a second
+  // one beneath it. Nothing else changes: mobile Safari at any width, the
+  // Android app, iPad and desktop all read false here and take the path below
+  // unchanged.
+  const nativeBar = useNativeIOSPhoneApp() && single
+  const barLayerKey = useScreenBarLayerKey()
+  // Subscribing re-runs the published Back when an owner registers or leaves,
+  // exactly as the rendered doorway does.
+  useLocalBackSnapshot()
 
   // Published under this header's own pathname: retained and seeded layers
   // stay mounted under their own location, so several headers publish at
@@ -93,6 +108,21 @@ export const ScreenHeader = ({
     publishScreenTitle(pathname, title)
     return () => { retireScreenTitle(pathname, title) }
   }, [pathname, title])
+
+  // What the native bar publishes as Back is the Back this header would
+  // actually run — not the resolver's answer. A Flow that owns its Back
+  // returns to an address the registry cannot know (a compose's `returnTo`,
+  // a designer's edit origin); running the resolver there pops to the section
+  // root instead of where the reader came from.
+  const resolvedBack = navigation?.resolveBackAction(pathname) ?? null
+  const effectiveBack: ScreenBarBack | null = flowOwnsBack && onBack
+    ? { label: backLabel ?? `Back from ${title}`, onBack }
+    : resolvedBack
+      ? { label: resolvedBack.label, onBack: () => navigation?.performBack() }
+      : null
+  // Only the iOS shell reads this, so only it pays for building it. Every
+  // other surface keeps the render it always had.
+  useScreenBarPublisher({ actions: toScreenBarActions(actions), back: effectiveBack, title }, nativeBar)
 
   const pageBack = onBack && (flowOwnsBack || surfaceParent(pathname) !== null)
     ? (
@@ -105,12 +135,48 @@ export const ScreenHeader = ({
 
   if (singleLayoutOnly && !single) return null
 
+  // A header with no layer beneath it — a screen rendered outside the stack —
+  // has nothing to publish to, so it keeps drawing rather than disappearing.
+  if (nativeBar && barLayerKey !== null) {
+    // The heading stays, and stays an `h1`: the settle focuses it and the
+    // live region reads its text content (navigation/settle.ts), both by
+    // `querySelector('h1')`. `sr-only` keeps the element and its text while
+    // taking it out of the visual bar the native chrome now owns — removing
+    // it would break the announcement silently.
+    //
+    // `eyebrow` and `leading` have no lane in a native bar, so they stay with
+    // the page rather than being dropped: an agent's avatar and a "System
+    // managed" note are content, not chrome.
+    const below = eyebrow || leading || subtitle || tabs
+    return (
+      <>
+        <h1 className="sr-only" id={titleId}>{title}</h1>
+        {below ? (
+          <div className="flex min-w-0 flex-col gap-2 px-4 pb-2 pt-3">
+            {eyebrow || leading ? (
+              <div className="flex min-w-0 items-center gap-2">
+                {leading}
+                {eyebrow ? (
+                  <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-[color:var(--tx2)]">
+                    {eyebrow}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {subtitle ? <div className="min-w-0">{subtitle}</div> : null}
+            {tabs ? <div className="min-w-0">{tabs}</div> : null}
+          </div>
+        ) : null}
+      </>
+    )
+  }
+
   return (
     <ResponsivePageHeader
       actions={actions}
       below={subtitle || tabs ? (
         <div className="flex min-w-0 flex-col gap-2">
-          {subtitle ? <div className="admin-page-subtitle min-w-0">{subtitle}</div> : null}
+          {subtitle ? <div className="min-w-0">{subtitle}</div> : null}
           {tabs ? <div className="min-w-0">{tabs}</div> : null}
         </div>
       ) : null}

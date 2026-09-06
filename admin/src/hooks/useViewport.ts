@@ -231,6 +231,19 @@ const resolveStore = (): ViewportStore => {
   return lazyStore
 }
 
+/**
+ * Drops the memoised store so the next `useViewport()` builds a new one.
+ *
+ * For tests only, and specifically for the shared-process suite: the store is
+ * created once per process from whatever `window` was global at first use, so
+ * a file that renders a viewport consumer without one (or without the
+ * `--breakpoint-*` tokens) leaves every later file reading the base snapshot.
+ * A test that needs its own jsdom to decide the bands resets first.
+ */
+export const __resetViewportStore = (): void => {
+  lazyStore = null
+}
+
 export const useViewport = (): ViewportSnapshot => {
   const store = resolveStore()
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)

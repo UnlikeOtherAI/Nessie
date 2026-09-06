@@ -130,7 +130,7 @@ test('a delegate sub-agent is never shown the delegate tool itself', async () =>
   }
   assert.match(
     String(prompts[0]?.find((message) => message.role === 'system')?.content),
-    /replaced by a secure form before you see it/,
+    /call card_post with a secret block/,
   )
 })
 

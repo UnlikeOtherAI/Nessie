@@ -68,7 +68,7 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
 4. A UOA **superuser approves** the integration; the contact email then receives
    a **one-time link to copy the `client_secret`**.
 5. Set `UOA_CLIENT_SECRET` in the host `.env` and restart the API
-   (`docker compose -f infrastructure/compose/docker-compose.prod.yml up -d --no-deps --force-recreate api`).
+   (`docker compose -f infrastructure/compose/docker-compose.prod.yml up -d --no-deps --force-recreate nessie-api`).
    SSO login is now live.
 
 For the 2026-06-15 `nessie.works` migration, the live host env was updated to

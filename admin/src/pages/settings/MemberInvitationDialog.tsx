@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { TabBar } from '../../components/primitives/TabBar'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
@@ -29,6 +30,7 @@ const errorMessage = (error: unknown) =>
 /** One invite dialog for both roster scopes; only teams can add an existing person. */
 export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitationDialogProps) => {
   const { token } = useAuthSession()
+  const [, setSearchParams] = useSearchParams()
   const invite = useInviteMember(scope)
   const addMember = useAddTeamMember()
   const [email, setEmail] = useState('')
@@ -107,6 +109,30 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
       title="Invite member"
     >
       <div className="space-y-4 p-4">
+        {/*
+          Rule zero's in-context doorway: inviting people one at a time is
+          exactly where "should they just join automatically?" occurs to
+          someone, so the answer is offered here rather than only on a tab they
+          would have to already know about.
+        */}
+        <p className="text-xs text-[color:var(--tx3)]">
+          Adding lots of people from one company?{' '}
+          <button
+            className="underline underline-offset-2"
+            onClick={() => {
+              onClose()
+              setSearchParams((current) => {
+                const updated = new URLSearchParams(current)
+                updated.set('membersTab', 'automatic')
+                return updated
+              }, { replace: true })
+            }}
+            type="button"
+          >
+            Set up automatic team access
+          </button>{' '}
+          instead.
+        </p>
         {scope === 'team' ? (
           <TabBar
             ariaLabel="Invitation method"

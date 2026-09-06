@@ -19,7 +19,15 @@
 // `page-types.ts`. Rulebook: `docs/navigation/overview.md`. Plan: step 3 of
 // `docs/done/2026-09-01-navigation-motion-system.md` (§4.1).
 
-import type { Surface, SurfaceIntent, SurfaceParent } from './page-types'
+import type { Surface, SurfaceIntent } from './page-types'
+import { createAdminSurfaces } from './admin-surfaces'
+import { createConnectedMailSurfaces } from './connected-mail-surfaces'
+import {
+  toChannels,
+  toDashboards,
+  toKnowledge,
+  toProjects,
+} from './surface-parents'
 
 
 // Strip query/hash and trailing slashes so route-family checks compare the
@@ -34,16 +42,6 @@ const PROJECTS_ROOT = '/projects'
 const KNOWLEDGE_ROOT = '/knowledge-base'
 const ADMIN_ROOT = '/settings'
 const SEARCH_ROOT = '/search'
-
-const toChannels = (): SurfaceParent => ({ label: 'Back to Channels', pathname: CHANNELS_ROOT })
-const toProjects = (): SurfaceParent => ({ label: 'Back to Projects', pathname: PROJECTS_ROOT })
-const toKnowledge = (): SurfaceParent => ({ label: 'Back to Knowledge', pathname: KNOWLEDGE_ROOT })
-const toDashboards = (): SurfaceParent => ({ label: 'Back to Dashboards', pathname: '/dashboards' })
-const toAdmin = (): SurfaceParent => ({ label: 'Back to Admin', pathname: ADMIN_ROOT })
-const toApps = (): SurfaceParent => ({ label: 'Apps', pathname: '/apps' })
-const toAgents = (): SurfaceParent => ({ label: 'Back to Agents', pathname: '/agents' })
-const toWorkflows = (): SurfaceParent => ({ label: 'Back to Workflows', pathname: '/agents/workflows' })
-const toStatuses = (): SurfaceParent => ({ label: 'Back to Statuses', pathname: '/settings/statuses' })
 
 // A route that only forwards to another one. It renders no screen, so it
 // declares nothing but its section — enough for the tab bar to stay lit for
@@ -66,6 +64,17 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
   state: ['view'],
 }
 
+/**
+ * The project tab host consumes the knowledge intents its Docs section reads,
+ * plus the two doorways into its Settings section: `create` opens the new-board
+ * dialog, `connect` opens the source picker. Both say what to open on arrival
+ * rather than what the page durably is, which is what makes them intents.
+ */
+const PROJECT_INTENT: SurfaceIntent = {
+  consume: [...KNOWLEDGE_INTENT.consume ?? [], 'create', 'connect'],
+  state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source'],
+}
+
 export const SURFACES: Surface[] = [
   // ── Redirects ────────────────────────────────────────────────────────────
   // Listed first: several would otherwise be captured by a generic pattern
@@ -78,6 +87,9 @@ export const SURFACES: Surface[] = [
   redirect({ pattern: /^\/settings\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/settings\/agents$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/integrations$/, root: ADMIN_ROOT, section: 'admin' }),
+
+  // ── Connected mail ───────────────────────────────────────────────────────
+  ...createConnectedMailSurfaces(ADMIN_ROOT),
 
   // ── Channels ─────────────────────────────────────────────────────────────
   {
@@ -219,7 +231,7 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: (match) => `project:${match[1]}`,
     keyScope: () => 'project',
-    intent: KNOWLEDGE_INTENT,
+    intent: PROJECT_INTENT,
     parentOf: toProjects,
     pattern: /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
     root: PROJECTS_ROOT,
@@ -281,201 +293,7 @@ export const SURFACES: Surface[] = [
   },
 
   // ── Admin ────────────────────────────────────────────────────────────────
-  {
-    contextualList: true,
-    depth: 0,
-    pattern: /^\/settings$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'root',
-  },
-  {
-    depth: 2,
-    identityOf: (match) => `status:${match[1]}`,
-    keyScope: () => 'status',
-    parentOf: toStatuses,
-    pattern: /^\/settings\/statuses\/([^/]+)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    splitInline: true,
-    type: 'nested',
-  },
-  {
-    // Every settings page: profile, security, secrets, organization,
-    // statuses, notifications, connections, integrations, appearance,
-    // members, push. They share one screen identity, so page A → page B
-    // swaps in place exactly as it does today.
-    depth: 1,
-    intent: { state: ['tab'] },
-    parentOf: toAdmin,
-    pattern: /^\/settings\/([^/]+)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    // The team roster, /settings/team/members — a direct sibling doorway of
-    // /settings/members (the organisation roster), not a tab nested inside
-    // /settings/team. Same screen identity/depth as every other settings
-    // page above, just two path segments instead of one.
-    depth: 1,
-    intent: { state: ['tab'] },
-    parentOf: toAdmin,
-    pattern: /^\/settings\/team\/members$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    depth: 1,
-    intent: { state: ['scope'] },
-    parentOf: toAdmin,
-    pattern: /^\/agents$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    depth: 2,
-    flowPresentation: 'screen',
-    identityOf: (match) => `designer:${match[1] ?? 'new'}`,
-    keyScope: () => 'agent-designer',
-    intent: { state: ['parentId'] },
-    parentOf: toAgents,
-    pattern: /^\/agents\/designer(?:\/([^/]+))?$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'flow',
-  },
-  {
-    depth: 2,
-    flowPresentation: 'screen',
-    identityOf: (match) => `workflow-designer:${match[1] ?? 'new'}`,
-    keyScope: () => 'workflow-designer',
-    parentOf: toWorkflows,
-    pattern: /^\/agents\/workflow-designer(?:\/([^/]+))?$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'flow',
-  },
-  {
-    // The automation browsers. Their column stages are state, not routes;
-    // they become nested stages in step 6.
-    depth: 1,
-    intent: {
-      // Executors: a project's "add executor" doorway opens the create flow
-      // scoped to it; a Personal Assistant review link hands over its
-      // confirmation token in the fragment so it never survives in history.
-      // Triggers: a "scheduled" link selects one row. The rest is what each
-      // browser shows.
-      consume: ['create', 'scopeProjectId'],
-      hash: ['confirmationToken', 'trigger'],
-      state: [
-        'executorId', 'accessChange', 'promotion', 'tab',
-        'status', 'search', 'source', 'instance', 'deepWaterInstance',
-      ],
-    },
-    parentOf: toAdmin,
-    pattern: /^\/agents\/(?:workflows|triggers|tools|executors)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    // The agent's mailbox. Depth 3 under the agent: Back lands on the agent
-    // whose correspondence this is, and the open conversation rides in the
-    // query so a link into one message survives a reload.
-    depth: 3,
-    identityOf: (match) => `agent-mailbox:${match[1]}`,
-    intent: { state: ['conversation', 'mailboxFilter'] },
-    keyScope: () => 'agent-mailbox',
-    parentOf: (match) => ({
-      label: 'Back to agent',
-      pathname: `/agents/${match[1]}`,
-    }),
-    pattern: /^\/agents\/([^/]+)\/mailbox$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'nested',
-  },
-  {
-    // Dynamic agent id last, mirroring the router's own ranking. A sub-agent
-    // drill-in is the same screen identity, so it swaps in place; Back
-    // returns to the Agents list.
-    depth: 2,
-    identityOf: (match) => `agent:${match[1]}`,
-    keyScope: () => 'agent',
-    intent: { state: ['agentTab'] },
-    parentOf: toAgents,
-    pattern: /^\/agents\/([^/]+)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    depth: 1,
-    intent: { state: ['filter'] },
-    parentOf: toAdmin,
-    pattern: /^\/apps$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    depth: 2,
-    identityOf: (match) => `app:${match[1]}`,
-    keyScope: () => 'app',
-    intent: { consume: ['connect'], state: ['tab'] },
-    parentOf: toApps,
-    pattern: /^\/apps\/([^/]+)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'nested',
-  },
-  {
-    // Governance and billing pages sit beside the settings pages, one step in
-    // from the Admin root.
-    depth: 1,
-    intent: { consume: ['uoa_billing'] },
-    parentOf: toAdmin,
-    pattern: /^\/(?:audit|approvals|tokens|policy)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    // Reached from the bell, the account menu and push notifications, from
-    // any section — so Back returns to where the reader actually was, and
-    // falls back to Admin (where both are listed) on a cold deep link.
-    depth: 1,
-    parent: 'origin',
-    parentOf: toAdmin,
-    pattern: /^\/(?:alerts|feedback)$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    depth: 1,
-    parentOf: toAdmin,
-    pattern: /^\/ops$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'detail',
-  },
-  {
-    // Owner-only, listed on the Admin sidebar; `/ops` is super-admin-only
-    // and does not link here. Back pops to wherever the reader came from
-    // (Admin, or `/ops` for a super-admin) and falls back to Admin on a cold
-    // link — never to a page the owner cannot open.
-    depth: 2,
-    parent: 'origin',
-    parentOf: toAdmin,
-    pattern: /^\/ops\/usage$/,
-    root: ADMIN_ROOT,
-    section: 'admin',
-    type: 'nested',
-  },
+  ...createAdminSurfaces(ADMIN_ROOT),
 
   // ── Search ───────────────────────────────────────────────────────────────
   {

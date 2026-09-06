@@ -12,7 +12,7 @@ Nessie pairs one active Nessie project to one BuildMe board source:
 
 ```text
 Nessie project id
-BuildMe team/team id
+BuildMe workspace/team id
 BuildMe board id
 sync mode: read_only
 column mapping: BuildMe column id -> Nessie column id

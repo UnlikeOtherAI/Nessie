@@ -4,6 +4,7 @@ import {
   CommsConnectionStartResponseSchema,
   CommsConnectionStartRequestSchema,
   CommsProviderSchema,
+  CommsProvidersResponseSchema,
   DEFAULT_GOOGLE_CAPABILITIES,
   scopesForCapabilities,
   type CommsProvider,
@@ -26,6 +27,7 @@ import {
   generateOAuthStateToken,
   generatePkcePair,
   getCommsOAuthConfig,
+  isCommsProviderConnectable,
 } from './oauth-config.js'
 import { persistConnectedAccount } from './persist.js'
 
@@ -110,6 +112,24 @@ export const registerCommsOAuthRoutes = (
     return reply
   }
 
+  // ── GET /api/comms/providers ──────────────────────────────────────────────
+  // What this deployment can actually finish. A surface that offers provider
+  // buttons asks here first: `/start` can only refuse an unconfigured provider
+  // after the click, and a refusal at that point is indistinguishable from a
+  // fault to the person who clicked.
+  app.get('/api/comms/providers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    return createApiResponse(
+      CommsProvidersResponseSchema.parse({
+        providers: CommsProviderSchema.options.map((provider) => ({
+          provider,
+          available: isCommsProviderConnectable(provider),
+        })),
+      }),
+    )
+  })
+
   // ── POST /api/comms/connections/:provider/start ───────────────────────────
   app.post('/api/comms/connections/:provider/start', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -132,13 +152,18 @@ export const registerCommsOAuthRoutes = (
       return reply
     }
 
+    // Deployment configuration, not a fault: 503 so the browser can say what
+    // is actually wrong instead of offering a retry that cannot succeed. The
+    // whole registration is checked here rather than the client id alone,
+    // because a half-configured provider would otherwise reach the provider's
+    // consent screen and only fail on the way back.
     const clientId = process.env[oauthConfig.clientIdEnv]
-    if (!clientId) {
+    if (!clientId || !isCommsProviderConnectable(provider)) {
       sendApiError(
         reply,
-        500,
+        503,
         'PROVIDER_NOT_CONFIGURED',
-        `${provider} OAuth client is not configured on this server`,
+        `${provider} sign-in is not set up on this server`,
       )
       return reply
     }

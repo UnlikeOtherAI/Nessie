@@ -4,7 +4,12 @@ import { CSS } from '@dnd-kit/utilities'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../facades/tasks/hooks'
+import { useMemo } from 'react'
 import { Pill } from '../primitives/Pill'
+import { ExternalKeyPill } from './ExternalKeyPill'
+import { TaskFieldChips } from './TaskFieldChips'
+import { useTaskFields } from '../../facades/task-fields/hooks'
+import { useTaskAssignees } from '../../facades/tasks/hooks'
 import { statusLabel } from './kanban-config'
 import { PRIORITY_LABEL, PRIORITY_SIGNAL, formatDueDate, isOverdue } from './task-meta'
 
@@ -34,10 +39,22 @@ const KanbanCardContent = ({
   archived,
 }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'> & { archived?: boolean }) => {
   const excerpt = buildCardExcerpt(task.detail ?? (task.title ? task.purpose : null))
+  const { data: fieldDefinitions = [] } = useTaskFields(task.projectId ?? undefined)
+  const { data: assignees = [] } = useTaskAssignees()
+  const peopleById = useMemo(
+    () => Object.fromEntries(assignees.map((person) => [person.id, person.displayName])),
+    [assignees],
+  )
 
   return (
     <>
-      {showProject && projectName ? (
+      {task.externalLink ? (
+        <ExternalKeyPill
+          externalKey={task.externalLink.externalKey}
+          externalUrl={task.externalLink.externalUrl}
+          provider={task.externalLink.provider}
+        />
+      ) : showProject && projectName ? (
         <Pill className="justify-self-start" size="sm">
           {projectName}
         </Pill>
@@ -52,6 +69,12 @@ const KanbanCardContent = ({
         </div>
       ) : null}
 
+      <TaskFieldChips
+        definitions={fieldDefinitions}
+        people={peopleById}
+        values={task.fieldValues ?? {}}
+      />
+
       <div className="flex items-center gap-1.5">
         <FontAwesomeIcon
           className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
@@ -63,7 +86,9 @@ const KanbanCardContent = ({
           size="sm"
           uppercase={false}
         >
-          {task.assigneeName ?? 'Unassigned'}
+          {task.assigneeName ??
+            task.externalLink?.remoteAssigneeDisplay ??
+            'Unassigned'}
         </Pill>
         {task.dueDate || archived ? (
           <span className="ml-auto flex items-center gap-1.5">

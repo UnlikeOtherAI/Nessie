@@ -8,6 +8,11 @@ import {
 } from 'react'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { useLocation } from 'react-router-dom'
+import { usePhoneNavigation } from '../../../layouts/admin-shell/PhoneNavigationProvider'
+import { useLocalBackSnapshot } from '../../../layouts/admin-shell/local-back/LocalBackContext'
+import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
+import { useScreenBarLayer } from '../../../navigation/ScreenBarLayer'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
 import { useColumnBackContext } from '../../../layouts/admin-shell/local-back/LocalBackContext'
 
@@ -131,6 +136,10 @@ type ColumnBrowserColumnProps = {
   children: ReactNode
   headerAction?: ReactNode
   leading?: ReactNode
+  // This column is the page's own header — it carries the phone doorway and
+  // the page renders no ScreenHeader. Without it the native bar would have
+  // nothing to publish for that route (see the publishing note below).
+  ownsScreen?: boolean
   onBack?: () => void
   /**
    * Renders a drag/keyboard-resizable handle on the column's trailing edge.
@@ -157,6 +166,7 @@ export const ColumnBrowserColumn = ({
   children,
   headerAction,
   leading,
+  ownsScreen = false,
   onBack,
   resize,
   showBack,
@@ -184,8 +194,38 @@ export const ColumnBrowserColumn = ({
     return () => reportBack(index, null)
   }, [backLabel, hasBack, index, reportBack, runBack])
 
+  // Which columns publish the native bar.
+  //
+  // A pushed column is a stage and always does, taking the stage's own Back.
+  // Column 0 is the page itself, in the route layer, so it normally must not:
+  // it would win by mount order over that page's own ScreenHeader and put a
+  // column title in the page's bar. The exception is a page whose column 0 *is*
+  // its only header — the four column-browser section pages carry the phone
+  // doorway in `leading` and render no ScreenHeader at all — where nothing
+  // else would publish and the bar would come up blank. Those say `ownsScreen`,
+  // and take the route Back the doorway itself renders.
+  //
+  // `headerAction` and `leading` are ReactNodes rather than declared actions,
+  // so they have no native lane and stay with the column.
+  const { back: stageBack, isStage } = useScreenBarLayer()
+  const navigation = usePhoneNavigation()
+  useLocalBackSnapshot()
+  const location = useLocation()
+  const routeBack = navigation?.resolveBackAction(location.pathname) ?? null
+  const publishes = isStage || ownsScreen
+  const { hidden } = useNativeBarHeader({
+    actions: [],
+    back: isStage
+      ? stageBack
+      : routeBack
+        ? { label: routeBack.label, onBack: () => navigation?.performBack() }
+        : null,
+    title,
+  }, publishes)
+
   return (
     <div className="relative flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
+      {hidden ? null : (
       <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
         {leading}
         {showBack && onBack
@@ -198,6 +238,12 @@ export const ColumnBrowserColumn = ({
         </h3>
         {headerAction}
       </div>
+      )}
+      {hidden && headerAction ? (
+        <div className="flex flex-shrink-0 items-center justify-end gap-2 px-[var(--page-gutter)] pt-2">
+          {headerAction}
+        </div>
+      ) : null}
       <div
         className="flex-1 overflow-y-auto px-[var(--page-gutter)] py-3"
         onScroll={scroll.onScroll}

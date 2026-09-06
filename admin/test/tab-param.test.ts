@@ -225,9 +225,18 @@ test('a project section switch replaces and reconciles the view in place', async
   }
 })
 
-test("the project header's section switch is written with replace", () => {
+test('the project section switch is written with replace, and lives in the sidebar', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
   const view = readSource('../src/pages/project/ProjectView.tsx')
-  assert.match(view, /onSelect: \(\) => void navigate\(item\.to, \{ replace: true \}\)/)
+
+  // The sections are the project's sidebar subpages. Switching between them
+  // inside the project already on screen replaces the entry, so Back leaves the
+  // project rather than walking the sections the reader passed through;
+  // arriving from another project is a real push.
+  assert.match(sidebar, /replace=\{isCurrentProject\}/)
+  assert.match(sidebar, /projectSections\(/)
+  // The header no longer carries a second doorway to the same seven routes.
+  assert.doesNotMatch(view, /id: 'project-section'/)
 })
 
 // ─── The source gate ────────────────────────────────────────────────────────
@@ -264,6 +273,10 @@ const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/channels/RunApprovalGate.tsx',
   'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
   'admin/src/pages/settings/MemberInvitationDialog.tsx',
+  // Light/Dark on the organisation theme form: one field of an unsaved draft,
+  // on a page that IS `/settings/organization?tab=appearance`. A `tab` param
+  // here would collide with the one the organisation screen already owns.
+  'admin/src/pages/settings/organization/OrganizationAppearancePage.tsx',
 ]
 
 test('no tab strip keeps its selection in component state', () => {
@@ -324,6 +337,8 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/components/features/executors/ExecutorDetailPanels.tsx', 'tab'],
     ['../src/components/features/integrations/DeepWaterResearchPanel.tsx', 'research'],
     ['../src/components/features/knowledge/KnowledgeWorkspace.tsx', 'view'],
+    ['../src/pages/project/ProjectView.tsx', 'board'],
+    ['../src/pages/project/ProjectSettingsPage.tsx', 'section'],
   ]
 
   for (const [file, param] of hosts) {

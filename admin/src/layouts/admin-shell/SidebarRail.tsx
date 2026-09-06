@@ -61,7 +61,7 @@ export const SidebarRail = ({
     <aside
       className={[
         'flex h-full w-[65px] flex-col items-center overflow-x-hidden overflow-y-auto',
-        'bg-[color:var(--rail)] px-2 py-2',
+        'bg-[color:var(--rail)] px-2 pt-2 pb-8',
       ].join(' ')}
     >
       <TeamSwitcher />

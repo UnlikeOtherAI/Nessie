@@ -68,7 +68,6 @@ export const OpsHealthPage = () => {
       id: 'refresh',
       label: 'Refresh',
       onSelect: () => refresh.mutate(),
-      primary: true,
       priority: 100,
     },
   ]

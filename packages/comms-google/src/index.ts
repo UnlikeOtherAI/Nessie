@@ -46,13 +46,17 @@ export {
 } from './gmail/mime-build.js'
 export {
   createGmailDraft,
+  createPreparedGmailDraft,
+  prepareGmailDraft,
   updateGmailDraft,
+  updatePreparedGmailDraft,
   getGmailDraft,
   deleteGmailDraft,
   sendGmailDraft,
   sendGmailMessage,
   type GmailDraftRef,
   type GmailDraftContent,
+  type PreparedGmailDraft,
 } from './gmail/drafts.js'
 export {
   searchGmailThreads,
@@ -61,6 +65,12 @@ export {
   type GmailThreadSummary,
   type GmailMessageDetail,
 } from './gmail/read.js'
+export {
+  listGmailMailThreads,
+  readGmailMailThread,
+  type GmailMailConversation,
+  type GmailMailThreadPage,
+} from './gmail/mail-surface.js'
 
 export {
   listCalendars,

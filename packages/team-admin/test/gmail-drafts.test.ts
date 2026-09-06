@@ -1,171 +1,37 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { PrismaClient } from '@prisma/client'
-import { sealSecret } from '@nessie/comms-connect'
-
 import {
   GmailDraftError,
-  STALE_CLAIM_WINDOW_MS,
+  discardDraftForUser,
   dispatchClaimedDraft,
   fingerprintDraft,
   sendDraftForUser,
   undoHeldSend,
+  updateDraftForUser,
 } from '../src/gmail-drafts.js'
 
-const ORG = '00000000-0000-4000-8000-000000000001'
-const USER = '00000000-0000-4000-8000-000000000002'
-const CONN = '00000000-0000-4000-8000-000000000003'
-const ACTION = '00000000-0000-4000-8000-000000000004'
-const SCOPE = 'https://www.googleapis.com/auth/gmail.compose'
-const ENCRYPTION_SECRET = 'gmail-draft-test-secret'
-
-/** The draft as Gmail would return it. */
-const liveDraft = (overrides: Record<string, unknown> = {}) => ({
-  id: 'draft-1',
-  message: {
-    id: 'msg-1',
-    threadId: 'thread-1',
-    payload: {
-      headers: [
-        { name: 'To', value: 'jana@example.com' },
-        { name: 'Subject', value: 'Quarterly update' },
-      ],
-      mimeType: 'text/plain',
-      body: { data: Buffer.from('Here it is.', 'utf8').toString('base64url') },
-    },
-  },
-  ...overrides,
-})
-
-type Row = {
-  id: string
-  organizationId: string
-  ownerUserId: string
-  connectionId: string
-  providerDraftId: string
-  providerThreadId: string | null
-  contentFingerprint: string
-  revision: number
-  state: string
-  sendAfter: Date | null
-  claimedAt: Date | null
-}
-
-const baseFingerprint = fingerprintDraft({
-  to: ['jana@example.com'],
-  subject: 'Quarterly update',
-  body: 'Here it is.',
-  attachmentIds: [],
-})
-
-const makePrisma = (row: Row) => {
-  const state = { row }
-  const prisma = {
-    gmailDraftAction: {
-      findFirst: async () => state.row,
-      findUnique: async () => state.row,
-      findUniqueOrThrow: async () => state.row,
-      updateMany: async (input: {
-        where: {
-          state?: string
-          OR?: Array<{
-            state: string
-            claimedAt?: { lt: Date }
-          }>
-        }
-        data: Record<string, unknown>
-      }) => {
-        const matches = input.where.OR
-          ? input.where.OR.some((condition) => {
-              if (condition.state !== state.row.state) return false
-              if (!condition.claimedAt) return true
-              return state.row.claimedAt !== null
-                && state.row.claimedAt < condition.claimedAt.lt
-            })
-          : !input.where.state || input.where.state === state.row.state
-        if (!matches) return { count: 0 }
-        state.row = { ...state.row, ...input.data } as Row
-        return { count: 1 }
-      },
-      update: async (input: { data: Record<string, unknown> }) => {
-        state.row = { ...state.row, ...input.data } as Row
-        return state.row
-      },
-    },
-    commsConnection: {
-      findMany: async () => [{
-        id: CONN,
-        status: 'active',
-        grantedScopes: [SCOPE],
-        disabledCapabilities: [],
-      }],
-      findUnique: async () => ({
-        id: CONN,
-        organizationId: ORG,
-        ownerUserId: USER,
-        provider: 'google',
-        externalTenantId: 'me@example.com',
-        externalUserId: 'me@example.com',
-        grantedScopes: [SCOPE],
-        credential: {
-          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'access-token'),
-          refreshTokenCiphertext: null,
-          expiresAt: new Date('2999-01-01T00:00:00.000Z'),
-        },
-      }),
-    },
-  } as unknown as PrismaClient
-  return { prisma, state }
-}
-
-const row = (overrides: Partial<Row> = {}): Row => ({
-  id: ACTION,
-  organizationId: ORG,
-  ownerUserId: USER,
-  connectionId: CONN,
-  providerDraftId: 'draft-1',
-  providerThreadId: null,
-  contentFingerprint: baseFingerprint,
-  revision: 1,
-  state: 'draft',
-  sendAfter: null,
-  claimedAt: null,
-  ...overrides,
-})
-
-/** These tests are about ordering and the fingerprint guard, so the credential
- * is a genuinely sealed token and the fetch layer ignores the bearer. */
-const deps = (
-  handler: (url: string, method: string) => { status: number; body: unknown },
-) => ({
-  encryptionSecret: ENCRYPTION_SECRET,
-  fetchImpl: (async (url: string, init?: { method?: string }) => {
-    const { status, body } = handler(url, init?.method ?? 'GET')
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      json: async () => body,
-      text: async () => JSON.stringify(body),
-    }
-  }) as never,
-  now: () => new Date('2026-09-02T10:00:00.000Z'),
-})
-
-const routes = (draft: unknown, onSend?: () => void) =>
-  (url: string, method: string) => {
-    if (url.includes('/drafts/send')) {
-      onSend?.()
-      return { status: 200, body: { id: 'sent-1', threadId: 'thread-1' } }
-    }
-    if (url.includes('/drafts/')) return { status: 200, body: draft }
-    throw new Error(`unexpected ${method} ${url}`)
-  }
+import {
+  ACTION,
+  ENCRYPTION_SECRET,
+  ORG,
+  USER,
+  claimedRow,
+  deps,
+  liveDraft,
+  makePrisma,
+  row,
+  routes,
+} from './gmail-draft-test-support.js'
 
 // The load-bearing guard: an approval or a rendered card binds to CONTENT, and
 // the draft is mutable through Gmail, the card's Edit button, and other runs.
-test('refuses to send when the live draft no longer matches what was approved', async () => {
-  const { prisma } = makePrisma(row())
+test('a resumed frozen approval refuses an externally edited Gmail draft before provider send', async () => {
+  const frozenFingerprint = fingerprintDraft({
+    attachmentIds: [], body: 'Here it is.', subject: 'Quarterly update', threadId: 'thread-1',
+    to: ['jana@example.com'],
+  })
+  const { prisma } = makePrisma(row({ contentFingerprint: frozenFingerprint }))
   let sendCalls = 0
   const tampered = liveDraft({
     message: {
@@ -184,7 +50,10 @@ test('refuses to send when the live draft no longer matches what was approved', 
   await assert.rejects(
     sendDraftForUser(
       prisma,
-      { organizationId: ORG, userId: USER, draftActionId: ACTION },
+      {
+        organizationId: ORG, userId: USER, draftActionId: ACTION,
+        expectedFingerprint: frozenFingerprint,
+      },
       deps(routes(tampered, () => { sendCalls += 1 })),
     ),
     (error: unknown) =>
@@ -211,17 +80,65 @@ test('a refused send leaves the draft sendable, not stuck in sending', async () 
   assert.equal(state.row.state, 'draft')
 })
 
-test('sends when the fingerprint matches', async () => {
-  const { prisma, state } = makePrisma(row())
+test('a resumed frozen approval sends once when the provider draft is unchanged', async () => {
+  const frozenFingerprint = fingerprintDraft({
+    attachmentIds: [], body: 'Here it is.', subject: 'Quarterly update', threadId: 'thread-1',
+    to: ['jana@example.com'],
+  })
+  const { prisma, state } = makePrisma(row({ contentFingerprint: frozenFingerprint }))
   let sendCalls = 0
   const result = await sendDraftForUser(
     prisma,
-    { organizationId: ORG, userId: USER, draftActionId: ACTION },
+    {
+      organizationId: ORG, userId: USER, draftActionId: ACTION,
+      expectedFingerprint: frozenFingerprint,
+    },
     deps(routes(liveDraft(), () => { sendCalls += 1 })),
   )
   assert.equal(result.status, 'sent')
   assert.equal(sendCalls, 1)
   assert.equal(state.row.state, 'sent')
+})
+
+test('normalizes bare reply Message-IDs against Gmail bracketed readback', async () => {
+  const { prisma, state } = makePrisma(row({
+    contentFingerprint: fingerprintDraft({
+      to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.',
+      inReplyTo: 'parent@example.com', references: ['root@example.com', 'parent@example.com'],
+      threadId: 'thread-1', attachmentIds: [],
+    }),
+  }))
+  const provider = liveDraft({
+    message: {
+      id: 'msg-1', threadId: 'thread-1', payload: {
+        headers: [
+          { name: 'To', value: 'jana@example.com' }, { name: 'Subject', value: 'Quarterly update' },
+          { name: 'In-Reply-To', value: '<parent@example.com>' },
+          { name: 'References', value: '<root@example.com> <parent@example.com>' },
+        ], mimeType: 'text/plain', body: { data: Buffer.from('Here it is.').toString('base64url') },
+      },
+    },
+  })
+  const result = await sendDraftForUser(
+    prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, deps(routes(provider)),
+  )
+  assert.equal(result.status, 'sent')
+  assert.equal(state.row.state, 'sent')
+})
+
+test('immediate send remains in validation until it claims dispatch', async () => {
+  const { prisma, state } = makePrisma(row())
+  let validating: { claimedAt: Date | null; sendAfter: Date | null; state: string } | null = null
+  await sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, {
+    ...deps(routes(liveDraft())),
+    fetchImpl: (async (url: string, init?: { method?: string }) => {
+      if (!validating && url.includes('/drafts/') && (init?.method ?? 'GET') === 'GET') validating = { ...state.row }
+      return deps(routes(liveDraft())).fetchImpl(url, init)
+    }) as never,
+  })
+  assert.equal(validating?.state, 'sending')
+  assert.equal(validating?.sendAfter, null)
+  assert.deepEqual(validating?.claimedAt, new Date('2026-09-02T10:00:00.000Z'))
 })
 
 test('a second send finds the draft already claimed', async () => {
@@ -295,6 +212,33 @@ test('undo after the send already went out is refused', async () => {
   )
 })
 
+test('discard refuses a held or actively dispatching draft', async () => {
+  for (const state of ['sending', 'dispatching']) {
+    const seeded = makePrisma(row({ state }))
+    await assert.rejects(
+      discardDraftForUser(seeded.prisma, {
+        organizationId: ORG, userId: USER, draftActionId: ACTION,
+      }, deps(routes(liveDraft()))),
+      (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+    )
+    assert.equal(seeded.state.row.state, state)
+  }
+})
+
+test('discard claims the durable draft before deleting it at Gmail', async () => {
+  const seeded = makePrisma(row())
+  let providerState: string | null = null
+  const result = await discardDraftForUser(seeded.prisma, {
+    organizationId: ORG, userId: USER, draftActionId: ACTION,
+  }, deps((_url, method) => {
+    assert.equal(method, 'DELETE')
+    providerState = seeded.state.row.state
+    return { status: 200, body: {} }
+  }))
+  assert.equal(providerState, 'discarded')
+  assert.equal(result.state, 'discarded')
+})
+
 test('a draft belonging to somebody else is not found', async () => {
   const prisma = {
     gmailDraftAction: { findFirst: async () => null },
@@ -315,13 +259,6 @@ test('a draft belonging to somebody else is not found', async () => {
 // These tests simulate two worker replicas racing one row through the same
 // fake, which honours the conditional update's where clause exactly.
 
-const claimedRow = (overrides: Partial<Row> = {}) =>
-  row({
-    state: 'sending',
-    sendAfter: new Date('2026-09-02T09:59:59.000Z'),
-    ...overrides,
-  })
-
 test('two concurrent dispatches on one row produce exactly ONE Gmail send', async () => {
   const { prisma, state } = makePrisma(claimedRow())
   let sendCalls = 0
@@ -333,7 +270,7 @@ test('two concurrent dispatches on one row produce exactly ONE Gmail send', asyn
   const gatedDeps = {
     ...fake,
     fetchImpl: (async (url: string, init?: { method?: string }) => {
-      if (url.includes('/drafts/send')) await sendGate
+      if (url.includes('/messages/send')) await sendGate
       return fake.fetchImpl(url, init)
     }) as never,
   }
@@ -356,6 +293,73 @@ test('two concurrent dispatches on one row produce exactly ONE Gmail send', asyn
   assert.equal(state.row.state, 'sent')
 })
 
+test('dispatch sends captured reply bytes and thread when Gmail mutates after validation', async () => {
+  const { prisma } = makePrisma(claimedRow({
+    contentFingerprint: fingerprintDraft({
+      to: ['jana@example.com'], subject: 'Quarterly update', body: 'Here it is.',
+      inReplyTo: '<parent@example.com>', references: ['<root@example.com>', '<parent@example.com>'],
+      threadId: 'thread-1', attachmentIds: [],
+    }),
+  }))
+  const verified = liveDraft({
+    message: {
+      id: 'msg-1', threadId: 'thread-1', payload: {
+        headers: [
+          { name: 'To', value: 'jana@example.com' },
+          { name: 'Subject', value: 'Quarterly update' },
+          { name: 'In-Reply-To', value: '<parent@example.com>' },
+          { name: 'References', value: '<root@example.com> <parent@example.com>' },
+        ],
+        mimeType: 'text/plain', body: { data: Buffer.from('Here it is.', 'utf8').toString('base64url') },
+      },
+    },
+  })
+  let providerDraft = verified
+  let sentRaw = ''
+  let sentThreadId = ''
+  await dispatchClaimedDraft(prisma, ACTION, {
+    encryptionSecret: ENCRYPTION_SECRET,
+    fetchImpl: (async (url: string, init?: { body?: string; method?: string }) => {
+      if (url.includes('/drafts/') && (init?.method ?? 'GET') === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => providerDraft,
+          text: async () => JSON.stringify(providerDraft),
+        }
+      }
+      if (url.includes('/messages/send')) {
+        providerDraft = liveDraft({
+          message: {
+            id: 'mutated', threadId: 'thread-1',
+            payload: {
+              headers: [{ name: 'To', value: 'attacker@evil.test' }, { name: 'Subject', value: 'Changed' }],
+              mimeType: 'text/plain', body: { data: Buffer.from('Changed', 'utf8').toString('base64url') },
+            },
+          },
+        })
+        const request = JSON.parse(init.body ?? '{}') as { raw?: unknown; threadId?: unknown }
+        sentRaw = String(request.raw ?? '')
+        sentThreadId = String(request.threadId ?? '')
+        return { ok: true, status: 200, json: async () => ({ id: 'sent-1' }), text: async () => '{"id":"sent-1"}' }
+      }
+      if (init?.method === 'DELETE') {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '{}' }
+      }
+      throw new Error(`unexpected ${init?.method ?? 'GET'} ${url}`)
+    }) as never,
+    now: () => new Date('2026-09-02T10:00:00.000Z'),
+  })
+  const sent = Buffer.from(sentRaw, 'base64url').toString('utf8')
+  assert.match(sent, /To: jana@example\.com/)
+  assert.match(sent, /Subject: Quarterly update/)
+  assert.match(sent, /In-Reply-To: <parent@example\.com>/)
+  assert.match(sent, /References: <root@example\.com> <parent@example\.com>/)
+  assert.match(sent, /SGVyZSBpdCBpcy4=/)
+  assert.doesNotMatch(sent, /attacker@evil\.test|Changed/)
+  assert.equal(sentThreadId, 'thread-1')
+})
+
 test('the loser no-ops and leaves the row in the winner\'s state', async () => {
   const { prisma, state } = makePrisma(claimedRow())
   let sendCalls = 0
@@ -375,34 +379,90 @@ test('the loser no-ops and leaves the row in the winner\'s state', async () => {
   assert.equal(sendCalls, 1)
 })
 
-test('a send failure returns the claimed row to draft, sendable again', async () => {
+test('an update cannot overwrite a send claim after Gmail content was checked', async () => {
+  const { prisma, state } = makePrisma(row())
+  let releaseUpdate!: () => void
+  const updateGate = new Promise<void>((resolve) => { releaseUpdate = resolve })
+  const gatedDeps = {
+    ...deps(routes(liveDraft())),
+    fetchImpl: (async (url: string, init?: { method?: string }) => {
+      if (init?.method === 'PUT' && url.includes('/drafts/')) await updateGate
+      return deps(routes(liveDraft())).fetchImpl(url, init)
+    }) as never,
+  }
+  const updating = updateDraftForUser(prisma, {
+    organizationId: ORG,
+    userId: USER,
+    draftActionId: ACTION,
+    message: { to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.' },
+  }, gatedDeps)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(state.row.state, 'update_unknown')
+  await assert.rejects(
+    sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, gatedDeps),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+  )
+  releaseUpdate()
+  await updating
+  assert.equal(state.row.state, 'draft')
+  assert.equal(state.row.contentFingerprint, fingerprintDraft({
+    to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.', threadId: 'thread-1', attachmentIds: [],
+  }))
+})
+
+test('a send claim rejects a concurrent update before it can resurrect the action', async () => {
+  const { prisma, state } = makePrisma(row())
+  let releaseRead!: () => void
+  const readGate = new Promise<void>((resolve) => { releaseRead = resolve })
+  let updateCalls = 0
+  const gatedDeps = {
+    ...deps(routes(liveDraft())),
+    fetchImpl: (async (url: string, init?: { method?: string }) => {
+      if ((init?.method ?? 'GET') === 'GET' && url.includes('/drafts/')) await readGate
+      if (init?.method === 'PUT') updateCalls += 1
+      return deps(routes(liveDraft())).fetchImpl(url, init)
+    }) as never,
+  }
+  const sending = sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, gatedDeps)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(state.row.state, 'sending')
+  await assert.rejects(
+    updateDraftForUser(prisma, {
+      organizationId: ORG,
+      userId: USER,
+      draftActionId: ACTION,
+      message: { to: ['jana@example.com'], subject: 'Edited', body: 'Updated text.' },
+    }, gatedDeps),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
+  )
+  assert.equal(updateCalls, 0)
+  releaseRead()
+  await sending
+  assert.equal(state.row.state, 'sent')
+})
+
+test('an ambiguous Gmail send failure becomes non-retryable delivery_unknown', async () => {
   const { prisma, state } = makePrisma(claimedRow())
   await assert.rejects(
     dispatchClaimedDraft(
       prisma,
       ACTION,
       deps((url) => {
-        if (url.includes('/drafts/send')) {
+        if (url.includes('/messages/send')) {
           return { status: 500, body: { error: { message: 'gmail down' } } }
         }
         return { status: 200, body: liveDraft() }
       }),
     ),
     (error: unknown) =>
-      error instanceof GmailDraftError && error.code === 'PROVIDER_FAILED',
+      error instanceof GmailDraftError && error.code === 'DELIVERY_UNKNOWN',
   )
-  assert.equal(state.row.state, 'draft')
+  assert.equal(state.row.state, 'delivery_unknown')
   assert.equal(state.row.claimedAt, null)
-
-  // And the person can send it again — today's behaviour, preserved.
-  let sendCalls = 0
-  const retry = await sendDraftForUser(
-    prisma,
-    { organizationId: ORG, userId: USER, draftActionId: ACTION },
-    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  await assert.rejects(
+    sendDraftForUser(prisma, { organizationId: ORG, userId: USER, draftActionId: ACTION }, deps(routes(liveDraft()))),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'DELIVERY_UNKNOWN',
   )
-  assert.equal(retry.status, 'sent')
-  assert.equal(sendCalls, 1)
 })
 
 test('a fresh dispatching row cannot be stolen mid-send', async () => {
@@ -425,21 +485,15 @@ test('a fresh dispatching row cannot be stolen mid-send', async () => {
   assert.equal(sendCalls, 0)
 })
 
-test('a stale claim is reclaimed after the window and sends exactly once', async () => {
-  const staleClaim = new Date(
-    new Date('2026-09-02T10:00:00.000Z').getTime() - STALE_CLAIM_WINDOW_MS - 1,
-  )
+test('a stale dispatch is never reclaimed for another Gmail send', async () => {
   const { prisma, state } = makePrisma(
-    claimedRow({ state: 'dispatching', claimedAt: staleClaim }),
+    claimedRow({ state: 'dispatching', claimedAt: new Date('2026-09-02T09:00:00.000Z') }),
   )
   let sendCalls = 0
-  const result = await dispatchClaimedDraft(
-    prisma,
-    ACTION,
-    deps(routes(liveDraft(), () => { sendCalls += 1 })),
+  await assert.rejects(
+    dispatchClaimedDraft(prisma, ACTION, deps(routes(liveDraft(), () => { sendCalls += 1 }))),
+    (error: unknown) => error instanceof GmailDraftError && error.code === 'DRAFT_NOT_SENDABLE',
   )
-  assert.equal(result.status, 'sent')
-  assert.equal(sendCalls, 1)
-  assert.equal(state.row.state, 'sent')
-  assert.equal(state.row.claimedAt, null)
+  assert.equal(sendCalls, 0)
+  assert.equal(state.row.state, 'dispatching')
 })

@@ -47,6 +47,7 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   taskId: alert.taskId ?? null,
   knowledgePageId: alert.knowledgePageId ?? null,
   triggerId: alert.triggerId ?? null,
+  boardSourceId: alert.boardSourceId ?? null,
   callId: alert.callId ?? null,
   metadata: alertMetadata(alert),
   actorUserId: alert.actorUserId,
@@ -74,8 +75,9 @@ export const listUserAlerts = async (
   },
 ): Promise<{
   // The paged-list contract: `data` IS the page of records and `meta` carries
-  // the cursors and the total (AGENTS.md → "big elements are one contract from
-  // the API to the pixel"). The unread count is its own fact and is served by
+  // the cursors and the total (docs/standards/design-system.md → "a big
+  // element is one contract from the API to the pixel"). The unread count is
+  // its own fact and is served by
   // `GET /api/alerts/summary`; returning it inside the page made this endpoint
   // the one list `usePagedList` could not read.
   data: UserAlertRecord[]

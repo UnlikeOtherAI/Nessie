@@ -120,6 +120,8 @@ export const agentCardKeys = {
 export const approvalKeys = {
   all: ['approvals'] as const,
   detail: (approvalId?: string) => ['approvals', approvalId ?? null] as const,
+  mailSendDraft: (toolName: 'gmail_draft_send' | 'mailbox_send', approvalId?: string) =>
+    ['approvals', approvalId ?? null, 'mail-send-draft', toolName] as const,
   pendingCount: ['approvals', 'pending-count'] as const,
 }
 
@@ -130,6 +132,13 @@ export const demonstrationKeys = {
 
 export const auditLogKeys = {
   forAction: (action: string) => ['audit-log', action] as const,
+}
+
+// Automatic team access after sign-in. Scoped by surface, because the
+// organisation and team reads return different subsets of the same shape.
+export const automaticMembershipKeys = {
+  all: ['automatic-membership'] as const,
+  forScope: (scope: 'organization' | 'team') => ['automatic-membership', scope] as const,
 }
 
 export const authKeys = {
@@ -168,6 +177,7 @@ export const channelKeys = {
 export const commsKeys = {
   connections: ['comms', 'connections'] as const,
   connection: (id: string) => ['comms', 'connections', id] as const,
+  providers: ['comms', 'providers'] as const,
 }
 
 // Nested so the family rule holds and `dashboardKeys.all` reaches it — nothing
@@ -210,9 +220,9 @@ export const executorKeys = {
   pairing: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'pairing'] as const,
   workspacePromotion: (promotionId?: string) =>
-    ['executors', 'team-promotion', promotionId ?? 'none'] as const,
+    ['executors', 'workspace-promotion', promotionId ?? 'none'] as const,
   workspaceReviews: (executorId?: string) =>
-    ['executors', executorId ?? 'none', 'team-reviews'] as const,
+    ['executors', executorId ?? 'none', 'workspace-reviews'] as const,
 }
 
 export const favoriteKeys = {
@@ -380,8 +390,8 @@ export const organizationKeys = {
   memberRoster: (resource: 'members' | 'invitations') =>
     [...organizationMembersKey, resource] as const,
   members: organizationMembersKey,
-  memberWorkspaces: (uoaSub?: string) =>
-    [...organizationMembersKey, uoaSub ?? 'none', 'workspaces'] as const,
+  memberTeams: (uoaSub?: string) =>
+    [...organizationMembersKey, uoaSub ?? 'none', 'teams'] as const,
 }
 
 export const personalAssistantKeys = {
@@ -409,11 +419,20 @@ export const projectKeys = {
   all: ['projects'] as const,
   // Nested so the family rule holds. The cost is that create/rename/delete
   // project and add/remove member, which already invalidate `projects`, now
-  // also refetch a mounted board — one cheap `GET /api/projects/:id/board`
-  // column read. The board payload is `{ style, columns }` and carries no
-  // project name, so this is about reachability, not about a rename showing
-  // through.
-  board: (projectId: string) => ['projects', projectId, 'board'] as const,
+  // also refetch a mounted board — one cheap `GET /api/projects/:id/boards`
+  // read. The payload is the boards with their columns and carries no project
+  // name, so this is about reachability, not about a rename showing through.
+  boards: (projectId: string) => ['projects', projectId, 'boards'] as const,
+  // Nested for the same reason as `boards`: a definition change alters what
+  // every card of the project renders.
+  fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
+  // Nested for the same reason: attaching or removing a source changes what
+  // the project's boards show.
+  sources: (projectId: string) => ['projects', projectId, 'sources'] as const,
+  // One attached source, with its mapping. Nested under the project's source
+  // list so attaching or removing one reaches the detail too.
+  source: (projectId: string, sourceId?: string) =>
+    ['projects', projectId, 'sources', sourceId ?? 'none'] as const,
   // Deliberately NOT nested (see the header). Insights is a velocity/burndown
   // report built from one query per completed iteration plus a task-event scan,
   // and nothing that invalidates `projects` — rename, delete, membership, board
@@ -422,6 +441,19 @@ export const projectKeys = {
   // Nested so the project mutations that already refresh `projects` reach the
   // membership list too.
   members: (projectId: string | null) => ['projects', projectId, 'members'] as const,
+}
+
+/**
+ * External board sources. The connection-side keys are their own family
+ * (they are a person's accounts, not a project's), while a project's attached
+ * sources nest under `projectKeys` so a project mutation reaches them.
+ */
+export const boardSourceKeys = {
+  all: ['board-sources'] as const,
+  providers: ['board-sources', 'providers'] as const,
+  connections: ['board-sources', 'connections'] as const,
+  containers: (connectionId?: string) =>
+    ['board-sources', 'connections', connectionId ?? 'none', 'containers'] as const,
 }
 
 export const runKeys = {
@@ -458,6 +490,11 @@ export const taskKeys = {
   // Aggregate and per-project boards share the family root, so one invalidate
   // or optimistic write reaches every board at once.
   forProject: (projectId?: string) => ['tasks', projectId ?? 'all'] as const,
+  // One board's placed task list. Nested under the project's own key so a
+  // move, an archive or a realtime nudge reaches every board of that project
+  // with one invalidate, rather than needing the board ids to hand.
+  forBoard: (projectId?: string, boardId?: string) =>
+    ['tasks', projectId ?? 'all', 'board', boardId ?? 'none'] as const,
 }
 
 export const teamKeys = {
@@ -545,3 +582,28 @@ export const browserCloudKeys = {
   agentBrowser: (agentId?: string) => ['browser-cloud', 'agents', agentId] as const,
   myLogins: ['browser-cloud', 'my-logins'] as const,
 }
+
+export const teamProvisioningKeys = {
+  /**
+   * Availability of an address being typed into a create dialog.
+   *
+   * Scoped by destination as well as by label: `design` may be free in one
+   * organisation and taken in the next, so an organisation-scoped answer must
+   * never be served from another organisation's cache entry.
+   */
+  slugAvailability: (scope: 'organisation' | 'team', orgId: string, slug: string) =>
+    ['slug-available', scope, orgId, slug] as const,
+}
+
+export const tenantHostKeys = {
+  /**
+   * What tenant the browser's current hostname means.
+   *
+   * Keyed by hostname because that is the whole input, and it cannot change
+   * without a navigation — so this is fetched once per host per session.
+   */
+  resolve: (hostname: string) => ['tenant-host', hostname] as const,
+  /** The authenticated half: the ids behind a team hostname. */
+  team: (hostname: string) => ['tenant-host', hostname, 'team'] as const,
+}
+

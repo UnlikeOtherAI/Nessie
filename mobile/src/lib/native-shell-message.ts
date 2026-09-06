@@ -1,3 +1,5 @@
+import type { NativeScreenBarAction } from './native-shell-layout'
+
 /** The `nessie:haptic` bridge message's coarse feedback kinds. */
 export type HapticKind = 'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error'
 
@@ -10,6 +12,13 @@ export type ScreenType = 'root' | 'detail' | 'nested' | 'tabHost' | 'flow'
 /** Messages emitted by the hosted admin across the persistent WebView bridge. */
 export type NativeShellMessage = {
   accent?: string
+  actions?: unknown
+  direction?: string
+  durationMs?: number
+  from?: string
+  to?: string
+  back?: { label?: unknown } | null
+  layerKey?: string | null
   accentStrong?: string
   active?: boolean
   authorizationUrl?: string
@@ -48,6 +57,8 @@ export type NativeShellMessage = {
   voiceCall?: unknown
   muted?: boolean
   teamAvatarUrl?: string
+  /** LEGACY_NATIVE_SHELL: `nessie:workspace`'s spelling of `teamAvatarUrl`. */
+  workspaceAvatarUrl?: string
 }
 
 const SCREEN_SECTIONS: ReadonlySet<string> = new Set<ScreenSection>([
@@ -102,3 +113,78 @@ export const isAttentionMessage = (message: NativeShellMessage): message is Atte
   message.type === 'nessie:attention'
   && typeof message.badges === 'object'
   && message.badges !== null
+
+/**
+ * `nessie:screen-bar` — what the native navigation bar shows for the layer the
+ * reader is standing on.
+ *
+ * Keyed by the admin's stack layer, not by a pathname: a nested stage never
+ * changes the pathname, and a channel and its info route are two screens on
+ * one route. `back` is the Back the screen's own header would run — a Flow
+ * that owns its Back returns somewhere the route registry cannot name — so the
+ * chevron calls back into the page rather than resolving anything here.
+ *
+ * `title` is allowed to be empty: a layer that has not published yet (a cold
+ * start, the frame after a forward push) renders a bare band rather than
+ * falling back to a root's team controls.
+ */
+export type ScreenBarMessage = NativeShellMessage & {
+  actions: NativeScreenBarAction[]
+  back: { label: string } | null
+  layerKey: string | null
+  title: string
+  type: 'nessie:screen-bar'
+}
+
+const SCREEN_BAR_ACTION_KINDS: ReadonlySet<string> = new Set(['button', 'link', 'menu', 'toggle'])
+
+const isScreenBarAction = (value: unknown): value is NativeScreenBarAction => {
+  if (typeof value !== 'object' || value === null) return false
+  const action = value as Record<string, unknown>
+  return typeof action.id === 'string'
+    && typeof action.label === 'string'
+    && typeof action.priority === 'number'
+    && typeof action.kind === 'string' && SCREEN_BAR_ACTION_KINDS.has(action.kind)
+}
+
+export const isScreenBarMessage = (message: NativeShellMessage): message is ScreenBarMessage =>
+  message.type === 'nessie:screen-bar'
+  && typeof message.title === 'string'
+  // Every field is required even when empty. The bridge always sends all
+  // three, so an absent one is a malformed message rather than a bar with
+  // nothing to say — and a bar rendered from a half-message would sit there
+  // until the next navigation.
+  && (message.layerKey === null || typeof message.layerKey === 'string')
+  && (message.back === null || typeof message.back?.label === 'string')
+  // One malformed action refuses the whole bar rather than silently dropping
+  // a control: a header action nobody can reach is the failure Rule zero
+  // names, and a bar that quietly lost one would look complete.
+  && Array.isArray(message.actions)
+  && message.actions.every(isScreenBarAction)
+
+/**
+ * `nessie:screen-transition` — the stack is moving, so the bar moves with it.
+ *
+ * `from` and `to` are layer keys. The bar cannot animate off `nessie:screen-bar`
+ * alone: that says which layer is current, not that it is changing, and on a
+ * forward push it arrives before the incoming layer has mounted. The incoming
+ * descriptor may therefore not have been posted yet — that lane fills late
+ * rather than restarting the animation.
+ */
+export type ScreenTransitionMessage = NativeShellMessage & {
+  direction: 'back' | 'forward'
+  durationMs: number
+  from: string
+  to: string
+  type: 'nessie:screen-transition'
+}
+
+export const isScreenTransitionMessage = (
+  message: NativeShellMessage,
+): message is ScreenTransitionMessage =>
+  message.type === 'nessie:screen-transition'
+  && (message.direction === 'back' || message.direction === 'forward')
+  && typeof message.durationMs === 'number'
+  && Number.isFinite(message.durationMs)
+  && typeof message.from === 'string'
+  && typeof message.to === 'string'

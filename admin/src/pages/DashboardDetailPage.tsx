@@ -12,6 +12,7 @@
  * (docs/navigation/overview.md → "Drafts").
  */
 
+import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -145,8 +146,11 @@ export const DashboardDetailPage = () => {
               priority: 30,
             },
             ...(editing ? [{
+              // The plus is the icon slot's job: a label that draws its own
+              // mark reads as a typo now that the action is a real button.
+              icon: faPlus,
               id: 'dashboard-add-widget',
-              label: '+ Add widget',
+              label: 'Add widget',
               onSelect: () => setShowAddWidget(true),
               priority: 60,
             }] : []),
@@ -171,7 +175,7 @@ export const DashboardDetailPage = () => {
               },
           ]}
           subtitle={dashboard.description ? (
-            <p className="truncate">
+            <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>
               {dashboard.description}
             </p>
           ) : null}
@@ -253,6 +257,7 @@ export const DashboardDetailPage = () => {
         label="Back to dashboard"
         onBack={() => setShowAddWidget(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardPanel}
+        title="Add widget"
       >
         <AddWidgetPanel
           dashboardId={dashboard.id}
@@ -267,6 +272,7 @@ export const DashboardDetailPage = () => {
         label="Back to dashboard"
         onBack={() => setShowVersions(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardVersions}
+        title="Versions"
       >
         <DashboardVersionsPanel
           dashboardId={dashboard.id}

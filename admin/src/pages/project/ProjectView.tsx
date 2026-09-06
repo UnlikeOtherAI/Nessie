@@ -3,10 +3,13 @@ import { ProjectDashboard } from '../../components/features/projects/ProjectDash
 import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
 import { TaskDialog } from '../../components/kanban/TaskDialog'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
-import { useProjectBoard } from '../../facades/board/hooks'
+import { useProjectBoards } from '../../facades/boards/hooks'
+import { BoardSwitcher } from '../../components/kanban/BoardSwitcher'
+import { usePhoneLayout } from '../../lib/mobile-shell'
+import { useTabParam } from '../../navigation/useTabParam'
+import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useState } from 'react'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
@@ -20,82 +23,103 @@ export const ProjectView = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
-  const { data: board } = useProjectBoard(projectId)
-  const { data: attention } = useAttentionSummary()
+  const { data: boards = [] } = useProjectBoards(projectId)
+  // No pinned sidebar on the single column, so the board strip stays there —
+  // see `BoardSwitcher`. Read above the `projectId` guard: it is a hook.
+  const singleColumn = usePhoneLayout()
+
+  // Which board is on screen. A tab, so it rides in `?board=` written with
+  // `replace`; an unknown or absent value reads as the project's default
+  // board, so a stale bookmark degrades to the board the project opens on.
+  // The boards themselves are chosen in the Projects sidebar, under this
+  // project's Board section — the header carries no strip, because the sidebar
+  // already draws every board and two doorways to the same choice only made
+  // the reader guess which one moved them. The single-column layout is the
+  // exception: it has no pinned sidebar, and the board screen's leading
+  // doorway is Back, so there the strip is the only doorway there is.
+  const defaultBoardId = boards.find((item) => item.isDefault)?.id ?? boards[0]?.id ?? ''
+  const boardIds: string[] = boards.map((item) => item.id)
+  const [activeBoardId, selectBoard] = useTabParam('board', boardIds, defaultBoardId)
+  const board = boards.find((item) => item.id === activeBoardId) ?? null
 
   if (!projectId) return null
 
   const project = projects.find((p) => p.id === projectId)
-  const isScrum = board?.style === 'scrum'
+  // Backlog and Insights are project-level, so they appear when *any* board of
+  // this project runs sprints — not only when the one on screen does.
+  const isScrum = boards.some((item) => item.style === 'scrum')
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
-  const tab = location.pathname.endsWith('/settings')
-    ? 'settings'
-    : location.pathname.endsWith('/docs')
-      ? 'docs'
-      : location.pathname.endsWith('/backlog')
-        ? 'backlog'
-    : location.pathname.endsWith('/insights')
-      ? 'insights'
-      : location.pathname.endsWith('/executors')
-        ? 'executors'
-          : location.pathname.endsWith('/board')
-            ? 'board'
-            : 'overview'
+  // A project's sections are chosen in the Projects sidebar, which draws them
+  // as the project's subpages (`navigation/project-sections.ts`). The header
+  // carries no section dropdown: two doorways to the same seven routes only
+  // made the reader guess which one moved them.
+  const tab = projectSectionIdFromPathname(location.pathname)
 
-  const assignedWorkCount = attention?.assignedWork.projects[projectId] ?? 0
-  const knowledgeCount = attention?.knowledge.projects[projectId] ?? 0
-  const withCount = (label: string, count: number): string => count > 0 ? `${label} (${count})` : label
-  const tabs = [
-    { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
-    { id: 'board', label: withCount('Board', assignedWorkCount), to: `/projects/${projectId}/board` },
-    ...(isScrum
-      ? [
-          { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
-          { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
-        ]
-      : []),
-    { id: 'docs', label: withCount('Docs', knowledgeCount), to: `/projects/${projectId}/docs` },
-    { id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
-    { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
-  ]
-  const activeTab = tabs.find((item) => item.id === tab)
   const headerActions: PageHeaderAction[] = [
-    {
-      id: 'project-section',
-      items: tabs.map((item) => ({
-        checked: item.id === tab,
-        id: item.id,
-        label: item.label,
-        // A project section is a tab, and a tab is never a history entry
-        // (docs/navigation/overview.md §1, "Tab hosts"). The seven sections stay real
-        // routes so each is linkable, but the header switches them with
-        // `replace` so Back leaves the project rather than walking the
-        // sections the reader passed through. The registry folds all seven
-        // into one tabHost identity, so ProjectView is reconciled in place —
-        // the switch never remounts the page or animates a layer.
-        onSelect: () => void navigate(item.to, { replace: true }),
-      })),
-      kind: 'menu',
-      label: activeTab?.label ?? 'Section',
-      priority: 80,
-      title: 'Choose project section',
-    },
+    // The doorways to board administration, from the screen a person is
+    // standing on when they want them — not only from Settings.
     ...(tab === 'board'
-      ? [{
-          id: 'new-task',
-          label: 'New task',
-          onSelect: () => setTaskDialogOpen(true),
-          primary: true,
-          priority: 100,
-        } satisfies PageHeaderAction]
+      ? [
+          {
+            id: 'board-admin',
+            items: [
+              {
+                id: 'edit-columns',
+                label: 'Board settings…',
+                onSelect: () =>
+                  void navigate(
+                    `/projects/${projectId}/settings?section=boards${
+                      board ? `&board=${board.id}` : ''
+                    }`,
+                  ),
+              },
+              {
+                id: 'new-board',
+                label: 'New board…',
+                onSelect: () =>
+                  void navigate(
+                    `/projects/${projectId}/settings?section=boards&create=board`,
+                  ),
+              },
+            ],
+            kind: 'menu',
+            // Not "Board": the sidebar already names this board on the row the
+            // reader clicked, so a second "Board" here would name no decision.
+            label: 'Configure',
+            priority: 60,
+            title: 'Configure boards',
+          } satisfies PageHeaderAction,
+          {
+            id: 'new-task',
+            label: 'New task',
+            onSelect: () => setTaskDialogOpen(true),
+            primary: true,
+            priority: 100,
+          } satisfies PageHeaderAction,
+        ]
       : []),
   ]
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ProjectPageHeader actions={headerActions} project={project} />
+      <ProjectPageHeader
+        actions={headerActions}
+        project={project}
+        subtitle={
+          tab === 'board' && boards.length > 1 && !singleColumn ? board?.name : undefined
+        }
+        tabs={
+          tab === 'board' && singleColumn ? (
+            <BoardSwitcher
+              activeBoardId={activeBoardId}
+              boards={boards}
+              onSelect={selectBoard}
+            />
+          ) : undefined
+        }
+      />
 
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (
@@ -111,11 +135,12 @@ export const ProjectView = () => {
         ) : tab === 'overview' ? (
           <ProjectDashboard projectId={projectId} />
         ) : (
-          <ProjectBoardTab projectId={projectId} />
+          <ProjectBoardTab board={board} projectId={projectId} />
         )}
       </div>
       <TaskDialog
-        iterationId={isScrum ? activeIteration?.id : undefined}
+        boardId={board?.id}
+        iterationId={board?.style === 'scrum' ? activeIteration?.id : undefined}
         onClose={() => setTaskDialogOpen(false)}
         open={taskDialogOpen}
         projectId={projectId}

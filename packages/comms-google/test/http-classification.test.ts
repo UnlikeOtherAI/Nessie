@@ -92,3 +92,29 @@ test('no token material or prose reason drives classification', async () => {
   })
   assert.equal(error.retryable, false)
 })
+
+test('bounded provider reads stop the response stream before it can grow unbounded', async () => {
+  let cancelled = false
+  let reads = 0
+  const fetch: FetchLike = async () => ({
+    body: {
+      getReader: () => ({
+        cancel: async () => { cancelled = true },
+        read: async () => {
+          reads += 1
+          return { done: false, value: new Uint8Array(65) }
+        },
+      }),
+    },
+    json: async () => { throw new Error('streaming lane expected') },
+    ok: true,
+    status: 200,
+    text: async () => { throw new Error('streaming lane expected') },
+  })
+  await assert.rejects(
+    requestJson(fetch, 'threads.get', 'https://example/x', { maxResponseBytes: 64 }),
+    /response exceeds 64 bytes/,
+  )
+  assert.equal(reads, 1)
+  assert.equal(cancelled, true)
+})

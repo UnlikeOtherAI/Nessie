@@ -22,21 +22,27 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'ticket_board_read', category: 'projects', label: 'Read Ticket Board', personalAssistantOnly: true,
-    summary: 'List a project board’s columns and their IDs.', safe: true,
-    description: 'Read board columns before ticket_move. Use a returned columnId; do not guess UUIDs.',
+    summary: 'List a project’s boards and their columns.', safe: true,
+    description: 'Read a project’s boards before ticket_create or ticket_move. Each board owns its own tickets and columns; use a returned boardId or columnId, and do not guess UUIDs.',
     parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
   },
   {
     id: 'ticket_create', category: 'projects', label: 'Create Ticket', personalAssistantOnly: true,
     summary: 'Create a ticket in an accessible project.', safe: false,
-    description: 'Create a project ticket. It is owned by the user and can be assigned to one person or agent.',
-    parameters: { type: 'object', properties: { projectId: UUID, title: { type: 'string' }, purpose: { type: 'string' }, detail: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: 'string', description: 'ISO date or timestamp.' }, assigneeUserId: UUID, assigneeAgentId: UUID }, required: ['projectId', 'title'] },
+    description: 'Create a project ticket. It is owned by the user and can be assigned to one person or agent. Give a boardId from ticket_board_read to put it on a particular board; without one it lands on the project’s default board.',
+    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID, title: { type: 'string' }, purpose: { type: 'string' }, detail: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: 'string', description: 'ISO date or timestamp.' }, assigneeUserId: UUID, assigneeAgentId: UUID }, required: ['projectId', 'title'] },
   },
   {
     id: 'ticket_update', category: 'projects', label: 'Update Ticket', personalAssistantOnly: true,
     summary: 'Edit a ticket’s fields.', safe: false,
     description: 'Update one or more ticket fields. Use ticket_read first when you need its current values.',
-    parameters: { type: 'object', properties: { ticketId: UUID, title: { type: 'string' }, purpose: { type: ['string', 'null'] }, detail: { type: ['string', 'null'] }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: ['string', 'null'] }, storyPoints: { type: ['integer', 'null'] } }, required: ['ticketId'] },
+    parameters: { type: 'object', properties: { ticketId: UUID, title: { type: 'string' }, purpose: { type: ['string', 'null'] }, detail: { type: ['string', 'null'] }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: ['string', 'null'] }, storyPoints: { type: ['integer', 'null'] }, fieldValues: { type: 'object', description: 'Custom field values keyed by the field UUID from ticket_fields_read. A value of null clears that field.', additionalProperties: true } }, required: ['ticketId'] },
+  },
+  {
+    id: 'ticket_fields_read', category: 'projects', label: 'Read Ticket Fields', personalAssistantOnly: true,
+    summary: 'List a project’s custom ticket fields and their option IDs.', safe: true,
+    description: 'Read a project’s custom field definitions before setting fieldValues with ticket_update. Select fields answer with the option IDs to use; do not guess them.',
+    parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
   },
   {
     id: 'ticket_assign', category: 'projects', label: 'Assign Ticket', personalAssistantOnly: true,
@@ -47,7 +53,7 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'ticket_move', category: 'projects', label: 'Move Ticket', personalAssistantOnly: true,
     summary: 'Move a ticket to a board column.', safe: false,
-    description: 'Move or reorder a ticket with a columnId from ticket_board_read.',
+    description: 'Move or reorder a ticket with a columnId from ticket_board_read. A columnId on another board moves the ticket to that board.',
     parameters: { type: 'object', properties: { ticketId: UUID, columnId: UUID, position: { type: 'integer', minimum: 0 } }, required: ['ticketId', 'columnId'] },
   },
   {

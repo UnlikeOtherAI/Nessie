@@ -34,6 +34,12 @@ import {
   KNOWLEDGE_EXTRACT_TOPIC,
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
+  AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
+  AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
+  AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
+  AutomaticMembershipProvisionJobPayloadSchema,
+  AutomaticMembershipReconcileJobPayloadSchema,
+  AutomaticMembershipRevalidateJobPayloadSchema,
   BudgetAlertDispatchJobPayloadSchema,
   TriggerHealthAlertJobPayloadSchema,
   WorkflowRunFailureDispatchJobPayloadSchema,
@@ -70,6 +76,14 @@ import {
   refreshDashboardDataSource,
   sweepDueDashboardSources,
 } from './control/dashboard-refresh.js'
+import { executeAutomaticMembershipProvisionJob } from './control/automatic-membership/provision.js'
+import { executeAutomaticMembershipReconcileJob } from './control/automatic-membership/reconcile.js'
+import {
+  executeAutomaticMembershipRevalidateJob,
+  sweepDueDomainRevalidations,
+  sweepStrandedReconciliations,
+  REVALIDATION_SWEEP_INTERVAL_MS,
+} from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
@@ -120,6 +134,31 @@ import {
   AgentEmailSendJobPayloadSchema,
 } from '@nessie/schemas'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
+import { registerBoardSourceAdaptersFromEnv } from '@nessie/board-source-providers'
+import {
+  BOARD_SOURCE_HEALTH_ALERT_TOPIC,
+  BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC,
+  BOARD_SOURCE_SYNC_INITIAL_TOPIC,
+  BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
+  BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
+  BoardSourceSyncJobPayloadSchema,
+  BoardSourceWebhooksRenewJobPayloadSchema,
+  BoardSourceWebhookJobPayloadSchema,
+  BoardSourceHealthAlertJobPayloadSchema,
+  parseOrganizationId,
+} from '@nessie/schemas'
+import {
+  executeBoardSourceSync,
+  sweepDueBoardSources,
+} from './control/board-source-sync.js'
+import { processBoardSourceWebhook } from './control/board-source-webhook.js'
+import { renewBoardSourceWebhooks } from './control/board-source-webhooks-renew.js'
+import { writeHealthAlerts } from './control/board-source-health.js'
+import {
+  enqueueBoardSourceHealthAlert,
+  enqueueBoardSourceSync,
+  enqueueQueueJob,
+} from './queue.js'
 import { listIncrementalPollingConnectors } from '@nessie/comms-connect'
 import {
   enqueueCommsIncrementalSweep,
@@ -487,6 +526,48 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  // Automatic team access after sign-in
+  // (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
+  // The instance flag reaches every handler and the sweep, so switching it off
+  // stops provisioning on rules that already exist — the routes alone cannot,
+  // because they 404 when it is off and take the emergency stop with them.
+  const automaticMembershipEnabled = config.automaticMembership.enabled
+  queueProvider.subscribe(
+    AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
+    async (job) => {
+      const payload = AutomaticMembershipProvisionJobPayloadSchema.parse(job.payload)
+      await executeAutomaticMembershipProvisionJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
+    async (job) => {
+      const payload = AutomaticMembershipReconcileJobPayloadSchema.parse(job.payload)
+      await executeAutomaticMembershipReconcileJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
+    async (job) => {
+      const payload = AutomaticMembershipRevalidateJobPayloadSchema.parse(job.payload)
+      await executeAutomaticMembershipRevalidateJob(
+        { enabled: automaticMembershipEnabled, prisma },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
   // Dashboards: one cache per source, refreshed here and nowhere else, so
   // viewing a dashboard never causes an outbound request.
   const dashboardEgressPolicy = {
@@ -590,6 +671,76 @@ export const startWorker = async (
     `[worker] comms connectors registered: ${
       commsProviders.length > 0 ? commsProviders.join(', ') : 'none'
     }`,
+  )
+
+  // Board sources. Unset providers stay unregistered: their connect option is
+  // never offered and their jobs park with a reason, rather than failing in a
+  // way that reads like an outage.
+  const boardProviders = registerBoardSourceAdaptersFromEnv(process.env)
+  console.log(
+    `[worker] board-source adapters registered: ${
+      boardProviders.length > 0 ? boardProviders.join(', ') : 'none'
+    }`,
+  )
+
+  const boardSourceDeps = {
+    prisma,
+    encryptionSecret: config.auth.secret ?? '',
+    publicApiUrl: config.api.publicUrl ?? null,
+    enqueueHealthAlert: async (payload: { sourceId: string; revision: number }) => {
+      await enqueueBoardSourceHealthAlert(prisma, payload)
+    },
+    publishBoardUpdated: async (input: { organizationId: string; projectId: string }) => {
+      if (!realtimeTransport) return
+      const scope = {
+        kind: 'organization' as const,
+        organizationId: parseOrganizationId(input.organizationId),
+      }
+      await realtimeTransport
+        .publishWs([scope], {
+          event: 'board.updated',
+          data: { projectId: input.projectId },
+        })
+        .catch(() => undefined)
+    },
+  }
+
+  for (const topic of [BOARD_SOURCE_SYNC_INITIAL_TOPIC, BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC]) {
+    queueProvider.subscribe(
+      topic,
+      async (job) => {
+        const payload = BoardSourceSyncJobPayloadSchema.parse(job.payload)
+        await executeBoardSourceSync(boardSourceDeps, payload)
+      },
+      { signal: abortController.signal },
+    )
+  }
+
+  queueProvider.subscribe(
+    BOARD_SOURCE_WEBHOOK_PROCESS_TOPIC,
+    async (job) => {
+      const payload = BoardSourceWebhookJobPayloadSchema.parse(job.payload)
+      await processBoardSourceWebhook(boardSourceDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
+    async (job) => {
+      const payload = BoardSourceWebhooksRenewJobPayloadSchema.parse(job.payload)
+      await renewBoardSourceWebhooks(boardSourceDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    BOARD_SOURCE_HEALTH_ALERT_TOPIC,
+    async (job) => {
+      const payload = BoardSourceHealthAlertJobPayloadSchema.parse(job.payload)
+      await writeHealthAlerts(prisma, payload)
+    },
+    { signal: abortController.signal },
   )
 
   queueProvider.subscribe(
@@ -764,6 +915,50 @@ export const startWorker = async (
       dashboardSweepInFlight = false
     }
   }, 30_000)
+
+  // Board-source sweep. The same claim shape as the dashboard sweep above, for
+  // the same reason: a conditional update on `claimedAt` is what stops two
+  // workers syncing one source at once.
+  let boardSourceSweepInFlight = false
+  const boardSourceSweepInterval = setInterval(async () => {
+    if (boardSourceSweepInFlight || abortController.signal.aborted) return
+    boardSourceSweepInFlight = true
+    try {
+      const claimed = await sweepDueBoardSources(prisma, { limit: 20 })
+      for (const source of claimed) {
+        await enqueueBoardSourceSync(prisma, { sourceId: source.sourceId })
+      }
+      // A webhook due inside three days is renewed now. The idempotency key is
+      // bucketed by day, so ticking every 30 seconds still queues one job.
+      await enqueueQueueJob(prisma, {
+        idempotencyKey: `board-source:webhooks-renew:${new Date().toISOString().slice(0, 10)}`,
+        payload: { withinMs: 3 * 24 * 60 * 60 * 1000 },
+        topic: BOARD_SOURCE_WEBHOOKS_RENEW_TOPIC,
+      })
+    } catch (error) {
+      console.error('[worker.board-source-sweep] failed', error)
+    } finally {
+      boardSourceSweepInFlight = false
+    }
+  }, 30_000)
+
+  // Automatic-membership DNS revalidation. A short tick that asks "is one
+  // due?", not a 24-hour timer: a long interval never fires in a deployment
+  // that redeploys more often than its period, and this is the control that
+  // catches a domain leaving the organisation's hands.
+  let domainRevalidationSweepInFlight = false
+  const domainRevalidationInterval = setInterval(async () => {
+    if (domainRevalidationSweepInFlight || abortController.signal.aborted) return
+    domainRevalidationSweepInFlight = true
+    try {
+      await sweepDueDomainRevalidations(prisma, automaticMembershipEnabled)
+      await sweepStrandedReconciliations(prisma, automaticMembershipEnabled)
+    } catch (error) {
+      console.error('[worker.automatic-membership-revalidation] failed', error)
+    } finally {
+      domainRevalidationSweepInFlight = false
+    }
+  }, REVALIDATION_SWEEP_INTERVAL_MS)
 
   // W6: reclaim stuck workflow steps — an expired lease (actively-worked step
   // whose worker died) or an expired deadline (suspended step waiting on an
@@ -999,6 +1194,8 @@ export const startWorker = async (
     clearInterval(gmailSendSweepInterval)
     clearInterval(activeCallExpiryInterval)
     clearInterval(dashboardSweepInterval)
+    clearInterval(boardSourceSweepInterval)
+    clearInterval(domainRevalidationInterval)
     clearInterval(workflowStepReapInterval)
     clearInterval(cloudBrowserReapInterval)
     clearInterval(deliveryRetryInterval)

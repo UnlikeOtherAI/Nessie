@@ -153,3 +153,28 @@ loading and not-found branches — so a phone standing on one had no Back.
   imports or renders them, and no file under `admin/src/pages/**` paints a
   `<header>` of its own.
 
+### On the iOS phone shell the header is native — **built**
+
+`ScreenHeader` still classifies, still publishes its title, and still renders
+its `h1` — but it paints no bar there, because the shell draws one natively
+above the WebView. The screen's title, its Back and its actions travel over
+`nessie:screen-bar`, keyed per stack layer; the `h1` stays as `sr-only` so §12's
+settle focus and announcement are unchanged; and the subtitle/tabs row stays
+with the page, directly under the bar.
+
+Everything else keeps today's header exactly: mobile Safari at any width, the
+Android app, iPad, the large-phone landscape lane and desktop. The switch is
+`useNativeIOSPhoneApp() && layout === 'single'` and nothing else reads it.
+
+A screen that draws its own header rather than `ScreenHeader` — the
+conversation-info flow, a reply thread, the two full-screen panels, a Knowledge
+pane, the workflow designer, a column-browser column — goes through
+`useNativeBarHeader`, which publishes the bar and says whether to draw the web
+header. Two of those render in a route layer *and* in a stage, so they publish
+only from the stage: publishing from the route layer would win by mount order
+over that page's own `ScreenHeader` and put the wrong title in the bar. A page
+whose column 0 *is* its only header says `ownsScreen` instead, or nothing would
+publish for that route and the bar would come up blank.
+
+The contract, the constant-height invariant behind it, and what the native side
+does with all of this: [the native shell contract](native-shell.md) §10.

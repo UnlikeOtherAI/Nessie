@@ -8,6 +8,19 @@
 #
 # Build context is the repo root (../..). Run from the repo root on the server:
 #   docker compose -f infrastructure/compose/docker-compose.prod.yml up -d --build
+# DO NOT set a top-level `name:` here, however tempting the compose-<service>-<n>
+# container names are. Compose namespaces VOLUMES by project name too, and this
+# project's name is currently the directory name, "compose" — so the live
+# database is the volume `compose_nessie_pgdata`. Renaming the project makes
+# Compose look for `<newname>_nessie_pgdata`, not find it, silently create an
+# empty one, and bring production up with an empty database. The old volume
+# survives, but the site does not. Renaming the project therefore requires a
+# deliberate volume migration, not a one-line edit.
+#
+# The container-name prefix is cosmetic anyway: every service below is
+# nessie-prefixed, so `compose-nessie-api-1` cannot collide with another
+# project's container regardless of what directory it runs from.
+
 services:
   # IMPORTANT: the service name becomes a DNS alias on the shared `db` network.
   # It MUST NOT be `postgres`, or it collides with the shared postgres container
@@ -98,7 +111,7 @@ services:
       timeout: 5s
       retries: 5
 
-  infisical:
+  nessie-infisical:
     image: ${INFISICAL_IMAGE:-infisical/infisical:v0.151.0}
     container_name: nessie-infisical
     profiles: ["secrets"]
@@ -126,13 +139,26 @@ services:
       retries: 5
       start_period: 60s
 
-  # api/admin/web have no fixed container_name: redeploy.sh performs a
+  # nessie-api/-admin/-web have no fixed container_name: redeploy.sh performs a
   # blue-green swap by scaling each service to 2, waiting for the new replica's
   # healthcheck, then retiring the old one — a pinned name would make two
   # replicas impossible. Caddy addresses them by the pinned network aliases
   # below (nessie-api / nessie-admin / nessie-web), which every replica
   # carries, so the edge proxy config never changes across deploys.
-  api:
+  #
+  # EVERY service here is nessie-prefixed, and that is not cosmetic. Compose
+  # always publishes the service name as a network alias and offers no way to
+  # suppress it, so a service called `api` made this project answer to the bare
+  # name `api` on the SHARED edge network — where five other products were
+  # doing the same. Docker round-robins a duplicated alias, so anything
+  # resolving `api` reached a random product. The same was true of `worker` on
+  # the shared db network, which collided with deepcrm-worker.
+  #
+  # The explicit `aliases:` below are therefore redundant with the service name
+  # today. They are kept deliberately: they are the contract with the edge
+  # proxy, and an explicit pin keeps Caddy working if a service is ever renamed
+  # again, where an implicit one would break it silently.
+  nessie-api:
     # `build:` is retained for local/manual builds. In production redeploy.sh
     # sets NESSIE_APP_IMAGE to the CI-built ghcr tag and pulls it instead:
     # compiling on the shared host saturated it and took the live site down.
@@ -162,6 +188,15 @@ services:
       NESSIE_EMBEDDING_PROVIDER: openai-compatible
       NESSIE_EMBEDDING_SERVICE_ID: jina
       NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
+      # Chat default: Meta's muse-spark 1.3. Ledger's native `meta` service
+      # stops at 1.2, so 1.3 is reached through the OpenRouter service, where it
+      # is registered vendor-qualified. The service id names the `/v1/:serviceId`
+      # segment Ledger routes on; the host .env still supplies the provider,
+      # base URL and the Ledger app key. The `-contributor` tier is ~12x cheaper
+      # in and ~21x cheaper out, and its data is training-eligible upstream —
+      # a deliberate choice, not a default to inherit silently.
+      NESSIE_MODEL_SERVICE_ID: openrouter
+      NESSIE_MODEL_NAME: meta/muse-spark-1.3-contributor
       # Agent-avatar "Generate with AI" routes through this Ledger Purpose API
       # (Gemini image primary, OpenAI gpt-image-2 fallback), so the exhausted
       # OpenAI image key no longer 503s avatar generation. See docs/deployment.md.
@@ -210,7 +245,7 @@ services:
       start_period: 90s
       start_interval: 3s
 
-  worker:
+  nessie-worker:
     # Same image as api — see Dockerfile.app.
     image: ${NESSIE_APP_IMAGE:-nessie-app:latest}
     container_name: nessie-worker
@@ -243,6 +278,15 @@ services:
       NESSIE_EMBEDDING_PROVIDER: openai-compatible
       NESSIE_EMBEDDING_SERVICE_ID: jina
       NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
+      # Chat default: Meta's muse-spark 1.3. Ledger's native `meta` service
+      # stops at 1.2, so 1.3 is reached through the OpenRouter service, where it
+      # is registered vendor-qualified. The service id names the `/v1/:serviceId`
+      # segment Ledger routes on; the host .env still supplies the provider,
+      # base URL and the Ledger app key. The `-contributor` tier is ~12x cheaper
+      # in and ~21x cheaper out, and its data is training-eligible upstream —
+      # a deliberate choice, not a default to inherit silently.
+      NESSIE_MODEL_SERVICE_ID: openrouter
+      NESSIE_MODEL_NAME: meta/muse-spark-1.3-contributor
       # Agent-avatar "Generate with AI" routes through this Ledger Purpose API
       # (Gemini image primary, OpenAI gpt-image-2 fallback), so the exhausted
       # OpenAI image key no longer 503s avatar generation. See docs/deployment.md.
@@ -256,10 +300,10 @@ services:
         condition: service_healthy
       nessie-minio:
         condition: service_healthy
-      api:
+      nessie-api:
         condition: service_started
 
-  admin:
+  nessie-admin:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.admin
@@ -279,7 +323,7 @@ services:
       start_period: 20s
       start_interval: 2s
 
-  web:
+  nessie-web:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web

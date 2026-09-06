@@ -103,15 +103,16 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: GMAIL_DRAFT_CREATE_TOOL_ID,
     category: 'email-calendar',
-    summary: 'Compose an email draft and show it in the chat for approval.',
+    summary: 'Compose an email draft and open it in the Mail review surface.',
     label: 'Draft Email',
     requiresExplicitGrant: true,
     safe: false,
     description:
-      'Compose an email as the requesting person and post it into the chat as '
-      + 'a card showing recipients, CC, subject and body, with a Send button. '
-      + 'This creates a real draft in their Gmail; it does NOT send. Use this '
-      + 'whenever asked to write, prepare or draft an email.',
+      'Compose an email as the requesting person and leave a restricted Open '
+      + 'Mail doorway in the chat. The live Mail surface shows recipients, '
+      + 'subject and body and can send only through its existing approval path. '
+      + 'This creates a real Gmail draft; it does NOT send. For a reply, pass '
+      + 'both the Gmail thread id and RFC Message-ID from a Gmail read.',
     parameters: {
       type: 'object',
       properties: {
@@ -122,7 +123,11 @@ export const GOOGLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         body: { type: 'string', description: 'Plain-text body of the email.' },
         replyToThreadId: {
           type: 'string',
-          description: 'Gmail thread id to reply into, when replying.',
+          description: 'Gmail thread id from gmail_search, gmail_message_read, or gmail_thread_read.',
+        },
+        replyToMessageId: {
+          type: 'string',
+          description: 'RFC Message-ID paired with replyToThreadId from a Gmail read, not Gmail messageId.',
         },
       },
       required: ['to', 'subject', 'body'],

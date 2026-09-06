@@ -18,6 +18,7 @@ import {
   ThreadRecordSchema,
 } from '../contracts.js'
 import {
+  canAdministerProject,
   ensureDefaultThread,
   getChannelIfMember as getChannelIfMemberShared,
   isAgentAccessibleToActor as isAgentAccessibleToActorShared,
@@ -524,6 +525,16 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
   ): Promise<boolean> =>
     isProjectAccessibleToUser(prisma, projectViewer(actorContext), projectId)
 
+  // Who may change a project's *shape* — its boards, columns, custom fields
+  // and data sources — as opposed to who may read it or work its tasks. An
+  // organisation owner, or someone the project itself records as its owner or
+  // admin. See `@nessie/team-admin` `canAdministerProject`.
+  const canActorAdministerProject = async (
+    actorContext: AuthorizedActionContext,
+    projectId: string,
+  ): Promise<boolean> =>
+    canAdministerProject(prisma, projectViewer(actorContext), projectId)
+
   // `'all'` for owners (no project filter at all), otherwise the id list of the
   // projects the actor belongs to.
   const listAccessibleProjectIds = async (
@@ -537,6 +548,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     loadPersonalAssistantState,
     isAgentAccessibleToActor,
     isProjectAccessibleToActor,
+    canActorAdministerProject,
     listAccessibleProjectIds,
     getVisibleChannel,
     getChannelIfMember,

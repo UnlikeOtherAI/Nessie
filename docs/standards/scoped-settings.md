@@ -41,6 +41,16 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   Organisation → Project → Team, and budgets cascade through all three;
   settings walk *past* projects, not through them. Adding a project tier later
   is a scope value and a resolver step, not a redesign.
+- **A cascade with its own storage still states the rule once.** Secrets do not
+  live in `ScopedSetting` — a `Secret` row carries a vault reference and grants
+  that a settings value has no place for — but they resolve by this same
+  sentence, over organisation → team → project → personal, with the same
+  `locked` semantics and the same greyed-out-and-say-who treatment below a
+  lock. The rule is written once as a pure function in `@nessie/schemas`
+  `secret-precedence.ts` and consumed by both the screen and
+  `POST /api/secrets`, because the failure this standard exists to prevent is
+  two orderings, not two tables. See
+  [docs/secret-management-spec.md](../secret-management-spec.md) → "Scope".
 - **Authorship mirrors the routes a person's buttons already call.** The
   organisation and its teams are owner-or-admin; a personal setting is the
   person's own. Teams carry no `organization_id` of their own — tenancy runs

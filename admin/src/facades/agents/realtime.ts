@@ -10,6 +10,8 @@ import {
   approvalKeys,
   channelKeys,
   dashboardKeys,
+  projectKeys,
+  taskKeys,
   threadKeys,
 } from '../../lib/query-keys'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -221,6 +223,20 @@ export const useAgentRealtime = (input: {
         // Refetching is the ACL check and rejects stale/out-of-order payloads.
         void queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(message.data.dashboardId) })
         void queryClient.invalidateQueries({ queryKey: dashboardKeys.widgetDataAll })
+        return
+      }
+
+      if (message.event === 'board.updated') {
+        // Content-free by design: a project id and nothing else, on the
+        // organisation scope. The refetch is the entitlement check, so a
+        // project id reaching somebody who is not a member reveals nothing
+        // they can read — the `dashboard.updated` reasoning.
+        void queryClient.invalidateQueries({
+          queryKey: taskKeys.forProject(message.data.projectId),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: projectKeys.sources(message.data.projectId),
+        })
         return
       }
 

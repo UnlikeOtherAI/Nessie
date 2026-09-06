@@ -66,10 +66,10 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.4)
-      '@fontsource-variable/geist':
-        specifier: ^5.3.0
-        version: 5.3.0
       '@fortawesome/fontawesome-svg-core':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/free-brands-svg-icons':
         specifier: ^7.3.1
         version: 7.3.1
       '@fortawesome/free-regular-svg-icons':
@@ -193,6 +193,12 @@ importers:
       '@nessie/agent-mail':
         specifier: workspace:*
         version: link:../packages/agent-mail
+      '@nessie/board-source-providers':
+        specifier: workspace:*
+        version: link:../packages/board-source-providers
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../packages/board-sources
       '@nessie/browser-cloud':
         specifier: workspace:*
         version: link:../packages/browser-cloud
@@ -476,6 +482,93 @@ importers:
         specifier: ^3.2.6
         version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.1)(jiti@2.6.1)(jsdom@30.0.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  packages/board-source-github:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-source-jira:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-source-linear:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-source-providers:
+    dependencies:
+      '@nessie/board-source-github':
+        specifier: workspace:*
+        version: link:../board-source-github
+      '@nessie/board-source-jira':
+        specifier: workspace:*
+        version: link:../board-source-jira
+      '@nessie/board-source-linear':
+        specifier: workspace:*
+        version: link:../board-source-linear
+      '@nessie/board-source-trello':
+        specifier: workspace:*
+        version: link:../board-source-trello
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-source-trello:
+    dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/board-sources:
+    dependencies:
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   packages/browser-cloud:
     dependencies:
       '@nessie/runtime':
@@ -523,6 +616,9 @@ importers:
 
   packages/comms-google:
     dependencies:
+      '@nessie/agent-mail':
+        specifier: workspace:*
+        version: link:../agent-mail
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../comms-connect
@@ -678,6 +774,9 @@ importers:
 
   packages/mcp-manage:
     dependencies:
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../mcp-client
@@ -802,6 +901,9 @@ importers:
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@20.19.39)
+      tldts:
+        specifier: ^7.4.11
+        version: 7.4.11
       undici:
         specifier: ^6.26.0
         version: 6.26.0
@@ -846,6 +948,9 @@ importers:
       '@nessie/agent-mail':
         specifier: workspace:*
         version: link:../agent-mail
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../board-sources
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../comms-connect
@@ -932,6 +1037,12 @@ importers:
       '@nessie/agent-mail':
         specifier: workspace:*
         version: link:../packages/agent-mail
+      '@nessie/board-source-providers':
+        specifier: workspace:*
+        version: link:../packages/board-source-providers
+      '@nessie/board-sources':
+        specifier: workspace:*
+        version: link:../packages/board-sources
       '@nessie/browser-cloud':
         specifier: workspace:*
         version: link:../packages/browser-cloud
@@ -7229,8 +7340,15 @@ packages:
   tldts-core@7.4.10:
     resolution: {integrity: sha512-KnQjp53ZekKgm/r3l+u8kJGGzYgrWdP8+Mql7a4vijh2WE0IrZWspQj/TpTxDho/YxO+AnOZnIjQcCD+q6iJsw==}
 
+  tldts-core@7.4.11:
+    resolution: {integrity: sha512-CW3WN2rIIE/Of21mulhgnGOwoDyEFNygyIBOONSdyAuSATgMMUCpLeUlB+E8sAwA5xRV9hYPl+kyZ9citHCaKg==}
+
   tldts@7.4.10:
     resolution: {integrity: sha512-GgouD1B+sWwvkaEq8vXC15DjQitxbvs12oIXELpconwm+Tg3zfcEv4jgzq3vtKverDXsg3VI8aRgNL2Nra0Iog==}
+    hasBin: true
+
+  tldts@7.4.11:
+    resolution: {integrity: sha512-aBiNayCfTQxuIJBm06M+xR14cYaYlDlSXZbgsnKzKNxDKUVq7KFwTjwBSsb7m9Y5xO8WfPnBc63WaYFMTGlvqw==}
     hasBin: true
 
   tmp@0.2.7:
@@ -15208,9 +15326,15 @@ snapshots:
 
   tldts-core@7.4.10: {}
 
+  tldts-core@7.4.11: {}
+
   tldts@7.4.10:
     dependencies:
       tldts-core: 7.4.10
+
+  tldts@7.4.11:
+    dependencies:
+      tldts-core: 7.4.11
 
   tmp@0.2.7: {}
 

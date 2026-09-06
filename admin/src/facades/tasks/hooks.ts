@@ -17,10 +17,22 @@ export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskRecord = {
   id: string
   projectId: string | null
-  columnId: string | null
-  position: number
+  /** The board this task lives on; null ⇒ the project's default board. */
+  boardId: string | null
   iterationId: string | null
   storyPoints: number | null
+  fieldValues: Record<string, unknown>
+  /** Present only on a task mirrored from an external source. */
+  externalLink: {
+    sourceId: string
+    provider: 'jira' | 'linear' | 'trello' | 'github'
+    externalKey: string
+    externalUrl: string
+    remoteStateName: string | null
+    remoteAssigneeDisplay: string | null
+    lastInboundAt: string | null
+    writeMode: 'read_only' | 'read_write'
+  } | null
   status: TaskStatus
   priority: TaskPriority
   dueDate: string | null
@@ -67,6 +79,8 @@ export const useCreateTask = () => {
       purpose?: string
       detail?: string
       projectId?: string
+      /** The board the card lands on; absent ⇒ the project's default board. */
+      boardId?: string
       iterationId?: string
       storyPoints?: number
       priority?: TaskPriority
@@ -95,6 +109,8 @@ export const useUpdateTask = () => {
       priority?: TaskPriority
       dueDate?: string | null
       archivedAt?: string | null
+      /** A partial merge of custom field values; `null` clears one. */
+      fieldValues?: Record<string, unknown>
     }) => {
       const { id, ...fields } = input
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)
@@ -110,8 +126,12 @@ export const useArchiveDoneTasks = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { projectId: string; olderThanDays?: number | null }) =>
-      apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
+    mutationFn: (input: {
+      projectId: string
+      /** The board whose Done column was clicked; its tickets only. */
+      boardId?: string
+      olderThanDays?: number | null
+    }) => apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
       void queryClient.invalidateQueries({ queryKey: iterationKeys.all })

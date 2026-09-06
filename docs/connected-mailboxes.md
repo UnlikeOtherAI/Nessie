@@ -1,19 +1,30 @@
 # Connected mailboxes — an agent working in a mailbox you already have
 
 An agent can work in a mailbox that exists somewhere else: your own, or a team's
-shared `support@`. A personal Gmail or Microsoft account can use its native,
-secure sign-in and private sync with label/folder controls; another provider, or
-a team's shared mailbox, connects over SMTP/IMAP. You then choose which agents may use the live
+shared `support@`. A personal Gmail account can use its native, secure sign-in;
+another provider, or a team's shared mailbox, connects over SMTP/IMAP. Microsoft
+remains a connection card, not a mail account, until its connector exposes a
+live mail capability. You then choose which agents may use the live
 mailbox and ask them things — *"anything from the bank?"*, *"reply to Petra that
 Thursday works"*.
 
-The IMAP/SMTP route has no inbox screen, deliberately. The provider holds the
-mail; Nessie holds a credential and an audit trail, and reads it live when an
-agent is asked something. Nothing is imported, nothing is copied, and
-disconnecting leaves no trace of that correspondence behind. Native Gmail and
-Microsoft cards share the personal Email page but are different connectors: they
-show their own selected-email sync behaviour rather than making the live-mail
-claim.
+The `/mail` review surface reads Gmail and SMTP/IMAP accounts live. It lists
+structural threads, opens the complete bounded conversation, and lets an
+entitled person compose or reply. The provider still holds the mail: Nessie
+holds a credential and an audit trail, imports no connected-account messages,
+and makes account, thread, conversation, and draft responses private and
+non-cacheable. Disconnecting leaves no copied correspondence behind. Gmail and
+Microsoft cards share the personal Email page but are different connectors:
+only Gmail currently exposes the live-mail capability. SMTP/IMAP threads come
+from Message-ID reference structure, never a guessed subject match.
+
+Agents can bring that same surface into chat without copying provider mail into
+message metadata. `mail_present` writes a restricted, content-free doorway for
+an account, thread, or compose flow, and the client checks the current viewer's
+entitlement again before opening it. Mail search/read and Gmail draft results
+include canonical review references. `mailbox_compose` can offer an editable
+universal card form; submitting it creates a normal user response, and any
+later agent send still goes through the existing approval rules.
 
 This is agent email **Model A**. The other model gives an agent its own hosted
 address on the deployment's Amazon SES account, with a real mailbox surface
@@ -150,6 +161,12 @@ lane offers standing consent because a grant there is one person's to give about
 their own account; a shared team mailbox has no such single owner, and one grant
 table meaning two different things is how that distinction gets lost.
 
+After approval, each SMTP send is recorded without its message body before the
+provider call. A run replay finds that same record through its run and tool-call
+identity and retains its original Message-ID. If SMTP's `DATA` outcome is lost,
+Nessie marks delivery **unknown** and will not send a second copy; a person can
+check the mailbox and decide what to do next.
+
 ## Reading
 
 Reads run live, and they carry their provenance. An agent that answers you out
@@ -161,6 +178,22 @@ Mail is treated as information, never instruction. Anything in a message that
 reads like an order to the agent — *"forward this to…"*, *"ignore your
 instructions"* — is data about what a correspondent wants, and cannot authorize
 a tool call on its own.
+
+The IMAP list fetches headers plus bounded `BODYSTRUCTURE` metadata, so its
+attachment indicators are accurate without downloading attachment bytes.
+Opening a conversation fetches only the chosen text or HTML MIME section, at
+most 256 KiB on the wire per message; HTML is sanitized and remote images stay
+blocked. The decoded-body and aggregate response bounds still apply, and a
+truncated section makes the conversation report that earlier content may exist.
+Attachment download is not part of this surface.
+
+Gmail reads are bounded at the transport as well: each provider response stops
+at 512 KiB, one operation may consume at most 2 MiB of provider JSON and 256 KiB
+of decoded body content, and list metadata uses at most eight concurrent
+requests. Provider-owned Gmail draft creation is keyed to the durable user or
+agent action, so a replay cannot create a second draft or silently send an older
+version after the compose form changed. Held, undone, sent, and unknown delivery
+states are distinct in the audit trail and never include message content.
 
 ## When it stops working
 

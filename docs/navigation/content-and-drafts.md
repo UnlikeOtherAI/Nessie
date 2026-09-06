@@ -32,8 +32,11 @@ for it. Four pieces, plus one cache underneath them all.
   by an entity id, or gated on one (`enabled: Boolean(id)`), passes
   `placeholderData: keepPreviousData`, so channel A → B shows A's feed until
   B's arrives instead of flashing empty. Pinned by
-  `admin/test/skeleton.test.ts`; the one exemption is billing, whose keys are
-  scoped per UOA org/team and must never reuse another team's projection.
+  `admin/test/skeleton.test.ts`; the exemptions are billing, whose keys are
+  scoped per UOA org/team and must never reuse another team's projection, and
+  connected mail/Gmail drafts, where a mailbox, thread or provider draft is
+  private third-party content and must never briefly paint under a new account,
+  provider or entitlement identity.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
@@ -195,4 +198,3 @@ calls `useDraft` with its entity key and carries no discard confirm),
 `api/test/message-idempotency.test.ts`,
 `api/test/if-match-conditional-writes.test.ts`, and
 `packages/knowledge/test/page-revision-db.test.ts`.
-

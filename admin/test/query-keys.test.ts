@@ -125,9 +125,9 @@ test('re-nested sub-resources sit under the prefix their parent invalidates', ()
 
   // Re-nested here: the project mutations that invalidate `projects` now also
   // refresh a mounted board.
-  assert.deepEqual(projectKeys.board('p-1'), ['projects', 'p-1', 'board'])
+  assert.deepEqual(projectKeys.boards('p-1'), ['projects', 'p-1', 'boards'])
   assert.deepEqual(
-    projectKeys.board('p-1').slice(0, projectKeys.all.length),
+    projectKeys.boards('p-1').slice(0, projectKeys.all.length),
     projectKeys.all,
   )
 

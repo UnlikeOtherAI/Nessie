@@ -52,7 +52,7 @@ Requires SSH access to the host and the Cloudflare full-token env var.
    ```sh
    cd /srv/nessie
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
-   docker compose -f infrastructure/compose/docker-compose.prod.yml build api admin web
+   docker compose -f infrastructure/compose/docker-compose.prod.yml build nessie-api nessie-admin nessie-web
    docker compose -f infrastructure/compose/docker-compose.prod.yml \
      run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d
@@ -76,7 +76,7 @@ Requires SSH access to the host and the Cloudflare full-token env var.
 6. **First owner account** — Nessie runs in `selfHosted` mode with no users, so
    the API prints a one-time bootstrap URL on startup:
    ```sh
-   docker compose -f infrastructure/compose/docker-compose.prod.yml logs api 2>&1 | grep bootstrap
+   docker compose -f infrastructure/compose/docker-compose.prod.yml logs nessie-api 2>&1 | grep bootstrap
    ```
    Open `https://app.nessie.works/bootstrap?token=<token>` and create the
    owner account. The token has a 15-minute TTL; restart the `api` service to
@@ -90,16 +90,16 @@ push-credentials admin page that uses them, are gated by the platform-level
 the deployed tree:
 
 ```sh
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts grant-super-admin owner@example.com
 ```
 
 To audit or remove the tier later:
 
 ```sh
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts list-super-admins
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts revoke-super-admin owner@example.com
 ```
 
@@ -114,11 +114,11 @@ surface: an org admin who could set it would be choosing the login screen for
 every other tenant on the deployment.
 
 ```sh
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts show-instance-brand
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts set-instance-brand <organizationId>
-docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm nessie-api \
   pnpm --filter @nessie/cli exec tsx src/index.ts clear-instance-brand
 ```
 
@@ -126,7 +126,17 @@ At most one organisation is designated (`Organization.instanceBrand`; setting
 one clears the rest). With none designated — or when the designated
 organisation has uploaded no logo — the endpoint 404s and the sign-in screen
 falls back to the static Nessie mark. The designated organisation still uploads
-and changes its own logo the ordinary way, at Settings → Appearance. Migration
+and changes its own logo the ordinary way, at Settings → Appearance.
+
+**An organisation's colour theme is not instance state and does not reach this
+screen.** An org admin authors a palette at Settings → Organization →
+Appearance, and it paints that organisation's people once they are signed in
+and known. Before sign-in nobody knows which organisation the visitor belongs
+to — and an instance routinely holds many — so `/login` renders the visitor's
+own last built-in theme, or Sandstone. That is the same claim on the same
+shared screen the instance brand exists to keep out of one tenant's hands. See
+[docs/plans/2026-09-05-organisation-custom-theme.md](../plans/2026-09-05-organisation-custom-theme.md)
+§4.3. Migration
 `20260816100000_organization_instance_brand` backfills the designation on a
 single-organisation instance, replacing the earlier implicit rule ("the
 organisation's logo, if the instance holds exactly one organisation") that both

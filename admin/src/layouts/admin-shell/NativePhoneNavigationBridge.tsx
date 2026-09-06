@@ -1,6 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
+import {
+  isReactNativeWebView,
+  useNativeIOSPhoneApp,
+  usePhoneLayout,
+} from '../../lib/mobile-shell'
+import {
+  onScreenTransition,
+  sameScreenBar,
+  useCurrentScreenBar,
+  type ScreenBar,
+} from '../../navigation/screen-bar'
 import {
   applyScreen,
   describeScreen,
@@ -14,6 +24,8 @@ import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 type NativePhoneWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieNativeBack?: () => void
+  __nessieScreenBarAction?: (id: string, itemId?: string) => void
+  __nessieScreenBarBack?: () => void
   __nessieSelectTab?: (path: string) => void
 }
 
@@ -30,6 +42,11 @@ export const NativePhoneNavigationBridge = () => {
   const localBack = useLocalBackSnapshot()?.active ?? null
   const phoneLayout = usePhoneLayout()
   const nativePhone = isReactNativeWebView() && phoneLayout
+  // The native navigation bar is an iOS-shell surface. Mobile Safari, Android
+  // and iPad keep the header the web draws, so nothing below this line may
+  // change what they render.
+  const nativeIOSPhone = useNativeIOSPhoneApp() && phoneLayout
+  const { bar, layerKey } = useCurrentScreenBar()
   // The resolver's answer for the current location: an owner, a route
   // parent, or nothing. Re-read whenever the route or the registry changes.
   const hasBack = navigation?.hasBack() ?? false
@@ -67,6 +84,77 @@ export const NativePhoneNavigationBridge = () => {
       ? (payload) => (window as NativePhoneWindow).ReactNativeWebView?.postMessage(payload)
       : null)
   }, [screen])
+
+  // `nessie:screen-bar` — what the native navigation bar shows for the layer
+  // the reader is standing on. Keyed by layer rather than pathname because a
+  // nested stage never changes the pathname and two screens can share one
+  // route (screen-bar.ts). Posted only when something visible changed: the
+  // handlers inside the descriptor are rebuilt every render and are compared
+  // out by `sameScreenBar`.
+  const postedBar = useRef<{ bar: ScreenBar | null, layerKey: string | null } | null>(null)
+  useEffect(() => {
+    if (!nativeIOSPhone) return
+    const posted = postedBar.current
+    if (posted && posted.layerKey === layerKey && sameScreenBar(posted.bar, bar)) return
+    postedBar.current = { bar, layerKey }
+    ;(window as NativePhoneWindow).ReactNativeWebView?.postMessage(
+      JSON.stringify({
+        type: 'nessie:screen-bar',
+        layerKey,
+        title: bar?.title ?? '',
+        back: bar?.back ? { label: bar.back.label } : null,
+        // Everything that decides what an action looks like; what it *does*
+        // stays behind `__nessieScreenBarAction`, because three of the four
+        // kinds do not simply call an `onSelect` (screen-bar-actions.ts).
+        actions: (bar?.actions ?? []).map((action) => ({
+          checked: action.checked,
+          disabled: action.disabled,
+          id: action.id,
+          items: action.items,
+          kind: action.kind,
+          label: action.label,
+          primary: action.primary,
+          priority: action.priority,
+          selected: action.selected,
+          tone: action.tone,
+        })),
+      }),
+    )
+  }, [bar, layerKey, nativeIOSPhone])
+
+  // `nessie:screen-transition` — the bar runs the stack's motion beside it.
+  // Announced from the viewport's layout effect as the transition starts,
+  // which is *before* the incoming layer has mounted and published anything:
+  // the native side fills that lane when the descriptor arrives rather than
+  // restarting the animation.
+  useEffect(() => {
+    if (!nativeIOSPhone) return undefined
+    return onScreenTransition((transition) => {
+      ;(window as NativePhoneWindow).ReactNativeWebView?.postMessage(
+        JSON.stringify({ type: 'nessie:screen-transition', ...transition }),
+      )
+    })
+  }, [nativeIOSPhone])
+
+  // The bar's Back is the header's own, not the resolver's, so the native
+  // chevron runs the handler the live descriptor carries rather than
+  // `performBack()` — a Flow that owns its Back returns somewhere the registry
+  // cannot name.
+  const barRef = useRef<ScreenBar | null>(bar)
+  barRef.current = bar
+  useEffect(() => {
+    const target = window as NativePhoneWindow
+    target.__nessieScreenBarBack = () => barRef.current?.back?.onBack()
+    target.__nessieScreenBarAction = (id: string, itemId?: string) => {
+      const action = barRef.current?.actions.find((candidate) => candidate.id === id)
+      if (!action || action.disabled) return
+      action.perform(itemId)
+    }
+    return () => {
+      delete target.__nessieScreenBarAction
+      delete target.__nessieScreenBarBack
+    }
+  }, [])
 
   // The native entry points are always present while the provider is mounted:
   // hardware Back runs the one shared performBack seam (the later local-Back

@@ -9,6 +9,7 @@ import { SearchPage } from './pages/SearchPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentMailboxPage } from './pages/AgentMailboxPage'
+import { ConnectedMailPage } from './pages/ConnectedMailPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ExecutorsPage } from './pages/ExecutorsPage'
@@ -38,7 +39,9 @@ import { ProjectView } from './pages/project/ProjectView'
 import { ConnectionsPage } from './pages/settings/ConnectionsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
+import { OrganizationSecretsPage } from './pages/settings/OrganizationSecretsPage'
 import { SecretsPage } from './pages/settings/SecretsPage'
+import { TeamSecretsPage } from './pages/settings/TeamSecretsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { TeamMembersPage } from './pages/settings/TeamMembersPage'
 import { TeamSettingsPage } from './pages/settings/TeamSettingsPage'
@@ -269,6 +272,10 @@ export const router = createBrowserRouter([
         path: '/agents/:agentId/mailbox',
         element: <AgentMailboxPage />,
       },
+      { path: '/mail', element: <ConnectedMailPage /> },
+      { path: '/mail/:source/:accountId', element: <ConnectedMailPage /> },
+      { path: '/mail/:source/:accountId/threads/:threadId', element: <ConnectedMailPage /> },
+      { path: '/mail/:source/:accountId/compose', element: <ConnectedMailPage /> },
       {
         // Dynamic agent id last: static siblings above outrank it in the
         // router's ranking, so `/agents/triggers` etc. still resolve to their
@@ -307,6 +314,14 @@ export const router = createBrowserRouter([
       {
         path: '/settings/team/members',
         element: <TeamMembersPage />,
+      },
+      {
+        path: '/settings/team/secrets',
+        element: <TeamSecretsPage />,
+      },
+      {
+        path: '/settings/organization/secrets',
+        element: <OrganizationSecretsPage />,
       },
       {
         path: '/settings/statuses',

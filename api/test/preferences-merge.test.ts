@@ -47,7 +47,7 @@ const makeApp = (initialPreferences: Record<string, unknown>) => {
   const app = Fastify({ logger: false })
   registerAuthRoutes(app, {
     prisma,
-    config: { mode: 'local', auth: { autoRedirectToSso: false } },
+    config: { mode: 'local', auth: { autoRedirectToSso: false }, automaticMembership: { enabled: false } },
     authenticateRequest: async () => ({
       me: { user: { preferences: state.stored } },
       claims,

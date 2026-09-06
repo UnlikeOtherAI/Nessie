@@ -15,7 +15,11 @@ import { registerApprovalRoutes } from './routes/approvals.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBillingRoutes } from './routes/billing.js'
-import { registerBoardRoutes } from './routes/board.js'
+import { registerBoardRoutes } from './routes/boards.js'
+import { registerTaskFieldRoutes } from './routes/task-fields.js'
+import { registerBoardSourceConnectionRoutes } from './routes/board-sources/connections.js'
+import { registerBoardSourceRoutes } from './routes/board-sources/sources.js'
+import { registerBoardSourceWebhookRoutes } from './routes/board-sources/webhooks.js'
 import { registerCallRoutes } from './routes/calls.js'
 import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChannelRoutes } from './routes/channels.js'
@@ -24,6 +28,7 @@ import { registerAgentEmailDraftRoutes } from './routes/agent-email-draft.js'
 import { registerAgentEmailInboundRoutes } from './routes/agent-email-inbound.js'
 import { registerAgentMailboxRoutes } from './routes/agent-mailbox.js'
 import { registerMailboxConnectionRoutes } from './routes/mailbox-connections.js'
+import { registerConnectedMailRoutes } from './routes/connected-mail.js'
 import { registerModelSubscriptionRoutes } from './routes/model-subscriptions.js'
 import { registerGmailDraftRoutes } from './routes/gmail-drafts.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
@@ -53,6 +58,7 @@ import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerMeetingLinkRoutes } from './routes/meeting-links.js'
 import { registerOrganizationMembersRoutes } from './routes/organization-members.js'
+import { registerAutomaticMembershipRoutes } from './routes/automatic-membership.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
@@ -121,6 +127,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentEmailDraftRoutes(app, deps)
   registerAgentMailboxRoutes(app, deps)
   registerMailboxConnectionRoutes(app, deps)
+  registerConnectedMailRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
@@ -139,6 +146,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
   registerOrganizationMembersRoutes(app, deps)
+  registerAutomaticMembershipRoutes(app, deps)
   registerTeamAvatarRoutes(app, deps)
   registerProfileAvatarRoutes(app, deps)
   registerTeamMembersRoutes(app, deps)
@@ -154,6 +162,10 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerExternalAgentRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerBoardRoutes(app, deps)
+  registerTaskFieldRoutes(app, deps)
+  registerBoardSourceConnectionRoutes(app, deps)
+  registerBoardSourceRoutes(app, deps)
+  registerBoardSourceWebhookRoutes(app, deps)
   registerIterationRoutes(app, deps)
   registerTeamRoutes(app, deps)
   registerEventRoutes(app, deps)

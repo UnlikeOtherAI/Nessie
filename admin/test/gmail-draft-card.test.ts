@@ -25,20 +25,22 @@ const draft = (overrides: Partial<GmailDraftView> = {}): GmailDraftView => ({
   subject: 'Q3 numbers — draft for your review',
   body: 'Hi Jana,\n\nHere are the Q3 numbers.',
   attachments: [],
+  editable: true,
+  unsupportedReason: null,
   ...overrides,
 })
 
 const render = (props: Parameters<typeof GmailDraftCardView>[0]): string =>
   renderToStaticMarkup(createElement(GmailDraftCardView, props))
 
-test('shows recipients, CC, subject and body with a Send button', () => {
+test('shows historical recipients, CC, subject and body without a second send UI', () => {
   const html = render({ data: draft() })
   assert.match(html, /jana@example\.com, tom@example\.com/)
   assert.match(html, /finance@example\.com/)
   assert.match(html, /Q3 numbers/)
   assert.match(html, /Here are the Q3 numbers\./)
-  assert.match(html, /data-testid="gmail-draft-send"/)
-  assert.match(html, /Discard/)
+  assert.doesNotMatch(html, /data-testid="gmail-draft-send"/)
+  assert.doesNotMatch(html, /Discard/)
 })
 
 test('omits an address row that has no addresses', () => {
@@ -47,12 +49,11 @@ test('omits an address row that has no addresses', () => {
   assert.ok(!/>Bcc</.test(html))
 })
 
-// Once a send is held, the only useful action is taking it back.
-test('a held send offers Undo and no longer offers Send', () => {
+test('a held send remains readable but has no second undo implementation', () => {
   const html = render({ data: draft({ state: 'sending' }) })
-  assert.match(html, /data-testid="gmail-draft-undo"/)
   assert.match(html, /Sending…/)
   assert.ok(!/data-testid="gmail-draft-send"/.test(html))
+  assert.ok(!/data-testid="gmail-draft-undo"/.test(html))
 })
 
 test('a sent draft offers nothing to click', () => {
@@ -66,16 +67,6 @@ test('a discarded draft offers nothing to click', () => {
   const html = render({ data: draft({ state: 'discarded' }) })
   assert.match(html, /Discarded/)
   assert.ok(!/data-testid="gmail-draft-send"/.test(html))
-})
-
-test('actions are disabled while a request is in flight', () => {
-  const html = render({ data: draft(), busy: true })
-  assert.match(html, /data-testid="gmail-draft-send"[^>]*disabled/)
-})
-
-test('an error is shown to the person, not swallowed', () => {
-  const html = render({ data: draft(), error: 'Could not send.' })
-  assert.match(html, /Could not send\./)
 })
 
 test('attachments render as chips', () => {

@@ -27,13 +27,21 @@ export type ChannelAgent = {
 // the Agent Designer's identity tools already act as the person whose home DM
 // they are running in, and `resolveActingMember` still re-reads that person's
 // live `OrganizationMember` role at call time.
+// Takes the actor context alone so callers that hold one without a full tool
+// runtime context — the structural mailbox-send gate runs before any tool is
+// built — resolve the acting user identically. They must: the gate reading
+// `effectiveUserId` raw while the tool fell back to the actor left a person's
+// own mailbox invisible to the gate and its send approval unpinned.
+export const effectiveUserIdOfActor = (actorContext: {
+  actionContext: { effectiveUserId?: string | null }
+  actor: { actorId: string; actorType: string }
+}): string | null =>
+  actorContext.actionContext.effectiveUserId
+  ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null)
+
 export const resolveEffectiveUserId = (
   context: BuiltinToolRuntimeContext,
-): string | null =>
-  context.actorContext.actionContext.effectiveUserId
-  ?? (context.actorContext.actor.actorType === 'user'
-    ? context.actorContext.actor.actorId
-    : null)
+): string | null => effectiveUserIdOfActor(context.actorContext)
 
 // The personal assistant is a delegate of its owner: it acts as that user and,
 // unlike a shared agent, is not restricted to channels the bot is bound to. Its

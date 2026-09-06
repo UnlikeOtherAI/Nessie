@@ -138,6 +138,36 @@ project-scoped; it is scoped — not yet fully specified — in
 [docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md),
 and `scripts/inspect-team-shape.sql` sizes it against real data.
 
+## Channel names, and what an archived channel keeps
+
+A channel's name is its slug and its label at once — one name, and it is the
+addressable one (`validateChannelLabel` is the single chokepoint every write
+goes through). The name is unique **within the container the person is looking
+at**, which under the model above is one team's body of work:
+
+- A channel inside a project is unique across that project. A project holds one
+  team, so per-project and per-team are the same rule stated at the row that
+  exists today; do not add a second constraint that assumes otherwise.
+- A shared (standalone) channel is unique across the organisation's
+  `channelRoot` project — the one container all shared channels live in.
+- The two namespaces are independent. `#general` may exist as a shared channel
+  *and* in every project; twice inside one of them, never.
+
+**An archived channel does not hold its name.** `DELETE /api/channels/:id`
+archives rather than hard-deletes, and every list a person can see hides
+archived channels — so before this, deleting `#random` left no trace except the
+refusal to create a new one, naming a channel nobody could see, open, or
+rename. Both halves of the rule carry the condition: the partial unique index
+`channels_project_slug_standard_key` is `WHERE type = 'standard' AND archived_at
+IS NULL`, and `ensureChannelSlugAvailable` filters `archivedAt: null`. Never
+change one without the other — a check looser than the index is a 500, and a
+check tighter than the index is an invisible conflict again.
+
+The cost is paid at the other end: unarchiving can now collide, so
+`setChannelArchived` re-checks the name on the way back and refuses in a
+sentence that says which channel to rename (409 `CHANNEL_SLUG_CONFLICT`), rather
+than failing on the constraint.
+
 ## Changing what UOA owns, from inside Nessie
 
 "UOA is the authority" is a rule about **where the value is stored**, not about
@@ -155,6 +185,23 @@ never written locally and hoped for. Two consequences, both load-bearing:
 - **Both rows carry the label.** `createTeamEnvironment` names the Team and
   the Project it fabricates identically, so a rename heals both through
   `mirrorExternalTeamName` — the same function the directory sync uses.
+
+### Creation, renames, and the unbound install
+
+**Creating** an organisation or team happens in-app against UOA's org API
+rather than by redirecting a person into its chooser for a second interactive
+login; the local rows are still born only in `materializeUoaTeam`, from what
+the silent switch grant proved
+([docs/plans/2026-09-02-in-app-organisation-creation.md](../plans/2026-09-02-in-app-organisation-creation.md)).
+The org name is UOA's mirror, so a **rename is a relayed
+`PUT /org/organisations/:orgId` write**. An install with no IdP keeps one
+unbound organisation (`externalOrgId` null). Budgets, policies, audit, the
+member directory, and org settings all scope per UOA organisation
+([docs/plans/2026-08-15-uoa-org-tenancy.md](../plans/2026-08-15-uoa-org-tenancy.md)).
+The standing gap between this and "no duplicated data at all" — three local
+membership tables against UOA's two, a Project level UOA has no concept of,
+and the delta/revocation machinery UOA still lacks — is mapped in
+[docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md).
 
 ### Which UOA route family, and why it is not a detail
 
@@ -174,11 +221,23 @@ matter most:
   organisation's origin domain is deliberately not a predicate. This is the path
   for anything about the team the session is standing in.
 
-An assertion is pinned to the team it names: UOA requires
-`active.teamId` to equal the route's `:teamId`, so `/org/*` can only ever reach
-the current team. Reads of *another* team (the picker) therefore stay
-on `/domain/*`, backstopped by UOA's public team image. `/domain/*` keeps its
-local owner/admin backstop because it has no acting-person assertion. The
+An assertion is pinned to the **organisation** it names, not the team.
+`org-role-guard.ts` compares `active.orgId` to the route's `:orgId`, and
+separately requires `active.teamId` to be one of the caller's *live* teams in
+that organisation; the route's own `:teamId` is deliberately not compared, and
+UOA's contract says why — "the active team is caller provenance, not authority
+for a requested team". So `/org/*` **can** reach another team in the same
+organisation, and a service handling one must resolve the actor's capability
+for that exact target rather than trusting the provenance field.
+
+*(This paragraph previously said the opposite — that an assertion was pinned to
+the team it names and `/org/*` could only ever reach the current team. That was
+never true of the code, and reading it as true is what would push a
+same-organisation read onto `/domain/*` unnecessarily.)*
+
+Reads of a team in *another organisation* still stay on `/domain/*`, backstopped
+by UOA's public team image. `/domain/*` keeps its local owner/admin backstop
+because it has no acting-person assertion. The
 **Organization** section is different: Nessie declares
 `nessie.organisation.manage` in its signed UOA config, gives that capability to
 the configured organisation-admin role, and reads the caller's fresh
@@ -198,3 +257,29 @@ and profile and team names are still mirrored locally. The binding keys (`Organi
 `Team.externalTeamId`, `User.uoaSub`) are not duplication — they are what
 makes asking UOA possible. That rule, and the outstanding gaps against it, are
 in the plan linked above.
+
+### Nessie policy may decide placement; UOA still authorizes it
+
+There is exactly one place where a Nessie-side rule causes someone to join a
+team: **automatic team access by DNS-verified email domain**
+([docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md](../plans/2026-09-04-automatic-team-membership-by-verified-domain.md)).
+It does not contradict the rule above, and the distinction is the whole reason
+it is allowed to exist:
+
+- Nessie holds the **policy** — which domain, proven how, placing people into
+  which teams, audited here.
+- UOA holds the **membership and its authorization**. Every grant is a relay to
+  `addTeamMember` carrying a fresh, 60-second org-scoped subject assertion for
+  the administrator who authorized the rule, so UOA re-resolves that person's
+  live organisation membership and role before every write. A demoted or removed
+  administrator's rule stops granting upstream, without Nessie noticing first.
+
+Two consequences bind any future change here. **Backend mode is not an option**:
+`POST /api/team/members` has no local admin gate at all — its entire
+authorization is that subject assertion — so relaying with the domain-hash
+bearer alone would remove the only check the action has and rebuild a weaker one
+on the `TeamMember` projection this document is trying to demote to a cache.
+And **no automatic path may name a role or remove a membership**: membership is
+read first and the add is skipped when the person is already there, so a team
+owner is never demoted, and narrowing or disabling a rule stops future grants
+and nothing else.

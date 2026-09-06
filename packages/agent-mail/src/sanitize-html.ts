@@ -64,8 +64,13 @@ const parseAttributes = (raw: string): Array<{ name: string; value: string }> =>
   return attrs
 }
 
+// `'` matters as much as `"`: output is emitted with double-quoted values, but
+// a single quote surviving into a value can close a single-quoted attribute the
+// browser opened from earlier markup, turning the rest of the value into
+// attributes. See the unbalanced-quote case in sanitizeEmailHtml.
 const escapeAttr = (value: string): string =>
-  value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 export type SanitizeResult = {
   html: string
@@ -79,16 +84,23 @@ export const sanitizeEmailHtml = (input: string | null | undefined): SanitizeRes
   let blockedRemoteContent = false
   const stripped = stripDangerousElements(input)
 
+  // The trailing `|<` alternative is load-bearing. The tag branch only matches
+  // when quotes inside the tag balance, so `<p x='>` matched nothing and was
+  // copied to the output verbatim — an unsanitized tag whose dangling quote
+  // opened an attribute that swallowed later markup, letting a sender smuggle
+  // an `onclick` past the allowlist. Any `<` that is not a complete tag is now
+  // escaped instead of passed through.
   const html = stripped.replace(
-    /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g,
-    (_full, closing: string, rawName: string, rawAttrs: string) => {
+    /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|</g,
+    (_full, closing: string | undefined, rawName: string | undefined, rawAttrs: string | undefined) => {
+      if (rawName === undefined) return '&lt;'
       const tag = rawName.toLowerCase()
       if (!ALLOWED_TAGS.has(tag)) return ''
       if (closing) return `</${tag}>`
 
       const allowed = ALLOWED_ATTRS[tag]
       const kept: string[] = []
-      for (const attr of parseAttributes(rawAttrs)) {
+      for (const attr of parseAttributes(rawAttrs ?? '')) {
         // Event handlers and anything the allowlist does not name.
         if (attr.name.startsWith('on')) continue
         const permitted = allowed?.has(attr.name) || GLOBAL_ATTRS.has(attr.name)
