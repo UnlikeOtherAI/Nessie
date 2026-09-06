@@ -11,11 +11,17 @@
 # change it looks like. A worker pool has no ingress, no port and no request
 # lifecycle; CPU is always allocated, which the polling loop needs.
 #
-# It also has a drain the worker can actually use. Cloud Run *services* send
-# SIGTERM and SIGKILL ten seconds later, and that grace is not configurable —
-# too short for the worker's sixty-second checkpoint budget
-# (docs/standards/horizontal-scaling.md invariant 6). Worker pools do not
-# impose the ten-second ceiling.
+# What a worker pool does NOT buy is a longer drain, and an earlier version of
+# this comment claimed it did. Cloud Run's container runtime contract gives a
+# worker pool the same fixed ten seconds between SIGTERM and SIGKILL that it
+# gives a service, and `google_cloud_run_v2_worker_pool` exposes no grace field
+# to raise it — the `template` block has no termination-grace argument at all.
+# So the worker's forty-second shutdown budget (25 s drain + 5 s abandon-settle
+# + 10 s teardown, `worker/src/lifecycle.ts`) does not fit, and every scale-in
+# and every deploy cuts it off mid-drain. That is plan row 4.9's decision, and
+# it covers the worker as much as the API. The reasons above — no port, no
+# ingress, no request lifecycle, CPU always allocated — are the real and
+# sufficient case for a worker pool; the drain was never one of them.
 #
 # UNVALIDATED: `google_cloud_run_v2_worker_pool` has not been planned against a
 # real project from this tree — terraform is not installed on the machine this

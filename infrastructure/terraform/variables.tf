@@ -311,6 +311,12 @@ variable "shutdown_timeout_ms" {
   default     = 9000
 }
 
+variable "worker_drain_timeout_ms" {
+  type        = number
+  default     = 25000
+  description = "NESSIE_WORKER_DRAIN_TIMEOUT_MS. The worker reads this straight from the environment (worker/src/lifecycle.ts), NOT through @nessie/config, and it does not read NESSIE_SHUTDOWN_TIMEOUT_MS at all — so that variable is the API's budget and tuning it does nothing to the worker. Set explicitly here so the knob an operator reaches for is the one that works. The default matches the application default; note the worker's whole budget is this plus a 5 s abandon-settle plus a 10 s teardown, so 40 s in total, against a Cloud Run grace of 10 s that no workload type lets you raise. That mismatch is plan row 4.9 and is not resolved by this variable."
+}
+
 variable "max_upload_bytes" {
   description = "NESSIE_MAX_UPLOAD_BYTES; also pins the API multipart limit. 5 GiB, matching production."
   type        = number

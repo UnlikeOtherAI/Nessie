@@ -80,7 +80,13 @@ locals {
   # The worker takes no ingress, so it needs no CORS allowlist and no proxy
   # trust. It does need the public API origin: the personal assistant's
   # connector_authorize flow mints OAuth redirect URIs outside any request.
-  worker_plain_env = local.shared_plain_env
+  # NESSIE_SHUTDOWN_TIMEOUT_MS rides along in the shared block, and the worker
+  # never reads it — the API and gateway do. The worker's own budget is this
+  # variable, read straight from the environment, so it is set explicitly rather
+  # than left to the application default an operator cannot see from here.
+  worker_plain_env = merge(local.shared_plain_env, {
+    NESSIE_WORKER_DRAIN_TIMEOUT_MS = tostring(var.worker_drain_timeout_ms)
+  })
 
   # The migrate job runs `prisma migrate deploy` and then `reconcile`, which
   # loads the same config as the API. Giving it the API's environment is
