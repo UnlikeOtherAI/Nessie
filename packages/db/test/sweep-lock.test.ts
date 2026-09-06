@@ -136,14 +136,19 @@ test('a tick that cannot get a connection in time is a skip, not a throw', async
     },
   }
   let bodies = 0
+  // Ordering, not wall clock: the property is that the skip returns WITHOUT the
+  // connection, and a loaded machine can stretch any elapsed-time margin past
+  // its bound while that property still holds. A flag the late `connect` sets
+  // says so directly, and it cannot flake.
+  let connected = false
   const recorder = recordingPool({
     connect: async () => {
-      await delay(120)
+      await delay(1_000)
+      connected = true
       return late
     },
   })
 
-  const started = Date.now()
   const outcome = await withSweepLock(
     recorder.pool,
     'sweep',
@@ -155,10 +160,12 @@ test('a tick that cannot get a connection in time is a skip, not a throw', async
 
   assert.equal(outcome.ran, false)
   assert.equal(bodies, 0)
-  assert.ok(Date.now() - started < 100, 'the skip must not wait for the connection')
+  assert.equal(connected, false, 'the skip must not wait for the connection')
 
   // And the client that arrived late still goes back, or a skipped tick leaks
-  // one connection a minute.
-  await delay(200)
+  // one connection a minute. Polled rather than slept for, so the wait is
+  // bounded by the machine rather than by a guess about it.
+  const deadline = Date.now() + 5_000
+  while (released === 0 && Date.now() < deadline) await delay(20)
   assert.equal(released, 1)
 })
