@@ -17,7 +17,7 @@ import {
   resolveRealtimeNotification,
   type RealtimeNotificationEnvelope,
 } from '../src/realtime.js'
-import { publishThreadStreamEvent } from '../src/realtime-publish.js'
+import { publishThreadStreamEvent, publishWsEvent } from '../src/realtime-publish.js'
 
 const runIfDatabase = process.env.DATABASE_URL ? test : test.skip
 
@@ -406,7 +406,7 @@ runIfDatabase('an oversized payload still commits its row and is announced by id
     if (!envelope || envelope.kind !== 'sse-ref') {
       assert.fail(`expected an id-only notification, got ${JSON.stringify(envelope).slice(0, 200)}`)
     }
-    assert.equal(envelope.sequence, record.sequence)
+    assert.equal(envelope.ref.sequence, record.sequence)
     assert.ok(
       Buffer.byteLength(JSON.stringify(envelope), 'utf8') < 8_000,
       'the id-only notification must fit inside the NOTIFY cap',
@@ -478,4 +478,207 @@ test('a publish whose rollback fails destroys the pooled client instead of reusi
     [rollbackFailure],
     'a client whose ROLLBACK failed must be released with an error so the pool destroys it',
   )
+})
+
+/**
+ * Exactly the reads the build on `main` performs on a notification whose `kind`
+ * it does not recognise, in the order it performs them — transcribed from
+ * `api/src/realtime/notification-delivery.ts` rather than imported, because the
+ * subject is the build that is *already deployed*: it cannot be changed, and
+ * this branch's copy of that file no longer looks like this.
+ *
+ * Every read here is unchecked in that build, and it runs them inside an
+ * unawaited promise (`void onNotification(payload)`), so anything this throws
+ * is an unhandled rejection on a live replica — which ends the process on Node
+ * 22. Blue-green means an old replica is listening on the same channel for the
+ * whole length of a swap, so a new replica publishing one long assistant reply
+ * would kill it, and the admin always holds a WebSocket connection.
+ */
+const readAsPreviousBuild = (notification: Record<string, unknown>): void => {
+  if (notification.kind === 'sse') {
+    return
+  }
+
+  // `message` is dereferenced with no guard of its own whenever `eventId` is a
+  // string — three times, to build the replay event.
+  if (typeof notification.eventId === 'string' && BigInt(notification.eventId) > 0n) {
+    const message = notification.message as { event: string; ts: string }
+    void new Date(message.ts)
+    void message.event
+    void JSON.stringify(message)
+  }
+
+  // The first statement of that build's `shouldDeliverWsNotification`, reached
+  // once per WebSocket connection whether or not a replay event was built.
+  const scopes = notification.scopes as { kind: string }[]
+  void scopes.filter((scope) => scope.kind === 'channel')
+  void scopes.filter((scope) => scope.kind === 'user')
+  void scopes.filter((scope) => scope.kind === 'dashboard')
+}
+
+const capturingPool = (rows: Record<string, unknown>[]) => {
+  const notified: string[] = []
+  const client = {
+    query: async (text: string, values?: unknown[]) => {
+      if (text.includes('pg_notify')) {
+        notified.push(String(values?.[1]))
+        return { rows: [] }
+      }
+      if (text.includes('INSERT INTO')) {
+        return { rows }
+      }
+      return { rows: [] }
+    },
+    release: () => undefined,
+  }
+
+  return {
+    notified,
+    pool: {
+      connect: async () => client,
+      query: async () => {
+        throw new Error('the publish must resolve its organization without a pool query')
+      },
+    } as unknown as Pool,
+  }
+}
+
+/**
+ * The compact form has to be *inert* to the previous build rather than rely on
+ * it being tolerant. Both envelopes therefore keep every field that build
+ * dereferences off their top level — `eventId`, and so `message` — and carry an
+ * empty `scopes` for the one it dereferences unconditionally. Delete either and
+ * a rolling deploy takes down every replica still running the old image.
+ */
+test('a compact ref envelope is inert to a replica running the previous build', async () => {
+  const organizationId = parseOrganizationId(randomUUID())
+  const channelId = parseChannelId(randomUUID())
+  const threadId = randomUUID()
+  const scopes: WsScope[] = [
+    { kind: 'organization', organizationId },
+    { kind: 'channel', channelId },
+  ]
+  // Past the 7000-byte notify budget, so both publishers take the compact path.
+  const oversized = 'x'.repeat(20_000)
+
+  const sse = capturingPool([
+    {
+      id: '4242',
+      thread_id: threadId,
+      event_name: 'stream.delta',
+      data: { content: oversized, runId: parseRunId(randomUUID()) },
+      created_at: new Date(),
+    },
+  ])
+  await publishThreadStreamEvent(sse.pool, 'nessie_realtime_test', {
+    data: { content: oversized, runId: parseRunId(randomUUID()) },
+    event: 'stream.delta',
+    threadId,
+  })
+
+  const message = {
+    data: { content: oversized },
+    event: 'message.created',
+    ts: new Date().toISOString(),
+    type: 'event' as const,
+  }
+  const ws = capturingPool([
+    {
+      id: '99',
+      organization_id: organizationId,
+      channel_id: channelId,
+      recipient_user_id: null,
+      event_type: message.event,
+      payload: message,
+      created_at: new Date(),
+    },
+  ])
+  await publishWsEvent(ws.pool, 'nessie_realtime_test', { message, scopes })
+
+  assert.equal(sse.notified.length, 1)
+  assert.equal(ws.notified.length, 1)
+
+  for (const [label, body] of [
+    ['sse-ref', sse.notified[0]!],
+    ['ws-ref', ws.notified[0]!],
+  ] as const) {
+    const envelope = JSON.parse(body) as Record<string, unknown>
+    assert.equal(envelope.kind, label)
+    assert.ok(
+      Array.isArray(envelope.scopes),
+      `${label}: the previous build filters \`scopes\` unchecked, so it must be an array`,
+    )
+    assert.equal(
+      (envelope.scopes as unknown[]).length,
+      0,
+      `${label}: a non-empty \`scopes\` would make the previous build try to deliver an envelope it cannot read`,
+    )
+    assert.equal(
+      envelope.eventId,
+      undefined,
+      `${label}: a top-level \`eventId\` sends the previous build straight into \`message\`, which is not here`,
+    )
+    assert.equal(envelope.message, undefined, `${label}: the compact form carries no payload`)
+    assert.doesNotThrow(
+      () => readAsPreviousBuild(envelope),
+      `${label}: the previous build must survive this envelope`,
+    )
+  }
+})
+
+/**
+ * The other half of the same bargain: the empty `scopes` is a decoy, and the
+ * real delivery scopes — which are not columns on `realtime_events`, so they
+ * cannot be read back — must still reach this build's fan-out intact.
+ */
+test('the compact ws envelope still carries its real delivery scopes', async () => {
+  const organizationId = parseOrganizationId(randomUUID())
+  const channelId = parseChannelId(randomUUID())
+  const scopes: WsScope[] = [
+    { kind: 'organization', organizationId },
+    { kind: 'channel', channelId },
+  ]
+  const message = {
+    data: { content: 'x'.repeat(20_000) },
+    event: 'message.created',
+    ts: new Date().toISOString(),
+    type: 'event' as const,
+  }
+  const ws = capturingPool([
+    {
+      id: '512',
+      organization_id: organizationId,
+      channel_id: channelId,
+      recipient_user_id: null,
+      event_type: message.event,
+      payload: message,
+      created_at: new Date(),
+    },
+  ])
+  await publishWsEvent(ws.pool, 'nessie_realtime_test', { message, scopes })
+
+  const envelope = JSON.parse(ws.notified[0]!) as RealtimeNotificationEnvelope
+  const readBack = {
+    query: async () => ({
+      rows: [
+        {
+          id: '512',
+          organization_id: organizationId,
+          channel_id: channelId,
+          recipient_user_id: null,
+          event_type: message.event,
+          payload: message,
+          created_at: new Date(),
+        },
+      ],
+    }),
+  } as unknown as Pool
+
+  const resolved = await resolveRealtimeNotification(readBack, envelope)
+  if (!resolved || resolved.kind !== 'ws') {
+    assert.fail(`the compact ws envelope must resolve to its row, got ${JSON.stringify(resolved)}`)
+  }
+  assert.deepEqual(resolved.scopes, scopes)
+  assert.equal(resolved.eventId, '512')
+  assert.deepEqual(resolved.message, message)
 })

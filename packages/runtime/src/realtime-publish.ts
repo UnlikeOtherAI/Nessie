@@ -60,28 +60,80 @@ export type RealtimeNotificationPayload =
  * hands a plain `RealtimeNotificationPayload` to the fan-out, so nothing above
  * the transport ever meets one. See `notifyWithinTransaction` for why an
  * oversized payload has to be announced this way rather than raise.
+ *
+ * The shape of a ref envelope is not free. Nessie deploys blue-green, so for
+ * the length of a swap a replica running the *previous* build is LISTENing on
+ * the same channel and receives these. That build parses any valid JSON and
+ * hands the result straight to its fan-out, which reads three fields without
+ * checking them: `kind`; then `eventId`, and if that is a string it immediately
+ * dereferences `message`; then, for every WebSocket connection, `scopes.filter`.
+ * It does that work in an *unawaited* promise, so a TypeError there is an
+ * unhandled rejection, which terminates the process on Node 22 — one long
+ * assistant reply from a new replica would kill every old replica holding a
+ * socket, and the admin always holds one.
+ *
+ * A ref envelope is therefore built to be **inert** to that build rather than
+ * to rely on it being tolerant; it is already deployed and cannot be changed.
+ *   - Everything the ref form actually carries lives under `ref`, a key the old
+ *     fan-out never reads. It finds no `eventId`, so it builds no replay event
+ *     and never reaches `message`.
+ *   - `scopes` is present and empty, so the WebSocket loop it does reach
+ *     filters an empty array, matches no connection and sends nothing.
+ * Nothing is lost for those clients: the row is committed, and their next
+ * reconnect replays it. Neither `ref` nor the empty `scopes` may be flattened
+ * or dropped until every deployed replica understands the ref form.
  */
 export type RealtimeNotificationEnvelope =
   | RealtimeNotificationPayload
   | {
       kind: 'sse-ref'
-      /** `thread_stream_events.id` of the row to re-read. */
-      sequence: number
-      threadId: string
+      ref: {
+        /** `thread_stream_events.id` of the row to re-read. */
+        sequence: number
+        threadId: string
+      }
+      /** Always empty — the compatibility shim described above. */
+      scopes: []
     }
   | {
-      /** `realtime_events.id` of the row to re-read. */
-      eventId: string
       kind: 'ws-ref'
-      /**
-       * Delivery scopes are not a column on `realtime_events` — only
-       * `channel_id` and `recipient_user_id` are, which cannot express an agent
-       * or dashboard scope — so they ride the notification even in the compact
-       * form. They are a handful of ids, orders of magnitude below the payload
-       * the compact form exists to leave behind.
-       */
-      scopes: WsScope[]
+      ref: {
+        /** `realtime_events.id` of the row to re-read. */
+        eventId: string
+        /**
+         * Delivery scopes are not a column on `realtime_events` — only
+         * `channel_id` and `recipient_user_id` are, which cannot express an agent
+         * or dashboard scope — so they ride the notification even in the compact
+         * form. They are a handful of ids, orders of magnitude below the payload
+         * the compact form exists to leave behind.
+         */
+        scopes: WsScope[]
+      }
+      /** Always empty — the compatibility shim described above. */
+      scopes: []
     }
+
+/**
+ * The only two places a ref envelope is constructed, so the compatibility shim
+ * above cannot be forgotten at one call site and present at another.
+ */
+export const buildSseRefEnvelope = (input: {
+  sequence: number
+  threadId: string
+}): RealtimeNotificationEnvelope => ({
+  kind: 'sse-ref',
+  ref: { sequence: input.sequence, threadId: input.threadId },
+  scopes: [],
+})
+
+export const buildWsRefEnvelope = (input: {
+  eventId: string
+  scopes: WsScope[]
+}): RealtimeNotificationEnvelope => ({
+  kind: 'ws-ref',
+  ref: { eventId: input.eventId, scopes: input.scopes },
+  scopes: [],
+})
 
 export type RealtimeReplayEvent = {
   id: bigint
@@ -241,7 +293,7 @@ export const resolveRealtimeNotification = async (
         FROM thread_stream_events
         WHERE id = $1::bigint
       `,
-      [envelope.sequence],
+      [envelope.ref.sequence],
     )
     const row = result.rows[0]
     return row ? { kind: 'sse', ...mapThreadStreamEvent(row) } : null
@@ -254,7 +306,7 @@ export const resolveRealtimeNotification = async (
         FROM realtime_events
         WHERE id = $1::bigint
       `,
-      [envelope.eventId],
+      [envelope.ref.eventId],
     )
     const row = result.rows[0]
     return row
@@ -262,7 +314,7 @@ export const resolveRealtimeNotification = async (
           eventId: BigInt(row.id).toString(),
           kind: 'ws',
           message: row.payload as WsEventMessage,
-          scopes: envelope.scopes,
+          scopes: envelope.ref.scopes,
         }
       : null
   }
@@ -306,7 +358,7 @@ export const publishThreadStreamEvent = async (
       client,
       channel,
       { kind: 'sse', ...record },
-      () => ({ kind: 'sse-ref', sequence: record.sequence, threadId: record.threadId }),
+      () => buildSseRefEnvelope({ sequence: record.sequence, threadId: record.threadId }),
     )
     return record
   })
@@ -421,11 +473,7 @@ export const publishWsEvent = async (
         message: input.message,
         scopes: input.scopes,
       },
-      () => ({
-        eventId: replayEvent.id.toString(),
-        kind: 'ws-ref',
-        scopes: input.scopes,
-      }),
+      () => buildWsRefEnvelope({ eventId: replayEvent.id.toString(), scopes: input.scopes }),
     )
     return replayEvent
   })

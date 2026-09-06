@@ -24,6 +24,8 @@ import {
 } from './realtime-publish.js'
 
 export {
+  buildSseRefEnvelope,
+  buildWsRefEnvelope,
   resolveRealtimeNotification,
   type RealtimeNotificationEnvelope,
   type RealtimeNotificationPayload,

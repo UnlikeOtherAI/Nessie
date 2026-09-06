@@ -186,13 +186,23 @@ export const shouldDeliverWsNotification = async (
     notificationScopes: WsScope[]
   },
 ): Promise<boolean> => {
-  const notificationChannelScopes = input.notificationScopes.filter(
+  // A notification is whatever a *publisher on another replica* put on the
+  // wire, so its shape is not guaranteed by this build's types. A publisher
+  // ahead of this one can send an envelope whose `scopes` this build has never
+  // heard of, and dereferencing it unchecked is not a caught error: the fan-out
+  // runs in a promise, so a TypeError here is an unhandled rejection and Node
+  // 22 ends the process. Missing or malformed means "addressed to nobody this
+  // build can identify" — deliver to no connection and stay up.
+  const notificationScopes: WsScope[] = Array.isArray(input.notificationScopes)
+    ? input.notificationScopes
+    : []
+  const notificationChannelScopes = notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
   )
-  const notificationUserScopes = input.notificationScopes.filter(
+  const notificationUserScopes = notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
   )
-  const notificationDashboardScopes = input.notificationScopes.filter(
+  const notificationDashboardScopes = notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'dashboard' }> => scope.kind === 'dashboard',
   )
   if (notificationUserScopes.length > 0) {
@@ -202,7 +212,7 @@ export const shouldDeliverWsNotification = async (
       ),
     )
   }
-  const notificationScopeKeys = new Set(input.notificationScopes.map(toScopeKey))
+  const notificationScopeKeys = new Set(notificationScopes.map(toScopeKey))
 
   if (notificationChannelScopes.length > 0) {
     if (!input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))) {
@@ -237,7 +247,7 @@ export const shouldDeliverWsNotification = async (
   // again, so a deactivated member kept the org feed and a person who lost
   // sight of an agent kept its updates for as long as the socket stayed open.
   // Both are now re-asked here, the same shape the channel branch above pays.
-  for (const scope of input.notificationScopes) {
+  for (const scope of notificationScopes) {
     if (scope.kind === 'organization' && !(await input.canAccessOrganization(scope.organizationId))) {
       return false
     }
@@ -394,6 +404,17 @@ export const createWsNotificationDelivery = (input: {
     // an id: those are fanned out live only, with no replay bookkeeping, so
     // the mixed-version window can miss a row from replay but never writes a
     // duplicate.
+
+    // The other half of the same guard as `shouldDeliverWsNotification`'s: an
+    // envelope from a publisher ahead of this build may carry no `message` at
+    // all — the compact ref form deliberately does not — and every branch below
+    // dereferences it. There is nothing to deliver without one, and the row it
+    // refers to reaches the client on its next reconnect replay, so drop it
+    // rather than throw inside an unawaited promise.
+    if (!notification.message) {
+      return
+    }
+
     const replayEventId =
       typeof notification.eventId === 'string'
         ? parseLastRealtimeEventId(notification.eventId)

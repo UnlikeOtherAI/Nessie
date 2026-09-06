@@ -306,6 +306,21 @@ regression is visible instead of silent (`api/src/realtime/hub.ts`). It never
 moves a watermark past an id it did not write. On LISTEN reconnect, re-read the
 backlog for every registered connection from its own watermark.
 
+**A notification must be inert to the build it is replacing.** Deploys are
+blue-green, so a replica running the previous image LISTENs on the same channel
+for the length of a swap and receives everything a new one publishes. Its
+fan-out runs in an *unawaited* promise and reads three fields unchecked —
+`kind`; then `eventId`, and if that is a string it dereferences `message`; then
+`scopes.filter`, once per WebSocket connection — so a `TypeError` there is an
+unhandled rejection, and Node 22 ends the process. A new envelope shape
+therefore carries nothing at its top level that an older listener dereferences.
+The compact `sse-ref`/`ws-ref` forms keep everything they carry under `ref` and
+hold an empty `scopes` beside it, so the old fan-out finds no event id, never
+reaches `message`, matches no connection and delivers nothing; the row is
+committed either way and the client's next reconnect replays it. Widen a
+notification payload the same way, and remove such a shim only once no deployed
+replica predates the shape.
+
 ## How to verify
 
 - **`infrastructure/compose/docker-compose.multi.yml`** — an override that runs
