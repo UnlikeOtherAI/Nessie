@@ -12,6 +12,8 @@ import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
+import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
+import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTheme } from '../../providers/ThemeProvider'
 import { CreateTeamDialog } from './CreateTeamDialog'
@@ -50,6 +52,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     switchUoaTeam,
     token,
   } = useAuthSession()
+  const apiClient = useApiClient()
   const { data: providers = [] } = useAuthProviders()
   const { data: organization } = useCurrentOrganization()
   const avatarRevision = useTeamAvatarRevision()
@@ -144,6 +147,22 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
         })
       }
       close()
+
+      // On a deployment that routes tenants by hostname, the address bar has to
+      // follow the switch — otherwise somebody lands in a different team while
+      // the URL still names the old one, and copying that link sends a
+      // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
+      // deployment does not route by hostname, when UOA cannot be reached, or
+      // when the team has no address, so the ordinary same-origin navigation
+      // below stays the behaviour everywhere else.
+      if (team.uoaTeam) {
+        const hostUrl = await fetchTeamHostUrl(apiClient, team.teamId)
+        if (hostUrl && new URL(hostUrl).host !== window.location.host) {
+          window.location.assign(`${hostUrl}/channels`)
+          return
+        }
+      }
+
       void navigate('/channels', { replace: true })
     } catch (error) {
       const recovery = await recoverTeamSwitchFailure({
