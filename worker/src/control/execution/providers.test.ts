@@ -1,13 +1,30 @@
 import assert from 'node:assert/strict'
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
-// The provider chokepoint reads `loadConfig()` at call time, and `loadConfig`
-// itself refuses `filesystem` storage outside `local`, so a non-local mode has
-// to name an object store the same way production does. Set before the import:
-// node --test gives each test file its own process, so this cannot leak.
+// The provider chokepoint resolves the mode from configuration, and
+// `loadConfig` itself refuses `filesystem` storage outside `local`, so a
+// non-local mode has to name an object store the same way production does. Set
+// before the import: node --test gives each test file its own process, so this
+// cannot leak, and the mode is resolved once and cached from the first call.
 process.env['NESSIE_MODE'] = 'selfHosted'
 process.env['NESSIE_STORAGE_PROVIDER'] = 's3'
 process.env['NESSIE_STORAGE_BUCKET'] = 'nessie'
+
+// A `docker` on PATH that records its arguments and does nothing else. The
+// terminate case below has to prove the call reaches the daemon rather than
+// being turned away at the gate, and it must prove that on a machine with no
+// Docker installed as readily as on one with containers running.
+const shimDirectory = mkdtempSync(`${tmpdir()}/nessie-docker-shim-`)
+const invocations = join(shimDirectory, 'invocations')
+writeFileSync(
+  join(shimDirectory, 'docker'),
+  `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(invocations)}\n`,
+)
+chmodSync(join(shimDirectory, 'docker'), 0o755)
+process.env['PATH'] = `${shimDirectory}:${process.env['PATH'] ?? ''}`
 
 const { probeProvider, provisionProviderInstance, terminateProviderInstance } =
   await import('./providers.js')
@@ -73,11 +90,15 @@ test('provisioning a docker environment outside local is refused, naming gcloud'
   assert.match(error.message, /provider `gcloud`/)
 })
 
-test('terminating a docker environment outside local is refused rather than recorded', async () => {
-  // The defect this closes: terminate swallowed "No such container" and wrote
-  // `terminated` while the container on another host kept running.
-  const error = await refusalFrom(() => terminateProviderInstance({ instance }))
+test('terminating an existing docker environment outside local still runs', async () => {
+  // The asymmetry the gate is built on: creating a new single-host resource is
+  // refused, cleaning up one that already exists never is. A self-hosted
+  // operator who mounted the Docker socket into the worker before upgrading has
+  // live containers; if this threw, the terminate job would be claimed, the
+  // assertion would fire, and every one of those containers would keep running
+  // with its row stuck in `terminating` forever.
+  const metadata = await terminateProviderInstance({ instance })
 
-  assert.equal(error.name, 'SingleInstanceCapabilityError')
-  assert.match(error.message, /cannot be inspected or terminated from another/)
+  assert.deepEqual(metadata, { containerId: 'container-1', terminatedBy: 'docker' })
+  assert.equal(readFileSync(invocations, 'utf8').trim(), 'rm -f container-1')
 })

@@ -63,6 +63,9 @@ for (const mode of ['selfHosted', 'hosted'] as const) {
     assert.match(error.message, /NESSIE_STORAGE_PROVIDER=filesystem/)
     assert.match(error.message, new RegExp(`not allowed in ${mode} mode`))
     assert.match(error.message, /Set NESSIE_STORAGE_PROVIDER=s3/)
+    // "and credentials" is not an instruction. Name the variables.
+    assert.match(error.message, /NESSIE_STORAGE_ACCESS_KEY_ID/)
+    assert.match(error.message, /NESSIE_STORAGE_SECRET_ACCESS_KEY/)
   })
 
   test(`filesystem storage is refused in ${mode} mode when nothing sets a provider`, () => {
@@ -95,6 +98,10 @@ test('the docker execution provider is refused outside local, and points at gclo
   assert.match(error.message, /`docker` execution environment provider/)
   assert.match(error.message, /not allowed in selfHosted mode/)
   assert.match(error.message, /provider `gcloud`/)
+  // `gcloud` alone asks a self-hosted operator to go and buy cloud
+  // infrastructure. The message also has to say what to do about the containers
+  // they already have, which is why terminate is not gated.
+  assert.match(error.message, /terminating an existing one never is/)
 })
 
 test('the file_* builtins are refused outside local, and say what to use instead', () => {

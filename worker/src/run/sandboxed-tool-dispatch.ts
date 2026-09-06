@@ -1,8 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   FILESYSTEM_BUILTIN_TOOLS,
-  loadConfig,
   localOnlyCapabilityMessage,
+  localOnlyGateMode,
 } from '@nessie/config'
 import {
   FileWriteOverwriteError,
@@ -32,7 +32,7 @@ const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
  * not exist on this deployment and what to use instead.
  */
 const filesystemBuiltinRefusal = (): string | null => {
-  const { mode } = loadConfig()
+  const mode = localOnlyGateMode()
   return mode === 'local'
     ? null
     : localOnlyCapabilityMessage(mode, FILESYSTEM_BUILTIN_TOOLS)

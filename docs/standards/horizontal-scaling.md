@@ -475,14 +475,24 @@ and the difference is not stylistic — only one of the three is configuration:
 - **The `docker` execution provider** is a column on
   `execution_environment_templates`, per-organisation data that configuration
   cannot see, so it is refused at the one chokepoint every probe, provision and
-  terminate passes through
-  (`worker/src/control/execution/providers.ts`). Provision and terminate
-  **throw**; the probe **answers** `available: false` carrying the same
-  sentence, because it runs in the boot-time runner-registration loop over every
-  provider, where a refusal is a fact about the deployment rather than a boot
-  failure. Terminate throwing is the point: the defect was that it swallowed
-  "No such container" and recorded `terminated` while the container kept
-  running.
+  terminate passes through (`worker/src/control/execution/providers.ts`).
+  Provision **throws**; the probe **answers** `available: false` carrying the
+  same sentence, because it runs in the boot-time runner-registration loop over
+  every provider, where a refusal is a fact about the deployment rather than a
+  boot failure.
+
+  **Terminate is not gated, and the asymmetry is deliberate: refuse to create
+  new single-host resources, never refuse to clean up existing ones.** Nothing
+  stops a self-hosted operator from mounting the Docker socket into the worker,
+  and for them a gated terminate would be an upgrade that strands every live
+  container — the job is claimed, the assertion fires, the container keeps
+  running and the row never leaves `terminating`. With the probe reporting the
+  provider offline and provision throwing, nothing new is placed, so draining
+  what exists is all `docker` is still for. What terminate does **not** fix is
+  the original defect (6.3): it swallows "No such container", so a terminate
+  claimed by a worker other than the one holding the container records
+  `terminated` while the container runs on. The refusal wording tells the
+  operator to confirm on the host whose daemon started it.
 - **The `file_read`/`file_write`/`file_glob` builtins** take their
   `allowedRoots` from a column on `tool_registry_entries`, also
   per-organisation data, so they are refused in

@@ -74,7 +74,11 @@ export const FILESYSTEM_STORAGE: LocalOnlyCapability = {
     + ' shared volume.',
   instead:
     'Set NESSIE_STORAGE_PROVIDER=s3 together with NESSIE_STORAGE_BUCKET,'
-    + ' NESSIE_STORAGE_ENDPOINT and credentials; production runs MinIO this way.',
+    + ' NESSIE_STORAGE_ENDPOINT, NESSIE_STORAGE_ACCESS_KEY_ID and'
+    + ' NESSIE_STORAGE_SECRET_ACCESS_KEY — plus NESSIE_STORAGE_REGION and'
+    + ' NESSIE_STORAGE_FORCE_PATH_STYLE=true when the endpoint is MinIO, which'
+    + ' is what production runs. Nothing migrates an existing filesystem store:'
+    + ' copy storage.localPath into the bucket before you switch.',
 }
 
 export const DOCKER_EXECUTION_PROVIDER: LocalOnlyCapability = {
@@ -86,7 +90,12 @@ export const DOCKER_EXECUTION_PROVIDER: LocalOnlyCapability = {
     + ' environment as terminated while it keeps running and billing.',
   instead:
     'Create execution environment templates with provider `gcloud`, which'
-    + ' addresses instances through an API every instance can reach.',
+    + ' addresses instances through an API every instance can reach. Containers'
+    + ' that already exist are not stranded by this refusal — only provisioning'
+    + ' a new one is refused, terminating an existing one never is — so'
+    + ' terminate them, then confirm on the host whose daemon started each one'
+    + ' that it is really gone, because a terminate claimed by any other worker'
+    + ' cannot see it.',
 }
 
 export const FILESYSTEM_BUILTIN_TOOLS: LocalOnlyCapability = {

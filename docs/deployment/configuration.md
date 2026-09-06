@@ -77,8 +77,8 @@ own process. The rule and its wording live in
 
 | Capability | Refused where | What to do instead |
 |---|---|---|
-| `NESSIE_STORAGE_PROVIDER=filesystem` — and it is the **default**, so a deployment that sets nothing is refused too | `loadConfig`, so the API and the worker both **fail to start** | `NESSIE_STORAGE_PROVIDER=s3` with bucket, endpoint and credentials (production runs MinIO this way) |
-| Execution environment templates with provider `docker` | The worker's provider chokepoint. Provision and terminate fail loudly; the runner probe records the provider `offline` with the same reason. Creating such a template still succeeds — it is simply inert | Create templates with provider `gcloud` |
+| `NESSIE_STORAGE_PROVIDER=filesystem` — and it is the **default**, so a deployment that sets nothing is refused too | `loadConfig`, so the API and the worker both **fail to start** | `NESSIE_STORAGE_PROVIDER=s3` with `NESSIE_STORAGE_BUCKET`, `NESSIE_STORAGE_ENDPOINT`, `NESSIE_STORAGE_ACCESS_KEY_ID` and `NESSIE_STORAGE_SECRET_ACCESS_KEY`, plus `NESSIE_STORAGE_REGION` and `NESSIE_STORAGE_FORCE_PATH_STYLE=true` for MinIO (which is what production runs) |
+| Execution environment templates with provider `docker` | The worker's provider chokepoint. Provisioning fails loudly and the runner probe records the provider `offline` with the same reason. **Terminating is never refused**, so an operator who mounted the Docker socket can still drain containers an upgrade would otherwise strand. Creating such a template still succeeds — it is simply inert | Create templates with provider `gcloud`, then terminate whatever `docker` already provisioned and confirm on the host whose daemon started each container that it is gone |
 | The `file_read` / `file_write` / `file_glob` builtin tools | The worker's builtin dispatcher, as a failed tool result the agent can read and act on | Reach files through the knowledge base or an MCP server every worker can call |
 
 An upgrade that trips the first one is a start-up failure with the full

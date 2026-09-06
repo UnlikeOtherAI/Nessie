@@ -730,3 +730,22 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
 
   return config
 }
+
+let gateMode: NessieMode | undefined
+
+/**
+ * The mode the single-host gates in `local-only.ts` ask about, resolved once
+ * per process.
+ *
+ * `loadConfig` is deliberately not memoised — it re-reads `nessie.config.json`
+ * off disk, walks the whole env map and re-runs the entire `NessieConfigSchema`
+ * parse on every call — and the gates sit on the run's hot path: one call per
+ * builtin tool dispatch, one per execution-environment probe and provision.
+ * They must not pay that each time. Caching also makes the answer stable: a
+ * process cannot decide halfway through a run that it is a different kind of
+ * deployment than it was a moment earlier.
+ *
+ * The mode is fixed for the life of a container — it comes from the environment
+ * the container was started with — so there is nothing to invalidate.
+ */
+export const localOnlyGateMode = (): NessieMode => (gateMode ??= loadConfig().mode)
