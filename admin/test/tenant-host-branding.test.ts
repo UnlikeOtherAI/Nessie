@@ -91,6 +91,11 @@ test('a return address is accepted only in the shape one of ours can take', () =
   assert.equal(parseTenantReturn('/channels', here), null)
   assert.equal(parseTenantReturn(null, here), null)
   assert.equal(parseTenantReturn('javascript:alert(1)', here), null)
+  // A port rides along unchecked otherwise: resolution vouches for the
+  // HOSTNAME, and the stored href is what the browser is later sent to, so
+  // `https://real.tenant:8443/` would navigate somebody to whatever answers on
+  // that port of the same machine. `isTeamHostOrigin` refuses a port already.
+  assert.equal(parseTenantReturn('https://design.acme.nessie.works:8443/', here), null)
 })
 
 test('the shape check is not the only gate — the host must really be a tenant', () => {
@@ -119,6 +124,14 @@ test('the handoff sits above the router so every sign-in path is under it', () =
   // Sign-in finishes on more than one screen — /login, /login/completing, and
   // a desktop or mobile session import — so it must not live on any of them.
   assert.doesNotMatch(readSource('../src/pages/LoginPage.tsx'), /TenantReturnHandoff/)
+})
+
+test('a kept address is re-checked at the moment it is used', () => {
+  const source = readSource('../src/layouts/tenant/TenantReturnHandoff.tsx')
+  // Nothing cross-origin can write that key, so this is not load-bearing — but
+  // it costs nothing and removes the assumption that whatever stored the value
+  // had validated it.
+  assert.match(source, /parseTenantReturn\(stored, window\.location\.origin\)/)
 })
 
 test('a kept address is consumed once', () => {

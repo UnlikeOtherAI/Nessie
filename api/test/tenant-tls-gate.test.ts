@@ -71,13 +71,17 @@ const buildApp = (
   return app
 }
 
-const ask = async (app: FastifyInstance, query: string) =>
-  app.inject({ method: 'GET', url: `/api/hosts/tls-check?${query}` })
+const ask = async (app: FastifyInstance, query: string, key: string | null = KEY) =>
+  app.inject({
+    method: 'GET',
+    url: `/api/hosts/tls-check?${query}`,
+    ...(key === null ? {} : { headers: { 'x-nessie-tls-check-key': key } }),
+  })
 
 test('a real organisation host may be issued a certificate', async () => {
   const app = buildApp()
   try {
-    assert.equal((await ask(app, `domain=acme.${BASE}&key=${KEY}`)).statusCode, 204)
+    assert.equal((await ask(app, `domain=acme.${BASE}`)).statusCode, 204)
   } finally {
     await app.close()
   }
@@ -86,7 +90,7 @@ test('a real organisation host may be issued a certificate', async () => {
 test('a real team host may be issued a certificate', async () => {
   const app = buildApp()
   try {
-    assert.equal((await ask(app, `domain=design.acme.${BASE}&key=${KEY}`)).statusCode, 204)
+    assert.equal((await ask(app, `domain=design.acme.${BASE}`)).statusCode, 204)
   } finally {
     await app.close()
   }
@@ -100,7 +104,7 @@ test('a made-up team label inside a real organisation is refused', async () => {
   const calls: string[] = []
   const app = buildApp({ calls })
   try {
-    assert.equal((await ask(app, `domain=nope.acme.${BASE}&key=${KEY}`)).statusCode, 404)
+    assert.equal((await ask(app, `domain=nope.acme.${BASE}`)).statusCode, 404)
     assert.ok(
       calls.includes('/domain/teams/resolve'),
       'the team label must actually be checked, not assumed from the organisation',
@@ -113,7 +117,7 @@ test('a made-up team label inside a real organisation is refused', async () => {
 test('an unknown organisation is refused', async () => {
   const app = buildApp()
   try {
-    assert.equal((await ask(app, `domain=nobody.${BASE}&key=${KEY}`)).statusCode, 404)
+    assert.equal((await ask(app, `domain=nobody.${BASE}`)).statusCode, 404)
   } finally {
     await app.close()
   }
@@ -124,9 +128,9 @@ test('a hostname outside the base domain is refused before UOA is asked', async 
   const app = buildApp({ calls })
   try {
     // Ends with the base domain but is a different registrable domain.
-    assert.equal((await ask(app, `domain=acme.evil-${BASE}&key=${KEY}`)).statusCode, 404)
+    assert.equal((await ask(app, `domain=acme.evil-${BASE}`)).statusCode, 404)
     // Three labels deep is not a shape this product serves.
-    assert.equal((await ask(app, `domain=a.b.c.${BASE}&key=${KEY}`)).statusCode, 404)
+    assert.equal((await ask(app, `domain=a.b.c.${BASE}`)).statusCode, 404)
     assert.deepEqual(calls, [], 'a hostname that is not ours must cost no UOA round trip')
   } finally {
     await app.close()
@@ -136,8 +140,8 @@ test('a hostname outside the base domain is refused before UOA is asked', async 
 test('the wrong key is refused, and so is no key', async () => {
   const app = buildApp()
   try {
-    assert.equal((await ask(app, `domain=acme.${BASE}&key=wrong`)).statusCode, 404)
-    assert.equal((await ask(app, `domain=acme.${BASE}`)).statusCode, 404)
+    assert.equal((await ask(app, `domain=acme.${BASE}`, 'wrong')).statusCode, 404)
+    assert.equal((await ask(app, `domain=acme.${BASE}`, null)).statusCode, 404)
   } finally {
     await app.close()
   }
@@ -148,8 +152,8 @@ test('an install with no key configured refuses everything', async () => {
   // on-demand issuance simply does not happen there.
   const app = buildApp({ configured: false })
   try {
-    assert.equal((await ask(app, `domain=acme.${BASE}&key=${KEY}`)).statusCode, 404)
-    assert.equal((await ask(app, `domain=design.acme.${BASE}`)).statusCode, 404)
+    assert.equal((await ask(app, `domain=acme.${BASE}`, null)).statusCode, 404)
+    assert.equal((await ask(app, `domain=design.acme.${BASE}`, null)).statusCode, 404)
   } finally {
     await app.close()
   }
@@ -158,17 +162,79 @@ test('an install with no key configured refuses everything', async () => {
 test('every refusal looks the same from outside', async () => {
   const app = buildApp()
   try {
-    const cases = [
-      `domain=acme.${BASE}&key=wrong`,
-      `domain=nobody.${BASE}&key=${KEY}`,
-      `domain=nope.acme.${BASE}&key=${KEY}`,
-      `domain=acme.somewhere.else&key=${KEY}`,
+    const cases: Array<[string, string | null]> = [
+      [`domain=acme.${BASE}`, 'wrong'],
+      [`domain=acme.${BASE}`, null],
+      [`domain=nobody.${BASE}`, KEY],
+      [`domain=nope.acme.${BASE}`, KEY],
+      [`domain=acme.somewhere.else`, KEY],
+      [`domain=app.${BASE}`, KEY],
     ]
-    for (const query of cases) {
-      const response = await ask(app, query)
+    for (const [query, key] of cases) {
+      const response = await ask(app, query, key)
       assert.equal(response.statusCode, 404, query)
       assert.equal(response.body, '', `${query} must not say why`)
     }
+  } finally {
+    await app.close()
+  }
+})
+
+
+test('the product\'s own hostnames are never a tenant', async () => {
+  // `app` and `api` are where sign-in and this API live. If either resolved as
+  // an organisation, the host gate would render that tenant's portal on the
+  // product's own canonical origin, and the edge would be told the name
+  // deserves a certificate. UOA refuses these as slugs; this is the second
+  // lock, on the side that owns the hostnames.
+  const calls: string[] = []
+  const app = buildApp({ calls })
+  try {
+    for (const label of ['app', 'api', 'admin', 'www', 'vault', 'status']) {
+      assert.equal((await ask(app, `domain=${label}.${BASE}`)).statusCode, 404, label)
+    }
+    assert.deepEqual(calls, [], 'a reserved label must not even be asked about')
+  } finally {
+    await app.close()
+  }
+})
+
+test('a two-label host is unaffected by the reserved list', async () => {
+  // Only the organisation label can collide with a product hostname; a team
+  // called `app` inside a real organisation is an ordinary team.
+  const app = buildApp()
+  try {
+    assert.equal((await ask(app, `domain=design.acme.${BASE}`)).statusCode, 204)
+  } finally {
+    await app.close()
+  }
+})
+
+test('an unexpected failure refuses like everything else, never 5xx', async () => {
+  // The docblock promises an indistinguishable 404. It used to re-throw
+  // anything that was not UoaRosterUnavailableError, which Fastify turns into a
+  // 500 — a refusal the caller can tell apart from the rest.
+  const app = Fastify({ logger: false })
+  registerTeamProvisioningRoutes(
+    app,
+    {
+      prisma: {} as never,
+      requireActorContext: () => null,
+      requireUserActor: () => false,
+      teamHostBaseDomain: BASE,
+      tlsCheckKey: KEY,
+    } as never,
+    {
+      fetchImpl: (async () => {
+        throw new TypeError('fetch failed')
+      }) as never,
+      resolveHost: (async () => ['93.184.216.34']) as never,
+    },
+  )
+  try {
+    const response = await ask(app, `domain=acme.${BASE}`)
+    assert.equal(response.statusCode, 404)
+    assert.equal(response.body, '')
   } finally {
     await app.close()
   }

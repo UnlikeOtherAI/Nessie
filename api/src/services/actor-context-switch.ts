@@ -103,7 +103,19 @@ export const switchActorContext = async (
   // are not enough: the session may only land on the team its UOA credential
   // was actually issued for. Anything else needs a fresh sign-in, not a
   // locally minted token.
-  if (currentClaims.providerType === 'uoa') {
+  // Keyed on what the TARGET is, not on how the caller happens to be signed in.
+  //
+  // This used to read `if (currentClaims.providerType === 'uoa')`, which made
+  // the whole of UOA's ownership conditional on the session type: any session
+  // that was not a UOA one fell through to the local membership rows alone —
+  // the local copy UOA ownership exists to retire — and could be issued a
+  // session for a team UOA never vouched for. Whether such a session is
+  // reachable today is beside the point; the rule is about the team.
+  //
+  // A team with no external ids is a local-mode team and this does not apply,
+  // which is what keeps installs with no identity provider working.
+  const targetIsUoaBound = Boolean(team.externalOrgId || team.externalTeamId)
+  if (targetIsUoaBound || currentClaims.providerType === 'uoa') {
     // A team with no UOA identity at all is a different failure, and telling
     // somebody to sign in again for it sends them through SSO to land back
     // here: there is nothing on the other side to authenticate them into.
@@ -120,6 +132,8 @@ export const switchActorContext = async (
       )
     }
 
+    // Reached by a non-UOA session against a UOA-bound team too: it holds no
+    // `uoaIdentity`, so it is refused here rather than issued a local session.
     if (
       !currentClaims.uoaIdentity
       || team.externalOrgId !== currentClaims.uoaIdentity.organizationId

@@ -278,3 +278,37 @@ dbTest('a UOA session opens the team its credential was issued for', async () =>
     assert.equal(session.claims.team, fixture.teamId)
   })
 })
+
+dbTest('a non-UOA session cannot enter a UOA-bound team either', async () => {
+  await withPrisma(async (prisma) => {
+    const fixture = await seed(prisma, { orgMember: true, projectMember: true, teamMember: true })
+    await prisma.team.update({
+      data: {
+        externalOrgId: `uoa-org-${randomUUID()}`,
+        externalTeamId: `uoa-team-${randomUUID()}`,
+      },
+      where: { id: fixture.teamId },
+    })
+
+    // The guard keys on what the TARGET is, not on how the caller signed in.
+    // Keyed on the caller's provider — as it was — a local-bootstrap session
+    // walked past UnlikeOtherAI entirely and was issued a session for a team
+    // UOA never vouched for, on the strength of local membership rows alone.
+    await assert.rejects(
+      switchTo(prisma, fixture, { providerType: 'local-bootstrap' }),
+      (error: unknown) =>
+        error instanceof ActorContextSwitchError
+        && error.code === 'SSO_TEAM_REAUTH_REQUIRED',
+    )
+  })
+})
+
+dbTest('a local-mode team is still enterable with a local session', async () => {
+  await withPrisma(async (prisma) => {
+    // No external ids: an install with no identity provider must keep working,
+    // which is what stops the rule above from being a lock-out.
+    const fixture = await seed(prisma, { orgMember: true, projectMember: true, teamMember: true })
+    const { session } = await switchTo(prisma, fixture, { providerType: 'local-bootstrap' })
+    assert.equal(session.claims.team, fixture.teamId)
+  })
+})

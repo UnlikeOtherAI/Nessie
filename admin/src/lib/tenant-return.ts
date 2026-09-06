@@ -44,6 +44,12 @@ export const parseTenantReturn = (raw: string | null, currentOrigin: string): UR
 
   if (url.protocol !== 'https:') return null
   if (url.username || url.password) return null
+  // No explicit port, matching `isTeamHostOrigin` on the server. Resolution
+  // vouches for the HOSTNAME; a port rides along unchecked, and the stored href
+  // is what the browser is later sent to. `https://real.tenant.example:8443/`
+  // would pass a hostname check and then navigate somebody to whatever answers
+  // on that port of the same machine.
+  if (url.port) return null
   // Already here. Sending somebody to the origin they are on is at best a
   // wasted navigation and at worst a loop.
   if (url.origin === currentOrigin) return null
