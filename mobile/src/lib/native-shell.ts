@@ -61,6 +61,25 @@ true;
 }
 
 /**
+ * The list column's own bottom clearance, so the last row of a channel list
+ * stays reachable above the native creation control floating over it. The
+ * admin owns the selector that consumes it (admin/src/styles.css): only the
+ * app knows which wrapper holds the column, and this publishes the value.
+ */
+export const nativeListColumnClearanceScript = (clearance: number): string => {
+  const safeClearance = Number.isFinite(clearance) ? Math.max(0, clearance) : 0
+  return `
+try {
+  document.documentElement.style.setProperty(
+    '--nessie-native-list-column-clearance',
+    ${JSON.stringify(`${safeClearance}px`)},
+  );
+} catch (e) {}
+true;
+`
+}
+
+/**
  * The WebView can be alive while its React application is still mounting. Keep
  * the notification route on `window` as well as emitting the event: the React
  * bridge reads the cached value when it becomes ready, rather than losing a

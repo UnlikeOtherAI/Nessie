@@ -1,5 +1,5 @@
 import type { ToolbarAction } from '../components/IpadNativeToolbar'
-import type { NativePhoneCreationAction } from './native-shell-layout'
+import type { NativeCreationAction } from './native-shell-layout'
 
 type RunScript = (script: string) => void
 
@@ -10,7 +10,9 @@ export const createNativeWebviewActions = (runScript: RunScript) => ({
   closeSearchOverlay: (): void => {
     runScript("window.dispatchEvent(new Event('nessie:close-search-overlay'));")
   },
-  createFromPhoneMenu: (action: NativePhoneCreationAction): void => {
+  // The wire name stays `__nessieCreateFromPhoneMenu`: installed builds speak
+  // it, and the control it belongs to is no longer phone-only.
+  createFromNativeMenu: (action: NativeCreationAction): void => {
     runScript(`window.__nessieCreateFromPhoneMenu && window.__nessieCreateFromPhoneMenu(${JSON.stringify(action)});`)
   },
   openSearchOverlay: (): void => {

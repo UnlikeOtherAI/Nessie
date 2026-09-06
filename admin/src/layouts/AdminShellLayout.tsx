@@ -28,7 +28,7 @@ import {
 } from '../navigation/phone-navigation';
 import { PhoneNavigationProvider } from './admin-shell/PhoneNavigationProvider';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
-import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
+import { NativeCreationBridge } from './admin-shell/NativeCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import {
@@ -422,8 +422,11 @@ const AuthenticatedAdminShellLayout = () => {
                     placement="topbar"
                   />
                 ) : null}
-                {nativePhoneApp ? (
-                  <NativePhoneCreationBridge
+                {/* The iPad draws the same native creation control over its
+                    channels column that the phone floats over its list, so
+                    both reach the shell's create handlers through one bridge. */}
+                {nativeIPadApp || nativePhoneApp ? (
+                  <NativeCreationBridge
                     onCreateAgent={shell.navigateToNewAgent}
                     onCreateChannel={shell.openCreateChannel}
                     onCreateMessage={shell.navigateToNewConversation}

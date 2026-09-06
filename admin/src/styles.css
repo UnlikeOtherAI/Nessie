@@ -743,9 +743,10 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
    its aside inside ResizableSidebar, a detached thread inside
    ResizableThreadPanel — so the selectors are owned here, never injected.
 
-   Unwrapped, and one wrapper deep: the secondary nav and the detached thread
-   panel each sit inside their resizable column. Two wrappers deep covers the
-   phone tablet-root list, where the shell's main holds the navigation
+   Unwrapped here; one wrapper deep — the secondary nav and the detached
+   thread panel, each inside their resizable column — takes the rule below,
+   which adds the list column's own extra clearance. Two wrappers deep covers
+   the phone tablet-root list, where the shell's main holds the navigation
    viewport, which holds the wrapper div, which holds the aside. */
 /* Enumerated, not `:is(> …)` — a leading combinator is only legal inside
    `:has()`, so an `:is(> aside, …)` list is an invalid selector and the whole
@@ -755,9 +756,23 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
    padding already holds its content clear — matching both would stack two
    clearances. */
 .admin-shell > aside,
-.admin-shell > main,
-.admin-shell > .resizable-sidebar > aside {
+.admin-shell > main {
   padding-bottom: calc(var(--nessie-native-bottom-overlay, 0px) + env(safe-area-inset-bottom));
+}
+
+/* The pinned list column takes one clearance more than the surfaces above:
+   the iPad shell floats its native creation control over this column's own
+   floor (`--nessie-native-list-column-clearance`;
+   mobile/src/lib/native-shell.ts), and a last row under a button that never
+   moves is a row nobody can reach. The property is published only while that
+   control is showing, so every other column and every other shell is
+   unchanged. */
+.admin-shell > .resizable-sidebar > aside {
+  padding-bottom: calc(
+    var(--nessie-native-bottom-overlay, 0px)
+    + var(--nessie-native-list-column-clearance, 0px)
+    + env(safe-area-inset-bottom)
+  );
 }
 
 .resizable-sidebar-control {

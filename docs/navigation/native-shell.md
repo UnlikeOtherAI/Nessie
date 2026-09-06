@@ -116,6 +116,37 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `admin/test/screen-header.test.ts` gates the doorway and page-header
   components across all of `admin/src` so an eighth cannot appear unnoticed.
 
+- **`nessie:list-column { left, right, section }` — where the pinned list
+  column stands.** Posted by `ResizableSidebar` (through
+  `useNativeListColumnBridge`, `admin/src/layouts/admin-shell/native-list-column.ts`)
+  on mount, on every `ResizeObserver` change, and on a window resize; a
+  `section` of `null` retires it, which is what an unmount posts. The column
+  is resizable and its width is a **per-section preference**, so the shell
+  cannot derive any of it — only the document knows where the column ended
+  up. `left`/`right` are viewport coordinates, which inside the WebView are
+  the shell's own points, because the native frame gives the WebView the full
+  window width. `isListColumnMessage` guards it and
+  `native-shell-presentation.ts` keeps it as `listColumn`; a malformed message
+  is refused rather than retiring the column on screen.
+
+- **The creation control is one component in two lanes.**
+  `mobile/src/components/NativeCreationMenu.tsx` is the compose button that
+  morphs into the sheet's Message row, and it is laid out inside whichever
+  **lane** it is handed (`nativeCreationMenuMetrics`,
+  `mobile/src/lib/native-creation-menu.ts`). The phone's lane is the screen,
+  inset from both edges and standing on its tab bar; the iPad's is the pinned
+  channels column from `nessie:list-column`, so the control lands against that
+  column's own trailing edge rather than the window's. Both reach the admin
+  through the same `__nessieCreateFromPhoneMenu` handler
+  (`NativeCreationBridge`) — the wire name predates the iPad and installed
+  builds still speak it — so create permissions and dialogs are identical on
+  every shell. Which section the column belongs to is the **column's** answer,
+  not the screen's: on an iPad the reader stands in a conversation while the
+  channels list is still the column beside it. The shell publishes
+  `--nessie-native-list-column-clearance` while the control is showing and
+  `admin/src/styles.css` consumes it, so the column's last row stays reachable
+  above a button that never moves.
+
 - **`nessie:attention { badges }`** carries one unread count per section, keyed
   by the same registry section names (`{ channels, knowledge, projects }`
   today; a section the admin does not count is absent and reads as 0). It

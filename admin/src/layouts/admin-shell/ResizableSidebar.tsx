@@ -3,6 +3,7 @@ import { ColumnResizeHandle } from '../../components/primitives/ColumnResizeHand
 import { useResizeHandleReveal } from '../../hooks/useResizeHandleReveal'
 import { useViewport } from '../../hooks/useViewport'
 import { getCookie, setCookie } from '../../lib/storage'
+import { useNativeListColumnBridge } from './native-list-column'
 
 // The pre-section cookie. It is still read as the starting point for a
 // section a person has never resized, so the one width they had chosen
@@ -90,6 +91,9 @@ const SectionResizableSidebar = ({
   section,
 }: ResizableSidebarProps) => {
   const sidebarRef = useRef<HTMLDivElement>(null)
+  // The native shells draw their own chrome over this column, and only the
+  // document knows where a resizable, per-section width ended up.
+  useNativeListColumnBridge(sidebarRef, section)
   const [isResizing, setIsResizing] = useState(false)
   const { capabilities: { coarsePointer } } = useViewport()
   const {

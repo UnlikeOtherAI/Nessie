@@ -4,7 +4,6 @@ import test from 'node:test'
 import {
   createNativeTabNavigationState,
   getNativePhoneBottomChromeClearance,
-  getNativePhoneComposeBottom,
   getNativePhoneHeaderHeight,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
@@ -82,8 +81,6 @@ test('every native phone tab root reserves the team header on iPhone and Android
   }), { top: 96, bottom: 28 })
   assert.equal(getNativePhoneBottomChromeClearance('ios'), 49)
   assert.equal(getNativePhoneBottomChromeClearance('android'), 78)
-  assert.equal(getNativePhoneComposeBottom(34, 'ios'), 101)
-  assert.equal(getNativePhoneComposeBottom(28, 'android'), 124)
 })
 
 test('an admitted phone keeps a shorter native header on every landscape page', () => {
