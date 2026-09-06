@@ -1,15 +1,13 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
+import { verifyHmacSignature } from '@nessie/runtime'
 import { type TriggerEventDispatchJobPayload } from '@nessie/schemas'
-import {
-  AgentTriggerDeliveryRecordSchema,
-  PublishEventBodySchema,
-} from '../contracts.js'
+import { AgentTriggerDeliveryRecordSchema, PublishEventBodySchema } from '../contracts/triggers.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { dispatchAgentTrigger } from '../services/triggers.js'
 import type { RouteDeps } from './types.js'
 
@@ -17,24 +15,17 @@ import type { RouteDeps } from './types.js'
 // When a webhook trigger carries a `signingSecret`, the intake endpoint requires
 // a valid `X-Nessie-Signature` over the RAW request body (HMAC-SHA256) instead
 // of the bearer-key check. A `sha256=` prefix is accepted (GitHub-compatible).
+// The comparison itself is `@nessie/runtime`'s shared verifier — this used to
+// be one of four hand-rolled copies (2026-09-05 review, F5-2).
 
 const SIGNATURE_HEADER = 'x-nessie-signature'
 
-const stripSignaturePrefix = (value: string): string => {
-  const trimmed = value.trim()
-  const lower = trimmed.toLowerCase()
-  return lower.startsWith('sha256=') ? trimmed.slice('sha256='.length) : trimmed
-}
-
-const verifyHmacSignature = (
+const verifySignedWebhookRequest = (
   request: FastifyRequest,
   signingSecret: string,
 ): boolean => {
   const headerValue = request.headers[SIGNATURE_HEADER]
   const provided = Array.isArray(headerValue) ? headerValue[0] : headerValue
-  if (typeof provided !== 'string' || provided.length === 0) {
-    return false
-  }
 
   // The JSON content-type parser captures the unparsed buffer on `rawBody`; the
   // HMAC must be computed over those exact bytes, not a re-serialized body.
@@ -43,21 +34,13 @@ const verifyHmacSignature = (
     return false
   }
 
-  const expected = createHmac('sha256', signingSecret).update(rawBody).digest('hex')
-  const expectedBuffer = Buffer.from(expected, 'hex')
-
-  let providedBuffer: Buffer
-  try {
-    providedBuffer = Buffer.from(stripSignaturePrefix(provided), 'hex')
-  } catch {
-    return false
-  }
-
-  if (providedBuffer.length !== expectedBuffer.length) {
-    return false
-  }
-
-  return timingSafeEqual(providedBuffer, expectedBuffer)
+  return verifyHmacSignature({
+    encoding: 'hex',
+    payload: rawBody,
+    prefix: 'sha256=',
+    secret: signingSecret,
+    signature: provided,
+  })
 }
 
 /**
@@ -73,7 +56,6 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
     requireOwner,
     readWebhookApiKey,
     isJsonContentType,
-    isTimingSafeMatch,
     readFirstHeader,
   } = deps
 
@@ -130,34 +112,25 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
       return reply
     }
 
-    const candidateTriggers = await prisma.agentTrigger.findMany({
-      where: {
-        type: 'webhook',
-      },
-      select: {
-        id: true,
-        config: true,
-        // sp-webhook: a signing-secret trigger MUST use the HMAC-signed endpoint
-        // below; bearer-key auth must not be accepted for it.
-        signingSecret: true,
-      },
-    })
-
-    const matchedTrigger = candidateTriggers.find((candidate) => {
-      if (candidate.signingSecret) {
-        return false
-      }
-
-      const candidateApiKey =
-        candidate.config &&
-        typeof candidate.config === 'object' &&
-        !Array.isArray(candidate.config) &&
-        typeof (candidate.config as Record<string, unknown>)['apiKey'] === 'string'
-          ? ((candidate.config as Record<string, unknown>)['apiKey'] as string)
-          : undefined
-
-      return isTimingSafeMatch(candidateApiKey, apiKey)
-    })
+    // Look the key up, do not scan for it. This used to load EVERY webhook
+    // trigger in the deployment — no tenant filter — and compare the presented
+    // key against each one in Node, so an unauthenticated caller could drive an
+    // unbounded cross-tenant table scan on demand (2026-09-05 review, FO3-7).
+    // The key lives inside `config` JSON, which the writers in
+    // `@nessie/team-admin` own, so the lookup is an equality on that JSON path
+    // served by the partial expression index added in
+    // `20260907120000_agent_trigger_webhook_key_index`. A trigger holding a
+    // `signingSecret` is excluded here exactly as before: it MUST use the
+    // HMAC-signed endpoint below and bearer-key auth is never accepted for it.
+    const matched = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "agent_triggers"
+      WHERE "type" = 'webhook'::"AgentTriggerType"
+        AND "signing_secret" IS NULL
+        AND "config" ->> 'apiKey' = ${apiKey}
+      LIMIT 1
+    `
+    const matchedTrigger = matched[0]
 
     if (!matchedTrigger) {
       sendApiError(reply, 403, 'WEBHOOK_API_KEY_INVALID', 'Webhook API key is invalid')
@@ -189,7 +162,7 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
         return reply
       }
 
-      if (!verifyHmacSignature(request, trigger.signingSecret)) {
+      if (!verifySignedWebhookRequest(request, trigger.signingSecret)) {
         sendApiError(reply, 401, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature is missing or invalid')
         return reply
       }

@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
-import { MessageSearchQuerySchema, MessageSearchResultSchema } from '../contracts.js'
+import { MessageSearchQuerySchema, MessageSearchResultSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput } from '../lib/api.js'
-import { searchMessages } from '../services/messages.js'
+import { searchMessages } from '../services/message-search.js'
 import type { RouteDeps } from './types.js'
 
 export const registerSearchRoutes = (app: FastifyInstance, deps: RouteDeps): void => {

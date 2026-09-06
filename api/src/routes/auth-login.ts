@@ -3,8 +3,8 @@ import { MeResponseSchema, type UoaSessionIdentity } from '@nessie/schemas'
 import type { Prisma } from '@prisma/client'
 
 import { verifyPassword } from '../auth/password.js'
-import { verifySessionToken, type SessionTokenClaims } from '../auth/session.js'
-import { LoginRequestSchema } from '../contracts.js'
+import type { SessionTokenClaims } from '../auth/session.js'
+import { LoginRequestSchema } from '../contracts/auth.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   buildMeResponse,
@@ -21,7 +21,7 @@ import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
 import { RefreshTokenIssuanceError } from '../services/refresh-token.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
 import { loadSessionUserByEmail, loadSessionUserById } from '../services/users.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import {
   rejectTeamIdentity,
   rejectTeamRecovery,
@@ -94,14 +94,11 @@ export const registerAuthLoginRoute = (
     if (
       !(await guardAuthRequest(
         rateLimiter,
-        { bucket: RATE_LIMIT_BUCKETS.loginIp, rule: config.api.rateLimit.loginIp },
+        rateLimitFor(config, 'loginIp'),
         request,
         reply,
         {
-          account: {
-            bucket: RATE_LIMIT_BUCKETS.loginAccount,
-            rule: config.api.rateLimit.loginAccount,
-          },
+          account: rateLimitFor(config, 'loginAccount'),
           // Normalize exactly like the account lookup
           // (loadSessionUserByEmail trims + lowercases) so case/whitespace
           // variants of one email share a single counter instead of each
@@ -359,12 +356,7 @@ export const registerAuthLoginRoute = (
           uoaIdentity: uoaSessionIdentity,
           userId: context.userId,
         })
-        const verification = verifySessionToken(session.token, authSecret)
-        if (!verification.ok) {
-          sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue external auth session')
-          return reply
-        }
-        const actorContext = createActorContextFromClaims(verification.claims)
+        const actorContext = createActorContextFromClaims(session.claims)
         await ensurePersonalAssistantBootstrap(prisma, {
           organizationId: context.organizationId,
           teamId: context.teamId,
@@ -390,15 +382,15 @@ export const registerAuthLoginRoute = (
         })
         await issueRefreshCookie(request, reply, {
           userId: sessionUser.id,
-          organizationId: verification.claims.org,
+          organizationId: session.claims.org,
           sessionId: session.sessionId,
-          providerId: verification.claims.providerId,
-          providerType: verification.claims.providerType,
-          ...(uoaSession && verification.claims.uoaIdentity
+          providerId: session.claims.providerId,
+          providerType: session.claims.providerType,
+          ...(uoaSession && session.claims.uoaIdentity
             ? {
                 uoaSession: {
                   exchange: uoaSession,
-                  identity: verification.claims.uoaIdentity,
+                  identity: session.claims.uoaIdentity,
                 },
               }
             : {}),
@@ -406,7 +398,7 @@ export const registerAuthLoginRoute = (
         return createApiResponse({
           token: session.token,
           me: MeResponseSchema.parse(
-            await buildMeResponse(prisma, sessionUser, verification.claims, config),
+            await buildMeResponse(prisma, sessionUser, session.claims, config),
           ),
         })
       } catch (error) {
@@ -467,12 +459,7 @@ export const registerAuthLoginRoute = (
       undefined,
       { userAgent: request.headers['user-agent'] ?? null },
     )
-    const verification = verifySessionToken(session.token, authSecret)
-    if (!verification.ok) {
-      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
-      return reply
-    }
-    const actorContext = createActorContextFromClaims(verification.claims)
+    const actorContext = createActorContextFromClaims(session.claims)
     await ensurePersonalAssistantBootstrap(prisma, {
       organizationId: actorContext.tenant.organizationId,
       teamId: actorContext.tenant.teamId!,
@@ -499,10 +486,10 @@ export const registerAuthLoginRoute = (
     try {
       await issueRefreshCookie(request, reply, {
         userId: user.id,
-        organizationId: verification.claims.org,
+        organizationId: session.claims.org,
         sessionId: session.sessionId,
-        providerId: verification.claims.providerId,
-        providerType: verification.claims.providerType,
+        providerId: session.claims.providerId,
+        providerType: session.claims.providerType,
         expectedPasswordHash: user.passwordHash,
       })
     } catch (error) {
@@ -515,7 +502,7 @@ export const registerAuthLoginRoute = (
     return createApiResponse({
       token: session.token,
       me: MeResponseSchema.parse(
-        await buildMeResponse(prisma, user, verification.claims, config),
+        await buildMeResponse(prisma, user, session.claims, config),
       ),
     })
   })

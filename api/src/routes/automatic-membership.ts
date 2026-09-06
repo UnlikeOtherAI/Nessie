@@ -37,7 +37,7 @@ import {
   requireOrganizationAdministrator,
   resolveExternalOrgId,
   resolveRuleAuthorization,
-} from '../services/automatic-membership/access.js'
+} from './automatic-membership-access.js'
 import {
   claimDomain,
   revokeDomain,

@@ -13,8 +13,8 @@ import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirecti
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { WorkflowRunExecuteJobPayload } from '@nessie/schemas'
 
-import type { WorkflowRunRecord, WorkflowStepRunRecord } from '../contracts.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import type { WorkflowRunRecord, WorkflowStepRunRecord } from '../contracts/workflows.js'
+import { enqueueQueueJob } from '@nessie/db'
 import {
   mapWorkflowRun,
   mapWorkflowStepRun,

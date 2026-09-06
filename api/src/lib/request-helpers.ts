@@ -13,10 +13,8 @@ import {
   type AuthorizedActionContext,
   type WsScope,
 } from '@nessie/schemas'
-import {
-  PersonalAssistantStateResponseSchema,
-  ThreadRecordSchema,
-} from '../contracts.js'
+import { PersonalAssistantStateResponseSchema } from '../contracts/agents.js'
+import { ThreadRecordSchema } from '../contracts/messaging.js'
 import {
   canAdministerProject,
   ensureDefaultThread,
@@ -279,6 +277,10 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         defaultThreadId: parseThreadId(thread.id),
         unreadCount: 0,
         lastMessageAt: lastMessageAt ?? null,
+        // System channels are lifecycle-protected: `canManageChannel` refuses
+        // every viewer on one, so the Personal Assistant's home is never
+        // manageable — a decision the predicate makes, not a placeholder.
+        viewerCanManage: false,
         createdAt: channel.createdAt.toISOString(),
         updatedAt: channel.updatedAt.toISOString(),
       },

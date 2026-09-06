@@ -87,7 +87,17 @@ export const startCallForUser = async (
 
   const link = await createCallLinkForTeamUser(
     prisma,
-    { provider: input.provider, teamId: channel.teamId, userId: input.actingUserId },
+    {
+      // The channel's own tenant, already re-read above, and the entitlement
+      // this path actually holds: membership of THIS channel, checked at
+      // `channelMembership`. A public channel's members are not necessarily in
+      // its team, so team membership is not the gate here.
+      entitlement: 'channel_member',
+      organizationId: channel.organizationId,
+      provider: input.provider,
+      teamId: channel.teamId,
+      userId: input.actingUserId,
+    },
     dependencies.callLink,
   )
   const now = dependencies.now?.() ?? new Date()

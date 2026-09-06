@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import { emitAuditEvent } from '../../services/audit.js'
 import {
   getCatalogEntry,
   isValidatedMcpApiKeyAuth,
@@ -147,6 +148,20 @@ export const registerMcpCredentialRoutes = (
         principalId: body.principalId,
         credentialRef,
       })
+      // The principal the credential was attached to, never the credential and
+      // never its vault reference.
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'mcp.credential.written',
+        resourceType: 'mcp_instance',
+        resourceId: instanceId,
+        outcome: 'success',
+        metadata: {
+          overrideId: override.id,
+          principalType: body.principalType,
+          principalId: body.principalId,
+        },
+      })
       return createApiResponse(publicOverride(override))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
@@ -207,6 +222,17 @@ export const registerMcpCredentialRoutes = (
         )
         return reply
       }
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'mcp.credential.deleted',
+        resourceType: 'mcp_instance',
+        resourceId: params.instanceId,
+        outcome: 'success',
+        metadata: {
+          principalType: principalType.data,
+          principalId: params.principalId,
+        },
+      })
       return reply.code(204).send()
     },
   )

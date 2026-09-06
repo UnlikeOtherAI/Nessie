@@ -5,8 +5,9 @@ import {
   type UnreadDirectMessageRecord,
 } from '@nessie/schemas'
 
+import { resolveDisclosureViewer } from '@nessie/runtime'
+
 import { listChannelsForUser } from './channels.js'
-import { resolveMessageViewer } from './disclosure-viewer.js'
 import { evaluateMessageReadAccess } from './message-read-access.js'
 
 type UnreadMessageRow = {
@@ -74,7 +75,7 @@ export const listUnreadDirectMessages = async (
     include: previewMessageInclude,
   })
   const messagesById = new Map(messages.map((message) => [message.id, message]))
-  const viewer = await resolveMessageViewer(prisma, input.organizationId, input.userId)
+  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
 
   const items = await Promise.all(
     unreadChannels.map(async (channel) => {

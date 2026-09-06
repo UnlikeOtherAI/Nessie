@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { publishAgentTodoUpdated, startAgentTodoRun } from '@nessie/team-admin'
-import { claimThreadRunOrPend } from '@nessie/db'
+import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import { z } from 'zod'
 
 import {
@@ -19,9 +19,13 @@ import {
   RunAgentTodoBodySchema,
   UpdateAgentTodoStepBodySchema,
   UpdateAgentTodoTemplateBodySchema,
-} from '../contracts.js'
+} from '../contracts/agent-todos.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
+import {
+  readIfMatchRevision,
+  sendMalformedIfMatch,
+  sendRevisionConflict,
+} from '../lib/if-match.js'
 import {
   AGENT_TODO_ERROR_CODES,
   AgentTodoError,
@@ -31,6 +35,7 @@ import {
   createAgentTodoTemplate,
   createStandaloneAgentTodo,
   getAgentTodo,
+  getAgentTodoTemplate,
   listAgentTodoTemplates,
   listAgentTodos,
   updateAgentTodoStep,
@@ -215,6 +220,17 @@ export const registerAgentTodoRoutes = (
       const body = parseInput(UpdateAgentTodoTemplateBodySchema, request.body, reply)
       if (!body) return reply
 
+      // Same lost-update protection as dashboards.ts: a caller states the
+      // revision it edited via `If-Match` and a stale write is refused rather
+      // than silently overwritten. `body.version` remains the fallback for a
+      // caller that has not moved to the header yet; the header wins when set.
+      const ifMatch = readIfMatchRevision(request)
+      if (ifMatch.kind === 'malformed') {
+        sendMalformedIfMatch(reply)
+        return reply
+      }
+      const version = ifMatch.kind === 'revision' ? ifMatch.revision : body.version
+
       let template
       try {
         template = await updateAgentTodoTemplate(deps.prisma, {
@@ -222,8 +238,18 @@ export const registerAgentTodoRoutes = (
           ...body,
           createdByUserId: actorContext.actor.actorId,
           templateId: params.templateId,
+          version,
         })
       } catch (error) {
+        if (error instanceof AgentTodoError && error.code === AGENT_TODO_ERROR_CODES.TEMPLATE_CHANGED) {
+          const current = await getAgentTodoTemplate(deps.prisma, {
+            agentId: agent.agentId,
+            organizationId: agent.organizationId,
+            templateId: params.templateId,
+          })
+          sendRevisionConflict(reply, error.code, error.message, current?.version ?? version)
+          return reply
+        }
         if (sendAgentTodoError(reply, error)) return reply
         throw error
       }

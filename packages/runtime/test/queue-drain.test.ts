@@ -36,6 +36,27 @@ const readJobs = async (pool: Pool, topic: string): Promise<JobRow[]> => {
   return result.rows
 }
 
+// Seeding a pending job is the test's own business, not the provider's: the
+// queue has one enqueue door (`enqueueQueueJob` in `@nessie/db`, which owns the
+// idempotency-key semantics), and `PgQueueProvider` deliberately exposes only
+// the claim side. A plain insert here keeps this file testing the drain rather
+// than a second write path.
+const seedPendingJob = async (
+  pool: Pool,
+  topic: string,
+  payload: Record<string, unknown>,
+): Promise<string> => {
+  const id = randomUUID()
+  await pool.query(
+    `
+      INSERT INTO queue_jobs (id, topic, payload, status, attempt, max_attempts, enqueued_at)
+      VALUES ($1, $2, $3::jsonb, 'pending', 0, 5, now())
+    `,
+    [id, topic, JSON.stringify(payload)],
+  )
+  return id
+}
+
 // A row the claim loop could never have produced on its own inside a test: an
 // abandoned `processing` job whose lock has already expired.
 const seedStuckJob = async (
@@ -83,8 +104,8 @@ runIfDatabase('a draining subscription claims nothing more', async () => {
   await withPool(async (pool) => {
     const topic = uniqueTopic()
     const provider = new PgQueueProvider(pool)
-    await provider.enqueue(topic, { seq: 1 })
-    await provider.enqueue(topic, { seq: 2 })
+    await seedPendingJob(pool, topic, { seq: 1 })
+    await seedPendingJob(pool, topic, { seq: 2 })
 
     const claimed = deferred()
     const release = deferred()
@@ -125,7 +146,7 @@ runIfDatabase('a handler that completes during a drain is acked', async () => {
   await withPool(async (pool) => {
     const topic = uniqueTopic()
     const provider = new PgQueueProvider(pool)
-    const jobId = await provider.enqueue(topic, { seq: 1 })
+    const jobId = await seedPendingJob(pool, topic, { seq: 1 })
 
     const claimed = deferred()
     const release = deferred()
@@ -165,7 +186,7 @@ runIfDatabase('two consecutive lock-renewal failures abort the handler and nack 
     // A one-second TTL renews once a second, so two consecutive misses land in
     // about two seconds instead of the production three-and-a-bit minutes.
     const provider = new PgQueueProvider(pool, { lockTtlSeconds: 1 })
-    const jobId = await provider.enqueue(topic, { seq: 1 })
+    const jobId = await seedPendingJob(pool, topic, { seq: 1 })
 
     const claimed = deferred()
     let sawAbort = false

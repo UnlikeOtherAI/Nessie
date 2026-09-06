@@ -15,6 +15,7 @@ import { ensureDefaultThread } from '@nessie/team-admin'
 import { callDeepSignalMcpTool } from './deepsignal-mcp-call.js'
 import { getExternalAgentProduct } from './external-agent.js'
 import { resolveUserScopedProductTransport } from './external-agent-instance.js'
+import { createSystemAuthoredMessage } from './system-authored-message.js'
 import { asArray, extractList, firstString, isRecord, readToolJson } from './mcp-tool-json.js'
 
 /**
@@ -244,6 +245,14 @@ const adoptLatestConversation = async (
   return best?.id ?? null
 }
 
+/**
+ * Nobody. A mirrored turn is history that already happened in the other
+ * product, not participation here: auto-following a page of imported turns
+ * would bury the Threads inbox it is meant to serve. Following resumes with the
+ * first message actually posted in this channel.
+ */
+const MIRRORED_HISTORY_FOLLOWERS: string[] = []
+
 const upsertTurns = async (
   prisma: PrismaClient,
   resolved: ResolvedChannel,
@@ -278,27 +287,25 @@ const upsertTurns = async (
         activities: turn.activities,
         cards: turn.cards,
       })
-      await prisma.message.create({
-        data: {
-          agentId: resolved.agentId,
-          threadId: resolved.threadId,
-          role: 'assistant',
-          content: turn.content.length > 0 ? turn.content : '(no reply)',
-          metadata: { uiCards, external } as Prisma.InputJsonValue,
-          ...(turn.createdAt ? { createdAt: turn.createdAt } : {}),
-        },
-      })
+      await prisma.$transaction((tx) => createSystemAuthoredMessage(tx, {
+        agentId: resolved.agentId,
+        content: turn.content.length > 0 ? turn.content : '(no reply)',
+        ...(turn.createdAt ? { createdAt: turn.createdAt } : {}),
+        followedByUserIds: MIRRORED_HISTORY_FOLLOWERS,
+        metadata: { uiCards, external } as Prisma.InputJsonValue,
+        role: 'assistant',
+        threadId: resolved.threadId,
+      }))
     } else {
-      await prisma.message.create({
-        data: {
-          userId: ctx.userId,
-          threadId: resolved.threadId,
-          role: 'user',
-          content: turn.content.length > 0 ? turn.content : '(no message)',
-          metadata: { external } as Prisma.InputJsonValue,
-          ...(turn.createdAt ? { createdAt: turn.createdAt } : {}),
-        },
-      })
+      await prisma.$transaction((tx) => createSystemAuthoredMessage(tx, {
+        content: turn.content.length > 0 ? turn.content : '(no message)',
+        ...(turn.createdAt ? { createdAt: turn.createdAt } : {}),
+        followedByUserIds: MIRRORED_HISTORY_FOLLOWERS,
+        metadata: { external } as Prisma.InputJsonValue,
+        role: 'user',
+        threadId: resolved.threadId,
+        userId: ctx.userId,
+      }))
     }
     imported += 1
   }

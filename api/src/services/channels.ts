@@ -8,7 +8,7 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
-import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts.js'
+import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts/team.js'
 import {
   canManageChannel,
   channelTeamInclude,
@@ -132,6 +132,28 @@ export const listChannelsForUser = async (
   const unreadCountsByThread = await loadUnreadCountsByThread(prisma, defaultThreadIds, userId)
   const lastMessageAtByThread = await loadLastMessageAtByThread(prisma, defaultThreadIds)
 
+  // `viewerCanManage` mirrors `canManageChannel` (`@nessie/team-admin`), batched
+  // rather than looked up per row: the viewer's channel-member role is already
+  // loaded above, so only the organisation role (one row for this viewer) and
+  // the team roles across the distinct teams on this page are fetched, once
+  // each, instead of once per channel.
+  const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
+    prisma.organizationMember.findFirst({
+      where: { organizationId, userId },
+      select: { role: true },
+    }),
+    prisma.teamMember.findMany({
+      where: { userId, teamId: { in: [...new Set(channels.map((channel) => channel.teamId))] } },
+      select: { role: true, teamId: true },
+    }),
+  ])
+  const isManagerRole = (role: string | null | undefined): boolean =>
+    role === 'owner' || role === 'admin'
+  const viewerIsOrgManager = isManagerRole(viewerOrgMember?.role)
+  const viewerTeamRoleByTeamId = new Map(
+    viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
+  )
+
   const principalUserIds = [...new Set(
     channels.flatMap((channel) =>
       (channel.agentBindings ?? []).flatMap((binding) =>
@@ -191,6 +213,11 @@ export const listChannelsForUser = async (
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
+    viewerCanManage: !channel.systemChannelType && (
+      isManagerRole(channel.members[0]?.role)
+      || viewerIsOrgManager
+      || isManagerRole(viewerTeamRoleByTeamId.get(channel.teamId))
+    ),
     personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),

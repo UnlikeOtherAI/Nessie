@@ -23,9 +23,7 @@ import {
   type AgentEditActor,
 } from '@nessie/team-admin'
 
-import type { AgentRecord } from '../contracts.js'
-
-// Agent creation and the entitlement-scoped agent list are shared with the
+import type { AgentRecord } from '../contracts/agents.js'// Agent creation and the entitlement-scoped agent list are shared with the
 // worker (the assistant's `agent_create` and `agent_list` tools); the route
 // keeps importing them from here. Edit authority is shared for the same reason:
 // the routes and the Designer's future `agent_update` must not be able to

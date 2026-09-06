@@ -79,12 +79,28 @@ test('channel_create makes the acting user the owner of a channel in the run tea
   const created: Array<Record<string, unknown>> = []
   const context = buildContext('member', {
     team: {
+      // Read twice: `canPlaceChannelInTeam` selects `systemManaged`, the
+      // container lookup selects the project. One superset row serves both.
       findUnique: async () => ({
         project: { id: PROJECT_ID, organizationId: ORG_ID },
+        systemManaged: false,
       }),
     },
+    // Placing a channel in a team requires standing in it; a plain org member
+    // gets that standing from their team membership, not their org role.
+    teamMember: { findFirst: async () => ({ role: 'member' }) },
+    projectMember: { findFirst: async () => null },
+    // `mapChannelRecord` computes `viewerCanManage` through `canManageChannel`,
+    // which re-reads the channel row and the creator's channel membership.
+    channelMember: { findUnique: async () => ({ role: 'owner' }) },
     channel: {
       findFirst: async () => null,
+      findUnique: async () => ({
+        id: NEW_CHANNEL_ID,
+        organizationId: ORG_ID,
+        systemChannelType: null,
+        teamId: TEAM_ID,
+      }),
       create: async (input: { data: Record<string, unknown> }) => {
         created.push(input.data)
         return {

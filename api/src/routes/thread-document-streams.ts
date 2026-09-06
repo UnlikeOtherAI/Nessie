@@ -12,7 +12,7 @@ import {
   listThreadDocumentStreams,
   retargetDocumentStream,
 } from '../services/document-streams.js'
-import { findThreadForUser } from '../services/messages.js'
+import { findThreadForUser } from '../services/message-read-state.js'
 import { createKnowledgeAccess } from './knowledge-base-access.js'
 import type { RouteDeps } from './types.js'
 

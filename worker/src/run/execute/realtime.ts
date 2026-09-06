@@ -1,4 +1,4 @@
-import type { PgRealtimeTransport } from '@nessie/runtime'
+import { publishMessageEnvelope, type PgRealtimeTransport } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -84,19 +84,21 @@ export const publishMessageCreated = async (
 ): Promise<void> => {
   const scopes = buildScopes(context)
   const { reply } = input
-  await realtimeTransport.publishWs(scopes, {
-    data: {
-      agentId: input.authoredByOwner ? undefined : parseAgentId(context.agent.id),
-      channelId: parseChannelId(context.channel.id),
-      ...(input.restricted
-        ? { restricted: true }
-        : { contentPreview: input.content.slice(0, 200) }),
-      messageId: input.messageId,
+  // The envelope itself is `@nessie/runtime`'s (`publishMessageEnvelope`), so
+  // the worker's announcement and the API's are one payload shape rather than
+  // two that drift; what stays here is the scope set and the failure policy.
+  await publishMessageEnvelope(realtimeTransport, scopes, {
+    channelId: context.channel.id,
+    message: {
+      // A delegated owner-authored post carries no agent author.
+      agentId: input.authoredByOwner ? null : context.agent.id,
+      content: input.content,
+      id: input.messageId,
+      ...(input.restricted ? { restricted: true } : {}),
       role: input.role,
-      threadId: parseThreadId(context.run.threadId),
-      ...(reply ? { rootMessageId: reply.rootMessageId } : {}),
     },
-    event: reply ? 'message.reply' : 'message.new',
+    ...(reply ? { rootMessageId: reply.rootMessageId } : {}),
+    threadId: context.run.threadId,
   })
   if (reply) {
     await realtimeTransport.publishWs(scopes, {

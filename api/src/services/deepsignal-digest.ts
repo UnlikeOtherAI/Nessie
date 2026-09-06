@@ -6,6 +6,8 @@ import {
   type IntegrationUiCard,
 } from '@nessie/schemas'
 
+import { createSystemAuthoredMessage } from './system-authored-message.js'
+
 /**
  * DeepSignal proactive-insight delivery shaping (deep-integration research §3).
  *
@@ -212,15 +214,16 @@ export const deliverInsightToDigest = async (
 
     const createDigest = async (mode: DigestDeliveryMode): Promise<DigestDelivery> => {
       const insights = [insight]
-      const message = await tx.message.create({
-        data: {
-          agentId,
-          threadId,
-          role: 'assistant',
-          content: buildDigestContent(insights),
-          metadata: buildMetadata(insights),
-        },
-        select: { id: true },
+      // Follower decision: nobody. A digest is a standing, rolling row the
+      // agent folds later insights into rather than a conversation — following
+      // it would put every fold in a Threads inbox.
+      const message = await createSystemAuthoredMessage(tx, {
+        agentId,
+        content: buildDigestContent(insights),
+        followedByUserIds: [],
+        metadata: buildMetadata(insights),
+        role: 'assistant',
+        threadId,
       })
       return { messageId: message.id, mode }
     }

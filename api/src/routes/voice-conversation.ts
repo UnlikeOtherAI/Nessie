@@ -11,7 +11,8 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage } from '../services/message-create.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
-import { findThreadForUser, listThreadMessages } from '../services/messages.js'
+import { listThreadMessages } from '../services/message-read-model.js'
+import { findThreadForUser } from '../services/message-read-state.js'
 import { requireActiveSession } from '../services/voice/voice-session.js'
 import { sendVoiceError } from './voice-route-errors.js'
 

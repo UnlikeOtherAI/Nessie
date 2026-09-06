@@ -1,13 +1,9 @@
 import type { FastifyInstance, RouteShorthandOptions } from 'fastify'
 
-import {
-  parseAgentId,
-  parseChannelId,
-  parseThreadId,
-  SubmitVoiceTranscriptRequestSchema,
-} from '@nessie/schemas'
+import { SubmitVoiceTranscriptRequestSchema, type MessageRole } from '@nessie/schemas'
 
 import { createApiResponse, parseInput } from '../lib/api.js'
+import { publishMessageNew } from '../services/message-delivery.js'
 import { requireRecordableSession } from '../services/voice/voice-session.js'
 import {
   assertTranscriptPlausible,
@@ -84,8 +80,10 @@ export const registerVoiceCallRecordRoute = (
       await publishCallRecord(deps, {
         agentId: session.agentId,
         channelId: session.channelId,
+        log: request.log,
         messageId: record.messageId,
         organizationId: session.organizationId,
+        role: record.role,
         threadId: session.threadId,
       })
 
@@ -107,32 +105,34 @@ const publishCallRecord = async (
   input: {
     agentId: string
     channelId: string
+    log: { error: (details: Record<string, unknown>, message: string) => void }
     messageId: string
     organizationId: string
+    role: MessageRole
     threadId: string
   },
 ): Promise<void> => {
   try {
-    await deps.realtimeHub.publishWs(
-      deps.buildChannelRealtimeScopes({
-        channelId: input.channelId,
+    await publishMessageNew(deps, {
+      channel: {
+        id: input.channelId,
         organizationId: input.organizationId,
         systemChannelType: 'personal_assistant',
-      }),
-      {
-        data: {
-          agentId: parseAgentId(input.agentId),
-          authorUserId: undefined,
-          channelId: parseChannelId(input.channelId),
-          contentPreview: 'Voice call',
-          messageId: input.messageId,
-          role: 'agent',
-          threadId: parseThreadId(input.threadId),
-        },
-        event: 'message.new',
       },
-    )
-  } catch {
-    // The feed refetches on its own; a missed event is not worth failing on.
+      message: {
+        agentId: input.agentId,
+        // The record's own body is a call summary the feed fetches; the
+        // announcement only says a call landed.
+        content: 'Voice call',
+        id: input.messageId,
+        role: input.role,
+      },
+      threadId: input.threadId,
+    })
+  } catch (error) {
+    // The feed refetches on its own, so a missed event is not worth failing the
+    // request on — but it is worth knowing about: a silently discarded
+    // announcement is how an invalid `role` went unnoticed here for months.
+    input.log.error({ err: error, messageId: input.messageId }, 'voice_call_record_publish_failed')
   }
 }

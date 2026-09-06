@@ -120,3 +120,16 @@ crawl scanning stays behind the MCP connector path — both rules in `AGENTS.md`
 > deleted. There is no JSON-RPC `/mcp` endpoint on the live `api/` server.
 
 See [docs/functionality.md](../functionality.md) for the authoritative API surface description. Section §7 describes the removed legacy MCP server for historical reference.
+
+Instance create/delete (`mcp.instance.created`/`mcp.instance.deleted`) and
+credential write/delete (`mcp.credential.written`/`mcp.credential.deleted`,
+`api/src/routes/mcp/instances.ts` and `credentials.ts`) are all audited —
+metadata records where a credential landed and who it was attached to (auth
+method, placement, principal), never the credential or its vault ref.
+
+Tool-grant reads are tenant-scoped through the grant's own relation, not the
+tool row it points at: `attachGrantsToRegistryEntries`
+(`api/src/routes/mcp/tools.ts`) matches a grant by `agent.organizationId` when
+it names an agent, falling back to the tool's own `organizationId` only for a
+role-scoped grant (`agentId: null`) — a grant naming another organisation's
+agent is invisible even when the tool row itself is in scope.

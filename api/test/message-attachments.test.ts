@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { CreateThreadMessageBodySchema } from '../src/contracts.js'
+import { CreateThreadMessageBodySchema } from '../src/contracts/messaging.js'
 import { storeFile, withHarness } from './message-attachment-harness.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip

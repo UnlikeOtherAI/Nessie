@@ -147,6 +147,8 @@ export type CallRingCancelJobPayload = z.infer<typeof CallRingCancelJobPayloadSc
  * key is a second guard. This carries only local ops telemetry — never any UOA
  * credits/statement data.
  */
+export const BUDGET_ALERT_DISPATCH_TOPIC = 'budget.alert-dispatch'
+
 export const BudgetAlertDispatchJobPayloadSchema = z.object({
   organizationId: z.string().uuid(),
   scopeType: z.enum(['organization', 'project', 'team']),

@@ -3,11 +3,7 @@ import test from 'node:test'
 
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { AGENT_AVATAR_BACKGROUND_COLORS } from '@nessie/schemas'
-
-import {
-  AgentAvatarGenerationError,
-  generateAgentAvatar,
-} from '../src/services/agent-avatar-generation.js'
+import { AgentAvatarGenerationError, generateAgentAvatar } from '@nessie/team-admin'
 
 const actorContext: AuthorizedActionContext = {
   actionContext: { requestId: 'request-avatar-1' },

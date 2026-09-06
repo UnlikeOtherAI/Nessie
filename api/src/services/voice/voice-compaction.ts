@@ -35,10 +35,10 @@ export const COMPACTION_MAX_CHARS = 2_000
  * two-hour call is worth less than its start, and a truncated input still
  * produces a usable record where a skipped call produces none.
  */
-export const COMPACTION_INPUT_MAX_CHARS = 24_000
+const COMPACTION_INPUT_MAX_CHARS = 24_000
 
-export const COMPACTION_MAX_TOKENS = 700
-export const COMPACTION_TEMPERATURE = 0.2
+const COMPACTION_MAX_TOKENS = 700
+const COMPACTION_TEMPERATURE = 0.2
 
 const SYSTEM_INSTRUCTION = [
   'You write the durable record of a voice call between an AI assistant and the person it assists.',

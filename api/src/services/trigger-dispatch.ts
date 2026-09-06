@@ -15,8 +15,8 @@ import {
   parseThreadId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
-import { claimThreadRunOrPend } from '@nessie/db'
+import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
+import { createSystemAuthoredMessage } from './system-authored-message.js'
 import { dispatchWorkflowTrigger } from './trigger-dispatch-workflow.js'
 import {
   type DispatchTriggerResult,
@@ -218,20 +218,21 @@ export const dispatchAgentTrigger = async (
         },
       })
 
-      const message = await tx.message.create({
-        data: {
-          content,
-          // Internal kickoff, not a post a human made — see the matching
-          // comment in `worker/src/control/trigger-run.ts`. `system` keeps the
-          // row for audit and restart replay while excluding it from the
-          // channel feed and later model context; the run still gets this
-          // content as its prompt via `payload.messageId`, which ignores role.
-          role: 'system',
-          threadId: threadTarget.threadId,
-          ...(scheduledTodo
-            ? { metadata: scheduledTodo.metadata }
-            : {}),
-        },
+      const message = await createSystemAuthoredMessage(tx, {
+        content,
+        // Follower decision: nobody. A kickoff is hidden from the feed
+        // entirely, so there is no conversation here for anyone to follow —
+        // the trigger fire replies top-level (see the `replyPlacement` note
+        // below), and *that* reply is what a person can join.
+        followedByUserIds: [],
+        ...(scheduledTodo ? { metadata: scheduledTodo.metadata } : {}),
+        // Internal kickoff, not a post a human made — see the matching
+        // comment in `worker/src/control/trigger-run.ts`. `system` keeps the
+        // row for audit and restart replay while excluding it from the
+        // channel feed and later model context; the run still gets this
+        // content as its prompt via `payload.messageId`, which ignores role.
+        role: 'system',
+        threadId: threadTarget.threadId,
       })
 
       // Same per-(agent, thread) claim as the worker's chat/trigger paths:

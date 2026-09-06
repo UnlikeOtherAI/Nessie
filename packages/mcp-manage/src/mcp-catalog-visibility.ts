@@ -24,8 +24,14 @@ export const REDACTED = '[redacted]'
  * Key names whose string values are secrets. `*Url` / `*Uri` / `*Id` suffixes
  * are excluded so `tokenUrl`, `authorizationUrl` and `clientId` survive — they
  * are the fields a reader legitimately needs to understand the connector.
+ *
+ * Exported because this is the instance's one definition of "secret-shaped
+ * key". The audit trail asks the same question of its metadata and used to
+ * answer it from a hand-listed set of exact names, which let `clientSecret`,
+ * `webhookSecret` and `apiToken` through the guard that most directly targets
+ * audit output.
  */
-const isSecretKey = (key: string): boolean => {
+export const isSecretKey = (key: string): boolean => {
   const normalized = key.toLowerCase()
   if (
     normalized.endsWith('url')

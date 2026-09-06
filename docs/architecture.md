@@ -44,6 +44,17 @@ creating files, moving code, reusing logic, or widening an existing service.
   must keep the lint gate attached to the build path.
 - Do not leave docs describing a retired topology, port, public contract, or
   workflow. Update or move obsolete docs to `docs/done/` in the same change.
+- Do not leave an audit write to whichever route happens to call a mutation.
+  The write belongs inside the service/transaction that performs the
+  mutation, the way `provisionOnce` (team provisioning) writes its audit
+  entry inside the same transaction as the row it provisions — so a second
+  entry point to that mutation (another route, a worker job, a CLI script)
+  gets the audit trail for free instead of having to remember it.
+- Do not validate request bodies with `parseInput` + zod while leaving path
+  and query params as hand-written casts. Params go through the same
+  `parseInput` + zod convention as bodies. A raw `request.params as {...}`
+  cast is acceptable only when the param is a single UUID-shaped id; a raw
+  `request.body as {...}` cast is never acceptable.
 
 ## Preferred Shape
 

@@ -9,11 +9,13 @@ import {
   ExecutionRunnerRecordSchema,
   ExecutionUsageLedgerRecordSchema,
   LaunchExecutionEnvironmentBodySchema,
-} from '../contracts.js'
+} from '../contracts/execution.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { requestExecutionEnvironmentTermination } from '../services/execution-control-plane.js'
 import {
   createExecutionEnvironmentTemplate,
+  EXECUTION_ENVIRONMENT_ERROR_CODES,
+  ExecutionEnvironmentError,
   listExecutionEnvironmentInstances,
   listExecutionEnvironmentTemplates,
   listExecutionLeases,
@@ -63,15 +65,10 @@ export const registerExecutionEnvironmentRoutes = (app: FastifyInstance, deps: R
       template = await createExecutionEnvironmentTemplate(prisma, actorContext, body)
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.message === 'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND'
+        error instanceof ExecutionEnvironmentError
+        && error.code === EXECUTION_ENVIRONMENT_ERROR_CODES.CHANNEL_NOT_FOUND
       ) {
-        sendApiError(
-          reply,
-          404,
-          'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND',
-          'Execution environment channel not found',
-        )
+        sendApiError(reply, 404, error.code, error.message)
         return reply
       }
       throw error
@@ -122,38 +119,9 @@ export const registerExecutionEnvironmentRoutes = (app: FastifyInstance, deps: R
     try {
       instance = await requestExecutionEnvironmentLaunch(prisma, actorContext, body)
     } catch (error) {
-      if (error instanceof Error) {
-        const executionErrorMap: Record<string, { code: string; message: string }> = {
-          EXECUTION_ENVIRONMENT_AGENT_NOT_FOUND: {
-            code: 'EXECUTION_ENVIRONMENT_AGENT_NOT_FOUND',
-            message: 'Execution environment agent not found',
-          },
-          EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND: {
-            code: 'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND',
-            message: 'Execution environment channel not found',
-          },
-          EXECUTION_ENVIRONMENT_RUN_NOT_FOUND: {
-            code: 'EXECUTION_ENVIRONMENT_RUN_NOT_FOUND',
-            message: 'Execution environment run not found',
-          },
-          EXECUTION_ENVIRONMENT_WORKFLOW_RUN_NOT_FOUND: {
-            code: 'EXECUTION_ENVIRONMENT_WORKFLOW_RUN_NOT_FOUND',
-            message: 'Execution environment workflow run not found',
-          },
-          EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_MISMATCH: {
-            code: 'EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_MISMATCH',
-            message: 'Execution environment workflow step run does not belong to the workflow run',
-          },
-          EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_NOT_FOUND: {
-            code: 'EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_NOT_FOUND',
-            message: 'Execution environment workflow step run not found',
-          },
-        }
-        const mapped = executionErrorMap[error.message]
-        if (mapped) {
-          sendApiError(reply, 404, mapped.code, mapped.message)
-          return reply
-        }
+      if (error instanceof ExecutionEnvironmentError) {
+        sendApiError(reply, 404, error.code, error.message)
+        return reply
       }
       throw error
     }

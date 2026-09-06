@@ -32,7 +32,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { PublicOriginConfigError } from '../lib/public-origin.js'
 import { emitAuditEvent } from '../services/audit.js'
 
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import { buildOAuthCallbackUrl } from './mcp/oauth.js'
 import { sendMcpError } from './mcp/shared.js'
 import type { RouteDeps } from './types.js'
@@ -185,7 +185,7 @@ export const guardAppConnectAttempt = (
 ): Promise<boolean> =>
   guardAuthRequest(
     deps.rateLimiter,
-    { bucket: RATE_LIMIT_BUCKETS.mcpOauthIp, rule: deps.config.api.rateLimit.mcpOauthIp },
+    rateLimitFor(deps.config, 'mcpOauthIp'),
     request,
     reply,
     { auditContext: actorContext },

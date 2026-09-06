@@ -729,14 +729,18 @@ dbTest('trigger create and update refuse inactive, foreign, and disabled to-do t
     assert.ok(trigger)
     if (!trigger) return
 
-    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+    const scope = {
+      organizationId: seed.organizationId,
+      triggerId: trigger.id,
+    }
+    assert.equal(await updateAgentTrigger(prisma, scope, {
       config: { todoTemplateId: foreign.id },
     }), null)
-    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+    assert.equal(await updateAgentTrigger(prisma, scope, {
       config: { todoTemplateId: archived.id },
     }), null)
     await prisma.agent.update({ where: { id: seed.agentId }, data: { todosEnabled: false } })
-    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+    assert.equal(await updateAgentTrigger(prisma, scope, {
       config: { todoTemplateId: active.id },
     }), null)
   })

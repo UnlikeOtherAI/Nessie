@@ -86,10 +86,17 @@ afterwards. Spec:
   `metadata.agentCardResponse`, so the outcome is in the chat, is an ordinary
   human turn in the transcript, and wakes the card's agent through one
   *structural* orchestrator path (a server-written metadata key — never content
-  matching). The response atomically inherits every disclosure-basis scope on
-  the source card message: an entered value can be more sensitive than the card
-  copy, never less, and its realtime notice is content-free when that basis is
-  non-empty. A resolved card also renders a state note beside its message
+  matching). The press's realtime announcement is scoped by the destination,
+  not by the organisation the presser happens to belong to: it goes out through
+  `buildChannelRealtimeScopes`, which returns the channel scope alone for a
+  delegated system DM (the Personal Assistant's, or a global agent's home) and
+  adds the organisation scope everywhere else — so a card answered inside a
+  delegated system DM announces to that channel alone, never to every member
+  connected to the organisation feed. The response atomically inherits every
+  disclosure-basis scope on the source card message: an entered value can be
+  more sensitive than the card copy, never less, and its realtime notice is
+  content-free when that basis is non-empty. A resolved card also renders a
+  state note beside its message
   content in every later window (`message-cards.ts`, joined by
   `withMessageNotes` exactly where the attachment inventory line goes), so
   nothing ever rewrites a message. Nor may a person: `updateMessage` refuses a

@@ -180,6 +180,45 @@ export const NessieConfigSchema = z.object({
       // while still bounding what one member can aim at the provider.
       subscriptionDeviceIp: RateLimitRuleSchema.default({ max: 240, windowMs: 10 * 60_000 }),
       subscriptionDeviceAccount: RateLimitRuleSchema.default({ max: 120, windowMs: 10 * 60_000 }),
+      // SSO authorize-URL minting used to borrow `mcpOauthIp`'s thresholds
+      // because it had no rule of its own; it is a different surface and now
+      // carries one (2026-09-05 review, FO3-7). Same starting numbers.
+      ssoAuthorizeIp: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      // --- Buckets applied by the global hook (api/src/routes/auth-rate-limit.ts).
+      // These four replace the hard-coded in-process limiter that used to run
+      // beside this one with its own thresholds and its own IP keying
+      // (2026-09-05 review, FO3-3/FO4-1); the numbers are the ones that
+      // limiter carried.
+      threadMessageIp: RateLimitRuleSchema.default({ max: 60, windowMs: 60_000 }),
+      // Discovery fans one address out to DNS and several bounded HTTPS
+      // requests, so it needs an IP budget even though it is authenticated.
+      mailboxDiscoverIp: RateLimitRuleSchema.default({ max: 30, windowMs: 60_000 }),
+      agentWriteIp: RateLimitRuleSchema.default({ max: 60, windowMs: 60_000 }),
+      // `GET /api/auth/me` is public and counts users when unauthenticated.
+      authMeIp: RateLimitRuleSchema.default({ max: 600, windowMs: 60_000 }),
+      // Unauthenticated key-guessing surface: a bearer webhook key is the only
+      // thing between a caller and a trigger fire, so this is the tightest of
+      // the intake buckets.
+      triggerWebhookIp: RateLimitRuleSchema.default({ max: 120, windowMs: 60_000 }),
+      commsWebhookIp: RateLimitRuleSchema.default({ max: 600, windowMs: 60_000 }),
+      boardSourceWebhookIp: RateLimitRuleSchema.default({ max: 600, windowMs: 60_000 }),
+      agentEmailInboundIp: RateLimitRuleSchema.default({ max: 600, windowMs: 60_000 }),
+      // The executor daemon's session routes (claim/heartbeat/descriptor/
+      // command poll + receipt/enrollment submit). `executorDaemonIp` above
+      // governs the pairing challenge only: the daemon polls for commands once
+      // a second (executor/src/daemon.ts), so several daemons behind one NAT
+      // legitimately produce a high steady rate and this is a flood ceiling,
+      // not a per-daemon budget.
+      executorDaemonSessionIp: RateLimitRuleSchema.default({ max: 6_000, windowMs: 60_000 }),
+      // Coverage-by-default floor for every route declaring `config.public`
+      // that does not name a bucket above, so a new public route is limited
+      // from the moment it exists instead of when somebody remembers
+      // (2026-09-05 review, FO3-7/F5-5). Deliberately generous: it is a flood
+      // ceiling for an unauthenticated origin, and routes that need a real
+      // budget name their own bucket. A route that already guards itself in
+      // its handler still counts here — the floor is additional, never a
+      // replacement.
+      publicRouteIp: RateLimitRuleSchema.default({ max: 1_200, windowMs: 60_000 }),
     }).default({}),
     // Public origin of the API as reachable from a user's browser (e.g.
     // https://api.nessie.works). Used to build OAuth redirect URIs minted
@@ -321,6 +360,32 @@ export const ConfigEnvMap = {
   NESSIE_RATE_LIMIT_STEP_UP_IP_WINDOW_MS: 'api.rateLimit.stepUpIp.windowMs',
   NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_MAX: 'api.rateLimit.stepUpAccount.max',
   NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_WINDOW_MS: 'api.rateLimit.stepUpAccount.windowMs',
+  NESSIE_RATE_LIMIT_SSO_AUTHORIZE_IP_MAX: 'api.rateLimit.ssoAuthorizeIp.max',
+  NESSIE_RATE_LIMIT_SSO_AUTHORIZE_IP_WINDOW_MS: 'api.rateLimit.ssoAuthorizeIp.windowMs',
+  NESSIE_RATE_LIMIT_THREAD_MESSAGE_IP_MAX: 'api.rateLimit.threadMessageIp.max',
+  NESSIE_RATE_LIMIT_THREAD_MESSAGE_IP_WINDOW_MS: 'api.rateLimit.threadMessageIp.windowMs',
+  NESSIE_RATE_LIMIT_MAILBOX_DISCOVER_IP_MAX: 'api.rateLimit.mailboxDiscoverIp.max',
+  NESSIE_RATE_LIMIT_MAILBOX_DISCOVER_IP_WINDOW_MS: 'api.rateLimit.mailboxDiscoverIp.windowMs',
+  NESSIE_RATE_LIMIT_AGENT_WRITE_IP_MAX: 'api.rateLimit.agentWriteIp.max',
+  NESSIE_RATE_LIMIT_AGENT_WRITE_IP_WINDOW_MS: 'api.rateLimit.agentWriteIp.windowMs',
+  NESSIE_RATE_LIMIT_AUTH_ME_IP_MAX: 'api.rateLimit.authMeIp.max',
+  NESSIE_RATE_LIMIT_AUTH_ME_IP_WINDOW_MS: 'api.rateLimit.authMeIp.windowMs',
+  NESSIE_RATE_LIMIT_TRIGGER_WEBHOOK_IP_MAX: 'api.rateLimit.triggerWebhookIp.max',
+  NESSIE_RATE_LIMIT_TRIGGER_WEBHOOK_IP_WINDOW_MS: 'api.rateLimit.triggerWebhookIp.windowMs',
+  NESSIE_RATE_LIMIT_COMMS_WEBHOOK_IP_MAX: 'api.rateLimit.commsWebhookIp.max',
+  NESSIE_RATE_LIMIT_COMMS_WEBHOOK_IP_WINDOW_MS: 'api.rateLimit.commsWebhookIp.windowMs',
+  NESSIE_RATE_LIMIT_BOARD_SOURCE_WEBHOOK_IP_MAX: 'api.rateLimit.boardSourceWebhookIp.max',
+  NESSIE_RATE_LIMIT_BOARD_SOURCE_WEBHOOK_IP_WINDOW_MS: 'api.rateLimit.boardSourceWebhookIp.windowMs',
+  NESSIE_RATE_LIMIT_AGENT_EMAIL_INBOUND_IP_MAX: 'api.rateLimit.agentEmailInboundIp.max',
+  NESSIE_RATE_LIMIT_AGENT_EMAIL_INBOUND_IP_WINDOW_MS: 'api.rateLimit.agentEmailInboundIp.windowMs',
+  NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_SESSION_IP_MAX: 'api.rateLimit.executorDaemonSessionIp.max',
+  NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_SESSION_IP_WINDOW_MS: 'api.rateLimit.executorDaemonSessionIp.windowMs',
+  NESSIE_RATE_LIMIT_PUBLIC_ROUTE_IP_MAX: 'api.rateLimit.publicRouteIp.max',
+  NESSIE_RATE_LIMIT_PUBLIC_ROUTE_IP_WINDOW_MS: 'api.rateLimit.publicRouteIp.windowMs',
+  NESSIE_RATE_LIMIT_SUBSCRIPTION_DEVICE_IP_MAX: 'api.rateLimit.subscriptionDeviceIp.max',
+  NESSIE_RATE_LIMIT_SUBSCRIPTION_DEVICE_IP_WINDOW_MS: 'api.rateLimit.subscriptionDeviceIp.windowMs',
+  NESSIE_RATE_LIMIT_SUBSCRIPTION_DEVICE_ACCOUNT_MAX: 'api.rateLimit.subscriptionDeviceAccount.max',
+  NESSIE_RATE_LIMIT_SUBSCRIPTION_DEVICE_ACCOUNT_WINDOW_MS: 'api.rateLimit.subscriptionDeviceAccount.windowMs',
   NESSIE_API_PUBLIC_URL: 'api.publicUrl',
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
@@ -414,6 +479,17 @@ const DEFAULT_CONFIG: NessieConfig = {
       stepUpAccount: { max: 5, windowMs: 10 * 60_000 },
       subscriptionDeviceIp: { max: 240, windowMs: 10 * 60_000 },
       subscriptionDeviceAccount: { max: 120, windowMs: 10 * 60_000 },
+      ssoAuthorizeIp: { max: 20, windowMs: 10 * 60_000 },
+      threadMessageIp: { max: 60, windowMs: 60_000 },
+      mailboxDiscoverIp: { max: 30, windowMs: 60_000 },
+      agentWriteIp: { max: 60, windowMs: 60_000 },
+      authMeIp: { max: 600, windowMs: 60_000 },
+      triggerWebhookIp: { max: 120, windowMs: 60_000 },
+      commsWebhookIp: { max: 600, windowMs: 60_000 },
+      boardSourceWebhookIp: { max: 600, windowMs: 60_000 },
+      agentEmailInboundIp: { max: 600, windowMs: 60_000 },
+      executorDaemonSessionIp: { max: 6_000, windowMs: 60_000 },
+      publicRouteIp: { max: 1_200, windowMs: 60_000 },
     },
   },
   github: {

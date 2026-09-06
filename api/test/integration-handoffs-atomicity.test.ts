@@ -65,6 +65,11 @@ const createHarness = (options: HarnessOptions = {}) => {
         return message
       },
     },
+    // A system-authored message follows its requester in the same
+    // transaction (`followReplyThread`), so the fake must model the follow row.
+    messageThreadFollow: {
+      createMany: async () => ({ count: 1 }),
+    },
     run: {
       create: async () => {
         attempts.push('run')
@@ -145,6 +150,9 @@ const createHarness = (options: HarnessOptions = {}) => {
         type: 'dm',
         unreadCount: 0,
         lastMessageAt: null,
+        // A system channel is never manageable: `canManageChannel` refuses
+        // every viewer on one, so the record carries the decision, not a guess.
+        viewerCanManage: false,
         updatedAt: '2026-07-19T10:00:00.000Z',
         visibility: 'private',
       },

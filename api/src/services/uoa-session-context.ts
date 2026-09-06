@@ -2,7 +2,12 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 import { rememberUoaTeamDirectory } from './uoa-directory-cache.js'
 import type { ExternalAuthTeam } from './identity-display.js'
-import { projectUoaRoles, resolveUoaRoleClaims } from './uoa-roles.js'
+import {
+  buildUoaAssertedTeams,
+  projectUoaRoles,
+  reconcileUoaMembershipProjection,
+  resolveUoaRoleClaims,
+} from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import type { UoaTeamDirectory } from './uoa-team-directory.js'
 import { syncTeamInviteAlerts } from './team-invite-alerts.js'
@@ -223,6 +228,28 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
     teamId: binding.teamId,
     userId: input.userId,
   })
+  // The other half of the same projection: roles UOA still claims are
+  // re-applied above, memberships UOA no longer claims are withdrawn here. The
+  // rotation directory is the only place a verified, *complete* statement of
+  // this person's teams arrives, so this is where the local rows stop being
+  // append-only (2026-09-05 API review, FO2-1). A rotation whose directory read
+  // failed carries no statement and reconciles nothing.
+  if (input.teamDirectory) {
+    const reconciled = await reconcileUoaMembershipProjection(transaction, {
+      asserted: buildUoaAssertedTeams({
+        activeExternalOrgId: input.nextIdentity.organizationId,
+        claimedTeamIds: input.team?.teamIds,
+        entries: input.teamDirectory.entries,
+      }),
+      userId: input.userId,
+    })
+    if (reconciled.revokedTeamIds.includes(binding.teamId)) {
+      throw new UoaLocalSessionBindingError(
+        'UnlikeOtherAI no longer places this account in the team this session is bound to.',
+      )
+    }
+  }
+
   const context: UoaLocalSessionContext = {
     ...binding,
     role: projected.orgRole ?? binding.role,

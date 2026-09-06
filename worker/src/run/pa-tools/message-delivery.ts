@@ -6,7 +6,8 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
-import { enqueueQueueJob } from '../../queue.js'
+import { enqueueOrchestrateDecide } from '@nessie/db'
+import { isDelegatedSystemDmChannelType } from '../delegated-identity.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireActingUserId } from './access.js'
@@ -68,9 +69,16 @@ export const runSendMessageTool = async (
   }
 
   const destination = await resolveMessageDestination(context, input)
-  if (destination.systemChannelType === 'personal_assistant') {
+  // Any single-member delegated system DM — the PA's home and a DM-homed
+  // global agent's — is refused, not just the PA's. Its one member is the
+  // person the bound agent acts *as*, so a post relayed in from another run
+  // would wake that agent carrying a delegated identity nobody in this run
+  // asked for. `buildRealtimeScopesForChannel` below branches on the same
+  // predicate; keying this one on `personal_assistant` alone left the other
+  // half of the same concept open.
+  if (isDelegatedSystemDmChannelType(destination.systemChannelType)) {
     throw new Error(
-      'send_message cannot target the Personal Assistant DM. Reply in the current chat instead.',
+      'send_message cannot target a single-member assistant DM. Reply in the current chat instead.',
     )
   }
 
@@ -207,25 +215,26 @@ export const runSendMessageTool = async (
 
   let queuedReplyCount = 0
   if (destination.channelAgents.length > 0) {
-    const enqueued = await enqueueQueueJob(
+    // The shared chokepoint, not a raw enqueue: it resolves the destination
+    // channel and stamps the delegated identity that destination implies. This
+    // path used to stamp `effectiveUserId` unconditionally with the *current*
+    // run's acting user, which is a different rule from the one the three API
+    // wake paths follow.
+    const enqueued = await enqueueOrchestrateDecide(
       context.prisma,
       {
-        idempotencyKey: `orchestrate:${message.id}`,
-        payload: {
-          actorContext: withActionContext(context.actorContext, {
-            channelId: parseChannelId(destination.channelId),
-            effectiveUserId: parseUserId(userId),
-            threadId: parseThreadId(destination.threadId),
-          }),
-          channelAgents: destination.channelAgents,
+        actorContext: withActionContext(context.actorContext, {
           channelId: parseChannelId(destination.channelId),
-          content,
-          messageId: message.id,
-          role: 'user',
           threadId: parseThreadId(destination.threadId),
-        },
-        topic: 'orchestrate.decide',
+        }),
+        channelAgents: destination.channelAgents,
+        channelId: parseChannelId(destination.channelId),
+        content,
+        messageId: message.id,
+        role: 'user',
+        threadId: parseThreadId(destination.threadId),
       },
+      `orchestrate:${message.id}`,
     )
     queuedReplyCount = enqueued ? destination.channelAgents.length : 0
   }

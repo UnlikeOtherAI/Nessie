@@ -4,7 +4,7 @@ import {
   DemonstrationDetailRecordSchema,
   DemonstrationParamsSchema,
   DemonstrationRecordSchema,
-} from '../contracts.js'
+} from '../contracts/demonstrations.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   DemonstrationError,

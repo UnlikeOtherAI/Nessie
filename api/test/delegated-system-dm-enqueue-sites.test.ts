@@ -39,7 +39,8 @@ const repoRoot = join(here, '..', '..')
 const ENQUEUE_RUN_EXECUTION_SITES: Record<string, 'stamps' | 'inherits' | 'unattended'> = {
   'api/src/services/executor-run-launch.ts': 'stamps',
   'api/src/services/integration-handoffs.ts': 'stamps',
-  'api/src/services/run-continuation.ts': 'stamps',
+  // The one continuation enqueue: the Continue press, the approval resume and
+  // the card resume all reach the queue through it.
   'api/src/services/run-resume-core.ts': 'stamps',
   'api/src/services/runs.ts': 'stamps',
   'api/src/services/trigger-dispatch.ts': 'unattended',
@@ -106,8 +107,12 @@ test('every enqueueRunExecution call site has a recorded delegated-identity verd
 })
 
 test('the human-turn wake path has exactly one enqueue chokepoint', () => {
+  // The chokepoint lives in `@nessie/db`, beside the raw insert, because the
+  // worker's own `send_message` tool wakes the same topic: an api-only module
+  // is a rule the worker cannot reuse, and it reimplemented enqueue+stamping
+  // with different logic for exactly as long as it was one.
   const chokepoint = readFileSync(
-    join(repoRoot, 'api/src/queue/pgqueue.ts'),
+    join(repoRoot, 'packages/db/src/queue.ts'),
     'utf8',
   )
   assert.match(
@@ -121,5 +126,34 @@ test('the human-turn wake path has exactly one enqueue chokepoint', () => {
     /prisma\.channel\.findUnique/,
     'the chokepoint must resolve the destination channel itself — a caller-supplied '
     + '`systemChannelType` is exactly the argument a new wake path forgets to pass.',
+  )
+})
+
+/**
+ * The other half of the same promise: nobody may enqueue `orchestrate.decide`
+ * around the chokepoint. A raw `enqueueQueueJob` with that topic is how the
+ * worker's `send_message` tool ended up stamping the current run's acting user
+ * unconditionally, where the chokepoint stamps the destination's implied
+ * identity or nothing at all.
+ */
+test('no call site enqueues orchestrate.decide outside the chokepoint', () => {
+  const offenders: string[] = []
+  for (const root of SEARCH_ROOTS) {
+    for (const file of walk(join(repoRoot, root))) {
+      const relativePath = relative(repoRoot, file).split('\\').join('/')
+      if (relativePath === 'packages/db/src/queue.ts') continue
+      const source = readFileSync(file, 'utf8')
+      if (/topic:\s*'orchestrate\.decide'/.test(source)) {
+        offenders.push(relativePath)
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'Use `enqueueOrchestrateDecide` from `@nessie/db` instead of enqueuing the '
+    + 'topic directly: it resolves the destination channel and stamps the '
+    + 'delegated identity a single-member system DM implies.',
   )
 })

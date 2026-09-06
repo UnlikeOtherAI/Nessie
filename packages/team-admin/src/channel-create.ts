@@ -12,6 +12,62 @@ import {
 const STANDALONE_CHANNEL_PROJECT_NAME = 'Standalone channels'
 const STANDALONE_CHANNEL_TEAM_NAME = 'Standalone channels'
 
+/**
+ * The caller named a team they have no standing in. Thrown rather than folded
+ * into the `null` return, which already means "that team is not in this
+ * organisation" — a refusal and a hierarchy violation are different answers and
+ * the route owes them different statuses.
+ */
+export class ChannelTeamAccessError extends Error {}
+
+/**
+ * May this person place a channel in this team?
+ *
+ * A team is the unit people are members of, so an organisation membership is
+ * not enough: without this, any member could drop a channel into a team they
+ * are not in by naming its id in the request body. The arms, in the order they
+ * are cheapest to justify:
+ *
+ * - a `systemManaged` team (the standalone channel root, the Personal
+ *   Assistant's team) has no members by construction — it is one of the two
+ *   exceptions `docs/standards/team-model.md` names, and the channels that land
+ *   in it are system surfaces, not somebody else's team's rooms;
+ * - a `TeamMember` row, the projection of UOA's own membership;
+ * - a `ProjectMember` row on the team's project, which is how somebody working
+ *   a project reaches its rooms;
+ * - an organisation owner or admin.
+ */
+const canPlaceChannelInTeam = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; projectId: string; teamId: string; userId: string },
+): Promise<boolean> => {
+  const [team, teamMember, projectMember, orgMember] = await Promise.all([
+    prisma.team.findUnique({
+      where: { id: input.teamId },
+      select: { systemManaged: true },
+    }),
+    prisma.teamMember.findFirst({
+      where: { teamId: input.teamId, userId: input.userId },
+      select: { id: true },
+    }),
+    prisma.projectMember.findFirst({
+      where: { projectId: input.projectId, userId: input.userId },
+      select: { id: true },
+    }),
+    prisma.organizationMember.findFirst({
+      where: { organizationId: input.organizationId, userId: input.userId },
+      select: { role: true },
+    }),
+  ])
+  return (
+    team?.systemManaged === true
+    || teamMember !== null
+    || projectMember !== null
+    || orgMember?.role === 'owner'
+    || orgMember?.role === 'admin'
+  )
+}
+
 const ensureStandaloneChannelTeam = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -84,6 +140,20 @@ export const createChannelForUser = async (
       : null
   if (!teamProject) {
     return null
+  }
+
+  // A standalone channel names no team — it lands in the organisation's own
+  // channel-root container, which every member reaches by definition. A team id
+  // arrives in the request body, so it is the one that has to be earned.
+  if (input.scope !== 'standalone' && !(await canPlaceChannelInTeam(prisma, {
+    organizationId: input.organizationId,
+    projectId: teamProject.projectId,
+    teamId: teamProject.teamId,
+    userId: input.userId,
+  }))) {
+    throw new ChannelTeamAccessError(
+      'You are not a member of that team, so a channel cannot be created in it.',
+    )
   }
 
   await ensureChannelSlugAvailable(prisma, {

@@ -105,15 +105,42 @@ class FakeBindingPrisma {
     },
   }
 
+  // The revocation half of the projection reads which bound rows this user
+  // holds and withdraws the ones UOA no longer asserts, so the fake has to own
+  // those rows rather than answer a shape (`reconcileUoaMembershipProjection`).
+  boundTeamMemberships = [{
+    team: {
+      externalTeamId: IDENTITY.teamId as string,
+      id: '00000000-0000-4000-8000-000000000020',
+      projectId: '00000000-0000-4000-8000-000000000030',
+      project: {
+        organization: { externalOrgId: IDENTITY.organizationId as string },
+      },
+    },
+  }]
+  organizationDeactivatedAt: Date | null = null
+
   readonly organizationMember = {
+    findMany: async () => (this.organizationDeactivatedAt
+      ? []
+      : [{ organizationId: '00000000-0000-4000-8000-000000000040' }]),
     findUnique: async () => ({ role: this.orgRole }),
-    updateMany: async (input: { data: { role: string } }) => {
-      this.orgRole = input.data.role
+    updateMany: async (input: {
+      data: { deactivatedAt?: Date; role?: string }
+    }) => {
+      if (input.data.deactivatedAt !== undefined) {
+        this.organizationDeactivatedAt = input.data.deactivatedAt
+        return { count: 1 }
+      }
+      if (input.data.role !== undefined) {
+        this.orgRole = input.data.role
+      }
       return { count: 1 }
     },
   }
 
   readonly projectMember = {
+    deleteMany: async () => ({ count: 0 }),
     updateMany: async (input: { data: { role: string } }) => {
       this.projectRole = input.data.role
       return { count: 1 }
@@ -121,6 +148,17 @@ class FakeBindingPrisma {
   }
 
   readonly teamMember = {
+    count: async () => this.boundTeamMemberships.length,
+    deleteMany: async (input: { where: { teamId: { in: string[] } } }) => {
+      const removed = new Set(input.where.teamId.in)
+      this.boundTeamMemberships = this.boundTeamMemberships.filter(
+        (membership) => !removed.has(membership.team.id),
+      )
+      return { count: removed.size }
+    },
+    // Both reads in the reconcile select through `team`, so one shape answers
+    // them: the rows this user still holds.
+    findMany: async () => this.boundTeamMemberships,
     updateMany: async (input: { data: { role: string } }) => {
       this.teamRole = input.data.role
       return { count: 1 }

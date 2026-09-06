@@ -6,7 +6,7 @@
 // in place before the worker code is first imported.
 import { randomUUID } from 'node:crypto'
 import { loadConfig } from '@nessie/config'
-import { disconnectPrismaClient, getPrismaClient } from '@nessie/db'
+import { disconnectPrismaClient, enqueueQueueJob, getPrismaClient } from '@nessie/db'
 import {
   createModelClient,
   createPgPool,
@@ -154,7 +154,7 @@ const TERMINAL_STATUSES = new Set(['cancelled', 'completed', 'failed'])
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 export type MockPipeline = {
-  enqueueRun: (payload: RunExecuteJobPayload) => Promise<string>
+  enqueueRun: (payload: RunExecuteJobPayload) => Promise<void>
   pool: ReturnType<typeof createPgPool>
   prisma: PrismaClient
   stop: () => Promise<void>
@@ -207,7 +207,9 @@ export const startMockPipeline = async (
   }
 
   return {
-    enqueueRun: (payload) => queueProvider.enqueue('run.execute', payload),
+    enqueueRun: async (payload) => {
+      await enqueueQueueJob(prisma, { payload, topic: 'run.execute' })
+    },
     pool,
     prisma,
     stop: async () => {

@@ -63,5 +63,24 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- Since viewer channel scope comes from `ChannelMember` rows alone, adding or
+  removing one of those rows is itself a disclosure decision: it takes
+  `canManageChannel` (`api/src/services/channel-members.ts`), the same gate
+  renaming and archiving take, with one carve-out — a person may always remove
+  themselves.
 - Spec and build status:
   [docs/plans/2026-08-11-disclosure-boundaries-build.md](../plans/2026-08-11-disclosure-boundaries-build.md).
+- `@nessie/runtime`'s `publishMessageEnvelope` (`packages/runtime/src/message-envelope.ts`)
+  is the one `message.new`/`message.reply` envelope for both the API and the
+  worker — six literal payload objects used to retype it at each call site.
+  What stays with the caller is the scope set, because who may see this is a
+  disclosure decision the destination owns, and the failure policy, because only
+  the caller knows whether a dropped announcement costs a refresh or a run.
+- Subscription-time authorization is only half the rule: realtime delivery
+  (`api/src/realtime/delivery-entitlements.ts`) re-authorizes organization,
+  agent and thread-stream scopes **per event**, the same way channel and
+  dashboard scopes already did, because revocation takes effect on the next
+  request and a WebSocket or SSE stream may never make one. Each predicate is
+  memoized for `REALTIME_ENTITLEMENT_TTL_MS` (5 s) so a token-per-delta stream
+  costs one query per window rather than one per token; a revocation stops the
+  stream within that same 5-second window, not at connect time.

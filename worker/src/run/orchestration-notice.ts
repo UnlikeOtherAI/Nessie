@@ -1,5 +1,9 @@
-import { applyReplyBookkeeping, type PgRealtimeTransport } from '@nessie/runtime'
-import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import {
+  applyReplyBookkeeping,
+  publishMessageEnvelope,
+  type PgRealtimeTransport,
+} from '@nessie/runtime'
+import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
 type OrchestrationNoticeDeps = {
@@ -72,19 +76,22 @@ export const postOrchestrationNotice = async (
     kind: 'channel' as const,
   }]
 
+  // One envelope for both shapes: a notice posted under a root announces as
+  // `message.reply`, a top-level one as `message.new`.
+  await publishMessageEnvelope(deps.realtimeTransport, scopes, {
+    channelId: input.channelId,
+    message: {
+      agentId: input.agentId,
+      content: notice.content,
+      id: notice.id,
+      role: 'assistant',
+    },
+    ...(reply && input.replyRootMessageId
+      ? { rootMessageId: input.replyRootMessageId }
+      : {}),
+    threadId: input.threadId,
+  })
   if (reply && input.replyRootMessageId) {
-    await deps.realtimeTransport.publishWs(scopes, {
-      data: {
-        agentId: parseAgentId(input.agentId),
-        channelId: input.channelId,
-        contentPreview: notice.content.slice(0, 200),
-        messageId: notice.id,
-        role: 'assistant',
-        rootMessageId: input.replyRootMessageId,
-        threadId: parseThreadId(input.threadId),
-      },
-      event: 'message.reply',
-    })
     await deps.realtimeTransport.publishWs(scopes, {
       data: {
         channelId: input.channelId,
@@ -96,18 +103,5 @@ export const postOrchestrationNotice = async (
       },
       event: 'message.reply.meta',
     })
-    return
   }
-
-  await deps.realtimeTransport.publishWs(scopes, {
-    data: {
-      agentId: parseAgentId(input.agentId),
-      channelId: input.channelId,
-      contentPreview: notice.content.slice(0, 200),
-      messageId: notice.id,
-      role: 'assistant',
-      threadId: parseThreadId(input.threadId),
-    },
-    event: 'message.new',
-  })
 }

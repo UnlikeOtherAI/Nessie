@@ -5,7 +5,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   createInferenceCredentialBinding,
   InferenceEnvRefForbiddenError,
-} from '../src/services/inference-control-plane.js'
+} from '../src/services/inference-credential-bindings.js'
 
 // Phase-0 secret-custody gate (S2): every credential-binding create carries a
 // caller-chosen env-ref, and the worker resolves it as process.env[ref] — so

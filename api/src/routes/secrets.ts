@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
+import { SecretRecordSchema } from '../contracts/secrets.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
@@ -9,6 +10,7 @@ import {
   type InfisicalSecretNamespace,
 } from '../services/infisical-vault.js'
 import {
+  canManageSecret,
   canManageSecretScope,
   findLockAboveScope,
   putSecretInVault,
@@ -57,7 +59,7 @@ const publicSecret = (secret: {
   status: string
   createdAt: Date
   updatedAt: Date
-}) => ({
+}) => SecretRecordSchema.parse({
   reference: secret.reference,
   name: secret.name,
   description: secret.description,
@@ -114,22 +116,6 @@ const grantPrincipalExistsInOrganization = async (input: {
     select: { id: true },
   }))
 }
-
-const hasSecretPermission = async (input: {
-  actorId: string
-  permission: 'manage' | 'delegate'
-  prisma: RouteDeps['prisma']
-  secretId: string
-}): Promise<boolean> => Boolean(await input.prisma.secretGrant.findFirst({
-  where: {
-    secretId: input.secretId,
-    principalType: 'user',
-    principalId: input.actorId,
-    permissions: { has: input.permission },
-    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-  },
-  select: { id: true },
-}))
 
 /** Metadata-only human control plane. Agents have no reveal endpoint. */
 export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -238,7 +224,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'secret.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'secret.created',
       resourceId: secret.id,
       resourceType: 'secret',
       outcome: 'success',
@@ -266,14 +252,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
       return reply
     }
-    const canManage = actorContext.actor.roles?.includes('owner')
-      || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasSecretPermission({
-        actorId: actorContext.actor.actorId,
-        permission: 'manage',
-        prisma,
-        secretId: secret.id,
-      })
+    const canManage = await canManageSecret(actorContext, secret, 'manage', prisma)
     if (!canManage) {
       sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
       return reply
@@ -298,7 +277,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     })
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'secret.rotated' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'secret.rotated',
       resourceId: secret.id,
       resourceType: 'secret',
       outcome: 'success',
@@ -324,14 +303,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
       return reply
     }
-    const canManage = actorContext.actor.roles?.includes('owner')
-      || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasSecretPermission({
-        actorId: actorContext.actor.actorId,
-        permission: 'manage',
-        prisma,
-        secretId: secret.id,
-      })
+    const canManage = await canManageSecret(actorContext, secret, 'manage', prisma)
     if (!canManage) {
       sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
       return reply
@@ -350,7 +322,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const revoked = await prisma.secret.update({ where: { id: secret.id }, data: { status: 'revoked' } })
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'secret.revoked' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'secret.revoked',
       resourceId: secret.id,
       resourceType: 'secret',
       outcome: 'success',
@@ -387,14 +359,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'SECRET_NOT_FOUND', 'Secret not found.')
       return reply
     }
-    const canDelegate = actorContext.actor.roles?.includes('owner')
-      || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-      || await hasSecretPermission({
-        actorId: actorContext.actor.actorId,
-        permission: 'delegate',
-        prisma,
-        secretId: secret.id,
-      })
+    const canDelegate = await canManageSecret(actorContext, secret, 'delegate', prisma)
     if (!canDelegate) {
       sendApiError(reply, 403, 'SECRET_DELEGATE_DENIED', 'You cannot delegate access to this secret.')
       return reply
@@ -429,7 +394,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     })
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'secret.access_granted' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'secret.access_granted',
       resourceId: secret.id,
       resourceType: 'secret',
       outcome: 'success',

@@ -1,7 +1,6 @@
 import type { Iteration, PrismaClient } from '@prisma/client'
 import { parseProjectId } from '@nessie/schemas'
-import type { IterationRecord, ProjectInsightsRecord } from '../contracts.js'
-
+import type { IterationRecord, ProjectInsightsRecord } from '../contracts/tasks-board.js'
 type IterationStats = { taskCount: number; pointsTotal: number; pointsDone: number }
 
 const iterationStats = async (

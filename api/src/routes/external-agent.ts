@@ -2,10 +2,11 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
 import { attributionFromActorContext } from '@nessie/runtime'
-import { isAdminActor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import { isAdminActor } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
+import { publishMessageNew } from '../services/message-delivery.js'
 import {
   ExternalAgentSyncError,
   EXTERNAL_AGENT_SYNC_ERROR_CODES,
@@ -255,25 +256,26 @@ const publishInsightDeliveries = async (
   for (const delivery of result.deliveries) {
     if (delivery.mode !== 'posted') continue
     try {
-      await realtimeHub.publishWs(
-        buildChannelRealtimeScopes({
-          channelId: delivery.channelId,
+      await publishMessageNew({ buildChannelRealtimeScopes, realtimeHub }, {
+        channel: {
+          id: delivery.channelId,
           organizationId,
           systemChannelType: 'external_agent',
-        }),
-        {
-          data: {
-            agentId: delivery.agentId ? parseAgentId(delivery.agentId) : undefined,
-            authorUserId: undefined,
-            channelId: parseChannelId(delivery.channelId),
-            contentPreview: 'New signals from DeepSignal',
-            messageId: delivery.messageId,
-            role: 'assistant',
-            threadId: parseThreadId(delivery.threadId),
-          },
-          event: 'message.new',
         },
-      )
+        message: {
+          agentId: delivery.agentId,
+          // The digest body is fetched by the feed; the announcement only says
+          // a fresh digest landed.
+          content: 'New signals from DeepSignal',
+          id: delivery.messageId,
+          // The one role `postDigestMessage` writes (services/deepsignal-digest.ts).
+          // It cannot be read off the row here because `DigestDelivery` returns
+          // only the id; that result should carry its row's role, as
+          // `writeVoiceCallRecord` now does.
+          role: 'assistant',
+        },
+        threadId: delivery.threadId,
+      })
     } catch {
       // A realtime publish failure must never fail the webhook — the message row
       // is already persisted and will load on the next fetch/hydration.

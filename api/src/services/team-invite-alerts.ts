@@ -21,6 +21,14 @@ const inviteMetadata = (
  * directory response. Rows move to the current session organisation so the
  * bell the person is looking at owns the action. Vanished invites are deleted,
  * not marked read: UOA owns this data and Nessie must not retain a stale copy.
+ *
+ * This row is the single named exception to "a UOA directory lives only in the
+ * bounded in-memory cache" (`services/uoa-directory-cache.ts`, which states the
+ * rule and this exception's bounds). It is permitted because it is
+ * self-reconciling — every verified directory rewrites it and deletes what UOA
+ * no longer lists — and because nothing reads it as authority: the invitation
+ * is accepted or declined at UOA. Do not take it as licence to persist any
+ * other UOA-owned field.
  */
 export const syncTeamInviteAlerts = async (
   prisma: PrismaClient,

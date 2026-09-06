@@ -13,7 +13,7 @@ import type {
   AgentTriggerRecord,
   AgentTriggerStatus,
   AgentTriggerType,
-} from '../contracts.js'
+} from '../contracts/triggers.js'
 import {
   ensureWebhookConfig,
   extractWebhookApiKey,
@@ -145,12 +145,53 @@ export const listScheduledTriggers = async (
 
 export { createWorkflowTrigger }
 
+/**
+ * Which trigger, in which tenant.
+ *
+ * `AgentTrigger` has no `organizationId` of its own: its only paths to a tenant
+ * are the nullable `agentId` (through `Agent.organizationId`, or a channel the
+ * agent is bound into) and the nullable `workflowInstallationId`, with a CHECK
+ * guaranteeing exactly one is set. So every by-id read and write takes the
+ * organisation and folds it into the `where`, the way the list functions above
+ * already do — `schema.prisma`'s own house rule, "every by-id read still
+ * filters on organizationId (never a bare findUnique on a caller-supplied id)".
+ *
+ * Before this, the authorisation predicate (the route's
+ * `isTriggerAccessibleToActor`) and the mutation predicate (`findUnique({ id })`)
+ * were two different queries against two different `where` clauses, and a
+ * second caller — the worker, the PA, a new route — inherited nothing.
+ */
+export type AgentTriggerScope = {
+  organizationId: string
+  triggerId: string
+}
+
+const scopedTriggerWhere = (
+  scope: AgentTriggerScope,
+): Prisma.AgentTriggerWhereInput => ({
+  id: scope.triggerId,
+  OR: [
+    {
+      agent: {
+        OR: [
+          { organizationId: scope.organizationId },
+          // A global agent carries no organizationId; it reaches a tenant
+          // through the channels it is bound into. Same arm
+          // `listOrganizationTriggers` uses, so the two cannot disagree.
+          { bindings: { some: { channel: { organizationId: scope.organizationId } } } },
+        ],
+      },
+    },
+    { workflowInstallation: { organizationId: scope.organizationId } },
+  ],
+})
+
 export const getAgentTrigger = async (
   prisma: PrismaClient,
-  triggerId: string,
+  scope: AgentTriggerScope,
 ): Promise<AgentTriggerRecord | null> => {
-  const trigger = await prisma.agentTrigger.findUnique({
-    where: { id: triggerId },
+  const trigger = await prisma.agentTrigger.findFirst({
+    where: scopedTriggerWhere(scope),
   })
 
   return trigger ? mapTriggerRecord(trigger) : null
@@ -158,7 +199,7 @@ export const getAgentTrigger = async (
 
 export const updateAgentTrigger = async (
   prisma: PrismaClient,
-  triggerId: string,
+  scope: AgentTriggerScope,
   input: {
     config?: Record<string, unknown>
     description?: string | null
@@ -170,8 +211,8 @@ export const updateAgentTrigger = async (
     targetThreadId?: string | null
   },
 ): Promise<AgentTriggerRecord | null> => {
-  const existing = await prisma.agentTrigger.findUnique({
-    where: { id: triggerId },
+  const existing = await prisma.agentTrigger.findFirst({
+    where: scopedTriggerWhere(scope),
     select: {
       agentId: true,
       config: true,
@@ -186,6 +227,7 @@ export const updateAgentTrigger = async (
   if (!existing) {
     return null
   }
+  const triggerId = existing.id
 
   const shouldUpdateTarget =
     input.targetChannelId !== undefined || input.targetThreadId !== undefined
@@ -308,17 +350,17 @@ export const updateAgentTrigger = async (
 
 export const deleteAgentTrigger = async (
   prisma: PrismaClient,
-  triggerId: string,
+  scope: AgentTriggerScope,
 ): Promise<boolean> => {
   const deliveryCount = await prisma.agentTriggerDelivery.count({
-    where: { triggerId },
+    where: { triggerId: scope.triggerId },
   })
   if (deliveryCount > 0) {
     return false
   }
 
   const result = await prisma.agentTrigger.deleteMany({
-    where: { id: triggerId },
+    where: scopedTriggerWhere(scope),
   })
 
   return result.count > 0
@@ -326,9 +368,9 @@ export const deleteAgentTrigger = async (
 
 export const pauseAgentTrigger = async (
   prisma: PrismaClient,
-  triggerId: string,
+  scope: AgentTriggerScope,
 ): Promise<AgentTriggerRecord | null> =>
-  updateAgentTrigger(prisma, triggerId, {
+  updateAgentTrigger(prisma, scope, {
     enabled: false,
     status: 'paused',
   })
@@ -345,13 +387,14 @@ export const pauseAgentTrigger = async (
  */
 export const resumeAgentTrigger = async (
   prisma: PrismaClient,
-  triggerId: string,
+  scope: AgentTriggerScope,
 ): Promise<AgentTriggerRecord | null> => {
-  const existing = await prisma.agentTrigger.findUnique({
-    select: { config: true, nextRunAt: true, type: true },
-    where: { id: triggerId },
+  const existing = await prisma.agentTrigger.findFirst({
+    select: { config: true, id: true, nextRunAt: true, type: true },
+    where: scopedTriggerWhere(scope),
   })
   if (!existing) return null
+  const triggerId = existing.id
 
   const needsRearm =
     existing.nextRunAt === null
@@ -380,7 +423,7 @@ export const resumeAgentTrigger = async (
     where: { id: triggerId },
   })
 
-  return updateAgentTrigger(prisma, triggerId, {
+  return updateAgentTrigger(prisma, scope, {
     enabled: true,
     status: 'active',
     ...(rearmed ? { nextRunAt: rearmed.toISOString() } : {}),
@@ -389,11 +432,11 @@ export const resumeAgentTrigger = async (
 
 export const listAgentTriggerDeliveries = async (
   prisma: PrismaClient,
-  triggerId: string,
+  scope: AgentTriggerScope,
   limit: number,
 ): Promise<AgentTriggerDeliveryRecord[]> => {
   const deliveries = await prisma.agentTriggerDelivery.findMany({
-    where: { triggerId },
+    where: { trigger: scopedTriggerWhere(scope) },
     include: {
       run: {
         select: { id: true, status: true },

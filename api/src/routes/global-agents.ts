@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { GlobalAgentHomeResponseSchema } from '../contracts.js'
+import { GlobalAgentHomeResponseSchema } from '../contracts/agents.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import { openGlobalAgentHome } from '../services/global-agent-home.js'

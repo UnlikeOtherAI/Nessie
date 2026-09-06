@@ -3,10 +3,11 @@ import { register } from 'node:module'
 import test from 'node:test'
 
 /**
- * Org/project/team membership and roles belong to the identity provider outside
- * `local` mode (UOA SSO gap analysis, phase 4). The local rows are a projection
- * of the verified session claims, so a local write would be reverted at the
- * next login or token rotation — the server refuses it instead:
+ * Org/project/team membership and roles belong to the identity provider that
+ * binds the tenant being acted on. The local rows are a projection of the
+ * verified session claims, so a local write would be reverted at the next login
+ * or token rotation — or survive as a second authority — and the server refuses
+ * it instead:
  *
  *   - `PATCH /api/users/:userId`                  (org role)
  *   - `POST  /api/users/:userId/deactivate`       (membership kill-switch)
@@ -15,10 +16,19 @@ import test from 'node:test'
  *   - `POST  /api/projects/:projectId/members`
  *   - `DELETE /api/projects/:projectId/members/:userId`
  *
- * Each gate is also asserted *open* in local mode (the request reaches the next
- * step of the real handler), which is where the last-owner invariant still
- * applies. The gate sits after the owner check and before any body parse or
- * database read, matching the phase-1 gates in the same files.
+ * **The predicate is the acting tenant's binding, not `config.mode`**
+ * (2026-09-05 API review, FO2-2): `Organization.externalOrgId`, plus
+ * `Team.externalTeamId` for a team write. `mode: 'local'` with an enabled UOA
+ * provider is a full UOA deployment, and a `selfHosted` install with no
+ * provider is the unbound tenant that keeps local control — the mode says
+ * neither. Every mode is exercised for every call below to prove `mode` plays
+ * no part in the answer; `requireUnboundMembershipManagement` never inspects
+ * it. (The `/api/projects/*` routes were the two remaining callers of the
+ * superseded `config.mode` predicate and have since migrated.)
+ *
+ * Each gate is also asserted *open* for an unbound tenant (the request reaches
+ * the next step of the real handler), which is where the last-owner invariant
+ * still applies.
  */
 
 // --- @nessie/db stub: the route module graph imports it transitively --------
@@ -69,31 +79,45 @@ const actorContext = {
   actionContext: { requestId: 'req-membership-gate' },
 }
 
-/** Records whether a gated handler reached the database at all. */
+type Binding = { externalOrgId: string | null; externalTeamId: string | null }
+
+/**
+ * Answers the binding lookups the gate makes, and records whether a gated
+ * handler got past them to its own work.
+ */
 class PrismaSpy {
-  reads = 0
+  /** Reads beyond the binding lookups the gate itself performs. */
+  handlerReads = 0
+
+  constructor(private readonly binding: Binding) {}
 
   private readonly count = async () => {
-    this.reads += 1
+    this.handlerReads += 1
     return 0
   }
 
   private readonly findNothing = async () => {
-    this.reads += 1
+    this.handlerReads += 1
     return null
   }
 
   readonly client = {
+    organization: {
+      findUnique: async () => ({ externalOrgId: this.binding.externalOrgId }),
+    },
     organizationMember: { count: this.count, findUnique: this.findNothing },
     project: { findUnique: this.findNothing, findFirst: this.findNothing },
     projectMember: {
       create: this.findNothing,
       deleteMany: async () => {
-        this.reads += 1
+        this.handlerReads += 1
         return { count: 0 }
       },
     },
-    team: { findUnique: this.findNothing },
+    team: {
+      findFirst: async () => ({ externalTeamId: this.binding.externalTeamId }),
+      findUnique: this.findNothing,
+    },
     teamMember: { create: this.findNothing },
   }
 }
@@ -107,6 +131,7 @@ const buildApp = async (mode: Mode, prismaSpy: PrismaSpy) => {
     listAccessibleProjectIds: async () => [],
     prisma: prismaSpy.client,
     requireActorContext: () => actorContext,
+    requireOrgAdmin: () => true,
     requireOwner: () => true,
     resolveMembershipRole: (role?: string) =>
       (['owner', 'admin', 'member', 'viewer'].includes(role ?? '') ? role : null),
@@ -120,7 +145,7 @@ const buildApp = async (mode: Mode, prismaSpy: PrismaSpy) => {
 
 type Call = {
   body?: unknown
-  /** The error code the real handler answers with in local mode. */
+  /** The error code the real handler answers with once the gate is open. */
   localCode: string
   localStatus: number
   method: 'PATCH' | 'POST' | 'DELETE'
@@ -128,10 +153,10 @@ type Call = {
   url: string
 }
 
-// In local mode each call lands on the handler's own next step: an unknown role
-// (INVALID_ROLE), a missing userId (USER_ID_REQUIRED), or a lookup that finds
-// nothing in the spy (MEMBER_NOT_FOUND / NOT_FOUND). Reaching any of those
-// proves the gate is open and that the handler really is behind it.
+// With the gate open each call lands on the handler's own next step: an unknown
+// role (INVALID_ROLE), a missing userId (USER_ID_REQUIRED), or a lookup that
+// finds nothing in the spy (MEMBER_NOT_FOUND / NOT_FOUND). Reaching any of
+// those proves the gate is open and that the handler really is behind it.
 const CALLS: Call[] = [
   {
     body: { role: 'not-a-role' },
@@ -180,6 +205,9 @@ const CALLS: Call[] = [
   },
 ]
 
+const UNBOUND: Binding = { externalOrgId: null, externalTeamId: null }
+const BOUND: Binding = { externalOrgId: 'uoa-org', externalTeamId: 'uoa-team' }
+
 const send = (
   app: Awaited<ReturnType<typeof buildApp>>,
   call: Call,
@@ -197,35 +225,37 @@ const send = (
         }),
   })
 
+const assertRefused = (response: { statusCode: number; json: () => never }) => {
+  assert.equal(response.statusCode, 403)
+  const body = response.json() as unknown as { error: { code: string; message: string } }
+  assert.equal(body.error.code, 'LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED')
+  assert.match(body.error.message, /identity provider/i)
+}
+
 for (const call of CALLS) {
-  for (const mode of NON_LOCAL_MODES) {
-    test(`${call.name} is refused in ${mode} mode without touching the database`, async () => {
-      const prismaSpy = new PrismaSpy()
+  test(`${call.name} is refused in a UOA-bound tenant, whatever the mode`, async () => {
+    for (const mode of [...NON_LOCAL_MODES, 'local' as const]) {
+      const prismaSpy = new PrismaSpy(BOUND)
+      const app = await buildApp(mode, prismaSpy)
+
+      assertRefused(await send(app, call) as never)
+      assert.equal(prismaSpy.handlerReads, 0, 'refused before the handler works')
+
+      await app.close()
+    }
+  })
+
+  test(`${call.name} still runs in an unbound tenant, whatever the mode`, async () => {
+    for (const mode of [...NON_LOCAL_MODES, 'local' as const]) {
+      const prismaSpy = new PrismaSpy(UNBOUND)
       const app = await buildApp(mode, prismaSpy)
 
       const response = await send(app, call)
 
-      assert.equal(response.statusCode, 403)
-      assert.equal(
-        response.json().error.code,
-        'LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED',
-      )
-      assert.match(response.json().error.message, /identity provider/i)
-      assert.equal(prismaSpy.reads, 0)
+      assert.equal(response.statusCode, call.localStatus)
+      assert.equal(response.json().error.code, call.localCode)
 
       await app.close()
-    })
-  }
-
-  test(`${call.name} still runs in local mode`, async () => {
-    const prismaSpy = new PrismaSpy()
-    const app = await buildApp('local', prismaSpy)
-
-    const response = await send(app, call)
-
-    assert.equal(response.statusCode, call.localStatus)
-    assert.equal(response.json().error.code, call.localCode)
-
-    await app.close()
+    }
   })
 }

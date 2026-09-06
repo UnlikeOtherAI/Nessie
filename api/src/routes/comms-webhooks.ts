@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { COMMS_WEBHOOK_PROCESS_TOPIC, type CommsProvider } from '@nessie/schemas'
 
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import type { RequestWithRawBody } from '../lib/server-context.js'
 import type { RouteDeps } from './types.js'
 

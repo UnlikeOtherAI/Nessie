@@ -1,4 +1,6 @@
+import { enqueueQueueJob } from '@nessie/db'
 import type { BudgetAlertSnapshot, BudgetEvaluation } from '@nessie/runtime'
+import { BUDGET_ALERT_DISPATCH_TOPIC } from '@nessie/schemas'
 import type { BudgetAlertDispatchJobPayload } from '@nessie/schemas'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
@@ -127,8 +129,10 @@ const emitAlert = async (
     percentUsed: alert.percentUsed,
     reason,
   }
-  await deps.queueProvider.enqueue('budget.alert-dispatch', dispatchPayload, {
+  await enqueueQueueJob(deps.prisma, {
     idempotencyKey: `budget-alert:${alert.scopeType}:${alert.scopeId}:${alert.periodStart.toISOString()}:${kind}`,
+    payload: dispatchPayload,
+    topic: BUDGET_ALERT_DISPATCH_TOPIC,
   })
 }
 

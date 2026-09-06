@@ -12,9 +12,12 @@ import {
 } from '@nessie/schemas'
 
 import type { createRealtimeHub } from '../realtime/hub.js'
-import { ChannelRecordSchema, ThreadRecordSchema } from '../contracts.js'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
-import { mapMessageRecord, messageInclude } from './messages.js'
+import { ChannelRecordSchema } from '../contracts/team.js'
+import { ThreadRecordSchema } from '../contracts/messaging.js'
+import { enqueueRunExecution } from '@nessie/db'
+import { publishMessageNew } from './message-delivery.js'
+import { mapMessageRecord } from './message-read-model.js'
+import { createSystemAuthoredMessage } from './system-authored-message.js'
 import { ensurePersonalAssistantBootstrap } from './personal-assistant.js'
 
 type UserActorContext = AuthorizedActionContext & {
@@ -103,15 +106,15 @@ export const createPersonalAssistantIntegrationHandoff = async (
   const channel = ChannelRecordSchema.parse(channelState)
   const thread = ThreadRecordSchema.parse(threadState)
   const committed = await deps.prisma.$transaction(async (tx) => {
-    const message = await tx.message.create({
-      data: {
-        content,
-        metadata: resolvedMetadata as Prisma.InputJsonValue,
-        role: 'user',
-        threadId: threadState.id,
-        userId: actorContext.actor.actorId,
-      },
-      include: messageInclude,
+    const message = await createSystemAuthoredMessage(tx, {
+      content,
+      // The person asked for this handoff, so they follow the reply thread it
+      // starts — the assistant answers into it.
+      followedByUserIds: [actorContext.actor.actorId],
+      metadata: resolvedMetadata as Prisma.InputJsonValue,
+      role: 'user',
+      threadId: threadState.id,
+      userId: actorContext.actor.actorId,
     })
     // A product handoff prompt is server-authored and never carries files.
     const messageRecord = mapMessageRecord(message, 0)
@@ -169,25 +172,15 @@ export const createPersonalAssistantIntegrationHandoff = async (
   })
 
   try {
-    await deps.realtimeHub.publishWs(
-      deps.buildChannelRealtimeScopes({
-        channelId: channelState.id,
+    await publishMessageNew(deps, {
+      channel: {
+        id: channelState.id,
         organizationId: actorContext.tenant.organizationId,
         systemChannelType: channelState.systemChannelType,
-      }),
-      {
-        data: {
-          agentId: undefined,
-          authorUserId: parseUserId(actorContext.actor.actorId),
-          channelId: parseChannelId(channelState.id),
-          contentPreview: content.slice(0, 200),
-          messageId: committed.message.id,
-          role: committed.message.role,
-          threadId: parseThreadId(threadState.id),
-        },
-        event: 'message.new',
       },
-    )
+      message: committed.message,
+      threadId: threadState.id,
+    })
   } catch (error) {
     console.error(
       '[integration-handoff] Durable handoff committed but realtime publish failed:',

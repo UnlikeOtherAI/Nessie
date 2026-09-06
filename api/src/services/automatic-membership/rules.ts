@@ -11,7 +11,21 @@
 import type { PrismaClient } from '@prisma/client'
 
 import { AutomaticMembershipDomainError } from './domains.js'
-import type { RuleAuthorization } from './access.js'
+
+/**
+ * The acting principal a new or re-authorized rule records. Every grant that
+ * rule later makes mints a fresh assertion for this subject, so UOA re-resolves
+ * their live role at that moment; a rule can therefore never outlive its
+ * authorizer's access.
+ *
+ * Lives with the rules it is stamped on, not with the route guard that reads it
+ * off a request: the services must not import from `routes/`.
+ */
+export type RuleAuthorization = {
+  authorizedByUoaSub: string
+  authorizedTeamId: string
+  authorizedTokenVersion: number
+}
 
 export type RuleServicePrisma = Pick<
   PrismaClient,

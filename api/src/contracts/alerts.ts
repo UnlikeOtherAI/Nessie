@@ -1,66 +1,24 @@
+import {
+  TeamInvitationAlertMetadataSchema,
+  UserAlertKindSchema,
+  UserAlertRecordSchema,
+  type TeamInvitationAlertMetadata,
+  type UserAlertKind,
+  type UserAlertRecord,
+} from '@nessie/schemas'
 import { z } from 'zod'
 
-import { TimestampSchema } from './shared.js'
-
-// Persistent recipient-private attention. Every kind is revalidated against
-// its linked resource before it is returned or counted.
-export const UserAlertKindSchema = z.enum([
-  'mention',
-  'task_assigned',
-  'knowledge_published',
-  // A scheduled trigger became non-runnable. Durable rather than push-only: the
-  // failure this surfaces was previously invisible unless somebody opened the
-  // Triggers page and read a delivery row.
-  'trigger_health',
-  'approval_requested',
-  'call_missed',
-  'team_invitation',
-  // An automatic-membership rule's authorization stopped verifying, so nobody
-  // new is being added to its team. Durable for the same reason as
-  // trigger_health: otherwise it is visible only to whoever happens to open the
-  // Automatic logins tab.
-  'automatic_membership_health',
-  // A project board's external source stopped syncing. Durable for the same
-  // reason as the two above: a board that has quietly stopped updating still
-  // looks exactly like a board.
-  'board_source_health',
-])
-export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
-
-export const TeamInvitationAlertMetadataSchema = z.object({
-  inviteId: z.string().min(1),
-  organizationId: z.string().min(1),
-  teamId: z.string().min(1),
-  teamName: z.string().min(1),
-  invitedBy: z.string().min(1).optional(),
-  expiresAt: TimestampSchema.optional(),
-}).strict()
-export type TeamInvitationAlertMetadata = z.infer<
-  typeof TeamInvitationAlertMetadataSchema
->
-
-export const UserAlertRecordSchema = z.object({
-  id: z.string().uuid(),
-  kind: UserAlertKindSchema,
-  messageId: z.string().uuid().nullable(),
-  rootMessageId: z.string().uuid().nullable(),
-  threadId: z.string().uuid().nullable(),
-  channelId: z.string().uuid().nullable(),
-  channelLabel: z.string().nullable(),
-  projectId: z.string().uuid().nullable(),
-  taskId: z.string().uuid().nullable(),
-  knowledgePageId: z.string().uuid().nullable(),
-  triggerId: z.string().uuid().nullable(),
-  boardSourceId: z.string().uuid().nullable(),
-  callId: z.string().uuid().nullable(),
-  metadata: TeamInvitationAlertMetadataSchema.nullable(),
-  actorUserId: z.string().uuid().nullable(),
-  actorAgentId: z.string().uuid().nullable(),
-  actorDisplayName: z.string().nullable(),
-  readAt: TimestampSchema.nullable(),
-  createdAt: TimestampSchema,
-})
-export type UserAlertRecord = z.infer<typeof UserAlertRecordSchema>
+// The alert record the admin renders directly lives in `@nessie/schemas`
+// (`alert-records.ts`) because the admin has no import path into `api/src`.
+// Re-exported here so route modules keep one contract import.
+export {
+  TeamInvitationAlertMetadataSchema,
+  UserAlertKindSchema,
+  UserAlertRecordSchema,
+  type TeamInvitationAlertMetadata,
+  type UserAlertKind,
+  type UserAlertRecord,
+}
 
 // The page itself. `meta` carries the cursors and the total; the unread count
 // is `GET /api/alerts/summary`'s answer, not a field smuggled into a page.

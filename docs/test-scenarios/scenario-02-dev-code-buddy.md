@@ -57,7 +57,7 @@ curl -s -X POST "http://localhost:5454/api/threads/$THREAD_ID/messages" \
 
 Expect HTTP 404 `{"error":"THREAD_NOT_FOUND"}` — a non-member cannot
 see the thread (access enforced via `channel_members` join in
-`findThreadForUser`, see `api/src/services/messages.ts`).
+`findThreadForUser`, see `api/src/services/message-read-state.ts`).
 
 ### 5. Alex (owner) adds Morgan to the channel
 

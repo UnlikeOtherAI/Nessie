@@ -95,6 +95,35 @@ const jitsiOrigin = (env: CallLinkEnvironment): string => {
 }
 
 export type CreateCallLinkInput = {
+  /**
+   * The caller's OWN tenant, never derived from `teamId`.
+   *
+   * `Team` carries no `organizationId` — its tenancy runs through its project —
+   * so this function used to read `team.project.organizationId` from the
+   * caller-supplied team id and then use that as the tenant, including as the
+   * organisation it loaded the user's Google credential under. The route's
+   * tenant and the operation's tenant were different values, and no caller
+   * *could* constrain it, because there was no parameter for it. Required, and
+   * refused on mismatch, the way `loadChannelTeamProject` already does it.
+   */
+  organizationId: string
+  /**
+   * How this caller earned the right to mint a link for this team. Stated, not
+   * inherited — the same reason `createProjectForUser` keeps its owner gate out
+   * of the function.
+   *
+   * - `team_member`: the caller NAMED the team (the request body, a tool
+   *   argument), so being in it is the whole entitlement, and `TeamMember` is
+   *   checked here. Organisation membership is not enough:
+   *   `docs/standards/team-model.md` makes the team the unit people are members
+   *   of, and treating "in the org" as sufficient erases that level.
+   * - `channel_member`: the caller named a CHANNEL and the team was derived
+   *   from it. `startCallForUser` has already required membership of that
+   *   channel, which is the narrower fact — a public channel's members are not
+   *   necessarily in its team, so re-checking `TeamMember` here would refuse
+   *   calls the call route allows.
+   */
+  entitlement: 'team_member' | 'channel_member'
   teamId: string
   userId: string
   provider?: CallLinkProvider
@@ -145,17 +174,29 @@ export const createCallLinkForTeamUser = async (
       project: { select: { organizationId: true } },
     },
   })
-  if (!team) throw new CallLinkError('TEAM_NOT_FOUND')
+  // A team in another organisation is indistinguishable from one that does not
+  // exist: the caller's tenant is the only tenant this operation may act in.
+  if (!team || team.project.organizationId !== input.organizationId) {
+    throw new CallLinkError('TEAM_NOT_FOUND')
+  }
 
-  const membership = await prisma.organizationMember.findFirst({
+  const activeInOrganization = await prisma.organizationMember.findFirst({
     where: {
-      organizationId: team.project.organizationId,
+      organizationId: input.organizationId,
       userId: input.userId,
       deactivatedAt: null,
     },
     select: { id: true },
   })
-  if (!membership) throw new CallLinkError('TEAM_NOT_FOUND')
+  if (!activeInOrganization) throw new CallLinkError('TEAM_NOT_FOUND')
+
+  if (input.entitlement === 'team_member') {
+    const teamMembership = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId: input.teamId, userId: input.userId } },
+      select: { id: true },
+    })
+    if (!teamMembership) throw new CallLinkError('TEAM_NOT_FOUND')
+  }
 
   const parsedProvider = CallLinkProviderSchema.safeParse(
     input.provider ?? team.callProvider,
@@ -190,7 +231,7 @@ export const createCallLinkForTeamUser = async (
     credential = await (
       dependencies.loadGoogleCredential ?? loadUserGoogleCommsCredential
     )(prisma, {
-      organizationId: team.project.organizationId,
+      organizationId: input.organizationId,
       userId: input.userId,
       requiredScopes: [GOOGLE_MEET_CREATE_SCOPE],
       capabilityId: 'meet.create',

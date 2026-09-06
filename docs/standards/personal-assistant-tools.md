@@ -8,11 +8,12 @@ file is the rule**.
 - **A personal-assistant tool that does what a person does by clicking calls
   the same function that person's button calls, and mirrors that route's
   authorization exactly — no weaker, no stronger.** The provisioning builtins in
-  `worker/src/run/pa-tools/provisioning.ts` are the pattern: `agent_list`,
-  `channel_create` and `project_list` are member-level because their routes
+  `worker/src/run/pa-tools/provisioning.ts` and `worker/src/run/pa-tools/team-structure.ts`
+  are the pattern: `agent_list` and `channel_create` (`provisioning.ts`) and
+  `project_list` (`team-structure.ts`) are member-level because their routes
   carry only `requireActorContext`, while `project_create` and `team_create`
-  are organisation-owner because `POST /api/projects` and `POST /api/teams`
-  carry `requireOwner`; binding reproduces all four gates of
+  (also `team-structure.ts`) are organisation-owner because `POST /api/projects`
+  and `POST /api/teams` carry `requireOwner`; binding reproduces all four gates of
   `POST /api/agents/:agentId/bindings` (channel membership, the system-channel
   refusal, owner, `checkPolicy('agent','bind')`); trigger creation parses the
   route's own `CreateAgentTriggerBodySchema` and refuses a schedule with no UOA
@@ -38,10 +39,16 @@ file is the rule**.
   intentionally require no explicit grant today because a person's PA is their
   delegate. Both re-read the live acting membership and call
   `createCallLinkForTeamUser` / `startCallForUser` in
-  `@nessie/team-admin`; never duplicate their gates. A call tool leaves
+  `@nessie/team-admin`; never duplicate their gates. `call_start` leaves
   `expectedOrganizationId` unset so the shared start seam resolves the
   **target channel's** organisation and re-checks membership there, preserving
   the route's indistinguishable `Channel not found` refusal across UOA orgs.
+  `meeting_link_create` names a team rather than a channel, so it passes the
+  run's own tenant (`resolveActingMember`'s `organizationId`) as
+  `createCallLinkForTeamUser`'s required `organizationId` with
+  `entitlement: 'team_member'`, exactly as `POST /api/meetings/links` passes
+  the session's tenant; a team outside that organisation is the same
+  indistinguishable `Team not found`.
   An unattended run has no requesting user and must refuse before minting.
 
 ## Detail

@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import { loadUnreadCountsByThread } from '@nessie/team-admin'
 
-import { markThreadRead } from '../src/services/messages.js'
+import { markThreadRead } from '../src/services/message-read-state.js'
 
 const THREAD_ID = '00000000-0000-4000-8000-000000000001'
 const ROOT_ID = '00000000-0000-4000-8000-000000000002'

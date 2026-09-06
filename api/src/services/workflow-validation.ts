@@ -7,8 +7,7 @@ import {
   WorkflowTemplateValidationError,
 } from '@nessie/team-admin'
 
-import type { WorkflowGraph } from '../contracts.js'
-
+import type { WorkflowGraph } from '../contracts/workflows.js'
 export { WorkflowSecretWriteError, WorkflowTemplateValidationError }
 
 /**

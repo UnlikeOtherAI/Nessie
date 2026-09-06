@@ -6,7 +6,7 @@ import {
   AttentionSummarySchema,
   MarkAlertsReadBodySchema,
   MarkAlertsReadResponseSchema,
-} from '../contracts.js'
+} from '../contracts/alerts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { getAttentionSummary, listUserAlerts, markUserAlertsRead } from '../services/alerts.js'
 import type { RouteDeps } from './types.js'

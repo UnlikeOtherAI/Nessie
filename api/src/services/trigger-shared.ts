@@ -5,7 +5,8 @@ import {
 } from '@nessie/runtime'
 import { parseRunId, type AgentTriggerRecord } from '@nessie/schemas'
 import { toTimestamp } from '@nessie/team-admin'
-import type { AgentTriggerDeliveryRecord } from '../contracts.js'
+import type { AgentTriggerDeliveryRecord } from '../contracts/triggers.js'
+import { toInputJson } from '../db/prisma-json.js'
 
 // Dispatch-side internals for the trigger service: delivery mapping, payload
 // normalization, retry bookkeeping, and the DispatchTriggerResult contract.
@@ -72,7 +73,7 @@ export const mapTriggerDeliveryRecord = (delivery: {
 
 export const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   if (payload === null) {
-    return Prisma.JsonNull as unknown as Prisma.InputJsonValue
+    return toInputJson(Prisma.JsonNull)
   }
 
   if (

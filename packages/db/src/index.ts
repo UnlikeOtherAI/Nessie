@@ -13,7 +13,11 @@ export {
   type AuditOutcome,
 } from './audit-chain.js'
 
-export { enqueueQueueJob, enqueueRunExecution } from './queue.js'
+export {
+  enqueueOrchestrateDecide,
+  enqueueQueueJob,
+  enqueueRunExecution,
+} from './queue.js'
 export {
   buildAgentVisibilityWhere,
   buildOwnedAgentWhere,

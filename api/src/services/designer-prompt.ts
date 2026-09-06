@@ -5,9 +5,7 @@ import {
 } from '@nessie/team-admin'
 import type { z } from 'zod'
 
-import type { DesignerChatBodySchema } from '../contracts.js'
-
-/**
+import type { DesignerChatBodySchema } from '../contracts/designer.js'/**
  * The Agent Designer's second face: the sidebar on the Agent Designer page.
  *
  * One brain, two doorways (D9). The persona and the generated capability

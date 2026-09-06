@@ -4,6 +4,7 @@ import {
   type DeepWaterResearchRunRecord,
   type ProductIntegrationRunStatus,
 } from '@nessie/schemas'
+import { ConnectorUsageMetadataSchema } from './connector-usage.js'
 import type { LedgerAttribution } from './ledger.js'
 import {
   assertImmutableDeepWaterUpdate,
@@ -332,7 +333,10 @@ export const reconcileDeepWaterResearchRunUsage = async (
         connectorType: 'mcp',
         correlationId,
         latencyMs: null,
-        metadata: {
+        // Written through the shared metadata contract rather than as a free
+        // literal: `metering` is what excludes this event from every local cost
+        // aggregate, and it is the only thing that does.
+        metadata: ConnectorUsageMetadataSchema.parse({
           commercialAuthority: 'uoa',
           externalRunId: row.external_run_id,
           metering: 'operational_only',
@@ -340,7 +344,7 @@ export const reconcileDeepWaterResearchRunUsage = async (
           productSlug: DEEP_WATER_PRODUCT_SLUG,
           source: 'deep_water_run_update',
           status: row.status,
-        } as Prisma.InputJsonValue,
+        }) as Prisma.InputJsonValue,
         occurredAt,
         operation: `research.${row.status}`,
         organizationId: row.organization_id,

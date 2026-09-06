@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { WorkflowStateEntryRecordSchema } from '../src/contracts.js'
-
+import { WorkflowStateEntryRecordSchema } from '../src/contracts/workflows.js'
 test('WorkflowStateEntryRecordSchema validates workflow-scoped state records', () => {
   const record = WorkflowStateEntryRecordSchema.parse({
     createdAt: '2026-04-15T00:00:00.000Z',

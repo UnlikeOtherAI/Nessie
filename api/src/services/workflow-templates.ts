@@ -12,11 +12,7 @@ import {
 import { buildPage, decodeKeysetCursor, resolvePageLimit } from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import type {
-  WorkflowGraph,
-  WorkflowInstallationRecord,
-  WorkflowTemplateRecord,
-} from '../contracts.js'
+import type { WorkflowGraph, WorkflowInstallationRecord, WorkflowTemplateRecord } from '../contracts/workflows.js'
 import {
   mapWorkflowInstallation,
   mapWorkflowTemplate,

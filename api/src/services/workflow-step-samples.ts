@@ -23,12 +23,14 @@
  *   after `requireOwner` — the same entitlement as every other template
  *   read. Samples are never embedded in the generic template record.
  */
-import { Prisma, type PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import {
   WORKFLOW_JMESPATH_OUTPUT_MAX_BYTES,
   collectWorkflowTaintedRefs,
   redactWorkflowSecretValues,
 } from '@nessie/team-admin'
+
+import { toInputJson } from '../db/prisma-json.js'
 
 export const WORKFLOW_STEP_SAMPLES_MAX_BYTES = WORKFLOW_JMESPATH_OUTPUT_MAX_BYTES
 export const WORKFLOW_STEP_SAMPLES_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
@@ -180,7 +182,7 @@ export const recordWorkflowStepSamples = async (
 
   const updated = await prisma.workflowTemplate.updateMany({
     where: { id: input.workflowTemplateId, organizationId },
-    data: { stepSamples: store as unknown as Prisma.InputJsonValue },
+    data: { stepSamples: toInputJson(store) },
   })
   if (updated.count === 0) {
     throw new WorkflowStepSamplesError('TEMPLATE_NOT_FOUND')

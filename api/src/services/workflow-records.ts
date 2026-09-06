@@ -14,8 +14,8 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord,
   WorkflowTemplateRecord,
-} from '../contracts.js'
-import { WorkflowGraphSchema } from '../contracts.js'
+} from '../contracts/workflows.js'
+import { WorkflowGraphSchema } from '../contracts/workflows.js'
 import { parseOptional, toJsonRecord } from './contract-helpers.js'
 
 // The row shapes the workflow services select, and the one place a row becomes
