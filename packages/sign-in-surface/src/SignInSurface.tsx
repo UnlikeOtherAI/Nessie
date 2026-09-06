@@ -11,7 +11,7 @@ export const SIGN_IN_COPY = {
     'Your team and its agents in one team. Same channels, threads and DMs you already know '
     + '— except the assistants in them can draft the note, post it to the right channel and '
     + 'set the follow-up themselves.',
-  title: 'The Slack alternative for an AI world',
+  title: 'The European Slack alternative for an AI world',
 } as const
 
 export type SignInSurfaceProps = {
@@ -27,6 +27,13 @@ export type SignInSurfaceProps = {
   after?: ReactNode
   /** The right-hand panel on wide viewports — typically {@link SignInShowcase}. */
   showcase?: ReactNode
+  /**
+   * Let the document scroll past the card: the page is at least the viewport
+   * instead of exactly it, and the column stops scrolling inside the card, so
+   * a host with content after the doorway (the landing) reads as one page.
+   * The admin, whose body never scrolls, leaves it off.
+   */
+  flow?: boolean
   columnStyle?: CSSProperties
   className?: string
 }
@@ -43,13 +50,16 @@ export const SignInSurface = ({
   children,
   className,
   columnStyle,
+  flow = false,
   lede = SIGN_IN_COPY.lede,
   logo,
   productName,
   showcase,
   title = SIGN_IN_COPY.title,
 }: SignInSurfaceProps) => (
-  <main className={['signin-page', className].filter(Boolean).join(' ')}>
+  <main
+    className={['signin-page', flow && 'signin-page-flow', className].filter(Boolean).join(' ')}
+  >
     <div className={showcase ? 'signin-card signin-card-with-showcase' : 'signin-card'}>
       <section aria-label="Sign in" className="signin-auth">
         <div aria-hidden="true" className="signin-aura" />

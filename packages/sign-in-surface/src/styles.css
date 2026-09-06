@@ -35,6 +35,21 @@
   color: var(--tx);
 }
 
+/* Flow: a host with content after the doorway (the landing) lets the document
+   scroll past the card. The page is at least the viewport rather than exactly
+   it, the card grows with its column, and the column no longer scrolls inside
+   the card — one page, one scroll. The admin never sets this. */
+.signin-page-flow {
+  height: auto;
+  min-height: var(--app-live-height, 100dvh);
+  overflow: visible;
+}
+
+.signin-page-flow .signin-auth-scroll {
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+
 .signin-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

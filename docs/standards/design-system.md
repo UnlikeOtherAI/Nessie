@@ -187,3 +187,8 @@ summary and points here; **this file is the rule**.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
   minted on the admin origin, so the landing hands off and the admin starts
   the provider flow at once.
+  The landing has content after the doorway, so it renders the surface with
+  `flow`: the document scrolls past the card (the page is at least the
+  viewport, not exactly it, and the column no longer scrolls inside the card).
+  Those sections are the landing's own and live in `web/`, set in the same
+  tokens. The admin, whose body never scrolls, never sets `flow`.

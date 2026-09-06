@@ -9,16 +9,29 @@ const signInUrl = 'https://app.nessie.works/login?launch=sso'
 
 export function App() {
   return (
-    <SignInSurface
-      after={<AppDownloads />}
-      logo={<img alt="" className="signin-wordmark-mark" src="/nessie-logo.png" />}
-      productName="Nessie"
-      showcase={<SignInShowcase />}
-    >
-      <a className="signin-cta signin-cta-primary" href={signInUrl}>
-        <FontAwesomeIcon aria-hidden="true" className="signin-cta-icon" icon={faLock} />
-        Sign in with SSO
-      </a>
-    </SignInSurface>
+    <>
+      <SignInSurface
+        after={<AppDownloads />}
+        flow
+        logo={<img alt="" className="signin-wordmark-mark" src="/nessie-logo.png" />}
+        productName="Nessie"
+        showcase={<SignInShowcase />}
+      >
+        <a className="signin-cta signin-cta-primary" href={signInUrl}>
+          <FontAwesomeIcon aria-hidden="true" className="signin-cta-icon" icon={faLock} />
+          Sign in with SSO
+        </a>
+      </SignInSurface>
+      <section aria-labelledby="landing-home-title" className="landing-section">
+        <h2 className="landing-section-title" id="landing-home-title">
+          A European home for your team.
+        </h2>
+        <p className="landing-section-text">
+          Familiar channels, threads, and DMs.
+          <br />
+          People and AI agents working together.
+        </p>
+      </section>
+    </>
   )
 }

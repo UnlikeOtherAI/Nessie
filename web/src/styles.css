@@ -1,5 +1,6 @@
-/* The landing is the sign-in surface (packages/sign-in-surface) on the Space
-   White tokens it ships; nothing here restyles it. */
+/* The landing opens on the sign-in surface (packages/sign-in-surface) on the
+   Space White tokens it ships; nothing here restyles it. What follows the
+   doorway is the landing's own, set in the same type and tokens. */
 
 html,
 body {
@@ -16,4 +17,57 @@ body {
 
 #root {
   display: contents;
+}
+
+/* A section after the doorway: one heading and its lines, centred on the
+   page ground the card sits on. */
+.landing-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 104px var(--page-gutter, 24px) 128px;
+  text-align: center;
+}
+
+.landing-section-title {
+  margin: 0;
+  color: var(--tx);
+  font-family: var(--font-family-display);
+  font-size: 44px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.landing-section-text {
+  max-width: 560px;
+  margin: 20px 0 0;
+  color: var(--tx2);
+  font-size: 18px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* The doorway themes its own selection; the sections carry the same one. */
+.landing-section ::selection {
+  background: var(--accent-soft);
+  color: var(--tx);
+}
+
+@media (max-width: 40rem) {
+  .landing-section {
+    padding: 64px 20px 80px;
+  }
+
+  .landing-section-title {
+    font-size: 32px;
+  }
+
+  .landing-section-text {
+    font-size: 16px;
+  }
 }
