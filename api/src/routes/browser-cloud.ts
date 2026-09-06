@@ -1134,11 +1134,16 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       where: { id: browser.id },
     })
 
+    // Only a session this person is driving is resized under them. Reflowing
+    // a page an agent is working on mid-run would move every element it had
+    // just located, which is a far worse thing to do than let the new size
+    // wait for the next open — and the row is already written either way.
     const live = await prisma.cloudBrowserSession.findFirst({
       where: {
         organizationId,
         agentBrowserId: browser.id,
         status: 'active',
+        controlledByUserId: actorContext.actor.actorId,
       },
       select: { id: true },
     })

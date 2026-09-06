@@ -58,8 +58,13 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
 }
 
 /**
- * One panel, both homes: the owner-only company account on organisation
- * settings and a person's own account on their connections page.
+ * One panel, three homes: the owner-only company account on organisation
+ * settings, a team's on its own, and a person's on their connections page.
+ *
+ * One component rather than three because everything it carries — the
+ * connection, the lock that stops a level below overriding it, the home page —
+ * cascades the same way, and a second copy of that reasoning is how the levels
+ * drift apart.
  */
 export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelProps) => {
   const connections = useCloudBrowserConnections()

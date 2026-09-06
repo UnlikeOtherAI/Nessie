@@ -126,6 +126,7 @@ export const BrowserHomepageField = ({
               placeholder={state.inheritedHomepage}
               spellCheck={false}
               type="text"
+              value={draft}
             />
           </FormField>
           <div className="flex items-center gap-2">

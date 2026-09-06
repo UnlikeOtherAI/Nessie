@@ -189,7 +189,10 @@ export const AgentScreenViewer = ({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-shrink-0 items-center gap-2 px-4 py-2">
+      {/* Wraps rather than overflows: full screen on a phone is a 390px row
+          carrying a name, two pills and up to four controls, and a header that
+          scrolls sideways hides the one control the reader came for. */}
+      <div className="flex flex-shrink-0 flex-wrap items-center gap-2 px-4 py-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">
           {session.data?.agentName ?? 'Agent'}
         </span>
@@ -202,7 +205,7 @@ export const AgentScreenViewer = ({
           </Pill>
         ) : null}
         {live ? (
-          <span className="ml-auto flex items-center gap-2">
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {variant === 'fullscreen' ? (
               <>
                 <label className="sr-only" htmlFor="browser-viewport">Window size</label>
@@ -333,6 +336,10 @@ export const AgentScreenViewer = ({
         <p className="flex-shrink-0 px-4 py-2 text-xs text-[color:var(--tx3)]">
           {claimFailed
             ? 'Couldn’t take control — try Take control above.'
+          : setViewport.data?.appliedToLiveSession === false
+            ? `Saved ${setViewport.variables?.width}×${setViewport.variables?.height}. `
+              + 'This browser keeps the window it opened with; the next one opens at the '
+              + 'new size.'
             : resumed
               ? control.controlling
                 ? 'You are driving. What you type goes straight to the browser — it never '
