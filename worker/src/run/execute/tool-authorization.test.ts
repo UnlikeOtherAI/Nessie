@@ -299,6 +299,9 @@ const runLoop = async (input: {
       budget: { maxIterations: 6, maxToolCalls: 4, maxWallclockMs: 10_000 },
       cacheReadWeight: 1,
       checkBudgetBlocked: async () => false,
+      // Crash checkpoints are exercised in `worker/test/db/`; these cases are
+      // about authorization, so the writer records nothing.
+      crashCheckpoint: { write: async () => undefined },
       deepWaterHandoffGuard: quietGuard(),
       executorToolset,
       identityToolIds: new Set<string>(),

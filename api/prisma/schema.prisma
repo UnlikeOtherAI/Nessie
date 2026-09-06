@@ -3098,6 +3098,27 @@ model RunCheckpoint {
   reason          String
   note            String
   sources         Json?
+  // Machine-readable crash-resume state (horizontal scaling, phase 3.1), quite
+  // separate from `note`/`sources` above: those are the model-written resume
+  // affordance a budget stop or an approval suspension leaves for a person,
+  // this is the agentic loop's own working state — transcript, iteration count,
+  // invocation accumulator, and the results of tool calls that already ran.
+  // Written at every loop-iteration boundary and immediately before each tool
+  // batch, so a run whose worker dies is resumed IN PLACE instead of replayed
+  // from the prompt. Nothing renders it and no person ever reads it.
+  //
+  // It lives on this row rather than in a table of its own because there is at
+  // most one of each per run and `runId` is already unique here — one row per
+  // run, whichever kind of checkpoint wrote it first. `reason` is 'crash' while
+  // the row carries only crash state; a later budget stop or suspension
+  // overwrites `reason`/`note` in place and the row becomes continuable.
+  crashState      Json?        @map("crash_state")
+  // The `runs.executor_token` held by the executor that wrote `crashState`.
+  // Every write above is conditional on the run STILL carrying this token, so a
+  // fenced-out executor's checkpoint write matches zero rows instead of
+  // clobbering the live executor's state.
+  crashExecutorToken String?   @map("crash_executor_token") @db.Uuid
+  crashUpdatedAt  DateTime?    @map("crash_updated_at")
   consumedByRunId String?      @map("consumed_by_run_id") @db.Uuid
   consumedAt      DateTime?    @map("consumed_at")
   createdAt       DateTime     @default(now()) @map("created_at")

@@ -88,23 +88,52 @@ provider's delivery id, `run:<id>`, `mailbox:<messageId>`. The audit's
 ## 4. Every long-running handler is resumable
 
 **A fencing token on the run and a checkpoint at each iteration boundary.** A
-re-claimed `run.execute` today replays the whole run from the prompt (5.2,
-`worker/src/run/execute/run-job.ts:87-106`, `lifecycle.ts:77-86`):
-`claimRunForExecution` admits `running` by design and `persistRunCheckpoint` is
+re-claimed `run.execute` used to replay the whole run from the prompt (5.2):
+`claimRunForExecution` admits `running` by design and `persistRunCheckpoint` was
 written only on budget stop and approval suspend, never on a crash. Tools that
-already sent email or created tasks run again, and inference usage is recorded
-twice. Nothing fences the run either — lock-renewal failures are only logged
-(5.3, `packages/runtime/src/queue.ts:196-253`), so a second worker can execute
-a run the first is still executing.
+had already sent email or created tasks ran again, and inference usage was
+recorded twice. Nothing fenced the run either — lock-renewal failures were only
+logged (5.3) — so a second worker could execute a run the first was still
+executing.
 
-**Corollary.** `runs.executor_token` is set by `claimRunForExecution` in a
-conditional `UPDATE` (pending, or the same token, or a stale heartbeat) and
-carried on every terminal write, so a stale executor's write matches no row.
-`persistRunCheckpoint` with reason `crash` runs at every loop-iteration
-boundary and before each tool batch, and a re-claimed run resumes from it. A
-`run_tool_effects (run_id, tool_call_id)` unique row is written before any
-side-effecting builtin executes, so a replay short-circuits to the recorded
-result instead of sending the mail again.
+**Corollary, as built.** `runs.executor_token` is set by
+`claimRunForExecution` in a conditional `UPDATE` (pending, or a stale
+heartbeat) and carried on every terminal write, so a stale executor's write
+matches no row. Beside it:
+
+- **The crash checkpoint** (`worker/src/run/execute/crash-checkpoint.ts`) is
+  written at every loop-iteration boundary, immediately before each tool batch,
+  and as each tool in that batch settles. It carries the assembled transcript,
+  the iteration count, the live invocation accumulator, spend and wall-clock so
+  far, compaction and loop-detection counters, the results of tool calls that
+  already ran, and the batch that was dispatching. It rides on
+  `run_checkpoints` — already unique on `run_id`, which is the one-row-per-run
+  invariant — in its own columns, so it never collides with the model-written
+  note a budget stop or a suspension leaves for a person.
+- **Every write is fenced on the run row**, not on the checkpoint row: the
+  statement proposes a row only while `runs.executor_token` still equals the
+  claiming token, so a fenced-out executor's checkpoint write affects zero rows.
+- **Resume is in place, not a continuation.** `claimRunForExecution` reports the
+  pre-claim status; a `running` one means a takeover, so `executeRunJob` loads
+  the crash state and the loop restores the transcript, iteration count,
+  accumulator and budget instead of starting from the prompt. A tool call whose
+  result is recorded is answered from the record without re-authorising or
+  re-dispatching, and a mid-dispatch batch is re-entered rather than re-asked of
+  the provider. `updateRunStatus` sheds the crash state on every terminal and
+  suspended transition, so no finished run leaves resumable state behind.
+- **Drain rides the queue's own signal.** `handler(job, { signal })` reaches
+  `runAgenticLoop`; when it fires, the in-flight inference or tool batch has
+  `NESSIE_RUN_DRAIN_GRACE_MS` (default 5 s) to land, then the loop throws
+  `RunDrainedError`. The run stays `running`, its token and heartbeat are
+  cleared so the next worker claims it on its next poll rather than waiting out
+  the takeover window, and the job is nacked with reason `worker_drain`. This is
+  what makes invariant 6's sixty seconds true for a 45-minute run.
+
+Still outstanding from this finding: a `run_tool_effects (run_id, tool_call_id)`
+unique row written before any side-effecting builtin executes (plan row 3.2).
+The recorded results above make a resumed run skip tools it already ran, but
+they live in the checkpoint rather than in a constraint, so a tool interrupted
+between its side effect and its result being recorded can still run twice.
 
 ## 5. Boot connects and listens — nothing else
 

@@ -6,6 +6,8 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import type { LoopResumeState } from '../loop-resume.js'
+import type { CrashCheckpointWriter } from './crash-checkpoint.js'
 import { buildContextPlan } from '../context-window.js'
 import { runContextCompaction } from '../context-compaction.js'
 import { estimateToolSchemaTokens } from '../context-management.js'
@@ -50,7 +52,16 @@ export const runExecutionAgentLoop = async (
     cacheReadWeight: number
     // Mid-run org-`Budget` probe (throttled by its factory in budget-gate.ts).
     checkBudgetBlocked: () => Promise<boolean>
+    /**
+     * Where the loop's working state goes at every safe boundary, so a run
+     * whose worker dies is resumed in place. See `crash-checkpoint.ts`.
+     */
+    crashCheckpoint: CrashCheckpointWriter
     deepWaterHandoffGuard: DeepWaterHandoffGuard
+    /** The queue's per-job abort signal; a drain stops the loop through it. */
+    drainSignal?: AbortSignal
+    /** State from this run's own crash checkpoint, when it is being resumed. */
+    resumeState?: LoopResumeState
     executorToolset: ExecutorToolset
     /**
      * D3 identity-tool admission, resolved once at run setup. Empty for every
@@ -365,6 +376,8 @@ export const runExecutionAgentLoop = async (
   const loopResult = await runAgenticLoop({
     budget: input.budget,
     cacheReadWeight: input.cacheReadWeight,
+    ...(input.drainSignal ? { drainSignal: input.drainSignal } : {}),
+    ...(input.resumeState ? { resume: input.resumeState } : {}),
     // Cooperative-cancel probe: a cheap status read the loop consults between
     // iterations and after each tool-call batch. `POST /api/runs/:id/cancel`
     // stamps `cancelRequestedAt`; the loop then exits and run-job terminalizes
@@ -478,6 +491,7 @@ export const runExecutionAgentLoop = async (
       onBudgetExhausted: async (reason) => {
         console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
       },
+      onCheckpoint: (state) => input.crashCheckpoint.write(state),
     },
     executeTool: executeMainTool,
     initialMessages: input.initialMessages,

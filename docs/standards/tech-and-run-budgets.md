@@ -100,6 +100,51 @@ summary and points here; **this file is the rule**.
   threaded through `runAgenticLoop`, so a failed run's tokens stay attributable
   (idempotent on `inferenceInvocationId`). Owners read spend by run outcome at
   `GET /api/ledger/tokens/by-outcome`.
+- **Three kinds of checkpoint, one row per run.** All three live on
+  `run_checkpoints`, which is unique on `run_id`; they never collide because
+  they occupy different columns.
+  - **Budget stop** (`run-stop.ts`) and **suspension** (`run-suspend.ts`,
+    reason `approval_required` / `card_response` / `wound_down`) both write the
+    model-authored `note` + `sources`: an affordance a *person* acts on, resumed
+    by a NEW run through `POST /api/runs/:id/continue` or the worker's
+    auto-continuation. Untrusted narrative, re-injected under an explicit
+    untrusted framing.
+  - **Crash** (`worker/src/run/execute/crash-checkpoint.ts`, reason `crash`,
+    empty note) is machine state that nobody renders: the assembled transcript,
+    the loop iteration count, the live inference-invocation accumulator, spend
+    and wall-clock consumed, compaction attempts, loop-detection counters, the
+    tool calls already executed with their recorded results, and the tool batch
+    that was dispatching. It is written at **every agentic-loop iteration
+    boundary, immediately before each tool batch, and as each tool in that batch
+    settles**, and its point is that the SAME run resumes IN PLACE — no
+    continuation run, no new run id.
+  - **Resume rules.** `claimRunForExecution` reports the status the run carried
+    before the claim; a `running` one is a takeover, so `executeRunJob` loads
+    the crash state and hands it to the loop instead of the prompt. The loop
+    restores the transcript, iteration count, accumulator and budget; a tool
+    call whose result is recorded is answered from the record without
+    re-authorising or re-dispatching; a batch that was mid-dispatch is
+    re-entered rather than re-asked of the provider (its assistant message is
+    already the tail of the transcript). With no checkpoint the run starts from
+    the prompt exactly as before and says so in a log line.
+  - **Fencing and lifetime.** Every crash write is conditional on
+    `runs.executor_token` still equalling the token this execution claimed with,
+    so a fenced-out executor's write matches zero rows. `updateRunStatus` sheds
+    the crash state on every terminal *and* suspended transition — a row that
+    only ever held crash state is deleted, one a stop or suspension has since
+    written its note into keeps everything but the crash columns. A transcript
+    over 4 MB (inlined images) is not checkpointed at all: the run degrades to
+    replay, and the log line says which run.
+  - **Drain.** The queue's per-job `AbortSignal` reaches the loop
+    (`worker/src/index.ts` → `executeRunJob` → `runAgenticLoop`). When it fires,
+    whatever is in flight gets `NESSIE_RUN_DRAIN_GRACE_MS` (default 5 s) and the
+    loop then throws `RunDrainedError`; the run keeps its `running` status, its
+    executor token and heartbeat are cleared so the next worker claims it on its
+    very next poll, and the job is nacked with reason `worker_drain`. Nothing is
+    announced in the thread: a drain is this worker stopping, not this run
+    failing. A re-entered batch re-emits `agent.tool.start`/`end` and writes a
+    second `ToolCall` telemetry row for a tool that did not re-run; the tool's
+    effect on the world happens once, which is the invariant that matters.
 - Active run lifecycle controls (`api/src/routes/runs.ts` +
   `api/src/services/runs.ts`): org-scoped `GET /api/runs/active` lists live runs
   (+ recently-ended restartable ones); `POST /api/runs/:id/cancel` cancels — a

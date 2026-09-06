@@ -7,6 +7,7 @@ import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schema
 import { parseAgentRunLimits } from '../run-budget.js'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
+import { clearCrashCheckpoint } from './crash-checkpoint.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
@@ -77,6 +78,42 @@ export const registerExecutorFence = (runId: string, token: string): void => {
 export const releaseExecutorFence = (runId: string): void => {
   const fence = executorFence.getStore()
   if (fence && fence.runId === runId) fence.token = null
+}
+
+/**
+ * The token this execution claimed `runId` with, or null when it holds no
+ * claim. The crash checkpointer needs it by value: its write is a conditional
+ * statement of its own rather than a status write, so it cannot ride the
+ * ambient fence the way `updateRunStatus` does.
+ */
+export const currentExecutorToken = (runId: string): string | null =>
+  heldFence(runId)?.token ?? null
+
+/**
+ * Hand a run back mid-flight, for a worker that is draining.
+ *
+ * Clearing the heartbeat alongside the token is the point: `claimRunForExecution`
+ * admits a `running` run only once its executor has gone silent for the takeover
+ * window, so releasing the token alone would leave the run parked for two
+ * minutes while a nacked job sat pending. With a null heartbeat the next worker
+ * claims it on its very next poll and resumes from the crash checkpoint — which
+ * is what makes "drain within sixty seconds" true for a 45-minute run.
+ *
+ * Conditional on still holding the run, so a fenced-out executor cannot release
+ * the winner's claim on its way out.
+ */
+export const releaseRunForDrain = async (
+  prisma: PrismaClient,
+  runId: string,
+): Promise<void> => {
+  const token = currentExecutorToken(runId)
+  if (!token) return
+  await prisma.$executeRaw`
+    UPDATE runs
+    SET executor_token = NULL, executor_heartbeat_at = NULL
+    WHERE id = ${runId}::uuid AND executor_token = ${token}::uuid
+  `
+  releaseExecutorFence(runId)
 }
 
 /**
@@ -185,6 +222,19 @@ export const updateRunStatus = async (
     if (suspended) releaseExecutorFence(runId)
   }
 
+  // Crash state is shed here for the same reason the working marker below is:
+  // fused to the one status chokepoint rather than to any single path, so a
+  // ninth terminal path added later cannot leave a resumable checkpoint behind
+  // a finished run. A terminal run has nothing left to resume; a suspended one
+  // is resumed by a NEW run from its note, never in place by this one.
+  if (terminal || suspended) {
+    try {
+      await clearCrashCheckpoint(prisma, runId)
+    } catch (error) {
+      console.warn('[worker] could not clear crash checkpoint for run', runId, error)
+    }
+  }
+
   // Clearing the "looking at this" reaction is fused to the terminal
   // transition rather than to any one terminal path, so completion, failure,
   // budget stop and cancellation all drop it without having to remember. A
@@ -214,7 +264,19 @@ export const updateRunStatus = async (
   }
 }
 
-export type RunClaim = { claimed: true; token: string } | { claimed: false; token: null }
+export type RunClaim =
+  | {
+    claimed: true
+    /**
+     * The status the run carried before this claim. `running` means this
+     * execution is taking over from an executor that went silent, so the
+     * caller looks for a crash checkpoint to resume from rather than starting
+     * the run again from its prompt.
+     */
+    priorStatus: RunStatus
+    token: string
+  }
+  | { claimed: false; priorStatus: null; token: null }
 
 // Atomic start claim: flips a still-claimable run to `running` and stamps this
 // executor's fencing token in a single statement. A terminal run
@@ -234,27 +296,35 @@ export const claimRunForExecution = async (
   runId: string,
 ): Promise<RunClaim> => {
   const token = randomUUID()
-  const count = await prisma.$executeRaw`
+  // The CTE reads the pre-update snapshot, so `prior.status` is what the run
+  // carried when the statement started — which is how the caller learns it is
+  // taking a run over rather than starting one, and therefore whether to look
+  // for a crash checkpoint.
+  const rows = await prisma.$queryRaw<{ prior_status: RunStatus }[]>`
+    WITH prior AS (SELECT id, status, executor_heartbeat_at FROM runs WHERE id = ${runId}::uuid)
     UPDATE runs
     SET status = 'running',
         started_at = now(),
         executor_token = ${token}::uuid,
         executor_heartbeat_at = now()
-    WHERE id = ${runId}::uuid
+    FROM prior
+    WHERE runs.id = prior.id
       AND (
-        status = 'pending'
+        prior.status = 'pending'
         OR (
-          status = 'running'
+          prior.status = 'running'
           AND (
-            executor_heartbeat_at IS NULL
-            OR executor_heartbeat_at < now() - ${EXECUTOR_TAKEOVER_INTERVAL}::interval
+            prior.executor_heartbeat_at IS NULL
+            OR prior.executor_heartbeat_at < now() - ${EXECUTOR_TAKEOVER_INTERVAL}::interval
           )
         )
       )
+    RETURNING prior.status AS prior_status
   `
-  if (count !== 1) return { claimed: false, token: null }
+  const priorStatus = rows[0]?.prior_status
+  if (rows.length !== 1 || !priorStatus) return { claimed: false, priorStatus: null, token: null }
   registerExecutorFence(runId, token)
-  return { claimed: true, token }
+  return { claimed: true, priorStatus, token }
 }
 
 export const setAgentStatus = async (

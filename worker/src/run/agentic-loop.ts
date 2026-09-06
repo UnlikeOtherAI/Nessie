@@ -2,9 +2,18 @@ import type {
   InferenceResult,
   InvocationRecord,
   ProviderMessage,
+  ProviderToolCall,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { redactDetectedSecrets } from '@nessie/schemas'
+import { redactMessageContent } from './message-redaction.js'
+import {
+  createDrainGate,
+  createToolExecutionRecorder,
+  restoreCompactionGovernor,
+  type DrainGate,
+  type LoopResumeState,
+} from './loop-resume.js'
 import { createRetryBudget } from './error-classification.js'
 import { callInferenceWithRetry } from './inference-retry.js'
 import {
@@ -20,7 +29,6 @@ import {
   stopAfterToolBatch,
   stopBeforeInference,
   stopBeforeIteration,
-  ZERO_SPEND,
   type BudgetExhaustionReason,
   type BudgetLimits,
   type SpendTotals,
@@ -44,49 +52,18 @@ import {
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
-/**
- * A tool call's arguments are replayed to the provider on every later turn of
- * the same run, so a credential the model put in one — `http_fetch({ body:
- * 'api_key=…' })` — is re-sent unredacted for the rest of the run even though
- * the surrounding text is masked. Strings are scanned wherever they sit in the
- * argument object.
- */
-const redactArgumentStrings = (value: unknown): unknown => {
-  if (typeof value === 'string') return redactDetectedSecrets(value)
-  if (Array.isArray(value)) return value.map(redactArgumentStrings)
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .map(([key, nested]) => [key, redactArgumentStrings(nested)]),
-    )
-  }
-  return value
-}
-
-const redactToolCalls = (message: ProviderMessage): ProviderMessage => {
-  if (!('toolCalls' in message) || !message.toolCalls) return message
-  return {
-    ...message,
-    toolCalls: message.toolCalls.map((call) => ({
-      ...call,
-      arguments: redactArgumentStrings(call.arguments) as Record<string, unknown>,
-    })),
-  } as ProviderMessage
-}
-
-const redactMessageContent = (message: ProviderMessage): ProviderMessage => {
-  const withSafeCalls = redactToolCalls(message)
-  if (typeof withSafeCalls.content !== 'string') return withSafeCalls
-  return {
-    ...withSafeCalls,
-    content: redactDetectedSecrets(withSafeCalls.content),
-  } as ProviderMessage
-}
-
 export type LoopCallbacks = ToolBatchCallbacks & {
   onIterationStart: (iteration: number) => Promise<void>
   onTextDelta: (delta: string) => Promise<void>
   onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
+  /**
+   * Durable snapshot of the loop's working state, offered at every boundary
+   * where the transcript is consistent: each iteration start, immediately
+   * before a tool batch dispatches, and as each tool in that batch settles.
+   * The caller decides what to do with it (`crash-checkpoint.ts` persists it);
+   * a loop with no such caller — a delegate sub-agent — passes none.
+   */
+  onCheckpoint?: (state: LoopResumeState) => Promise<void>
 }
 
 export type LoopResult = {
@@ -187,35 +164,110 @@ export const runAgenticLoop = async (input: {
   // Fired once, when the wind-down instruction is injected — the caller closes
   // structural fan-out (the delegate gate) for the rest of the run.
   onWindDown?: () => void
+  /**
+   * The worker's drain signal for this job. When it fires, whatever is in
+   * flight gets a few seconds to land and then the loop throws
+   * `RunDrainedError` at the next boundary — the checkpoint is already durable,
+   * so another worker resumes from it rather than replaying the run.
+   */
+  drainSignal?: AbortSignal
+  /**
+   * A crash checkpoint this execution is picking up. The transcript, iteration
+   * count, spend accumulator and already-executed tool results are restored
+   * from it, and `initialMessages` is ignored — the prompt has already been
+   * turned into a conversation once and paid for.
+   */
+  resume?: LoopResumeState
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
+  const resume = input.resume ?? null
   // Covers every caller, including delegated agents whose initial prompt does
   // not pass through buildModelPrompt. Raw values never remain in the loop's
   // retained context or its eventual checkpoint input.
-  const messages: ProviderMessage[] = initialMessages.map(redactMessageContent)
+  const messages: ProviderMessage[] = (resume?.messages ?? initialMessages)
+    .map(redactMessageContent)
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
-  const signatureCounts = new Map<string, number>()
+  if (resume) allInvocations.push(...resume.invocations)
+  const signatureCounts = new Map<string, number>(
+    Object.entries(resume?.signatureCounts ?? {}),
+  )
+  const drainGate: DrainGate = createDrainGate(input.drainSignal)
   const retryBudget = createRetryBudget(6)
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
   const circuitBreaker = new ToolCircuitBreaker()
   const contextPlan = input.contextPlan
     ?? buildContextPlan({ model: null, toolSchemaTokens })
   const compactionGovernor = createCompactionGovernor(contextPlan)
+  if (resume) restoreCompactionGovernor(compactionGovernor, resume)
 
-  let iterations = 0
-  let toolCallsUsed = 0
+  let iterations = resume?.iterations ?? 0
+  let toolCallsUsed = resume?.toolCallsUsed ?? 0
   let pendingToolResults: ExecutedToolResult[] | null = null
-  let totalToolMs = 0
-  let spend: SpendTotals = ZERO_SPEND
-  let woundDown = false
+  let totalToolMs = resume?.toolMs ?? 0
+  let spend: SpendTotals = meterSpend(allInvocations, cacheReadWeight)
+  let woundDown = resume?.woundDown ?? false
+  // The batch that was dispatching when the previous executor died. Its
+  // assistant message is already in `messages`, so re-entering it is the only
+  // way back into the transcript that does not re-bill the inference that
+  // produced it.
+  let resumedToolCalls: ProviderToolCall[] | null = resume?.pendingToolCalls ?? null
+  // Mirrors of the governor's own counters, which it keeps in a closure. Kept
+  // here so a snapshot can carry them and `restoreCompactionGovernor` can
+  // replay them onto a fresh governor, rather than a resumed run getting a
+  // second full allowance of compaction calls.
+  let compactionAttempts = resume?.compactionAttempts ?? 0
+  let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
-  let lastAssistantText = ''
+  let lastAssistantText = resume?.lastAssistantText ?? ''
+  // Wall-clock carried across executions, so a crashed run's budget is the
+  // run's, not this executor's.
+  const priorElapsedMs = resume?.elapsedMs ?? 0
   const startTime = Date.now()
 
-  const elapsed = (): number => Date.now() - startTime
+  const elapsed = (): number => priorElapsedMs + (Date.now() - startTime)
+
+  // The batch currently dispatching, and the loop-detection counters as they
+  // stood when it started. `executeToolBatch` mutates the live counters as it
+  // runs, so a snapshot taken part-way through must carry the counts the batch
+  // began with or a re-entry would count the same calls twice.
+  let inFlightToolCalls: ProviderToolCall[] | null = null
+  let boundarySignatureCounts: Record<string, number> = {
+    ...(resume?.signatureCounts ?? {}),
+  }
+  const markDispatchBoundary = (pending: ProviderToolCall[] | null): void => {
+    inFlightToolCalls = pending
+    boundarySignatureCounts = Object.fromEntries(signatureCounts)
+  }
+
+  const checkpoint = async (): Promise<void> => {
+    await callbacks.onCheckpoint?.({
+      compactionAttempts,
+      compactionLastIteration,
+      elapsedMs: elapsed(),
+      invocations: allInvocations,
+      iterations,
+      lastAssistantText,
+      messages,
+      pendingToolCalls: inFlightToolCalls,
+      signatureCounts: boundarySignatureCounts,
+      toolCallsUsed,
+      toolMs: totalToolMs,
+      toolResults: toolRecorder.recorded(),
+      woundDown,
+    })
+  }
+
+  // Tool calls this run already executed, so a re-claimed run never sends the
+  // same mail or creates the same task twice.
+  const toolRecorder = createToolExecutionRecorder({
+    executeTool,
+    onRecorded: () => checkpoint(),
+    ...(prepareTool ? { prepareTool } : {}),
+    ...(resume?.toolResults ? { restored: resume.toolResults } : {}),
+  })
 
   // Single construction point for every exit path, so the running totals
   // (including per-stage timing) are captured identically whether the loop
@@ -266,6 +318,8 @@ export const runAgenticLoop = async (input: {
     const transcriptTokens = estimateMessagesTokens(messages)
     if (!compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
     compactionGovernor.recordAttempt(iteration)
+    compactionAttempts += 1
+    compactionLastIteration = iteration
     const compacted = input.compactContext
       ? await input
         .compactContext({ messages, targetTokens: contextPlan.targetTokens })
@@ -277,14 +331,24 @@ export const runAgenticLoop = async (input: {
   }
 
   while (true) {
+    // Drain before cancel: a stopping worker has already written this run's
+    // checkpoint and has seconds, not minutes, to hand it over.
+    drainGate.assert()
     if (await cancellationRequested()) {
       return finish(null, lastAssistantText, true)
     }
 
+    // The batch the previous executor was dispatching when it died, claimed
+    // once. Re-entering it must not push anything between the assistant
+    // message that requested those calls and their results, so the wind-down
+    // injection below is skipped on that pass.
+    const reenteredToolCalls = resumedToolCalls
+    resumedToolCalls = null
+
     // Wind-down first, stop second: on the iteration where the 80% band is
     // entered the harder 90% boundary has not tripped yet, so the model gets
     // the remaining slice to finish and hand over on its own terms.
-    if (input.windDownInstruction && !woundDown && shouldWindDown(budget, {
+    if (!reenteredToolCalls && input.windDownInstruction && !woundDown && shouldWindDown(budget, {
       effectiveTokensUsed: spend.effectiveTokensUsed,
       elapsedMs: elapsed(),
       iterations,
@@ -303,62 +367,85 @@ export const runAgenticLoop = async (input: {
       return stop('org_budget_blocked')
     }
 
-    iterations += 1
-    await callbacks.onIterationStart(iterations)
+    let toolCalls: ProviderToolCall[]
+    if (reenteredToolCalls) {
+      // The iteration that produced these calls was already counted and its
+      // inference already paid for and recorded in `messages`. Re-entering asks
+      // the provider nothing.
+      toolCalls = reenteredToolCalls
+    } else {
+      iterations += 1
+      await callbacks.onIterationStart(iterations)
 
-    await maintainContext(iterations)
+      await maintainContext(iterations)
 
-    // Measured after compaction, so the gate judges the context that will
-    // actually be sent rather than the one that was about to be folded away.
-    const preInferenceStop = stopBeforeInference(budget, {
-      effectiveTokensUsed: spend.effectiveTokensUsed,
-      projectedCallTokens: estimateMessagesTokens(messages) + toolSchemaTokens,
-    })
-    if (preInferenceStop) return stop(preInferenceStop)
+      // The iteration boundary: the previous batch has fully settled and the
+      // transcript that will be sent is assembled, so this is the state a
+      // re-claiming executor should pick up.
+      markDispatchBoundary(null)
+      await checkpoint()
 
-    const captured = pendingToolResults
-      ? { toolResults: pendingToolResults }
-      : undefined
-    pendingToolResults = null
-    const result = await callInferenceWithRetry(
-      messages,
-      (inferenceMessages) => input.runInference(inferenceMessages, captured),
-      retryBudget,
-      contextPlan.targetTokens,
-    )
-    allInvocations.push(...result.invocations)
-    spend = meterSpend(allInvocations, cacheReadWeight)
-    const safeOutputText = redactDetectedSecrets(result.outputText)
-    if (safeOutputText) {
-      lastAssistantText = safeOutputText
-    }
+      // Measured after compaction, so the gate judges the context that will
+      // actually be sent rather than the one that was about to be folded away.
+      const preInferenceStop = stopBeforeInference(budget, {
+        effectiveTokensUsed: spend.effectiveTokensUsed,
+        projectedCallTokens: estimateMessagesTokens(messages) + toolSchemaTokens,
+      })
+      if (preInferenceStop) return stop(preInferenceStop)
 
-    const spendStop = stopAfterInference(budget, spend)
-    if (spendStop) return stop(spendStop)
-
-    if (!result.toolCalls || result.toolCalls.length === 0) {
+      const captured = pendingToolResults
+        ? { toolResults: pendingToolResults }
+        : undefined
+      pendingToolResults = null
+      const result = await drainGate.expiry(callInferenceWithRetry(
+        messages,
+        (inferenceMessages) => input.runInference(inferenceMessages, captured),
+        retryBudget,
+        contextPlan.targetTokens,
+      ))
+      allInvocations.push(...result.invocations)
+      spend = meterSpend(allInvocations, cacheReadWeight)
+      const safeOutputText = redactDetectedSecrets(result.outputText)
       if (safeOutputText) {
-        await callbacks.onTextDelta(safeOutputText)
+        lastAssistantText = safeOutputText
       }
-      return finish(null, safeOutputText)
+
+      const spendStop = stopAfterInference(budget, spend)
+      if (spendStop) return stop(spendStop)
+
+      if (!result.toolCalls || result.toolCalls.length === 0) {
+        if (safeOutputText) {
+          await callbacks.onTextDelta(safeOutputText)
+        }
+        return finish(null, safeOutputText)
+      }
+
+      messages.push(redactMessageContent({
+        content: safeOutputText || null,
+        role: 'assistant',
+        toolCalls: result.toolCalls,
+      }))
+      toolCalls = result.toolCalls
     }
 
-    messages.push(redactMessageContent({
-      content: safeOutputText || null,
-      role: 'assistant',
-      toolCalls: result.toolCalls,
-    }))
+    // Immediately before dispatch, carrying the batch itself: a worker that
+    // dies mid-batch leaves a transcript ending in an assistant tool-call
+    // message, which no provider will answer. The successor re-enters this
+    // exact batch instead, and every tool that already ran answers from its
+    // recorded result.
+    markDispatchBoundary(toolCalls)
+    await checkpoint()
 
-    const batch = await executeToolBatch({
+    const batch = await drainGate.expiry(executeToolBatch({
       callbacks,
       circuitBreaker,
-      executeTool,
-      prepareTool,
+      executeTool: toolRecorder.executeTool,
+      ...(toolRecorder.prepareTool ? { prepareTool: toolRecorder.prepareTool } : {}),
       signatureCounts,
-      toolCalls: result.toolCalls,
+      toolCalls,
       toolTimeoutError: input.toolTimeoutError,
       toolTimeoutMs: budget.toolTimeoutMs,
-    })
+    }))
     totalToolMs += batch.toolMs
     const toolResults = batch.results
 
@@ -386,6 +473,9 @@ export const runAgenticLoop = async (input: {
       })
       tr.acknowledgeDelivery?.()
     }
+    // The batch is closed: every result is in the transcript, so from here a
+    // snapshot resumes at the next iteration rather than re-entering this one.
+    markDispatchBoundary(null)
 
     if (batch.loopDetected) {
       messages.push({

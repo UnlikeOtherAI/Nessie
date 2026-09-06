@@ -20,6 +20,7 @@ import { resolveDeepWaterHandoffMarker } from '../deepwater-handoff-metadata.js'
 import { ensureRunPlanContext, markRunPlanStarted } from '../plans.js'
 import type { QueueAttempt } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
+import { RunDrainedError } from '../loop-resume.js'
 import { resolveCacheReadWeight, resolveEffectiveRunBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import {
@@ -44,6 +45,7 @@ import {
   assertExecutorHoldsRun,
   claimRunForExecution,
   loadRunContext,
+  releaseRunForDrain,
   RunFencedError,
   setAgentStatus,
   startExecutorHeartbeat,
@@ -59,26 +61,15 @@ import {
   resolveReplyRootMessageId,
 } from './reply-placement.js'
 import { buildScopes } from './scopes.js'
-import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
-import { createDocumentStreamRecorder } from './document-stream.js'
+import { createRunRecorders } from './run-recorders.js'
 import { handleRunFailurePath } from './run-failure-path.js'
 import { handleRunLoopOutcome } from './run-outcome.js'
-import { fileServiceFor } from '../file-service.js'
-import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
-import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
 import { loadGlobalAgentCatalogueBlock } from './global-agent-catalogue.js'
 import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
-import {
-  AgentTodoScheduledConfigError,
-  buildScheduledAgentTodoKickoff,
-  claimAgentTodoForRun,
-  materializeScheduledAgentTodosForRun,
-  readAgentTodoKickoff,
-  readAgentTodoScheduledKickoff,
-} from '@nessie/team-admin'
-import { recordTriggerHealthFailure } from '../../control/trigger-health.js'
+import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
+import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
 import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
@@ -95,13 +86,22 @@ export const executeRunJob = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
   queueAttempt: QueueAttempt,
+  // The queue's per-job abort signal (`handler(job, { signal })`), which fires
+  // when this worker is draining or the job's lock is lost. Threaded all the
+  // way into the agentic loop so a drain reaches the checkpoint path instead of
+  // killing a 45-minute run mid-inference.
+  options: { signal?: AbortSignal } = {},
 ): Promise<void> =>
-  withRunExecutorFence(payload.runId, () => runJobUnderFence(deps, payload, queueAttempt))
+  withRunExecutorFence(
+    payload.runId,
+    () => runJobUnderFence(deps, payload, queueAttempt, options),
+  )
 
 const runJobUnderFence = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
   queueAttempt: QueueAttempt,
+  options: { signal?: AbortSignal },
 ): Promise<void> => {
   // Idempotency guard: skip if this run already reached a terminal state.
   //
@@ -222,45 +222,10 @@ const runJobUnderFence = async (
   })
   await persistResolvedReplyAnchor(deps.prisma, context.run.id, context.replyRootMessageId)
 
-  // Durable thought log + coalesced live thinking events. Created before the
-  // loop so every reasoning delta and tool line is captured; closed in the
-  // `finally` below so a crash, cancel, or budget stop still flushes it.
-  const thinkingRecorder: ThinkingRecorder = createThinkingRecorder({
-    isRestricted: () => runReplyIsRestricted(context),
-    prisma: deps.prisma,
-    realtimeTransport: deps.realtimeTransport,
-    runId: context.run.id,
-    threadId: context.run.threadId,
-  })
-
-  // Live document composition, created alongside the thought log for the same
-  // reason: it must exist before the first provider chunk, and every exit path
-  // has to settle it.
-  const documentStream = createDocumentStreamRecorder({
-    getRestrictionBasis: () => runReplyBasis(context),
-    isRestricted: () => runReplyIsRestricted(context),
-    loadDocument: async (pageId) => readMarkdownDocument(
-      deps.prisma,
-      fileServiceFor(deps.prisma),
-      String(context.channel.organizationId),
-      pageId,
-      context,
-    ),
-    prisma: deps.prisma,
-    persistRestrictionBasis: (basis) => persistRunBasis(deps.prisma, {
-      basis,
-      organizationId: String(context.channel.organizationId),
-      runId: context.run.id,
-    }),
-    realtimeTransport: deps.realtimeTransport,
-    run: {
-      agentId: context.agent.id,
-      id: context.run.id,
-      organizationId: String(context.channel.organizationId),
-      threadId: context.run.threadId,
-    },
-  })
-  const executionDeps = { ...deps, documentStream }
+  // Both live recorders, created before the `try` and closed in its `finally`:
+  // they must exist before the first provider chunk, and every exit path —
+  // completion, classified stop, crash, drain — has to settle them.
+  const { documentStream, executionDeps, thinkingRecorder } = createRunRecorders(deps, context)
 
   try {
     assertPrivateAgentRunPlacement(context)
@@ -367,61 +332,26 @@ const runJobUnderFence = async (
     // no other worker mistakes a slow run for a crashed one. Stopped in the
     // `finally` on every exit path.
     heartbeat = startExecutorHeartbeat(deps.prisma, context.run.id)
-    const todoKickoff = readAgentTodoKickoff(message.metadata)
-    if (todoKickoff) {
-      // The Run-now route only identifies the instance while it is pending.
-      // Claiming happens here, inside the executing run, so a queued cancel
-      // cannot strand a checklist under a run that never started.
-      await claimAgentTodoForRun(deps.prisma, {
-        agentId: context.agent.id,
-        organizationId: context.channel.organizationId,
-        runId: context.run.id,
-        threadId: context.run.threadId,
-        todoId: todoKickoff.todoId,
-      })
-    }
-    const scheduledTodoKickoff = readAgentTodoScheduledKickoff(message.metadata)
-    if (scheduledTodoKickoff) {
-      try {
-        const todos = await materializeScheduledAgentTodosForRun(deps.prisma, {
-          agentId: context.agent.id,
-          organizationId: context.channel.organizationId,
-          runId: context.run.id,
-          threadId: context.run.threadId,
-          templateRefs: scheduledTodoKickoff.todoTemplates,
-        })
-        const historic = await deps.prisma.agentTodo.findMany({
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-          select: { createdAt: true, id: true, title: true },
-          where: {
-            agentId: context.agent.id,
-            id: { notIn: todos.map((todo) => todo.id) },
-            organizationId: context.channel.organizationId,
-            status: { in: ['open', 'running'] },
-            templateId: { in: scheduledTodoKickoff.todoTemplateIds },
-          },
-        })
-        prompt = buildScheduledAgentTodoKickoff(
-          todos,
-          historic.map((todo) => ({
-            age: `${Math.floor((Date.now() - todo.createdAt.getTime()) / 86_400_000)}d`,
-            id: todo.id,
-            title: todo.title,
-          })),
-        )
-        await deps.prisma.message.update({
-          where: { id: payload.messageId },
-          data: { content: prompt },
-        })
-      } catch (error) {
-        if (error instanceof AgentTodoScheduledConfigError) {
-          await recordTriggerHealthFailure(deps.prisma, {
-            error,
-            triggerId: error.triggerId,
-          })
-        }
-        throw error
-      }
+    prompt = await resolveAgentTodoKickoffPrompt(deps.prisma, context, {
+      messageId: payload.messageId,
+      metadata: message.metadata,
+      prompt,
+    })
+    // Whatever this run had already worked out before its previous executor
+    // died. Absent for a run starting normally, which is the ordinary case and
+    // says so in the log rather than reading as a fault.
+    const resumeState = claim.priorStatus === 'running'
+      ? await loadCrashCheckpoint(deps.prisma, context.run.id)
+      : null
+    if (claim.priorStatus === 'running') {
+      console.log(
+        resumeState
+          ? `[worker] resuming run ${context.run.id} from its crash checkpoint `
+            + `(iteration ${resumeState.iterations}, `
+            + `${Object.keys(resumeState.toolResults).length} tool result(s) recorded)`
+          : `[worker] re-claimed run ${context.run.id} has no crash checkpoint; `
+            + 'starting it again from the prompt',
+      )
     }
     planContext = await ensureRunPlanContext(deps.prisma, {
       agentId: context.agent.id,
@@ -521,6 +451,20 @@ const runJobUnderFence = async (
     let reacted = false
     loopResult = await runExecutionAgentLoop(executionDeps, payload, context, {
       allowedToolIds: setup.allowedToolIds,
+      ...(options.signal ? { drainSignal: options.signal } : {}),
+      ...(resumeState ? { resumeState } : {}),
+      crashCheckpoint: createCrashCheckpointWriter(
+        deps.prisma,
+        {
+          agentId: context.agent.id,
+          organizationId: String(context.channel.organizationId),
+          rootMessageId: context.replyRootMessageId ?? null,
+          runId: context.run.id,
+          taskId: context.task.id,
+          threadId: context.run.threadId,
+        },
+        claim.token,
+      ),
       onReacted: () => {
         reacted = true
       },
@@ -599,6 +543,18 @@ const runJobUnderFence = async (
       // owns this run and will write its outcome, so neither a failure status
       // from this one nor a queue redelivery is wanted. Every other error keeps
       // the failure path's own contract (terminalize, or rethrow for a retry).
+      if (failureError instanceof RunDrainedError) {
+        // Hand the run back before the throw reaches the queue, so the nacked
+        // job's next claimant does not have to wait out the takeover window to
+        // pick up a run this worker has already stopped executing. The crash
+        // checkpoint written at the boundary the loop stopped at is what it
+        // resumes from.
+        await releaseRunForDrain(deps.prisma, context.run.id)
+        console.log(
+          `[worker] draining: handed run ${context.run.id} back at its crash checkpoint`,
+        )
+        throw failureError
+      }
       if (!(failureError instanceof RunFencedError)) throw failureError
       console.warn(
         `[worker] run ${context.run.id} finished on another executor; nothing written here`,
