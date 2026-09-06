@@ -327,12 +327,14 @@ matches no row. Beside it:
   model remembered from `mcp_find_tools` is still claimed. That property is
   pinned by its own test in `mcp-toolset-deferred.test.ts`; the ledger does not
   assume it.
-- **`delegate` is claimed, and it took giving up `safe: true` to get there**
-  (plan row 3.6). Its category was already `agents`, which
-  `EFFECTFUL_TOOL_CATEGORY_IDS` already judged effectful — the `!safe` half of
-  the test excluded it on its own. `safe` is a definition's statement that its
-  call only reads, and a delegation does not only read: the sub-agent inherits
-  the parent run's resolved builtins minus `delegate` itself
+- **Both `agents` tools are claimed, and it took giving up `safe: true` to get
+  there** (plan row 3.6). `delegate` first, `spawn_subtask` beside it: the same
+  wrong flag on the same category, so a fix for one alone would have left the
+  worse of the two behind. Taking `delegate` first: its category was already
+  `agents`, which `EFFECTFUL_TOOL_CATEGORY_IDS` already judged effectful — the
+  `!safe` half of the test excluded it on its own. `safe` is a definition's
+  statement that its call only reads, and a delegation does not only read: the
+  sub-agent inherits the parent run's resolved builtins minus `delegate` itself
   (`worker/src/run/execute/agent-loop.ts`), so it can send mail, file a ticket
   or ring somebody. The flag was therefore wrong rather than merely
   inconvenient, and correcting it is the whole fix: nothing is added to a
@@ -363,6 +365,35 @@ matches no row. Beside it:
   inside it that may have landed, which is the honest answer and the one the
   agent can act on. Claiming them separately needs a key that survives the
   sub-run, and is not in this row.
+
+  **`spawn_subtask` is the same defect with worse damage, and the same
+  one-line fix.** Same category, same flag, and nothing else was needed either.
+  What differs is what a repeat leaves behind. A re-issued `delegate` produced
+  a duplicate transient sub-agent; a re-issued `spawn_subtask` writes rows a
+  person sees. `runSpawnSubtaskTool` (`worker/src/run/subtask-tools.ts`)
+  commits a child `Agent`, its `Run` and its `Task` in one transaction and
+  enqueues that run, so the resumed execution produced a second agent in the
+  agent list, a second task on the board, and a second execution of the work.
+  Nothing collapses the repeat onto the first: the child's name embeds a fresh
+  `randomUUID().slice(0, 8)`, so there is no natural key, and the enqueue's
+  idempotency key is `subtask:<parent run>:<child agent id>` — built from the
+  id the second creation just minted, so the queue's `ON CONFLICT DO NOTHING`
+  matches nothing either. Its claim is also cheaper than `delegate`'s in the
+  only way that matters: a spawn is rare and heavyweight, so the row is paid
+  once beside a whole child run.
+
+  **`spawn_subtask` has no per-run cap of its own**, unlike `delegate`'s
+  `NESSIE_MAX_DELEGATES_PER_RUN` (16) enforced by `createDelegateGate`. What
+  bounds it is depth, not count: `SUBTASK_CHILD_DENIED_TOOL_IDS`
+  (`worker/src/run/tool-policy.ts`) refuses the tool to any agent with a
+  `parentAgentId`, so children cannot spawn children, and above that only the
+  run's own `maxToolCalls`/`maxIterations` backstop applies. That recursion
+  guard is structural authorization and is independent of the ledger: it is
+  consulted before dispatch, on the parent's `parentAgentId`, and a claimed
+  call that is answered from its row never reaches a tool at all. Claiming
+  therefore neither weakens nor leans on it. The absence of a fan-out cap is
+  noted, not fixed here — it is a budget question, and the ledger's job is to
+  stop the *same* spawn happening twice.
 - **Retention is fused to the status chokepoint.** `updateRunStatus` deletes a
   run's claims on every terminal and suspended transition, beside the crash
   state it already sheds: a terminal run is never resumed, and a suspended one

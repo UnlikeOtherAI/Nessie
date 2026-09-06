@@ -40,6 +40,28 @@ test('`delegate` is claimed: it declares an effectful category and must not call
   )
 })
 
+test('`spawn_subtask` is claimed: the same declaration, and durable rows a person can see', () => {
+  const spawn = definitionOf('spawn_subtask')
+  assert.ok(spawn, '`spawn_subtask` is a builtin the catalogue carries')
+  assert.equal(spawn.category, 'agents')
+  assert.equal(
+    EFFECTFUL_TOOL_CATEGORY_IDS.has(spawn.category),
+    true,
+    'the category was already judged effectful — only the `safe` flag ever excluded the tool',
+  )
+  assert.equal(
+    spawn.safe,
+    false,
+    'a spawn is not a read: `worker/src/run/subtask-tools.ts` creates a child Agent, its Run and its Task '
+    + 'in one transaction and enqueues that run',
+  )
+  assert.equal(
+    EFFECTFUL_BUILTIN_TOOL_IDS.has('spawn_subtask'),
+    true,
+    'so a resumed run answers from the recorded row instead of minting a second child agent, task and run',
+  )
+})
+
 test('no builtin that declares itself safe is claimed — a row for a read-only tool is pure cost', () => {
   const claimedButSafe = BUILTIN_TOOL_DEFINITIONS
     .filter((tool) => tool.safe && EFFECTFUL_BUILTIN_TOOL_IDS.has(tool.id))

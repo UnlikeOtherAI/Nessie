@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { Prisma, type PrismaClient } from '@prisma/client'
 
 import { buildDeferredView } from '../mcp-toolset-deferred.js'
 import type { McpToolEntry } from '../mcp-toolset.js'
+import { runSpawnSubtaskTool } from '../subtask-tools.js'
 import type { ExecutedToolResult } from '../tool-batch.js'
+import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   createToolEffectLedger,
   externalDispatchPredicate,
@@ -86,6 +89,10 @@ const createEffectStore = () => {
   return {
     prisma: { runToolEffect } as unknown as PrismaClient,
     row: (runId: string, toolCallId: string) => rows.get(key(runId, toolCallId)) ?? null,
+    // Exposed on its own so a test whose tool needs a wider database can put
+    // the claim table beside the tables that tool writes — one Prisma
+    // stand-in, because the real handler runs against one client.
+    runToolEffect,
     size: () => rows.size,
   }
 }
@@ -426,5 +433,184 @@ test('a delegation whose execution died mid-dispatch is reported as unknown, nev
     store.row(RUN_ID, 'call-lost')?.state,
     TOOL_EFFECT_STATES.dispatched,
     'the claim it was answered from is a dispatch nothing ever settled',
+  )
+})
+
+// ── `spawn_subtask`: the same flag, and durable rows a person can see ───────
+//
+// The delegate tests above count sub-agents, because a delegation's sub-agent
+// is transient — a nested loop that leaves nothing behind but its digest. A
+// spawn's child is not. `runSpawnSubtaskTool` commits a child `Agent`, its
+// `Run` and its `Task` in one transaction and enqueues that run, so a re-issued
+// call leaves a second agent in the agent list and a second task on the board:
+// the failure a user would report as a bug.
+//
+// Nothing collapses a second call onto the first. The child's name embeds a
+// fresh `randomUUID().slice(0, 8)`, so there is no natural key, and the
+// enqueue's idempotency key is `subtask:<parent run>:<CHILD agent id>` — built
+// from the id the second creation just minted, so the queue's
+// `ON CONFLICT DO NOTHING` matches nothing either. The store below models that
+// conflict faithfully rather than assuming it, so the assertions are on the
+// rows themselves.
+
+const SUBTASK_FIXTURE = {
+  agentId: '00000000-0000-4000-8000-0000000000a1',
+  channelId: '00000000-0000-4000-8000-0000000000a2',
+  messageId: '00000000-0000-4000-8000-0000000000a3',
+  organizationId: '00000000-0000-4000-8000-0000000000a4',
+  threadId: '00000000-0000-4000-8000-0000000000a5',
+} as const
+
+const createSubtaskWorld = () => {
+  const effects = createEffectStore()
+  const agents: Array<{ id: string; name: string }> = []
+  const runs: Array<{ id: string; threadId: string }> = []
+  const tasks: Array<{ id: string }> = []
+  const enqueuedKeys: string[] = []
+
+  const tx = {
+    // `enqueueQueueJob`'s insert. Its idempotency key is the only thing
+    // besides this ledger that could collapse a repeat, so its
+    // `ON CONFLICT DO NOTHING` is modelled here rather than assumed away.
+    $executeRaw: async (query: unknown) => {
+      const values = (query as { values?: unknown[] }).values ?? []
+      const key = values.find(
+        (value): value is string => typeof value === 'string' && value.startsWith('subtask:'),
+      )
+      if (key === undefined) return 1
+      if (enqueuedKeys.includes(key)) return 0
+      enqueuedKeys.push(key)
+      return 1
+    },
+    agent: {
+      create: async ({ data }: { data: { name: string } }) => {
+        const row = { id: randomUUID(), name: data.name }
+        agents.push(row)
+        return row
+      },
+    },
+    run: {
+      create: async () => {
+        const row = { id: randomUUID(), threadId: SUBTASK_FIXTURE.threadId }
+        runs.push(row)
+        return row
+      },
+    },
+    task: {
+      create: async () => {
+        const row = { id: randomUUID() }
+        tasks.push(row)
+        return row
+      },
+    },
+  }
+
+  const prisma = {
+    $transaction: async <T>(work: (client: typeof tx) => Promise<T>) => work(tx),
+    agent: {
+      findUnique: async () => ({
+        effort: 'medium',
+        id: SUBTASK_FIXTURE.agentId,
+        model: 'model',
+        name: 'Parent',
+        ownerUserId: null,
+        provider: 'provider',
+        systemPrompt: 'Prompt',
+        // No policy, so the run never reaches `stripProtectedExplicitToolPolicy`
+        // — grant projection is `subtask-tools.test.ts`'s subject, not this
+        // one's.
+        toolPolicy: null,
+        visibility: 'team',
+      }),
+    },
+    // No plan on this run, so no delegation step: the three rows below are the
+    // ones the transaction always writes.
+    plan: { findFirst: async () => null },
+    runToolEffect: effects.runToolEffect,
+  } as unknown as PrismaClient
+
+  const context = {
+    actorContext: {
+      actionContext: { requestId: 'subtask-ledger' },
+      actor: { actorId: SUBTASK_FIXTURE.agentId, actorType: 'agent', roles: [] },
+      tenant: { organizationId: SUBTASK_FIXTURE.organizationId },
+    },
+    agentId: SUBTASK_FIXTURE.agentId,
+    agentKind: 'shared',
+    channel: {
+      id: SUBTASK_FIXTURE.channelId,
+      organizationId: SUBTASK_FIXTURE.organizationId,
+    },
+    prisma,
+    realtimeTransport: { publishWs: async () => undefined },
+    run: {
+      id: RUN_ID,
+      messageId: SUBTASK_FIXTURE.messageId,
+      threadId: SUBTASK_FIXTURE.threadId,
+    },
+  } as unknown as BuiltinToolRuntimeContext
+
+  /** The real handler behind the seam, exactly as `tools.ts` calls it. */
+  const spawn = async (
+    _toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<ExecutedToolResult> => {
+    const result = await runSpawnSubtaskTool(context, { role: args['role'], task: args['task'] })
+    return {
+      inputSummary: result.inputSummary,
+      output: result.outputPreview,
+      success: true,
+      toolName: result.toolName,
+    }
+  }
+
+  return { agents, effects, enqueuedKeys, prisma, runs, spawn, tasks }
+}
+
+test('a resumed run answers a completed `spawn_subtask` from its row — no second child agent, task or run', async () => {
+  const world = createSubtaskWorld()
+  const args = { role: 'researcher', task: 'chase the shipping regression' }
+
+  const first = ledgerOver(world.prisma, new Set<string>(), world.spawn)
+  const dispatched = await first.executeTool('spawn_subtask', args, 'call-spawn')
+
+  assert.equal(world.agents.length, 1)
+  assert.equal(world.runs.length, 1)
+  assert.equal(world.tasks.length, 1)
+  assert.deepEqual(
+    world.enqueuedKeys,
+    [`subtask:${RUN_ID}:${world.agents[0]?.id}`],
+    'the queue key is built from the child id this call just minted — which is why a repeat would not collide with it',
+  )
+  assert.match(dispatched.output, /Spawned researcher sub-agent\./)
+
+  // The successor worker: a new ledger over the same table, exactly as a
+  // takeover builds one after the first execution died.
+  const resumed = ledgerOver(world.prisma, new Set<string>(), world.spawn)
+  const replayed = await resumed.executeTool('spawn_subtask', args, 'call-spawn')
+
+  // The rows are the damage, so the rows are what is asserted. A second agent
+  // would show up in the agent list, a second task on the board, and a second
+  // run would go and do the work again.
+  assert.equal(world.agents.length, 1, 'no second child agent was minted')
+  assert.equal(world.runs.length, 1, 'and no second run')
+  assert.equal(world.tasks.length, 1, 'and no second task on the board')
+  assert.equal(world.enqueuedKeys.length, 1, 'and the work was dispatched once')
+
+  assert.equal(
+    replayed.output,
+    dispatched.output,
+    'the model reads back exactly what it read before — the same child, not a stranger',
+  )
+  assert.ok(
+    replayed.output.includes(`agentId=${world.agents[0]?.id}`),
+    'and the digest still names the child that actually exists',
+  )
+  assert.equal(replayed.success, true)
+  assert.equal(replayed.toolCallId, 'call-spawn')
+  assert.equal(
+    world.effects.row(RUN_ID, 'call-spawn')?.state,
+    TOOL_EFFECT_STATES.completed,
+    '`spawn_subtask` is claimed like any other tool whose effects outlive the run',
   )
 })

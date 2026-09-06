@@ -315,7 +315,23 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['task'],
     },
-    safe: true,
+    // NOT safe — the same correction `delegate` needed, and for a worse
+    // failure. `safe` says a call only reads; this one writes three durable
+    // rows in one transaction (`worker/src/run/subtask-tools.ts`): a child
+    // `Agent`, its `Run`, and its `Task`, then enqueues that run. While this
+    // said `true`, the flag alone kept the dispatch out of `run_tool_effects`
+    // — `agents` was already an effectful category — so a resumed run spawned
+    // the child a SECOND time. Nothing collapses the repeat onto the first:
+    // the child's name embeds a fresh `randomUUID().slice(0, 8)`, so there is
+    // no natural key, and the enqueue's idempotency key is built from that new
+    // child's id. The damage is visible to a person, not just to bookkeeping —
+    // a second agent in the list, a second task on the board, and a second
+    // execution of the work.
+    // (Consequence, and the right one: `reviewableToolSurface` now offers a
+    // spawn to automated review in organisations whose policy asks for one. It
+    // creates a durable agent and dispatches a run; that is precisely the kind
+    // of act a reviewing organisation wants to see before it happens.)
+    safe: false,
   },
   DELEGATE_TOOL_DEFINITION,
   WEB_SEARCH_TOOL_DEFINITION,
