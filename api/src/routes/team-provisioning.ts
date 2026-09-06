@@ -9,7 +9,9 @@ import { forgetUoaTeamDirectory } from '../services/uoa-directory-cache.js'
 import {
   checkUoaSlugAvailability,
   createUoaOrganisation,
+  resolveUoaOrgAddress,
   resolveUoaOrgHost,
+  resolveUoaTeamAddress,
   resolveUoaTeamHost,
   createUoaTeamTeam,
   resolveUoaRosterTeam,
@@ -113,6 +115,11 @@ const parseTenantHost = (
 
   return null
 }
+
+const AddressQuerySchema = z.object({
+  teamId: z.string().trim().min(1).max(64).optional(),
+  orgId: z.string().trim().min(1).max(64).optional(),
+})
 
 const SlugAvailableQuerySchema = z.object({
   slug: z.string().trim().min(1).max(63),
@@ -492,6 +499,53 @@ export const registerTeamProvisioningRoutes = (
     } catch (error) {
       if (error instanceof UoaRosterUnavailableError) {
         return createApiResponse({ team: null })
+      }
+      throw error
+    }
+  })
+
+  /**
+   * Where a team or organisation lives — its hostname, built from UOA's labels.
+   *
+   * The inverse of `/api/hosts/resolve`: that turns a hostname into ids, this
+   * turns an id into a hostname. Nessie stores no slug (the labels belong to
+   * UOA), so a team picker could switch onto a team but had no way to say
+   * where it lives, which is what left the address bar stale after a switch.
+   *
+   * Answers `{ url: null }` rather than failing when this deployment does not
+   * route tenants by hostname, so a caller can ask unconditionally and simply
+   * get nothing back on an install that has not opted in.
+   */
+  app.get('/api/hosts/address', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const query = parseInput(AddressQuerySchema, request.query, reply)
+    if (!query) return reply
+    if (!teamHostBaseDomain) return createApiResponse({ url: null })
+
+    try {
+      if (query.teamId) {
+        const address = await resolveUoaTeamAddress({ teamId: query.teamId }, rosterDeps)
+        return createApiResponse({
+          url: address
+            ? `https://${address.teamSlug}.${address.orgSlug}.${teamHostBaseDomain}`
+            : null,
+        })
+      }
+
+      if (query.orgId) {
+        const address = await resolveUoaOrgAddress({ orgId: query.orgId }, rosterDeps)
+        return createApiResponse({
+          url: address ? `https://${address.orgSlug}.${teamHostBaseDomain}` : null,
+        })
+      }
+
+      return createApiResponse({ url: null })
+    } catch (error) {
+      if (error instanceof UoaRosterUnavailableError) {
+        return createApiResponse({ url: null })
       }
       throw error
     }
