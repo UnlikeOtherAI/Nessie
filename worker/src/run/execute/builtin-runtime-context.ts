@@ -78,6 +78,7 @@ export const createBuiltinToolExecutor = ({
     realtimeTransport: deps.realtimeTransport,
     run: {
       id: context.run.id,
+      browserHandback: payload.browserHandback ?? null,
       interactive: payload.interactive === true,
       messageId: payload.messageId,
       principalUserId: context.run.principalUserId,

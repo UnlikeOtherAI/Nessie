@@ -84,3 +84,68 @@ test('a shared team jar is usable by anyone whose turn it is', () => {
     'but never on a schedule',
   )
 })
+
+const BROWSER = 'browser-1'
+
+/**
+ * The hand-over is the point of the sign-in flow, and it has to work on a run
+ * with no live turn behind it — the person pressed Done and may already have
+ * walked away. It is answered by provenance rather than by claiming
+ * `interactive`, which also decides delegated identity, agent handoff, app
+ * setup and whether the budget treats a run as a human: four doors that a
+ * button press must not open.
+ */
+test('a hand-back lets the agent pick that browser back up with no live turn', () => {
+  assert.equal(
+    mayUseSignedInBrowser({
+      agentBrowserId: BROWSER,
+      handback: { agentBrowserId: BROWSER, byUserId: PERSON },
+      interactive: false,
+      loginCount: 1,
+      principalUserId: PERSON,
+    }),
+    true,
+  )
+})
+
+test('a hand-back is not a key to every other browser', () => {
+  assert.equal(
+    mayUseSignedInBrowser({
+      agentBrowserId: 'browser-2',
+      handback: { agentBrowserId: BROWSER, byUserId: PERSON },
+      interactive: false,
+      loginCount: 1,
+      principalUserId: PERSON,
+    }),
+    false,
+    'provenance names one browser, and only that one',
+  )
+})
+
+test('a hand-back by somebody else does not open a person’s own jar', () => {
+  assert.equal(
+    mayUseSignedInBrowser({
+      agentBrowserId: BROWSER,
+      handback: { agentBrowserId: BROWSER, byUserId: COLLEAGUE },
+      interactive: false,
+      loginCount: 1,
+      principalUserId: PERSON,
+    }),
+    false,
+  )
+})
+
+test('without provenance an automated run is still refused', () => {
+  assert.equal(
+    mayUseSignedInBrowser({
+      agentBrowserId: BROWSER,
+      handback: null,
+      interactive: false,
+      loginCount: 1,
+      originatingUserId: PERSON,
+      principalUserId: PERSON,
+    }),
+    false,
+    'the schedule protection must not have moved',
+  )
+})
