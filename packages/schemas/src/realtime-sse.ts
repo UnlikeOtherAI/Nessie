@@ -28,6 +28,13 @@ export const DOCUMENT_STREAM_ERROR_REASONS = [
   'invalid_args',
   'truncated',
   'superseded',
+  /**
+   * The worker that was writing the document died. Written only by the
+   * out-of-process reaper (`worker/src/control/document-session-reaper.ts`),
+   * never by the recorder — every recorder reason implies a process that lived
+   * long enough to write it, and this one exists precisely because none did.
+   */
+  'executor_lost',
 ] as const
 export const DocumentStreamErrorReasonSchema = z.enum(DOCUMENT_STREAM_ERROR_REASONS)
 export type DocumentStreamErrorReason = (typeof DOCUMENT_STREAM_ERROR_REASONS)[number]

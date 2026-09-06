@@ -6,6 +6,11 @@ import {
   sweepExpiredPushSendClaims,
 } from './control/push-claim-sweep.js'
 import { sweepDueGmailSends } from './control/gmail-send-sweep.js'
+import {
+  DOCUMENT_SESSION_REAP_INTERVAL_MS,
+  DOCUMENT_SESSION_REAP_LOCK,
+  reapAbandonedDocumentSessions,
+} from './control/document-session-reaper.js'
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
@@ -62,7 +67,7 @@ import {
   TriggerEventDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
-import { getPrismaClient } from '@nessie/db'
+import { getPrismaClient, withSweepLock } from '@nessie/db'
 import { captureTabsForRun } from './run/browser-cloud/tab-capture.js'
 import {
   expireStaleControlClaims,
@@ -1086,6 +1091,41 @@ export const startWorker = async (
     }
   }, PUSH_SEND_CLAIM_SWEEP_INTERVAL_MS)
 
+  // Document sessions whose producer died. Every terminaliser for
+  // `run_document_sessions` lives in the executing process, so a hard-killed
+  // worker leaves a `streaming` row nothing else ever moves: the popup spins
+  // for ever and the API keeps counting the document as active (audit 2.5).
+  // "Abandoned" is the run's executor heartbeat going silent, never age — the
+  // module says why, and why five minutes.
+  //
+  // Registered here rather than beside the API's maintenance sweeps, where the
+  // plan filed it: the API's always-on cost is what pins it to a minimum
+  // instance, and a fifth API sweep works against ever letting it idle. Nothing
+  // about the work needs the API — it reads and writes rows the worker owns.
+  //
+  // One indivisible bounded pass, so the primitive is `withSweepLock`
+  // (horizontal-scaling invariant 2). The body is safe to run twice regardless:
+  // every write is conditional on the session still being open.
+  let documentSessionReapInFlight = false
+  const documentSessionReapInterval = setInterval(() => {
+    if (documentSessionReapInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    documentSessionReapInFlight = true
+    void withSweepLock(pool, DOCUMENT_SESSION_REAP_LOCK, () =>
+      reapAbandonedDocumentSessions(prisma, {
+        publishSse: (threadId, event, data) =>
+          realtimeTransport.publishSse(threadId, event, data),
+      }))
+      .catch((error: unknown) => {
+        console.error('[worker.document-session-reaper] failed', error)
+      })
+      .finally(() => {
+        documentSessionReapInFlight = false
+      })
+  }, DOCUMENT_SESSION_REAP_INTERVAL_MS)
+
   // A run that crashed before any terminal transition, or a session that
   // outlived its TTL, still costs browser-hours until somebody tells
   // Browserbase to stop it. Reaping calls the provider; flipping the row alone
@@ -1310,6 +1350,7 @@ export const startWorker = async (
     clearInterval(workflowStepReapInterval)
     clearInterval(budgetReservationSweepInterval)
     clearInterval(pushClaimSweepInterval)
+    clearInterval(documentSessionReapInterval)
     clearInterval(cloudBrowserReapInterval)
     clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)

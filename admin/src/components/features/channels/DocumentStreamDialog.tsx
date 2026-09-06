@@ -30,6 +30,7 @@ type DocumentStreamDialogProps = {
 const ERROR_COPY: Record<string, string> = {
   budget_stopped: 'The run stopped at its budget before the document was saved.',
   cancelled: 'You stopped this document. Nothing was saved.',
+  executor_lost: 'The machine writing this document stopped, so nothing was saved. Ask again.',
   invalid_args: 'The location for this document was not valid, so nothing was saved.',
   run_failed: 'The run failed before the document was saved.',
   save_failed: 'The document could not be saved to the knowledge base.',
