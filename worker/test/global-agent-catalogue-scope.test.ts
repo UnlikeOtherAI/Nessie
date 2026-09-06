@@ -44,9 +44,16 @@ const unreachablePrisma = new Proxy({}, {
   },
 }) as never
 
+// Only the fields the loader reads before it touches Prisma: the run's tenant
+// and the person it acts as, which decide whose portrait style it resolves.
+const actorContext = {
+  actionContext: { effectiveUserId: '66666666-6666-4666-8666-666666666666' },
+  tenant: { organizationId: ORG, teamId: null },
+} as never
+
 const load = (systemSlug: string | null) =>
   loadGlobalAgentCatalogueBlock(unreachablePrisma, contextFor(systemSlug), {
-    actorContext: {} as never,
+    actorContext,
     ledgerIdentity: null,
     resolvedToolIds: new Set<string>(),
   })

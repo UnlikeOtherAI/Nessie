@@ -9,6 +9,7 @@
  */
 export * from './access-checks.js'
 export * from './agent-avatar-generation.js'
+export * from './agent-avatar-style.js'
 export * from './agent-bindings.js'
 export * from './agent-create.js'
 export * from './agent-edit-authority.js'

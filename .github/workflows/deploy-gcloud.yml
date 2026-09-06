@@ -1,0 +1,310 @@
+name: Deploy (Google Cloud)
+
+# The Google Cloud rollout. Hetzner is still production and `deploy.yml` still
+# owns it; this workflow exists so the Cloud Run path can be exercised against a
+# staging project before anything moves.
+#
+# INERT BY DEFAULT, in two independent ways:
+#   * it has no `push` trigger at all, so merging to main cannot deploy here;
+#   * the `preflight` job refuses to go on unless GCLOUD_DEPLOY_ENABLED is
+#     literally 'true' and every other repository variable it needs is set.
+# At cutover, add `push: branches: [main]` here and retire `deploy.yml` in the
+# same change — never run both against the same DNS name.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which configured Google Cloud environment to deploy.
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - prod
+
+# One deploy at a time per environment, and a running deploy is never killed.
+# Same reasoning as deploy.yml's group: this workflow executes a migration job
+# and then shifts traffic, and two runs interleaving those steps produces a
+# half-migrated database serving a half-shifted traffic split. GitHub keeps only
+# the newest PENDING run per group, so a queued run showing as "cancelled" under
+# heavy merge traffic is subsumption, not lost work.
+concurrency:
+  group: deploy-gcloud-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+      images: ${{ steps.check.outputs.images }}
+      registry: ${{ steps.check.outputs.registry }}
+    steps:
+      # Every value below is a repository VARIABLE, not a secret: none of them
+      # is a credential. Authentication is Workload Identity Federation, so no
+      # exported service-account key exists to store.
+      - name: Check configuration
+        id: check
+        env:
+          DEPLOY_ENABLED: ${{ vars.GCLOUD_DEPLOY_ENABLED }}
+          PROJECT_ID: ${{ vars.GCLOUD_PROJECT_ID }}
+          REGION: ${{ vars.GCLOUD_REGION }}
+          WIF_PROVIDER: ${{ vars.GCLOUD_WORKLOAD_IDENTITY_PROVIDER }}
+          DEPLOY_SA: ${{ vars.GCLOUD_DEPLOY_SERVICE_ACCOUNT }}
+          REPOSITORY: ${{ vars.GCLOUD_ARTIFACT_REPOSITORY }}
+          SERVICE_PREFIX: ${{ vars.GCLOUD_SERVICE_PREFIX }}
+          API_HOSTNAME: ${{ vars.GCLOUD_API_HOSTNAME }}
+          GATEWAY_ENABLED: ${{ vars.GCLOUD_GATEWAY_ENABLED }}
+        run: |
+          if [ "$DEPLOY_ENABLED" != "true" ]; then
+            echo "GCLOUD_DEPLOY_ENABLED is not 'true' — nothing to do."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "images=[]" >> "$GITHUB_OUTPUT"
+            echo "registry=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          missing=""
+          for name in PROJECT_ID REGION WIF_PROVIDER DEPLOY_SA REPOSITORY SERVICE_PREFIX API_HOSTNAME; do
+            if [ -z "${!name}" ]; then
+              missing="$missing GCLOUD_${name}"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "GCLOUD_DEPLOY_ENABLED is true but these repository variables are unset:$missing" >&2
+            exit 1
+          fi
+
+          # The gateway is a second image with its own Dockerfile and its own
+          # build context; it is not a command override of nessie-app.
+          if [ "$GATEWAY_ENABLED" = "true" ]; then
+            images='[{"name":"app","dockerfile":"infrastructure/docker/Dockerfile.app"},{"name":"gateway","dockerfile":"infrastructure/docker/Dockerfile.gateway"}]'
+          else
+            images='[{"name":"app","dockerfile":"infrastructure/docker/Dockerfile.app"}]'
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+          echo "registry=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.image.name }} image
+    needs: preflight
+    if: needs.preflight.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(needs.preflight.outputs.images) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCLOUD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCLOUD_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.GCLOUD_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          push: true
+          tags: ${{ needs.preflight.outputs.registry }}/nessie-${{ matrix.image.name }}:${{ github.sha }}
+          # Scoped per image so the matrix legs don't evict each other.
+          cache-from: type=gha,scope=gcloud-${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=gcloud-${{ matrix.image.name }}
+
+  migrate:
+    name: Migrate and reconcile
+    needs: [preflight, build]
+    if: needs.preflight.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      REGION: ${{ vars.GCLOUD_REGION }}
+      SERVICE_PREFIX: ${{ vars.GCLOUD_SERVICE_PREFIX }}
+      APP_IMAGE: ${{ needs.preflight.outputs.registry }}/nessie-app:${{ github.sha }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCLOUD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCLOUD_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # The gate. `--wait` makes the step's exit code the job's exit code, so a
+      # failed migration stops the workflow here and no revision is ever
+      # deployed against a schema that did not apply. A migration that parks the
+      # installation is cleared with a one-off execution override — see
+      # infrastructure/gcloud/migrate-entrypoint.sh and
+      # docs/deployment/gcloud.md.
+      - name: Run migrate job on the new image
+        run: |
+          gcloud run jobs update "${SERVICE_PREFIX}-migrate" \
+            --region "$REGION" \
+            --image "$APP_IMAGE" \
+            --quiet
+          gcloud run jobs execute "${SERVICE_PREFIX}-migrate" \
+            --region "$REGION" \
+            --wait
+
+  deploy:
+    name: Deploy revisions and shift traffic
+    needs: [preflight, build, migrate]
+    if: needs.preflight.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      REGION: ${{ vars.GCLOUD_REGION }}
+      SERVICE_PREFIX: ${{ vars.GCLOUD_SERVICE_PREFIX }}
+      API_HOSTNAME: ${{ vars.GCLOUD_API_HOSTNAME }}
+      GATEWAY_ENABLED: ${{ vars.GCLOUD_GATEWAY_ENABLED }}
+      APP_IMAGE: ${{ needs.preflight.outputs.registry }}/nessie-app:${{ github.sha }}
+      GATEWAY_IMAGE: ${{ needs.preflight.outputs.registry }}/nessie-gateway:${{ github.sha }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCLOUD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCLOUD_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Recorded BEFORE anything changes: this is what rollback returns to.
+      - name: Record the serving revision
+        id: previous
+        run: |
+          revision="$(
+            gcloud run services describe "${SERVICE_PREFIX}-api" \
+              --region "$REGION" \
+              --format='value(status.traffic[0].revisionName)'
+          )"
+          echo "Currently serving: ${revision:-<none>}"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
+          worker_image="$(
+            gcloud beta run worker-pools describe "${SERVICE_PREFIX}-worker" \
+              --region "$REGION" \
+              --format='value(template.containers[0].image)' 2>/dev/null || true
+          )"
+          echo "worker_image=$worker_image" >> "$GITHUB_OUTPUT"
+
+      # `--no-traffic` still waits for the revision to become Ready, and Ready
+      # for the API means its startup probe passed — which is
+      # `/api/health/ready`, a real SELECT 1 against Cloud SQL over the VPC. A
+      # revision that cannot reach the database therefore never reaches the
+      # traffic shift below, and the old one keeps serving.
+      #
+      # The public-endpoint gate cannot run before the shift: the service takes
+      # INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER, so a tagged candidate has no
+      # externally reachable address, and the load balancer routes by traffic
+      # split. Gating the candidate through the public name would mean adding a
+      # host rule for the tag to the URL map — worth doing later, not assumed
+      # here. Until then the order is: prove Ready, shift, prove the public
+      # path, roll back if it does not answer.
+      - name: Deploy API revision with no traffic
+        run: |
+          gcloud run deploy "${SERVICE_PREFIX}-api" \
+            --region "$REGION" \
+            --image "$APP_IMAGE" \
+            --no-traffic \
+            --quiet
+
+      # Not gated on the API: the worker takes no ingress and serves no user
+      # request, so a worker that will not start is a queue that stops draining,
+      # not an outage. It is rolled back with the API if the gate fails.
+      - name: Deploy worker pool
+        run: |
+          gcloud beta run worker-pools update "${SERVICE_PREFIX}-worker" \
+            --region "$REGION" \
+            --image "$APP_IMAGE" \
+            --quiet
+
+      - name: Deploy gateway revision
+        if: env.GATEWAY_ENABLED == 'true'
+        run: |
+          gcloud run deploy "${SERVICE_PREFIX}-gateway" \
+            --region "$REGION" \
+            --image "$GATEWAY_IMAGE" \
+            --quiet
+
+      - name: Shift traffic to the new revision
+        run: |
+          gcloud run services update-traffic "${SERVICE_PREFIX}-api" \
+            --region "$REGION" \
+            --to-latest \
+            --quiet
+
+      # The same gate redeploy.sh runs through Caddy: prove the whole path — DNS
+      # to load balancer to revision — actually serves, because a deploy can
+      # otherwise go green while the site is down. Retries absorb the load
+      # balancer's brief convergence after a traffic split.
+      - name: Verify the public endpoints
+        id: verify
+        run: |
+          verify() {
+            local url="$1"
+            for attempt in 1 2 3 4 5 6 7 8; do
+              if curl -fsS --connect-timeout 5 --max-time 20 -o /dev/null "$url"; then
+                echo "    OK $url (attempt $attempt)"
+                return 0
+              fi
+              echo "    not ready $url (attempt $attempt); retrying in 5s" >&2
+              sleep 5
+            done
+            echo "    FAILED $url" >&2
+            return 1
+          }
+
+          verify "https://${API_HOSTNAME}/api/health"
+          verify "https://${API_HOSTNAME}/api/health/ready"
+
+      # Rollback restores the exact revision that was serving before this run,
+      # not "the previous one" — a re-run of a failed deploy would otherwise
+      # roll back onto the revision the failed run created.
+      - name: Roll back
+        if: failure() && steps.previous.outputs.revision != ''
+        run: |
+          echo "Deploy failed — returning traffic to ${{ steps.previous.outputs.revision }}"
+          gcloud run services update-traffic "${SERVICE_PREFIX}-api" \
+            --region "$REGION" \
+            --to-revisions "${{ steps.previous.outputs.revision }}=100" \
+            --quiet
+
+          if [ -n "${{ steps.previous.outputs.worker_image }}" ]; then
+            gcloud beta run worker-pools update "${SERVICE_PREFIX}-worker" \
+              --region "$REGION" \
+              --image "${{ steps.previous.outputs.worker_image }}" \
+              --quiet
+          fi
+
+          echo "Traffic restored. The database is NOT rolled back: migrations" >&2
+          echo "are forward-only, so a rollback past a schema change needs a" >&2
+          echo "deliberate down-migration. See docs/deployment/gcloud.md." >&2

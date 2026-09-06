@@ -48,7 +48,8 @@ file is the rule**.
 - **A capability can be moved to a specialist without being deleted.**
   `BuiltinToolDefinition.identityDelegatedOnly` narrows `personalAssistantOnly`
   to the identity-delegated arm alone — `agent_create`, `agent_read`,
-  `agent_update`, `agent_tool_catalog`, `agent_avatar_update` are reachable only
+  `agent_update`, `agent_tool_catalog`, `agent_avatar_generate`,
+  `agent_avatar_update` are reachable only
   by a blueprint that declares them, in its own home DM, on an interactive human
   turn. Not even a Personal Assistant: it keeps the operational verbs on existing
   agents and hands over with `agent_handoff`, the design catalogue being large

@@ -167,6 +167,22 @@ export const SURFACES: Surface[] = [
     type: 'nested',
   },
   {
+    // An agent tool is a full phone screen over its conversation, exactly as a
+    // reply thread is, and closes back to the same place.
+    depth: 2,
+    identityOf: (match) => `channel:${match[1]}`,
+    keyScope: () => 'channel',
+    parentOf: (match) => ({
+      label: 'Back to conversation',
+      pathname: `/channels/${match[1]}`,
+    }),
+    pattern: /^\/channels\/([^/]+)\/tools\/([^/]+)$/,
+    root: CHANNELS_ROOT,
+    section: 'channels',
+    splitInline: true,
+    type: 'nested',
+  },
+  {
     // A reply thread is a full phone screen over its conversation, so the
     // retained conversation slides back into view when it closes.
     depth: 2,

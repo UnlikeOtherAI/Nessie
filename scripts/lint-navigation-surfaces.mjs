@@ -221,6 +221,7 @@ export const SHADOWED_PATHS = new Set([
   '/channels/projects/:projectId',
   '/channels/new',
   '/channels/:channelId/threads/:threadId/replies/:rootMessageId',
+  '/channels/:channelId/tools/:toolId',
   '/channels/:channelId/info',
   '/channels/:channelId/info/members',
   '/channels/:channelId/info/members/add',

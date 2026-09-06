@@ -116,6 +116,47 @@ export const TOOL_CATEGORIES = [
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number]
 export type ToolCategoryId = ToolCategory['id']
 
+/**
+ * The categories whose effects leave the run's own workspace.
+ *
+ * Read by the tool-effect ledger (horizontal scaling, invariant 4): a call in
+ * one of these is claimed durably *before* it is dispatched, so a worker that
+ * dies between a side effect landing and its result being recorded reports the
+ * call as an unknown outcome instead of silently doing it again.
+ *
+ * The line is not "does this write something" — nearly every non-`safe` tool
+ * writes something. It is **whose** artefact a duplicate becomes: mail at a
+ * provider, a meeting somebody is rung for, a ticket or channel a team acts on,
+ * a schedule that fires again unattended, an app authorised at a third party, a
+ * click on a real page. Those are the duplicates a person sees and cannot undo
+ * from inside the agent's turn.
+ *
+ * Deliberately out, and why: `knowledge`, `files`, `dashboards`, `workflows`,
+ * `todos` and `team` are the agent's own workspace. A duplicate there is
+ * visible to the agent itself and correctable on the next turn, and these are
+ * the high-frequency writes — a document-authoring run calls `kb_document_edit`
+ * dozens of times — so a row per call would be paid where it buys least.
+ * `web` is read-only throughout.
+ *
+ * Membership is by category rather than by a hand-kept id list so a new tool
+ * inherits the decision from where it says it belongs. The ledger unions this
+ * with the structurally approval-gated ids, so a future family that declares
+ * `requiresApproval` in an excluded category is covered anyway.
+ */
+export const EFFECTFUL_TOOL_CATEGORY_IDS: ReadonlySet<ToolCategoryId> = new Set([
+  'agent-mailbox',
+  'agents',
+  'apps',
+  'browser',
+  'calls',
+  'channels',
+  'conversation',
+  'email-calendar',
+  'executors',
+  'projects',
+  'scheduling',
+] as const satisfies readonly ToolCategoryId[])
+
 export const TOOL_CATEGORY_IDS = TOOL_CATEGORIES.map((category) => category.id)
 
 export const ToolCategoryIdSchema = z.enum(

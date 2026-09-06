@@ -44,5 +44,6 @@ its area; this file is the map.
 - **[Supported upgrade paths and stuck migrations](deployment/upgrade-paths.md)** — What `prisma migrate deploy` is proven to converge from, how one failed migration parks every deploy after it, and the per-UOA-org partition.
 - **[Operating the host](deployment/operations.md)** — Disk and Docker build cache on a box shared with ~40 other apps, and the optional push relay.
 - **[Configuration reference](deployment/configuration.md)** — Config layering and the full environment-variable table: Google scopes and Meet, object storage, agent email, connected mailboxes, the MCP secret store.
+- **[Google Cloud: the Cloud Run topology, and how to stand it up](deployment/gcloud.md)** — The terraform tree, the environment each service gets, the migrate job every rollout gates on, and what about that path is still unproven. Hetzner above is production; this one has never been applied.
 - **[SSO (UnlikeOtherAuthenticator)](deployment/sso.md)** — How Nessie signs people in through UOA's config-JWT flow.
 - **[Inference routing, embeddings and the vector width](deployment/inference-and-embeddings.md)** — Which Ledger adapter serves chat and embeddings, why the vector width is a schema change, and what a deployment with no UOA signer can do.

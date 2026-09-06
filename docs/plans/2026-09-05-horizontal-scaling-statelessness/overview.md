@@ -133,6 +133,7 @@ worker restart during a deploy already replays whatever was in flight.
 | 3.3 | 2.5 | Document-session reaper: `streaming`/`saving` sessions whose run has no live executor token flip to `failed` from the API maintenance sweep. | S |
 | 3.4 | 5.13 | `push.dispatch` enqueues carry an idempotency key and the handler claims a delivery row before sending. | S |
 | 3.5 | 2.2 | LISTEN reconnect re-reads the backlog for every registered connection from its watermark. | M |
+| 3.6 | — | Decide whether `delegate` may keep declaring itself `safe`. It escapes the tool-effect ledger on that flag alone, so a resumed run re-issues a delegation and the sub-agent's own effectful calls are never claimed. Either claim it, or restrict the sub-agent's toolset to genuinely read-only tools and say so where the flag is set. | S |
 
 ## Phase 4 — Google Cloud platform work
 
@@ -148,6 +149,13 @@ Nothing here is speculative; each line maps to a finding in areas 6 and 7.
 | 4.6 | — | `.github/workflows/deploy-gcloud.yml`: build to Artifact Registry, run the migrate job, deploy revisions with no traffic, shift traffic after the public-endpoint gate, roll back on failure. A staging project first. | M |
 | 4.7 | 7.9 | Team hosts: if per-organisation subdomains are turned on, they need Certificate Manager with DNS authorisation. Documented as a constraint; not built here. | — |
 | 4.8 | — | `docs/deployment/gcloud.md` as the authoritative runbook; `docs/deployment.md` gains the chapter; the Hetzner chapters stay until cutover. | S |
+| 4.9 | — | The API cannot drain inside a Cloud Run **Service**'s grace. Cloud Run sends `SIGTERM` and `SIGKILL`s ten seconds later, and that grace is not configurable; `shutdownTimeoutMs` defaults to 25 s and invariant 6 budgets 60 s. The terraform pins `NESSIE_SHUTDOWN_TIMEOUT_MS=9000` as a stopgap, which means the API's drain has to *finish* in nine seconds or it is cut off mid-stream. Decide between shortening the API drain to fit and moving the API to a compute shape with a configurable grace. The worker is already a worker pool for exactly this reason. | M |
+| 4.10 | — | Admin and web have no Google Cloud story. The load balancer built in 4.5 fronts the API only, and `VITE_API_BASE_URL` is baked into the admin image at build time, so the SPA cannot be promoted between environments. Serve them from GCS or a second Cloud Run service behind the same load balancer, and decide whether the API base URL becomes runtime configuration. | M |
+| 4.11 | — | The deploy's public-endpoint gate runs *after* the traffic shift, not before, because the API takes `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` and a tagged candidate revision therefore has no externally reachable address. Add a URL-map host rule for the revision tag so a candidate can be proven through the real load balancer before it takes traffic. | S |
+| 4.12 | 7.7 | `config.queue.provider` still accepts `'pubsub'` and `deriveRuntimeCapabilities` still derives `hasPubSub` from it. 5.9 parks retiring that enum value behind the Pub/Sub terraform module, which 4.5 has now deleted, so the precondition is met. | S |
+
+Rows 4.5, 4.6 and 4.8 are delivered on `claude/hs-p4-gcloud-terraform`; they
+are configuration and documentation only and nothing has been applied.
 
 ## Phase 5 — Cleanups that N instances make worse
 

@@ -161,9 +161,118 @@ matches no row. Beside it:
   before the last record could land last — dropping that record and re-running
   its tool. After N concurrent records the durable row holds all N.
 - **What the record guarantees, exactly.** A tool whose result reached durable
-  storage never runs again. The window that cannot be closed is between a tool's
-  side effect committing at the provider and its record committing in Postgres:
-  a worker that dies in there replays that one call.
+  storage never runs again. The window the record alone cannot cover is between
+  a tool's side effect committing at the provider and its record committing in
+  Postgres; that window is closed by the ledger below.
+- **A side-effecting call is claimed before it is dispatched.**
+  `run_tool_effects` is unique on `(run_id, tool_call_id)` and carries the tool
+  name, a state, the settled result and its timestamps.
+  `worker/src/run/execute/tool-effect-ledger.ts` commits a `dispatched` row **on
+  its own, before** the call runs — folded into any longer transaction it would
+  become durable only after the side effect, which is the window it exists for.
+  **Only the absence of a row lets a call run.** A later execution reads:
+  - **no row** — the call never started, and runs normally;
+  - **`completed`** or **`failed`** — the tool RETURNED, reporting success or
+    reporting failure, so the outcome was observed and its result is durable.
+    Either way the call is answered from that recorded result, without
+    re-authorising and without running again. It is the same answer the crash
+    checkpoint gives for the same result on its fast path, and the two are
+    required to agree. (A model that wants to retry a failed call issues a new
+    call, with a new id, which has no row.)
+  - **`dispatched`** or **`interrupted`** — the outcome is genuinely unknown, and
+    the call is **not** repeated. `dispatched` is a claim nothing ever settled;
+    `interrupted` is a dispatch that **threw**. A throw is not a failure: the
+    tool reported nothing at all, and the claim was already committed, so the
+    call may well have reached the far side and come apart afterwards — an
+    executor command that ran on the person's machine before a later audit write
+    hit a transient database error, an MCP call the server executed whose
+    response was lost to a timeout. Both are answered with the same tool result,
+    which tells the model that the call was started, that its outcome was never
+    recorded, and that it has deliberately not been retried, so the agent checks
+    rather than acting on a fabricated success or failure. An unrecognised state
+    — a row from a newer deploy — is read the same way, which is the safe read of
+    a state this code cannot interpret.
+
+  Because every row that exists answers, there is no fall-through on which a
+  claimed call is executed a second time. There used to be: a row the ledger
+  declined to answer ran the tool again **without a fresh claim**, and since the
+  settle is scoped to `dispatched` it matched no row — so the repeat went
+  unrecorded and a third execution was free to run the call a third time.
+
+  A throw raised *before* the transport (an authorization gate hitting a dead
+  database, say) is indistinguishable from one raised after it and is treated as
+  unknown too. That costs a call the agent can make again, and the
+  unknown-outcome text asks it to; the opposite mistake costs a duplicate nobody
+  can take back.
+- **The claim is keyed on the provider's tool-call id, and the key is checked.**
+  An **empty** id is not a key — every id-less call in the run would collide on
+  one row and be answered from the first one's output — so a call without an id
+  falls through and runs unclaimed, which is what a run with no idempotency to
+  offer honestly is. A **reused** id is caught by comparing the stored tool name:
+  a conflicting row whose `tool_name` is not this call's name describes somebody
+  else's call, so it is reported to the model as a collision and the tool does
+  **not** run. Replaying the row would answer this call with a stranger's output;
+  running it would write this call's outcome over the other call's row and lose
+  the guarantee for both.
+- **Precedence between the two, and it is structural.** The crash checkpoint's
+  recorded results are the fast path: the recorder wraps the ledger, so a call
+  this run already recorded is answered in memory and never reaches a query. The
+  ledger is the durable backstop, and only ever sees a call the checkpoint has
+  no record of — a crash before its write landed, state too large to persist, a
+  process that never saw the checkpoint at all. Both are keyed by the provider's
+  tool-call id within the run, so they cannot disagree about what "this call"
+  means.
+- **Scope, and why it is not every tool.** Claimed: a builtin that is not `safe`
+  **and** whose category is one whose effects leave the agent's own workspace
+  (`EFFECTFUL_TOOL_CATEGORY_IDS` in `@nessie/schemas` — mail, calendar, agent
+  mailbox, conversation, channels, calls, projects and tickets, scheduling,
+  agents, apps, browser, executors), plus everything structurally
+  approval-gated, plus every MCP, HTTP-connector and executor dispatch, whose
+  names are per installation and which leave Nessie by construction. Not
+  claimed: read-only tools, the builtin tool-spec meta tool (it only rewrites
+  this run's own view of its tool list and reaches nothing outside Nessie), and
+  the agent's own workspace — knowledge, files, dashboards, workflows, to-dos,
+  preferences — where a duplicate is visible to the agent and correctable on its
+  next turn, and where the writes are frequent enough that a row per call would
+  be paid where it buys least. Membership is by declared category, never a
+  hand-kept id list, so a new tool inherits the decision from where it already
+  had to say it belongs.
+- **The claim decision asks the live tool view, not a copy of it.** Whether a
+  call is external is a *function* over `mcpView.handledNames` and
+  `executorToolset.handledNames` (`externalDispatchPredicate`), evaluated per
+  call, because `agent-loop.ts` routes the dispatch by asking those same two
+  objects at the same moment. A set snapshotted at loop setup would be a second
+  source of truth, and the day the two disagreed the disagreement would be a
+  tool dispatched to a connector with no claim behind it. The MCP view is
+  mutable by the run itself — `mcp_load_tools` / `mcp_drop_tools` rewrite what
+  the model can see mid-run — and `handledNames` deliberately stays the wider,
+  stable set of everything the view will dispatch, loaded or not, so a name the
+  model remembered from `mcp_find_tools` is still claimed. That property is
+  pinned by its own test in `mcp-toolset-deferred.test.ts`; the ledger does not
+  assume it.
+- **One exception the category rule does not catch: `delegate`.** It declares
+  `safe: true`, so the `!safe` half of the test excludes it even though its
+  category is effectful. Its sub-agent is a nested loop for discovery, but the
+  toolset it inherits is the parent's builtins minus `delegate` itself, so a
+  sub-agent can in principle call an effectful tool. A resumed run therefore
+  re-issues a delegation whose result the checkpoint never recorded, and the
+  sub-agent's own calls are not separately claimed. That is not a regression —
+  before any of this, every tool re-ran — but it is the one place this
+  invariant's guarantee stops short, and whether `delegate` should still call
+  itself safe is plan row 3.6.
+- **Retention is fused to the status chokepoint.** `updateRunStatus` deletes a
+  run's claims on every terminal and suspended transition, beside the crash
+  state it already sheds: a terminal run is never resumed, and a suspended one
+  is continued by a NEW run whose tool calls carry new ids, so from that
+  statement onwards nothing can consult them. The `ON DELETE CASCADE` on
+  `run_id` is the backstop for a run deleted outright.
+- **What remains true.** Nothing short of a distributed transaction with the
+  provider makes a side effect and its record atomic, so the ledger does not
+  make a tool exactly-once: it makes the *ambiguity* durable and visible instead
+  of silently resolving it as "run it again". A call interrupted in that window
+  is reported to the agent as unknown, and the decision is the agent's. A
+  re-entered batch also still re-emits `agent.tool.start`/`end`, so a tool that
+  ran once can leave two `ToolCall` telemetry rows.
 - **Resume is in place, not a continuation.** `claimRunForExecution` reports the
   pre-claim status; a `running` one means a takeover, so `executeRunJob` loads
   the crash state and the loop restores the transcript, iteration count,
@@ -179,7 +288,7 @@ matches no row. Beside it:
   cleared so the next worker claims it on its next poll rather than waiting out
   the takeover window, and the job is nacked with reason `worker_drain`.
 
-Two things this finding still owes, both proved by the two-instance chaos smoke:
+What this finding still owes, proved by the two-instance chaos smoke:
 
 - **The handler is signalled at the drain deadline, not at its start.**
   `drainQueueSubscriptions` (`worker/src/lifecycle.ts`) stops the subscriptions
@@ -192,13 +301,6 @@ Two things this finding still owes, both proved by the two-instance chaos smoke:
   and did before this phase too. The fix is a second `AbortController` for
   in-flight handlers, aborted at the *start* of the drain, with the drain
   awaiting `subscription.done` after abandoning — invariant 6's territory.
-- **Tool idempotency is a checkpoint, not a constraint.** A
-  `run_tool_effects (run_id, tool_call_id)` unique row written before any
-  side-effecting builtin executes is plan row 3.2. The recorded results above
-  make a resumed run skip tools it already ran, but a tool interrupted between
-  its side effect and its result being recorded can still run twice. A re-entered
-  batch also re-emits `agent.tool.start`/`end`, so its `ToolCall` telemetry row
-  is written twice for a tool that ran once.
 
 ## 5. Boot connects and listens — nothing else
 

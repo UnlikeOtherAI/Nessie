@@ -103,6 +103,11 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - **Authoritative guide: [docs/deployment.md](docs/deployment.md)** — first
   deploy, redeploy, the container stack and compose files, proxy trust,
   config reference, MCP secret store, and SSO status.
+- `infrastructure/terraform/` and `.github/workflows/deploy-gcloud.yml` are the
+  **planned** Cloud Run topology from Phase 4 of the horizontal-scaling plan,
+  not the retired 2024 attempt and not production. Nothing has been applied and
+  the workflow has no push trigger. Runbook:
+  [docs/deployment/gcloud.md](docs/deployment/gcloud.md).
 
 ## Linting
 
@@ -236,9 +241,11 @@ when one changes, the same turn updates it, not this section.
   team switch that follows is the authorization — and matching one is a
   label comparison, never a suffix test, or `evil-nessie.works` passes. On a
   tenant hostname the tenant is the brand, palette included, which is the one
-  carve-out from "the sign-in screen is instance state". The edge needs no DNS
-  record per tenant but **one certificate line per hostname**, and the reasons
-  it cannot be a wildcard are three separate constraints on a shared proxy:
+  carve-out from "the sign-in screen is instance state". The edge needs nothing
+  per tenant — certificates are issued on demand and gated by
+  `/api/hosts/tls-check`, which verifies the **team**, not just its
+  organisation, because a certificate for a guessed label would burn the whole
+  zone's weekly allowance:
   read [docs/standards/team-hosts.md](docs/standards/team-hosts.md) before
   touching host routing, CORS, tenant branding, or the edge.
 - **Automatic team access by verified email domain — Nessie holds the policy,

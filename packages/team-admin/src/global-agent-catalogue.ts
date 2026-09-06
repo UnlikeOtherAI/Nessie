@@ -40,6 +40,16 @@ export type GlobalAgentCatalogueFacts = {
   /** Null when the model catalogue could not be read; never a stale guess. */
   models: AgentModelOption[] | null
   /**
+   * The look this person's generated portraits are drawn in.
+   *
+   * Three states, deliberately: a string is the style in force, `null` is
+   * "resolved, and nobody has chosen one", and **absent** is "this face did
+   * not resolve it" — the page's sidebar fills a form and draws no pictures.
+   * Collapsing absent into null would have the block tell the model somebody
+   * has never chosen a style when they have.
+   */
+  avatarStyle?: string | null
+  /**
    * How this face of the Designer actually changes an agent, which decides the
    * one closing instruction. The two transports genuinely differ — the DM holds
    * the write tools, the sidebar drives the open form control-by-control — and
@@ -70,7 +80,31 @@ const RESTRICTION_LABEL: Record<AgentToolRestriction, string> = {
 const describeRestricted = (entry: AgentToolCatalogRestrictedEntry): string =>
   bullet(`${entry.key} — ${RESTRICTION_LABEL[entry.restriction]}`)
 
-const parametersSection = (): string[] => [
+const avatarLine = (facts: GlobalAgentCatalogueFacts): string => {
+  const drawing = facts.writeSurface === 'agent_tools'
+    ? 'a portrait is generated automatically at creation, and '
+      + 'agent_avatar_generate draws a replacement in a style they name.'
+    : 'a portrait is generated automatically at creation; it can be replaced '
+      + 'with a generated or uploaded one afterwards.'
+  if (facts.avatarStyle === undefined) return bullet(`avatar — ${drawing}`)
+  // The style itself is NOT written here. This block is assembled into a
+  // system prompt, which is instruction position, and a style is free text a
+  // person types — an organisation-level one reaching every member's run. The
+  // words travel where they are data: the image prompt's user message, and
+  // the tool result that says what was drawn.
+  return bullet(
+    `avatar — ${drawing} `
+    + (facts.avatarStyle
+      ? 'This person has already chosen the look their portraits are drawn '
+        + 'in and it is applied automatically, so pass a style only when they '
+        + 'ask for a different one.'
+      : 'This person has never chosen a style, so portraits use the default '
+        + 'look until they say what they like — the style they state is '
+        + 'remembered for every portrait after it.'),
+  )
+}
+
+const parametersSection = (avatarLineText: string): string[] => [
   'Agent parameters, exactly as the product stores them:',
   bullet('name, role — free text; role is a short label like "researcher".'),
   bullet(
@@ -104,10 +138,7 @@ const parametersSection = (): string[] => [
     + 'unless the policy says false; connector tools and explicit-grant tools '
     + 'are OFF unless the policy says true.',
   ),
-  bullet(
-    'avatar — generated automatically at creation; replaceable with an '
-    + 'attachment afterwards.',
-  ),
+  avatarLineText,
   bullet(
     'bindings — which channels an agent works in. Organisation owners only, '
     + 'and only channels they belong to; system conversations and private '
@@ -208,7 +239,7 @@ export const buildGlobalAgentCatalogueBlock = (
   return [
     'Agent design catalogue (generated from this team, not remembered):',
     '',
-    ...parametersSection(),
+    ...parametersSection(avatarLine(facts)),
     '',
     `Tools you can give an agent (${facts.catalogue.togglable.length}), by tool `
     + 'policy key:',

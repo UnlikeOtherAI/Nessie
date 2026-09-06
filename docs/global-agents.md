@@ -135,13 +135,14 @@ organisation's choice.
 
 The toolset is the blueprint's `identityToolIds`: the five Personal Assistant
 provisioning verbs, the three team-structure verbs below, plus
-`agent_read`, `agent_update`, `agent_tool_catalog` and `agent_avatar_update` —
-`personalAssistantOnly` builtins whose handlers live in
+`agent_read`, `agent_update`, `agent_tool_catalog`, `agent_avatar_generate` and
+`agent_avatar_update` — `personalAssistantOnly` builtins whose handlers live in
 `worker/src/run/pa-tools/agent-config.ts` over shared
 `@nessie/team-admin` functions.
 
-Five of them additionally carry **`identityDelegatedOnly`**: `agent_create`,
-`agent_read`, `agent_update`, `agent_tool_catalog` and `agent_avatar_update`.
+Six of them additionally carry **`identityDelegatedOnly`**: `agent_create`,
+`agent_read`, `agent_update`, `agent_tool_catalog`, `agent_avatar_generate` and
+`agent_avatar_update`.
 That flag removes the PA's own arm from the `personalAssistantOnly` gate, so
 creating and redesigning an agent is the Designer's work alone and the PA hands
 the conversation over with `agent_handoff` instead. The tools are not deleted —
@@ -163,7 +164,48 @@ rather than offered and then denied.
   `personal_assistant_only`, or `built_in_specialist_only`.
 - `generateAvatarForNewAgent` serves both `POST /api/agents` and
   `agent_create`, and never throws — a failed generation leaves the agent
-  faceless rather than failing the creation.
+  faceless rather than failing the creation. It is never *silent* though:
+  `agent_create`'s tool output states whether a portrait was drawn and, when it
+  was not, why, because the failure a person actually met was a blank tile
+  nobody mentioned.
+- `agent_avatar_generate` draws a replacement, mirroring
+  `POST /api/agents/:agentId/avatar/generate` (accessibility read, then
+  `assertAgentEditAuthority`, then the billed call) followed by the confirming
+  `PATCH …/avatar` — both halves, because a conversation has no preview to
+  accept. A built-in agent is therefore `Agent not found` here rather than
+  `agent_avatar_update`'s "managed by Nessie itself": each mirrors its own
+  route, and agreeing with a sibling tool's wording is not the rule.
+
+### The portrait style a person keeps
+
+`agentAvatar.style` is a `ScopedSetting`
+([scoped-settings](standards/scoped-settings.md)), not a memory: a look stated
+once in a design conversation has to be readable deterministically by the next
+generation, which semantic recall cannot promise. `resolveAgentAvatarStyle` /
+`writeAgentAvatarStyle` (`@nessie/team-admin`) are the one pair both processes
+use, so `POST /api/agents`, the avatar dialog's regenerate, `agent_create` and
+`agent_avatar_generate` all draw in the same look. An organisation may set a
+house style and lock it; the personal write then refuses exactly as
+`PUT /api/settings` does, including the **team** lock the shared writer cannot
+see on a personal write (a person may be in several teams, so the caller that
+knows which team is in play makes that check).
+
+A lock decides the *picture*, not merely whether the preference may be stored:
+`styleForGeneration` is the one rule, and enforcing the lock on the write alone
+would draw the billed portrait in the style asked for and then refuse to
+remember it — the house style pinned in name only, with the two faces
+disagreeing, because the form path resolves the style server-side and cannot be
+told otherwise.
+
+The style reaches the image model as *descriptive data* — a field of the user
+message's JSON, never a line of the prompt writer's system rules — for the same
+reason the dialog's free-text box always has: they are the person's words about
+a picture, not instructions to the run reading them. For the same reason the
+catalogue block states only **that** a style exists, never its words: that block
+is assembled into the Designer's system prompt, and an organisation-level style
+would put one person's free text in instruction position inside every member's
+run. `style` is durable and remembered; `instructions` describe one portrait and
+are forgotten.
 
 ## Standing up a place to work: project → team → channel
 

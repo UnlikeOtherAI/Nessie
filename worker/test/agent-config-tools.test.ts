@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { createConsumedSourceSink } from '../src/run/execute/disclosure-basis.js'
 import {
+  runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,
@@ -379,3 +380,73 @@ dbTest('a deactivated member gets nothing, read tools included', async () => {
     )
   })
 })
+
+dbTest('agent_avatar_generate asks the edit question before it spends anything', async () => {
+  await withDb(async (prisma) => {
+    // Drawing a portrait is a billed Ledger call, so the authority check has to
+    // come first — the same order `POST /api/agents/:id/avatar/generate` uses.
+    // Each of these refusals happens with a model client present, so what stops
+    // them is authority and not a missing dependency.
+    const withModel = (userId: string) => {
+      const context = buildContext(prisma, userId)
+      return Object.assign(context, {
+        modelClient: {
+          chat: async () => {
+            throw new Error('no generation may be attempted here')
+          },
+        },
+      })
+    }
+
+    assert.match(
+      await refusal(
+        runAgentAvatarGenerateTool(withModel(otherMemberUserId), {
+          agentId: personOwnedAgentId,
+        }),
+      ),
+      /owned by Designer tools 0/,
+    )
+    // A built-in agent is `Agent not found` here, not the
+    // "managed by Nessie itself" wording `agent_avatar_update` gives: the
+    // generate route runs `isAgentAccessibleToActor` before it asks about
+    // edit authority, and a system-managed agent fails that read. Mirroring
+    // the route exactly — no weaker, no stronger — is the rule; agreeing with
+    // the sibling tool's phrasing is not.
+    assert.match(
+      await refusal(
+        runAgentAvatarGenerateTool(withModel(orgOwnerUserId), {
+          agentId: designerAgentId,
+        }),
+      ),
+      /Agent not found/,
+    )
+    // An agent in another organisation is not found, never "you may not".
+    assert.match(
+      await refusal(
+        runAgentAvatarGenerateTool(withModel(stewardUserId), {
+          agentId: '00000000-0000-4000-8000-ffff00000001',
+        }),
+      ),
+      /Agent not found/,
+    )
+  })
+})
+
+dbTest('agent_avatar_generate says a deployment cannot draw rather than failing quietly', async () => {
+  await withDb(async (prisma) => {
+    // The steward may edit this agent, so the only thing left to refuse on is
+    // the missing image capability — and the person hears why.
+    const message = await refusal(
+      runAgentAvatarGenerateTool(buildContext(prisma, stewardUserId), {
+        agentId: personOwnedAgentId,
+      }),
+    )
+    assert.match(message, /Image generation is not configured/)
+    const unchanged = await prisma.agent.findUnique({
+      where: { id: personOwnedAgentId },
+      select: { avatarAttachmentId: true },
+    })
+    assert.equal(unchanged?.avatarAttachmentId, null)
+  })
+})
+
