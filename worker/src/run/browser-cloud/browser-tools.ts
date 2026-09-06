@@ -174,6 +174,38 @@ const asToolFailure = (error: unknown, acting: boolean): BrowserToolOutcome => {
   return { output: (error as Error).message, success: false }
 }
 
+/**
+ * Whether this run may open a browser somebody has signed in.
+ *
+ * A browser with any recorded login carries a person's session, so opening it
+ * needs somebody answerable for the ask. Two things make a run answerable:
+ * it is a **live human turn** (`interactive`, never automation — a schedule
+ * quietly acting inside an account is a different consent from "help me now"),
+ * and, when the jar belongs to one person, it is **that** person's turn.
+ *
+ * The trap this replaced: the check read `run.principalUserId`, which is the
+ * binding's principal and is null for every ordinary conversation with the
+ * Personal Assistant. Handing the browser back after signing in writes a
+ * synthetic login, so `loginCount > 0` from then on — and the agent was locked
+ * out of its own browser in every conversation, not merely on a schedule. The
+ * hand-over exists so the agent can pick the task back up; a gate that makes
+ * signing in a one-way door defeats the feature it was protecting.
+ */
+export const mayUseSignedInBrowser = (input: {
+  loginCount: number
+  /** True only for a live human conversational turn, never automation. */
+  interactive?: boolean
+  /** Who is taking this turn. */
+  originatingUserId?: string | null
+  /** Whose jar this is, or null when the browser is shared with a team. */
+  principalUserId: string | null
+}): boolean => {
+  if (input.loginCount <= 0) return true
+  if (input.interactive !== true) return false
+  return input.principalUserId === null
+    || input.originatingUserId === input.principalUserId
+}
+
 const runOpen = async (
   deps: CloudBrowserDeps,
   context: BrowserToolContext,
@@ -195,22 +227,43 @@ const runOpen = async (
 
     if (wantsDurable) {
       const agent = context.agentIdentity
+      const principalUserId = await resolveBrowserPrincipal(context)
       const browser = await ensureAgentBrowser(deps, {
         organizationId: context.channel.organizationId,
         agentId: context.agentId,
         agentVisibility: agent?.visibility ?? 'team',
         agentOwnerUserId: agent?.ownerUserId ?? null,
-        principalUserId: await resolveBrowserPrincipal(context),
+        principalUserId,
       })
       // An unattended run has nobody to answer for opening somebody's signed-in
       // browser, and a schedule quietly acting inside a person's account is a
       // different consent from "help me now".
-      if (browser.loginCount > 0 && !context.run.principalUserId) {
+      //
+      // "Somebody asked for this" is `run.interactive`, which is a live human
+      // turn and never automation — NOT `run.principalUserId`, which is the
+      // binding's principal and is null for every ordinary conversation with
+      // the Personal Assistant. Reading it there meant that handing the browser
+      // back after signing in — which writes a synthetic login, so
+      // `loginCount > 0` forever after — locked the agent out of its own
+      // browser in every conversation, not just on a schedule. The whole point
+      // of the hand-over is that the agent picks the task back up.
+      //
+      // A per-principal browser additionally has to be *that* person's turn: a
+      // colleague reaching the same system-managed agent must not drive a jar
+      // somebody else signed in.
+      if (!mayUseSignedInBrowser({
+        interactive: context.run.interactive,
+        loginCount: browser.loginCount,
+        originatingUserId: context.run.originatingUserId,
+        principalUserId,
+      })) {
         return {
-          output:
-            'This browser is signed in to services, so it can only be used in a '
-            + 'run somebody asked for — not on a schedule. Open a throwaway '
-            + 'browser instead, with mode "ephemeral".',
+          output: context.run.interactive === true
+            ? 'This browser is signed in to somebody else’s services, so only they '
+              + 'can use it. Open a throwaway browser instead, with mode "ephemeral".'
+            : 'This browser is signed in to services, so it can only be used in a '
+              + 'run somebody asked for — not on a schedule. Open a throwaway '
+              + 'browser instead, with mode "ephemeral".',
           success: false,
         }
       }
