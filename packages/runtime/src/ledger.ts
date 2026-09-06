@@ -323,7 +323,7 @@ export const recordInferenceUsage = async (
 
   const rows = await Promise.all(
     input.invocations.map(async (invocation) => {
-      const pairKey = `${invocation.provider} ${invocation.model}`
+      const pairKey = `${invocation.provider}\u0000${invocation.model}`
       // A personal-subscription invocation is never priced. The organization
       // did not pay for it, so an estimate here would flow straight into org
       // cost budgets and owner-facing totals as money nobody spent — and an
