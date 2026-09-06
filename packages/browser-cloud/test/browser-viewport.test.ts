@@ -95,6 +95,7 @@ const fakePrisma = (): PrismaClient => {
 const openWith = async (
   bodies: Array<Record<string, unknown>>,
   agentBrowser?: NonNullable<OpenSessionInput['agentBrowser']>,
+  runId: string | null = 'run-1',
 ): Promise<void> => {
   const deps: CloudBrowserDeps = {
     prisma: fakePrisma(),
@@ -104,7 +105,7 @@ const openWith = async (
   }
   await openCloudBrowserSession(deps, {
     organizationId: 'org-1',
-    runId: 'run-1',
+    runId,
     threadId: 'thread-1',
     agentId: 'agent-1',
     encryptionSecret: 'test-secret',
@@ -137,4 +138,30 @@ test('a throwaway session opens at the same laptop window a fresh browser gets',
   await openWith(bodies)
   assert.equal(bodies.length, 1)
   assert.deepEqual(browserSettingsOf(bodies[0]).viewport, { ...DEFAULT_BROWSER_VIEWPORT })
+})
+
+
+/**
+ * Measured against the real service on 2026-09-06: a resumed session ended two
+ * seconds after it started, at exactly the moment the restore closed its CDP
+ * socket. Browserbase stops a session when its last connection drops, so the
+ * panel then polled a session that was already gone and showed "the browser is
+ * starting up" forever — and it only ever *appeared* to work when the live
+ * view's iframe won the race to reconnect.
+ *
+ * A run is safe without this because the worker holds the socket from open to
+ * close, and asking for it there would keep a stray browser billing after a
+ * crash; the difference between the two lifetimes is the whole point.
+ */
+test('a session a person opened is kept alive; a run’s session is not', async () => {
+  const personBodies: Array<Record<string, unknown>> = []
+  await openWith(personBodies, undefined, null)
+  assert.equal(personBodies[0].keepAlive, true)
+
+  const runBodies: Array<Record<string, unknown>> = []
+  await openWith(runBodies, undefined, 'run-1')
+  assert.ok(
+    !Object.hasOwn(runBodies[0], 'keepAlive'),
+    `a run's session must not ask to outlive its worker, got ${JSON.stringify(runBodies[0].keepAlive)}`,
+  )
 })
