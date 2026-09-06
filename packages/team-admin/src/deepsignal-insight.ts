@@ -1,26 +1,34 @@
 import type { PrismaClient } from '@prisma/client'
 import type { DeepSignalSignalKind } from '@nessie/schemas'
 
-import { ensureDefaultThread } from '@nessie/team-admin'
+import { ensureDefaultThread } from './channel-records.js'
 import {
   deliverInsightToDigest,
   type DigestDeliveryMode,
   type InsightSummary,
   type SignalDigestOptions,
 } from './deepsignal-digest.js'
-import { externalAgentDmKey } from './external-agent.js'
+import { externalAgentDmKey } from './external-agent-dm-key.js'
 
 /**
  * DeepSignal proactive-insight fan-out (integration plan §6, delivery shaping
  * from deep-integration research §3).
  *
- * The webhook receiver verifies the HMAC + resolves the target org; this module
- * turns one verified `insight.surfaced` event into a *coalesced* rolling digest
- * per recipient's DeepSignal channel rather than one card per event. Idempotent
- * per insight (the id is retained on the digest message), and budgeted so a burst
- * of insights cannot firehose a user's channel. Framework-free + I/O-only-via-
- * Prisma so fan-out, coalescing, and budgeting are unit-testable without a running
- * server. Realtime notification is the route's concern — this returns what it did.
+ * The webhook receiver verifies the HMAC, resolves the target org and the
+ * payload's enabled team, and enqueues; this module — running in the worker on
+ * `deepsignal.insight.fanout` — turns one verified `insight.surfaced` event into
+ * a *coalesced* rolling digest per recipient's DeepSignal channel rather than
+ * one card per event. Idempotent per insight (the id is retained on the digest
+ * message), and budgeted so a burst of insights cannot firehose a user's
+ * channel. Framework-free + I/O-only-via-Prisma so fan-out, coalescing, and
+ * budgeting are unit-testable without a running server. Realtime notification is
+ * the caller's concern — this returns what it did.
+ *
+ * It is a package rather than an API service because the per-recipient work is
+ * the fan-out that must not sit on the request path: a team of fifty is fifty
+ * digest transactions, and an instance recycled part-way through used to lose
+ * the remainder after the sender had already been answered 2xx
+ * (docs/standards/horizontal-scaling.md § 3; audit 9.2).
  */
 
 export const DEEPSIGNAL_SLUG = 'deepsignal'
@@ -77,7 +85,13 @@ const insightKind = (payload: Record<string, unknown>): DeepSignalSignalKind | n
   return null
 }
 
-const resolveInsightId = (payload: Record<string, unknown>): string | null => {
+/**
+ * The insight's own id, from either spelling the product uses.
+ *
+ * Exported for the same reason as the team lookup: it is the enqueue's
+ * idempotency key, and a body without one is rejected 4xx rather than queued.
+ */
+export const resolveInsightId = (payload: Record<string, unknown>): string | null => {
   const brief = isRecord(payload.brief) ? payload.brief : {}
   return firstString(payload, ['insightId', 'insight_id']) ?? firstString(brief, ['insightId', 'insight_id'])
 }
@@ -88,7 +102,16 @@ type EnabledExternalTeam = {
   teamId: string
 }
 
-const resolveEnabledExternalTeam = async (
+/**
+ * The Nessie team one insight payload belongs to, or null.
+ *
+ * Exported because the receiver asks it *before* enqueuing: an unknown,
+ * disabled or mismatched team is the misconfiguration DeepSignal has to hear
+ * about on the delivery it sent, and answering 202 for an event that will fan
+ * out to nobody would hide exactly that. One indexed lookup — the fan-out is
+ * what moved off the request path, not the routing decision.
+ */
+export const resolveEnabledExternalTeam = async (
   prisma: PrismaClient,
   organizationId: string,
   payload: Record<string, unknown>,

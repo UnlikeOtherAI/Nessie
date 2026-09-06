@@ -363,6 +363,38 @@ export const TriggerEventDispatchJobPayloadSchema = z.object({
 export type TriggerEventDispatchJobPayload = z.infer<typeof TriggerEventDispatchJobPayloadSchema>
 
 /**
+ * `trigger.webhook.dispatch` queue job — one verified inbound delivery for one
+ * agent-level `webhook` trigger.
+ *
+ * The intake routes (`POST /api/triggers/webhook` and
+ * `POST /api/triggers/:triggerId/webhook`) authenticate the delivery, answer the
+ * caller's misconfiguration questions synchronously — a paused trigger and an
+ * agent bound to no channel are still 409s — and then enqueue. The fire itself
+ * (the launch-origin preflight, the UOA identity check, the delivery row, the
+ * kickoff message, the thread claim, the run and its task) runs in the worker
+ * through the same `queueTriggerRun` seam the scheduler and event dispatch use,
+ * so an instance recycled mid-fire no longer loses a delivery the sender was
+ * already told 2xx for (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+ *
+ * `dedupeKey` is the caller's delivery id (`X-Nessie-Delivery-Id`,
+ * `X-Github-Delivery`, `X-Request-Id`), or a per-request UUID when the sender
+ * offers none — exactly the key the inline path already used. It is both the
+ * enqueue's idempotency key (`trigger-webhook:<triggerId>:<dedupeKey>`) and,
+ * namespaced as `webhook:<dedupeKey>`, the `agent_trigger_deliveries` dedupe key
+ * the handler writes, so a provider retry collapses at both layers and a sender
+ * with nothing to dedupe on keeps firing every time, as it does today.
+ */
+export const TRIGGER_WEBHOOK_DISPATCH_TOPIC = 'trigger.webhook.dispatch'
+
+export const TriggerWebhookDispatchJobPayloadSchema = z.object({
+  dedupeKey: NonEmptyStringSchema,
+  payload: z.unknown(),
+  triggerId: z.string().uuid(),
+})
+export type TriggerWebhookDispatchJobPayload =
+  z.infer<typeof TriggerWebhookDispatchJobPayloadSchema>
+
+/**
  * Automatic team access after sign-in
  * (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
  *

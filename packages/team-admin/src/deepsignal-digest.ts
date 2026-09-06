@@ -21,7 +21,8 @@ import { createSystemAuthoredMessage } from './system-authored-message.js'
  * The window/budget figures below are deliberate heuristics, NOT law: the
  * ambient-agent UX literature supports "batch / don't over-notify" qualitatively
  * but no specific cadence was substantiated, so each default is overridable via
- * env (read in the route and threaded through `SignalDigestOptions`).
+ * env (read by the worker's fan-out handler and threaded through
+ * `SignalDigestOptions`).
  */
 
 const HOUR_MS = 60 * 60 * 1000

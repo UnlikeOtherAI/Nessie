@@ -17,7 +17,7 @@ import { ThreadRecordSchema } from '../contracts/messaging.js'
 import { enqueueRunExecution } from '@nessie/db'
 import { publishMessageNew } from './message-delivery.js'
 import { mapMessageRecord } from './message-read-model.js'
-import { createSystemAuthoredMessage } from './system-authored-message.js'
+import { createSystemAuthoredMessage } from '@nessie/team-admin'
 import { ensurePersonalAssistantBootstrap } from './personal-assistant.js'
 
 type UserActorContext = AuthorizedActionContext & {

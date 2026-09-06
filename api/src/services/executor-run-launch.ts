@@ -14,7 +14,7 @@ import {
 } from '@nessie/schemas'
 
 import { mapMessageRecord } from './message-read-model.js'
-import { createSystemAuthoredMessage } from './system-authored-message.js'
+import { createSystemAuthoredMessage } from '@nessie/team-admin'
 
 export type ExecutorRunLaunchResult =
   | { kind: 'agent_unavailable' }

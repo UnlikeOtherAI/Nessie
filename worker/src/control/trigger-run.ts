@@ -14,6 +14,7 @@ import {
 const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 import {
   type AgentTriggerType,
+  type TriggerFireSkipReason,
 } from '@nessie/schemas'
 import { buildAgentActorContext as buildActorContext, startAgentRun } from './agent-run-start.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
@@ -35,6 +36,26 @@ import {
 // existing `failed` delivery row instead of creating a new one, so the
 // (trigger_id, dedupe_key) uniqueness holds and backoff state accumulates.
 export type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
+
+/**
+ * Told when this fire is refused by the gate below rather than executed.
+ *
+ * Recheck-then-skip is the correct behaviour and stays: the queue is
+ * at-least-once, and a trigger can be paused, unbound or deleted between a
+ * caller's acknowledgement and the claim. What is not correct is being *silent*
+ * about it, for the one caller that was handed a handle on this fire — the
+ * webhook receiver's 202 promises its `dedupeKey` is the key
+ * `GET /api/triggers/:id/deliveries` reports, and a skip that writes no row
+ * leaves that promise unresolvable and indistinguishable from still-in-flight.
+ * So the webhook dispatcher passes a recorder and every other caller passes
+ * nothing: the scheduler sweep and event dispatch answer nobody, and a delivery
+ * row per quiet sweep tick would be noise, not diagnosis.
+ *
+ * It is deliberately a hook rather than a second copy of the gate in the
+ * webhook handler — the decision has exactly one implementation, and a
+ * diagnosis derived from a re-read would drift from it.
+ */
+export type TriggerFireSkipRecorder = (reason: TriggerFireSkipReason) => Promise<void>
 
 // Create the delivery for a fresh fire, or reuse+reset the row when retrying.
 export const upsertDelivery = async (
@@ -96,6 +117,8 @@ export const queueTriggerRun = async (
   prisma: PrismaClient,
   input: {
     dedupeKey?: string
+    /** See `TriggerFireSkipRecorder`: only the webhook dispatcher passes one. */
+    onSkipped?: TriggerFireSkipRecorder
     payload: unknown
     retry?: RetryContext
     source: string
@@ -161,6 +184,9 @@ export const queueTriggerRun = async (
     },
   })
   if (!thread || thread.channelId !== input.trigger.targetChannelId) {
+    // The same word the receiver's readiness predicate uses for a target that
+    // no longer hangs together — its 409 is `AGENT_NOT_BOUND` for this too.
+    await input.onSkipped?.('agent_not_bound')
     return
   }
 
@@ -173,6 +199,7 @@ export const queueTriggerRun = async (
       select: { id: true },
     })
     if (!binding) {
+      await input.onSkipped?.('agent_not_bound')
       return
     }
   }
