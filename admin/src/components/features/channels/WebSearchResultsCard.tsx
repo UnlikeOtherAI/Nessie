@@ -22,12 +22,13 @@ import { Pill } from '../../primitives/Pill'
  * Standard: docs/standards/web-search.md
  */
 
+// `admin-web-search-card` is what colours the result links: the unlayered
+// `a { color: inherit }` in styles.css beats any Tailwind colour utility on an
+// anchor, so the link colour has to come from a rule beside it.
 const cardShell = [
-  'mt-2 max-w-2xl rounded-[var(--radius-md)] border border-[color:var(--line)]',
-  'bg-[color:var(--panel)] p-3',
+  'admin-web-search-card mt-2 max-w-2xl rounded-[var(--radius-md)]',
+  'border border-[color:var(--sep)] bg-[color:var(--panel)] p-3',
 ].join(' ')
-
-const linkClass = 'text-[color:var(--lnk)] hover:underline'
 
 const pagerButtonClass = [
   'inline-flex h-7 items-center justify-center rounded-[var(--radius-sm)] px-2.5',
@@ -56,7 +57,7 @@ const ResultRow = ({ result }: { result: WebSearchCardResult }) => (
       <div className="truncate text-[11px] text-[color:var(--tx3)]">{result.source}</div>
     ) : null}
     <a
-      className={`block text-sm font-medium ${linkClass}`}
+      className="block text-sm font-medium"
       href={result.url}
       rel="noreferrer noopener"
       target="_blank"
@@ -82,7 +83,7 @@ const AnswerPanel = ({ card }: { card: WebSearchCard }) => {
   return (
     <div
       className={[
-        'mb-3 rounded-[var(--radius-sm)] border border-[color:var(--line)]',
+        'mb-3 rounded-[var(--radius-sm)] border border-[color:var(--sep)]',
         'bg-[color:var(--panel-soft)] p-2.5',
       ].join(' ')}
     >
@@ -94,7 +95,7 @@ const AnswerPanel = ({ card }: { card: WebSearchCard }) => {
       </p>
       {source?.url ? (
         <a
-          className={`mt-1 inline-block text-[11px] ${linkClass}`}
+          className="mt-1 inline-block text-[11px]"
           href={source.url}
           rel="noreferrer noopener"
           target="_blank"
@@ -153,7 +154,7 @@ export const WebSearchResultsCard = ({
             <p className="text-xs text-[color:var(--tx2)]">No results on this page.</p>
           )}
           {card.related?.length ? (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[color:var(--line)] pt-2.5">
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[color:var(--sep)] pt-2.5">
               <span className="text-[11px] text-[color:var(--tx3)]">Related</span>
               {card.related.map((related) => (
                 <button
@@ -176,7 +177,7 @@ export const WebSearchResultsCard = ({
         <p className="text-xs text-[color:var(--tx2)]">Searching…</p>
       )}
 
-      <div className="mt-3 flex items-center gap-2 border-t border-[color:var(--line)] pt-2.5">
+      <div className="mt-3 flex items-center gap-2 border-t border-[color:var(--sep)] pt-2.5">
         <button
           className={pagerButtonClass}
           disabled={!canGoBack || fetched.isFetching}

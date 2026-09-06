@@ -3098,6 +3098,22 @@ button.reaction-pill-active:focus-visible {
   text-underline-offset: 2px;
 }
 
+/* The search card's result links.
+   `a { color: inherit }` near the top of this file is unlayered, and an
+   unlayered rule beats every Tailwind utility regardless of specificity — so a
+   `text-[color:var(--lnk)]` on an anchor renders as body text. A card that
+   wants links to look like links has to say so here, exactly as the message
+   markdown above does. */
+.admin-web-search-card a {
+  color: var(--lnk);
+}
+
+.admin-web-search-card a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
 .admin-message-markdown .admin-message-code {
   border-radius: 4px;
   background: var(--overlay);
