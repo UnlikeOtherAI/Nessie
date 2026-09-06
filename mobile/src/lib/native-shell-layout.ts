@@ -13,7 +13,7 @@ export const NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT = 46
 // rather than letting its team and account actions crowd the corners.
 export const NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER = 32
 
-export type NativePhoneCreationAction = 'project' | 'channel' | 'agent' | 'message'
+export type NativeCreationAction = 'project' | 'channel' | 'agent' | 'message'
 
 export type NativeSafeAreaInsets = {
   bottom: number
@@ -198,9 +198,6 @@ export const getNativePhoneBottomChromeClearance = (platform: 'android' | 'ios')
   platform === 'android'
     ? ANDROID_TABLET_TAB_BAR_HEIGHT + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP
     : IPHONE_TAB_BAR_HEIGHT
-
-export const getNativePhoneComposeBottom = (bottomInset: number, platform: 'android' | 'ios'): number =>
-  bottomInset + getNativePhoneBottomChromeClearance(platform) + 18
 
 /**
  * The native frame, not a DOM selector, owns the top unsafe edge. The iPhone

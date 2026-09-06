@@ -1,7 +1,11 @@
 import { DEFAULT_TOOLBAR_STATE, type ToolbarState } from './native-toolbar-state'
 import { statusBarStyleForScheme } from '../lib/status-bar'
 import { DEFAULT_BG, parseRgb } from '../lib/webview-inject'
-import type { NativeShellMessage } from '../lib/native-shell-message'
+import {
+  isListColumnMessage,
+  type ListColumnSection,
+  type NativeShellMessage,
+} from '../lib/native-shell-message'
 import { TABS, type TabKey } from '../lib/tabs'
 
 type NativeAccount = {
@@ -17,12 +21,25 @@ type NativeAccount = {
 // about yet — reads as 0 rather than being dropped or crashing the reducer.
 export type AttentionBadges = Record<TabKey, number>
 
+/**
+ * Where the admin's pinned secondary navigation column stands, in the
+ * WebView's own coordinates, and which section it belongs to. Null until the
+ * admin reports one, and again whenever the layout has none — a phone stack,
+ * or a route without a column.
+ */
+export type NativeListColumn = {
+  left: number
+  right: number
+  section: ListColumnSection
+}
+
 export type NativeShellPresentation = {
   accent: string
   attentionBadges: AttentionBadges
   background: string
   chromeSurface: string
   inactive: string
+  listColumn: NativeListColumn | null
   nativeAccount: NativeAccount
   phoneHeaderSurface: string
   phoneHeaderText: string
@@ -45,6 +62,7 @@ export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   background: DEFAULT_BG,
   chromeSurface: '#222629',
   inactive: '#8a8f98',
+  listColumn: null,
   nativeAccount: { avatarUrl: null, focusModeEnabled: false, name: null, presence: 'offline', statusEmoji: null },
   phoneHeaderSurface: '#2b2018',
   phoneHeaderText: '#fffdf8',
@@ -83,6 +101,7 @@ export const isNativeShellPresentationMessage = (message: NativeShellMessage): b
   || message.type === 'theme'
   || message.type === 'nessie:account'
   || message.type === 'nessie:attention'
+  || message.type === 'nessie:list-column'
   || message.type === 'nessie:toolbar-state'
   || message.type === 'nessie:team'
   // LEGACY_NATIVE_SHELL: an admin bundle predating the workspace->team rename.
@@ -127,6 +146,17 @@ export const reduceNativeShellPresentation = (
   }
   if (message.type === 'nessie:attention') {
     return { ...current, attentionBadges: attentionBadges(message) }
+  }
+  // A malformed column is refused rather than retiring the one on screen: the
+  // chrome drawn over it would vanish on a message nobody can read.
+  if (message.type === 'nessie:list-column') {
+    if (!isListColumnMessage(message)) return current
+    return {
+      ...current,
+      listColumn: message.section === null
+        ? null
+        : { left: message.left, right: message.right, section: message.section },
+    }
   }
   if (message.type === 'nessie:toolbar-state') {
     return {

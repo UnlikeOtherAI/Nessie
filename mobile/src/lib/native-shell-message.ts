@@ -6,6 +6,14 @@ export type HapticKind = 'light' | 'medium' | 'heavy' | 'selection' | 'success' 
 /** The `nessie:screen` bridge message's section — mirrors `TabKey` (tabs.ts). */
 export type ScreenSection = 'channels' | 'projects' | 'knowledge' | 'admin' | 'search'
 
+/**
+ * The `nessie:list-column` bridge message's section — the four shell sections
+ * that own a pinned secondary navigation column (`SidebarSection` in
+ * admin/src/layouts/admin-shell/ResizableSidebar.tsx). Deliberately not
+ * `ScreenSection`: Search has no column of its own.
+ */
+export type ListColumnSection = 'channels' | 'projects' | 'knowledge' | 'admin'
+
 /** The `nessie:screen` bridge message's screen node type, from the surface registry. */
 export type ScreenType = 'root' | 'detail' | 'nested' | 'tabHost' | 'flow'
 
@@ -34,12 +42,15 @@ export type NativeShellMessage = {
   headerText?: string
   inactive?: string
   id?: number
+  left?: number
+  right?: number
   name?: string
   path?: string
   recentOpen?: boolean
   screenType?: string
   scheme?: string
-  section?: string
+  // Null-able because `nessie:list-column` says "no pinned column" with it.
+  section?: string | null
   state?: string
   surface?: string
   text?: string
@@ -102,6 +113,38 @@ export const isScreenMessage = (message: NativeShellMessage): message is ScreenM
   && typeof message.screenType === 'string' && SCREEN_TYPES.has(message.screenType)
   && typeof message.depth === 'number'
   && typeof message.hasBack === 'boolean'
+
+const LIST_COLUMN_SECTIONS: ReadonlySet<string> = new Set<ListColumnSection>([
+  'channels',
+  'projects',
+  'knowledge',
+  'admin',
+])
+
+/**
+ * `nessie:list-column` — where the pinned secondary navigation column stands,
+ * in the WebView's own coordinates, and which section it belongs to.
+ *
+ * The shell cannot derive this: the column is resizable, its width is a
+ * per-section preference, and only the document knows where it ended up. A
+ * `section` of null is the admin saying there is no pinned column — a phone
+ * layout, or a route that has none — and is what retires native chrome drawn
+ * over it.
+ */
+export type ListColumnMessage = NativeShellMessage & {
+  left: number
+  right: number
+  section: ListColumnSection | null
+  type: 'nessie:list-column'
+}
+
+export const isListColumnMessage = (message: NativeShellMessage): message is ListColumnMessage =>
+  message.type === 'nessie:list-column'
+  && typeof message.left === 'number' && Number.isFinite(message.left)
+  && typeof message.right === 'number' && Number.isFinite(message.right)
+  && message.right > message.left
+  && (message.section === null
+    || (typeof message.section === 'string' && LIST_COLUMN_SECTIONS.has(message.section)))
 
 export type AttentionMessage = NativeShellMessage & {
   badges: Record<string, number>

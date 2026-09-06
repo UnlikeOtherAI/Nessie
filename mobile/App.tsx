@@ -47,6 +47,7 @@ import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
   nativePhoneTabBarClearanceScript,
+  nativeListColumnClearanceScript,
   nativePushPathScript,
   nativeShellInfoScript,
   wrapNativeWebViewScript,
@@ -76,8 +77,10 @@ import {
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import { ANDROID_TABLET_TAB_BAR_BOTTOM_GAP } from './src/lib/android-tablet-dock'
+import { NATIVE_CREATION_LANE_CLEARANCE } from './src/lib/native-creation-menu'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
+import { NativeCreationMenu } from './src/components/NativeCreationMenu'
 import { MobileAdminWebView } from './src/components/MobileAdminWebView'
 import {
   NativePhoneConversationMenuChrome,
@@ -113,6 +116,9 @@ import {
   reduceNativeScreenBar,
 } from './src/lib/native-screen-bar-state'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
+// The iPad's creation lane is its list column, inset from the column's own
+// edges exactly as the phone's is from the screen's.
+const IPAD_NATIVE_CREATION_LANE_INSET = 16
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 
@@ -223,6 +229,7 @@ const Shell = (): React.JSX.Element => {
     background: bg,
     chromeSurface: ipadChromeSurface,
     inactive,
+    listColumn,
     nativeAccount,
     phoneHeaderSurface,
     phoneHeaderText,
@@ -503,6 +510,20 @@ const Shell = (): React.JSX.Element => {
   const showNativePhoneCreationActions = showNativePhoneRootLanes
     && isTabRoot
     && lastKnownScreen.section === 'channels'
+  // The iPad keeps its list column pinned beside the conversation, so the same
+  // creation control belongs to that column rather than to the window. Which
+  // section the column belongs to is the column's own answer (`nessie:list-column`),
+  // not the screen's: the reader may be standing in a conversation while the
+  // channels list is still the column beside it.
+  const ipadCreationColumn = IS_IPAD && showBar && listColumn?.section === 'channels'
+    ? listColumn
+    : null
+
+  // Hold the column's last row clear of the control floating over it.
+  useEffect(() => {
+    if (!IS_IPAD) return
+    runScript(nativeListColumnClearanceScript(ipadCreationColumn ? NATIVE_CREATION_LANE_CLEARANCE : 0))
+  }, [ipadCreationColumn, runScript])
 
   // The native frame owns all unsafe edges. In particular, a phone tab root is
   // not always a direct aside/main child in the web DOM, so relying on injected
@@ -611,7 +632,7 @@ const Shell = (): React.JSX.Element => {
           onAccountPress={nativeActions.toggleAccountMenu}
           onToggleFocusMode={nativeActions.toggleFocusMode}
           onCreationMenuOpen={nativeActions.closeTransientMenus}
-          onCreateAction={nativeActions.createFromPhoneMenu}
+          onCreateAction={nativeActions.createFromNativeMenu}
           onToolbarAction={nativeActions.runToolbarAction}
           onTeamPress={() => nativeActions.toggleTeamMenu(insets.left + 16)}
           safeTop={insets.top}
@@ -658,6 +679,24 @@ const Shell = (): React.JSX.Element => {
           windowWidth={windowWidth}
           teamAvatarUrl={nativeTeamAvatarUrl}
           teamName={ipadTeamName}
+        />
+      ) : null}
+
+      {ipadCreationColumn ? (
+        <NativeCreationMenu
+          accentColor={strongAccent}
+          dismissVersion={dismissCreationMenuVersion}
+          lane={{
+            bottom: insets.bottom,
+            left: ipadCreationColumn.left + IPAD_NATIVE_CREATION_LANE_INSET,
+            right: windowWidth - ipadCreationColumn.right + IPAD_NATIVE_CREATION_LANE_INSET,
+          }}
+          onAccentColor={phoneOnAccent}
+          onOpen={nativeActions.closeTransientMenus}
+          onSelect={nativeActions.createFromNativeMenu}
+          sheetMutedText={phoneTextMuted}
+          sheetSurface={ipadChromeSurface}
+          sheetText={phoneText}
         />
       ) : null}
     </View>

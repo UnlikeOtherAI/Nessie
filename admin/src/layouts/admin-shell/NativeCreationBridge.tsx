@@ -1,13 +1,15 @@
 import { useEffect } from 'react'
 import { isReactNativeWebView } from '../../lib/native-shell'
 
-export type NativePhoneCreationAction = 'project' | 'channel' | 'message' | 'agent'
+export type NativeCreationAction = 'project' | 'channel' | 'message' | 'agent'
 
-type NativePhoneCreationWindow = Window & {
-  __nessieCreateFromPhoneMenu?: (action: NativePhoneCreationAction) => void
+// The wire name stays `__nessieCreateFromPhoneMenu`: installed shells speak
+// it, and the control it drives is no longer phone-only.
+type NativeCreationWindow = Window & {
+  __nessieCreateFromPhoneMenu?: (action: NativeCreationAction) => void
 }
 
-type NativePhoneCreationBridgeProps = {
+type NativeCreationBridgeProps = {
   onCreateAgent: () => void
   onCreateChannel: () => void
   onCreateMessage: () => void
@@ -15,18 +17,19 @@ type NativePhoneCreationBridgeProps = {
 }
 
 /**
- * The native phone action sheet deliberately calls the same shell handlers as
- * the sidebar controls, so create permissions and dialogs remain identical.
+ * The native creation control — the iPhone's floating action, the iPad's over
+ * its channels column — deliberately calls the same shell handlers as the
+ * sidebar controls, so create permissions and dialogs remain identical.
  */
-export const NativePhoneCreationBridge = ({
+export const NativeCreationBridge = ({
   onCreateAgent,
   onCreateChannel,
   onCreateMessage,
   onCreateProject,
-}: NativePhoneCreationBridgeProps) => {
+}: NativeCreationBridgeProps) => {
   useEffect(() => {
     if (!isReactNativeWebView()) return undefined
-    const target = window as NativePhoneCreationWindow
+    const target = window as NativeCreationWindow
     target.__nessieCreateFromPhoneMenu = (action) => {
       if (action === 'project') {
         onCreateProject()

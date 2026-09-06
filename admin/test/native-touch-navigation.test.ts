@@ -156,9 +156,10 @@ test('the native phone home chrome delegates team, history, account, and Channel
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const accountPopover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
-  const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
+  const creation = readSource('../src/layouts/admin-shell/NativeCreationBridge.tsx')
   const nativeShell = readSource('../src/lib/native-shell.ts')
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
+  const creationMenu = readSource('../../mobile/src/components/NativeCreationMenu.tsx')
   const phoneCreationOptions = readSource('../../mobile/src/lib/native-creation-menu.ts')
   const phoneHeader = readSource('../../mobile/src/components/NativePhoneHeader.tsx')
   const phoneNavigationProvider = readSource('../src/layouts/admin-shell/PhoneNavigationProvider.tsx')
@@ -214,10 +215,10 @@ test('the native phone home chrome delegates team, history, account, and Channel
   assert.match(phoneNavigationProvider, /getPhoneTabRootPath\(location\.pathname\)/)
   assert.match(nativeApp, /creationAccentColor=\{strongAccent\}/)
   assert.match(nativeApp, /showCreationActions=\{showNativePhoneCreationActions\}/)
-  assert.match(phoneChrome, /const AnimatedPressable = Animated\.createAnimatedComponent\(Pressable\)/)
-  assert.match(phoneChrome, /Animated\.timing\(creationProgress,/)
-  assert.match(phoneChrome, /styles\.morphingMessageAction/)
-  assert.match(phoneChrome, /Open creation menu/)
+  assert.match(creationMenu, /const AnimatedPressable = Animated\.createAnimatedComponent\(Pressable\)/)
+  assert.match(creationMenu, /Animated\.timing\(progress,/)
+  assert.match(creationMenu, /styles\.morphingMessageAction/)
+  assert.match(creationMenu, /Open creation menu/)
   assert.match(phoneHeader, /accessibilityLabel="Back"/)
   assert.match(phoneHeader, /accessibilityLabel="Forward"/)
   assert.match(phoneHeader, /onToolbarAction\('history'\)/)
@@ -225,16 +226,20 @@ test('the native phone home chrome delegates team, history, account, and Channel
   assert.match(phoneHeader, /getNativePhoneHeaderHeight\(landscape\)/)
   assert.match(phoneHeader, /paddingHorizontal: NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER/)
   assert.doesNotMatch(phoneChrome, /openSearchOverlay/)
-  assert.match(phoneChrome, /messageActionSlot/)
-  assert.doesNotMatch(phoneChrome, /Start a new channel, project, or direct message/)
-  assert.match(phoneChrome, /createDescription: \{ fontSize: 10, lineHeight: 13 \}/)
-  assert.match(phoneChrome, /createTitle: \{ fontSize: 14, fontWeight: '700', lineHeight: 17 \}/)
-  assert.match(phoneChrome, /messageActionText: \{ fontSize: 15, fontWeight: '700', lineHeight: 18 \}/)
-  assert.match(phoneChrome, /backgroundColor: creationAccentColor/)
+  assert.match(creationMenu, /messageActionSlot/)
+  assert.doesNotMatch(creationMenu, /Start a new channel, project, or direct message/)
+  assert.match(creationMenu, /createDescription: \{ fontSize: 10, lineHeight: 13 \}/)
+  assert.match(creationMenu, /createTitle: \{ fontSize: 14, fontWeight: '700', lineHeight: 17 \}/)
+  assert.match(creationMenu, /messageActionText: \{ fontSize: 15, fontWeight: '700', lineHeight: 18 \}/)
+  assert.match(creationMenu, /backgroundColor: accentColor/)
   // The sheet's rows are data now (one Pressable over NATIVE_CREATION_OPTIONS),
   // so the copy is asserted where it lives rather than in the component.
-  assert.match(phoneChrome, /NATIVE_CREATION_OPTIONS\.map/)
-  assert.match(phoneChrome, /Message/)
+  assert.match(creationMenu, /NATIVE_CREATION_OPTIONS\.map/)
+  assert.match(creationMenu, /Message/)
+  // One control, two lanes: the phone hands it the screen, the iPad its
+  // pinned channels column.
+  assert.match(phoneChrome, /<NativeCreationMenu/)
+  assert.match(nativeApp, /<NativeCreationMenu/)
   assert.match(phoneCreationOptions, /title: 'Project'/)
   assert.match(phoneCreationOptions, /title: 'Channel'/)
   assert.match(phoneCreationOptions, /title: 'Agent'/)
@@ -353,4 +358,34 @@ test('an open project action menu dismisses when the person taps outside it', ()
 
   assert.match(projects, /className="fixed inset-0 z-\[var\(--layer-popover\)\] cursor-default"/)
   assert.match(projects, /closeProjectMenu\(\)/)
+})
+
+test('the iPad reports its pinned list column so the shell can float the creation control over it', () => {
+  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+  const column = readSource('../src/layouts/admin-shell/native-list-column.ts')
+  const resizable = readSource('../src/layouts/admin-shell/ResizableSidebar.tsx')
+  const styles = readSource('../src/styles.css')
+  const nativeApp = readSource('../../mobile/App.tsx')
+  const nativeMessage = readSource('../../mobile/src/lib/native-shell-message.ts')
+  const nativePresentation = readSource('../../mobile/src/components/native-shell-presentation.ts')
+  const nativeShell = readSource('../../mobile/src/lib/native-shell.ts')
+
+  // One bridge for both native shells: the phone's floating action and the
+  // iPad's column control call the same create handlers.
+  assert.match(shell, /nativeIPadApp \|\| nativePhoneApp \? \(\s*<NativeCreationBridge/)
+  // The column is resizable and its width is a per-section preference, so the
+  // shell is told where it stands rather than deriving it.
+  assert.match(resizable, /useNativeListColumnBridge\(sidebarRef, section\)/)
+  assert.match(column, /type: LIST_COLUMN_MESSAGE_TYPE/)
+  assert.match(column, /new ResizeObserver\(report\)/)
+  // Unmounting retires the column, so native chrome drawn over it never
+  // outlives the column itself.
+  assert.match(column, /post\(RETIRED_LIST_COLUMN\)/)
+  assert.match(nativeMessage, /isListColumnMessage/)
+  assert.match(nativePresentation, /listColumn: message\.section === null/)
+  // The control belongs to the channels column, whatever screen is beside it.
+  assert.match(nativeApp, /listColumn\?\.section === 'channels'/)
+  assert.match(nativeApp, /nativeListColumnClearanceScript\(/)
+  assert.match(nativeShell, /--nessie-native-list-column-clearance/)
+  assert.match(styles, /--nessie-native-list-column-clearance, 0px/)
 })
