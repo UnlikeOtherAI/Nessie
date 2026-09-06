@@ -97,6 +97,144 @@ export const probeGcloud = async (): Promise<ProviderProbe> => {
   }
 }
 
+const gcloudLaunchConfig = (context: ProvisioningContext): Record<string, unknown> =>
+  mergeLaunchConfig(context.instance.template.launchConfig, context.instance.launchConfig)
+
+// Where a target's name came from, which decides whether the reference may be
+// written to the instance row before the machine exists. `instance-id` means
+// the name is `buildGcloudInstanceName(instance.id)` and therefore belongs to
+// exactly one instance row. `launch-config` means it was pinned — see
+// `deriveGcloudProviderInstanceRef`.
+type GcloudNameSource = 'instance-id' | 'launch-config'
+
+type GcloudVmTarget = {
+  metadata: Record<string, unknown>
+  name: string
+  nameSource: GcloudNameSource
+  projectId: string
+  providerInstanceRef: string
+  zone: string
+}
+
+type GcloudFunctionTarget = {
+  image: string
+  jobName: string
+  metadata: Record<string, unknown>
+  nameSource: GcloudNameSource
+  projectId: string
+  providerInstanceRef: string
+  region: string
+}
+
+// The single place a `gcloud:vm:…` reference is spelled, and the single place
+// the VM's name is decided. `buildGcloudVmArgs` and
+// `deriveGcloudProviderInstanceRef` both go through it, so the reference
+// written to the instance row *before* `gcloud compute instances create` runs
+// and the one written after it returns cannot drift apart. It also reports
+// where the name came from, which is what lets the pre-provision write refuse a
+// name the instance row does not own. Returns null when the launch config
+// cannot name a target; the caller decides whether that is a provisioning error
+// or simply nothing to derive.
+const resolveGcloudVmTarget = (
+  context: ProvisioningContext,
+  config: Record<string, unknown>,
+): GcloudVmTarget | null => {
+  const projectId = parseString(config['projectId'])
+  const zone = parseString(config['zone'])
+  if (!projectId || !zone) {
+    return null
+  }
+
+  const pinnedName = parseString(config['instanceName'])
+  const name = pinnedName ?? buildGcloudInstanceName(context.instance.id)
+
+  return {
+    metadata: {
+      instanceName: name,
+      projectId,
+      zone,
+    },
+    name,
+    nameSource: pinnedName ? 'launch-config' : 'instance-id',
+    projectId,
+    providerInstanceRef: `gcloud:vm:${projectId}:${zone}:${name}`,
+    zone,
+  }
+}
+
+// The same contract for Cloud Run jobs: one spelling of `gcloud:function:…`,
+// one decision about `jobName`, shared by the deploy/execute arg builder and
+// the pre-provision derivation.
+const resolveGcloudFunctionTarget = (
+  context: ProvisioningContext,
+  config: Record<string, unknown>,
+): GcloudFunctionTarget | null => {
+  const projectId = parseString(config['projectId'])
+  const region = parseString(config['region'])
+  const image = parseString(config['image']) ?? context.instance.template.image ?? undefined
+  if (!projectId || !region || !image) {
+    return null
+  }
+
+  const pinnedName = parseString(config['jobName'])
+  const jobName = pinnedName ?? buildGcloudInstanceName(context.instance.id)
+
+  return {
+    image,
+    jobName,
+    metadata: {
+      jobName,
+      projectId,
+      region,
+    },
+    nameSource: pinnedName ? 'launch-config' : 'instance-id',
+    projectId,
+    providerInstanceRef: `gcloud:function:${projectId}:${region}:${jobName}`,
+    region,
+  }
+}
+
+// The reference a gcloud provision *will* create, computed before the provider
+// is called, so `allocateExecutionEnvironmentInstance` can record the intent
+// before the side effect. It comes from the same `resolveGcloud*Target` the
+// provision uses, so the string written beforehand and the one
+// `persistProvisionSuccess` overwrites it with cannot drift.
+//
+// Derived only when the name is `buildGcloudInstanceName(instance.id)`. A
+// pinned `instanceName`/`jobName` derives NOTHING, and that refusal is the
+// whole point: the pin lives on the template, so every instance launched from
+// that template resolves the identical name. Writing it early would make one
+// instance's row name a machine another instance's row also names. Instance A
+// provisions `builder` and is running; instance B derives the same reference,
+// gcloud rejects its create as already-exists, B is marked failed — and any
+// later terminate of B, user-requested or enqueued by the lease sweep, would
+// delete A's live VM. A reference the row cannot own exclusively is worse than
+// no reference: the sweep's job is to reclaim an abandoned machine, never to
+// take a healthy one with it. So a pinned-name template keeps exactly the
+// behaviour it had before this write existed — the reference appears only after
+// a provision that actually succeeded, in `persistProvisionSuccess`.
+//
+// Null also means an incomplete launch config (the provision is about to throw
+// over the same fields) or a mode this provider does not implement.
+export const deriveGcloudProviderInstanceRef = (
+  context: ProvisioningContext,
+): string | null => {
+  const config = gcloudLaunchConfig(context)
+
+  const target =
+    context.instance.template.mode === 'vm'
+      ? resolveGcloudVmTarget(context, config)
+      : context.instance.template.mode === 'function'
+        ? resolveGcloudFunctionTarget(context, config)
+        : null
+
+  if (!target || target.nameSource !== 'instance-id') {
+    return null
+  }
+
+  return target.providerInstanceRef
+}
+
 const buildGcloudVmArgs = async (
   context: ProvisioningContext,
 ): Promise<{
@@ -105,17 +243,13 @@ const buildGcloudVmArgs = async (
   metadata: Record<string, unknown>
   providerInstanceRef: string
 }> => {
-  const config = mergeLaunchConfig(
-    context.instance.template.launchConfig,
-    context.instance.launchConfig,
-  )
-  const projectId = parseString(config['projectId'])
-  const zone = parseString(config['zone'])
-  if (!projectId || !zone) {
+  const config = gcloudLaunchConfig(context)
+  const target = resolveGcloudVmTarget(context, config)
+  if (!target) {
     throw new Error('GCLOUD_VM_PROJECT_AND_ZONE_REQUIRED')
   }
+  const { name, projectId, zone } = target
 
-  const name = parseString(config['instanceName']) ?? buildGcloudInstanceName(context.instance.id)
   const args = [
     'compute',
     'instances',
@@ -223,12 +357,8 @@ const buildGcloudVmArgs = async (
   return {
     args,
     cleanup,
-    metadata: {
-      instanceName: name,
-      projectId,
-      zone,
-    },
-    providerInstanceRef: `gcloud:vm:${projectId}:${zone}:${name}`,
+    metadata: target.metadata,
+    providerInstanceRef: target.providerInstanceRef,
   }
 }
 
@@ -240,18 +370,13 @@ const buildGcloudFunctionArgs = (
   metadata: Record<string, unknown>
   providerInstanceRef: string
 } => {
-  const config = mergeLaunchConfig(
-    context.instance.template.launchConfig,
-    context.instance.launchConfig,
-  )
-  const projectId = parseString(config['projectId'])
-  const region = parseString(config['region'])
-  const image = parseString(config['image']) ?? context.instance.template.image ?? undefined
-  if (!projectId || !region || !image) {
+  const config = gcloudLaunchConfig(context)
+  const target = resolveGcloudFunctionTarget(context, config)
+  if (!target) {
     throw new Error('GCLOUD_FUNCTION_PROJECT_REGION_IMAGE_REQUIRED')
   }
+  const { image, jobName, projectId, region } = target
 
-  const jobName = parseString(config['jobName']) ?? buildGcloudInstanceName(context.instance.id)
   const env = parseStringRecord(config['env'])
   const tasks = parseString(config['tasks'])
   const maxRetries = parseString(config['maxRetries'])
@@ -268,12 +393,8 @@ const buildGcloudFunctionArgs = (
   return {
     deployArgs,
     executeArgs,
-    metadata: {
-      jobName,
-      projectId,
-      region,
-    },
-    providerInstanceRef: `gcloud:function:${projectId}:${region}:${jobName}`,
+    metadata: target.metadata,
+    providerInstanceRef: target.providerInstanceRef,
   }
 }
 

@@ -1,10 +1,69 @@
 import { type PrismaClient } from '@prisma/client'
 import { finalizeLease } from './leases.js'
 import { mergeMetadata } from './metadata.js'
+import { deriveProviderInstanceRef } from './providers.js'
+import { enqueueAbandonedMachineTermination } from './reclaim.js'
 import { recordExecutionUsage } from './usage-ledger.js'
 import { buildWorkflowInstanceOutput, maybeContinueWorkflowForInstance } from './workflow-continuation.js'
 import type { ProviderProvisionResult, ProvisioningContext, TerminationContext } from './types.js'
 
+// Record the intent before the side effect.
+//
+// `persistProvisionSuccess` below is the only other writer of
+// `provider_instance_ref`, and it commits in the same transaction that finishes
+// the lease — so between `provisionProviderInstance` creating a real VM and
+// that transaction landing, a killed worker used to leave a machine running
+// with nothing in the database naming it. `expireExecutionLeases` detects
+// exactly that abandonment, but it can only enqueue a terminate for an instance
+// that carries a reference, so the one crash the sweep exists to catch was the
+// one crash it could never act on. Writing the derived reference first is what
+// closes that window.
+//
+// The window this opens instead is safe: the row briefly names a machine that
+// may never be created. A terminate for one reaches `terminateGcloud`, which
+// swallows a `not found` from `gcloud … delete` as already-gone, so the sweep
+// still ends at an honest `terminated` row rather than an error.
+//
+// Gated on `pending`/`provisioning` like every other write in this path, so a
+// concurrent termination that already moved the row off provisioning is not
+// overwritten. `persistProvisionSuccess` later writes the identical string.
+export const persistDerivedProviderInstanceRef = async (
+  prisma: PrismaClient,
+  context: ProvisioningContext,
+): Promise<void> => {
+  const providerInstanceRef = deriveProviderInstanceRef(context)
+  if (!providerInstanceRef) {
+    return
+  }
+
+  await prisma.executionEnvironmentInstance.updateMany({
+    where: {
+      id: context.instance.id,
+      status: {
+        in: ['pending', 'provisioning'],
+      },
+    },
+    data: {
+      providerInstanceRef,
+    },
+  })
+}
+
+// A provider that throws has not necessarily created nothing. `provisionGcloud`
+// runs two commands for a Cloud Run job — `deploy` then `execute` — so a throw
+// from the second leaves a deployed job behind; a VM create can return an error
+// after the instance exists. This path used to mark the instance `failed` and
+// stop: the lease was finalized in the same transaction, so the sweep would
+// never see it, and the machine ran forever with a terminal row naming it.
+//
+// It could not have done better before, because the row carried no reference
+// until a provision succeeded. Now that `persistDerivedProviderInstanceRef` has
+// written the address the provider was about to use, the failure path can reap
+// what it may have created — through the same terminate the lease sweep
+// enqueues, not a second mechanism, so both go through one host-independence
+// rule and one idempotency key. The terminate is harmless when the machine was
+// never created: `terminateGcloud` swallows a `not found` from
+// `gcloud … delete` as already-gone.
 export const markProvisionFailure = async (
   prisma: PrismaClient,
   context: ProvisioningContext,
@@ -17,6 +76,13 @@ export const markProvisionFailure = async (
     await finalizeLease(tx, {
       leaseId: context.leaseId,
       status: 'completed',
+    })
+
+    // Read the row, not `context.instance`: the reference was written after the
+    // context was loaded, by `persistDerivedProviderInstanceRef`.
+    const current = await tx.executionEnvironmentInstance.findUnique({
+      where: { id: context.instance.id },
+      select: { providerInstanceRef: true },
     })
 
     const failedUpdate = await tx.executionEnvironmentInstance.updateMany({
@@ -38,7 +104,22 @@ export const markProvisionFailure = async (
       },
     })
 
-    return failedUpdate.count === 1
+    if (failedUpdate.count !== 1) {
+      return false
+    }
+
+    // Gated on this transaction being the one that made the row terminal, for
+    // the same reason the sweep is: a row someone else has driven to `ready`
+    // names a machine that is running fine, and must not be reclaimed.
+    await enqueueAbandonedMachineTermination(tx, {
+      instanceId: context.instance.id,
+      organizationId: context.instance.organizationId,
+      provider: context.instance.template.provider,
+      providerInstanceRef: current?.providerInstanceRef ?? null,
+      reason: 'provision-failed',
+    })
+
+    return true
   })
 
   if (updated) {
@@ -154,7 +235,13 @@ export const persistTermination = async (
     await tx.executionEnvironmentInstance.update({
       where: { id: context.instance.id },
       data: {
-        errorMessage: null,
+        // Terminating a machine does not un-fail the instance. Both reclaim
+        // paths — the lease sweep and `markProvisionFailure` — mark the row
+        // `failed` with why, then enqueue this terminate; clearing the message
+        // here would leave an operator with a `terminated` row and no record of
+        // what went wrong. A normal termination of a healthy instance has no
+        // message to keep.
+        errorMessage: context.instance.status === 'failed' ? context.instance.errorMessage : null,
         lastHeartbeatAt: now,
         metadata: mergeMetadata(context.instance.metadata, {
           terminationRequestedAt: null,

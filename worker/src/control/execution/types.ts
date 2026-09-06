@@ -48,6 +48,7 @@ export type TerminationContext = {
   instance: {
     agentId: string | null
     channelId: string | null
+    errorMessage: string | null
     id: string
     launchConfig: unknown
     launchedByActorId: string

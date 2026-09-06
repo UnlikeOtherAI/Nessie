@@ -5,7 +5,12 @@ import {
   localOnlyGateMode,
 } from '@nessie/config'
 import { probeDocker, provisionDocker, terminateDocker } from './docker-provider.js'
-import { probeGcloud, provisionGcloud, terminateGcloud } from './gcloud-provider.js'
+import {
+  deriveGcloudProviderInstanceRef,
+  probeGcloud,
+  provisionGcloud,
+  terminateGcloud,
+} from './gcloud-provider.js'
 import type {
   ExecutionProvider,
   ProviderProbe,
@@ -55,6 +60,26 @@ export const probeProvider = async (provider: ExecutionProvider): Promise<Provid
 
   return probeGcloud()
 }
+
+// The provider reference this provisioning would create, knowable before the
+// provider is called — so a worker that dies mid-provision can still leave the
+// instance row pointing at the machine it was about to launch.
+//
+// Answered only where the name belongs to this instance row and to no other.
+// `gcloud` can answer when it is naming the machine after the instance id; it
+// declines for a pinned `instanceName`/`jobName`, which every instance from
+// that template would share (`deriveGcloudProviderInstanceRef`). A `docker`
+// reference is the container id `docker run` prints, which does not exist until
+// the container does, so docker returns null.
+//
+// Null keeps exactly the behaviour that predates this write: the reference
+// appears only after a provision that succeeded, an instance abandoned
+// mid-provision carries none, and the lease sweep records the ordinary
+// `EXECUTION_LEASE_EXPIRED` without enqueuing a terminate it cannot aim.
+export const deriveProviderInstanceRef = (context: ProvisioningContext): string | null =>
+  context.instance.template.provider === 'docker'
+    ? null
+    : deriveGcloudProviderInstanceRef(context)
 
 export const provisionProviderInstance = async (
   context: ProvisioningContext,

@@ -41,6 +41,9 @@ const dockerTemplate = {
 const instance = {
   agentId: null,
   channelId: null,
+  // Carried on the termination context since a reclaim must be able to read why
+  // a failed provision failed; `persistTermination` no longer nulls it.
+  errorMessage: null,
   id: 'instance-1',
   launchConfig: {},
   launchedByActorId: 'actor-1',

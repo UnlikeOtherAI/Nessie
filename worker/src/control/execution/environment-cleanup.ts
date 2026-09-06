@@ -9,6 +9,9 @@ export const cleanupProvisionedInstance = async (
     await terminateProviderInstance({
       instance: {
         ...context.instance,
+        // Inert here: this path calls the provider's terminate directly and
+        // never `persistTermination`, so nothing reads it back onto the row.
+        errorMessage: null,
         readyAt: provisioned.status === 'ready' ? new Date() : null,
         providerInstanceRef: provisioned.providerInstanceRef,
         terminatedAt: provisioned.status === 'terminated' ? new Date() : null,

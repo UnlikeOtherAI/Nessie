@@ -40,8 +40,7 @@ const NessieConfig = z.object({
     localPath: z.string().optional(),
   }),
   queue: z.object({
-    provider: z.enum(['pubsub', 'local']),
-    projectId: z.string().optional(),
+    provider: z.enum(['local']),
   }),
 });
 ```
@@ -79,18 +78,16 @@ Services should branch on capability flags, not raw config internals.
 type RuntimeCapabilities = {
   hasObjectStorage: boolean;
   hasExternalAuth: boolean;
-  hasPubSub: boolean;
 };
 ```
 
 Rules:
 
-- there is deliberately no `hasRedis`: Postgres is the queue and the realtime
-  bus (docs/standards/horizontal-scaling.md), so no service has a Redis branch
-  to take
+- there is deliberately no `hasRedis` and no `hasPubSub`: Postgres is the queue
+  and the realtime bus (docs/standards/horizontal-scaling.md), so no service has
+  a Redis or Pub/Sub branch to take, and `queue.provider` has one legal value
 - `hasObjectStorage = false` means filesystem adapter is active
 - `hasExternalAuth = false` means bootstrap/local auth flow is active
-- `hasPubSub = false` means in-process/local queue mode is active
 - the launcher and `nessie local doctor` must read the same capability model
 
 ## 5) Phase 1 requirement
