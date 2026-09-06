@@ -28,7 +28,14 @@ export const ResolvedSettingListSchema = z.object({
 export const WriteScopedSettingBodySchema = z
   .object({
     scope: SettingScopeSchema,
-    teamId: z.string().uuid().optional(),
+    /**
+     * Nullable as well as optional: a caller that holds "the team, if any" in
+     * one variable sends it as null at organisation and personal scope, and a
+     * `.strict()` `.optional()` refused that with "Expected string, received
+     * null" — which is how every press of the organisation's lock checkbox
+     * failed, since the panel is one component for all three scopes.
+     */
+    teamId: z.string().uuid().nullish(),
     value: z.unknown().optional(),
     locked: z.boolean(),
   })

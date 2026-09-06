@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
 import { browserCloudKeys } from '../../../facades/browser-cloud/keys'
+import { useBrowserControl } from '../../../facades/browser-cloud/hooks'
 import { LOCAL_BACK_PRIORITY, useLocalBack } from '../../../navigation/LocalBackContext'
 import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
@@ -59,6 +60,12 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
   const phoneLayout = useNavigationLayout() === 'single'
   const queryClient = useQueryClient()
   const [fullscreen, setFullscreen] = useState(false)
+  // Held here rather than in the viewer, which is remounted by every trip in
+  // and out of full screen. The claim used to unmount with it and hand the
+  // keyboard straight back to the agent, so leaving full screen mid-sign-in
+  // dropped the reader out of the browser they were typing into. The panel
+  // outlives both faces, so the claim now follows the *session*.
+  const control = useBrowserControl(sessionId)
   // A resume is "open it for me": the resumed session arrives a poll later,
   // and when *that* session — not whichever the thread lists first — is the
   // one on screen, the panel goes full screen and claims the controls, which
@@ -73,12 +80,13 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
       setAwaitingSessionId(null)
     }
   }, [awaitingSessionId, sessionId])
-  // Leaving full screen unmounts the viewer, whose once-guard is a ref that
-  // resets on remount; a claim intent left standing would take the controls
-  // again the next time the person opened full screen by hand.
+  // The intent is retired when the *session* goes, not when full screen does:
+  // a resumed browser is still the reader's to drive once it is a column
+  // again, and dropping the intent on the way out was half of why shrinking
+  // it looked like a browser that had stopped.
   useEffect(() => {
-    if (!fullscreen) setClaimForPerson(false)
-  }, [fullscreen])
+    if (sessionId === null) setClaimForPerson(false)
+  }, [sessionId])
   // The rows behind the idle face change exactly when a session ends, and
   // the face would otherwise be served last time's tabs from the cache.
   const previousSessionId = useRef(sessionId)
@@ -186,6 +194,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
             <AgentScreenViewer
               agent={agent}
               claimOnLive={claimForPerson}
+              control={control}
               onDone={overlay.requestClose}
               sessionId={sessionId}
               threadId={threadId}
@@ -243,7 +252,13 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
           threadId={threadId}
         />
       ) : (
-        <AgentScreenViewer agent={agent} sessionId={sessionId} threadId={threadId} variant="panel" />
+        <AgentScreenViewer
+          agent={agent}
+          control={control}
+          sessionId={sessionId}
+          threadId={threadId}
+          variant="panel"
+        />
       )}
     </SidePanelShell>
   )

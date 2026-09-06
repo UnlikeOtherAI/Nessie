@@ -69,6 +69,14 @@ export const CloudBrowserSessionListSchema = z.object({
  * session lives.
  */
 export const CloudBrowserSessionDetailSchema = CloudBrowserSessionSummarySchema.extend({
+  /**
+   * Whether anything signed in through this session is shared with other
+   * people. True only for a durable browser with no principal — a team
+   * agent's one jar. A per-person browser (every system-managed agent's, so
+   * the Personal Assistant's) and a throwaway session are both false, and the
+   * viewer must not tell their driver otherwise.
+   */
+  shared: z.boolean(),
   liveViewUrl: z.string().url().nullable(),
   tabs: z.array(z.object({
     id: z.string(),

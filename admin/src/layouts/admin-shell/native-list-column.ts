@@ -1,5 +1,9 @@
 import { useEffect, type RefObject } from 'react'
 import { isReactNativeWebView } from '../../lib/native-shell'
+import {
+  nativeChromeSuspended,
+  subscribeNativeChromeSuspended,
+} from '../../navigation/full-bleed-layers'
 import type { SidebarSection } from './ResizableSidebar'
 
 type RnWindow = Window & {
@@ -63,7 +67,12 @@ export const useNativeListColumnBridge = (
 
     let posted: ListColumnMessage | null = null
     const report = (): void => {
-      const next = describeListColumn(section, column.getBoundingClientRect())
+      // A full-bleed layer hides the column without unmounting it. Reporting
+      // its geometry anyway left the shell drawing the creation control over
+      // the top of a full-screen browser — a `+` for a list nobody could see.
+      const next = nativeChromeSuspended()
+        ? RETIRED_LIST_COLUMN
+        : describeListColumn(section, column.getBoundingClientRect())
       if (samePosition(posted, next)) return
       posted = next
       post(next)
@@ -72,9 +81,11 @@ export const useNativeListColumnBridge = (
     const observer = new ResizeObserver(report)
     observer.observe(column)
     window.addEventListener('resize', report)
+    const unsubscribe = subscribeNativeChromeSuspended(report)
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', report)
+      unsubscribe()
       post(RETIRED_LIST_COLUMN)
     }
   }, [columnRef, section])

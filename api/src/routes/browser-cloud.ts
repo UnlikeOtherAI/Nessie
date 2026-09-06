@@ -61,6 +61,24 @@ const browserScopeFor = async (
   return { principalUserId: agent.systemManaged ? input.viewerId : null }
 }
 
+/**
+ * Whether signing in through a session signs in for other people too.
+ *
+ * The sentence the viewer shows above a sign-in box is this answer, so it has
+ * one home. Three ways it is false: the session keeps nothing (no durable
+ * browser behind it), the jar belongs to one person (a system-managed agent's,
+ * since browsers became per-principal), or only the owner can reach the agent.
+ * It used to be read off the agent's visibility alone, which said "shared" for
+ * the Personal Assistant — an agent everyone meets, whose browser nobody
+ * shares.
+ */
+export const browserSessionIsShared = (input: {
+  /** Null when the browser is one jar for everyone; absent when there is none. */
+  principalUserId?: string | null
+  agentVisibility: string
+}): boolean =>
+  input.principalUserId === null && input.agentVisibility !== 'private'
+
 /** The site a URL is on, for a reader who may know where but not what. */
 const originOf = (url: string): string => {
   try {
@@ -105,6 +123,12 @@ export interface ViewableCloudBrowserSession {
   browserbaseSessionId: string | null
   connectionProjectId: string | null
   connectionApiKeyRef: string
+  /**
+   * Whether signing in here is signing in for other people too. A durable
+   * browser with a principal belongs to that one person, so it is not shared
+   * however visible the agent is; a throwaway session persists nothing.
+   */
+  shared: boolean
 }
 
 const loadViewableSession = async (
@@ -133,7 +157,8 @@ const loadViewableSession = async (
       endedAt: true,
       controlledByUserId: true,
       browserbaseSessionId: true,
-      agent: { select: { name: true } },
+      agent: { select: { name: true, visibility: true } },
+      agentBrowser: { select: { principalUserId: true } },
       connection: { select: { projectId: true, apiKeyRef: true } },
     },
   })
@@ -168,6 +193,10 @@ const loadViewableSession = async (
     browserbaseSessionId: session.browserbaseSessionId,
     connectionProjectId: session.connection.projectId,
     connectionApiKeyRef: session.connection.apiKeyRef,
+    shared: browserSessionIsShared({
+      agentVisibility: session.agent.visibility,
+      principalUserId: session.agentBrowser?.principalUserId,
+    }),
   }
 }
 
@@ -418,6 +447,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         startedAt: session.startedAt.toISOString(),
         endedAt: session.endedAt?.toISOString() ?? null,
         controlledByUserId: session.controlledByUserId,
+        shared: session.shared,
         liveViewUrl,
         tabs,
       }),

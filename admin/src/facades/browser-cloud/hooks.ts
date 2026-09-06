@@ -199,7 +199,21 @@ export const useMyBrowserLogins = () => {
  * team's browser hostage; this renews it while the viewer is mounted and
  * hands back on unmount.
  */
-export const useBrowserControl = (sessionId: string | null) => {
+/**
+ * The claim, as its holder sees it. Named because the browser panel owns the
+ * claim and hands it to whichever face is on screen: the viewer must not call
+ * the hook itself, or going full screen and back would unmount the claim and
+ * hand the keyboard back to the agent mid-sentence.
+ */
+export type BrowserControl = {
+  controlling: boolean
+  error: unknown
+  handBack: () => void
+  pending: boolean
+  take: () => void
+}
+
+export const useBrowserControl = (sessionId: string | null): BrowserControl => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   const [controlling, setControlling] = useState(false)

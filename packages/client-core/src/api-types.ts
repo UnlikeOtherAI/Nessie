@@ -503,6 +503,8 @@ export type CloudBrowserSessionSummary = {
 }
 
 export type CloudBrowserSessionDetail = CloudBrowserSessionSummary & {
+  /** Anything signed in here is visible to other people. */
+  shared: boolean
   /** Minted per read, never persisted: whoever holds it can drive the browser. */
   liveViewUrl: string | null
   tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }>

@@ -129,6 +129,16 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `native-shell-presentation.ts` keeps it as `listColumn`; a malformed message
   is refused rather than retiring the column on screen.
 
+  **A full-bleed layer retires it too.** Native chrome cannot see a web
+  overlay, and a modal covers the column without unmounting it — so a bridge
+  that kept reporting geometry left the iPad's `+` floating over the
+  full-screen browser, a control for a list that was no longer on screen.
+  `useOverlay` holds a count for every open `kind: 'modal'`
+  (`admin/src/navigation/full-bleed-layers.ts`) and the bridge posts the
+  retired message while that count is above zero. A count, not a flag, because
+  overlays nest: a dialog opened from inside a full-screen layer must not
+  un-suspend the chrome when it closes.
+
 - **The creation control is one component in two lanes.**
   `mobile/src/components/NativeCreationMenu.tsx` is the compose button that
   morphs into the sheet's Message row, and it is laid out inside whichever
