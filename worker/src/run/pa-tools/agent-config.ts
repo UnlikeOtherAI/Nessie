@@ -1,22 +1,30 @@
 import { loadConfig } from '@nessie/config'
 import {
   AgentAvatarBackgroundColorSchema,
+  AgentAvatarStyleSchema,
   AgentEffortSchema,
   AgentRunLimitsSchema,
 } from '@nessie/schemas'
 import {
+  assertAgentEditAuthority,
   assertAgentModelSelection,
+  generateAgentAvatar,
+  isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
   loadAgentToolCatalog,
   readAgentRecordForActor,
+  resolveAgentAvatarStyle,
+  styleForGeneration,
   updateAgentAvatar,
   updateAgentRecord,
+  writeAgentAvatarStyle,
   type AgentConfigProjection,
   type AgentToolCatalogEntry,
   type AgentToolCatalogRestrictedEntry,
 } from '@nessie/team-admin'
 import { z } from 'zod'
 
+import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
@@ -331,5 +339,134 @@ export const runAgentAvatarUpdateTool = async (
       ? `Set the portrait for "${agent.name}".`
       : `Cleared the portrait for "${agent.name}".`,
     toolName: 'agent_avatar_update',
+  }
+}
+
+const AgentAvatarGenerateInputSchema = z.object({
+  agentId: z.string().uuid(),
+  instructions: z.string().trim().min(1).max(1_000).optional(),
+  style: AgentAvatarStyleSchema.optional(),
+})
+
+/**
+ * Draw an agent a new portrait, the same billed generation the avatar dialog
+ * runs, and set it.
+ *
+ * `POST /api/agents/:agentId/avatar/generate` followed by
+ * `PATCH /api/agents/:agentId/avatar` is exactly what a person does in that
+ * dialog: generate a preview, then keep it. Both routes gate on
+ * `assertAgentEditAuthority` / `canEditAgent` over the same row, so mirroring
+ * them is one authority check and the two shared functions they call. The
+ * conversation has no preview step to accept — the picture arrives in the
+ * agent's tile — so the tool completes both halves rather than inventing a
+ * third state a person would have to confirm.
+ *
+ * A named `style` is the person's durable taste and is remembered through the
+ * settings cascade; `instructions` describe this one portrait and are not.
+ * Remembering is best-effort: an organisation that locked a house style refuses
+ * the write, and the portrait it just drew is still theirs.
+ */
+export const runAgentAvatarGenerateTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = AgentAvatarGenerateInputSchema.parse(input)
+  const member = await resolveActingMember(context)
+
+  const agent = await context.prisma.agent.findFirst({
+    where: { id: args.agentId, organizationId: member.organizationId },
+    select: {
+      id: true,
+      name: true,
+      organizationId: true,
+      ownerUserId: true,
+      role: true,
+      systemManaged: true,
+      systemPrompt: true,
+      visibility: true,
+    },
+  })
+  // Same order as the route: an agent this person cannot reach is not found,
+  // and only then is the question whether they may rewrite it.
+  if (
+    !agent
+    || !(await isAgentAccessibleToActor(
+      context.prisma,
+      member.actorContext,
+      args.agentId,
+    ))
+  ) {
+    throw new Error('Agent not found.')
+  }
+  await assertAgentEditAuthority(
+    context.prisma,
+    { organizationId: member.organizationId, userId: member.userId },
+    agent,
+  )
+
+  if (!context.modelClient) {
+    throw new Error(
+      'Image generation is not configured on this deployment, so no portrait '
+      + 'can be drawn here. The agent keeps its tile colour.',
+    )
+  }
+
+  const target = {
+    organizationId: member.organizationId,
+    teamId: context.actorContext.tenant.teamId ?? null,
+    userId: member.userId,
+  }
+  const remembered = await resolveAgentAvatarStyle(context.prisma, target)
+  const { pinned, style } = styleForGeneration(remembered, args.style)
+
+  const generated = await generateAgentAvatar({
+    actorContext: member.actorContext,
+    agent: {
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      systemPrompt: agent.systemPrompt,
+    },
+    config: loadConfig().model,
+    fileService: fileServiceFor(context.prisma),
+    ...(args.instructions ? { instructions: args.instructions } : {}),
+    ledgerIdentity: context.ledgerIdentity,
+    modelClient: context.modelClient,
+    ...(style ? { style } : {}),
+  })
+
+  const updated = await updateAgentAvatar(
+    context.prisma,
+    args.agentId,
+    { organizationId: member.organizationId, userId: member.userId },
+    generated.avatarAttachmentId,
+    generated.avatarBackgroundColor,
+  )
+  if (!updated) {
+    throw new Error('Agent not found.')
+  }
+
+  let remembrance = ''
+  if (pinned && args.style && args.style !== style) {
+    remembrance =
+      ` The style is pinned at the ${remembered.lockedAtScope} level, so the `
+      + 'portrait follows that rather than the one asked for. Say so.'
+  } else if (args.style && args.style !== remembered.style) {
+    try {
+      await writeAgentAvatarStyle(context.prisma, { ...target, style: args.style })
+      remembrance = ` Saved "${args.style}" as their portrait style for next time.`
+    } catch (error) {
+      remembrance =
+        ' The picture is set, but their style preference could not be saved: '
+        + `${error instanceof Error ? error.message : 'unknown error'}`
+    }
+  }
+
+  return {
+    inputSummary: `agentId=${args.agentId}${args.style ? ` style="${args.style}"` : ''}`,
+    outputPreview:
+      `Drew and set a new portrait for "${updated.name}"`
+      + `${style ? ` in the ${style} style` : ''}.${remembrance}`,
+    toolName: 'agent_avatar_generate',
   }
 }

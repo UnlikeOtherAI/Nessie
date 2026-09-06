@@ -1,6 +1,13 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
+import {
+  SETTING_KEYS,
+  settingFor,
+  useScopedSettings,
+  useWriteScopedSetting,
+} from '../../../facades/settings/hooks'
+import { ScopedSettingGate } from '../settings/ScopedSettingGate'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar, agentAvatarPx } from '../../shared/AgentAvatar'
 import { identityRingRadius } from '../../../lib/identity-shape'
@@ -63,6 +70,7 @@ export const AgentAvatarQuickEdit = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [generated, setGenerated] = useState<GeneratedAgentAvatar | null>(null)
   const [prompt, setPrompt] = useState('')
+  const [style, setStyle] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false)
   const avatarChanges = useAgentAvatarChanges(
@@ -73,12 +81,24 @@ export const AgentAvatarQuickEdit = ({
       systemPrompt: agent.systemPrompt ?? '',
     },
   )
+  // The style the server will draw in whether this dialog mentions it or not —
+  // it is the same setting the Agent Designer reads in chat — so the control
+  // that owns it belongs where a person stands when they wonder why a portrait
+  // came out the way it did.
+  const styleSettings = useScopedSettings('user', [SETTING_KEYS.agentAvatarStyle])
+  const styleSetting = settingFor(styleSettings.data, SETTING_KEYS.agentAvatarStyle)
+  const rememberedStyle = typeof styleSetting?.value === 'string' ? styleSetting.value : ''
+  const writeStyle = useWriteScopedSetting()
+  useEffect(() => {
+    setStyle(rememberedStyle)
+  }, [rememberedStyle])
 
   const hasCustom = Boolean(agent.avatarAttachmentId)
   const close = () => {
     setOpen(false)
     setGenerated(null)
     setPrompt('')
+    setStyle(rememberedStyle)
     setFileError(null)
     setRemoveConfirmOpen(false)
   }
@@ -96,6 +116,26 @@ export const AgentAvatarQuickEdit = ({
 
   const handleGenerate = async () => {
     setFileError(null)
+    // Saved BEFORE the generation, because the style is resolved server-side:
+    // the picture this press produces is drawn in whatever is stored, so a
+    // style typed here that had not landed yet would be ignored and then
+    // silently applied to the next one.
+    const trimmed = style.trim()
+    if (styleSetting?.canEdit !== false && trimmed !== rememberedStyle) {
+      try {
+        await writeStyle.mutateAsync({
+          key: SETTING_KEYS.agentAvatarStyle,
+          locked: false,
+          scope: 'user',
+          value: trimmed || null,
+        })
+      } catch (styleError) {
+        setFileError(
+          styleError instanceof Error ? styleError.message : 'Failed to save the style',
+        )
+        return
+      }
+    }
     const preview = await avatarChanges.generate(prompt)
     if (preview) setGenerated(preview)
   }
@@ -172,6 +212,24 @@ export const AgentAvatarQuickEdit = ({
             </div>
           ) : (
             <div className="w-full space-y-3">
+              <ScopedSettingGate setting={styleSetting}>
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-[color:var(--tx2)]">
+                    Portrait style
+                  </span>
+                  <input
+                    className="admin-input w-full"
+                    onChange={(event) => setStyle(event.target.value)}
+                    placeholder="Cartoon, photographic, flat illustration…"
+                    type="text"
+                    value={style}
+                  />
+                  <span className="block text-xs text-[color:var(--tx3)]">
+                    Saved when you generate, and used for every agent portrait after
+                    that — here and in the Agent Designer.
+                  </span>
+                </label>
+              </ScopedSettingGate>
               <input
                 aria-label="Describe the avatar"
                 className="admin-input w-full"
@@ -182,14 +240,14 @@ export const AgentAvatarQuickEdit = ({
                     void handleGenerate()
                   }
                 }}
-                placeholder="Add avatar details to the agent instructions (optional)"
+                placeholder="Anything specific to this one picture (optional)"
                 type="text"
                 value={prompt}
               />
               <div className="flex gap-2">
                 <button
                   className="admin-button admin-button-primary flex-1 gap-1.5"
-                  disabled={avatarChanges.busy}
+                  disabled={avatarChanges.busy || writeStyle.isPending}
                   onClick={() => void handleGenerate()}
                   type="button"
                 >

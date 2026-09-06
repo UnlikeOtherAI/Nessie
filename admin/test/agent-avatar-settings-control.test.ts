@@ -26,9 +26,10 @@ test('the avatar pencil opens a modal, built on the shared Dialog shell, with a 
   // Pencil on the avatar itself opens the modal.
   assert.match(source, /aria-label=\{`Edit \$\{agent\.name\} avatar`\}/)
   assert.match(source, /<PencilIcon \/>/)
-  // Generate with a free-text prompt.
+  // Generate with a free-text prompt. It describes THIS picture and nothing
+  // after it — the durable look is the separate style field beside it.
   assert.match(source, /Generate with AI/)
-  assert.match(source, /placeholder="Add avatar details to the agent instructions \(optional\)"/)
+  assert.match(source, /placeholder="Anything specific to this one picture \(optional\)"/)
   assert.match(source, /avatarChanges\.generate\(prompt\)/)
   // Upload path still routes through the cropper.
   assert.match(source, /Upload/)
@@ -63,4 +64,25 @@ test('agent avatar generation has an announced spinning progress indicator', () 
   assert.match(quickEdit, /avatarChanges\.isGenerating \? <AgentAvatarGenerationIndicator/)
   assert.match(indicator, /animate-spin/)
   assert.match(indicator, /role="status"/)
+})
+
+test('the portrait style is edited where a person wonders where it came from', () => {
+  const quickEdit = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
+
+  // One cascade, one gate: a locked house style greys the field and says which
+  // level decided, rather than offering an edit the server would refuse.
+  assert.match(quickEdit, /useScopedSettings\('user', \[SETTING_KEYS\.agentAvatarStyle\]\)/)
+  assert.match(quickEdit, /<ScopedSettingGate setting=\{styleSetting\}>/)
+  // The style is resolved server-side at generation time, so it has to be
+  // saved before the press that uses it — not after, and not only on close.
+  assert.match(quickEdit, /Saved BEFORE the generation/)
+  const generateBody = quickEdit.slice(
+    quickEdit.indexOf('const handleGenerate'),
+    quickEdit.indexOf('const handleUseGenerated'),
+  )
+  assert.ok(
+    generateBody.indexOf('writeStyle.mutateAsync')
+      < generateBody.indexOf('avatarChanges.generate'),
+    'the style write precedes the generation it governs',
+  )
 })

@@ -93,6 +93,19 @@ Per-tool facts:
   `CreateAgentTriggerBodySchema`; scheduled/interval triggers build
   `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`, and
   a signing deployment refuses a schedule without it, as the route does.
+- `agent_avatar_generate` (also `identityDelegatedOnly`, so the Designer's
+  alone) → `generateAgentAvatar` + `updateAgentAvatar`, mirroring
+  `POST /api/agents/:agentId/avatar/generate` in its exact order — the
+  accessibility read first, then `assertAgentEditAuthority`, and only then the
+  billed Ledger call — followed by the confirming `PATCH …/avatar`. It runs both
+  halves because a conversation has no preview to accept, and its refusals are
+  therefore its route's: a `systemManaged` agent is `Agent not found` here, not
+  the "managed by Nessie itself" wording `agent_avatar_update` gives from
+  `canEditAgent`. Mirroring the route is the rule; matching a sibling tool's
+  phrasing is not. A named `style` is remembered through the settings cascade
+  (`agentAvatar.style`, see [scoped-settings.md](scoped-settings.md)) and a
+  locked house style refuses that write exactly as `PUT /api/settings` would;
+  `instructions` describe one portrait and are never stored.
 
 Three more (`worker/src/run/pa-tools/team-structure.ts`) cover the
 containers a channel needs — a channel hangs off a team, a team off a project.
