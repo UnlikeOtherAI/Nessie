@@ -46,6 +46,8 @@ const SWITCH_CONTEXT_STATUS: Record<ActorContextSwitchErrorCode, number> = {
   ACCOUNT_DEACTIVATED: 403,
   NOT_A_MEMBER: 403,
   SSO_TEAM_REAUTH_REQUIRED: 409,
+  // Not 4xx-as-retry: no amount of signing in makes an unlinked team openable.
+  TEAM_NOT_UOA_LINKED: 409,
   USER_NOT_FOUND: 500,
 }
 

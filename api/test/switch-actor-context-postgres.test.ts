@@ -83,7 +83,11 @@ const seed = async (
   }
 }
 
-const claimsFor = (fixture: Fixture, providerType: 'local-bootstrap' | 'uoa') =>
+const claimsFor = (
+  fixture: Fixture,
+  providerType: 'local-bootstrap' | 'uoa',
+  uoaIdentity?: { organizationId: string; subject: string; teamId: string; tokenVersion: number },
+) =>
   issueSessionToken(
     {
       org: fixture.organizationId,
@@ -94,6 +98,7 @@ const claimsFor = (fixture: Fixture, providerType: 'local-bootstrap' | 'uoa') =>
       sub: fixture.userId,
       team: fixture.teamId,
       tv: 0,
+      ...(uoaIdentity ? { uoaIdentity } : {}),
     },
     AUTH_SECRET,
     3600,
@@ -111,7 +116,12 @@ const withPrisma = async (run: (prisma: PrismaClient) => Promise<void>) => {
 const switchTo = (
   prisma: PrismaClient,
   fixture: Fixture,
-  overrides: Partial<{ organizationId: string; projectId: string; providerType: 'local-bootstrap' | 'uoa' }> = {},
+  overrides: Partial<{
+    organizationId: string
+    projectId: string
+    providerType: 'local-bootstrap' | 'uoa'
+    uoaIdentity: { organizationId: string; subject: string; teamId: string; tokenVersion: number }
+  }> = {},
 ) => switchActorContext(prisma, {
   buildSessionForUser: createSessionIssuers({
     authSecret: AUTH_SECRET,
@@ -119,7 +129,11 @@ const switchTo = (
     prisma,
     tokenTtlSeconds: 3600,
   }).buildSessionForUser,
-  currentClaims: claimsFor(fixture, overrides.providerType ?? 'local-bootstrap'),
+  currentClaims: claimsFor(
+    fixture,
+    overrides.providerType ?? 'local-bootstrap',
+    overrides.uoaIdentity,
+  ),
   organizationId: overrides.organizationId ?? fixture.organizationId,
   projectId: overrides.projectId ?? fixture.projectId,
   teamId: fixture.teamId,
@@ -189,16 +203,78 @@ dbTest('a member of the org but not the team is refused', async () => {
   })
 })
 
-dbTest('a UOA session cannot switch to a team its credential was not issued for', async () => {
+dbTest('a UOA session cannot open a team UnlikeOtherAI has never heard of', async () => {
   await withPrisma(async (prisma) => {
     const fixture = await seed(prisma, { orgMember: true, projectMember: true, teamMember: true })
-    // The team carries no external ids, so no UOA identity can match it; the
-    // local rows say yes and UnlikeOtherAI still has to say yes too.
+    // The team carries no external ids at all. The local rows say yes and
+    // UnlikeOtherAI still has to say yes too — and there is nothing upstream
+    // for it to say yes about.
+    //
+    // This is deliberately NOT reported as a re-authentication problem. A
+    // fresh sign-in mints a credential for some team UnlikeOtherAI does know,
+    // which is still not this row, so the person would be sent through SSO to
+    // land back on the same refusal indefinitely.
     await assert.rejects(
       switchTo(prisma, fixture, { providerType: 'uoa' }),
       (error: unknown) =>
         error instanceof ActorContextSwitchError
+        && error.code === 'TEAM_NOT_UOA_LINKED',
+    )
+  })
+})
+
+dbTest('a UOA session cannot switch to a team its credential was not issued for', async () => {
+  await withPrisma(async (prisma) => {
+    const fixture = await seed(prisma, { orgMember: true, projectMember: true, teamMember: true })
+    // This time the team IS in UnlikeOtherAI — it carries both external ids —
+    // but the credential in hand was issued for a different team. That one a
+    // fresh sign-in really can fix, so it keeps the re-authentication code.
+    // `external_team_id` is unique, so the ids have to be per-run.
+    const externalOrgId = `uoa-org-${randomUUID()}`
+    const externalTeamId = `uoa-team-${randomUUID()}`
+    await prisma.team.update({
+      data: { externalOrgId, externalTeamId },
+      where: { id: fixture.teamId },
+    })
+
+    await assert.rejects(
+      switchTo(prisma, fixture, {
+        providerType: 'uoa',
+        uoaIdentity: {
+          organizationId: externalOrgId,
+          subject: 'uoa-subject',
+          teamId: `uoa-team-somewhere-else-${randomUUID()}`,
+          tokenVersion: 0,
+        },
+      }),
+      (error: unknown) =>
+        error instanceof ActorContextSwitchError
         && error.code === 'SSO_TEAM_REAUTH_REQUIRED',
     )
+  })
+})
+
+dbTest('a UOA session opens the team its credential was issued for', async () => {
+  await withPrisma(async (prisma) => {
+    const fixture = await seed(prisma, { orgMember: true, projectMember: true, teamMember: true })
+    const externalOrgId = `uoa-org-${randomUUID()}`
+    const externalTeamId = `uoa-team-${randomUUID()}`
+    await prisma.team.update({
+      data: { externalOrgId, externalTeamId },
+      where: { id: fixture.teamId },
+    })
+
+    // The positive case, so the two refusals above cannot both be satisfied by
+    // a check that simply never lets a UOA session through.
+    const { session } = await switchTo(prisma, fixture, {
+      providerType: 'uoa',
+      uoaIdentity: {
+        organizationId: externalOrgId,
+        subject: 'uoa-subject',
+        teamId: externalTeamId,
+        tokenVersion: 0,
+      },
+    })
+    assert.equal(session.claims.team, fixture.teamId)
   })
 })
