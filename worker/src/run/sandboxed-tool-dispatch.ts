@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  FILESYSTEM_BUILTIN_TOOLS,
+  localOnlyCapabilityMessage,
+  localOnlyGateMode,
+} from '@nessie/config'
+import {
   FileWriteOverwriteError,
   HttpFetchError,
   runFileGlob,
@@ -12,6 +17,26 @@ import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.
 import { truncateToolResult } from './tool-util.js'
 
 const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
+
+/**
+ * `file_read`/`file_write`/`file_glob` do raw `node:fs` I/O on this worker's
+ * own disk under the `allowedRoots` an operator put on the tool's registry
+ * entry (audit 6.2). Outside `local` mode that disk is not the disk the next
+ * run lands on, so the three are refused here — the single dispatch chokepoint
+ * for exactly these tools. It cannot be `loadConfig`: `allowedRoots` is a
+ * column on `tool_registry_entries`, per-organisation data that configuration
+ * never sees. See docs/standards/horizontal-scaling.md, invariant 7.
+ *
+ * The refusal is a failed tool result, not a thrown error: the model asked for
+ * the tool, and the answer it needs is the sentence saying why the tool does
+ * not exist on this deployment and what to use instead.
+ */
+const filesystemBuiltinRefusal = (): string | null => {
+  const mode = localOnlyGateMode()
+  return mode === 'local'
+    ? null
+    : localOnlyCapabilityMessage(mode, FILESYSTEM_BUILTIN_TOOLS)
+}
 
 const loadTransportConfig = async (
   prisma: PrismaClient,
@@ -64,7 +89,11 @@ export const dispatchSandboxedBuiltinTool = (
       return wrapSandboxedResult(inputSummary, () => runHttpFetch(args))
     case 'file_read':
     case 'file_write':
-    case 'file_glob':
+    case 'file_glob': {
+      const refusal = filesystemBuiltinRefusal()
+      if (refusal !== null) {
+        return Promise.resolve({ inputSummary, output: refusal, success: false })
+      }
       return loadTransportConfig(
         context.prisma,
         context.channel.organizationId,
@@ -77,6 +106,7 @@ export const dispatchSandboxedBuiltinTool = (
             : runFileGlob
         return wrapSandboxedResult(inputSummary, () => runner(args, transportConfig))
       })
+    }
     default:
       return Promise.resolve(null)
   }

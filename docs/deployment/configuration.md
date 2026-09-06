@@ -31,7 +31,7 @@ production settings:
 | Model (embeddings) | `NESSIE_EMBEDDING_PROVIDER`, `NESSIE_EMBEDDING_MODEL`, `NESSIE_EMBEDDING_SERVICE_ID`, `NESSIE_EMBEDDING_BASE_URL`, `NESSIE_EMBEDDING_API_KEY` | Optional; every unset field inherits the chat provider, so a deployment that sets none of these embeds exactly as before. Set them when the chat provider serves no embeddings endpoint — DeepSeek does not, and Ledger answers `403 embeddings is not allowed for deepseek`. `NESSIE_EMBEDDING_SERVICE_ID` is the Ledger `/v1/:serviceId/*` segment embeddings are rewritten to; without it the segment defaults to the provider name, which is meaningless for `openai-compatible`. Production uses `openai-compatible` + `jina` + `jina-embeddings-v3`, inheriting the Ledger host and key. **Changing the embedding model is a schema change** — see "Embedding model and vector width" below. |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
 | Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |
-| Storage backend | `NESSIE_STORAGE_PROVIDER` | `s3` in prod (MinIO); `filesystem` in local dev |
+| Storage backend | `NESSIE_STORAGE_PROVIDER` | `s3` in prod (MinIO); `filesystem` in local dev. **`filesystem` is refused outside `local` mode** and, because it is also the default, a `hosted`/`selfHosted` deployment that sets nothing here fails to start rather than writing uploads to a disk no other container can read — see "Single-host settings refused outside `local`" below |
 | Storage endpoint | `NESSIE_STORAGE_ENDPOINT`, `NESSIE_STORAGE_REGION`, `NESSIE_STORAGE_FORCE_PATH_STYLE` | `http://nessie-minio:9000`, `us-east-1`, `true` (path-style is required for MinIO) |
 | Storage bucket/creds | `NESSIE_STORAGE_BUCKET`, `NESSIE_STORAGE_ACCESS_KEY_ID`, `NESSIE_STORAGE_SECRET_ACCESS_KEY` | bucket defaults to `nessie`; the key id/secret double as the MinIO root user/password (host `.env`) |
 | Max upload size | `NESSIE_MAX_UPLOAD_BYTES` | default `5368709120` (5 GiB); also pins the API multipart limit |
@@ -63,6 +63,28 @@ Communications connectors register from env at API and worker startup via
 `@nessie/comms-providers`; a provider whose vars are unset simply does not
 register, and its sync jobs park cleanly on `ConnectorNotRegisteredError`.
 Startup logs one line listing the registered providers (no secrets).
+
+### Single-host settings refused outside `local`
+
+Three capabilities only work while one process owns the machine's disk. Nessie
+runs the API and the worker as separate containers even at one host, and as N
+copies of each when it scales, so all three are **refused** in `hosted` and
+`selfHosted` mode. Each refusal names the setting, the mode, and what to use
+instead. `local` keeps all three: there the API runs the worker embedded in its
+own process. The rule and its wording live in
+`packages/config/src/local-only.ts`; the reasoning is
+[horizontal-scaling.md](../standards/horizontal-scaling.md) invariant 7.
+
+| Capability | Refused where | What to do instead |
+|---|---|---|
+| `NESSIE_STORAGE_PROVIDER=filesystem` — and it is the **default**, so a deployment that sets nothing is refused too | `loadConfig`, so the API and the worker both **fail to start** | `NESSIE_STORAGE_PROVIDER=s3` with `NESSIE_STORAGE_BUCKET`, `NESSIE_STORAGE_ENDPOINT`, `NESSIE_STORAGE_ACCESS_KEY_ID` and `NESSIE_STORAGE_SECRET_ACCESS_KEY`, plus `NESSIE_STORAGE_REGION` and `NESSIE_STORAGE_FORCE_PATH_STYLE=true` for MinIO (which is what production runs) |
+| Execution environment templates with provider `docker` | The worker's provider chokepoint. Provisioning fails loudly and the runner probe records the provider `offline` with the same reason. **Terminating is never refused**, so an operator who mounted the Docker socket can still drain containers an upgrade would otherwise strand. Creating such a template still succeeds — it is simply inert | Create templates with provider `gcloud`, then terminate whatever `docker` already provisioned and confirm on the host whose daemon started each container that it is gone |
+| The `file_read` / `file_write` / `file_glob` builtin tools | The worker's builtin dispatcher, as a failed tool result the agent can read and act on | Reach files through the knowledge base or an MCP server every worker can call |
+
+An upgrade that trips the first one is a start-up failure with the full
+sentence on stderr, not a degraded boot. If a self-hosted install genuinely was
+storing uploads on local disk, copy that directory into the bucket before
+changing the variable — nothing migrates it.
 
 ### Graceful shutdown and health probes
 

@@ -1,6 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { z } from 'zod'
+import { assertLocalOnlyCapability, FILESYSTEM_STORAGE } from './local-only.js'
+
+// The single-host capability rule lives in its own module (this file is long
+// enough); it is re-exported here because `.` is the package's only entry.
+export {
+  assertLocalOnlyCapability,
+  DOCKER_EXECUTION_PROVIDER,
+  FILESYSTEM_BUILTIN_TOOLS,
+  FILESYSTEM_STORAGE,
+  localOnlyCapabilityMessage,
+  SingleInstanceCapabilityError,
+} from './local-only.js'
+export type { LocalOnlyCapability } from './local-only.js'
 
 export const NessieModeSchema = z.enum(['hosted', 'selfHosted', 'local'])
 export type NessieMode = z.infer<typeof NessieModeSchema>
@@ -705,5 +718,34 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
     loadCliOverrides(argv),
   )
 
-  return NessieConfigSchema.parse(merged)
+  const config = NessieConfigSchema.parse(merged)
+
+  // Invariant 7 (docs/standards/horizontal-scaling.md). This is the one
+  // single-host capability that is configuration, and both the API and the
+  // worker load config before they do anything else, so this is the earliest
+  // point at which either can refuse it.
+  if (config.storage.provider === 'filesystem') {
+    assertLocalOnlyCapability(config.mode, FILESYSTEM_STORAGE)
+  }
+
+  return config
 }
+
+let gateMode: NessieMode | undefined
+
+/**
+ * The mode the single-host gates in `local-only.ts` ask about, resolved once
+ * per process.
+ *
+ * `loadConfig` is deliberately not memoised — it re-reads `nessie.config.json`
+ * off disk, walks the whole env map and re-runs the entire `NessieConfigSchema`
+ * parse on every call — and the gates sit on the run's hot path: one call per
+ * builtin tool dispatch, one per execution-environment probe and provision.
+ * They must not pay that each time. Caching also makes the answer stable: a
+ * process cannot decide halfway through a run that it is a different kind of
+ * deployment than it was a moment earlier.
+ *
+ * The mode is fixed for the life of a container — it comes from the environment
+ * the container was started with — so there is nothing to invalidate.
+ */
+export const localOnlyGateMode = (): NessieMode => (gateMode ??= loadConfig().mode)
