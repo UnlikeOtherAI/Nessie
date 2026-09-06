@@ -240,3 +240,56 @@ test('a connect URL pointing away from Browserbase is refused', async () => {
     (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_UNTRUSTED_ENDPOINT',
   )
 })
+
+/**
+ * Browserbase resolves the project from the API key
+ * (https://docs.browserbase.com/reference/api/create-a-session: "Optional — if
+ * not provided, the project will be inferred from the API key"), so Nessie
+ * stopped asking for one. The field must then be *absent* from the body: sent
+ * as `null` or `"undefined"` it names a project that does not exist, and the
+ * failure would look like a bad key rather than a bad body. Installs that
+ * connected before this keep theirs, and their sessions and contexts stay
+ * where their logins already live.
+ */
+test('no project id means no projectId field on the wire — never a null one', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const collect = (async (_url: string, init?: { body?: string }) => {
+    bodies.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>)
+    return new Response(
+      JSON.stringify({ id: 'sess-1', connectUrl: 'wss://connect.browserbase.com/x' }),
+      { status: 200 },
+    )
+  }) as never
+
+  for (const credentials of [
+    { apiKey: 'bb-key' },
+    { apiKey: 'bb-key', projectId: null },
+    { apiKey: 'bb-key', projectId: '' },
+  ]) {
+    bodies.length = 0
+    const client = createBrowserbaseClient(credentials, { fetchImpl: collect })
+    await client.createSession({ timeoutSeconds: 60 })
+    await client.endSession('sess-1')
+    await client.createContext()
+    for (const body of bodies) {
+      assert.ok(
+        !Object.hasOwn(body, 'projectId'),
+        `projectId must be absent, got ${JSON.stringify(body.projectId)}`,
+      )
+    }
+  }
+
+  // A stored project id is still sent where it scopes the thing being made —
+  // a session and a profile. Release takes `{status}` alone, documented and
+  // asserted here so nobody puts the field back.
+  bodies.length = 0
+  const pinned = createBrowserbaseClient({ apiKey: 'bb-key', projectId: 'proj-1' }, { fetchImpl: collect })
+  await pinned.createSession({ timeoutSeconds: 60 })
+  await pinned.createContext()
+  assert.equal(bodies.length, 2)
+  for (const body of bodies) assert.equal(body.projectId, 'proj-1')
+
+  bodies.length = 0
+  await pinned.endSession('sess-1')
+  assert.deepEqual(bodies, [{ status: 'REQUEST_RELEASE' }])
+})

@@ -1,11 +1,14 @@
 /**
  * The tools a conversation with one agent puts within reach.
  *
- * The rail beside the chat and the conversation info screen's list both read
- * this table, so the two doorways cannot drift apart. It is not the whole of
- * adding a tool: a new entry also needs its mark in `ChatToolRail` and the
- * column it opens in `ChatToolDock`.
+ * The rail beside the chat, the conversation header on a single-column layout
+ * and the conversation info screen's list all read this table, so the doorways
+ * cannot drift apart. It is not the whole of adding a tool: a new entry also
+ * needs its mark in `ChatToolRail` and the column it opens in `ChatToolDock`.
  */
+
+import { faTableColumns } from '@fortawesome/free-solid-svg-icons'
+import type { PageHeaderAction } from '../../../shared/ResponsivePageHeader'
 
 export const CHAT_TOOL_IDS = ['browser'] as const
 
@@ -29,6 +32,81 @@ export const CHAT_TOOLS: readonly ChatTool[] = [
     label: 'Browser',
   },
 ]
+
+/** Which control carries the tools on a given layout. */
+export type ChatToolDoorway = 'header' | 'none' | 'rail'
+
+/**
+ * Where a conversation's agent tools are reachable from.
+ *
+ * The rail and the conversation header are complements, never alternatives:
+ * whichever one is not carrying the tools draws nothing, so a tool is offered
+ * exactly once — and never, as it was on the iOS phone app, nowhere. There the
+ * rail correctly stands down on a single-column layout, and the only doorway
+ * left was a row on the conversation info screen: two screens in, behind the
+ * native bar's `···` sheet, which is not a place anybody finds a browser.
+ */
+export const chatToolDoorway = ({
+  hasConversationAgent,
+  single,
+}: {
+  hasConversationAgent: boolean
+  single: boolean
+}): ChatToolDoorway => {
+  if (!hasConversationAgent) return 'none'
+  return single ? 'header' : 'rail'
+}
+
+/**
+ * How high the doorway sits among the conversation's own header actions: above
+ * everything but Join, which is the one control that has to be answered before
+ * the conversation is usable at all.
+ */
+export const CHAT_TOOL_ACTION_PRIORITY = 95
+
+/**
+ * The tools as conversation-header actions, on the layout whose doorway is the
+ * header — and an empty list everywhere else, where the rail carries them.
+ *
+ * `primary` is load-bearing rather than emphasis. It is the only flag that
+ * keeps a control on screen at every width: `partitionPageHeaderActions` never
+ * moves a primary action into "More", and the iOS navigation bar draws the
+ * primary action beside its `···` button and sweeps everything else into the
+ * sheet behind it. Any other flag puts this doorway back inside a menu, which
+ * is where it was lost.
+ *
+ * Selecting one navigates rather than toggling a column: on a single-column
+ * layout the tool is a real screen, so Back, a deep link and the native stack
+ * all resolve. The caller owns that navigation, so there is still exactly one
+ * implementation of "open this agent's tool" (`ChannelsPage`).
+ */
+export const chatToolHeaderActions = ({
+  hasConversationAgent,
+  onOpenTool,
+  single,
+}: {
+  hasConversationAgent: boolean
+  onOpenTool: (tool: ChatToolId) => void
+  single: boolean
+}): PageHeaderAction[] =>
+  chatToolDoorway({ hasConversationAgent, single }) === 'header'
+    ? CHAT_TOOLS.map((tool) => ({
+        // The two-pane glyph, in both vocabularies: the conversation on the
+        // left and the panel it opens on the right, which is what pressing it
+        // does — the screen arrives from the right over the conversation
+        // (`navigation/motion.ts`, `topAt(1)` = translate3d(100%, 0, 0)).
+        // `label` stays the accessible name and the fallback anywhere the
+        // glyph is unknown.
+        barIcon: 'panel-right' as const,
+        icon: faTableColumns,
+        id: `chat-tool-${tool.id}`,
+        label: tool.label,
+        onSelect: () => onOpenTool(tool.id),
+        primary: true,
+        priority: CHAT_TOOL_ACTION_PRIORITY,
+        title: tool.description,
+      }))
+    : []
 
 const isChatToolId = (value: string): value is ChatToolId =>
   (CHAT_TOOL_IDS as readonly string[]).includes(value)

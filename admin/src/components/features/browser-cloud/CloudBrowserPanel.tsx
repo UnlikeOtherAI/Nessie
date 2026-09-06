@@ -109,7 +109,9 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
             <p className="mt-1 text-sm text-[color:var(--tx2)]">Loading…</p>
           ) : connection ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
-              Project <span className="font-mono">{connection.projectId}</span>
+              {connection.projectId ? (
+                <>Project <span className="font-mono">{connection.projectId}</span></>
+              ) : 'Connected'}
               {connection.usedMinutes > 0
                 ? ` · ${connection.usedMinutes} browser minute${connection.usedMinutes === 1 ? '' : 's'} used`
                 : ' · no browser time used yet'}

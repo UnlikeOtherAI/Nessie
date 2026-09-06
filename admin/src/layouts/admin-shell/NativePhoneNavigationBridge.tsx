@@ -106,6 +106,7 @@ export const NativePhoneNavigationBridge = () => {
         actions: (bar?.actions ?? []).map((action) => ({
           checked: action.checked,
           disabled: action.disabled,
+          icon: action.icon ?? null,
           id: action.id,
           items: action.items,
           kind: action.kind,

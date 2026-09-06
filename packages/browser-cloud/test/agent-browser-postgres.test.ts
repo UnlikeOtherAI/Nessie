@@ -48,6 +48,8 @@ type Seed = {
   organizationId: string
   ownerUserId: string
   otherUserId: string
+  projectId: string
+  teamId: string
   teamAgentId: string
   privateAgentId: string
   threadId: string
@@ -114,6 +116,8 @@ const seed = async (prisma: PrismaClient, label: string): Promise<Seed> => {
     organizationId: organization.id,
     ownerUserId: owner.id,
     otherUserId: other.id,
+    projectId: project.id,
+    teamId: team.id,
     teamAgentId: teamAgent.id,
     privateAgentId: privateAgent.id,
     threadId: thread.id,
@@ -204,6 +208,7 @@ runDatabaseTest('a private agent prefers its owner’s account over the company 
       organizationId: s.organizationId,
       agentVisibility: 'private',
       agentOwnerUserId: s.ownerUserId,
+      principalUserId: null,
     })
 
     // On the company account, the company's Browserbase admin could replay a
@@ -228,12 +233,14 @@ runDatabaseTest('an agent gets one browser, reused across runs', async () => {
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     const second = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
 
     assert.equal(first.id, second.id)
@@ -248,6 +255,7 @@ runDatabaseTest('an agent gets one browser, reused across runs', async () => {
       agentId: s.privateAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     assert.notEqual(other.browserbaseContextId, first.browserbaseContextId)
   } finally {
@@ -268,6 +276,7 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     const attach = {
       id: browser.id,
@@ -323,6 +332,7 @@ runDatabaseTest('a session on a browser with logins is authenticated from the fi
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     await recordAgentBrowserLogin(prisma, {
       organizationId: s.organizationId,
@@ -371,6 +381,7 @@ runDatabaseTest('reset stops pointing at the context before anything deletes it'
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     await recordAgentBrowserLogin(prisma, {
       organizationId: s.organizationId,
@@ -407,6 +418,7 @@ runDatabaseTest('reset stops pointing at the context before anything deletes it'
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     assert.notEqual(fresh.id, browser.id)
 
@@ -432,6 +444,7 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     await openSession(deps, {
       organizationId: s.organizationId,
@@ -572,6 +585,7 @@ runDatabaseTest('a scheduled run never bills somebody’s personal account', asy
       agentId: s.privateAgentId,
       agentVisibility: 'private',
       agentOwnerUserId: s.ownerUserId,
+      principalUserId: null,
     })
     const attach = {
       id: browser.id,
@@ -714,6 +728,7 @@ runDatabaseTest('a reconciler that loses the tombstone claim deletes nothing', a
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     const claimed = await prisma.agentBrowser.findUniqueOrThrow({
       where: { id: browser.id },
@@ -800,6 +815,7 @@ runDatabaseTest('a browser stranded in deleting is reclaimed once it is old enou
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     await resetAgentBrowser(prisma, {
       organizationId: s.organizationId,
@@ -840,6 +856,7 @@ runDatabaseTest('a fresh deleting claim is left to the instance that took it', a
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     await resetAgentBrowser(prisma, {
       organizationId: s.organizationId,
@@ -889,6 +906,7 @@ runDatabaseTest('a failed provider delete hands the row back for the next sweep'
       agentId: s.teamAgentId,
       agentVisibility: 'team',
       agentOwnerUserId: null,
+      principalUserId: null,
     })
     await resetAgentBrowser(prisma, {
       organizationId: s.organizationId,
@@ -903,6 +921,120 @@ runDatabaseTest('a failed provider delete hands the row back for the next sweep'
     })
     assert.equal(row?.status, 'tombstoned')
     assert.equal(row?.lastError, 'browserbase is down')
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+/**
+ * The isolation the product promises, at the level it actually lives: a
+ * Browserbase context.
+ *
+ * The Personal Assistant is ONE agent row per organisation — everyone meets it
+ * through their own DM and their own presence binding, not their own agent. So
+ * keyed by agent alone, every colleague shared a cookie jar: one person's
+ * Gmail sat inside everybody's assistant, and that is the case this pins.
+ * An ordinary team agent keeps one shared browser on purpose, which is what
+ * its sharing banner promises, so that is pinned here too — the two rules are
+ * one decision and would drift apart if only one were tested.
+ */
+runDatabaseTest('a per-person agent gives each person their own cookie jar', async () => {
+  const prisma = new PrismaClient()
+  const calls: string[] = []
+  const s = await seed(prisma, 'principal')
+  try {
+    const second = { id: s.otherUserId }
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const assistant = await prisma.agent.create({
+      data: {
+        name: `pa-${randomUUID()}`,
+        organizationId: s.organizationId,
+        projectId: s.projectId,
+        teamId: s.teamId,
+        agentKind: 'personal_assistant',
+        systemManaged: true,
+        // `agents_system_managed_invariants_chk` requires this exact shape for
+        // an assistant, and the shape is the reason it is per-person: a DM-only
+        // surface that acts as whoever asked.
+        surfacePolicy: 'dm_only',
+        delegationMode: 'act_as_requesting_user',
+      },
+    })
+    const deps = depsFor(prisma, calls)
+    const forOwner = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: assistant.id,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: s.ownerUserId,
+    })
+    const forSecond = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: assistant.id,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: second.id,
+    })
+
+    assert.notEqual(forOwner.id, forSecond.id, 'two people must not share one browser row')
+    assert.notEqual(
+      forOwner.browserbaseContextId,
+      forSecond.browserbaseContextId,
+      'two people must not share one Browserbase context — that is the cookie jar',
+    )
+
+    // Coming back gets your own, not whichever existed first.
+    const ownerAgain = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: assistant.id,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: s.ownerUserId,
+    })
+    assert.equal(ownerAgain.id, forOwner.id)
+
+    // A run with nobody behind it — a schedule — must not reach for somebody's.
+    await assert.rejects(
+      ensureAgentBrowser(deps, {
+        organizationId: s.organizationId,
+        agentId: assistant.id,
+        agentVisibility: 'team',
+        agentOwnerUserId: null,
+        principalUserId: null,
+      }),
+      (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_NO_CONNECTION',
+    )
+
+    const rows = await prisma.agentBrowser.findMany({
+      where: { agentId: assistant.id, status: 'active' },
+      select: { principalUserId: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    assert.deepEqual(
+      rows.map((row) => row.principalUserId).sort(),
+      [s.ownerUserId, second.id].sort(),
+      'every row carries its owner',
+    )
+
+    // An ordinary team agent is the other half of the rule: one jar, shared.
+    const shared = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: s.ownerUserId,
+    })
+    const sharedForSecond = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: second.id,
+    })
+    assert.equal(shared.id, sharedForSecond.id, 'a shared agent keeps one browser for its team')
+    assert.equal(shared.principalUserId ?? null, null)
+
   } finally {
     await s.cleanup()
     await prisma.$disconnect()

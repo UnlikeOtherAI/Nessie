@@ -22,6 +22,7 @@ type AgentChannelBindingInput = {
 export const AGENT_BINDING_ERROR_CODES = {
   PRIVATE_VISIBILITY: 'AGENT_VISIBILITY_PRIVATE',
   BROWSER_LOGINS_PRESENT: 'AGENT_BROWSER_LOGINS_PRESENT',
+  CROSS_TEAM: 'AGENT_BINDING_CROSS_TEAM',
 } as const
 
 export class AgentBindingError extends Error {
@@ -56,6 +57,7 @@ export const bindAgentToChannel = async (
         toolPolicy: true,
         visibility: true,
         ownerUserId: true,
+        teamId: true,
       },
     }),
     prisma.channel.findFirst({
@@ -63,7 +65,7 @@ export const bindAgentToChannel = async (
         id: input.channelId,
         organizationId: input.organizationId,
       },
-      select: { systemChannelType: true },
+      select: { systemChannelType: true, teamId: true },
     }),
   ])
 
@@ -82,6 +84,21 @@ export const bindAgentToChannel = async (
       )
     }
     return null
+  }
+
+  // A shared agent's browser is one cookie jar for everyone who can reach it,
+  // and a team is as far as that may go. An organisation-wide Browserbase key
+  // does not change this: every team's contexts then live in one project, so
+  // the boundary cannot come from the account — it has to come from here.
+  // Checked before any login exists, because a binding made today is still
+  // there when somebody signs the agent in tomorrow.
+  if (agent.teamId && channel.teamId && agent.teamId !== channel.teamId) {
+    throw new AgentBindingError(
+      AGENT_BINDING_ERROR_CODES.CROSS_TEAM,
+      'An agent can only be added to channels in its own team. Its browser and '
+      + 'anything it is signed in to are shared with everyone who can reach it, '
+      + 'and that sharing stops at the team.',
+    )
   }
 
   // No second agent may ever join a system DM. A system channel is a

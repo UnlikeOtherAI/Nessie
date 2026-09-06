@@ -19,7 +19,8 @@ export type ConnectionSummary = {
   id: string
   scope: ConnectionScope
   userId: string | null
-  projectId: string
+  /** Null for every connection made since the project id stopped being asked for. */
+  projectId: string | null
   status: 'active' | 'needs_attention' | 'disabled'
   healthReason: string | null
   healthDetail: string | null
@@ -39,14 +40,19 @@ export type ConnectCloudBrowserInput = {
   userId: string | null
   actingUserId: string
   apiKey: string
-  projectId: string
+  /**
+   * Not asked for and not needed: Browserbase resolves the project from the
+   * key. Accepted so an install that wants its sessions pinned to one
+   * project can still say so.
+   */
+  projectId?: string | null
 }
 
 export type ConnectionDeps = {
   prisma: PrismaClient
   /** Writes the key into the encrypted store and returns a server-minted ref. */
   storeSecret: (apiKey: string) => Promise<string>
-  clientFactory?: (credentials: { apiKey: string; projectId: string }) => BrowserbaseClient
+  clientFactory?: (credentials: { apiKey: string; projectId?: string | null }) => BrowserbaseClient
 }
 
 /**
@@ -57,7 +63,7 @@ export type ConnectionDeps = {
  */
 const probe = async (
   deps: ConnectionDeps,
-  credentials: { apiKey: string; projectId: string },
+  credentials: { apiKey: string; projectId?: string | null },
 ): Promise<void> => {
   const client = deps.clientFactory
     ? deps.clientFactory(credentials)
@@ -91,7 +97,7 @@ export const connectCloudBrowser = async (
     )
   }
 
-  await probe(deps, { apiKey: input.apiKey, projectId: input.projectId })
+  await probe(deps, { apiKey: input.apiKey, projectId: input.projectId ?? null })
 
   // Only now does the plaintext reach the store, and only a `secret_*` ref is
   // persisted on the row — the key itself never returns to any caller.
@@ -111,7 +117,7 @@ export const connectCloudBrowser = async (
       where: { id: existing.id },
       data: {
         apiKeyRef,
-        projectId: input.projectId,
+        projectId: input.projectId ?? null,
         status: 'active',
         healthReason: null,
         healthDetail: null,
@@ -128,7 +134,7 @@ export const connectCloudBrowser = async (
       scope: input.scope,
       teamId,
       userId,
-      projectId: input.projectId,
+      projectId: input.projectId ?? null,
       apiKeyRef,
       createdByUserId: input.actingUserId,
       status: 'active',

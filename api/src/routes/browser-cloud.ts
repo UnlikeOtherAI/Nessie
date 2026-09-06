@@ -41,6 +41,26 @@ import type { RouteDeps } from './types.js'
  * by anything about the key itself.
  */
 
+/**
+ * Which browser row belongs to this caller, for this agent.
+ *
+ * A system-managed agent keeps one browser per person, so the caller's own is
+ * the only one they may ever reach; an ordinary agent has one shared with its
+ * team, where the principal is null. Every read of an agent's browser goes
+ * through this, so no route can accidentally hand somebody a colleague's jar.
+ */
+const browserScopeFor = async (
+  prisma: RouteDeps['prisma'],
+  input: { organizationId: string; agentId: string; viewerId: string },
+): Promise<{ principalUserId: string | null } | null> => {
+  const agent = await prisma.agent.findFirst({
+    where: { id: input.agentId, organizationId: input.organizationId },
+    select: { systemManaged: true },
+  })
+  if (!agent) return null
+  return { principalUserId: agent.systemManaged ? input.viewerId : null }
+}
+
 /** The site a URL is on, for a reader who may know where but not what. */
 const originOf = (url: string): string => {
   try {
@@ -83,7 +103,7 @@ export interface ViewableCloudBrowserSession {
   endedAt: Date | null
   controlledByUserId: string | null
   browserbaseSessionId: string | null
-  connectionProjectId: string
+  connectionProjectId: string | null
   connectionApiKeyRef: string
 }
 
@@ -463,8 +483,13 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
-    const browser = await prisma.agentBrowser.findFirst({
-      where: { organizationId, agentId, status: 'active' },
+    const scope = await browserScopeFor(prisma, {
+      organizationId,
+      agentId,
+      viewerId: actorContext.actor.actorId,
+    })
+    const browser = scope && await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active', ...scope },
       select: { id: true },
     })
     if (!browser) {
@@ -524,8 +549,13 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     // Picking the browser up is seeing everything it is signed in to, so it
     // takes the same audience as watching it. A browser nobody signed in is
     // anyone's to open.
-    const existing = await prisma.agentBrowser.findFirst({
-      where: { organizationId, agentId, status: 'active' },
+    const resumeScope = await browserScopeFor(prisma, {
+      organizationId,
+      agentId,
+      viewerId: actorContext.actor.actorId,
+    })
+    const existing = resumeScope && await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active', ...resumeScope },
       select: { id: true },
     })
     if (existing) {
@@ -627,8 +657,13 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       return reply
     }
 
-    const browser = await prisma.agentBrowser.findFirst({
-      where: { organizationId, agentId, status: 'active' },
+    const browserScope = await browserScopeFor(prisma, {
+      organizationId,
+      agentId,
+      viewerId: actorContext.actor.actorId,
+    })
+    const browser = browserScope && await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active', ...browserScope },
       select: {
         id: true,
         createdAt: true,
@@ -690,8 +725,13 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     const organizationId = actorContext.tenant.organizationId
     const userId = actorContext.actor.actorId
 
-    const browser = await prisma.agentBrowser.findFirst({
-      where: { organizationId, agentId, status: 'active' },
+    const resetScope = await browserScopeFor(prisma, {
+      organizationId,
+      agentId,
+      viewerId: actorContext.actor.actorId,
+    })
+    const browser = resetScope && await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active', ...resetScope },
       select: {
         id: true,
         agent: { select: { ownerUserId: true } },

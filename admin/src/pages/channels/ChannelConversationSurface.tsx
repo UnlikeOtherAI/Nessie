@@ -28,6 +28,7 @@ import type { ChannelTitleFavorite } from '../../components/features/channels/Ch
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { type ChannelAgentParticipant, type MessageUserIdentity } from '../../components/features/channels/channel-participants'
 import { type ChannelTab } from '../../components/features/channels/channel-tabs'
+import { type ChatToolId } from '../../components/features/channels/tool-rail/chat-tools'
 import { useAgentLivenessHint } from '../../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../../components/features/channels/useChannelComposer'
 import { useFileDrop } from '../../hooks/useFileDrop'
@@ -121,6 +122,8 @@ interface ChannelConversationSurfaceProps {
   >
   me: MeResponse
   onCallButton: () => void
+  /** Opens one of `conversationAgent`'s tools; the page owns the route. */
+  onOpenChatTool: (tool: ChatToolId) => void
   onCreateAgent: () => void
   onJoin: () => void
   onOpenInfo: () => void
@@ -183,6 +186,7 @@ export const ChannelConversationSurface = ({
   messageActions,
   me,
   onCallButton,
+  onOpenChatTool,
   onCreateAgent,
   onJoin,
   onOpenInfo,
@@ -261,7 +265,9 @@ export const ChannelConversationSurface = ({
         joinPending={joinPending}
         searchOpen={search.searchOpen}
         titleFavorite={titleFavorite}
+        conversationAgent={conversationAgent}
         onCallButton={onCallButton}
+        onOpenChatTool={onOpenChatTool}
         onJoin={onJoin}
         onOpenInfo={onOpenInfo}
         onOpenMembers={onOpenMembers}

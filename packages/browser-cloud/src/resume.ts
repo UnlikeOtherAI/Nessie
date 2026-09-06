@@ -41,6 +41,9 @@ export const resumeAgentBrowser = async (
     agentId: input.agentId,
     agentVisibility: input.agentVisibility,
     agentOwnerUserId: input.agentOwnerUserId,
+    // A resume is somebody's own ask, so for an agent that keeps a browser per
+    // person it is their jar that comes back — never a colleague's.
+    principalUserId: input.userId,
   })
   const tabs = await listAgentBrowserTabs(deps.prisma, {
     organizationId: input.organizationId,

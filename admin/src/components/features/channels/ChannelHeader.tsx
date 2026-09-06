@@ -9,9 +9,11 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { ChannelTitleFavorite } from './ChannelFavoriteButton'
+import { chatToolHeaderActions, type ChatToolId } from './tool-rail/chat-tools'
 
 interface ChannelHeaderProps {
   activeCall: boolean
@@ -21,12 +23,19 @@ interface ChannelHeaderProps {
   callMeetingUri: string | null | undefined
   callStarting: boolean
   channelUsers: UserRecord[]
+  /**
+   * The one agent this conversation is with, when it has one. Its tools reach
+   * the header on a layout with no rail beside the chat to hold them.
+   */
+  conversationAgent: AgentRecord | null
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
   personalAssistantPresenceCount: number
   joinPending: boolean
   onCallButton: () => void
+  /** Opens one of the conversation agent's tools; the caller owns the route. */
+  onOpenChatTool: (tool: ChatToolId) => void
   onOpenInfo: () => void
   onJoin: () => void
   onOpenMembers: () => void
@@ -57,6 +66,7 @@ export const ChannelHeader = ({
   callMeetingUri,
   callStarting,
   channelUsers,
+  conversationAgent,
   externalAgentIdentity,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -64,6 +74,7 @@ export const ChannelHeader = ({
   joinPending,
   onCallButton,
   onJoin,
+  onOpenChatTool,
   onOpenInfo,
   onOpenMembers,
   onOpenSettings,
@@ -75,6 +86,7 @@ export const ChannelHeader = ({
   voiceCallSupported,
   titleFavorite,
 }: ChannelHeaderProps) => {
+  const single = usePhoneLayout()
   const title = isPersonalAssistantConversation
     ? 'Personal Assistant'
     : isExternalAgentConversation
@@ -139,6 +151,15 @@ export const ChannelHeader = ({
       primary: true,
       priority: 100,
     } satisfies PageHeaderAction] : []),
+    // The agent's tools, on the layout that has no rail beside the chat to
+    // stand them in. Listed after Join so that, in the impossible case of both
+    // (Join is a public channel, which has no single conversation agent), the
+    // iOS bar's one inline slot still goes to Join.
+    ...chatToolHeaderActions({
+      hasConversationAgent: conversationAgent !== null,
+      onOpenTool: onOpenChatTool,
+      single,
+    }),
     ...(canManageChannel ? [{
       compact: true,
       icon: faGear,

@@ -5,6 +5,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { ReactNode } from 'react'
+import type { ScreenBarIconName } from '../../navigation/screen-bar'
 import { Popover } from '../overlays/Popover'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
@@ -41,6 +42,12 @@ export type PageHeaderMenuLinkItem = PageHeaderMenuItemBase & {
 export type PageHeaderMenuItem = PageHeaderMenuButtonItem | PageHeaderMenuLinkItem
 
 type PageHeaderActionBase = {
+  /**
+   * The glyph the *native* bar should draw for this action, from its closed
+   * set. Separate from `icon`: that one is FontAwesome for the web header,
+   * and the native bar draws Material glyphs from a vocabulary it owns.
+   */
+  barIcon?: ScreenBarIconName
   compact?: boolean
   disabled?: boolean
   form?: string

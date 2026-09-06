@@ -38,7 +38,13 @@ export const resolveDurableBrowserConnection = async (
     agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
   },
-): Promise<{ id: string; scope: 'organization' | 'team' | 'user'; projectId: string; apiKeyRef: string }> => {
+): Promise<{ id: string; scope: 'organization' | 'team' | 'user'; projectId: string | null; apiKeyRef: string }> => {
+  // A browser that belongs to one person is treated exactly like a private
+  // agent's, because that is what it is: the caller passes the principal as
+  // the owner, and the personal-account preference below applies for the same
+  // reason it does there — a company Browserbase administrator should not be
+  // able to replay one person's own assistant.
+
   const rows = await prisma.cloudBrowserConnection.findMany({
     where: { organizationId: input.organizationId, status: 'active' },
     select: { id: true, scope: true, projectId: true, apiKeyRef: true, userId: true },
@@ -68,7 +74,7 @@ export const resolveDurableBrowserConnection = async (
 
 const loadClientForConnection = async (
   deps: CloudBrowserDeps,
-  connection: { projectId: string; apiKeyRef: string },
+  connection: { projectId: string | null; apiKeyRef: string },
 ): Promise<BrowserbaseClient> => {
   const apiKey = await deps.resolveSecret(connection.apiKeyRef)
   if (!apiKey) {
@@ -95,6 +101,42 @@ const loadClientForConnection = async (
  * account holder can delete it from their dashboard — and it is the reason
  * the delete is attempted inline rather than deferred.
  */
+/**
+ * Whose cookie jar an agent's browser is.
+ *
+ * A system-managed agent — the Personal Assistant, every global agent — is one
+ * row per organisation that each person meets through their own DM. Keyed by
+ * agent alone, one browser served everybody: one person's Gmail sat inside
+ * every colleague's assistant. So for those, the *principal* owns the jar.
+ *
+ * An ordinary team agent keeps one shared browser, which is what its sharing
+ * banner promises and what people expect of a shared agent — bounded by its
+ * own team, since it can only be bound to that team's channels
+ * (`bindAgentToChannel`).
+ *
+ * Read from the database rather than taken from the caller: this is the line
+ * between "my mailbox" and "the team's mailbox", and a caller that forgot to
+ * pass a flag would silently put it back where it was.
+ */
+const principalForBrowser = async (
+  prisma: Pick<PrismaClient, 'agent'>,
+  input: { organizationId: string; agentId: string; principalUserId: string | null },
+): Promise<string | null> => {
+  const agent = await prisma.agent.findFirst({
+    where: { id: input.agentId, organizationId: input.organizationId },
+    select: { systemManaged: true },
+  })
+  if (!agent?.systemManaged) return null
+  if (!input.principalUserId) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+      'This assistant keeps a separate browser for each person, so it can only '
+      + 'open one on behalf of somebody. An unattended run has no such person.',
+    )
+  }
+  return input.principalUserId
+}
+
 export const ensureAgentBrowser = async (
   deps: CloudBrowserDeps,
   input: {
@@ -102,9 +144,21 @@ export const ensureAgentBrowser = async (
     agentId: string
     agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
+    /**
+     * The person this browser is for. Required for a system-managed agent —
+     * where it is the owner of the cookie jar — and ignored for an ordinary
+     * agent, whose browser is shared with its team.
+     */
+    principalUserId: string | null
   },
-): Promise<AgentBrowserRow & { connection: { projectId: string; apiKeyRef: string } }> => {
-  const connection = await resolveDurableBrowserConnection(deps.prisma, input)
+): Promise<AgentBrowserRow & { connection: { projectId: string | null; apiKeyRef: string } }> => {
+  const principalUserId = await principalForBrowser(deps.prisma, input)
+  const connection = await resolveDurableBrowserConnection(
+    deps.prisma,
+    principalUserId
+      ? { ...input, agentVisibility: 'private', agentOwnerUserId: principalUserId }
+      : input,
+  )
 
   const existing = await deps.prisma.agentBrowser.findFirst({
     where: {
@@ -112,6 +166,7 @@ export const ensureAgentBrowser = async (
       agentId: input.agentId,
       connectionId: connection.id,
       status: 'active',
+      principalUserId,
     },
     select: {
       id: true,
@@ -140,6 +195,7 @@ export const ensureAgentBrowser = async (
         agentId: input.agentId,
         connectionId: connection.id,
         browserbaseContextId: context.id,
+        principalUserId,
       },
       select: { id: true, connectionId: true, browserbaseContextId: true },
     })
@@ -165,6 +221,7 @@ export const ensureAgentBrowser = async (
           agentId: input.agentId,
           connectionId: connection.id,
           status: 'active',
+          principalUserId,
         },
         select: {
           id: true,
@@ -367,10 +424,15 @@ export const reconcileTombstonedAgentBrowsers = async (
  */
 export const describeAgentBrowser = async (
   prisma: Pick<PrismaClient, 'agentBrowser' | 'cloudBrowserSession'>,
-  input: { organizationId: string; agentId: string },
+  input: { organizationId: string; agentId: string; principalUserId?: string | null },
 ): Promise<{ exists: boolean; services: string[]; inUse: boolean } | null> => {
   const browser = await prisma.agentBrowser.findFirst({
-    where: { organizationId: input.organizationId, agentId: input.agentId, status: 'active' },
+    where: {
+      organizationId: input.organizationId,
+      agentId: input.agentId,
+      status: 'active',
+      ...(input.principalUserId === undefined ? {} : { principalUserId: input.principalUserId }),
+    },
     select: { id: true, logins: { select: { serviceHint: true }, take: 20 } },
   })
   if (!browser) return { exists: false, services: [], inUse: false }

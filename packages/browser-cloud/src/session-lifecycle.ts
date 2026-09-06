@@ -43,7 +43,8 @@ export type CloudBrowserDeps = {
 export type ResolvedConnection = {
   id: string
   scope: ConnectionScope
-  projectId: string
+  /** Null unless this connection was made before the project id was dropped. */
+  projectId: string | null
   apiKeyRef: string
 }
 

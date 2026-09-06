@@ -29,6 +29,18 @@ import {
   type NativeScreenBarAction,
 } from '../lib/native-shell-layout'
 
+/**
+ * The bar's whole icon vocabulary, mapped once.
+ *
+ * `vertical-split` is the two-pane glyph: the conversation on the left, the
+ * panel it opens on the right, which is what the action does. A name absent
+ * from here draws the label instead — the bar is text-first and an action is
+ * never dropped for want of an icon (`native-screen-bar.ts`).
+ */
+const BAR_ICONS: Record<string, string | undefined> = {
+  'panel-right': 'vertical-split',
+}
+
 export type NativePhoneNavBarProps = {
   accentColor: string
   barState: NativeScreenBarState
@@ -221,9 +233,17 @@ const NavBarLanes = ({
                 pressed ? { opacity: 0.55 } : null,
               ]}
             >
-              <Text numberOfLines={1} style={[styles.primaryLabel, { color: accentColor }]}>
-                {primary.label}
-              </Text>
+              {BAR_ICONS[primary.icon ?? ''] ? (
+                <MaterialIcons
+                  color={accentColor}
+                  name={BAR_ICONS[primary.icon ?? ''] as never}
+                  size={22}
+                />
+              ) : (
+                <Text numberOfLines={1} style={[styles.primaryLabel, { color: accentColor }]}>
+                  {primary.label}
+                </Text>
+              )}
             </Pressable>
           ) : null}
           {overflow.length > 0 ? (

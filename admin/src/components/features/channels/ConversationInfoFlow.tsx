@@ -57,13 +57,14 @@ const Disclosure = ({
 )
 
 /**
- * The agent's tools on a single-column layout, where the rail beside the chat
- * has no room to stand.
+ * The agent's tools, listed among everything else this conversation holds.
  *
  * Same table as the rail (`CHAT_TOOLS`), so a tool is added once and shows up
- * in both doorways — and this is the only doorway a phone has, which is the
- * whole of Rule zero check 1 for this surface. Selecting one closes the info
- * screen and opens the tool over the conversation.
+ * wherever tools are offered. This list is a second *doorway*, never a second
+ * implementation: it opens the same route the conversation header's own tool
+ * action does. It was once the only doorway a phone had, and being two screens
+ * in — behind the native bar's `···` sheet — is why nobody on the iOS app
+ * could find the browser; `chatToolDoorway` is the fix, not this row.
  */
 const ChatToolDisclosures = ({
   onOpenTool,

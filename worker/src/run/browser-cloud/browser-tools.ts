@@ -47,6 +47,7 @@ import {
   saveOriginGate,
   type SessionPoolDeps,
 } from './session-pool.js'
+import { resolveBrowserPrincipal } from './browser-principal.js'
 import { captureTabsNow, scheduleTabCapture } from './tab-capture.js'
 
 /**
@@ -197,6 +198,7 @@ const runOpen = async (
         agentId: context.agentId,
         agentVisibility: agent?.visibility ?? 'team',
         agentOwnerUserId: agent?.ownerUserId ?? null,
+        principalUserId: await resolveBrowserPrincipal(context),
       })
       // An unattended run has nobody to answer for opening somebody's signed-in
       // browser, and a schedule quietly acting inside a person's account is a
