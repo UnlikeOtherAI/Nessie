@@ -34,12 +34,6 @@ const NessieConfig = z.object({
     poolMin: z.number().default(2),
     poolMax: z.number().default(10),
   }),
-  redis: z
-    .object({
-      url: z.string(),
-      enabled: z.boolean().default(false),
-    })
-    .optional(),
   storage: z.object({
     provider: z.enum(['filesystem', 'gcs', 's3']),
     bucket: z.string().optional(),
@@ -75,7 +69,6 @@ Environment variable mapping must be deterministic:
 - `NESSIE_MODE` -> `mode`
 - `NESSIE_AUTH_AUTO_REDIRECT` -> `auth.autoRedirectToSso`
 - `NESSIE_DB_URL` -> `database.url`
-- `NESSIE_REDIS_URL` -> `redis.url`
 - `NESSIE_STORAGE_PROVIDER` -> `storage.provider`
 
 ## 4) Runtime capabilities
@@ -84,7 +77,6 @@ Services should branch on capability flags, not raw config internals.
 
 ```ts
 type RuntimeCapabilities = {
-  hasRedis: boolean;
   hasObjectStorage: boolean;
   hasExternalAuth: boolean;
   hasPubSub: boolean;
@@ -93,6 +85,9 @@ type RuntimeCapabilities = {
 
 Rules:
 
+- there is deliberately no `hasRedis`: Postgres is the queue and the realtime
+  bus (docs/standards/horizontal-scaling.md), so no service has a Redis branch
+  to take
 - `hasObjectStorage = false` means filesystem adapter is active
 - `hasExternalAuth = false` means bootstrap/local auth flow is active
 - `hasPubSub = false` means in-process/local queue mode is active

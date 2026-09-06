@@ -161,7 +161,7 @@ Nothing here is speculative; each line maps to a finding in areas 6 and 7.
 | 5.6 | 1.8 | Logout invalidates the local revocation cache like session-delete does; revocations publish on the realtime channel so other replicas drop the sid immediately. | S |
 | 5.7 | 6.4 | Signed-URL redirect for downloads above a size threshold. | M |
 | 5.8 | 9.2 | Trigger intake and DeepSignal insight events enqueue and ack like every other receiver. | M |
-| 5.9 | 1.12, 1.13, 5.14 | Delete `apiUsageTracker`, `pubsub-queue.ts` and the Redis config branch; per-process limiter stats are read from `rate_limit_buckets`. | S |
+| 5.9 | 1.13 | Per-process limiter stats on `/api/ops/health` are read from `rate_limit_buckets`. (The three deletions this row also carried — `apiUsageTracker` (1.12), `pubsub-queue.ts` with the worker's fallback warning (5.14), and the Redis config stub with its `hasRedis` capability — have landed. `config.queue.provider` still accepts `'pubsub'`; retiring that enum value goes with the Pub/Sub terraform module in 4.5.) | S |
 
 ## Order, dependencies and effort
 

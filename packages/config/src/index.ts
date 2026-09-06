@@ -129,12 +129,6 @@ export const NessieConfigSchema = z.object({
     poolMin: z.number().int().nonnegative().default(2),
     poolMax: z.number().int().positive().default(10),
   }),
-  redis: z
-    .object({
-      url: z.string().min(1),
-      enabled: z.boolean().default(false),
-    })
-    .optional(),
   storage: z.object({
     provider: StorageProviderSchema,
     bucket: z.string().min(1).optional(),
@@ -286,8 +280,12 @@ export const NessieConfigSchema = z.object({
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
+// No `hasRedis`: `redis.enabled` had no environment mapping and nothing ever
+// read `config.redis`, so the capability was false on every deployment that
+// has ever run. Postgres is the queue and the realtime bus by decision
+// (docs/standards/horizontal-scaling.md), so there is nothing for it to
+// describe.
 export const RuntimeCapabilitiesSchema = z.object({
-  hasRedis: z.boolean(),
   hasObjectStorage: z.boolean(),
   hasExternalAuth: z.boolean(),
   hasPubSub: z.boolean(),
@@ -309,7 +307,6 @@ export const ConfigEnvMap = {
   NESSIE_DB_POOL_MAX: 'database.poolMax',
   NESSIE_DB_POOL_MIN: 'database.poolMin',
   NESSIE_SHUTDOWN_TIMEOUT_MS: 'shutdownTimeoutMs',
-  NESSIE_REDIS_URL: 'redis.url',
   NESSIE_STORAGE_PROVIDER: 'storage.provider',
   NESSIE_STORAGE_BUCKET: 'storage.bucket',
   NESSIE_STORAGE_LOCAL_PATH: 'storage.localPath',
@@ -686,7 +683,6 @@ const loadCliOverrides = (argv: string[]): JsonObject => {
 
 export const deriveRuntimeCapabilities = (config: NessieConfig): RuntimeCapabilities =>
   RuntimeCapabilitiesSchema.parse({
-    hasRedis: Boolean(config.redis?.enabled && config.redis.url),
     hasObjectStorage: config.storage.provider !== 'filesystem',
     hasExternalAuth: config.auth.providers.some(
       (provider) => provider.enabled && provider.type !== 'local-bootstrap',
