@@ -222,7 +222,8 @@ runDatabaseTest('a drain nacks with worker_drain and the next execution resumes'
     // A subscriber claims the globally oldest job on its topic, so a shared
     // database would hand this suite somebody else's run to settle.
     const topic = `run.execute.crash-drain.${randomUUID()}`
-    const jobId = await pipeline.queueProvider.enqueue(topic, seeded.payload)
+    const { enqueueQueueJob } = await import('@nessie/db')
+    await enqueueQueueJob(pipeline.prisma, { payload: seeded.payload, topic })
     const abort = new AbortController()
     const subscription = pipeline.queueProvider.subscribe(
       topic,
@@ -242,8 +243,8 @@ runDatabaseTest('a drain nacks with worker_drain and the next execution resumes'
     await subscription.done
 
     const job = await pipeline.pool.query<{ error_message: string; status: string }>(
-      'SELECT error_message, status FROM queue_jobs WHERE id = $1',
-      [jobId],
+      'SELECT error_message, status FROM queue_jobs WHERE topic = $1',
+      [topic],
     )
     assert.equal(job.rows[0]?.status, 'pending', 'the job is re-claimable at once')
     assert.equal(
