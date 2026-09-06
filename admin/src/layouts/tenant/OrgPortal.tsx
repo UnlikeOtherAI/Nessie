@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import type { TenantOrganisation } from '../../facades/team/tenant-host'
 import { teamsFromMe, type Team } from '../../lib/teams'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { TenantBrandFrame, TenantSignInButton, initialsOf } from './tenant-brand'
 
 /**
  * A tenant's own front door, served at `<org>.<base domain>`.
@@ -23,40 +24,6 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
  * they can never be registered redirect targets. The visitor is handed off and
  * returned here.
  */
-
-const initialsOf = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? '')
-    .join('') || '?'
-
-const OrgMark = ({ org, size }: { org: TenantOrganisation; size: number }) => {
-  if (org.iconUrl) {
-    return (
-      <img
-        alt=""
-        className="rounded-[var(--radius-lg)] object-cover"
-        height={size}
-        src={org.iconUrl}
-        width={size}
-      />
-    )
-  }
-  return (
-    <div
-      aria-hidden
-      className={[
-        'flex items-center justify-center rounded-[var(--radius-lg)]',
-        'bg-[color:var(--accent)] font-semibold text-[color:var(--accent-tx)]',
-      ].join(' ')}
-      style={{ height: size, width: size, fontSize: Math.round(size / 2.6) }}
-    >
-      {initialsOf(org.name)}
-    </div>
-  )
-}
 
 export const OrgPortal = ({
   organisation,
@@ -98,43 +65,10 @@ export const OrgPortal = ({
     }
   }
 
-  const handleSignIn = () => {
-    const target = signInOrigin?.replace(/\/+$/, '')
-    const back = encodeURIComponent(window.location.href)
-    // Without a configured canonical origin there is nowhere safe to send
-    // somebody, so fall back to this host's own login route rather than
-    // guessing an origin.
-    window.location.href = target ? `${target}/login?return=${back}` : '/login'
-  }
-
   return (
-    <main
-      className={[
-        'flex min-h-screen flex-col items-center justify-center gap-6',
-        'bg-[color:var(--main)] px-6 py-12 text-[color:var(--tx)]',
-      ].join(' ')}
-    >
-      <div className="flex flex-col items-center gap-4 text-center">
-        <OrgMark org={organisation} size={72} />
-        <div>
-          <h1 className="text-xl font-semibold">{organisation.name}</h1>
-          <p className="mt-1 text-sm text-[color:var(--tx3)]">
-            {window.location.hostname}
-          </p>
-        </div>
-      </div>
-
+    <TenantBrandFrame organisation={organisation}>
       {!signedIn ? (
-        <button
-          className={[
-            'rounded-[var(--radius-md)] bg-[color:var(--accent)] px-5 py-2.5',
-            'text-sm font-medium text-[color:var(--accent-tx)]',
-          ].join(' ')}
-          onClick={handleSignIn}
-          type="button"
-        >
-          Sign in
-        </button>
+        <TenantSignInButton signInOrigin={signInOrigin} />
       ) : teams.length === 0 ? (
         <p className="max-w-sm text-center text-sm text-[color:var(--tx3)]">
           You are signed in, but you are not a member of any team in{' '}
@@ -178,6 +112,6 @@ export const OrgPortal = ({
           ))}
         </ul>
       )}
-    </main>
+    </TenantBrandFrame>
   )
 }

@@ -1,5 +1,6 @@
 import { RouterProvider } from 'react-router-dom'
 import { TenantHostGate } from '../layouts/tenant/TenantHostGate'
+import { TenantReturnHandoff } from '../layouts/tenant/TenantReturnHandoff'
 import { DesktopWindowFrame } from '../layouts/DesktopWindowFrame'
 import { router } from '../router'
 import { ApiClientProvider } from './ApiClientProvider'
@@ -25,6 +26,7 @@ export const AppProvider = () => (
               <FontScaleProvider>
                 <FocusModeProvider>
                   <DesktopWindowFrame>
+                    <TenantReturnHandoff />
                     <TenantHostGate>
                       <RouterProvider router={router} />
                     </TenantHostGate>
