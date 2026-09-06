@@ -73,7 +73,7 @@ export const registerPersonalAssistantRoutes = (
 
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'personal_assistant.bootstrap' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'personal_assistant.bootstrap',
       outcome: 'success',
       resourceId: bootstrap.agentId,
       resourceType: 'agent',

@@ -20,6 +20,19 @@ acting member and call the same `@nessie/team-admin` functions as the
 routes; `call_start` resolves membership from its target channel's organisation
 and stamps `Call.createdViaAgentId`.
 
+`createCallLinkForTeamUser` (`packages/team-admin/src/call-links.ts`) takes a
+required `organizationId` — the caller's own tenant, never derived from the
+target team, because `Team` carries no `organizationId` of its own and a team
+in another organisation must be indistinguishable from one that does not
+exist (`CallLinkError('TEAM_NOT_FOUND')`). `CreateCallLinkInput.entitlement`
+states how the caller earned the right to mint the link, because the two
+callers reach a team differently: `'team_member'` is `POST
+/api/meetings/links` and `meeting_link_create`, which both name a team
+directly and so require a live `TeamMember` row; `'channel_member'` is
+`call_start`, which names a channel and inherits `startCallForUser`'s already
+narrower channel-membership check, so re-requiring `TeamMember` here would
+refuse calls the channel route allows.
+
 Spec: [docs/plans/2026-08-30-meet-call-links-and-ringing/overview.md](../plans/2026-08-30-meet-call-links-and-ringing/overview.md).
 This is the calling of *people into meetings*; calling the Personal Assistant
 by voice is a different subsystem —

@@ -197,7 +197,11 @@ file is the rule**.
   report/update order irrelevant. That event records operational calls and
   authenticated source units against the launch run's immutable
   `requestedByUserId`; it has no cost fields and is excluded from every local
-  cost aggregate. Migration
+  cost aggregate. The exclusion is `metadata.metering = 'operational_only'`,
+  stamped by `recordConnectorUsage`'s zod contract in
+  `packages/runtime/src/connector-usage.ts`, and it is the only predicate the
+  cost report (`api/src/services/token-ledger.ts`,
+  `BILLABLE_CONNECTOR_COST`) reads. Migration
   `20260720234500_retire_deepwater_local_cost_mirror` erases historical local
   amounts, converts only their existence into a cost-free server-only dispatch
   recovery marker, drops the obsolete Product-run cost columns, and installs a

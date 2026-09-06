@@ -168,6 +168,31 @@ The cost is paid at the other end: unarchiving can now collide, so
 sentence that says which channel to rename (409 `CHANNEL_SLUG_CONFLICT`), rather
 than failing on the constraint.
 
+### Placing a channel in a team requires standing in it
+
+A team id arrives in the request body, so it is the one fact that has to be
+earned before a channel lands there — an organisation membership names no
+team. `canPlaceChannelInTeam`
+([packages/team-admin/src/channel-create.ts](../../packages/team-admin/src/channel-create.ts))
+allows exactly: a `TeamMember` row on the team; a `ProjectMember` row on the
+team's project, which is how someone working a project reaches its rooms; an
+organisation owner or admin; or a `systemManaged` team, one of the two
+exceptions named above (the standalone-channel root, the Personal Assistant's
+team), which has no members by construction. A missing team context is a 400
+`CHANNEL_TEAM_CONTEXT_REQUIRED` — never a default team id filled in on the
+caller's behalf.
+
+The same shape governs minting a call link for a named team: a link for a
+*named team* (`POST /api/meetings/links`, the PA's `meeting_link_create`)
+requires `TeamMember` (`entitlement: 'team_member'`), because the caller named
+the team directly, while a call started from a channel
+(`call_start`/`startCallForUser`) is entitled by channel membership
+(`entitlement: 'channel_member'`) instead — a public channel's members are not
+necessarily in its team, so requiring `TeamMember` there would refuse calls the
+channel route allows. `createCallLinkForTeamUser` takes the caller's own
+`organizationId` and refuses a team outside it the same way a missing team
+does: see [docs/standards/calls.md](calls.md).
+
 ## Changing what UOA owns, from inside Nessie
 
 "UOA is the authority" is a rule about **where the value is stored**, not about

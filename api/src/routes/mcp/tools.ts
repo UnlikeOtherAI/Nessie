@@ -74,11 +74,16 @@ const ToolPolicyParamsSchema = z.object({
  * Tool registry entry with its associated grants attached. The admin
  * `AgentGrantMatrix` (task #25) needs grant IDs alongside the tool list on
  * initial render so cross-session unchecks can DELETE without first POSTing
- * to capture the id. Grants are scoped indirectly: `listToolRegistry`
- * already filters tools to the caller's org (or `organizationId: null`
- * globals), so any grant whose `toolId` references a row in that list is
- * implicitly in-scope. We do NOT need an explicit org clause on `toolGrant`
- * itself — the table has no `organizationId` column.
+ * to capture the id.
+ *
+ * The grant read carries its own tenant clause. `ToolGrant` has no
+ * `organizationId` column, and the tool row's tenancy is not a substitute for
+ * one: `listToolRegistry` deliberately returns `organizationId: null` globals
+ * as well as the caller's rows, and every tenant's grants hang off those same
+ * global tools. Tenancy runs through the grant's principal instead — an agent
+ * grant through `agent.organizationId`, a role grant through the granted
+ * tool, since `roleId` is a free-form RBAC identifier with no row of its own
+ * to carry an organisation.
  */
 export type ToolRegistryEntryWithGrants = ToolRegistryRow & {
   grants: ToolGrantRow[]
@@ -86,12 +91,19 @@ export type ToolRegistryEntryWithGrants = ToolRegistryRow & {
 
 export const attachGrantsToRegistryEntries = async (
   prisma: PrismaClient,
+  organizationId: string,
   entries: ToolRegistryRow[],
 ): Promise<ToolRegistryEntryWithGrants[]> => {
   if (entries.length === 0) return []
   const toolIds = entries.map((entry) => entry.id)
   const grants = await prisma.toolGrant.findMany({
-    where: { toolId: { in: toolIds } },
+    where: {
+      toolId: { in: toolIds },
+      OR: [
+        { agent: { organizationId } },
+        { agentId: null, tool: { organizationId } },
+      ],
+    },
     orderBy: { createdAt: 'asc' },
   })
   const grantsByToolId = new Map<string, ToolGrantRow[]>()
@@ -188,7 +200,11 @@ export const registerMcpToolsRoutes = (
       source: sourceParsed?.success ? sourceParsed.data : undefined,
       scopeKey: query.scopeKey,
     })
-    const withGrants = await attachGrantsToRegistryEntries(prisma, tools)
+    const withGrants = await attachGrantsToRegistryEntries(
+      prisma,
+      actorContext.tenant.organizationId,
+      tools,
+    )
     return createApiResponse(withGrants)
   })
 

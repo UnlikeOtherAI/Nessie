@@ -70,3 +70,17 @@ Facts not restated there:
   themselves.
 - Spec and build status:
   [docs/plans/2026-08-11-disclosure-boundaries-build.md](../plans/2026-08-11-disclosure-boundaries-build.md).
+- `@nessie/runtime`'s `publishMessageEnvelope` (`packages/runtime/src/message-envelope.ts`)
+  is the one `message.new`/`message.reply` envelope for both the API and the
+  worker — six literal payload objects used to retype it at each call site.
+  What stays with the caller is the scope set, because who may see this is a
+  disclosure decision the destination owns, and the failure policy, because only
+  the caller knows whether a dropped announcement costs a refresh or a run.
+- Subscription-time authorization is only half the rule: realtime delivery
+  (`api/src/realtime/delivery-entitlements.ts`) re-authorizes organization,
+  agent and thread-stream scopes **per event**, the same way channel and
+  dashboard scopes already did, because revocation takes effect on the next
+  request and a WebSocket or SSE stream may never make one. Each predicate is
+  memoized for `REALTIME_ENTITLEMENT_TTL_MS` (5 s) so a token-per-delta stream
+  costs one query per window rather than one per token; a revocation stops the
+  stream within that same 5-second window, not at connect time.

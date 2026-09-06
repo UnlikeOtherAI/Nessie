@@ -39,10 +39,16 @@ file is the rule**.
   intentionally require no explicit grant today because a person's PA is their
   delegate. Both re-read the live acting membership and call
   `createCallLinkForTeamUser` / `startCallForUser` in
-  `@nessie/team-admin`; never duplicate their gates. A call tool leaves
+  `@nessie/team-admin`; never duplicate their gates. `call_start` leaves
   `expectedOrganizationId` unset so the shared start seam resolves the
   **target channel's** organisation and re-checks membership there, preserving
   the route's indistinguishable `Channel not found` refusal across UOA orgs.
+  `meeting_link_create` names a team rather than a channel, so it passes the
+  run's own tenant (`resolveActingMember`'s `organizationId`) as
+  `createCallLinkForTeamUser`'s required `organizationId` with
+  `entitlement: 'team_member'`, exactly as `POST /api/meetings/links` passes
+  the session's tenant; a team outside that organisation is the same
+  indistinguishable `Team not found`.
   An unattended run has no requesting user and must refuse before minting.
 
 ## Detail

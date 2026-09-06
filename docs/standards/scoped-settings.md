@@ -60,5 +60,11 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   person's own. Teams carry no `organization_id` of their own — tenancy runs
   through their project — so the FK cannot prove tenancy and the service must.
 
+- **A write is audited, never the value.** `PUT /api/settings/scoped/:key`
+  (`api/src/routes/scoped-settings.ts`) emits `setting.scoped.written` with
+  which scope and level the write landed at and whether it was locked; the
+  value itself is not put in the metadata at all, and audit metadata is
+  redacted by key regardless, so a later audit reads policy, never the setting.
+
 Plan, rationale and as-built deltas:
 [`docs/plans/2026-09-03-scoped-settings.md`](../plans/2026-09-03-scoped-settings.md).

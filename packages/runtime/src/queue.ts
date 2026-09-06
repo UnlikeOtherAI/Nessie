@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Pool } from 'pg'
 
@@ -15,11 +14,6 @@ export type QueueHandler = (job: QueueJob) => Promise<void>
 
 export interface QueueProvider {
   acknowledge(jobId: string): Promise<void>
-  enqueue(
-    topic: string,
-    payload: unknown,
-    options?: { delayMs?: number; idempotencyKey?: string },
-  ): Promise<string>
   nack(jobId: string, reason?: string): Promise<void>
   subscribe(
     topic: string,
@@ -64,50 +58,6 @@ export class PgQueueProvider implements QueueProvider {
       lockTtlSeconds?: number
     } = {},
   ) {}
-
-  async enqueue(
-    topic: string,
-    payload: unknown,
-    options: { delayMs?: number; idempotencyKey?: string } = {},
-  ): Promise<string> {
-    const result = await this.pool.query<{ id: string }>(
-      `
-        INSERT INTO queue_jobs (
-          id,
-          topic,
-          payload,
-          status,
-          idempotency_key,
-          attempt,
-          max_attempts,
-          enqueued_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3::jsonb,
-          'pending',
-          $4,
-          0,
-          3,
-          now() + make_interval(secs => $5 / 1000.0)
-        )
-        ON CONFLICT (idempotency_key)
-        WHERE idempotency_key IS NOT NULL
-        DO UPDATE SET topic = EXCLUDED.topic
-        RETURNING id
-      `,
-      [
-        randomUUID(),
-        topic,
-        JSON.stringify(payload),
-        options.idempotencyKey ?? null,
-        options.delayMs ?? 0,
-      ],
-    )
-
-    return result.rows[0]!.id
-  }
 
   async acknowledge(jobId: string): Promise<void> {
     await this.pool.query(
