@@ -7,9 +7,10 @@ import type { PushSendClaimPrisma } from './push-send-claim.js'
  *
  * `push_send_claims` gets one row per notification per endpoint, so an active
  * organisation writes tens of thousands a day, each with an entry in the unique
- * index. Nothing else removes them: a `sent` claim is permanent by design and a
- * failed one is already deleted on the spot, so without this the table and its
- * index grow forever.
+ * index. Nothing else removes them: a `sent` claim is kept on purpose for as
+ * long as the job that would consult it can be redelivered — nothing else ends
+ * that, and this sweep is what does — while a failed one is already deleted on
+ * the spot. Without this the table and its index would grow forever.
  *
  * ## Why this horizon
  *

@@ -24,10 +24,12 @@ import {
  * same notification (with a deep-link `data.url` the service worker opens),
  * prunes subscriptions the push service reports gone, and logs each attempt to
  * the `push_deliveries` ledger as `provider: 'webpush'`. Each POST is gated by a
- * `push_send_claims` row for `(notificationKey, endpoint)` so a redelivered
- * dispatch job shows the notification once, not twice — and the claim is only
- * made permanent once the push service has accepted it, so a POST that failed
- * is retried by the next delivery instead of being suppressed forever.
+ * `push_send_claims` row for `(notificationKey, endpoint)`: a redelivered
+ * dispatch job skips any endpoint whose claim already reads `sent`, and the
+ * claim is only promoted once the push service has accepted it, so a POST that
+ * failed is retried by the next delivery instead of being suppressed forever.
+ * The guarantee itself, and the cases it does not cover, belong to
+ * `./push-send-claim.ts`; nothing here strengthens it.
  *
  * The prisma surface and sender are injected so the path is unit-testable with
  * no live database or network.

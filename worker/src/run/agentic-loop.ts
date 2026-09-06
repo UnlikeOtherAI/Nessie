@@ -167,8 +167,11 @@ export const runAgenticLoop = async (input: {
   /**
    * The worker's drain signal for this job. When it fires, whatever is in
    * flight gets a few seconds to land and then the loop throws
-   * `RunDrainedError` at the next boundary — the checkpoint is already durable,
-   * so another worker resumes from it rather than replaying the run.
+   * `RunDrainedError` at the next boundary. Another worker resumes from the
+   * last checkpoint that actually became durable, and replays the run from its
+   * prompt when none did — `createCrashCheckpointWriter`
+   * (execute/crash-checkpoint.ts) owns which outcomes are which, and neither it
+   * nor its caller reports the answer back to this loop.
    */
   drainSignal?: AbortSignal
   /**
@@ -273,8 +276,16 @@ export const runAgenticLoop = async (input: {
     })
   }
 
-  // Tool calls this run already executed, so a re-claimed run never sends the
-  // same mail or creates the same task twice.
+  // Tool results this run has already recorded, so a re-entered batch answers
+  // them from the record instead of dispatching them a second time.
+  //
+  // Deliberately weaker than "a tool runs at most once per run". A result only
+  // suppresses a re-execution once its record reached storage, and this loop is
+  // never told whether it did: `onCheckpoint` may persist nothing at all (a
+  // delegate sub-agent supplies no sink), and where it does, the write can be
+  // skipped, fenced out or fail. The exact scope, and the window that stays
+  // open even when every write lands, are stated once at
+  // `createToolExecutionRecorder` in ./loop-resume.ts.
   const toolRecorder = createToolExecutionRecorder({
     executeTool,
     onRecorded: () => checkpoint(),

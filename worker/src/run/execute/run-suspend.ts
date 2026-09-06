@@ -132,10 +132,11 @@ export const postSuspensionNotice = async (
  * marker stays up and `ACTIVE_THREAD_RUN_STATUSES` keeps a second run from
  * starting in this thread while a person is deciding.
  *
- * The same statement releases the executor fencing token (see
- * `updateRunStatus`): a parked run has no executor, and the one that resumes it
- * after the approval or the card press must be able to claim it immediately
- * rather than wait out the takeover window.
+ * The same statement releases the executor fencing token; `updateRunStatus`
+ * owns the reason and states it in full. In short: a parked run has no
+ * executor, so the row must stop naming one. It is not what lets the resume
+ * proceed — the approval or the card press starts a NEW run, and no claim ever
+ * admits a suspended row.
  */
 export const applySuspendedState = async (
   deps: ExecutionDependencies,

@@ -187,11 +187,15 @@ export const updateRunStatus = async (
 ): Promise<void> => {
   const terminal =
     status === 'completed' || status === 'failed' || status === 'cancelled'
-  // A suspended run is parked for a person, and the executor that resumes it
-  // will be a different one. Releasing the token in the very statement that
-  // parks the run is what lets that executor claim it without waiting out the
-  // takeover window — and there is no window in which the run is suspended and
-  // still fenced to a worker that has stopped executing it.
+  // A suspended run is parked for a person, and no executor ever claims this
+  // row again: `claimRunForExecution` admits only `pending` or a `running` run
+  // whose executor has gone silent, and the approval or card press starts a NEW
+  // run (see the crash-state note further down this function). So releasing
+  // here is not about a later claim. What it does is leave no window in which
+  // the row still names a worker that has stopped executing it: the fence is
+  // dropped with it, so the heartbeat stops refreshing a claim on a parked run,
+  // and `clearCrashCheckpoint`'s two-sided fence is written for exactly this
+  // statement having already cleared `runs.executor_token`.
   const suspended = status === 'waiting_approval' || status === 'waiting_input'
   const data = {
     finishedAt: terminal ? new Date() : null,

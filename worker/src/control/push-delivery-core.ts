@@ -38,14 +38,18 @@ import {
  * delivery implementation. Credential loading lives in `./push-credentials.ts`
  * and is re-exported here so every existing import path keeps working.
  *
- * **No accepted send is sent twice.** Every caller supplies a
- * `notificationKey` — the notification's own durable identity, matching its
- * enqueue idempotency key — and this core claims a `push_send_claims` row for
- * `(notificationKey, endpoint)` *before* it calls a provider
- * (`./push-send-claim.ts`). A redelivered job loses that claim and skips the
- * send instead of notifying the device twice. The claim is only made permanent
- * once a provider has accepted; a send that definitively failed releases it, so
- * a later redelivery genuinely retries rather than silently dropping a ring.
+ * **Once an endpoint's claim reads `sent`, no later delivery sends it again.**
+ * Every caller supplies a `notificationKey` — the notification's own durable
+ * identity, which corresponds to its enqueue idempotency key without being the
+ * same string (the API enqueues `push:<messageId>`; the handler passes
+ * `push:message:<messageId>` here) — and this core claims a `push_send_claims`
+ * row for `(notificationKey, endpoint)` *before* it calls a provider. A
+ * redelivered job loses that claim and skips the send instead of notifying the
+ * device twice. The claim is only promoted once a provider has accepted; a send
+ * that definitively failed releases it, so a later redelivery genuinely retries
+ * rather than silently dropping a ring. The exact scope of the guarantee, and
+ * the three cases in which an accepted send is repeated anyway, are stated once
+ * in `./push-send-claim.ts` — this module adds nothing to it.
  * `push_deliveries` keeps its unchanged post-send meaning: the outcome log ops
  * reads, with the provider, the status and the error code.
  */
@@ -307,7 +311,11 @@ const deliverNativeTokens = async (
     // should be rung at all; from here down a provider is contacted, so the
     // claim is taken first and a loser skips the send rather than failing the
     // job. `sendConfiguredToken`'s transient-failure retries all happen inside
-    // this one claim, so a retry can never duplicate a send that succeeded.
+    // this one claim, so no queue redelivery can interleave with them. Inside
+    // the claim a retry can still repeat an accepted send: FCM maps a thrown
+    // HTTP call to `status: 0`, which `isTransientPushFailure` retries, so a
+    // send the server took but whose response was lost is attempted again.
+    // APNs retries only 5xx and has no such case.
     const claimRef: PushSendClaimRef = {
       endpointKey: pushEndpointKey(transport, token.token),
       notificationKey: input.notificationKey,

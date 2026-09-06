@@ -475,14 +475,15 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
-  // `push.dispatch` never notifies a device twice for a send a provider
-  // accepted. Every enqueue carries a deterministic idempotency key
+  // Every `push.dispatch` enqueue carries a deterministic idempotency key
   // (`push:<messageId>` from the API, `push:reply:<runId>` from a run's
   // interactive reply), so two enqueues collapse to one job; the handler then
   // claims a `push_send_claims` row per endpoint before it calls a provider, so
-  // a job redelivered by a drain, a lock expiry or a nack sends nothing again —
-  // unless the earlier attempt never reached the provider, in which case the
-  // claim was released and the redelivery genuinely retries.
+  // a job redelivered by a drain, a lock expiry or a nack skips every endpoint
+  // whose claim already reads `sent`, and genuinely retries the ones whose
+  // earlier attempt never reached the provider, because those claims were
+  // released. The guarantee that gives, and the cases it does not cover, are
+  // stated once in `control/push-send-claim.ts`; nothing here strengthens it.
   // `push_deliveries` stays what it was — the post-send outcome log, not the
   // guard.
   subscribe(

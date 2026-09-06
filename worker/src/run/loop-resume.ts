@@ -14,9 +14,13 @@ import type { ExecuteToolFn, ExecutedToolResult, PrepareToolFn } from './tool-ba
 
 /**
  * This worker is draining and ran out of the short grace it allows an in-flight
- * inference or tool batch. The run is NOT failed: its crash checkpoint is
- * written, its executor token released, and the queue job is nacked so another
- * worker claims it immediately and resumes from the checkpoint.
+ * inference or tool batch. The run is NOT failed: a crash checkpoint has been
+ * offered at every boundary, its executor token is released, and the queue job
+ * is nacked so another worker claims it immediately. That worker resumes from
+ * the most recent checkpoint that became durable, and starts again from the
+ * prompt when none did; `worker/src/run/execute/crash-checkpoint.ts`
+ * (`createCrashCheckpointWriter`) states which writes are durable and which are
+ * not.
  *
  * The message is the nack reason verbatim — `PgQueueProvider.runClaimedJob`
  * records `error.message` in `queue_jobs.error_message` — so an operator
