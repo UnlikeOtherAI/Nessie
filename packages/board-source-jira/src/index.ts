@@ -6,3 +6,4 @@ export {
   normaliseJiraIssue,
   type JiraIssue,
 } from './normalise.js'
+export { jiraSearchJql } from './search.js'

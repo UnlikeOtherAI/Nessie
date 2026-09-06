@@ -10,6 +10,7 @@ import {
   type NormalisedItem,
   type OAuthExchangeInput,
   type OutboundChange,
+  type RemoteItemQuery,
   SourceContainerGoneError,
   SourceRejectedError,
   type SyncCheckpoint,
@@ -27,6 +28,7 @@ import {
   jiraStatusCategory,
   normaliseJiraIssue,
 } from './normalise.js'
+import { jiraSearchJql } from './search.js'
 
 export const JIRA_API_HOST = 'api.atlassian.com'
 export const JIRA_AUTH_HOST = 'auth.atlassian.com'
@@ -308,6 +310,26 @@ export const createJiraAdapter = (config: JiraAdapterConfig): BoardSourceAdapter
     url.searchParams.set('jql', `id IN (${externalIds.slice(0, 100).join(',')})`)
     url.searchParams.set('fields', ISSUE_FIELDS)
     url.searchParams.set('maxResults', '100')
+    const page = await sourceFetchJson<{ issues?: JiraIssue[] }>({
+      url: url.toString(),
+      allowedHosts: JIRA_ALLOWED_HOSTS,
+      headers: authHeaders(ctx),
+    })
+    return (page.issues ?? []).map((issue) => normaliseJiraIssue(issue, siteUrl))
+  },
+
+  searchItems: async (
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    query: RemoteItemQuery,
+  ): Promise<NormalisedItem[]> => {
+    const cloudId = String(container.cloudId ?? '')
+    const siteUrl = String(container.siteUrl ?? '')
+    const projectKey = String(container.projectKey ?? '')
+    const url = new URL(`${apiBase(cloudId)}/search/jql`)
+    url.searchParams.set('jql', jiraSearchJql(projectKey, query.text))
+    url.searchParams.set('fields', ISSUE_FIELDS)
+    url.searchParams.set('maxResults', String(Math.min(query.limit, 100)))
     const page = await sourceFetchJson<{ issues?: JiraIssue[] }>({
       url: url.toString(),
       allowedHosts: JIRA_ALLOWED_HOSTS,

@@ -9,6 +9,7 @@ import {
   type CredentialBundle,
   type NormalisedItem,
   type OutboundChange,
+  type RemoteItemQuery,
   SourceContainerGoneError,
   type SyncCheckpoint,
   type SyncPage,
@@ -198,6 +199,29 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
       return cards
         .filter((card): card is TrelloCard => card !== null)
         .map((card) => normaliseTrelloCard(card, listNames))
+    },
+
+    searchItems: async (
+      ctx: ConnectionContext,
+      container: Record<string, unknown>,
+      query: RemoteItemQuery,
+    ): Promise<NormalisedItem[]> => {
+      const boardId = String(container.boardId ?? '')
+      const lists = await listsFor(ctx, boardId)
+      const listNames = new Map(lists.map((list) => [list.id, list.name]))
+      // `idBoards` is what keeps this inside the board the source attached —
+      // Trello's search would otherwise range over every board the token can
+      // reach, which is the whole member's account.
+      const url =
+        `https://${TRELLO_API_HOST}/1/search?${auth(ctx)}` +
+        `&query=${encodeURIComponent(query.text)}` +
+        `&idBoards=${encodeURIComponent(boardId)}` +
+        `&modelTypes=cards&card_fields=all&cards_limit=${Math.min(query.limit, 100)}`
+      const found = await sourceFetchJson<{ cards?: TrelloCard[] }>({
+        url,
+        allowedHosts: TRELLO_ALLOWED_HOSTS,
+      })
+      return (found.cards ?? []).map((card) => normaliseTrelloCard(card, listNames))
     },
 
     ensureWebhook: async (

@@ -96,3 +96,22 @@ export const WEBHOOK_DELETE_MUTATION = `
     webhookDelete(id: $id) { success }
   }
 `
+
+/**
+ * Linear's own relevance, narrowed to the team the source attached.
+ *
+ * `searchIssues` is the API behind Linear's search box, so a person's words
+ * find what they would find in Linear itself. Archived issues stay out: an
+ * item search is for work somebody can still act on.
+ */
+export const ISSUE_SEARCH_QUERY = `
+  query IssueSearch($term: String!, $teamId: ID!, $first: Int!) {
+    searchIssues(
+      term: $term
+      first: $first
+      filter: { team: { id: { eq: $teamId } } }
+    ) {
+      nodes { ${ISSUE_FIELDS} }
+    }
+  }
+`

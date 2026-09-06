@@ -22,6 +22,8 @@ export type ProjectTaskRecord = {
     externalKey: string
     externalUrl: string
     remoteStateName: string | null
+    /** The provider's own id for an assignee no identity link resolves. */
+    remoteAssigneeExternalId: string | null
     remoteAssigneeDisplay: string | null
     lastInboundAt: string | null
     writeMode: 'read_only' | 'read_write'
@@ -59,6 +61,7 @@ export const projectTaskInclude = {
       externalKey: true,
       externalUrl: true,
       remoteStateName: true,
+      remoteAssigneeExternalId: true,
       remoteAssigneeDisplay: true,
       lastInboundAt: true,
       source: { select: { provider: true, writeMode: true } },
@@ -84,6 +87,7 @@ export const mapProjectTask = (task: TaskWithPeople): ProjectTaskRecord => ({
         externalKey: task.externalLink.externalKey,
         externalUrl: task.externalLink.externalUrl,
         remoteStateName: task.externalLink.remoteStateName,
+        remoteAssigneeExternalId: task.externalLink.remoteAssigneeExternalId,
         remoteAssigneeDisplay: task.externalLink.remoteAssigneeDisplay,
         lastInboundAt: task.externalLink.lastInboundAt?.toISOString() ?? null,
         writeMode: task.externalLink.source.writeMode,
