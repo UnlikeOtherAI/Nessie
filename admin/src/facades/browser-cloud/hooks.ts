@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import type {
   AgentBrowserRecord,
+  AgentBrowserTabsResponse,
   CloudBrowserConnectionRecord,
   CloudBrowserScope,
   CloudBrowserSessionDetail,
@@ -108,6 +109,42 @@ export const useAgentBrowser = (agentId: string | null) => {
     // Switching agents keeps the previous browser record painted rather than
     // blanking the panel between answers.
     placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * What the agent's browser was last on. Read only while the column shows its
+ * idle face, and refetched when a session ends, which is when the rows change.
+ */
+export const useAgentBrowserTabs = (threadId: string | null, agentId: string | null) => {
+  const apiClient = useApiClient()
+  return useQuery<AgentBrowserTabsResponse>({
+    queryKey: browserCloudKeys.agentBrowserTabs(threadId ?? undefined, agentId ?? undefined),
+    queryFn: () => apiClient.get(`/api/threads/${threadId}/agents/${agentId}/browser-tabs`),
+    enabled: threadId !== null && agentId !== null,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Bring the browser back the way it was left. The thread's session list is
+ * what the column watches, so invalidating it is what swaps the idle face for
+ * the live one.
+ */
+export const useResumeAgentBrowser = (threadId: string | null, agentId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient.post<{ sessionId: string; restoredTabs: number }>(
+        `/api/threads/${threadId}/agents/${agentId}/browser/resume`,
+        {},
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
+      })
+    },
   })
 }
 

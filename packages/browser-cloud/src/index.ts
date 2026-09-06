@@ -46,6 +46,7 @@ export {
   releaseCloudBrowserSession,
   releaseSessionsForRun,
   resolveConnectionForRun,
+  touchResumedSession,
   type CloudBrowserDeps,
   type LiveSessionRow,
   type OpenSessionInput,
@@ -80,3 +81,17 @@ export {
   resolveDurableBrowserConnection,
   type AgentBrowserRow,
 } from './agent-browser.js'
+
+export {
+  AGENT_BROWSER_TAB_LIMIT,
+  captureSessionTabs,
+  listAgentBrowserTabs,
+  persistAgentBrowserTabs,
+  restoreBrowserTabs,
+  SCREENSHOT_MAX_BYTES,
+  snapshotBrowserTabs,
+  type AgentBrowserTabRecord,
+  type CapturedTab,
+} from './agent-browser-tabs.js'
+
+export { resumeAgentBrowser, type ResumeAgentBrowserInput } from './resume.js'

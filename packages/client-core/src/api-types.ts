@@ -493,7 +493,8 @@ export type CloudBrowserSessionSummary = {
   id: string
   agentId: string
   agentName: string
-  runId: string
+  /** Null for a session a person resumed from the conversation. */
+  runId: string | null
   status: 'allocating' | 'active' | 'releasing' | 'released' | 'failed' | 'unknown'
   startedAt: string
   endedAt: string | null
@@ -521,6 +522,21 @@ export type AgentBrowserRecord = {
   lastUsedAt: string | null
   inUse: boolean
   logins: AgentBrowserLoginRecord[]
+}
+
+/** A tab the agent's browser was last seen with; see the contract for the shape. */
+export type AgentBrowserTabRecord = {
+  id: string
+  position: number
+  url: string
+  title: string
+  capturedAt: string | null
+  screenshotDataUrl: string | null
+}
+
+export type AgentBrowserTabsResponse = {
+  hasBrowser: boolean
+  tabs: AgentBrowserTabRecord[]
 }
 
 export type MyBrowserLoginRecord = {

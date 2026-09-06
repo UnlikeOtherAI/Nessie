@@ -39,6 +39,8 @@ export type {
   ChannelRecord,
   AgentBrowserLoginRecord,
   AgentBrowserRecord,
+  AgentBrowserTabRecord,
+  AgentBrowserTabsResponse,
   CloudBrowserConnectionRecord,
   MailboxConnectionRecord,
   MailboxConnectionScope,

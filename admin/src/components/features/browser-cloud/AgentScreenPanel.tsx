@@ -9,8 +9,8 @@ import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { SidePanelShell } from '../channels/side-panel/SidePanelShell'
-import { AgentBrowserPanel } from './AgentBrowserPanel'
 import { AgentScreenViewer } from './AgentScreenViewer'
+import { BrowserLastState } from './BrowserLastState'
 
 /**
  * One width whichever face the column is wearing — the live viewer or the
@@ -24,6 +24,8 @@ type AgentScreenPanelProps = {
   sessionId: string | null
   onClose: () => void
   agent: AgentRecord
+  /** The conversation the column stands beside; the idle face reads through it. */
+  threadId: string | null
 }
 
 /**
@@ -37,13 +39,12 @@ type AgentScreenPanelProps = {
  *
  * The tool rail's Browser button is persistent, so most of the time it is
  * pressed there is no session to watch — and "nothing to watch" is not
- * "nothing to know". Idle, the column answers what this browser *is*: the
- * account it runs on, what it stays signed in to, and the way to sign it out,
- * which is `AgentBrowserPanel` — the very panel the agent's own page renders,
- * never a second one. The swap is by session, so a browser starting up turns
- * the card into the screen with no further thought from the caller.
+ * "nothing to know". Idle, the column shows the last state (`BrowserLastState`:
+ * the tabs the browser was left with, what each showed, and Resume). The swap
+ * is by session, so a browser starting up — the agent's, or a resume — turns
+ * the last state into the screen with no further thought from the caller.
  */
-export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanelProps) => {
+export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentScreenPanelProps) => {
   const geometry = useSidePanelGeometry(SCREEN_PANEL_WIDTH_STORAGE_KEY)
   const phoneLayout = useNavigationLayout() === 'single'
   const [fullscreen, setFullscreen] = useState(false)
@@ -184,20 +185,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       </header>
       )}
       {sessionId === null ? (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <p className="px-1 pb-3 text-sm text-[color:var(--tx2)]">
-            {agent.name} isn’t browsing in this conversation. Its screen appears here
-            as soon as it does.
-          </p>
-          {/*
-            * A system-managed agent's browser record is deliberately not
-            * readable through `GET /api/agents/:id/browser` — the whole agent
-            * route family refuses one — so the Personal Assistant gets the
-            * sentence alone rather than a card that can only fail. Watching it
-            * live is unaffected: sessions are read per thread.
-            */}
-          {agent.systemManaged ? null : <AgentBrowserPanel agent={agent} heading={false} />}
-        </div>
+        <BrowserLastState agent={agent} threadId={threadId} />
       ) : (
         <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
       )}

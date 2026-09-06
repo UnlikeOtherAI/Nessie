@@ -48,18 +48,30 @@ export const CLOUD_BROWSER_SETTING_KEY = 'browser.connection'
 export const LIVE_SESSION_STATUSES = ['allocating', 'active', 'releasing'] as const
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
+/**
+ * A session a person resumed from the chat has no run to end it. It lives on
+ * this idle window instead, extended by every read of its live view while the
+ * column is open, and capped at the ordinary TTL so a tab left open in a
+ * forgotten window cannot bill past what a run could.
+ */
+const DEFAULT_RESUME_IDLE_MS = 5 * 60 * 1000
 /** A deployment ceiling the model can never argue past. */
 const MAX_TTL_MS = 30 * 60 * 1000
 const DEFAULT_MAX_CONCURRENT = 3
 
 export const cloudBrowserSettings = (env: NodeJS.ProcessEnv = process.env): {
   ttlMs: number
+  resumeIdleMs: number
   maxConcurrent: number
 } => {
   const ttl = Number(env.NESSIE_BROWSER_CLOUD_TTL_MS ?? DEFAULT_TTL_MS)
+  const idle = Number(env.NESSIE_BROWSER_CLOUD_RESUME_IDLE_MS ?? DEFAULT_RESUME_IDLE_MS)
   const concurrent = Number(env.NESSIE_BROWSER_CLOUD_MAX_CONCURRENT ?? DEFAULT_MAX_CONCURRENT)
+  const ttlMs = Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, MAX_TTL_MS) : DEFAULT_TTL_MS
   return {
-    ttlMs: Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, MAX_TTL_MS) : DEFAULT_TTL_MS,
+    ttlMs,
+    resumeIdleMs:
+      Number.isFinite(idle) && idle > 0 ? Math.min(idle, ttlMs) : Math.min(DEFAULT_RESUME_IDLE_MS, ttlMs),
     maxConcurrent:
       Number.isFinite(concurrent) && concurrent > 0 ? concurrent : DEFAULT_MAX_CONCURRENT,
   }
@@ -168,7 +180,11 @@ export const markConnectionNeedsAttention = async (
 
 export type OpenSessionInput = {
   organizationId: string
-  runId: string
+  /**
+   * Null when a person resumed the browser from the conversation: no run will
+   * end it, so it gets the idle TTL rather than the run TTL.
+   */
+  runId: string | null
   threadId: string
   agentId: string
   /**
@@ -225,7 +241,9 @@ export const openCloudBrowserSession = async (
 ): Promise<OpenSessionResult> => {
   const settings = cloudBrowserSettings()
   const now = deps.now?.() ?? new Date()
-  const expiresAt = new Date(now.getTime() + settings.ttlMs)
+  const expiresAt = new Date(
+    now.getTime() + (input.runId === null ? settings.resumeIdleMs : settings.ttlMs),
+  )
 
   // Checked before anything is claimed or created: sealing the connect URL is
   // not optional — a session nobody but this process can re-attach to is the
@@ -348,6 +366,9 @@ export const openCloudBrowserSession = async (
   try {
     const client = await loadClient(deps, connection)
     const session = await client.createSession({
+      // The hard cap, for a resumed session too: its idle window is enforced
+      // by the reaper and extended while somebody watches, and the remote
+      // timeout must leave room for that.
       timeoutSeconds: Math.ceil(settings.ttlMs / 1000),
       ...(input.agentBrowser
         // `persist` is what makes tomorrow's run find the login still there.
@@ -400,6 +421,34 @@ export const openCloudBrowserSession = async (
     }
     throw error
   }
+}
+
+/**
+ * Keep a resumed session alive while somebody is watching it.
+ *
+ * Called from the read that mints its live view, which the column polls only
+ * while it is open — so closing the column is what lets the session lapse. The
+ * extension never passes `startedAt + ttlMs`: a forgotten window keeps
+ * polling, and without the cap it would keep paying.
+ */
+export const touchResumedSession = async (
+  prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
+  input: { sessionId: string; now?: Date },
+): Promise<void> => {
+  const settings = cloudBrowserSettings()
+  const now = input.now ?? new Date()
+  const row = await prisma.cloudBrowserSession.findFirst({
+    where: { id: input.sessionId, runId: null, status: { in: [...LIVE_SESSION_STATUSES] } },
+    select: { startedAt: true, expiresAt: true },
+  })
+  if (!row) return
+  const cap = new Date(row.startedAt.getTime() + settings.ttlMs)
+  const next = new Date(Math.min(now.getTime() + settings.resumeIdleMs, cap.getTime()))
+  if (next.getTime() <= row.expiresAt.getTime()) return
+  await prisma.cloudBrowserSession.updateMany({
+    where: { id: input.sessionId, runId: null, status: { in: [...LIVE_SESSION_STATUSES] } },
+    data: { expiresAt: next },
+  })
 }
 
 export type LiveSessionRow = {

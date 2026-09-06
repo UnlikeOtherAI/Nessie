@@ -1343,6 +1343,7 @@ model Organization {
   scopedSettings          ScopedSetting[]
   cloudBrowserSessions    CloudBrowserSession[]
   agentBrowsers           AgentBrowser[]
+  agentBrowserTabs        AgentBrowserTab[]
   agentBrowserLogins      AgentBrowserLogin[]
 
   voiceInstallations     VoiceInstallation[]
@@ -7563,7 +7564,11 @@ model CloudBrowserSession {
   /// Mandatory: the reaper cannot stop a remote session without knowing which
   /// API key owns it, and `/ops/usage` attributes hours by connection scope.
   connectionId   String  @map("connection_id") @db.Uuid
-  runId          String  @map("run_id") @db.Uuid
+  /// NULL for a session a person resumed from the conversation rather than a
+  /// run opened. Such a session has no terminal transition to free it, so it
+  /// lives on a short idle TTL that every read of its live view extends, and
+  /// the reaper stops it like any other.
+  runId          String? @map("run_id") @db.Uuid
   threadId       String  @map("thread_id") @db.Uuid
   agentId        String  @map("agent_id") @db.Uuid
   /// Null for an ephemeral session. Set when this session rides the agent's
@@ -7618,7 +7623,7 @@ model CloudBrowserSession {
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   connection   CloudBrowserConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  run          Run                    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run          Run?                   @relation(fields: [runId], references: [id], onDelete: Cascade)
   thread       Thread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
   agentBrowser AgentBrowser?          @relation(fields: [agentBrowserId], references: [id], onDelete: SetNull)
@@ -7676,10 +7681,46 @@ model AgentBrowser {
 
   logins   AgentBrowserLogin[]
   sessions CloudBrowserSession[]
+  tabs     AgentBrowserTab[]
 
   @@index([organizationId, agentId])
   @@index([connectionId])
   @@map("agent_browsers")
+}
+
+/// The tabs an agent's browser was last seen with — what it is on, and what
+/// that looked like — kept after the session that opened them is gone.
+///
+/// Rewritten as a set on every capture (after a navigation, and just before
+/// release), so the rows are always the *latest* state, never a history. The
+/// screenshot lives in the row rather than as an attachment on purpose: it is
+/// the product's own snapshot for its own screen, overwritten a few times a
+/// session and bounded by the tab count, not a person's file that needs a
+/// quota, a thumbnail and a message to hang off. It is small by construction —
+/// a JPEG scaled to fit a thumbnail column (`agent-browser-tabs.ts`).
+model AgentBrowserTab {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  agentBrowserId String @map("agent_browser_id") @db.Uuid
+  /// Left-to-right order in the browser; position 0 is the page the agent's
+  /// verbs drive, so a restore puts it back first.
+  position       Int
+  url            String
+  title          String
+
+  screenshot     Bytes?    @db.ByteA
+  screenshotMime String?   @map("screenshot_mime")
+  /// When the screenshot was taken; null when only the address is known.
+  capturedAt     DateTime? @map("captured_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentBrowser AgentBrowser @relation(fields: [agentBrowserId], references: [id], onDelete: Cascade)
+
+  @@unique([agentBrowserId, position])
+  @@map("agent_browser_tabs")
 }
 
 /// Who signed this browser into what.

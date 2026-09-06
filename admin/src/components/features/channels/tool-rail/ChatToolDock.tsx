@@ -83,7 +83,12 @@ export const ChatToolDock = ({
   return (
     <>
       {browserOpen ? (
-        <AgentScreenPanel agent={agent} onClose={onClose} sessionId={liveSessionId} />
+        <AgentScreenPanel
+          agent={agent}
+          onClose={onClose}
+          sessionId={liveSessionId}
+          threadId={threadId}
+        />
       ) : null}
       {single ? null : (
         <ChatToolRail

@@ -6,19 +6,24 @@ import {
   createBrowserbaseClient,
   disconnectCloudBrowser,
   isCloudBrowserError,
+  listAgentBrowserTabs,
   listCloudBrowserConnections,
   releaseSessionControl,
   resetAgentBrowser,
+  resumeAgentBrowser,
+  touchResumedSession,
 } from '@nessie/browser-cloud'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 
 import {
   AgentBrowserResponseSchema,
+  AgentBrowserTabsResponseSchema,
   BrowserLoginListSchema,
   CloudBrowserConnectionListSchema,
   CloudBrowserSessionDetailSchema,
   CloudBrowserSessionListSchema,
   ConnectCloudBrowserBodySchema,
+  ResumeAgentBrowserResponseSchema,
 } from '../contracts/browser-cloud.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { findThreadForUser } from '../services/message-read-state.js'
@@ -59,7 +64,7 @@ export interface ViewableCloudBrowserSession {
   threadId: string
   agentId: string
   agentName: string
-  runId: string
+  runId: string | null
   status: string
   startedAt: Date
   endedAt: Date | null
@@ -343,6 +348,12 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     let tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }> = []
     const live = session.status === 'allocating' || session.status === 'active'
       || session.status === 'releasing'
+    // This read is the column polling while it is open, which is exactly
+    // "somebody is watching": a resumed session has no run to end it, so being
+    // watched is what keeps it alive.
+    if (live && session.runId === null) {
+      await touchResumedSession(prisma, { sessionId: session.id })
+    }
     if (live && session.browserbaseSessionId) {
       const apiKey = await secretResolver.resolve(session.connectionApiKeyRef)
       if (apiKey) {
@@ -382,6 +393,125 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       }),
     )
   })
+  /**
+   * Whether this agent is reachable from this thread by this person.
+   *
+   * Thread-scoped on purpose, like the session routes: `isAgentAccessibleToActor`
+   * refuses every system-managed agent, and the Personal Assistant's own DM is
+   * the most-visited conversation there is. An agent is in a conversation when
+   * it is bound to the channel — for the PA, bound with this person as its
+   * principal.
+   */
+  const agentInThread = async (input: {
+    organizationId: string
+    threadId: string
+    agentId: string
+    userId: string
+  }): Promise<{ channelId: string; teamId: string | null } | null> => {
+    const thread = await findThreadForUser(prisma, input.threadId, input.userId, input.organizationId)
+    if (!thread) return null
+    const bound = await prisma.agentBinding.count({
+      where: {
+        agentId: input.agentId,
+        channelId: thread.channel.id,
+        OR: [{ principalUserId: null }, { principalUserId: input.userId }],
+      },
+    })
+    if (bound === 0) return null
+    const channel = await prisma.channel.findUnique({
+      where: { id: thread.channel.id },
+      select: { teamId: true },
+    })
+    return { channelId: thread.channel.id, teamId: channel?.teamId ?? null }
+  }
+
+  /**
+   * The tabs the agent's browser was last seen with — the chat's Browser column
+   * when nothing is live. Readable by whoever can read the conversation the
+   * agent is in, which is the audience its browser already belongs to.
+   */
+  app.get('/api/threads/:threadId/agents/:agentId/browser-tabs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { threadId, agentId } = request.params as { threadId: string; agentId: string }
+    const organizationId = actorContext.tenant.organizationId
+    const reach = await agentInThread({
+      organizationId,
+      threadId,
+      agentId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!reach) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    const browser = await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active' },
+      select: { id: true },
+    })
+    if (!browser) {
+      return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: false, tabs: [] }))
+    }
+    const tabs = await listAgentBrowserTabs(prisma, { organizationId, agentBrowserId: browser.id })
+    return createApiResponse(AgentBrowserTabsResponseSchema.parse({ hasBrowser: true, tabs }))
+  })
+
+  /**
+   * Bring the agent's browser back, for a person, the way it was left.
+   *
+   * Bills the connection the agent's browser already lives on, never the
+   * resumer's own; lives on the idle TTL and is extended while the column is
+   * open. While it is up the agent's own `browser_open` is refused as "open in
+   * another run", which is the one-live-session-per-browser rule doing its job.
+   */
+  app.post('/api/threads/:threadId/agents/:agentId/browser/resume', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { threadId, agentId } = request.params as { threadId: string; agentId: string }
+    const organizationId = actorContext.tenant.organizationId
+    const reach = await agentInThread({
+      organizationId,
+      threadId,
+      agentId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!reach) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, organizationId },
+      select: { visibility: true, ownerUserId: true },
+    })
+    if (!agent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    try {
+      const resumed = await resumeAgentBrowser(
+        { prisma, resolveSecret: (ref) => secretResolver.resolve(ref) },
+        {
+          organizationId,
+          agentId,
+          agentVisibility: agent.visibility === 'private' ? 'private' : 'team',
+          agentOwnerUserId: agent.ownerUserId ?? null,
+          threadId,
+          teamId: reach.teamId,
+          userId: actorContext.actor.actorId,
+          encryptionSecret: authSecret ?? '',
+        },
+      )
+      return createApiResponse(ResumeAgentBrowserResponseSchema.parse(resumed))
+    } catch (error) {
+      if (sendCloudBrowserError(reply, error)) return reply
+      throw error
+    }
+  })
+
   /**
    * An agent's browser: whether it exists, what it is signed in to, and who
    * signed it in. Readable by anyone entitled to see the agent, because that
