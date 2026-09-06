@@ -41,11 +41,15 @@ import { resolveUtilityModel } from './utility-model.js'
 import { markWorking } from './working-marker.js'
 import { runExternalConversation } from '../external-conversation.js'
 import {
+  assertExecutorHoldsRun,
   claimRunForExecution,
   loadRunContext,
+  RunFencedError,
   setAgentStatus,
+  startExecutorHeartbeat,
   updateTaskStatus,
   updateRunStatus,
+  withRunExecutorFence,
 } from './lifecycle.js'
 import { validateRunActorContext } from './policy.js'
 import { publishAgentStatus, publishRunUpdated, publishTaskUpdated } from './realtime.js'
@@ -79,18 +83,37 @@ import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
 } from './personal-assistant-presence-placement.js'
+
+/**
+ * The whole job runs as the execution that may come to hold this run: the claim
+ * stamps its fencing token into the surrounding context, and every status write
+ * underneath — here, in the terminal paths, in an external-conversation turn —
+ * carries it without being handed it. The scope dies with the job, so nothing
+ * has to be released on any exit path.
+ */
 export const executeRunJob = async (
+  deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
+  queueAttempt: QueueAttempt,
+): Promise<void> =>
+  withRunExecutorFence(payload.runId, () => runJobUnderFence(deps, payload, queueAttempt))
+
+const runJobUnderFence = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
   queueAttempt: QueueAttempt,
 ): Promise<void> => {
   // Idempotency guard: skip if this run already reached a terminal state.
   //
-  // We deliberately do NOT skip `running` runs: the queue renews each job's
-  // lock while its handler is in flight (see PgQueueProvider.withLockRenewal),
-  // so a live worker's run is never re-claimed concurrently. A run that is
-  // still `running` when re-claimed therefore means the previous worker
-  // crashed, and re-execution is the intended recovery path.
+  // We deliberately do NOT skip `running` runs here — but this guard is no
+  // longer what decides whether re-executing one is safe. It used to be: with a
+  // single worker the queue's lock renewal (see PgQueueProvider.withLockRenewal)
+  // meant a re-delivered job for a `running` run could only be a crashed
+  // worker's, so re-execution was the recovery path. With N workers the previous
+  // executor may simply be slow, so the decision moved into
+  // `claimRunForExecution`, which admits a `running` run only once its
+  // executor's heartbeat has gone stale. This read stays because it is cheap and
+  // ends terminal runs before any of the setup below.
   const existingRun = await deps.prisma.run.findUnique({
     where: { id: payload.runId },
     select: { status: true, finishedAt: true },
@@ -165,6 +188,10 @@ export const executeRunJob = async (
   // emit nothing. `terminalOutcome` is set only where the run actually reaches a
   // terminal state, so a retry-throw (run left `running`) also emits nothing.
   let claimedAt: Date | null = null
+  // Started by the claim, stopped in the `finally`. Null on every path that
+  // returns before claiming, which is exactly the set of paths with no claim to
+  // keep alive.
+  let heartbeat: { stop: () => void } | null = null
   let loopResult: LoopResult | null = null
   let terminalOutcome: 'completed' | 'failed' | 'cancelled' | null = null
   // Caller-owned invocation accumulator. The agent loop pushes every inference
@@ -320,18 +347,26 @@ export const executeRunJob = async (
       return
     }
 
-    const claimed = await claimRunForExecution(deps.prisma, context.run.id)
-    if (!claimed) {
+    const claim = await claimRunForExecution(deps.prisma, context.run.id)
+    if (!claim.claimed) {
       if (handoffLocator) {
         await markDeepWaterHandoffRecoveryNeeded(deps.prisma, {
           ...handoffLocator,
           runId: handoffLocator.runId,
         })
       }
-      console.log(`[worker] run ${context.run.id} already claimed or terminal; skipping`)
+      // Ack, never nack: the run is terminal, or a live executor holds it and
+      // is doing the work. Re-delivering the job would only race that executor.
+      console.log(
+        `[worker] run ${context.run.id} is terminal or held by a live executor; skipping`,
+      )
       return
     }
     claimedAt = new Date()
+    // Keeps this executor's claim fresh for as long as it is really working, so
+    // no other worker mistakes a slow run for a crashed one. Stopped in the
+    // `finally` on every exit path.
+    heartbeat = startExecutorHeartbeat(deps.prisma, context.run.id)
     const todoKickoff = readAgentTodoKickoff(message.metadata)
     if (todoKickoff) {
       // The Run-now route only identifies the instance while it is pending.
@@ -479,6 +514,10 @@ export const executeRunJob = async (
       utilityModel,
     })
 
+    const budgetBlockedProbe = createBudgetBlockedProbe(deps, context, payload, {
+      subscriptionPinned: subscriptionBinding !== null,
+    })
+
     let reacted = false
     loopResult = await runExecutionAgentLoop(executionDeps, payload, context, {
       allowedToolIds: setup.allowedToolIds,
@@ -493,9 +532,15 @@ export const executeRunJob = async (
         organizationId: context.channel.organizationId,
         provider: budgetGate.modelOverride?.provider ?? context.agent.provider,
       }),
-      checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload, {
-        subscriptionPinned: subscriptionBinding !== null,
-      }),
+      // The loop's per-iteration probe is also where this executor finds out it
+      // has been fenced out: `assertExecutorHoldsRun` throws as soon as a
+      // heartbeat has seen the takeover, so the run is abandoned at the next
+      // iteration boundary instead of running to the end and only then
+      // discovering it cannot write the outcome.
+      checkBudgetBlocked: async () => {
+        assertExecutorHoldsRun(context.run.id)
+        return budgetBlockedProbe()
+      },
       identityToolIds: setup.identityToolIds,
       inference,
       isHandoffTurn: handoffLocator !== null,
@@ -537,18 +582,32 @@ export const executeRunJob = async (
       streamStarted,
     })
   } catch (caughtError) {
-    await handleRunFailurePath(deps, payload, context, {
-      caughtError,
-      deepWaterHandoffGuard,
-      documentStream,
-      handoffLocator,
-      invocations,
-      planContext,
-      queueAttempt,
-      streamStarted,
-      thinkingRecorder,
-    })
+    try {
+      await handleRunFailurePath(deps, payload, context, {
+        caughtError,
+        deepWaterHandoffGuard,
+        documentStream,
+        handoffLocator,
+        invocations,
+        planContext,
+        queueAttempt,
+        streamStarted,
+        thinkingRecorder,
+      })
+    } catch (failureError) {
+      // A fenced-out executor stops here and the job is acked: another executor
+      // owns this run and will write its outcome, so neither a failure status
+      // from this one nor a queue redelivery is wanted. Every other error keeps
+      // the failure path's own contract (terminalize, or rethrow for a retry).
+      if (!(failureError instanceof RunFencedError)) throw failureError
+      console.warn(
+        `[worker] run ${context.run.id} finished on another executor; nothing written here`,
+      )
+    }
   } finally {
+    // The claim this executor no longer needs. (The fencing token itself needs
+    // no cleanup: it lives in this job's async context and goes with it.)
+    heartbeat?.stop()
     // Flush whatever thought process is still buffered, on every exit path
     // (completion, classified stop, crash, retry-throw). Idempotent and
     // error-swallowing by construction, so it can never mask a run outcome.
