@@ -61,6 +61,24 @@ const browserScopeFor = async (
   return { principalUserId: agent.systemManaged ? input.viewerId : null }
 }
 
+/**
+ * Whether signing in through a session signs in for other people too.
+ *
+ * The sentence the viewer shows above a sign-in box is this answer, so it has
+ * one home. Three ways it is false: the session keeps nothing (no durable
+ * browser behind it), the jar belongs to one person (a system-managed agent's,
+ * since browsers became per-principal), or only the owner can reach the agent.
+ * It used to be read off the agent's visibility alone, which said "shared" for
+ * the Personal Assistant — an agent everyone meets, whose browser nobody
+ * shares.
+ */
+export const browserSessionIsShared = (input: {
+  /** Null when the browser is one jar for everyone; absent when there is none. */
+  principalUserId?: string | null
+  agentVisibility: string
+}): boolean =>
+  input.principalUserId === null && input.agentVisibility !== 'private'
+
 /** The site a URL is on, for a reader who may know where but not what. */
 const originOf = (url: string): string => {
   try {
@@ -175,12 +193,10 @@ const loadViewableSession = async (
     browserbaseSessionId: session.browserbaseSessionId,
     connectionProjectId: session.connection.projectId,
     connectionApiKeyRef: session.connection.apiKeyRef,
-    // Three ways a session shares nothing: it keeps nothing (no durable
-    // browser), the jar is one person's (a system-managed agent, since the
-    // per-principal browsers), or only its owner can reach the agent at all.
-    shared: session.agentBrowser !== null
-      && session.agentBrowser.principalUserId === null
-      && session.agent.visibility !== 'private',
+    shared: browserSessionIsShared({
+      agentVisibility: session.agent.visibility,
+      principalUserId: session.agentBrowser?.principalUserId,
+    }),
   }
 }
 
