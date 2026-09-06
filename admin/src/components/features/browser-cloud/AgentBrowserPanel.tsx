@@ -9,6 +9,12 @@ import { FormError } from '../../shared/FormActions'
 
 type AgentBrowserPanelProps = {
   agent: AgentRecord
+  /**
+   * Off inside the browser column, whose own bar already says "Browser":
+   * the agent's configuration page needs the heading to separate this card
+   * from its neighbours, and a column of one card does not.
+   */
+  heading?: boolean
 }
 
 const formatDate = (iso: string): string =>
@@ -21,7 +27,7 @@ const formatDate = (iso: string): string =>
  * agent the logins are shared with everyone who can reach it, so "whose Google
  * is this" is the question a person actually has when they look here.
  */
-export const AgentBrowserPanel = ({ agent }: AgentBrowserPanelProps) => {
+export const AgentBrowserPanel = ({ agent, heading = true }: AgentBrowserPanelProps) => {
   const browser = useAgentBrowser(agent.id)
   const reset = useResetAgentBrowser(agent.id)
   const [confirming, setConfirming] = useState(false)
@@ -42,9 +48,16 @@ export const AgentBrowserPanel = ({ agent }: AgentBrowserPanelProps) => {
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Browser</SectionLabel>
+      {heading ? <SectionLabel>Browser</SectionLabel> : null}
       {browser.isLoading ? (
         <p className="mt-3 text-sm text-[color:var(--tx2)]">Loading…</p>
+      ) : browser.isError ? (
+        // A failed read is not an empty one. Saying "no browser yet" here
+        // would be a guess presented as a fact — and it is the wrong guess on
+        // a system-managed agent, whose record this route refuses to hand out.
+        <p className="mt-3 text-sm text-[color:var(--tx2)]">
+          This agent’s browser record could not be read.
+        </p>
       ) : !row ? (
         <p className="mt-3 text-sm text-[color:var(--tx2)]">
           This agent has no browser yet. One is created the first time it opens its own

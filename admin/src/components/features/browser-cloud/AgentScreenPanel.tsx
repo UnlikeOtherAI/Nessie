@@ -178,10 +178,17 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       {sessionId === null ? (
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <p className="px-1 pb-3 text-sm text-[color:var(--tx2)]">
-            {agent.name} is not browsing right now. This column becomes its screen the
+            Not browsing right now — this column becomes {agent.name}’s screen the
             moment it opens a page.
           </p>
-          <AgentBrowserPanel agent={agent} />
+          {/*
+            * A system-managed agent's browser record is deliberately not
+            * readable through `GET /api/agents/:id/browser` — the whole agent
+            * route family refuses one — so the Personal Assistant gets the
+            * sentence alone rather than a card that can only fail. Watching it
+            * live is unaffected: sessions are read per thread.
+            */}
+          {agent.systemManaged ? null : <AgentBrowserPanel agent={agent} heading={false} />}
         </div>
       ) : (
         <AgentScreenViewer agent={agent} sessionId={sessionId} variant="panel" />
