@@ -43,7 +43,14 @@ export type AuthProviderConfig = z.infer<typeof AuthProviderConfigSchema>
 export const StorageProviderSchema = z.enum(['filesystem', 'gcs', 's3'])
 export type StorageProvider = z.infer<typeof StorageProviderSchema>
 
-export const QueueProviderSchema = z.enum(['pubsub', 'local'])
+// One value on purpose. The Pub/Sub adapter (`packages/runtime/src/pubsub-queue.ts`)
+// and the worker branch that fell back from it are deleted, and so is the
+// Pub/Sub terraform module; Postgres is the queue by decision
+// (docs/standards/horizontal-scaling.md). Keeping `'pubsub'` in the enum let a
+// deployment be configured for a provider that no longer exists and then boot
+// silently on Postgres anyway. `NESSIE_QUEUE_PROVIDER=pubsub` is now a startup
+// error naming the retirement instead of a lie that starts.
+export const QueueProviderSchema = z.enum(['local'])
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
 export const ModelProviderSchema = z.enum(['openai', 'kimi', 'deepseek'])
@@ -158,7 +165,6 @@ export const NessieConfigSchema = z.object({
   }),
   queue: z.object({
     provider: QueueProviderSchema,
-    projectId: z.string().min(1).optional(),
   }),
   model: ModelConfigSchema,
   embedding: EmbeddingConfigSchema.default({}),
@@ -293,15 +299,14 @@ export const NessieConfigSchema = z.object({
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
-// No `hasRedis`: `redis.enabled` had no environment mapping and nothing ever
-// read `config.redis`, so the capability was false on every deployment that
-// has ever run. Postgres is the queue and the realtime bus by decision
-// (docs/standards/horizontal-scaling.md), so there is nothing for it to
-// describe.
+// No `hasRedis`, and no `hasPubSub`: `redis.enabled` had no environment mapping
+// and nothing ever read `config.redis`, and `hasPubSub` could only ever be true
+// for a queue provider that no longer exists. Postgres is the queue and the
+// realtime bus by decision (docs/standards/horizontal-scaling.md), so there is
+// nothing for either of them to describe.
 export const RuntimeCapabilitiesSchema = z.object({
   hasObjectStorage: z.boolean(),
   hasExternalAuth: z.boolean(),
-  hasPubSub: z.boolean(),
   hasModelProvider: z.boolean(),
 })
 export type RuntimeCapabilities = z.infer<typeof RuntimeCapabilitiesSchema>
@@ -332,7 +337,6 @@ export const ConfigEnvMap = {
   NESSIE_STORAGE_SECRET_ACCESS_KEY: 'storage.secretAccessKey',
   NESSIE_MAX_UPLOAD_BYTES: 'storage.maxUploadBytes',
   NESSIE_QUEUE_PROVIDER: 'queue.provider',
-  NESSIE_QUEUE_PROJECT_ID: 'queue.projectId',
   NESSIE_MODEL_PROVIDER: 'model.provider',
   NESSIE_MODEL_API_KEY: 'model.apiKey',
   NESSIE_MODEL_BASE_URL: 'model.baseUrl',
@@ -702,7 +706,6 @@ export const deriveRuntimeCapabilities = (config: NessieConfig): RuntimeCapabili
     hasExternalAuth: config.auth.providers.some(
       (provider) => provider.enabled && provider.type !== 'local-bootstrap',
     ),
-    hasPubSub: config.queue.provider === 'pubsub',
     hasModelProvider: Boolean(config.model.apiKey),
   })
 

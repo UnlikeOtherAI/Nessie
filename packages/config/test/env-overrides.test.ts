@@ -106,3 +106,18 @@ test('neither PORT nor NESSIE_API_PORT leaves the 5454 default', () => {
 
   assert.equal(config.api.port, 5454)
 })
+
+// Plan row 4.12 / audit 7.7. `'pubsub'` outlived its provider: the adapter, the
+// worker's fallback branch and the terraform module are all deleted, so a
+// deployment configured for it used to boot silently on Postgres. The enum now
+// has one member, and naming the retired one is a startup error.
+test('NESSIE_QUEUE_PROVIDER=pubsub is rejected rather than silently accepted', () => {
+  assert.throws(
+    () => load({ NESSIE_QUEUE_PROVIDER: 'pubsub' }),
+    /queue/i,
+  )
+})
+
+test('NESSIE_QUEUE_PROVIDER=local still loads', () => {
+  assert.equal(load({ NESSIE_QUEUE_PROVIDER: 'local' }).queue.provider, 'local')
+})

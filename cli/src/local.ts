@@ -401,7 +401,6 @@ const createGeneratedConfig = (mode: LaunchMode, env: NodeJS.ProcessEnv): Nessie
     },
     mode: 'local',
     queue: {
-      projectId: undefined,
       provider: 'local',
     },
     storage: {
