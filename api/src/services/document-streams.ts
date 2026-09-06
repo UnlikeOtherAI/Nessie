@@ -20,7 +20,12 @@ import { canUserReadRunBasis } from './run-disclosure.js'
 // Read + retarget surface for live document composition (`kb_document_compose`).
 // The popup bootstraps here on mount, reconnect and late join; the address bar
 // writes here. Session rows and their durable markdown chunks are written by the
-// worker's DocumentStreamRecorder — nothing in this file produces them.
+// worker's DocumentStreamRecorder — nothing in this file produces them. One
+// other worker-side writer exists and matters to the statuses below: the
+// document-session reaper (`worker/src/control/document-session-reaper.ts`)
+// terminalizes a session whose executor died, which is what stops an abandoned
+// row counting as active here for ever (audit 2.5). Its rows arrive here as
+// `failed` with `errorReason: 'executor_lost'`.
 
 // A thread rarely holds more than one composing document; the cap only bounds a
 // pathological history read.

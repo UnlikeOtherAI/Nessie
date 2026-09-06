@@ -3326,6 +3326,12 @@ model RunDocumentSession {
   @@unique([runId, invocationId, toolCallId], map: "run_document_sessions_identity_key")
   @@index([threadId, createdAt])
   @@index([runId])
+  /// Partial index `run_document_sessions_open_updated_at_idx` on (updated_at)
+  /// WHERE status IN ('streaming','saving') exists in the DB (created in
+  /// 20260908110000_open_document_session_index) for the document-session
+  /// reaper's read. Prisma cannot express partial indexes, so it is managed
+  /// purely in raw SQL and may be reported as drift — a known limitation, not a
+  /// missing index.
   @@map("run_document_sessions")
 }
 

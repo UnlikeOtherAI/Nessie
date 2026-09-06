@@ -318,6 +318,34 @@ matches no row. Beside it:
   `RunDrainedError`. The run stays `running`, its token and heartbeat are
   cleared so the next worker claims it on its next poll rather than waiting out
   the takeover window, and the job is nacked with reason `worker_drain`.
+- **Row state a run leaves outside the run gets an out-of-process reaper.** A
+  status only the executing process can advance is a status a `SIGKILL` freezes
+  for ever, and under autoscaling that kill is routine. `run_document_sessions`
+  is the worked example (2.5): all four terminalisers — the recorder's own, both
+  save paths and the failure path — run inside the worker writing the document,
+  so a killed worker left a `streaming` row the API kept counting as active and
+  a reader watching a stream nobody was producing.
+  `worker/src/control/document-session-reaper.ts` closes it, and the shape is
+  the reusable part. **Liveness, not age:** it reaps only a session whose run's
+  `executor_heartbeat_at` has been silent longer than
+  `claimRunForExecution`'s own takeover window, so the reaper never decides an
+  executor is dead before the run claim would — reaping on age alone would kill
+  a legitimately long generation. **A heartbeat is a claim's liveness, not a
+  process's:** the heartbeat stops whenever the executor token is nulled, which
+  `updateRunStatus` does on every suspension and `releaseRunForDrain` does on
+  every orderly hand-back — so a stale or null heartbeat on its own says
+  "parked" or "draining" as readily as "dead". The predicate is a claim about
+  the run: `running` with a heartbeat that *exists* and has gone silent, or a
+  terminal run (which `claimRunForExecution` can never hand to anybody again).
+  `pending`, `waiting_approval` and `waiting_input` are never reaped out of;
+  they always leave that status eventually, and the terminal arm collects
+  whatever they stranded. **A terminal state that says what happened:**
+  `failed` with `errorReason: 'executor_lost'`, a reason the API's summary and
+  the popup both render, because a document that silently vanishes is the same
+  failure as one that never finishes. **Bounded and per-row isolated:** an
+  ordered bounded batch with no per-row `try`/`catch` means a deterministically
+  failing row is first again on every pass and the sweep makes zero progress for
+  ever.
 
 What this finding still owes, proved by the two-instance chaos smoke:
 
