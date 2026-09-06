@@ -534,29 +534,49 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     input: { sessionId: string; encryptionSecret: string },
     drive: (cdp: CdpClient) => Promise<T>,
   ): Promise<T | null> => {
-    const capability = await loadSessionCapability(prisma, {
-      encryptionSecret: input.encryptionSecret,
-      sessionId: input.sessionId,
-    })
-    if (!capability) return null
+    // Inside the try: loading the capability decrypts and reads the database,
+    // and these two verbs promise their callers a boolean rather than a throw.
+    // A rotated secret must not become a 500 on a button press.
+    let abandoned = false
     let cdp: CdpClient | null = null
-    const timeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('timed out')), STEER_TIMEOUT_MS).unref?.()
-    })
+    const closeWhenIdle = (): void => {
+      cdp?.close()
+      cdp = null
+    }
     try {
+      const capability = await loadSessionCapability(prisma, {
+        encryptionSecret: input.encryptionSecret,
+        sessionId: input.sessionId,
+      })
+      if (!capability) return null
+      const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('timed out')), STEER_TIMEOUT_MS).unref?.()
+      })
+      // The closure owns the socket, not the `finally` below. When the timeout
+      // wins the race, `finally` used to close a `cdp` that was still null —
+      // and the closure then went on to attach and *steer the browser anyway*,
+      // seconds after the request had already answered. A navigation the caller
+      // was told did not happen is worse than a leaked socket, and this leaked
+      // both.
       return await Promise.race([
         (async () => {
-          cdp = await connectCdp(capability.connectUrl)
-          await cdp.attachToPage()
-          return drive(cdp)
-        })(),
+          const client = await connectCdp(capability.connectUrl)
+          if (abandoned) {
+            client.close()
+            throw new Error('abandoned')
+          }
+          cdp = client
+          await client.attachToPage()
+          if (abandoned) throw new Error('abandoned')
+          return await drive(client)
+        })().finally(closeWhenIdle),
         timeout,
       ])
     } catch {
       return null
     } finally {
-      // Assigned inside the raced closure, which the checker cannot see past.
-      ;(cdp as CdpClient | null)?.close()
+      abandoned = true
+      closeWhenIdle()
     }
   }
 

@@ -70,6 +70,47 @@ test('a home page must be an ordinary http(s) address', () => {
   assert.equal(isNavigableHomepage(''), false)
 })
 
+/**
+ * The session runs on the provider's machine, so "local" means *theirs*: the
+ * cloud metadata address is the classic way to turn "navigate somewhere" into
+ * "read the instance's credentials", and whatever loads comes back through the
+ * live view, the tab capture and the agent's page reads — from a browser that
+ * may be carrying somebody's logins. The cascade has a personal level, so this
+ * is not an administrator-only value in practice.
+ */
+test('a home page may not point at loopback, private or metadata addresses', () => {
+  for (const blocked of [
+    'http://169.254.169.254/latest/meta-data',
+    'http://metadata.google.internal/',
+    'http://169.254.1.1/',
+    'http://localhost:8080/',
+    'http://api.localhost/',
+    'http://127.0.0.1:5454/api/health',
+    'http://10.0.0.5/',
+    'http://192.168.1.1/',
+    'http://172.16.0.1/',
+    'http://172.31.255.255/',
+    'http://[::1]/',
+    'http://[fe80::1]/',
+    'http://0.0.0.0/',
+  ]) {
+    assert.equal(isNavigableHomepage(blocked), false, `${blocked} must be refused`)
+  }
+})
+
+test('ordinary public addresses are still accepted, including near-miss ranges', () => {
+  for (const allowed of [
+    'https://www.google.com/',
+    'https://172.32.0.1/',
+    'https://172.15.0.1/',
+    'https://11.0.0.1/',
+    'https://localhost.example.com/',
+    'https://intranet.example/start',
+  ]) {
+    assert.equal(isNavigableHomepage(allowed), true, `${allowed} must be accepted`)
+  }
+})
+
 test('the schema refuses what the checker refuses, with a sentence a person can act on', () => {
   const bad = BrowserHomepageSchema.safeParse('javascript:alert(1)')
   assert.equal(bad.success, false)

@@ -73,12 +73,49 @@ export const BROWSER_HOMEPAGE_SETTING_KEY = 'browser.homepage'
 export const DEFAULT_BROWSER_HOMEPAGE = 'https://www.google.com'
 
 /**
+ * Hostnames a browser must never be pointed at by configuration.
+ *
+ * The session runs on the provider's machine, so "local" here means *their*
+ * loopback and *their* link-local — including the cloud metadata address,
+ * which is the classic way to turn "navigate somewhere" into "read the
+ * instance's credentials". Nessie's own network is not reachable from there,
+ * which is why this is a hardening rule rather than an open door; but the
+ * browser may be carrying live logins, and whatever it loads comes back
+ * through the live view, the tab capture and the agent's page reads.
+ *
+ * A blocklist rather than an allowlist because the legitimate value is "any
+ * site on the internet". Both literal forms are covered: an IPv6 literal
+ * arrives from `URL` wrapped in brackets, which is why they are stripped
+ * before matching.
+ */
+const isForbiddenHomepageHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (host === 'localhost' || host.endsWith('.localhost')) return true
+  // The cloud metadata addresses, and link-local generally.
+  if (host === '169.254.169.254' || host === 'metadata.google.internal') return true
+  if (host.startsWith('169.254.')) return true
+  if (host === '::1' || host === '0.0.0.0' || host === '::') return true
+  if (host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) return true
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
+  if (!v4) return false
+  const [a, b] = [Number(v4[1]), Number(v4[2])]
+  if (a === 127 || a === 10) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  return false
+}
+
+/**
  * A home page as it may be stored and navigated to.
  *
- * `http`/`https` only, and never a credentialed URL: this value is typed by an
- * administrator and then navigated to inside an agent's browser — a `javascript:`
- * or `data:` URL there would run in the live view's page, and a `user:pass@`
- * one would put a password in the tab strip and in every capture of it.
+ * `http`/`https` only, never a credentialed URL, and never a loopback,
+ * private or link-local address: this value is set in settings and then
+ * navigated to inside an agent's browser. A `javascript:` or `data:` URL
+ * there would run in the live view's page; a `user:pass@` one would put a
+ * password in the tab strip and in every capture of it; and a metadata or
+ * loopback address would read the provider VM's own services back through a
+ * browser that may hold somebody's logins. The cascade has a personal level,
+ * so this is not an administrator-only value in practice.
  */
 export const isNavigableHomepage = (value: string): boolean => {
   let url: URL
@@ -89,12 +126,13 @@ export const isNavigableHomepage = (value: string): boolean => {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
   if (url.username !== '' || url.password !== '') return false
-  return url.hostname !== ''
+  if (url.hostname === '') return false
+  return !isForbiddenHomepageHost(url.hostname)
 }
 
 export const BrowserHomepageSchema = z.string().trim().min(1).max(2000)
   .refine(isNavigableHomepage, {
-    message: 'Enter a http:// or https:// address with no username or password in it.',
+    message: 'Enter a public http:// or https:// address, with no username or password in it.',
   })
 
 /**
