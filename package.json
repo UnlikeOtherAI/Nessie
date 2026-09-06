@@ -22,7 +22,7 @@
     "prisma:generate": "pnpm --filter @nessie/api prisma:generate",
     "typecheck": "pnpm --filter @unlikeotherai/billing-statement-protocol build && pnpm prisma:generate && turbo run typecheck --only $TURBO_SCOPE --filter=!@nessie/cli --filter=!@unlikeotherai/billing-statement-protocol && pnpm --filter @nessie/cli typecheck:prepared",
     "build": "pnpm lint && pnpm prisma:generate && turbo run build $TURBO_SCOPE --filter=!@nessie/cli && pnpm --filter @nessie/cli build:prepared",
-    "test": "turbo run test $TURBO_SCOPE",
+    "test": "turbo run test --continue $TURBO_SCOPE",
     "macos:project": "xcodegen generate --spec macos/project.yml",
     "macos:build": "pnpm macos:project && xcodebuild -project macos/Nessie.xcodeproj -scheme Nessie -configuration Debug -destination 'platform=macOS' build"
   },
