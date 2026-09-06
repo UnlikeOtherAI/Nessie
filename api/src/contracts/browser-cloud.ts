@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BrowserViewportSchema } from '@nessie/schemas'
 
 import { NonEmptyStringSchema } from './shared.js'
 
@@ -77,6 +78,13 @@ export const CloudBrowserSessionDetailSchema = CloudBrowserSessionSummarySchema.
    * viewer must not tell their driver otherwise.
    */
   shared: z.boolean(),
+  /**
+   * The window this session is running in. Browserbase fixes it at session
+   * creation, so this is what the browser *is*, not what the agent's browser
+   * is set to — the two differ for exactly as long as it takes a resize to
+   * reach a session that was already open.
+   */
+  viewport: BrowserViewportSchema,
   liveViewUrl: z.string().url().nullable(),
   tabs: z.array(z.object({
     id: z.string(),
@@ -150,3 +158,28 @@ export const ResumeAgentBrowserResponseSchema = z.object({
 export type AgentBrowserTab = z.infer<typeof AgentBrowserTabSchema>
 export type AgentBrowserTabsResponse = z.infer<typeof AgentBrowserTabsResponseSchema>
 export type BrowserLoginList = z.infer<typeof BrowserLoginListSchema>
+
+
+/**
+ * Resizing an agent's browser. The pair is remembered on the browser, so the
+ * next session it opens — the agent's own, not only this person's — comes back
+ * the same size.
+ */
+export const SetAgentBrowserViewportBodySchema = BrowserViewportSchema
+
+export const AgentBrowserViewportResponseSchema = z.object({
+  viewport: BrowserViewportSchema,
+  /**
+   * Whether the session on screen was resized too. False is ordinary rather
+   * than a failure: nothing was open, or the provider would not resize a live
+   * window, and either way the size is stored and the next session honours it.
+   */
+  appliedToLiveSession: z.boolean(),
+})
+
+export const BrowserHomeResponseSchema = z.object({
+  /** Where it was sent, so the caller can say so without resolving it again. */
+  url: z.string().url(),
+})
+
+export type SetAgentBrowserViewportBody = z.infer<typeof SetAgentBrowserViewportBodySchema>

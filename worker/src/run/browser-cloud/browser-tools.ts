@@ -25,6 +25,7 @@ import {
   ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
+  type BrowserViewport,
 } from '@nessie/schemas'
 
 import { isFatalToolExecutionError } from '../tool-execution-errors.js'
@@ -189,6 +190,7 @@ const runOpen = async (
       connectionId: string
       browserbaseContextId: string
       hasLogins: boolean
+      viewport: BrowserViewport
     } | undefined
 
     if (wantsDurable) {
@@ -217,6 +219,7 @@ const runOpen = async (
         connectionId: browser.connectionId,
         browserbaseContextId: browser.browserbaseContextId,
         hasLogins: browser.loginCount > 0,
+        viewport: browser.viewport,
       }
       if (browser.loginCount > 0) {
         // Everything read through a browser a person signed in is that

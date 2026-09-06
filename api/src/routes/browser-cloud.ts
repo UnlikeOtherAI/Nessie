@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import {
   claimSessionControl,
+  connectCdp,
   connectCloudBrowser,
   createBrowserbaseClient,
   disconnectCloudBrowser,
@@ -10,14 +11,23 @@ import {
   captureUndrivenSessionTabs,
   listAgentBrowserTabs,
   listCloudBrowserConnections,
+  loadSessionCapability,
   releaseSessionControl,
   releaseCloudBrowserSession,
   resetAgentBrowser,
   resumeAgentBrowser,
   touchResumedSession,
   viewerMaySeeAgentBrowser,
+  type CdpClient,
 } from '@nessie/browser-cloud'
+import {
+  BROWSER_HOMEPAGE_SETTING_KEY,
+  browserViewportOrDefault,
+  resolveBrowserHomepage,
+  type BrowserViewport,
+} from '@nessie/schemas'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
+import { resolveScopedSetting } from '@nessie/runtime'
 
 import {
   AgentBrowserResponseSchema,
@@ -28,6 +38,9 @@ import {
   CloudBrowserSessionListSchema,
   ConnectCloudBrowserBodySchema,
   ResumeAgentBrowserResponseSchema,
+  AgentBrowserViewportResponseSchema,
+  BrowserHomeResponseSchema,
+  SetAgentBrowserViewportBodySchema,
 } from '../contracts/browser-cloud.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { findThreadForUser } from '../services/message-read-state.js'
@@ -129,6 +142,11 @@ export interface ViewableCloudBrowserSession {
    * however visible the agent is; a throwaway session persists nothing.
    */
   shared: boolean
+  /**
+   * The window the browser opens in, defaulted here so no reader has to know
+   * that "never sized" is stored as a null pair.
+   */
+  viewport: BrowserViewport
 }
 
 const loadViewableSession = async (
@@ -158,7 +176,9 @@ const loadViewableSession = async (
       controlledByUserId: true,
       browserbaseSessionId: true,
       agent: { select: { name: true, visibility: true } },
-      agentBrowser: { select: { principalUserId: true } },
+      agentBrowser: {
+        select: { principalUserId: true, viewportHeight: true, viewportWidth: true },
+      },
       connection: { select: { projectId: true, apiKeyRef: true } },
     },
   })
@@ -197,6 +217,11 @@ const loadViewableSession = async (
       agentVisibility: session.agent.visibility,
       principalUserId: session.agentBrowser?.principalUserId,
     }),
+    viewport: browserViewportOrDefault(
+      session.agentBrowser
+        ? { height: session.agentBrowser.viewportHeight, width: session.agentBrowser.viewportWidth }
+        : null,
+    ),
   }
 }
 
@@ -448,6 +473,7 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
         endedAt: session.endedAt?.toISOString() ?? null,
         controlledByUserId: session.controlledByUserId,
         shared: session.shared,
+        viewport: session.viewport,
         liveViewUrl,
         tabs,
       }),
@@ -491,6 +517,124 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
     })
     return { channelId: thread.channel.id, teamId: channel?.teamId ?? null }
   }
+
+  /**
+   * Steering a live session from the API.
+   *
+   * The worker owns a run's socket; these two verbs are a *person's*, pressed
+   * in the viewer while they hold the claim, so they attach the same way the
+   * tab capture does — through the sealed connect capability, with a timeout,
+   * and closing the socket whatever happens. Neither is allowed to fail the
+   * request it serves for a reason the reader cannot act on, so both answer
+   * with a boolean rather than throwing.
+   */
+  const STEER_TIMEOUT_MS = 10_000
+
+  const withLiveSession = async <T>(
+    input: { sessionId: string; encryptionSecret: string },
+    drive: (cdp: CdpClient) => Promise<T>,
+  ): Promise<T | null> => {
+    const capability = await loadSessionCapability(prisma, {
+      encryptionSecret: input.encryptionSecret,
+      sessionId: input.sessionId,
+    })
+    if (!capability) return null
+    let cdp: CdpClient | null = null
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('timed out')), STEER_TIMEOUT_MS).unref?.()
+    })
+    try {
+      return await Promise.race([
+        (async () => {
+          cdp = await connectCdp(capability.connectUrl)
+          await cdp.attachToPage()
+          return drive(cdp)
+        })(),
+        timeout,
+      ])
+    } catch {
+      return null
+    } finally {
+      // Assigned inside the raced closure, which the checker cannot see past.
+      ;(cdp as CdpClient | null)?.close()
+    }
+  }
+
+  /**
+   * Resize the window a session is already running in.
+   *
+   * Browserbase fixes the browser window when the session is created, so this
+   * is a page-level metrics override rather than a real window resize: the
+   * page relays out and reports the new size, which is what a site responds
+   * to. It is deliberately best effort — the stored pair is the durable
+   * answer, and the next session opens at it either way.
+   */
+  const resizeLiveSession = async (input: {
+    encryptionSecret: string
+    sessionId: string
+    viewport: BrowserViewport
+  }): Promise<boolean> => {
+    const done = await withLiveSession(input, async (cdp) => {
+      await cdp.call('Emulation.setDeviceMetricsOverride', {
+        deviceScaleFactor: 0,
+        height: input.viewport.height,
+        mobile: false,
+        width: input.viewport.width,
+      })
+      return true
+    })
+    return done === true
+  }
+
+  const navigateLiveSession = async (input: {
+    encryptionSecret: string
+    sessionId: string
+    url: string
+  }): Promise<boolean> => {
+    const done = await withLiveSession(input, async (cdp) => {
+      await cdp.call('Page.navigate', { url: input.url })
+      return true
+    })
+    return done === true
+  }
+
+  /**
+   * The home page in force for this person, in this conversation.
+   *
+   * The cascade needs the team the conversation belongs to, which is the same
+   * team the browser's connection is resolved against — so a team that runs
+   * its own intranet start page gets it in its own channels without every
+   * other team inheriting it.
+   */
+  const homepageFor = async (input: {
+    organizationId: string
+    threadId: string
+    userId: string
+  }): Promise<string> => {
+    const thread = await findThreadForUser(
+      prisma,
+      input.threadId,
+      input.userId,
+      input.organizationId,
+    )
+    const channel = thread
+      ? await prisma.channel.findUnique({
+        select: { teamId: true },
+        where: { id: thread.channel.id },
+      })
+      : null
+    const resolved = await resolveScopedSetting(
+      prisma,
+      {
+        organizationId: input.organizationId,
+        teamId: channel?.teamId ?? null,
+        userId: input.userId,
+      },
+      BROWSER_HOMEPAGE_SETTING_KEY,
+    )
+    return resolveBrowserHomepage(resolved.value)
+  }
+
 
   /**
    * The tabs the agent's browser was last seen with — the chat's Browser column
@@ -618,6 +762,14 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
           agentOwnerUserId: agent.ownerUserId ?? null,
           threadId,
           teamId: reach.teamId,
+          // A browser with nothing to restore is one opening for the first
+          // time; it lands on the home page in force for this person here
+          // rather than on a blank page nobody can do anything with.
+          homepage: await homepageFor({
+            organizationId,
+            threadId,
+            userId: actorContext.actor.actorId,
+          }),
           userId: actorContext.actor.actorId,
         },
       )
@@ -904,6 +1056,164 @@ export const registerBrowserCloudRoutes = (app: FastifyInstance, deps: RouteDeps
       })
     }
     return reply.code(204).send()
+  })
+
+  /**
+   * The window the agent's browser opens in.
+   *
+   * Stored on the browser rather than on the person or the conversation,
+   * because it is a property of the *work*: an agent that reads a dashboard
+   * needs a wide page every time it opens one, whoever asked. That also makes
+   * it per-person exactly where the browser already is — a system-managed
+   * agent's browser is one row per principal, so sizing the Personal
+   * Assistant's window sizes yours and nobody else's.
+   *
+   * Browserbase fixes a viewport when the session is created, so the stored
+   * pair governs the next open. A session already on screen is resized too,
+   * best effort: the override is a page-level one, and a provider that refuses
+   * it must not lose the reader their setting.
+   */
+  app.post('/api/threads/:threadId/agents/:agentId/browser/viewport', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { threadId, agentId } = request.params as { threadId: string; agentId: string }
+    const organizationId = actorContext.tenant.organizationId
+    const viewport = parseInput(SetAgentBrowserViewportBodySchema, request.body, reply)
+    if (!viewport) return reply
+
+    const reach = await agentInThread({
+      organizationId,
+      threadId,
+      agentId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!reach) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    // The same scoping the tabs and the resume use, so a person can only size
+    // the browser they can already open.
+    const scope = await browserScopeFor(prisma, {
+      organizationId,
+      agentId,
+      viewerId: actorContext.actor.actorId,
+    })
+    const browser = scope && await prisma.agentBrowser.findFirst({
+      where: { organizationId, agentId, status: 'active', ...scope },
+      select: { id: true },
+    })
+    if (!browser) {
+      sendApiError(
+        reply,
+        404,
+        'CLOUD_BROWSER_NO_BROWSER',
+        'This agent has no browser yet. Open one, then set its size.',
+      )
+      return reply
+    }
+    // A browser somebody signed into shows that person's pages at whatever
+    // size it is set to, so changing it takes the audience that watching does.
+    const allowed = await viewerMaySeeAgentBrowser(prisma, {
+      agentBrowserId: browser.id,
+      viewerId: actorContext.actor.actorId,
+    })
+    if (!allowed) {
+      sendApiError(
+        reply,
+        403,
+        'AGENT_BROWSER_SIGNED_IN_BY_OTHERS',
+        'This browser is signed in by someone else, so only they can change it.',
+      )
+      return reply
+    }
+
+    await prisma.agentBrowser.update({
+      data: { viewportHeight: viewport.height, viewportWidth: viewport.width },
+      where: { id: browser.id },
+    })
+
+    const live = await prisma.cloudBrowserSession.findFirst({
+      where: {
+        organizationId,
+        agentBrowserId: browser.id,
+        status: 'active',
+      },
+      select: { id: true },
+    })
+    const appliedToLiveSession = live
+      ? await resizeLiveSession({
+        encryptionSecret: authSecret ?? '',
+        sessionId: live.id,
+        viewport,
+      })
+      : false
+
+    return createApiResponse(
+      AgentBrowserViewportResponseSchema.parse({ appliedToLiveSession, viewport }),
+    )
+  })
+
+  /**
+   * Send a browser home.
+   *
+   * The address is resolved through the ordinary settings cascade — the
+   * organisation's, then the team's, then the person's — so an install that
+   * starts everywhere but Google says so once, at the level it means. Anything
+   * unusable falls back to the default rather than failing the press, because
+   * a home button that reports a configuration error is a home button nobody
+   * presses again.
+   *
+   * Only the driver may steer. Navigating a browser somebody else is typing
+   * into is the same interruption as taking the keyboard off them, and the
+   * claim is what that decision already lives in.
+   */
+  app.post('/api/browser-sessions/:sessionId/home', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    const session = await loadViewableSession(prisma, {
+      actorContext,
+      sessionId,
+      findThreadForUser,
+    })
+    if (!session) {
+      sendApiError(reply, 404, 'CLOUD_BROWSER_SESSION_NOT_FOUND', 'Session not found')
+      return reply
+    }
+    if (session.controlledByUserId !== actorContext.actor.actorId) {
+      sendApiError(
+        reply,
+        409,
+        'CLOUD_BROWSER_NOT_DRIVING',
+        'Take control of the browser before sending it home.',
+      )
+      return reply
+    }
+
+    const url = await homepageFor({
+      organizationId: actorContext.tenant.organizationId,
+      threadId: session.threadId,
+      userId: actorContext.actor.actorId,
+    })
+    const sent = await navigateLiveSession({
+      encryptionSecret: authSecret ?? '',
+      sessionId: session.id,
+      url,
+    })
+    if (!sent) {
+      sendApiError(
+        reply,
+        502,
+        'CLOUD_BROWSER_UNREACHABLE',
+        'The browser did not answer. Try again in a moment.',
+      )
+      return reply
+    }
+    return createApiResponse(BrowserHomeResponseSchema.parse({ url }))
   })
 }
 

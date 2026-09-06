@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BROWSER_HOMEPAGE_SETTING_KEY } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { scopedSettingKeys } from './keys'
@@ -24,6 +25,10 @@ export const SETTING_KEYS = {
   // draws in it too, in a conversation with no dialog to read.
   agentAvatarStyle: 'agentAvatar.style',
   browserConnection: 'browser.connection',
+  // Not retyped: the API resolves the same key when it opens a session, from
+  // the constant in @nessie/schemas, and a home page the admin wrote under a
+  // key nothing reads would look saved and change nothing.
+  browserHomepage: BROWSER_HOMEPAGE_SETTING_KEY,
   callsProvider: 'calls.provider',
 } as const
 

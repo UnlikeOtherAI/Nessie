@@ -1,3 +1,4 @@
+import type { BrowserViewport } from '@nessie/schemas'
 import { safeFetch } from '@nessie/runtime'
 
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError } from './errors.js'
@@ -75,6 +76,14 @@ export type CreateSessionInput = {
   /** Attach a persistent context. Absent = ephemeral. */
   contextId?: string
   persistContext?: boolean
+  /**
+   * How big the browser's window is. Browserbase fixes it at session creation
+   * and it cannot be changed for the session's life, so this is the only
+   * moment a size can be chosen — a later CDP resize moves the rendered page
+   * without moving the window the live view shows. Absent, the platform's own
+   * default applies; every Nessie caller passes one.
+   */
+  viewport?: BrowserViewport
 }
 
 export type BrowserbaseContext = { id: string }
@@ -196,6 +205,9 @@ export const createBrowserbaseClient = (
               recordSession: false,
               logSession: false,
               solveCaptchas: false,
+              ...(input.viewport
+                ? { viewport: { width: input.viewport.width, height: input.viewport.height } }
+                : {}),
               ...(input.contextId
                 ? { context: { id: input.contextId, persist: input.persistContext ?? false } }
                 : {}),

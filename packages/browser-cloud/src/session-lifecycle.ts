@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { resolveScopedSetting } from '@nessie/runtime'
+import { DEFAULT_BROWSER_VIEWPORT, type BrowserViewport } from '@nessie/schemas'
 
 import type { ConnectionScope } from './connection-management.js'
 
@@ -226,10 +227,27 @@ export type OpenSessionInput = {
     browserbaseContextId: string
     /** Any recorded login makes every read through it that person's material. */
     hasLogins: boolean
+    /**
+     * The window this browser opens at, from its own row. Required rather
+     * than optional on purpose: Browserbase fixes the window at creation and
+     * never again, so a call site that forgot to pass one would open the
+     * browser at the wrong size for its whole life with nothing to notice it.
+     * Making it required is what has tsc name every construction site the
+     * moment a new one appears.
+     */
+    viewport: BrowserViewport
   }
   /** Optional starting URL, navigated after attach. */
   url?: string
 }
+
+/**
+ * The window a session opens at. A throwaway browser has no row to remember a
+ * size, so it gets the same laptop window a never-sized durable browser does —
+ * one default, stated once, rather than each path inventing its own.
+ */
+const viewportForSession = (input: OpenSessionInput): BrowserViewport =>
+  input.agentBrowser?.viewport ?? DEFAULT_BROWSER_VIEWPORT
 
 export type OpenSessionResult = {
   sessionId: string
@@ -381,6 +399,7 @@ export const openCloudBrowserSession = async (
       // by the reaper and extended while somebody watches, and the remote
       // timeout must leave room for that.
       timeoutSeconds: Math.ceil(settings.ttlMs / 1000),
+      viewport: viewportForSession(input),
       ...(input.agentBrowser
         // `persist` is what makes tomorrow's run find the login still there.
         ? { contextId: input.agentBrowser.browserbaseContextId, persistContext: true }

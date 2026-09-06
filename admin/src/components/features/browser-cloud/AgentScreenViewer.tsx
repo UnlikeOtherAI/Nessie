@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { BROWSER_VIEWPORT_PRESETS, type BrowserViewport } from '@nessie/schemas'
+
 import {
   useCloudBrowserSession,
   useEndResumedSession,
+  useSendBrowserHome,
+  useSetAgentBrowserViewport,
   type BrowserControl,
 } from '../../../facades/browser-cloud/hooks'
 import { useTabParam } from '../../../navigation/useTabParam'
@@ -85,6 +89,8 @@ export const AgentScreenViewer = ({
   // stops — not "hand back to the agent".
   const resumed = session.data?.runId === null
   const endResumed = useEndResumedSession(threadId, agent?.id ?? null)
+  const sendHome = useSendBrowserHome()
+  const setViewport = useSetAgentBrowserViewport(threadId, agent?.id ?? null)
   // Whether signing in here signs in for other people is the session's answer.
   // Reading it off the agent's visibility said "shared" for every browser a
   // team agent owned — including the Personal Assistant's, which since the
@@ -157,6 +163,21 @@ export const AgentScreenViewer = ({
   }
   const frameUrl = heldFrame.current?.url ?? null
 
+  // The size the running session is actually at, which is not always the size
+  // the browser is set to: Browserbase fixes a window when the session is
+  // created, so a resize the provider would not apply live shows here as the
+  // old size until the next open. Naming the size rather than the preset when
+  // the two disagree is what keeps that honest.
+  const viewport: BrowserViewport | null = session.data?.viewport ?? null
+  const presetId = viewport === null
+    ? null
+    : BROWSER_VIEWPORT_PRESETS.find((option) =>
+      option.viewport.width === viewport.width && option.viewport.height === viewport.height,
+    )?.id ?? null
+  const viewportLabel = viewport === null
+    ? 'Window size'
+    : `${viewport.width}×${viewport.height}`
+
   // A held URL outlives its session if the provider retires it, which looks
   // like a frame that has simply stopped. Re-minting is one press away rather
   // than a reason to go back to swapping `src` on a timer.
@@ -183,14 +204,50 @@ export const AgentScreenViewer = ({
         {live ? (
           <span className="ml-auto flex items-center gap-2">
             {variant === 'fullscreen' ? (
-              <button
-                aria-label="Reload the live view"
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={reloadFrame}
-                type="button"
-              >
-                Reload
-              </button>
+              <>
+                <label className="sr-only" htmlFor="browser-viewport">Window size</label>
+                <select
+                  // `.admin-input` is full-width by design; in a header row it
+                  // is one control among several, so the width is its content's.
+                  className="admin-input admin-input-sm w-auto"
+                  disabled={setViewport.isPending}
+                  id="browser-viewport"
+                  onChange={(event) => {
+                    const preset = BROWSER_VIEWPORT_PRESETS
+                      .find((option) => option.id === event.target.value)
+                    if (preset) setViewport.mutate(preset.viewport)
+                  }}
+                  value={presetId ?? ''}
+                >
+                  {presetId === null ? (
+                    <option value="">{viewportLabel}</option>
+                  ) : null}
+                  {BROWSER_VIEWPORT_PRESETS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label} · {option.viewport.width}×{option.viewport.height}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  disabled={!control.controlling || sendHome.isPending}
+                  onClick={() => sendHome.mutate(sessionId)}
+                  title={control.controlling
+                    ? 'Go to the home page set for this organisation'
+                    : 'Take control first'}
+                  type="button"
+                >
+                  {sendHome.isPending ? 'Going…' : 'Home'}
+                </button>
+                <button
+                  aria-label="Reload the live view"
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  onClick={reloadFrame}
+                  type="button"
+                >
+                  Reload
+                </button>
+              </>
             ) : null}
             {resumed && control.controlling ? (
               <button
