@@ -1,4 +1,4 @@
-import type { VoiceDeviceCredential } from '@prisma/client'
+import type { AgentAccessCredential, VoiceDeviceCredential } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 declare module 'fastify' {
@@ -14,6 +14,15 @@ declare module 'fastify' {
      * prefix, so widening the scope is a visible edit at the route itself.
      */
     voiceCredential?: boolean
+    /**
+     * This route also accepts an agent access credential (`nag1_`).
+     *
+     * Same mechanism and same reason as `voiceCredential`: the flag IS the
+     * scope. A credential an agent holds reaches exactly the routes that opt
+     * in — in practice the MCP endpoint — and every other route rejects it,
+     * so lending an agent a foothold never quietly lends it the whole API.
+     */
+    agentCredential?: boolean
   }
 
   interface FastifyRequest {
@@ -24,5 +33,11 @@ declare module 'fastify' {
      * that does not care sees an ordinary actor context either way.
      */
     voiceCredential?: VoiceDeviceCredential
+    /**
+     * Set only when the request authenticated with an agent access credential.
+     * The MCP endpoint reads its `scopes` to decide which tools it may run;
+     * the actor context beside it is an ordinary one for the granting human.
+     */
+    agentCredential?: AgentAccessCredential
   }
 }

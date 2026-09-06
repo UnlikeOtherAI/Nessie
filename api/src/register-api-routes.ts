@@ -77,6 +77,8 @@ import { registerTeamRoutes } from './routes/teams.js'
 import { registerThoughtRoutes } from './routes/thoughts.js'
 import { registerThreadRoutes } from './routes/threads.js'
 import { registerToolRoutes } from './routes/tools.js'
+import { registerMcpAgentAuthRoutes } from './routes/mcp-agent-auth.js'
+import { registerMcpEndpointRoutes } from './routes/mcp-endpoint.js'
 import { registerTriggerRoutes } from './routes/triggers.js'
 import type { RouteDeps } from './routes/types.js'
 import { registerUploadRoutes } from './routes/uploads.js'
@@ -108,6 +110,8 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerDemonstrationRoutes(app, deps)
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
+  registerMcpAgentAuthRoutes(app, deps)
+  registerMcpEndpointRoutes(app, deps)
   registerPlanRoutes(app, deps)
   registerWorkflowRoutes(app, deps)
   registerExecutionEnvironmentRoutes(app, deps)
