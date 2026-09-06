@@ -40,6 +40,19 @@ export {
 } from './sweep-lock.js'
 
 export {
+  clearRateLimitWindows,
+  countRateLimitHit,
+  pruneRateLimitWindows,
+  rateLimitKeyHash,
+  rateLimitWindowStart,
+  takeRateLimitSlot,
+  type FixedWindowRule,
+  type RateLimitSlot,
+  type RateLimitWindowHit,
+  type RateLimitWindowStore,
+} from './rate-limit-window.js'
+
+export {
   claimThreadRunOrPend,
   drainPendingThreadMessages,
   drainPendingThreadMessagesBestEffort,

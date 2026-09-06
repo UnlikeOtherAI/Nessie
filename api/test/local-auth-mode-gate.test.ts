@@ -21,7 +21,25 @@ import test from 'node:test'
  */
 
 // --- @nessie/db stub: the route module graph imports it transitively --------
+// `api/src/services/rate-limit.ts` takes the `rate_limit_buckets` statement from
+// @nessie/db (`rate-limit-window.ts`), shared with the worker's outbound UOA
+// pacer, so the stub must carry those exports. They are re-exported from the
+// real module by file URL rather than faked: a data: URL module cannot resolve
+// a bare specifier, and resolving '@nessie/db' from inside the stub would
+// re-enter this loader.
+const dbRateLimitUrl = new URL(
+  '../../packages/db/src/rate-limit-window.ts',
+  import.meta.url,
+).href
 const dbStub = [
+  'export {',
+  '  clearRateLimitWindows,',
+  '  countRateLimitHit,',
+  '  pruneRateLimitWindows,',
+  '  rateLimitKeyHash,',
+  '  rateLimitWindowStart,',
+  '  takeRateLimitSlot,',
+  `} from ${JSON.stringify(dbRateLimitUrl)}`,
   'export const disconnectPrismaClient = async () => {}',
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is stubbed in local-auth-mode-gate.test.ts")',

@@ -32,11 +32,70 @@ returns null and the session bills until its TTL.
 
 **Corollary.** Put the state in Postgres: a row claimed with a conditional
 `UPDATE … WHERE … RETURNING`, or an existing shared table (`rate_limit_buckets`
-already implements the token bucket). A cache is allowed only when it is
+already implements the counter). A cache is allowed only when it is
 read-through, bounded, carries a TTL, and is **never** the authority for a
 decision — `knowledge-query-embedding.ts` (4.4) and the 30 s UOA roster-subject
 cache (3.1) are the passing shape, and the second one documents its staleness
 window in the module because the staleness is user-visible.
+
+**A rate limit is that state, and there is one counter store for all of them.**
+`packages/db/src/rate-limit-window.ts` owns the `rate_limit_buckets` statement
+and every limiter in the deployment goes through it — the API's inbound
+brute-force guard (`api/src/services/rate-limit.ts`) and the worker's outbound
+UOA pacer (`worker/src/control/automatic-membership/rate-limit.ts`, 5.6, which
+was two module-scope token buckets making the deployment-wide cap `20 × N` and
+one organisation's `5 × N`). Two policies sit on that one statement and the
+choice between them is explicit, never implicit:
+
+- `countRateLimitHit` counts **every** attempt, refusals included, because an
+  inbound guard wants the flood visible in the counter the lockout audit reads.
+- `takeRateLimitSlot` is the **conditional UPDATE** — `DO UPDATE … WHERE count <
+  max` — so a refused caller leaves the counter alone and the row is exactly the
+  calls admitted in that window. An outbound pacer needs this: it polls in a
+  loop while it waits and must not spend the slots it is waiting for.
+
+**The window comes from the database's clock, not the process's.**
+`window_start` is part of the conflict key, so it is the column that decides
+whether two replicas are counting the same thing at all. Flooring it from
+`Date.now()` meant replicas whose clocks disagreed by a fraction of a window
+inserted *different* rows for the same instant and each got a private counter —
+one cap per clock, with nothing in the logs to say so, and a badly skewed host
+keeping its own allowance indefinitely. Derive it inside the statement, and
+derive any expiry cutoff the same way: a fast pruner deleting the live window a
+slower replica is still counting in widens the cap just as silently. Fleet clock
+sync must never be a correctness input.
+
+Three rules for a pacer built on it. **It waits, it does not throw**, when its
+callers are walking a large collection and have nowhere to put a refusal.
+**Nothing is held while it sleeps** — each attempt is one statement on a
+connection the pool takes straight back, and never a transaction, because a
+waiter parked on a pooled connection is how N instances exhaust a pool. **The
+wait is bounded, the ceiling is drawn per call, and what happens at it is itself
+capped.** An unbounded loop against a contended deployment-wide bucket parks the
+job forever, invisibly, because the queue keeps renewing its lock — so there has
+to be a ceiling. But a ceiling that simply admits is not a cap: with W waiters
+it is `W ÷ ceiling` calls per second, unbounded in W, and if every waiter shares
+the same constant they park together and discharge together, which is the same
+herd through a different door. The automatic-membership pacer draws its ceiling
+uniformly from 30–60 s per call, then competes for a third counted allowance
+(2/s deployment-wide) rather than bypassing the limiter, and only proceeds
+uncounted at 4× its own draw — still inside the queue's 300 s lock TTL, and at
+error level when it happens. Admitting rather than refusing is right here
+because no caller has a better "refused" branch than failing a person's
+membership grant; a limiter guarding an authorization decision would have to
+choose the other way and say so.
+
+**A failure in the limiter's housekeeping must not impersonate a limiter
+outage.** The expired-row sweep runs on a fraction of admitted calls, after the
+store has already answered; letting its error reach the fail-open handler made a
+failed `DELETE` print `FAIL-OPEN … allowing the call` when nothing extra had
+been allowed. `FAIL-OPEN` means the cap is off right now. Nothing else may say
+it.
+
+What a fixed window guarantees, stated so nobody over-claims it: `max` per
+window, and at worst `2 × max` across a sliding window. That bound does not grow
+with the replica count, which is the property being bought. State the guarantee
+the code actually delivers, not an estimate that holds for one waiter.
 
 ## 2. Every periodic job claims its work, or runs under `withSweepLock`
 
