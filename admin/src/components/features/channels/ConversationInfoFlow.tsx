@@ -367,13 +367,7 @@ export const ConversationInfoFlow = ({
           onOpenFiles={() => void navigate(`/channels/${activeChannel.id}?tab=files`)}
           onOpenMembers={() => void navigate(`/channels/${activeChannel.id}/info/members`)}
           onOpenMessages={() => void navigate(`/channels/${activeChannel.id}`)}
-          onOpenTool={(tool) => {
-            // The tool opens over the conversation, not over this screen: step
-            // back to the room first so Back from the tool lands where the
-            // reader expects.
-            void navigate(`/channels/${activeChannel.id}`)
-            onOpenTool(tool)
-          }}
+          onOpenTool={onOpenTool}
           threadId={activeThreadId}
         />
       ) : null}

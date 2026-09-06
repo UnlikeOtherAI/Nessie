@@ -57,9 +57,9 @@ export const WATCHING_POLL_MS = 5_000
 
 /**
  * Idling: the chat tool rail keeps a live dot for every open agent
- * conversation, so it asks four times less often than a viewer does. Still a
- * poll rather than a pushed event — a session's lifetime is minutes, and a new
- * realtime event family costs more than this does.
+ * conversation, so it settles for a slower answer. Still a poll rather than a
+ * pushed event — a session's lifetime is minutes, and a new realtime event
+ * family costs more than this does.
  */
 export const RAIL_POLL_MS = 20_000
 
@@ -70,14 +70,14 @@ export const RAIL_POLL_MS = 20_000
  */
 export const useThreadBrowserSessions = (
   threadId: string | null,
-  options: { refetchInterval?: number } = {},
+  options: { enabled?: boolean; refetchInterval?: number } = {},
 ) => {
   const apiClient = useApiClient()
   return useQuery<{ sessions: CloudBrowserSessionSummary[] }>({
     queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
     queryFn: () =>
       apiClient.get(`/api/threads/${threadId}/browser-sessions?active=1`),
-    enabled: threadId !== null,
+    enabled: threadId !== null && (options.enabled ?? true),
     refetchInterval: options.refetchInterval ?? WATCHING_POLL_MS,
     placeholderData: keepPreviousData,
   })

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import type { AgentRecord } from '../../../lib/api-client'
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
@@ -17,7 +17,7 @@ import { AgentScreenViewer } from './AgentScreenViewer'
  * idle card — so a browser starting up never moves a column the reader had
  * already sized.
  */
-export const SCREEN_PANEL_WIDTH_STORAGE_KEY = 'nessie.agentScreenPanelWidth'
+const SCREEN_PANEL_WIDTH_STORAGE_KEY = 'nessie.agentScreenPanelWidth'
 
 type AgentScreenPanelProps = {
   /** The live session to watch. `null` is the honest, common case: idle. */
@@ -53,6 +53,14 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
   // once: Back registration, Escape, the focus trap, the modal layer and its
   // motion (docs/navigation/overview.md §7).
   const exitFullscreen = useCallback(() => setFullscreen(false), [])
+
+  // Full screen exists to watch something. When the agent closes its browser
+  // mid-watch the session goes away under us, and staying would leave a
+  // full-bleed layer with a header over nothing — so it hands the reader back
+  // to the column, which has an idle face to show.
+  useEffect(() => {
+    if (sessionId === null) setFullscreen(false)
+  }, [sessionId])
   const overlay = useOverlay({
     id: 'agent-screen-fullscreen',
     kind: 'modal',
@@ -72,7 +80,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
   useLocalBack({
     active: !overlay.mounted,
     id: 'chat-tool:browser',
-    label: 'Back to conversation',
+    label: 'Back to channel',
     onBack: onClose,
     priority: LOCAL_BACK_PRIORITY.chatToolPanel,
   })
@@ -165,7 +173,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
         )}
         {phoneLayout ? null : (
           <button
-            aria-label="Close browser"
+            aria-label="Close browser panel"
             className="admin-icon-button"
             onClick={onClose}
             type="button"
@@ -178,8 +186,8 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose }: AgentScreenPanel
       {sessionId === null ? (
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <p className="px-1 pb-3 text-sm text-[color:var(--tx2)]">
-            Not browsing right now — this column becomes {agent.name}’s screen the
-            moment it opens a page.
+            {agent.name} isn’t browsing in this conversation. Its screen appears here
+            as soon as it does.
           </p>
           {/*
             * A system-managed agent's browser record is deliberately not

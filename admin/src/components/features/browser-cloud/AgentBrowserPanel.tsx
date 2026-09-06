@@ -55,9 +55,18 @@ export const AgentBrowserPanel = ({ agent, heading = true }: AgentBrowserPanelPr
         // A failed read is not an empty one. Saying "no browser yet" here
         // would be a guess presented as a fact — and it is the wrong guess on
         // a system-managed agent, whose record this route refuses to hand out.
-        <p className="mt-3 text-sm text-[color:var(--tx2)]">
-          This agent’s browser record could not be read.
-        </p>
+        <div className="mt-3 flex items-baseline gap-3">
+          <p className="text-sm text-[color:var(--tx2)]">
+            Couldn’t load this agent’s browser.
+          </p>
+          <button
+            className="text-sm text-[color:var(--lnk)] hover:underline"
+            onClick={() => void browser.refetch()}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
       ) : !row ? (
         <p className="mt-3 text-sm text-[color:var(--tx2)]">
           This agent has no browser yet. One is created the first time it opens its own

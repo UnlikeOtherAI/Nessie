@@ -1,11 +1,10 @@
 /**
  * The tools a conversation with one agent puts within reach.
  *
- * The rail beside the chat and any future phone list both read this table, so
- * a tool is added in one place and appears in every doorway (Rule zero, check
- * 4). Today it holds one entry — the agent's cloud browser — and the shape is
- * deliberately the smallest thing that can carry a second: an id, what the
- * control says, and the sentence that says which question it answers.
+ * The rail beside the chat and the conversation info screen's list both read
+ * this table, so the two doorways cannot drift apart. It is not the whole of
+ * adding a tool: a new entry also needs its mark in `ChatToolRail` and the
+ * column it opens in `ChatToolDock`.
  */
 
 export const CHAT_TOOL_IDS = ['browser'] as const
@@ -16,16 +15,16 @@ export type ChatTool = {
   id: ChatToolId
   label: string
   /**
-   * What opening it answers. Rule zero check 3: a rail button that cannot say
-   * which question it settles is decoration, so every row carries this and the
-   * rail renders it as the control's title.
+   * What opening it answers, in one line — it is the detail under the label on
+   * the conversation info screen, which truncates, so it stays short and says
+   * nothing the column cannot deliver.
    */
   description: string
 }
 
 export const CHAT_TOOLS: readonly ChatTool[] = [
   {
-    description: 'Watch the browser this agent drives, or take the keyboard.',
+    description: 'This agent’s own browser, and its screen while it browses.',
     id: 'browser',
     label: 'Browser',
   },
