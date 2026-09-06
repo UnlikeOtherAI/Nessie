@@ -3,6 +3,7 @@ import {
   listAssignableProjectTaskUsers,
   listUnmappedTicketPeople,
   searchProjectTasks,
+  searchRemoteTickets,
 } from '@nessie/team-admin'
 import { z } from 'zod'
 
@@ -42,6 +43,33 @@ const searchVisibilityFor = async (
   return accessible === 'all'
     ? undefined
     : { accessibleProjectIds: accessible, actorUserId: member.userId }
+}
+
+/**
+ * The same authority as `searchVisibilityFor`, resolved to a concrete list.
+ *
+ * Not a second spelling of it: a local search pushes visibility into the query,
+ * where it can also admit the projectless, owned and assigned work a task row
+ * carries on its own. A provider search has no such rows to reason about — it
+ * asks a `BoardSource`, which always belongs to exactly one project — so the
+ * gate has to be the project list itself.
+ */
+const searchableProjectIds = async (
+  context: BuiltinToolRuntimeContext,
+  member: ActingMember,
+  projectId?: string,
+): Promise<string[]> => {
+  if (projectId) {
+    await projectFor(context, member, projectId)
+    return [projectId]
+  }
+  const accessible = await listAccessibleProjectIds(context.prisma, member)
+  if (accessible !== 'all') return accessible
+  const projects = await context.prisma.project.findMany({
+    where: { organizationId: member.organizationId },
+    select: { id: true },
+  })
+  return projects.map((project) => project.id)
 }
 
 const SearchInput = z.object({
@@ -131,4 +159,78 @@ export const runTicketPeopleReadTool = async (
     args.projectId ? `projectId=${args.projectId}` : 'organisation',
     lines.join('\n'),
   )
+}
+
+const RemoteInput = z.object({
+  text: z.string().min(1),
+  projectId: IdSchema.optional(),
+  limit: z.number().int().positive().optional(),
+})
+
+/**
+ * Ask the connected providers directly, for work Nessie has not mirrored.
+ *
+ * The mirror is still where a board's tickets come from, and everything this
+ * returns is read-only: an item outside the sync window or newer than the last
+ * sweep can be *found* here, but acting on it goes through the ticket tools
+ * once the sync has it. Saying which items are already mirrored is what makes
+ * that difference usable rather than confusing.
+ */
+export const runTicketSearchRemoteTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = RemoteInput.parse(input)
+  const member = await resolveActingMember(context)
+  if (!context.boardSourceEncryptionSecret) {
+    throw new Error('This deployment cannot read source credentials, so I cannot search them.')
+  }
+
+  const projectIds = await searchableProjectIds(context, member, args.projectId)
+  if (projectIds.length === 0) {
+    return result(
+      'ticket_search_remote',
+      `text=${args.text}`,
+      'You have no projects with a connected Jira, Linear, Trello or GitHub source.',
+    )
+  }
+
+  const outcome = await searchRemoteTickets(context.prisma, {
+    organizationId: member.organizationId,
+    projectIds,
+    text: args.text,
+    ...(args.limit === undefined ? {} : { limit: args.limit }),
+    encryptionSecret: context.boardSourceEncryptionSecret,
+  })
+
+  // The basis is every project a match actually came from — a remote item is
+  // still that project's work, and the reply quoting it is that project's read.
+  for (const projectId of new Set(outcome.matches.map((match) => match.projectId))) {
+    recordProjectRead(context, member, projectId)
+  }
+
+  const lines = outcome.matches.length
+    ? [
+        `Provider results (${outcome.matches.length})`,
+        ...outcome.matches.map((match) =>
+          [
+            `- ${match.externalKey} ${match.title} | ${match.provider}: ${match.sourceName}`,
+            `  state=${match.stateName} assignee=${match.assigneeDisplayName ?? 'unassigned'}` +
+              ` updated=${match.updatedAt}`,
+            match.taskId
+              ? `  mirrored in Nessie as ticketId=${match.taskId}`
+              : `  not mirrored in Nessie; open it at ${match.externalUrl}`,
+          ].join('\n'),
+        ),
+      ]
+    : ['No provider results.']
+
+  // A partial answer must never read as a complete one.
+  if (outcome.unavailable.length > 0) {
+    lines.push(
+      `Could not ask ${outcome.unavailable.length} source(s):`,
+      ...outcome.unavailable.map((source) => `- ${source.sourceName}: ${source.reason}`),
+    )
+  }
+  return result('ticket_search_remote', `text=${args.text}`, lines.join('\n'))
 }

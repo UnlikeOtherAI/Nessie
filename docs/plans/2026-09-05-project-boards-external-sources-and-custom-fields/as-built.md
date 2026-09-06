@@ -77,6 +77,41 @@ fact. Read this before treating any section above as a description of the code.
   the only door to it was Settings, which is not where "is this current?" is
   asked.
 
+- **§5 gained a live read: `searchItems`.** The adapter contract now has a
+  seventh method, required of every provider, and the four implement it on
+  Linear's `searchIssues`, Jira's `text ~` JQL, Trello's `/1/search` and
+  GitHub's `/search/issues`. It does **not** reopen the "live query-through"
+  the §2 sync model rejected: nothing it returns is written to a `Task` and no
+  board reads it. What it serves is the case the mirror structurally cannot —
+  an item outside the sync window, in a state the mapping drops, or newer than
+  the last sweep is invisible locally, and the assistant's only honest answer
+  used to be "I cannot see it". Three decisions bound it:
+  - **The container, not the workspace.** A source is one person's delegated
+    authority pointed at one Jira project, Linear team, Trello board or GitHub
+    repository, so every query carries that container. Trello's `idBoards` and
+    GitHub's `repo:` are load-bearing for this, not tidiness — without them the
+    provider's own search ranges over everything the credential can reach.
+  - **The text is data, and both text grammars are escaped in one named place**
+    (`jiraSearchJql`, `gitHubSearchQuery`), each with tests that assert a quote
+    in a person's words stays inside the literal instead of becoming a clause
+    or a second `repo:`.
+  - **A source that could not be asked is named in the answer.** One
+    unreachable Jira must not withhold what Linear found, but a partial answer
+    that looked complete would be worse than the refusal.
+  The assistant reaches it as `ticket_search_remote`, which marks every result
+  with the local `ticketId` when one exists — an item that is not mirrored
+  cannot be moved or assigned until it syncs, and saying so is what keeps that
+  usable rather than confusing.
+- **The assistant can search tickets at all.** §7's tool table mirrored the
+  routes, and neither had a search: `ticket_list` takes a project and a status.
+  `ticket_search` (text over title, purpose, detail and the provider key, with
+  project/board/status/priority/assignee narrowing) and its resolver
+  `ticket_people_read` close that, and they are the surface where **unmapped
+  provider people became reachable**: they hold tickets through
+  `TaskExternalLink.remoteAssignee*` and have no user id, so `unmappedAssignee`
+  names them by the provider's own id or their display name. Being unassigned
+  and being held by somebody Nessie cannot resolve stay different answers.
+
 ### Superseded
 
 - **§5.1 "Webhooks" for Linear and GitHub is no longer app-level only.** Both

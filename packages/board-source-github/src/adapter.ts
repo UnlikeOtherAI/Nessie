@@ -8,6 +8,7 @@ import {
   type NormalisedItem,
   type OAuthExchangeInput,
   type OutboundChange,
+  type RemoteItemQuery,
   SourceAuthError,
   SourceContainerGoneError,
   SourceHttpError,
@@ -30,6 +31,7 @@ import {
   normaliseGitHubIssue,
   normaliseProjectItem,
 } from './normalise.js'
+import { gitHubSearchQuery } from './search.js'
 import { PROJECT_ITEMS_QUERY, PROJECT_STATUS_QUERY, VIEWER_PROJECTS_QUERY } from './queries.js'
 
 export const GITHUB_API_HOST = 'api.github.com'
@@ -382,6 +384,30 @@ export const createGitHubAdapter = (config: GitHubAdapterConfig): BoardSourceAda
     )
     return issues
       .filter((issue): issue is GitHubIssue => issue !== null && !issue.pull_request)
+      .map(normaliseGitHubIssue)
+  },
+
+  searchItems: async (
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    query: RemoteItemQuery,
+  ): Promise<NormalisedItem[]> => {
+    if (!isRepository(container)) return []
+    const owner = String(container.owner ?? '')
+    const repo = String(container.repo ?? '')
+    const url = new URL(`https://${GITHUB_API_HOST}/search/issues`)
+    url.searchParams.set('q', gitHubSearchQuery(owner, repo, query.text))
+    url.searchParams.set('per_page', String(Math.min(query.limit, 100)))
+    url.searchParams.set('sort', 'updated')
+    const found = await sourceFetchJson<{ items?: GitHubIssue[] }>({
+      url: url.toString(),
+      allowedHosts: GITHUB_ALLOWED_HOSTS,
+      headers: restHeaders(ctx),
+    })
+    // The search index returns pull requests under the same shape; the board
+    // mirrors issues only, so `fetchPage` filters them and so does this.
+    return (found.items ?? [])
+      .filter((issue) => !issue.pull_request)
       .map(normaliseGitHubIssue)
   },
 

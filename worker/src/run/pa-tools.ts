@@ -108,6 +108,7 @@ export {
 } from './pa-tools/tickets.js'
 export {
   runTicketPeopleReadTool,
+  runTicketSearchRemoteTool,
   runTicketSearchTool,
 } from './pa-tools/ticket-search.js'
 export {

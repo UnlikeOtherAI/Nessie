@@ -21,6 +21,12 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     parameters: { type: 'object', properties: { text: { type: 'string', description: 'Words to look for. Omit to list by filter alone.' }, projectId: UUID, boardId: UUID, status: { type: 'string', description: 'Optional ticket status.' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, assigneeUserId: UUID, unmappedAssignee: { type: 'string', description: 'A provider person with no Nessie account, by the externalUserId or displayName from ticket_people_read.' }, unassigned: { type: 'boolean', description: 'Only tickets nobody at all is on.' }, includeArchived: { type: 'boolean' }, limit: { type: 'integer', description: 'Up to 200; 50 by default.' } }, required: [] },
   },
   {
+    id: 'ticket_search_remote', category: 'projects', label: 'Search Provider Tickets', personalAssistantOnly: true,
+    summary: 'Search connected Jira, Linear, Trello and GitHub live.', safe: true,
+    description: 'Search the connected Jira, Linear, Trello and GitHub sources directly, for work Nessie has not mirrored — an item outside the sync window, in a state the board does not map, or newer than the last sync. Use ticket_search first: it covers everything already mirrored and is what you can act on. Results say which items exist in Nessie and which do not; an item that does not cannot be updated, moved or assigned until it syncs.',
+    parameters: { type: 'object', properties: { text: { type: 'string', description: 'Words to search the provider for.' }, projectId: UUID, limit: { type: 'integer', description: 'Up to 25.' } }, required: ['text'] },
+  },
+  {
     id: 'ticket_people_read', category: 'projects', label: 'Read Ticket People', personalAssistantOnly: true,
     summary: 'List who can hold a ticket, mapped or not.', safe: true,
     description: 'List the people tickets can be attributed to: colleagues with a Nessie account, and the Jira, Linear, Trello or GitHub users a mirrored ticket names that Nessie has no account for. Use it to turn a name into the assigneeUserId or unmappedAssignee that ticket_search takes.',

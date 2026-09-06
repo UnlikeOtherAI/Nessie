@@ -7,3 +7,4 @@ export {
   type GitHubIssue,
   type ProjectV2Item,
 } from './normalise.js'
+export { gitHubSearchQuery } from './search.js'

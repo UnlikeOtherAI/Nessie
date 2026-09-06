@@ -111,7 +111,8 @@ shape. `task.updated` is untouched.
 ### 7.5 PA tools — each mirrors one route
 
 All `personalAssistantOnly`, `category: 'projects'`, calling the same
-`@nessie/team-admin` function the route calls:
+`@nessie/team-admin` function the route calls — except the three finding tools
+below the table, which have no route to mirror.
 
 | tool | route mirrored | change |
 |---|---|---|
@@ -121,6 +122,26 @@ All `personalAssistantOnly`, `category: 'projects'`, calling the same
 | `ticket_fields_read` (new, `safe`) | `GET …/fields` | definitions with option ids, so `ticket_update` can set them without guessing |
 | `ticket_update` | `PATCH /api/tasks/:id` | gains `fieldValues` |
 | `ticket_move`, `ticket_assign`, `ticket_transition` | unchanged routes | same `writeBack` collaborator, refusals in words: *"Jira owns this ticket's status; the source is read-only."* / *"Jira refused: PROJ-123 has no transition to Done from In Review."* |
+
+#### Finding, which mirrors nothing
+
+`ticket_list` takes a project and a status, so nothing answered "which tickets
+mention the exporter" or "what is Ada working on". Three tools do, and they are
+the only ticket tools with no route behind them — the board is a person's
+search surface, and a person looking at one can see it.
+
+| tool | what it answers | gate |
+|---|---|---|
+| `ticket_search` | text over title, purpose, detail and the provider key (`ENG-214`), narrowed by project, board, status, priority, colleague, unmapped provider person, or nobody at all | no project to gate, so `listAccessibleProjectIds` travels *with* the query; the disclosure basis is stamped for every project it actually answered from |
+| `ticket_people_read` | who a ticket can be attributed to: colleagues, and the provider users a mirrored ticket names that Nessie has no account for, with the count each holds | the named project, when one is given |
+| `ticket_search_remote` | the connected providers asked live, for items the mirror does not hold (§5.13) | the projects whose sources may be asked, resolved to a list because a `BoardSource` belongs to exactly one project |
+
+**Unmapped provider people are reachable here and nowhere else.** They hold
+tickets through `TaskExternalLink.remoteAssignee*` and have no user id, so
+`unmappedAssignee` names them by the provider's own id or the display name the
+card shows. Being unassigned and being held by somebody Nessie cannot resolve
+are deliberately different answers: conflating them would report work as
+ownerless because of a missing mapping.
 
 Board, field and source administration deliberately has **no PA tools** in v1:
 they are set up once by an administrator on a settings page, and the PA's job

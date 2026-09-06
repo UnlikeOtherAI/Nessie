@@ -109,6 +109,7 @@ export interface BoardSourceAdapter {
   describeContainer(ctx, container): Promise<ContainerDescription>             // { states, fields, members }
   fetchPage(ctx, container, checkpoint: SyncCheckpoint): Promise<SyncPage>       // initial and incremental, by checkpoint
   fetchItems(ctx, container, externalIds: string[]): Promise<NormalisedItem[]>  // after a webhook that carries ids only
+  searchItems(ctx, container, query: RemoteItemQuery): Promise<NormalisedItem[]>  // live read for items the mirror does not hold; §5.13
   ensureWebhook(ctx, container, callback: { url: string; token: string }): Promise<WebhookRegistration | null>
   verifyWebhook(request: WebhookRequest, secrets: WebhookSecrets): boolean
   parseWebhook(request: WebhookRequest): WebhookDelivery                        // { deliveryId, containerKey, items | externalIds }
@@ -526,3 +527,38 @@ table with no row identity and no write path; a board source produces mutable,
 identity-preserving, bi-directional mirrors. Extending the dashboard tables
 would have meant three forks — a write path, row identity and webhooks — inside
 a model built to have none.
+
+### 5.13 Searching the provider directly
+
+`searchItems` is the one read that does **not** go through the mirror, and it
+is not the live query-through §2 rejected: nothing it returns is written to a
+`Task`, and no board renders it. It answers the question the mirror
+structurally cannot — an item outside the sync window, in a state the mapping
+drops, or newer than the last sweep is simply not here, and "I cannot see it"
+was the only honest answer an assistant could give.
+
+- **Bounded to the container.** Every query carries the source's own container,
+  because a source is one person's delegated authority pointed at one Jira
+  project, Linear team, Trello board or GitHub repository. Trello's `idBoards`
+  and GitHub's `repo:` qualifier are what enforce that at the vendor; without
+  them the provider's own search ranges over everything the credential can
+  reach, which is the whole account.
+- **The text is data.** Jira's JQL and GitHub's qualifier grammar are query
+  languages, so the escaping for each lives in one named function
+  (`jiraSearchJql`, `gitHubSearchQuery`) with tests that assert a quote in a
+  person's words stays inside the string literal rather than becoming a clause
+  or a second `repo:`. Linear and Trello take the text as a variable and a
+  query parameter, so neither has a grammar to escape into.
+- **A partial answer says so.** Sources are asked concurrently; one that
+  refuses, times out, or belongs to a deactivated owner is named in
+  `unavailable` with its reason rather than dropped, because an answer missing
+  a whole provider must not read as an empty result.
+- **Paused stays paused.** A source a person stopped is not asked.
+- **Results say what is mirrored.** Each match carries the local `taskId` when
+  one exists. An item without one cannot be moved, assigned or transitioned
+  until it syncs, and a search that did not distinguish them would invite
+  exactly that.
+
+The assistant reaches this as `ticket_search_remote` (§7), after
+`ticket_search`, which covers everything already mirrored and is the set it can
+act on.

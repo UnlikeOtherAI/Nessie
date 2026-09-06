@@ -10,6 +10,7 @@ import {
   type OAuthMethod,
   type CredentialForm,
   type OutboundChange,
+  type RemoteItemQuery,
   type SyncCheckpoint,
   type SyncPage,
   SourceAuthError,
@@ -36,6 +37,7 @@ import { linearStateCategory, normaliseLinearIssue, type LinearIssue } from './n
 import {
   ISSUES_BY_ID_QUERY,
   ISSUES_PAGE_QUERY,
+  ISSUE_SEARCH_QUERY,
   ISSUE_UPDATE_MUTATION,
   TEAMS_QUERY,
   TEAM_DESCRIPTION_QUERY,
@@ -388,6 +390,20 @@ const verifyLinearApiKey = async (values: Record<string, string>): Promise<Conne
       { ids: externalIds.slice(0, 100) },
     )
     return data.issues.nodes.map(normaliseLinearIssue)
+  },
+
+  searchItems: async (
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    query: RemoteItemQuery,
+  ): Promise<NormalisedItem[]> => {
+    const teamId = String(container.teamId ?? '')
+    const data = await linearGraphQl<{ searchIssues: { nodes: LinearIssue[] } }>(
+      ctx.credential.accessToken,
+      ISSUE_SEARCH_QUERY,
+      { term: query.text, teamId, first: Math.min(query.limit, 50) },
+    )
+    return data.searchIssues.nodes.map(normaliseLinearIssue)
   },
 
   /**

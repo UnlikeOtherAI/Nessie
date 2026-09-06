@@ -35,6 +35,14 @@ export type ConnectionContext = {
   credential: CredentialBundle
 }
 
+/** What `searchItems` is asked. Text is the provider's own relevance, not ours. */
+export type RemoteItemQuery = {
+  /** Free text, passed to whatever the provider calls a search. */
+  text: string
+  /** Hard ceiling on items returned; adapters clamp their own page size to it. */
+  limit: number
+}
+
 /** One external container a person can attach: a Jira project, Linear team, … */
 export type ContainerDescriptor = {
   /** The adapter's canonical string form, unique within the provider. */
@@ -196,6 +204,32 @@ export interface BoardSourceAdapter {
     ctx: ConnectionContext,
     container: Record<string, unknown>,
     externalIds: string[],
+  ): Promise<NormalisedItem[]>
+
+  /**
+   * Ask the provider its own question, live, and normalise the answer.
+   *
+   * This is deliberately *not* a second way to fill a board. §5's sync model
+   * rejected live query-through for that job and still does: a board that
+   * queried the vendor on every render would die with the provider and be
+   * unreachable to an agent. What this serves is the opposite case — finding an
+   * item that was never mirrored, because it is outside the sync window, in a
+   * state the mapping drops, or simply newer than the last sweep. Nothing it
+   * returns is written to a `Task`; the caller reads it and stops.
+   *
+   * Bounded to `container` on purpose. A source is one person's delegated
+   * authority pointed at one Jira project, Linear team, Trello board or GitHub
+   * repository, and a search that ranged wider would read containers the
+   * project never attached under a credential lent for the one it did.
+   *
+   * Required rather than optional: every provider here has a first-class
+   * search, and an adapter that quietly lacked one would answer "nothing
+   * found" — indistinguishable from a real empty result.
+   */
+  searchItems(
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    query: RemoteItemQuery,
   ): Promise<NormalisedItem[]>
 
   /**

@@ -34,6 +34,22 @@ health state's label in `warning`/`danger` with the remedy verb, linking to the
 source's settings page. It answers "is what I am looking at current?", which is
 the decision a person makes before dragging.
 
+Beside the strip: `BoardAssigneeFilter`, narrowing the board to one person —
+*All assignees*, *My issues*, *Unassigned*, every assignable colleague, and a
+separate **Not in Nessie** group holding the provider people a mirrored card
+names that no identity link resolves. They are grouped apart and labelled with
+their provider for the reason §6.4 keeps their pill outlined: nobody here
+answers to that name, and listing them among colleagues would claim otherwise.
+
+The filter is a **view over the board, not part of it**. It lives in
+`?assignee=` beside `?board=` — a reload keeps it and a narrowed board is a
+link — while `Board.filter` stays the board's shared definition. Saving *My
+issues* into that filter would narrow the project's board for everybody, which
+is the opposite of what the person asking for it wants. It is a closed
+vocabulary rather than a user id (`user:`/`remote:`) because an unmapped person
+has no user id to key on, and their display name is not an identity: two Linear
+members can share one.
+
 `KanbanBoard` is unchanged in shape: it receives the board's columns and
 `BoardTaskRecord[]` (already placed by the server) and only groups by
 `columnId`. `placeTask` and `statusToCategory` leave `kanban-config.ts`.
@@ -150,6 +166,11 @@ has. A surface type would have been a third statement of the same fact.
 
 - `surfaces.ts` and `prewarm.ts`: the project pattern is unchanged; prewarm
   fetches `GET /api/projects/:id/boards` instead of `/board`.
+- `assignee` on the board tab is a plain search param, not a `useTabParam`
+  row: its values are an open set (one per person, plus the provider people a
+  card names), where `useTabParam` takes a closed list it can fall back within.
+  `parseAssigneeFilter` does that job instead — an unknown or stale value reads
+  as *All assignees*, so an old link degrades to the whole board.
 - `useTabParam` rows: `board` on the board tab, `section` and `source` on
   settings (`source` is a selection inside a section, the `agentTab` precedent
   for a named param).
