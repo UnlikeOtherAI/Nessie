@@ -330,7 +330,16 @@ matches no row. Beside it:
   `executor_heartbeat_at` has been silent longer than
   `claimRunForExecution`'s own takeover window, so the reaper never decides an
   executor is dead before the run claim would — reaping on age alone would kill
-  a legitimately long generation. **A terminal state that says what happened:**
+  a legitimately long generation. **A heartbeat is a claim's liveness, not a
+  process's:** the heartbeat stops whenever the executor token is nulled, which
+  `updateRunStatus` does on every suspension and `releaseRunForDrain` does on
+  every orderly hand-back — so a stale or null heartbeat on its own says
+  "parked" or "draining" as readily as "dead". The predicate is a claim about
+  the run: `running` with a heartbeat that *exists* and has gone silent, or a
+  terminal run (which `claimRunForExecution` can never hand to anybody again).
+  `pending`, `waiting_approval` and `waiting_input` are never reaped out of;
+  they always leave that status eventually, and the terminal arm collects
+  whatever they stranded. **A terminal state that says what happened:**
   `failed` with `errorReason: 'executor_lost'`, a reason the API's summary and
   the popup both render, because a document that silently vanishes is the same
   failure as one that never finishes. **Bounded and per-row isolated:** an

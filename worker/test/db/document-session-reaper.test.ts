@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type RunStatus } from '@prisma/client'
 
 import {
   DOCUMENT_SESSION_EXECUTOR_SILENCE_MS,
@@ -67,25 +67,43 @@ const cleanup = async (prisma: PrismaClient, fixture: Seed): Promise<void> => {
   await prisma.organization.deleteMany({ where: { id: fixture.organizationId } })
 }
 
+/**
+ * A run in `status`, carrying the executor claim the real code would have left
+ * on it: a token and a heartbeat `heartbeatAgo` ago, or — when `heartbeatAgo`
+ * is null — the cleared pair `releaseRunForDrain` writes on an orderly
+ * hand-back.
+ */
+const createRun = async (
+  prisma: PrismaClient,
+  fixture: Seed,
+  input: { heartbeatAgo: string | null; status: RunStatus },
+): Promise<string> => {
+  const run = await prisma.run.create({
+    data: { agentId: fixture.agentId, status: input.status, threadId: fixture.threadId },
+    select: { id: true },
+  })
+  await prisma.$executeRawUnsafe(
+    `UPDATE runs
+     SET executor_token = CASE WHEN $2::text IS NULL THEN NULL ELSE gen_random_uuid() END,
+         executor_heartbeat_at =
+           CASE WHEN $2::text IS NULL THEN NULL ELSE now() - $2::interval END
+     WHERE id = $1::uuid`,
+    run.id,
+    input.heartbeatAgo,
+  )
+  return run.id
+}
+
 /** A `running` run holding a fencing token, heartbeating `heartbeatAgo` ago. */
 const createRunningRun = async (
   prisma: PrismaClient,
   fixture: Seed,
   heartbeatAgo: string,
-): Promise<string> => {
-  const run = await prisma.run.create({
-    data: { agentId: fixture.agentId, status: 'running', threadId: fixture.threadId },
-    select: { id: true },
-  })
-  await prisma.$executeRawUnsafe(
-    `UPDATE runs
-     SET executor_token = gen_random_uuid(), executor_heartbeat_at = now() - $2::interval
-     WHERE id = $1::uuid`,
-    run.id,
-    heartbeatAgo,
-  )
-  return run.id
-}
+): Promise<string> => createRun(prisma, fixture, { heartbeatAgo, status: 'running' })
+
+/** Comfortably past `DOCUMENT_SESSION_EXECUTOR_SILENCE_MS`, as an SQL interval. */
+const PAST_THE_WINDOW =
+  `${Math.ceil(DOCUMENT_SESSION_EXECUTOR_SILENCE_MS / 60_000) + 1} minutes`
 
 const createStreamingSession = async (
   prisma: PrismaClient,
@@ -190,6 +208,107 @@ runDatabaseTest('a session whose executor is gone is reaped, with a reason', asy
       runId,
       sessionId,
     })
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a session on a run parked for a person is never reaped', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  const published: string[] = []
+  try {
+    // The exact row a suspension leaves behind. `updateRunStatus` nulls
+    // `executor_token` in the statement that writes `waiting_approval`, and
+    // `startExecutorHeartbeat`'s interval body returns early once the token is
+    // null — so the heartbeat simply ages from the moment the run parks. Six
+    // minutes is an ordinary length of time for a person to spend on an
+    // approval, and at the end of it the run is parked, not dead.
+    const runId = await createRun(prisma, fixture, {
+      heartbeatAgo: PAST_THE_WINDOW,
+      status: 'waiting_approval',
+    })
+    await prisma.$executeRawUnsafe(
+      `UPDATE runs SET executor_token = NULL WHERE id = $1::uuid`,
+      runId,
+    )
+    const sessionId = await createStreamingSession(prisma, fixture, runId, PAST_THE_WINDOW)
+
+    await reapAbandonedDocumentSessions(prisma, {
+      publishSse: async (threadId) => {
+        published.push(threadId)
+      },
+    })
+
+    const parked = await readSession(prisma, sessionId)
+    assert.equal(parked.status, 'streaming', 'a parked run has not lost its executor')
+    assert.equal(parked.errorReason, null)
+    assert.deepEqual(published, [], 'nothing is published into the reader\'s open dialog')
+
+    // And it is deferred, not stranded: every parked run leaves that status
+    // eventually — `resumeSuspendedRun` terminalises it as `completed` when the
+    // person approves, `sweepExpiredApprovals` as `failed` when nobody does —
+    // and the terminal arm collects the session then.
+    await prisma.run.update({ data: { status: 'completed' }, where: { id: runId } })
+    await reapAbandonedDocumentSessions(prisma)
+
+    assert.equal((await readSession(prisma, sessionId)).status, 'failed')
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a session on a drained run waiting for its successor survives', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  try {
+    // What `releaseRunForDrain` leaves: `running`, no token, no heartbeat —
+    // cleared on purpose so the next worker claims the run on its very next
+    // poll instead of waiting out the takeover window. The job is back on the
+    // queue; a scale-in with every other worker busy is exactly the shape that
+    // leaves it there for longer than this reaper's window.
+    const runId = await createRun(prisma, fixture, { heartbeatAgo: null, status: 'running' })
+    const sessionId = await createStreamingSession(prisma, fixture, runId, PAST_THE_WINDOW)
+
+    await reapAbandonedDocumentSessions(prisma)
+
+    assert.equal(
+      (await readSession(prisma, sessionId)).status,
+      'streaming',
+      'a null heartbeat is a hand-back, not a corpse',
+    )
+
+    // The successor claims the run, finishes it, and the session its
+    // predecessor stranded is collected on the next pass.
+    await prisma.run.update({ data: { status: 'completed' }, where: { id: runId } })
+    await reapAbandonedDocumentSessions(prisma)
+
+    assert.equal((await readSession(prisma, sessionId)).status, 'failed')
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a session left open on a finished run is reaped', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  try {
+    // The leak this sweep exists for, in its other shape: the run reached a
+    // terminal status but a session never followed it there. `claimRunForExecution`
+    // admits only `pending` and stale `running` runs, so nothing will ever hold
+    // this run again — which is why the terminal arm needs no heartbeat
+    // evidence, and must not, or a run drained and then cancelled would keep
+    // its session for ever.
+    const runId = await createRun(prisma, fixture, { heartbeatAgo: null, status: 'cancelled' })
+    const sessionId = await createStreamingSession(prisma, fixture, runId, PAST_THE_WINDOW)
+
+    const result = await reapAbandonedDocumentSessions(prisma)
+
+    assert.equal((await readSession(prisma, sessionId)).status, 'failed')
+    assert.equal(result.reaped >= 1, true)
   } finally {
     await cleanup(prisma, fixture)
     await prisma.$disconnect()
