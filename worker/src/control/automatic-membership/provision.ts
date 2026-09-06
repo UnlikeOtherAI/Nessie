@@ -58,7 +58,10 @@ export const executeAutomaticMembershipProvisionJob = async (
       payload.uoaSub,
       'signin',
       deps.rosterDeps ?? {},
-      { ...defaultAutomaticGrantUpstream, pace: () => awaitUpstreamSlot(payload.organizationId) },
+      {
+        ...defaultAutomaticGrantUpstream,
+        pace: () => awaitUpstreamSlot(prisma, payload.organizationId),
+      },
     )
 
     // `grant_issued` is written only when a grant actually happened. Auditing a

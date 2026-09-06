@@ -13,7 +13,8 @@ decides, what a self-guarding handler adds — see
 There is exactly one rate limiter in the API: the Postgres-backed fixed-window
 counter store in `api/src/services/rate-limit.ts` (`RateLimiter`), constructed
 once in `createServerContext` and threaded through `RouteDeps` and the MCP
-registrar context.
+registrar context. (The worker paces its own *outbound* calls to UOA on the
+same table and the same statement; that is §5, not a second limiter.)
 
 There used to be two. A hard-coded in-process `Map` in `api/src/lib/rate-limit.ts`
 covered four routes with its own thresholds, its own per-replica store and its
@@ -25,7 +26,10 @@ are buckets in the table below (`threadMessageIp`, `agentWriteIp`,
 - **Storage**: `rate_limit_buckets` (migration
   `20260724120000_auth_rate_limit_buckets`) — one row per
   `(bucket, key_hash, window_start)` with an atomic upsert-increment, safe
-  across replicas and restarts. There is no Redis in this stack; Postgres is
+  across replicas and restarts. The statement itself lives in
+  `packages/db/src/rate-limit-window.ts`, not here: it is shared with the
+  worker's outbound pacer (§5), so the two move the same rows with the same SQL
+  instead of drifting. There is no Redis in this stack; Postgres is
   the only shared store and the endpoints in question already touch it per
   request. Windows are fixed rather than sliding so each identity costs one
   row per live window; ~2% of hits sweep rows from expired windows **within
@@ -173,3 +177,30 @@ Tune the tradeoff with `NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_MAX` /
 `NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS` (raising the max or shortening the
 window makes a forced lockout harder) and `NESSIE_RATE_LIMIT_LOGIN_IP_*`
 (raising the attacker-side cost per lockout).
+## 5) The worker's outbound pacer shares the store
+
+`RateLimiter` is the only limiter on **inbound** requests. There is one more
+limit in the deployment, pointed the other way: the automatic-membership
+worker paces its own calls **to** UnlikeOtherAI
+(`worker/src/control/automatic-membership/rate-limit.ts`) at 5/s per
+organisation and 20/s for the whole deployment, so a reconciliation walking a
+fifty-thousand-member roster does not become a thundering herd against UOA.
+
+It is not a second limiter. Both go through `@nessie/db`'s
+`rate-limit-window.ts`, which owns the `rate_limit_buckets` statement and the
+bucket-scoped prune; only the policy differs, and the two policies are named:
+
+| | `countRateLimitHit` (API guard) | `takeRateLimitSlot` (worker pacer) |
+|---|---|---|
+| Counts | every attempt, refused ones included | only admitted calls (`DO UPDATE … WHERE count < max`) |
+| Why | the lockout audit reads the counter, so a flood must be visible in it | the pacer polls while it waits and must not spend the slots it is waiting for |
+| On refusal | 429 + `Retry-After`, request rejected | sleeps to the next window and asks again |
+
+The pacer's caps used to be two module-scope token buckets, which made the
+deployment-wide cap `20 × N` across N workers and gave one organisation `5 × N`
+whenever two workers reconciled it (horizontal-scaling audit 5.6). It waits
+rather than throwing, holds no connection or transaction while it sleeps, and
+bounds the wait at 30 s — after which it proceeds with a loud log, because for
+outbound pacing a bounded overshoot is a smaller failure than a reconciliation
+parked forever. `worker/test/db/automatic-membership-rate-limit.test.ts` drives
+two clients against one database to hold that line.

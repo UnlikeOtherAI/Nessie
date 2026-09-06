@@ -11,7 +11,25 @@ import test from 'node:test'
  */
 
 // --- @nessie/db stub: the route module graph imports it transitively --------
+// The counter statement itself is NOT stubbed: `rate-limit-window.ts` in
+// @nessie/db owns the `rate_limit_buckets` SQL that both this limiter and the
+// worker's outbound UOA pacer issue, and the fake `$queryRaw`/`$executeRaw`
+// below are what assert on it. The stub re-exports the real module by file URL
+// (a data: URL module cannot resolve a bare specifier, and resolving
+// '@nessie/db' from inside the stub would re-enter this loader).
+const dbRateLimitUrl = new URL(
+  '../../packages/db/src/rate-limit-window.ts',
+  import.meta.url,
+).href
 const dbStub = [
+  'export {',
+  '  clearRateLimitWindows,',
+  '  countRateLimitHit,',
+  '  pruneRateLimitWindows,',
+  '  rateLimitKeyHash,',
+  '  rateLimitWindowStart,',
+  '  takeRateLimitSlot,',
+  `} from ${JSON.stringify(dbRateLimitUrl)}`,
   'export const disconnectPrismaClient = async () => {}',
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is stubbed in auth-rate-limit-routes.test.ts")',

@@ -15,7 +15,25 @@ import type { RateLimitDecision, RateLimitRule } from '../src/services/rate-limi
 // --- @nessie/db stub: count lockout audit writes instead of touching a DB ---
 const auditWrites: Array<Record<string, unknown>> = []
 ;(globalThis as Record<string, unknown>).__rateLimitAuditWrites = auditWrites
+// The counter statement itself is NOT stubbed: `rate-limit-window.ts` in
+// @nessie/db owns the `rate_limit_buckets` SQL that both this limiter and the
+// worker's outbound UOA pacer issue, and the fake `$queryRaw`/`$executeRaw`
+// below are what assert on it. The stub re-exports the real module by file URL
+// (a data: URL module cannot resolve a bare specifier, and resolving
+// '@nessie/db' from inside the stub would re-enter this loader).
+const dbRateLimitUrl = new URL(
+  '../../packages/db/src/rate-limit-window.ts',
+  import.meta.url,
+).href
 const dbStub = [
+  'export {',
+  '  clearRateLimitWindows,',
+  '  countRateLimitHit,',
+  '  pruneRateLimitWindows,',
+  '  rateLimitKeyHash,',
+  '  rateLimitWindowStart,',
+  '  takeRateLimitSlot,',
+  `} from ${JSON.stringify(dbRateLimitUrl)}`,
   'export const writeAuditEntry = async (_prisma, entry) => {',
   '  globalThis.__rateLimitAuditWrites.push(entry)',
   '}',

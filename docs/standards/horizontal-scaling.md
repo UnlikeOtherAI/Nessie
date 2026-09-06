@@ -32,11 +32,44 @@ returns null and the session bills until its TTL.
 
 **Corollary.** Put the state in Postgres: a row claimed with a conditional
 `UPDATE … WHERE … RETURNING`, or an existing shared table (`rate_limit_buckets`
-already implements the token bucket). A cache is allowed only when it is
+already implements the counter). A cache is allowed only when it is
 read-through, bounded, carries a TTL, and is **never** the authority for a
 decision — `knowledge-query-embedding.ts` (4.4) and the 30 s UOA roster-subject
 cache (3.1) are the passing shape, and the second one documents its staleness
 window in the module because the staleness is user-visible.
+
+**A rate limit is that state, and there is one counter store for all of them.**
+`packages/db/src/rate-limit-window.ts` owns the `rate_limit_buckets` statement
+and every limiter in the deployment goes through it — the API's inbound
+brute-force guard (`api/src/services/rate-limit.ts`) and the worker's outbound
+UOA pacer (`worker/src/control/automatic-membership/rate-limit.ts`, 5.6, which
+was two module-scope token buckets making the deployment-wide cap `20 × N` and
+one organisation's `5 × N`). Two policies sit on that one statement and the
+choice between them is explicit, never implicit:
+
+- `countRateLimitHit` counts **every** attempt, refusals included, because an
+  inbound guard wants the flood visible in the counter the lockout audit reads.
+- `takeRateLimitSlot` is the **conditional UPDATE** — `DO UPDATE … WHERE count <
+  max` — so a refused caller leaves the counter alone and the row is exactly the
+  calls admitted in that window. An outbound pacer needs this: it polls in a
+  loop while it waits and must not spend the slots it is waiting for.
+
+Three rules for a pacer built on it. **It waits, it does not throw**, when its
+callers are walking a large collection and have nowhere to put a refusal.
+**Nothing is held while it sleeps** — each attempt is one statement on a
+connection the pool takes straight back, and never a transaction, because a
+waiter parked on a pooled connection is how N instances exhaust a pool. **The
+wait is bounded, and the module says what the ceiling does**: an unbounded loop
+against a contended deployment-wide bucket parks the job forever, invisibly,
+because the queue keeps renewing its lock. The automatic-membership pacer waits
+30 s — well inside the queue's 300 s lock TTL — and then proceeds with a loud
+log, because for outbound pacing a bounded overshoot is a smaller failure than a
+stalled reconciliation; a limiter guarding an authorization decision would have
+to choose the other way and say so.
+
+What a fixed window guarantees, stated so nobody over-claims it: `max` per
+window, and at worst `2 × max` across a sliding window. That bound does not grow
+with the replica count, which is the property being bought.
 
 ## 2. Every periodic job claims its work, or runs under `withSweepLock`
 
