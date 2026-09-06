@@ -78,7 +78,11 @@ type FakePrisma = {
   prisma: ExecutionDependencies['prisma']
   ruleLog: string[]
   setRules: (rules: Array<Record<string, unknown>>) => void
+  toolEffects: Map<string, Record<string, unknown>>
 }
+
+const effectKey = (row: { runId: string; toolCallId: string }): string =>
+  `${row.runId}:${row.toolCallId}`
 
 const fakePrisma = (): FakePrisma => {
   let rules: Array<Record<string, unknown>> = []
@@ -86,6 +90,7 @@ const fakePrisma = (): FakePrisma => {
     approvalRequests: [] as Array<Record<string, unknown>>,
     auditLog: { createCalls: 0, entries: [] as Array<Record<string, unknown>> },
     taskEvents: [] as Array<Record<string, unknown>>,
+    toolEffects: new Map<string, Record<string, unknown>>(),
     ruleLog: [] as string[],
     setRules: (next: Array<Record<string, unknown>>) => {
       rules = next
@@ -125,6 +130,42 @@ const fakePrisma = (): FakePrisma => {
       },
     },
     run: { findUnique: async () => null },
+    // The tool-effect ledger claims every MCP and executor dispatch before it
+    // runs (`tool-effect-ledger.ts`), so this fake has to model the table or
+    // every such call here dies on an undefined delegate. Modelled rather than
+    // stubbed: the ledger reads back what it wrote, and a `createMany` that
+    // ignored `skipDuplicates` would silently turn a claim into a duplicate.
+    runToolEffect: {
+      createMany: async (
+        { data }: { data: Array<{ runId: string; toolCallId: string }> },
+      ) => {
+        const rows = data.filter((row) => !state.toolEffects.has(effectKey(row)))
+        for (const row of rows) state.toolEffects.set(effectKey(row), { ...row })
+        return { count: rows.length }
+      },
+      deleteMany: async ({ where }: { where: { runId: string; toolCallId?: string } }) => {
+        for (const [key, row] of [...state.toolEffects]) {
+          if (row['runId'] !== where.runId) continue
+          if (where.toolCallId && row['toolCallId'] !== where.toolCallId) continue
+          state.toolEffects.delete(key)
+        }
+        return { count: 0 }
+      },
+      findUnique: async (
+        { where }: { where: { runId_toolCallId: { runId: string; toolCallId: string } } },
+      ) => state.toolEffects.get(effectKey(where.runId_toolCallId)) ?? null,
+      updateMany: async (
+        { data, where }: {
+          data: Record<string, unknown>
+          where: { runId: string; toolCallId: string }
+        },
+      ) => {
+        const row = state.toolEffects.get(effectKey(where))
+        if (!row) return { count: 0 }
+        state.toolEffects.set(effectKey(where), { ...row, ...data })
+        return { count: 1 }
+      },
+    },
     taskEvent: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         state.taskEvents.push(data)

@@ -2928,6 +2928,7 @@ model Run {
   continuationOfRun                   Run?                            @relation("RunContinuation", fields: [continuationOfRunId], references: [id], onDelete: SetNull)
   continuations                       Run[]                           @relation("RunContinuation")
   checkpoint                          RunCheckpoint?
+  toolEffects                         RunToolEffect[]
   tasks                               Task[]
   toolCalls                           ToolCall[]
   plans                               Plan[]
@@ -3195,6 +3196,56 @@ model RunCheckpoint {
 
   @@index([threadId, rootMessageId, createdAt])
   @@map("run_checkpoints")
+}
+
+/// Intent to dispatch one side-effecting tool call, recorded BEFORE the call
+/// runs (horizontal scaling, invariant 4 / plan 3.2).
+///
+/// The crash checkpoint records a tool's result *after* it returns, which
+/// leaves one window it cannot close: a worker that dies between a side effect
+/// committing at the provider and its record committing here left no trace of a
+/// call that really happened, and the resumed run did it again — a second mail,
+/// a second ticket. This row is written and committed on its own before
+/// dispatch, so the resumed run can tell "this may already have happened" from
+/// "this never started".
+///
+/// `state` is `dispatched` until the call settles, then `completed` (with
+/// `result`) or `failed`. A resume that finds `completed` answers from the
+/// recorded result; one that finds `dispatched` tells the model the outcome is
+/// unknown and does NOT re-run the tool. No row means it never started.
+///
+/// Scope is deliberately narrow — see `EFFECTFUL_TOOL_CATEGORY_IDS` in
+/// `@nessie/schemas` and `EFFECTFUL_BUILTIN_TOOL_IDS` in `@nessie/runtime`:
+/// read-only tools are never claimed, because a row for one buys nothing.
+///
+/// Retention: rows are per tool call, so `updateRunStatus` deletes a run's rows
+/// on every terminal and suspended transition, in the same chokepoint that
+/// sheds crash state. The FK cascade is the backstop for a deleted run.
+model RunToolEffect {
+  id           String    @id @default(uuid()) @db.Uuid
+  runId        String    @map("run_id") @db.Uuid
+  /// The provider's tool-call id, unique within the run — the same key the
+  /// crash checkpoint's `toolResults` map is keyed by, so the two agree about
+  /// what "this call" means.
+  toolCallId   String    @map("tool_call_id")
+  toolName     String    @map("tool_name")
+  /// `dispatched` | `completed` | `failed` | `interrupted`. A string rather than
+  /// an enum so the worker can add a state without a migration, exactly as
+  /// `RunCheckpoint` treats its `reason` — `interrupted` was added that way.
+  /// Two of the four say the outcome is unknown and the call must NOT be
+  /// repeated: `dispatched` (claimed, never settled) and `interrupted` (the
+  /// dispatch threw, so the tool reported nothing at all). Only `failed` — a
+  /// result the tool RETURNED saying it failed — is repeatable.
+  state        String
+  /// The settled `ExecutedToolResult` fields a resume replays: inputSummary,
+  /// output, success, toolName. Null while `dispatched`.
+  result       Json?
+  dispatchedAt DateTime  @default(now()) @map("dispatched_at")
+  settledAt    DateTime? @map("settled_at")
+  run          Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, toolCallId])
+  @@map("run_tool_effects")
 }
 
 // Durable thought log for a run — the retrievable record behind the live

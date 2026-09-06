@@ -91,17 +91,25 @@ export type LoopResumeState = {
 /**
  * A tool whose result reached durable storage never runs a second time.
  *
- * That is the real guarantee, and it is deliberately narrower than "a tool runs
- * at most once across every execution of a run", which this cannot promise. The
- * irreducible window is between a tool's side effect committing (the mail
- * leaves the provider, inside `executeTool`) and the persist of its record
- * committing in Postgres: a worker that dies in there leaves no record of a
- * call that really happened, and the resumed run runs it again. Nothing short
- * of a distributed transaction with the mail provider closes that window;
- * everything on this side of it is closed here — the persist is issued the
- * instant the record is taken, the persists are serialised so a slow one can
- * never overwrite a later one's state, and the loop makes no further progress
- * until the persist for the call it just ran has settled.
+ * That is this recorder's guarantee, and it is deliberately narrower than "a
+ * tool runs at most once across every execution of a run". The window it cannot
+ * cover on its own is between a tool's side effect committing (the mail leaves
+ * the provider, inside `executeTool`) and the persist of its record committing
+ * in Postgres: a worker that dies in there leaves no record here of a call that
+ * really happened. Everything on this side of that window is closed by this
+ * recorder — the persist is issued the instant the record is taken, the
+ * persists are serialised so a slow one can never overwrite a later one's
+ * state, and the loop makes no further progress until the persist for the call
+ * it just ran has settled.
+ *
+ * The window itself is covered by
+ * `worker/src/run/execute/tool-effect-ledger.ts`, which commits a row saying a
+ * side-effecting call is being made BEFORE it is dispatched, so a resume that
+ * finds no record here can still tell "started, outcome unknown" from "never
+ * started". **This recorder is the fast path and takes precedence:** it wraps
+ * the ledger, so a call it already holds a result for is answered from memory
+ * and never reaches a query. The ledger only ever sees calls this recorder has
+ * never heard of.
  *
  * Both dispatch seams are wrapped, because which one carries a call depends on
  * the caller: `executeToolBatch` uses `prepareTool` when it is supplied (the

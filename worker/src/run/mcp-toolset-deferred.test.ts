@@ -109,6 +109,31 @@ test('real tools dispatch through the base even when not loaded', async () => {
   assert.deepEqual(dispatched, ['mcp_create_issue'])
 })
 
+test('handledNames covers every tool the view can dispatch, and load/drop never changes it', async () => {
+  // Load and drop rewrite `descriptors` — what the MODEL can see — and must
+  // leave `handledNames` alone, because `handledNames` answers a different
+  // question: what this view will dispatch. Two callers depend on that being
+  // the wider, stable set. `agent-loop.ts` routes a call to the view by it, and
+  // `tool-effect-ledger.ts` decides by it whether the call is claimed durably
+  // before it runs. Narrow it to the currently-loaded tools and a call the
+  // model remembered from `mcp_find_tools` would be dispatched to the connector
+  // with no claim behind it — the exact duplicate the ledger exists to stop.
+  const view = buildDeferredView(FLEET, baseDispatch)
+  const before = [...view.handledNames].sort()
+  assert.ok(
+    view.handledNames.has('mcp_create_page'),
+    'a connector tool is dispatchable, and so claimable, before any schema is loaded',
+  )
+
+  await view.dispatch('mcp_load_tools', { names: ['mcp_create_page'] })
+  assert.ok(view.descriptors.some((d) => d.toolName === 'mcp_create_page'), 'the schema is now loaded')
+  assert.deepEqual([...view.handledNames].sort(), before, 'loading a schema does not widen it')
+
+  await view.dispatch('mcp_drop_tools', { names: ['mcp_create_page'] })
+  assert.ok(!view.descriptors.some((d) => d.toolName === 'mcp_create_page'), 'the schema is dropped')
+  assert.deepEqual([...view.handledNames].sort(), before, 'and dropping one does not narrow it')
+})
+
 test('views are independent — a sub-agent loading tools never mutates the parent', async () => {
   const parent = buildDeferredView(FLEET, baseDispatch)
   const child = buildDeferredView(FLEET, baseDispatch)
