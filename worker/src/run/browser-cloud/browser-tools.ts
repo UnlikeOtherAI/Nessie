@@ -199,11 +199,35 @@ export const mayUseSignedInBrowser = (input: {
   originatingUserId?: string | null
   /** Whose jar this is, or null when the browser is shared with a team. */
   principalUserId: string | null
+  /** The browser being opened, to match against a hand-back. */
+  agentBrowserId?: string
+  /**
+   * Set when this run exists because a person just handed this browser back.
+   * It is not a claim that somebody is in the conversation — the run has no
+   * live turn behind it — only that this exact browser was released to the
+   * agent, by the person whose jar it is, moments ago.
+   */
+  handback?: { agentBrowserId: string; byUserId: string } | null
 }): boolean => {
   if (input.loginCount <= 0) return true
+  const forThisPerson = (userId: string | null | undefined): boolean =>
+    input.principalUserId === null || userId === input.principalUserId
+  // The hand-over is the whole point of the sign-in flow: the person signs in,
+  // gives the browser back, and the agent carries on with the task it asked
+  // for. That is not a conversational turn and must not be dressed as one —
+  // `interactive` also decides delegated identity, agent handoff, app setup
+  // and whether the budget treats the run as a human — so it is answered by
+  // its own provenance instead.
+  if (
+    input.handback
+    && input.agentBrowserId !== undefined
+    && input.handback.agentBrowserId === input.agentBrowserId
+    && forThisPerson(input.handback.byUserId)
+  ) {
+    return true
+  }
   if (input.interactive !== true) return false
-  return input.principalUserId === null
-    || input.originatingUserId === input.principalUserId
+  return forThisPerson(input.originatingUserId)
 }
 
 const runOpen = async (
@@ -252,6 +276,8 @@ const runOpen = async (
       // colleague reaching the same system-managed agent must not drive a jar
       // somebody else signed in.
       if (!mayUseSignedInBrowser({
+        agentBrowserId: browser.id,
+        handback: context.run.browserHandback,
         interactive: context.run.interactive,
         loginCount: browser.loginCount,
         originatingUserId: context.run.originatingUserId,
