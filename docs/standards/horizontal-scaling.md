@@ -60,13 +60,44 @@ instances mint N different idempotency keys and N reconcile jobs.
   batch and each row is independent work.
 - **A window-bucketed idempotency key** — put the window (`…:2026-09-05`) in
   the key so N instances enqueueing in the same tick collapse to one job.
-- **`withSweepLock`** — for a sweep whose body is one indivisible walk. Added
-  to `@nessie/db` in Phase 2.9; the contract is: it takes a stable lock name,
-  hashes it to a bigint, and calls `pg_try_advisory_lock` on that hash. If the
-  lock is held the tick is **skipped**, not queued — a blocking
-  `pg_advisory_lock` would pile every replica's ticks behind the holder and
-  turn a slow sweep into a connection leak. It releases in a `finally`, and the
-  caller treats "skipped" as a normal outcome, never an error.
+- **`withSweepLock`** — for a sweep whose body is one indivisible walk. Lives
+  in `@nessie/db` (`packages/db/src/sweep-lock.ts`) as
+  `withSweepLock(pool, name, fn, options?)`, returning `{ ran: true, result }`
+  or `{ ran: false }`. It hashes the stable lock name to a bigint with
+  Postgres' own `hashtextextended(name, 0)` — in SQL, so every caller maps a
+  name to the same key with no shared hashing helper — and takes
+  `pg_try_advisory_lock` on it. Four properties are load-bearing.
+  **`try`:** if the lock is held the tick is **skipped**, not queued — a
+  blocking `pg_advisory_lock` would pile every replica's ticks behind the
+  holder and turn a slow sweep into a connection leak — and the caller treats
+  "skipped" as a normal outcome, never an error. A tick that cannot get a
+  connection out of the pool within `options.acquireTimeoutMs` (10 s) is a
+  skip too, for the same reason and by the same contract; nothing here bounds
+  the *body*.
+  **Session-scoped, on a dedicated connection:** the lock is taken on one
+  pooled client, that client is held for as long as `fn` runs, and the lock is
+  released by a `pg_advisory_unlock` in a `finally` — or, if the process dies,
+  by Postgres when the connection drops. This is why the argument is a `pg`
+  `Pool` and not a `PrismaClient`: Prisma hands a connection back between
+  statements, so it cannot hold a session lock at all. The transaction-scoped
+  `pg_try_advisory_xact_lock` this replaced could not keep its promise. It was
+  taken inside a Prisma interactive transaction, and when the body outlived
+  that transaction's `timeout` Prisma aborted the transaction — releasing the
+  lock — while `fn`, a plain promise nobody can cancel, kept running on the
+  caller's own connection. The next replica's tick then took the lock and
+  started a second body beside the first: the exact duplicate the helper
+  exists to prevent. **A body that outlives its lock is now impossible**; the
+  lock ends when the body does.
+  **The lock connection only holds the lock:** `fn` runs against the caller's
+  ordinary client, so a long walk does not accumulate a transaction's worth of
+  row locks. **A connection that could not be unlocked is destroyed, not
+  returned:** `client.release(err)`, because a session lock outlives the
+  statement that failed, and handing that connection back would lock the sweep
+  out of the whole cluster until the pool happened to recycle it.
+  Callers that write through Prisma pass a pool alongside it — the API's four
+  maintenance sweeps take the realtime hub's (`api/src/index.ts`), the
+  registry walk takes the worker's (`worker/src/index.ts`) — rather than
+  opening another pool on the same URL.
 
 ## 3. Every enqueue carries an idempotency key
 

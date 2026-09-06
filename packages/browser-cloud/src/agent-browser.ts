@@ -262,6 +262,25 @@ export const resetAgentBrowser = async (
 }
 
 /**
+ * How long a row claimed into `deleting` is trusted to belong to a live
+ * delete before another tick may take it over.
+ *
+ * `deleting` is a claim, and every claim taken before a side effect needs a
+ * horizon or it is a permanent drop (docs/standards/horizontal-scaling.md §3):
+ * a process killed between the claim and the provider's answer used to leave
+ * the row in `deleting` forever, and the sweep only selected `tombstoned` — so
+ * a Browserbase context holding somebody's encrypted login state leaked with
+ * no reaper and no alert.
+ *
+ * Ten minutes, matching `STRANDED_RUN_MS` in the automatic-membership sweep.
+ * The reaper ticks every 30 s and the claimed work is *one* HTTP call to
+ * Browserbase, so ten minutes is roughly twenty times any plausible delete —
+ * a live one is never stolen — while a killed process's row is picked up on
+ * the next tick past the horizon rather than never.
+ */
+const DELETING_CLAIM_HORIZON_MS = 10 * 60 * 1000
+
+/**
  * Delete the Browserbase contexts behind tombstoned rows.
  *
  * The row is only removed once the provider confirms — a local delete while
@@ -272,8 +291,19 @@ export const reconcileTombstonedAgentBrowsers = async (
   deps: CloudBrowserDeps,
   options: { limit?: number } = {},
 ): Promise<number> => {
+  // A row is this sweep's to take if it is tombstoned, or if it is a
+  // `deleting` claim old enough to be a corpse. `updatedAt` is the claim's
+  // age: Prisma stamps it on the claiming `UPDATE`, so it moves forward each
+  // time a reconciler takes the row over and cannot drift backwards.
+  const claimable = [
+    { status: 'tombstoned' as const },
+    {
+      status: 'deleting' as const,
+      updatedAt: { lt: new Date(Date.now() - DELETING_CLAIM_HORIZON_MS) },
+    },
+  ]
   const rows = await deps.prisma.agentBrowser.findMany({
-    where: { status: 'tombstoned' },
+    where: { OR: claimable },
     select: {
       id: true,
       browserbaseContextId: true,
@@ -293,15 +323,37 @@ export const reconcileTombstonedAgentBrowsers = async (
       },
     })
     if (live > 0) continue
+
+    // Claim the row before touching the provider (horizontal-scaling audit
+    // 5.10). The `findMany` above is a snapshot every replica reads alike, so
+    // read-then-delete had N reconcilers calling Browserbase for the same
+    // context: one won, and each loser's "no such context" was written to
+    // `lastError` as though the row were broken. A conditional
+    // `tombstoned → deleting` is the right primitive rather than a lock —
+    // there is no indivisible walk here, just one row and one provider call,
+    // and the status is also what keeps the *next* tick from picking the row
+    // up while this delete is still in flight. The same statement is the
+    // takeover of a stranded claim: re-stamping `deleting` on a row past
+    // `DELETING_CLAIM_HORIZON_MS` moves `updatedAt`, so exactly one of the
+    // replicas that saw the corpse gets it and the rest lose the same way
+    // they lose a fresh tombstone.
+    const claimed = await deps.prisma.agentBrowser.updateMany({
+      where: { id: row.id, OR: claimable },
+      data: { status: 'deleting' },
+    })
+    if (claimed.count !== 1) continue
+
     try {
       const client = await loadClientForConnection(deps, row.connection)
       await client.deleteContext(row.browserbaseContextId)
       await deps.prisma.agentBrowser.delete({ where: { id: row.id } })
       deleted += 1
     } catch (error) {
-      await deps.prisma.agentBrowser.update({
-        where: { id: row.id },
-        data: { lastError: (error as Error).message.slice(0, 500) },
+      // Hand the row back, or a provider blip strands the context in
+      // `deleting` where no sweep will ever look at it again.
+      await deps.prisma.agentBrowser.updateMany({
+        where: { id: row.id, status: 'deleting' },
+        data: { lastError: (error as Error).message.slice(0, 500), status: 'tombstoned' },
       }).catch(() => undefined)
     }
   }

@@ -2252,6 +2252,23 @@ model RealtimeEvent {
   @@map("realtime_events")
 }
 
+/// Cluster-wide clock for the `realtime_events` retention sweep.
+///
+/// One row (`id = 'realtime_events'`), deliberately tenant-free: the sweep
+/// deletes across every organisation, so its cadence is a property of the
+/// cluster and not of anybody's data. It exists because the cadence used to be
+/// an in-process `lastPruneAt` (horizontal-scaling audit 2.3), which every
+/// replica kept separately — and `realtime_events` carries no index on
+/// `created_at` alone, so the retention DELETE is a sequential scan that must
+/// not run once per publish per instance. `withSweepLock` decides *who* prunes;
+/// this row decides *whether it is due*.
+model RealtimePruneState {
+  id       String   @id
+  prunedAt DateTime @map("pruned_at") @db.Timestamptz()
+
+  @@map("realtime_prune_state")
+}
+
 // ─── User presence registry (foreground SSE streams) ────────────────────────
 // One row per user, shared through Postgres so out-of-process workers can
 // decide whether a user is present. Liveness is the `last_seen_at` heartbeat
@@ -7647,6 +7664,13 @@ model CloudBrowserSession {
 enum AgentBrowserStatus {
   active
   tombstoned
+  /// Claimed by a reconciler that is deleting the Browserbase context behind
+  /// the row. A conditional `tombstoned → deleting` update is what makes the
+  /// delete single-writer across replicas (horizontal-scaling audit 5.10);
+  /// the reconciler puts the row back to `tombstoned` if the provider call
+  /// fails, so a transient error is retried on the next sweep rather than
+  /// stranding the context forever.
+  deleting
 }
 
 /// One agent, one durable browser — its own machine. Created lazily on the

@@ -31,6 +31,13 @@ export {
   type VisibleKnowledgeSpaceWhereInput,
 } from './knowledge-space-visibility.js'
 export { visibleUserAlertWhere } from './user-alerts.js'
+export {
+  withSweepLock,
+  type SweepLockClient,
+  type SweepLockOptions,
+  type SweepLockOutcome,
+  type SweepLockPool,
+} from './sweep-lock.js'
 
 export {
   claimThreadRunOrPend,

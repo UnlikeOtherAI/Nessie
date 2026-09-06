@@ -571,7 +571,6 @@ export default [
       '**/__fixtures__/**',
       '**/fixtures/**',
       // --- (a) audited defects, each with the finding that owns its fix ---
-      'worker/src/control/registry-sync-sweep.ts', // 5.9 — process-local `inFlight` flag; moves under withSweepLock in Phase 2.9.
       'worker/src/control/automatic-membership/rate-limit.ts', // 5.6 — per-process buckets; Postgres token bucket in Phase 5.3.
       'worker/src/run/external-conversation-store.ts', // 5.11 — per-process thread locks; covered by the run-slot advisory lock above them.
       'worker/src/run/execute/tool-registry.ts', // 5.12 — per-process memo of seeded builtin-tool organisations; waste only.

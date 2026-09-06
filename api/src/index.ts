@@ -379,7 +379,11 @@ export const buildApp = async (
     encryptionSecret: authSecret ?? '',
   })
 
-  const stopApiMaintenance = startApiMaintenance(prisma)
+  // The four maintenance sweeps take a session advisory lock on a connection
+  // held for the body's duration, so they need the `pg` pool rather than the
+  // Prisma client they write through — the hub's, not a fourth one on the
+  // same URL (see the connection-ceiling note above).
+  const stopApiMaintenance = startApiMaintenance(prisma, realtimeHub.pool)
   app.addHook('onClose', () => {
     stopApiMaintenance()
   })

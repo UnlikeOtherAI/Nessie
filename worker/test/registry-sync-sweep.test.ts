@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import type { SweepLockPool } from '@nessie/db'
 import { REGISTRY_MAX_PAGES, REGISTRY_MAX_RECORDS } from '@nessie/mcp-manage'
 import type { PrismaClient } from '@prisma/client'
 
@@ -20,7 +21,20 @@ const FAKE_RESULT = {
   error: null,
 }
 
-/** A fake prisma whose only used surface is `mcpRegistrySyncRun.findFirst`. */
+/**
+ * A fake pool that always grants the session advisory lock, so these cases
+ * exercise the *decision* — the freshness and liveness windows. The lock's own
+ * behaviour needs a second database session and is proved in
+ * `test/db/registry-sync-lock.test.ts`.
+ */
+const lockPool = (locked = true): SweepLockPool => ({
+  connect: async () => ({
+    query: async () => ({ rows: [{ locked, unlocked: true }] }),
+    release: () => undefined,
+  }),
+})
+
+/** A fake prisma with the one surface the decision reads. */
 const prismaWithLatest = (
   latest: { startedAt: Date; completedAt: Date | null } | null,
 ): PrismaClient =>
@@ -33,7 +47,7 @@ const prismaWithLatest = (
 test('runs when no prior sync run exists', async () => {
   let calls = 0
   let received: unknown = null
-  const outcome = await maybeSyncRegistry(prismaWithLatest(null), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(null), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async (_prisma, options) => {
@@ -59,7 +73,7 @@ test('runs when the last completed run is older than the window', async () => {
     startedAt: new Date(NOW - 7 * HOUR),
     completedAt: new Date(NOW - 7 * HOUR),
   }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async () => {
@@ -78,7 +92,7 @@ test('skips when a run completed inside the window', async () => {
     startedAt: new Date(NOW - 2 * HOUR),
     completedAt: new Date(NOW - 1 * HOUR),
   }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     runSync: (async () => {
@@ -95,7 +109,7 @@ test('skips when a run completed inside the window', async () => {
 test('skips when a peer run is in progress inside the liveness window', async () => {
   let calls = 0
   const latest = { startedAt: new Date(NOW - 5 * 60 * 1000), completedAt: null }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     staleMs: 30 * 60 * 1000,
@@ -117,7 +131,7 @@ test('supersedes a zombie run that never completed past the liveness window', as
   // must run a fresh walk rather than treat the corpse as a live peer for 6h.
   let calls = 0
   const latest = { startedAt: new Date(NOW - 45 * 60 * 1000), completedAt: null }
-  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), {
+  const outcome = await maybeSyncRegistry(prismaWithLatest(latest), lockPool(), {
     now: () => NOW,
     intervalMs: 6 * HOUR,
     staleMs: 30 * 60 * 1000,
@@ -131,31 +145,28 @@ test('supersedes a zombie run that never completed past the liveness window', as
   assert.equal(calls, 1)
 })
 
-test('is single-flight: a concurrent call does not start a second sync', async () => {
+test('a tick that does not get the lock is skipped, not queued behind the holder', async () => {
   let calls = 0
-  let release: (() => void) | null = null
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
+  // `pg_try_advisory_lock` returning false is the whole of "another instance is
+  // walking": the body must not run, and nothing waits.
+  const prisma = {
+    mcpRegistrySyncRun: {
+      findFirst: async () => {
+        throw new Error('the decision must not be read without the lock')
+      },
+    },
+  } as unknown as PrismaClient
+
+  const outcome = await maybeSyncRegistry(prisma, lockPool(false), {
+    now: () => NOW,
+    intervalMs: 6 * HOUR,
+    runSync: (async () => {
+      calls += 1
+      return FAKE_RESULT
+    }) as never,
   })
-  const runSync = (async () => {
-    calls += 1
-    // Hold the first walk open so the second call overlaps it in the same
-    // process — the module-level guard must reject the second before any query.
-    await gate
-    return FAKE_RESULT
-  }) as never
 
-  const prisma = prismaWithLatest(null)
-  const opts = { now: () => NOW, intervalMs: 6 * HOUR, runSync }
-
-  const first = maybeSyncRegistry(prisma, opts)
-  const second = await maybeSyncRegistry(prisma, opts)
-
-  assert.equal(second.ran, false)
-  assert.equal(second.ran === false && second.reason, 'in_flight_here')
-
-  release?.()
-  const firstOutcome = await first
-  assert.equal(firstOutcome.ran, true)
-  assert.equal(calls, 1)
+  assert.equal(outcome.ran, false)
+  assert.equal(outcome.ran === false && outcome.reason, 'locked_elsewhere')
+  assert.equal(calls, 0)
 })

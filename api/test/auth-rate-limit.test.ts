@@ -44,6 +44,7 @@ const dbStub = [
   'export const visibleKnowledgeSpaceWhere = () => {',
   '  throw new Error("knowledge-space visibility is not used by auth-rate-limit.test.ts")',
   '}',
+  'export const withSweepLock = async (_db, _name, fn) => ({ ran: true, result: await fn() })',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `
