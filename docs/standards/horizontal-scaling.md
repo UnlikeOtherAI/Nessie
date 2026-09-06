@@ -127,20 +127,22 @@ guarantee.
 
 ## 6. `SIGTERM` drains within the configured grace
 
-**Sixty seconds, and the process leaves nothing half-written.** Neither the API
-(1.1, `api/src/index.ts:406-433`) nor the gateway (8.3,
-`gateway/src/index.ts:19-34`) handles `SIGTERM`; Node's default exits
-immediately, so in-flight requests reset mid-transaction and SSE/WS clients get
-no close frame. `app.close()` alone is not the fix — Fastify 5.8's
-`forceCloseConnections` defaults to `'idle'`, so it hangs on an open stream. The
-worker is worse: `stop()` aborts, clears timers and closes the pool while a
-handler is still running, and the abort path returns without ack or nack (5.1,
+**Sixty seconds, and the process leaves nothing half-written.** Node's default
+`SIGTERM` exits immediately, so in-flight requests reset mid-transaction and
+SSE/WS clients get no close frame. `app.close()` alone is not the fix either —
+Fastify 5.8's `forceCloseConnections` defaults to `'idle'`, so it hangs on an
+open stream. The API (1.1) and the gateway (8.3) now drain, in
+`api/src/lifecycle.ts` and `gateway/src/index.ts`, each only when started as the
+main module so an embedder keeps its own signals. The worker still does not, and
+is worse: `stop()` aborts, clears timers and closes the pool while a handler is
+still running, and the abort path returns without ack or nack (5.1,
 `worker/src/index.ts:1191-1226`), so a 20-minute run dies mid-inference with its
 terminal writes throwing on a closed pool.
 
-**Corollary.** The API stops accepting, writes `event: shutdown` with
-`retry: 2000` and ends every SSE connection, closes every WebSocket with 1012,
-then calls `app.close()` under a hard exit timer set below the platform grace.
+**Corollary.** The API marks itself draining so `/api/health/ready` answers 503,
+writes `event: shutdown` with `retry: 2000` and ends every SSE connection,
+closes every WebSocket with 1012, then calls `app.close()` under a hard exit
+timer (`NESSIE_SHUTDOWN_TIMEOUT_MS`, default 25 s) set below the platform grace.
 The worker sets a draining flag first so no topic claims again, passes the
 `AbortSignal` into `handler(job)` so the agentic loop reaches its
 cancel/checkpoint path, awaits in-flight handlers under a deadline, and acks or

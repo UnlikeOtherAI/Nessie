@@ -4,7 +4,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { prewarmRowHandlers } from '../../../navigation/prewarm'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentOwnerCell } from './AgentOwnerCell'
-import { AgentVisibilityPill } from './AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
 
 type AgentListRowProps = {

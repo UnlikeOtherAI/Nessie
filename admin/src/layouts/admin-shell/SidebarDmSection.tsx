@@ -1,16 +1,17 @@
 import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
-import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { UserAvatar } from '../../components/shared/UserAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { IdentityTile } from '../../components/primitives/IdentityTile';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import type { AgentRecord } from '../../lib/api-client';
-import { isReactNativeWebView } from '../../lib/mobile-shell';
+import { isReactNativeWebView } from '../../lib/native-shell';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
-import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
+import { renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {

@@ -13,7 +13,7 @@ import {
 } from './trigger-config'
 import { getWorkflowInstallationLabel } from './trigger-presentation'
 import { TriggerTypePicker } from './TriggerTypePicker'
-import { agentSelectionLabel } from '../agents/AgentVisibilityPill'
+import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
 
 /**
  * Identity portion of the trigger editor, ordered by decision weight:

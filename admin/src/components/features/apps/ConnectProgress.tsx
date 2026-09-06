@@ -1,11 +1,11 @@
 import { Notice } from '../../primitives/Notice'
-import { connectErrorPresentation } from './connect-error-copy'
+import { connectErrorPresentation } from '../../../facades/apps/connect-error-copy'
 import {
   connectShowsSlowProviderNote,
   connectSteps,
   type ConnectState,
   type ConnectStep,
-} from './connect-flow'
+} from '../../../facades/apps/connect-flow'
 
 /**
  * What connecting looks like while it happens.

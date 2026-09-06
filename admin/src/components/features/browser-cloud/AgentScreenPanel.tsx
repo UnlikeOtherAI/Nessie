@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
 
 import { useSidePanelGeometry } from '../../../hooks/useSidePanelGeometry'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { usePhoneLayout } from '../../../navigation/mobile-shell'
+import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
 import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'

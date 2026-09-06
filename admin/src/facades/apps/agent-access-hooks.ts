@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../auth/hooks'
 import type { AgentToolPolicyTarget } from '@nessie/schemas'
 
 import {

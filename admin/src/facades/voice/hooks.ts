@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { VoiceCapability } from '@nessie/schemas'
 
 import { getBaseUrl } from '../../lib/api-client'
-import { threadKeys, voiceKeys } from '../../lib/query-keys'
+import { threadKeys } from '../threads/keys'
+import { voiceKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import {
   asVoiceCallState,

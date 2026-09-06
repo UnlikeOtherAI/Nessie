@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { DEFAULT_PAGE_LIMIT, type SessionSummary } from '@nessie/schemas'
 import { useRevokeSession } from '../../../facades/auth/hooks'
-import { describeSessionDevice } from '../../../pages/settings/session-device'
+import { describeSessionDevice } from '../../../lib/session-device'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { DataTable, type DataTableColumn } from '../../shared/DataTable'
 import { EmptyState } from '../../shared/EmptyState'

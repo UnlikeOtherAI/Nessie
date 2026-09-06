@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateFeedbackRequest, FeedbackRecord } from '../../lib/api-client'
-import { feedbackKeys } from '../../lib/query-keys'
+import { feedbackKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useFeedback = () => {

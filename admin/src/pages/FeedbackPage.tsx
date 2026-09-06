@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useFeedback } from '../facades/feedback/hooks'
 import { FeedbackComposer } from './feedback/FeedbackComposer'
 import { FeedbackList } from './feedback/FeedbackList'
-import { SettingsPanel } from './settings/settings-shared'
+import { SettingsPanel } from '../components/shared/SettingsPanel'
 
 export const FeedbackPage = () => {
   const feedback = useFeedback()

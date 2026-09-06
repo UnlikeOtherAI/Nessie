@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { tenantHostKeys } from '../../lib/query-keys'
+import { tenantHostKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -101,3 +101,26 @@ export const useTenantTeam = (enabled: boolean) => {
       ),
   })
 }
+
+/**
+ * Where a team lives, as a URL, or null.
+ *
+ * Null covers every case a caller should treat identically: this deployment
+ * does not route tenants by hostname, UOA could not be reached, or the team has
+ * no address. Callers navigate when they get one and stay put when they do not,
+ * so host mode being off is not a special case they have to know about.
+ */
+export const fetchTeamHostUrl = async (
+  apiClient: { get: <T>(path: string) => Promise<T> },
+  teamId: string,
+): Promise<string | null> => {
+  try {
+    const { url } = await apiClient.get<{ url: string | null }>(
+      `/api/hosts/address?teamId=${encodeURIComponent(teamId)}`,
+    )
+    return url ?? null
+  } catch {
+    return null
+  }
+}
+

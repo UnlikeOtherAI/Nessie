@@ -7,6 +7,7 @@ import type {
   ModelClient,
 } from '@nessie/runtime'
 import type { CaptureConfig } from '@nessie/memory'
+import type { LifecycleState } from '../lifecycle.js'
 import type { createRealtimeHub } from '../realtime/hub.js'
 import type { createThoughtService } from '../services/thoughts.js'
 import type { SecretStore } from '@nessie/mcp-manage'
@@ -26,6 +27,13 @@ export type ThoughtService = ReturnType<typeof createThoughtService>
  */
 export type RouteDeps = ServerContext & {
   prisma: PrismaClient
+  /**
+   * This server's own shutdown state, read by the health routes: once a drain
+   * starts, `/api/health/ready` answers 503 and the load balancer stops sending
+   * new work here (`src/lifecycle.ts`). Threaded through the deps rather than
+   * kept in a module variable — see `LifecycleState`.
+   */
+  lifecycle: LifecycleState
   realtimeHub: RealtimeHub
   sharedModelClient: ModelClient | null
   messageMemoryCaptureConfig: CaptureConfig | null

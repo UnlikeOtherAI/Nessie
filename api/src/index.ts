@@ -26,12 +26,12 @@ import {
   createDeepSignalMcpIdentityServiceFromEnv,
   createLedgerIdentityServiceFromEnv,
   createModelClient,
-  createPgPool,
   getStorage,
   isLedgerEndpoint,
   ModelUsageTracker,
 } from '@nessie/runtime'
 import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
+import { createLifecycleState, installApiShutdownHandlers } from './lifecycle.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import { backfillProtectedMcpToolGrants } from './services/agent-tool-policy-registry.js'
@@ -186,10 +186,17 @@ export const buildApp = async () => {
     prisma,
   })
 
-  const memoryPool = createPgPool(databaseUrl, {
-    max: config.database.poolMax,
-    min: config.database.poolMin,
-  })
+  // Memory capture, thought search and the realtime fan-out all speak raw SQL
+  // to the same database, so they share the hub's pool rather than opening a
+  // second one. Connection ceiling per API replica after this:
+  //   Prisma pool (config.database.poolMax, default 10)
+  // + this pg.Pool     (config.database.poolMax, default 10)
+  // + 1 dedicated LISTEN client held by PgRealtimeTransport
+  //   = poolMax * 2 + 1, i.e. 21 by default — down from 31, because the
+  //     separate memory pool was a third pool on the same URL. Multiply by
+  //     replica count against Postgres `max_connections`, and size with
+  //     NESSIE_DB_POOL_MAX / NESSIE_DB_POOL_MIN.
+  const memoryPool = realtimeHub.pool
   const messageMemoryCaptureConfig = sharedModelClient
     ? { pool: memoryPool, modelClient: sharedModelClient }
     : null
@@ -291,9 +298,11 @@ export const buildApp = async () => {
     runKnowledgeInferenceRequestContext(done)
   })
 
+  // Ordering matters and is unchanged: the hub goes first (it stops the LISTEN
+  // client before ending the pool it owns — the same pool `memoryPool` aliases,
+  // so there is no second `end()` here), then Prisma disconnects.
   app.addHook('onClose', async () => {
     await realtimeHub.close()
-    await memoryPool.end()
     await disconnectPrismaClient()
   })
 
@@ -330,8 +339,14 @@ export const buildApp = async () => {
     }`,
   )
 
+  // This server's drain flag: created here, read by the health routes, flipped
+  // by the drain. One per built app, so an embedder hosting two of them drains
+  // them independently (`src/lifecycle.ts`).
+  const lifecycle = createLifecycleState()
+
   const deps: RouteDeps = {
     ...serverContext,
+    lifecycle,
     realtimeHub,
     sharedModelClient,
     messageMemoryCaptureConfig,
@@ -400,11 +415,15 @@ export const buildApp = async () => {
     stopApiMaintenance()
   })
 
-  return app
+  // The hub and the drain flag travel with the app because a drain has to reach
+  // the live connections the hub tracks (Fastify's own close leaves in-flight
+  // requests alone, and an open SSE stream is an in-flight request) and has to
+  // flip the flag the health routes read (`src/lifecycle.ts`).
+  return { app, lifecycle, realtimeHub }
 }
 
 export const startApiServer = async () => {
-  const app = await buildApp()
+  const { app, lifecycle, realtimeHub } = await buildApp()
   await runRefreshCredentialSweep(prisma, true)
   const initialBootstrapState = await resolveBootstrapState()
   if (initialBootstrapState) {
@@ -429,9 +448,18 @@ export const startApiServer = async () => {
     port: config.api.port,
   })
 
-  return app
+  return { app, lifecycle, realtimeHub }
 }
 
+// Only a standalone API process owns the OS signals — the same guard the worker
+// uses (`worker/src/index.ts`), so an embedder that imports `buildApp` keeps its
+// own SIGINT/SIGTERM instead of having this drain hijack them.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await startApiServer()
+  const { app, lifecycle, realtimeHub } = await startApiServer()
+  installApiShutdownHandlers({
+    app,
+    hub: realtimeHub,
+    lifecycle,
+    timeoutMs: config.shutdownTimeoutMs,
+  })
 }

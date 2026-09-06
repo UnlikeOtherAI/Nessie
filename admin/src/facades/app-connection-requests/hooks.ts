@@ -4,7 +4,7 @@ import type {
   AppSetupCardPresenter,
 } from '@nessie/schemas'
 
-import { appConnectionRequestKeys } from '../../lib/query-keys'
+import { appConnectionRequestKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /** The request id is opaque; the server resolves all live, viewer-scoped state. */

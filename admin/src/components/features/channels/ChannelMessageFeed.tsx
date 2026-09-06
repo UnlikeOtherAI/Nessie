@@ -8,33 +8,31 @@ import {
   emptyDocumentStore,
   type DocumentStreamStore,
 } from '../../../facades/threads/document-stream-store'
-import type { DocumentStreamEntry } from '../../../facades/threads/document-stream-helpers'
+import type { DocumentStreamEntry } from '../../../facades/threads/document-stream-entries'
 import {
   groupPendingByRoot,
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
 import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { useAgentIdentityLookup } from '../../../providers/AgentIdentityProvider'
-import type { AvatarSources } from '../../primitives/UserAvatar'
+import type { AvatarSources } from '../../shared/UserAvatar'
 import { ChannelMessageRow } from './ChannelMessageRow'
 import type { DisclosureDuration } from './RestrictedMessageCard'
-import { OptimisticMessageRow, StreamingMessageRow } from './ChannelTransientMessageRows'
+import { OptimisticMessageRow } from './ChannelTransientMessageRows'
+import { ChannelLiveStreamTail } from './ChannelLiveStreamTail'
 import { ThinkingBubble } from './ThinkingBubble'
 import { useAttachmentViewer } from '../../shared/AttachmentViewer'
 import { useDocumentStreamDialog } from './DocumentStreamDialog'
 import { useThoughtProcessDialog } from './ThoughtProcessDialog'
-import {
-  type FeedItem,
-  type ChannelAgentParticipant,
-  type MessageUserIdentity,
-  type OptimisticMessage,
-} from './channel-helpers'
-import type { ThreadParticipant } from './thread-panel/thread-panel-helpers'
+import { type FeedItem, type OptimisticMessage } from './channel-feed'
+import { type ChannelAgentParticipant, type MessageUserIdentity } from './channel-participants'
+import type { ThreadParticipant } from './thread-panel/thread-replies'
 import {
   indexPersonalAssistantPresences,
   personalAssistantPresenceKey,
 } from './personal-assistant-presence'
 import { useResolveReactorName } from './useResolveReactorName'
+import { useCollapsedFeedDates } from './useCollapsedFeedDates'
 
 // Stable identity so a feed without a document facade never re-runs the
 // dialog's effects on a fresh array.
@@ -226,23 +224,7 @@ export const ChannelMessageFeed = ({
         : new Map<string, PendingStreamMessage[]>(),
     [pendingMessages, thinkingSurface],
   )
-  // Everything at the bottom of this surface is a reply that will land at the
-  // bottom of this surface: a reply panel owns every run it was handed, the
-  // channel feed only the top-level ones. A thread-anchored run's live surface
-  // in the channel is the compact bubble under its root — its reply text
-  // streams where the reply will actually land (the thread panel), never at
-  // the bottom of the main window.
-  const bottomPendingEntries = useMemo(
-    () =>
-      thinkingSurface === 'thread'
-        ? pendingMessages
-        : pendingMessages.filter((entry) => entry.rootMessageId == null),
-    [pendingMessages, thinkingSurface],
-  )
-  const renderThinkingBubble = (
-    entry: PendingStreamMessage,
-    variant: 'compact' | 'full',
-  ) => {
+  const renderThinkingBubble = (entry: PendingStreamMessage) => {
     const identity = resolveAgentIdentity(entry.agentId)
     return (
       <ThinkingBubble
@@ -251,7 +233,7 @@ export const ChannelMessageFeed = ({
         entry={entry}
         key={`thinking:${entry.runId}`}
         token={token}
-        variant={variant}
+        variant="compact"
         onOpen={openThoughtProcess}
       />
     )
@@ -265,38 +247,7 @@ export const ChannelMessageFeed = ({
     meUserId,
     personalAssistantPresenceByIdentity,
   })
-  const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
-    () => new Set(),
-  )
-  const visibleFeedItems = useMemo(() => {
-    const visible: FeedItem[] = []
-    let activeDateKey: string | null = null
-
-    for (const item of feedItems) {
-      if (item.kind === 'date') {
-        activeDateKey = item.key
-        visible.push(item)
-        continue
-      }
-
-      if (!activeDateKey || !collapsedDateKeys.has(activeDateKey)) {
-        visible.push(item)
-      }
-    }
-
-    return visible
-  }, [collapsedDateKeys, feedItems])
-  const toggleDateKey = (dateKey: string) => {
-    setCollapsedDateKeys((current) => {
-      const next = new Set(current)
-      if (next.has(dateKey)) {
-        next.delete(dateKey)
-      } else {
-        next.add(dateKey)
-      }
-      return next
-    })
-  }
+  const { collapsedDateKeys, toggleDateKey, visibleFeedItems } = useCollapsedFeedDates(feedItems)
   // Index of the last actual message; a deleted message only leaves a tombstone
   // bubble when something follows it (otherwise it just disappears).
   const lastMessageIndex = visibleFeedItems.reduce(
@@ -416,7 +367,7 @@ export const ChannelMessageFeed = ({
               onSubmitEdit={onSubmitEdit}
               resolveThreadParticipant={resolveThreadParticipant}
             />
-            {anchoredThinking.map((entry) => renderThinkingBubble(entry, 'compact'))}
+            {anchoredThinking.map((entry) => renderThinkingBubble(entry))}
           </Fragment>
         )
       })}
@@ -434,47 +385,15 @@ export const ChannelMessageFeed = ({
         />
       ))}
 
-      {bottomPendingEntries.length > 0 ? (
-        <div className="admin-date-sep">
-          <span className="admin-date-pill">
-            Live
-            <svg
-              className="h-3 w-3 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
-            >
-              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-        </div>
-      ) : null}
-
-      {bottomPendingEntries.map((entry) => {
-        const { agent: pendingAgent, name: pendingDisplayName } = resolveAgentIdentity(
-          entry.agentId,
-        )
-        // A bubble directly above already says the agent is thinking, so the
-        // streaming row waits for actual reply text instead of repeating it.
-        const showStreamingRow = entry.content.length > 0
-
-        return (
-          <Fragment key={entry.runId}>
-            {renderThinkingBubble(entry, 'full')}
-            {showStreamingRow ? (
-              <StreamingMessageRow
-                agent={pendingAgent}
-                displayName={pendingDisplayName}
-                entry={entry}
-                isDedicatedAgentConversation={isDedicatedAgentConversation}
-                renderContent={renderContent}
-                token={token}
-              />
-            ) : null}
-          </Fragment>
-        )
-      })}
+      <ChannelLiveStreamTail
+        isDedicatedAgentConversation={isDedicatedAgentConversation}
+        onOpenThoughtProcess={openThoughtProcess}
+        pendingMessages={pendingMessages}
+        renderContent={renderContent}
+        resolveAgentIdentity={resolveAgentIdentity}
+        thinkingSurface={thinkingSurface}
+        token={token}
+      />
       {/*
         The ambient line, last so it sits directly under the newest row. It is
         anonymous by design — no avatar, no agent name — because no run exists

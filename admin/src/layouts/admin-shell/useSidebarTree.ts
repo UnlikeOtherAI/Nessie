@@ -107,13 +107,13 @@ export const buildSidebarTree = ({
   }
 }
 
-export const useSidebarTree = (args: UseSidebarTreeArgs) => useMemo(
-  () => buildSidebarTree(args),
-  [
-    args.channels,
-    args.projects,
-    args.starredChannelIds,
-    args.starredProjectIds,
-    args.teams,
-  ],
+export const useSidebarTree = ({
+  channels,
+  projects,
+  starredChannelIds,
+  starredProjectIds,
+  teams,
+}: UseSidebarTreeArgs) => useMemo(
+  () => buildSidebarTree({ channels, projects, starredChannelIds, starredProjectIds, teams }),
+  [channels, projects, starredChannelIds, starredProjectIds, teams],
 )

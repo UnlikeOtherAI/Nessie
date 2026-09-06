@@ -2,7 +2,7 @@
 // single stack (phones, narrow web, an iPad in a narrow Split View), or a
 // pinned list column beside detail stacks (tablet, desktop, large-phone
 // landscape)? It is a pure function of the shell probes and the viewport
-// bands, composed once (lib/mobile-shell.ts `useNavigationLayout`); no page
+// bands, composed once (navigation/mobile-shell.ts `useNavigationLayout`); no page
 // reads a breakpoint to decide its container, and `usePhoneLayout` survives
 // only as `navigation === 'single'`.
 //

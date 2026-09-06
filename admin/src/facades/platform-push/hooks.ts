@@ -7,7 +7,7 @@ import type {
   PushTestResult,
 } from '@nessie/schemas'
 import { putMultipart } from '../../lib/multipart'
-import { platformPushKeys } from '../../lib/query-keys'
+import { platformPushKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 

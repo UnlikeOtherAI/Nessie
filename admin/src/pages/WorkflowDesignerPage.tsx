@@ -8,7 +8,7 @@ import type { ToolbarMenuItem } from '../lib/workflow-designer/types'
 import { useWorkflowCanvasInteractions } from './workflow-designer/useWorkflowCanvasInteractions'
 import { useWorkflowDesignerState } from './workflow-designer/useWorkflowDesignerState'
 import { useWorkflowGraphIo } from './workflow-designer/useWorkflowGraphIO'
-import { useWorkflowTestRun } from './workflow-designer/useWorkflowTestRun'
+import { useWorkflowTestRun } from '../components/features/workflow-designer/useWorkflowTestRun'
 import { useWorkflowStepSamples } from '../facades/workflows/hooks'
 
 const normalizeReturnTo = (pathname: string, search: string, hash: string) =>

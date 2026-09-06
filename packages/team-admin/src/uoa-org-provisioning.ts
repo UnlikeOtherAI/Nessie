@@ -327,3 +327,68 @@ export const resolveUoaOrgHost = async (
 
   return { externalOrgId, name, slug, iconUrl: trimString(record?.org_icon_url) ?? null }
 }
+
+/**
+ * The address labels of a team the caller already holds the id of.
+ *
+ * The inverse of `resolveUoaTeamHost`: that turns a hostname into ids, this
+ * turns an id into the two labels a hostname is built from. A product stores
+ * UOA ids and no slug — the slug belongs to UOA — so without this a team picker
+ * can switch onto a team but cannot say where it lives.
+ *
+ * Backend mode, like its siblings: a `/domain/*` read authenticated by the
+ * domain hash the server holds.
+ */
+export const resolveUoaTeamAddress = async (
+  input: { teamId: string },
+  deps: UoaRosterDeps = {},
+): Promise<{ teamSlug: string; orgSlug: string; teamName: string; orgName: string } | null> => {
+  let payload: unknown
+  try {
+    payload = await rosterRequest(
+      requireSettings(),
+      `/domain/teams/${encodeURIComponent(input.teamId)}/address`,
+      { method: 'GET' },
+      { ...deps, subjectAssertion: undefined },
+    )
+  } catch (error) {
+    if (error instanceof UoaRosterRejectedError) return null
+    throw error
+  }
+
+  const record = asRecord(payload)
+  const teamSlug = trimString(record?.team_slug)
+  const orgSlug = trimString(record?.org_slug)
+  if (!teamSlug || !orgSlug) return null
+
+  return {
+    teamSlug,
+    orgSlug,
+    teamName: trimString(record?.team_name) ?? '',
+    orgName: trimString(record?.org_name) ?? '',
+  }
+}
+
+/** The address label of an organisation the caller holds the id of. */
+export const resolveUoaOrgAddress = async (
+  input: { orgId: string },
+  deps: UoaRosterDeps = {},
+): Promise<{ orgSlug: string; orgName: string } | null> => {
+  let payload: unknown
+  try {
+    payload = await rosterRequest(
+      requireSettings(),
+      `/domain/organisations/${encodeURIComponent(input.orgId)}/address`,
+      { method: 'GET' },
+      { ...deps, subjectAssertion: undefined },
+    )
+  } catch (error) {
+    if (error instanceof UoaRosterRejectedError) return null
+    throw error
+  }
+
+  const record = asRecord(payload)
+  const orgSlug = trimString(record?.org_slug)
+  if (!orgSlug) return null
+  return { orgSlug, orgName: trimString(record?.org_name) ?? '' }
+}

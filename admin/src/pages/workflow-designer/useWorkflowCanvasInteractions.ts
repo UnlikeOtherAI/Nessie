@@ -288,7 +288,7 @@ export const useWorkflowCanvasInteractions = ({
       document.removeEventListener('pointercancel', handlePointerCancel)
       window.removeEventListener('blur', handleWindowBlur)
     }
-  }, [draftConnection, hoveredHandle, finishDraftConnection])
+  }, [canvasRef, draftConnection, hoveredHandle, finishDraftConnection, setNodes])
 
   const handleNodePointerDown = (
     event: ReactPointerEvent<HTMLDivElement>,

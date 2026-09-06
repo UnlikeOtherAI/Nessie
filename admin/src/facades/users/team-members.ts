@@ -5,7 +5,7 @@ import type {
   TeamInvitationsResponse,
   TeamMembersResponse,
 } from '@nessie/schemas'
-import { teamKeys } from '../../lib/query-keys'
+import { teamKeys } from '../team/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**

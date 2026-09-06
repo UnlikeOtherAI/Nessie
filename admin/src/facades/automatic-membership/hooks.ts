@@ -14,7 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AutomaticMembershipResponse } from '@nessie/schemas'
 
-import { automaticMembershipKeys } from '../../lib/query-keys'
+import { automaticMembershipKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type AutomaticMembershipScope = 'organization' | 'team'

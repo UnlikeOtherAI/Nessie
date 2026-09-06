@@ -16,7 +16,7 @@ import { replyComposerDraftKey } from '../../components/features/channels/compos
 import { useChannelComposer } from '../../components/features/channels/useChannelComposer'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
 import { ChannelMessageFeed } from '../../components/features/channels/ChannelMessageFeed'
-import { buildFeedItems } from '../../components/features/channels/channel-helpers'
+import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
 import { useChannelMentions } from './useChannelMentions'

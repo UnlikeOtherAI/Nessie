@@ -7,7 +7,7 @@ import {
   integratedProductsKey,
   mcpToolRegistryKey,
   toolPolicyTargetsKey,
-} from '../../admin/src/lib/query-keys.js'
+} from '../../admin/src/facades/integrations/keys.js'
 
 const ownerScope = {
   isOwner: true,

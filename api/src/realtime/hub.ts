@@ -40,6 +40,10 @@ type UserSseConnection = {
 type SseConnection = ThreadSseConnection | UserSseConnection
 
 type WsConnection = {
+  // Closing the socket is the route's business — the hub only tracks the
+  // connection — but a drain has to reach the socket itself, so the registrant
+  // hands over a closer alongside the sender.
+  close: (code: number, reason: string) => void
   organizationId: string
   scopes: WsScope[]
   send: (message: WsEventMessage) => void
@@ -85,6 +89,35 @@ const writeThreadSseEvent = (
 
 const formatUserSseEvent = (event: RealtimeReplayEvent) =>
   `id: ${event.id.toString()}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`
+
+// The last frame a draining replica writes to an SSE stream. `retry:` resets
+// the EventSource reconnection time to 2 s for any native-EventSource client;
+// the admin runs its own fetch-based loop (`admin/src/lib/sse.ts` drops the
+// field) and reconnects on its own base backoff, so the line costs nothing
+// there and is the whole signal for a client that does use EventSource. No
+// `id:` — this frame is not a replayable event and must not move the
+// client's Last-Event-ID watermark.
+const SHUTDOWN_SSE_FRAME = 'retry: 2000\nevent: shutdown\ndata: {}\n\n'
+
+// Fastify 5.8.4 leaves `forceCloseConnections` at `'idle'` — verified in
+// `node_modules/fastify/lib/server.js:131-137`, where a non-boolean option
+// becomes `'idle'` on any Node that exposes `server.closeIdleConnections()`.
+// `'idle'` closes only *idle* sockets, and an open SSE stream is an in-flight
+// request, so `app.close()` on its own waits for every live stream and the
+// drain never finishes. The hub therefore ends its own streams before the
+// server closes.
+const endSseConnectionForShutdown = (response: ServerResponse): void => {
+  try {
+    if (response.writableEnded) {
+      return
+    }
+
+    response.write(SHUTDOWN_SSE_FRAME)
+    response.end()
+  } catch {
+    // The peer already went away; nothing left to drain on this socket.
+  }
+}
 
 const toScopeKey = (scope: WsScope): string => JSON.stringify(scope)
 
@@ -479,6 +512,40 @@ export const createRealtimeHub = async (input: {
       await transport.close()
       await pool.end()
     },
+    /**
+     * End every live stream this replica is serving, so `app.close()` has only
+     * idle sockets left to reap (see `endSseConnectionForShutdown` above for
+     * why Fastify cannot do this itself). Synchronous and idempotent: a drain
+     * must not await a peer that may never read again.
+     *
+     * `1012` is the WebSocket "service restart" status — RFC 6455's registry
+     * entry that tells a client this close is a deploy, not a protocol error,
+     * so it reconnects instead of surfacing a failure.
+     */
+    closeLiveConnections: (): void => {
+      for (const connection of threadSseConnections) {
+        endSseConnectionForShutdown(connection.response)
+      }
+      threadSseConnections.clear()
+
+      for (const connection of userSseConnections) {
+        endSseConnectionForShutdown(connection.response)
+      }
+      userSseConnections.clear()
+
+      for (const connection of wsConnections) {
+        try {
+          connection.close(1012, 'restart')
+        } catch {
+          // Socket already torn down by the peer.
+        }
+      }
+      wsConnections.clear()
+    },
+    // The one `pg.Pool` this process opens outside Prisma. Exposed so the API
+    // entrypoint can share it instead of creating a second pool on the same
+    // URL — see the connection-ceiling note in `api/src/index.ts`.
+    pool,
     removeSseConnection: (connection: SseConnection): void => {
       if (connection.kind === 'thread') {
         threadSseConnections.delete(connection)
@@ -509,12 +576,14 @@ export const createRealtimeHub = async (input: {
       }),
     registerWsConnection: (
       input: {
+        close: (code: number, reason: string) => void
         organizationId: string
         send: (message: WsEventMessage) => void
         userId: string
       },
     ): WsConnection => {
       const connection: WsConnection = {
+        close: input.close,
         organizationId: input.organizationId,
         scopes: [],
         send: input.send,

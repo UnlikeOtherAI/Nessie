@@ -95,5 +95,5 @@ test('the init script retains the path before dispatching, and both consumers ex
   const dispatch = init.indexOf('window.dispatchEvent(new CustomEvent(OPEN_EVENT')
   assert.ok(retain !== -1 && dispatch !== -1 && retain < dispatch, 'retained before the event fires')
   assert.match(source('../src/router.tsx'), /readNativePendingPushPath\(\) \?\? consumeDesktopPendingPath\(\)/)
-  assert.match(source('../src/providers/NotificationsProvider.tsx'), /consumeDesktopPendingPath\(\)/)
+  assert.match(source('../src/bridges/MessageNotificationBridge.tsx'), /consumeDesktopPendingPath\(\)/)
 })

@@ -219,9 +219,11 @@ test('every converted confirm still says exactly what it said', () => {
   assert.match(messages, /title="Delete this message\?"/)
   assert.match(messages, /body="This cannot be undone\."/)
 
-  const projects = source('layouts/admin-shell/ProjectsSidebarNav.tsx')
-  assert.ok(projects.includes('title={`Delete project "${deleteTarget.name}"?`}'))
-  assert.match(projects, /body="This cannot be undone\."/)
+  // The four Projects-sidebar dialogs (including this ConfirmDialog) moved
+  // to ProjectsNavDialogs.tsx, mirroring SidebarDialogs.tsx (06-F5).
+  const projectDialogs = source('layouts/admin-shell/ProjectsNavDialogs.tsx')
+  assert.ok(projectDialogs.includes('title={`Delete project "${deleteTarget.name}"?`}'))
+  assert.match(projectDialogs, /body="This cannot be undone\."/)
 
   // The column editor moved out of ProjectSettingsPage when a project gained
   // many boards; the confirm it owns is unchanged.
@@ -239,6 +241,8 @@ test('no admin surface asks through the browser any more', () => {
   const offenders = [
     'components/features/channels/useChannelMessageActions.tsx',
     'layouts/admin-shell/ProjectsSidebarNav.tsx',
+    'layouts/admin-shell/ProjectRow.tsx',
+    'layouts/admin-shell/ProjectsNavDialogs.tsx',
     'pages/project/ProjectSettingsPage.tsx',
     'pages/project/ProjectBacklogTab.tsx',
   ].filter((path) => source(path).includes('window.confirm('))

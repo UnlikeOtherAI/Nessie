@@ -7,7 +7,7 @@ import {
   createDocumentStreamEntry,
   mergeBootstrap,
   type DocumentStreamEntry,
-} from '../src/facades/threads/document-stream-helpers'
+} from '../src/facades/threads/document-stream-entries'
 
 /**
  * The server and the client apply the same edits with different code. This

@@ -4,7 +4,7 @@ import { AGENT_DESIGNER_SLUG } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAgents } from '../agents/hooks'
-import type { AgentFormState } from '../../components/features/agents/designer/useAgentDesigner'
+import type { AgentFormState } from './types'
 
 /**
  * The sidebar is the Agent Designer, not a generic "Design Assistant".

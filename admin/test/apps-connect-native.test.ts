@@ -4,7 +4,7 @@ import test from 'node:test'
 import type { ApiClient } from '@nessie/client-core'
 import { JSDOM } from 'jsdom'
 
-import { appKeys } from '../src/lib/query-keys.js'
+import { appKeys } from '../src/facades/apps/keys.js'
 import {
   createAppConnectAuthorizationLauncher,
   type AppConnectFlow,

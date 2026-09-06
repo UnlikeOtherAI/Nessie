@@ -22,7 +22,7 @@ import {
 import {
   createWindowAuthLauncher,
   type ExternalAuthWindow,
-} from '../src/components/features/apps/external-auth-launcher.js'
+} from '../src/facades/apps/external-auth-launcher.js'
 
 /**
  * The app detail page is the member surface: connect, accounts, capabilities,

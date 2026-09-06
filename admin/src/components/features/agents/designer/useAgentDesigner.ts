@@ -1,59 +1,15 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { findModelOption } from './model-options'
-import {
-  emptyRunLimitsForm,
-  type RunLimitsField,
-  type RunLimitsFormState,
-} from './run-limits'
-
-export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
-export type AgentVisibilityValue = 'private' | 'team'
-
-export type AgentFormState = {
-  effort: AgentEffortValue
-  model: string
-  name: string
-  provider: string
-  role: string
-  // Optional explicit per-run caps; blank fields mean "governed by the
-  // deployment backstop". Separate from `effort`, which is reasoning depth only.
-  runLimits: RunLimitsFormState
-  /**
-   * How this agent talks to people. The stored value is the *text*, never the
-   * preset that seeded it — see `AGENT_SPEAKING_STYLE_PRESETS`. Empty = none.
-   */
-  speakingStyle: string
-  streamingField: string | null
-  systemPrompt: string
-  todosEnabled: boolean
-  tools: Record<string, boolean>
-  visibility: AgentVisibilityValue
-  /** One of `GEMINI_LIVE_VOICES`, or '' for the deployment default. */
-  voiceName: string
-}
-
-export type AgentDesignerAction =
-  | { chunk: string; type: 'append_system_prompt' }
-  | { field: string; type: 'clear_streaming' }
-  | { field: string; type: 'set_streaming' }
-  | { effort: AgentEffortValue; type: 'set_effort' }
-  // Model and provider are one decision: the form resolves its selection by
-  // matching both, so a half-applied pair reads as no model at all.
-  | { option: AgentModelOption; type: 'set_model_selection' }
-  | { name: string; type: 'set_name' }
-  | { prompt: string; type: 'set_system_prompt' }
-  | { role: string; type: 'set_role' }
-  | { field: RunLimitsField; type: 'set_run_limit'; value: string }
-  | { enabled: boolean; type: 'set_todos_enabled' }
-  | { style: string; type: 'set_speaking_style' }
-  | { type: 'set_voice_name'; voiceName: string }
-  | { enabled: boolean; toolId: string; type: 'toggle_tool' }
-  | { visibility: AgentVisibilityValue; type: 'set_visibility' }
-  // A stored draft coming back on mount. The reducer owns the state, so a
-  // restore is an action rather than a second writer.
-  | { state: AgentFormState; type: 'restore' }
+import { emptyRunLimitsForm, type RunLimitsField } from '../../../../facades/designer/run-limits'
+import type {
+  AgentDesignerAction,
+  AgentDesignerActions,
+  AgentEffortValue,
+  AgentFormState,
+  AgentVisibilityValue,
+} from '../../../../facades/designer/types'
 
 // `tools` is a sparse overlay over the org tool catalog: unset keys fall back
 // to the tool kind's default (builtin on, connector off) — the same semantics
@@ -118,22 +74,6 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
   }
 }
 
-export type AgentDesignerActions = {
-  applyToolCall: (name: string, args: Record<string, unknown>) => void
-  dispatch: React.Dispatch<AgentDesignerAction>
-  setEffort: (effort: AgentEffortValue) => void
-  setModelSelection: (option: AgentModelOption) => void
-  setName: (name: string) => void
-  setRole: (role: string) => void
-  setRunLimit: (field: RunLimitsField, value: string) => void
-  setSpeakingStyle: (style: string) => void
-  setSystemPrompt: (prompt: string) => void
-  setTodosEnabled: (enabled: boolean) => void
-  setVoiceName: (voiceName: string) => void
-  toggleTool: (toolId: string, enabled: boolean) => void
-  setVisibility: (visibility: AgentVisibilityValue) => void
-}
-
 // `streamingField` is a live indicator of the Design Assistant writing into a
 // field right now; it belongs to the mount, never to the stored draft.
 const sameAsBaseline = (value: AgentFormState, baseline: AgentFormState): boolean =>
@@ -159,7 +99,13 @@ export const useAgentDesigner = (
   // Local only: a debounced PUT would publish an agent's behaviour to every
   // channel it is bound to on every keystroke, and creating one needs a model
   // the form may not have yet, so Save stays the deliberate act.
-  const baseline: AgentFormState = { ...DEFAULT_STATE, ...initialState }
+  // Memoised on `initialState` (itself memoised by AgentDesignerPage), so the
+  // mirror effect below can depend on it honestly instead of on a fresh object
+  // every render.
+  const baseline: AgentFormState = useMemo(
+    () => ({ ...DEFAULT_STATE, ...initialState }),
+    [initialState],
+  )
   const formDraft = useDraft<AgentFormState>(draftKey('agent-designer', agentId ?? 'new'), {
     initial: baseline,
     isEmpty: (value) => sameAsBaseline(value, baseline),
@@ -174,7 +120,10 @@ export const useAgentDesigner = (
     restoredRevisionRef.current = draftRevision
     if (draftRevision === 0) return
     dispatch({ state: draftState, type: 'restore' })
-    // The draft's own replacements only; typing goes the other way.
+    // The draft's own replacements only; typing goes the other way, so
+    // `draftState` — which changes on every keystroke — is deliberately not a
+    // dependency: depending on it would restore the reducer from its own echo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftRevision])
 
   // An untouched form is never mirrored: on mount the reducer still holds the
@@ -191,8 +140,7 @@ export const useAgentDesigner = (
     if (untouched && !mirrorDirtyRef.current && draftRevision === 0) return
     mirrorDirtyRef.current = true
     setFormDraft(state)
-    // `baseline` is rebuilt every render; its content is what matters.
-  }, [draftRevision, setFormDraft, state])
+  }, [baseline, draftRevision, setFormDraft, state])
 
   const setName = useCallback((name: string) => dispatch({ type: 'set_name', name }), [])
   const setRole = useCallback((role: string) => dispatch({ type: 'set_role', role }), [])

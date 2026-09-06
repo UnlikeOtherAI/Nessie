@@ -35,6 +35,7 @@ const SCALES = [
 
 // Root html font-size per scale. All type is rem-based (Tailwind text-* and
 // --font-size-base), so changing this scales every page's typography.
+// Mirrored by the pre-paint bootstrap in admin/index.html; change both together.
 const ROOT_FONT_SIZE: Record<FontScale, string> = {
   small: '14px',
   medium: '16px',

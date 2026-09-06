@@ -2,7 +2,7 @@ import type { MailboxConnectionRecord } from '../../../lib/api-client'
 import { useAgents } from '../../../facades/agents/queries'
 import { useSetMailboxAgentAccess } from '../../../facades/mailbox-connections/hooks'
 import { Switch } from '../../primitives/Switch'
-import { AgentVisibilityPill } from '../agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 
 /**
  * Which agents may use this mailbox.

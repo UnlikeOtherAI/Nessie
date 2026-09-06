@@ -6,7 +6,7 @@
  * `role="status"` so a keyboard user knows the copy happened.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AutomaticMembershipDomainRecord } from '@nessie/schemas'
 
 import { Notice } from '../../primitives/Notice'
@@ -21,12 +21,20 @@ type Props = {
 
 const Row = ({ label, value }: { label: string; value: string }) => {
   const [copied, setCopied] = useState(false)
+  const resetTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
+    }
+  }, [])
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(value)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
+      resetTimer.current = window.setTimeout(() => setCopied(false), 2000)
     } catch {
       // Clipboard access can be refused; the value is on screen and selectable,
       // so there is nothing to recover from and nothing worth alarming about.

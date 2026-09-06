@@ -15,17 +15,17 @@ import {
   type Recipient,
   type RecipientOption,
 } from '../lib/channel-compose-recipients'
-import { usePhoneLayout } from '../lib/mobile-shell'
+import { usePhoneLayout } from '../navigation/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
-import { AgentVisibilityPill } from '../components/features/agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from '../components/shared/AgentVisibilityPill'
 import { DirectMessageAgentCreator } from '../components/features/channels/DirectMessageAgentCreator'
 import {
   DIRECT_MESSAGE_TARGET_VALUES,
   DirectMessageTargetTabs,
   type DirectMessageTarget,
 } from '../components/features/channels/DirectMessageTargetTabs'
-import { UserAvatar } from '../components/primitives/UserAvatar'
+import { UserAvatar } from '../components/shared/UserAvatar'
 import { AgentAvatar } from '../components/shared/AgentAvatar'
 import {
   MentionInput,
@@ -34,7 +34,7 @@ import {
   type MentionInputHandle,
 } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
-import { useIsOwner } from '../components/shared/OwnerGate'
+import { useIsOwner } from '../facades/auth/hooks'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { useTabParam } from '../navigation/useTabParam'

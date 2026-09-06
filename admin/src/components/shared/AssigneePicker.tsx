@@ -3,7 +3,7 @@ import { faChevronDown, faRobot, faUser } from '@fortawesome/free-solid-svg-icon
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentVisibility } from '@nessie/schemas'
 import { Popover } from '../overlays/Popover'
-import { AgentVisibilityPill } from '../features/agents/AgentVisibilityPill'
+import { AgentVisibilityPill } from './AgentVisibilityPill'
 
 export type AssigneeKind = 'user' | 'agent'
 export type AssigneeOption = {

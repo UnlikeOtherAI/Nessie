@@ -33,53 +33,56 @@ export const DemonstrationDraftsColumn = ({
         </EmptyState>
       ) : (
         <RowList label="Demonstrations">
-          {demonstrations.map((demonstration) => (
-            <Row
-              key={demonstration.id}
-              title={
-                <span className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate">
-                    Routine with {demonstration.stepCount} captured step
-                    {demonstration.stepCount === 1 ? '' : 's'}
+          {demonstrations.map((demonstration) => {
+            const { workflowTemplateId } = demonstration
+            return (
+              <Row
+                key={demonstration.id}
+                title={
+                  <span className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">
+                      Routine with {demonstration.stepCount} captured step
+                      {demonstration.stepCount === 1 ? '' : 's'}
+                    </span>
+                    <Pill
+                      height="control"
+                      tone={demonstration.status === 'generalized' ? 'success' : 'warning'}
+                    >
+                      {demonstration.status === 'generalized' ? 'Draft ready' : demonstration.status}
+                    </Pill>
                   </span>
-                  <Pill
-                    height="control"
-                    tone={demonstration.status === 'generalized' ? 'success' : 'warning'}
-                  >
-                    {demonstration.status === 'generalized' ? 'Draft ready' : demonstration.status}
-                  </Pill>
-                </span>
-              }
-              trailing={
-                demonstration.workflowTemplateId ? (
-                  <button
-                    className="admin-button admin-button-secondary"
-                    onClick={() => onReview(demonstration.workflowTemplateId!)}
-                    type="button"
-                  >
-                    Review draft
-                  </button>
-                ) : demonstration.status === 'captured' && !demonstration.generalizationError ? (
-                  <button
-                    className="admin-button admin-button-primary"
-                    disabled={generalizeDemonstration.isPending}
-                    onClick={() => void generalizeDemonstration.mutate(demonstration.id)}
-                    type="button"
-                  >
-                    Generalise → draft Workflow
-                  </button>
-                ) : null
-              }
-              subtitle={
-                formatRelativeTime(demonstration.capturedAt ?? demonstration.startedAt)
-                ?? formatTimestamp(demonstration.startedAt)
-              }
-            >
-              {demonstration.generalizationError ? (
-                <FormError className="mt-1">{demonstration.generalizationError}</FormError>
-              ) : null}
-            </Row>
-          ))}
+                }
+                trailing={
+                  workflowTemplateId ? (
+                    <button
+                      className="admin-button admin-button-secondary"
+                      onClick={() => onReview(workflowTemplateId)}
+                      type="button"
+                    >
+                      Review draft
+                    </button>
+                  ) : demonstration.status === 'captured' && !demonstration.generalizationError ? (
+                    <button
+                      className="admin-button admin-button-primary"
+                      disabled={generalizeDemonstration.isPending}
+                      onClick={() => void generalizeDemonstration.mutate(demonstration.id)}
+                      type="button"
+                    >
+                      Generalise → draft Workflow
+                    </button>
+                  ) : null
+                }
+                subtitle={
+                  formatRelativeTime(demonstration.capturedAt ?? demonstration.startedAt)
+                  ?? formatTimestamp(demonstration.startedAt)
+                }
+              >
+                {demonstration.generalizationError ? (
+                  <FormError className="mt-1">{demonstration.generalizationError}</FormError>
+                ) : null}
+              </Row>
+            )
+          })}
         </RowList>
       )}
     </ColumnBrowserColumn>

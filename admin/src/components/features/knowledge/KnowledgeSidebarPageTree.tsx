@@ -1,7 +1,7 @@
 import { faChevronDown, faFile, faFileLines } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
-import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
+import { sidebarAriaCurrent } from '../../shared/row-a11y'
 
 type KnowledgeSidebarPageTreeProps = {
   activePageId?: string

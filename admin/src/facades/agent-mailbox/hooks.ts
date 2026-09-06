@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type {
   AgentMailboxRecord,
   AgentMailboxSendPolicy,
@@ -9,22 +10,13 @@ import type {
 } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { agentMailboxKeys } from './keys'
 
 /**
  * The hosted mailbox surface. Every read is entitlement-scoped server-side by
  * the shared agent-visibility predicate, so these hooks pass an agent id and
  * nothing else — no ambient project/team narrowing.
  */
-
-export const agentMailboxKeys = {
-  config: () => ['agent-email', 'config'] as const,
-  conversation: (agentId: string | undefined, conversationId: string | undefined) =>
-    ['agent-email', 'conversation', agentId, conversationId] as const,
-  conversations: (agentId: string | undefined, filter: string, cursor?: string) =>
-    ['agent-email', 'conversations', agentId, filter, cursor ?? null] as const,
-  draft: (approvalId: string | undefined) => ['agent-email', 'draft', approvalId] as const,
-  mailbox: (agentId: string | undefined) => ['agent-email', 'mailbox', agentId] as const,
-}
 
 export type AgentEmailConfig = {
   available: boolean
@@ -56,7 +48,7 @@ export const useAgentMailbox = (agentId: string | undefined) => {
         return await apiClient.get<AgentMailboxRecord>(`/api/agents/${agentId}/mailbox`)
       } catch (error) {
         // No mailbox is a legitimate steady state, not an error to surface.
-        if ((error as { status?: number }).status === 404) return null
+        if (error instanceof ApiClientError && error.status === 404) return null
         throw error
       }
     },

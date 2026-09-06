@@ -15,7 +15,7 @@ import {
   AGENT_SCOPE_META,
   getAgentScope,
   type AgentScope,
-} from './agent-scope'
+} from '../../shared/agent-scope'
 import { loadAgentsListState, saveAgentsListState } from './agents-list-state'
 
 const emptyBuckets = (): Record<AgentScope, AgentRecord[]> => ({

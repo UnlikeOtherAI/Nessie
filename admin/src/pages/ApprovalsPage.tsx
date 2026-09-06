@@ -11,9 +11,9 @@ import {
   useResolveApproval,
   type ApprovalRequest,
 } from '../facades/approvals/hooks'
-import { approvalKeys } from '../lib/query-keys'
+import { approvalKeys } from '../facades/approvals/keys'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { usePagedList } from '../facades/usePagedList'
+import { usePagedList } from '../facades/pagination/usePagedList'
 
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
 const TODO_TEMPLATE_PUBLISH_ACTION = 'agent.todo_template.publish'
