@@ -81,17 +81,25 @@ const OVERSHOOT_RULE: FixedWindowRule = { max: 2, windowMs: 1_000 }
  * With the defaults a waiter paces normally for 30–60 s, then competes for the
  * overshoot allowance, and only if it is still refused 120–240 s in does it
  * proceed uncounted — comfortably inside the queue's 300 s lock TTL
- * (`packages/runtime/src/queue.ts`) and far outside ordinary contention, which
- * the 5/s organisation cap absorbs in a window or two.
+ * (`packages/runtime/src/queue.ts`).
+ *
+ * Do not read the hard stop as exceptional. The overshoot lane is a single
+ * deployment-wide 2/s cap, so a broad multi-organisation sweep saturates it at
+ * once and the waiters behind it reach their stops as a matter of course. It is
+ * the ordinary end state of sustained saturation, not a rare one — which is why
+ * every crossing logs at error level and why the bound below is stated as
+ * conditional rather than absolute.
  *
  * What this guarantees, and what it does not: **while the store answers, the
  * deployment's upstream rate is at most `DEPLOYMENT_RULE.max +
  * OVERSHOOT_RULE.max` per window however many waiters there are** — the
  * overshoot lane is a counted cap, not a per-waiter allowance. Past the hard
- * stop a waiter proceeds without charging anything, so that bound stops
- * holding; reaching it takes minutes of unbroken saturation, the admissions are
- * spread by the same draw rather than arriving in a spike, and each one logs at
- * error level. Admitting is still the right end of the trade: this limiter
+ * stop a waiter proceeds without charging anything, so past it there is no
+ * bound at all: the uncounted rate is roughly waiters over the mean stop, which
+ * is linear in how many callers are parked. The admissions are at least spread
+ * by the same per-call draw rather than arriving in a spike, and each logs at
+ * error level. Note too that the counted bound is per fixed window, so a
+ * sliding window can see twice it across a boundary. Admitting is still the right end of the trade: this limiter
  * paces our own outbound traffic, it is not an authorization decision, and no
  * caller has a "refused" branch better than failing a person's membership
  * grant.

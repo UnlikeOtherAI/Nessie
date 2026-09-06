@@ -153,18 +153,12 @@ export class RateLimiter {
         keyHash: rateLimitKeyHash(bucket, identity),
         rule,
       })
-      // Bounded cleanup: 2% of hits sweep expired rows, keeping the table at
-      // ~live keys per window without a background job. The sweep is scoped
-      // to the triggering bucket: other buckets run on different windows, so
-      // their still-live rows must never be deleted here. The cutoff is
-      // database-anchored for the same reason the window is — a fast clock here
-      // would otherwise delete a window another replica is still counting in.
-      if (Math.random() < this.cleanupProbability) {
-        await pruneRateLimitWindows(this.prisma, {
-          bucket,
-          olderThanMs: rule.windowMs,
-        })
-      }
+      // Housekeeping owns its own failure, outside the fail-open catch below.
+      // A sweep that throws after the limiter already answered has allowed
+      // nothing extra, and reporting it as a store outage would put a
+      // FAIL-OPEN line and a `storeErrors` bump against a request that was
+      // counted correctly. The worker's pacer keeps the same discipline.
+      await this.sweepExpired(bucket, rule)
       if (hit.limited) {
         this.stats.limited += 1
         this.stats.limitedByBucket.set(
@@ -192,6 +186,26 @@ export class RateLimiter {
         limit: rule.max,
         retryAfterSeconds: 0,
       }
+    }
+  }
+
+  /**
+   * Bounded cleanup: a small fraction of hits sweep expired rows, keeping the
+   * table at ~live keys per window without a background job. Scoped to the
+   * triggering bucket, because other buckets run on different windows and their
+   * still-live rows must never be deleted here. The cutoff is database-anchored
+   * for the same reason the window is: a fast clock here would otherwise delete
+   * a window another replica is still counting in.
+   */
+  private async sweepExpired(bucket: string, rule: RateLimitRule): Promise<void> {
+    if (Math.random() >= this.cleanupProbability) return
+    try {
+      await pruneRateLimitWindows(this.prisma, { bucket, olderThanMs: rule.windowMs })
+    } catch (error) {
+      this.logger.error(
+        `[rate-limit] expired-window sweep failed (bucket=${bucket}); the limiter `
+        + `itself answered and nothing extra was allowed: ${String(error)}`,
+      )
     }
   }
 
