@@ -87,11 +87,17 @@ const avatarLine = (facts: GlobalAgentCatalogueFacts): string => {
     : 'a portrait is generated automatically at creation; it can be replaced '
       + 'with a generated or uploaded one afterwards.'
   if (facts.avatarStyle === undefined) return bullet(`avatar — ${drawing}`)
+  // The style itself is NOT written here. This block is assembled into a
+  // system prompt, which is instruction position, and a style is free text a
+  // person types — an organisation-level one reaching every member's run. The
+  // words travel where they are data: the image prompt's user message, and
+  // the tool result that says what was drawn.
   return bullet(
     `avatar — ${drawing} `
     + (facts.avatarStyle
-      ? `This person's portraits are drawn "${facts.avatarStyle}"; that is `
-        + 'already applied, so pass a style only when they ask for a different one.'
+      ? 'This person has already chosen the look their portraits are drawn '
+        + 'in and it is applied automatically, so pass a style only when they '
+        + 'ask for a different one.'
       : 'This person has never chosen a style, so portraits use the default '
         + 'look until they say what they like — the style they state is '
         + 'remembered for every portrait after it.'),

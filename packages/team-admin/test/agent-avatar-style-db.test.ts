@@ -9,6 +9,7 @@ import { AGENT_AVATAR_STYLE_SETTING_KEY } from '@nessie/schemas'
 import {
   resolveAgentAvatarStyle,
   resolveAgentAvatarStyleSafely,
+  styleForGeneration,
   writeAgentAvatarStyle,
 } from '../src/index.js'
 
@@ -189,4 +190,30 @@ runDatabaseTest('a stored value that is not a style never reaches an image promp
     assert.equal((await resolveAgentAvatarStyle(prisma, seeded)).style, null)
     assert.equal(await resolveAgentAvatarStyleSafely(prisma, seeded), null)
   })
+})
+
+test('a pinned style decides the picture, not just whether it is remembered', () => {
+  // Pure rule, so it is provable without a Ledger image endpoint: a lock above
+  // the person wins over whatever style the conversation asked for.
+  assert.deepEqual(
+    styleForGeneration({ lockedAtScope: 'organization', style: 'flat vector' }, 'photoreal'),
+    { pinned: true, style: 'flat vector' },
+  )
+  assert.deepEqual(
+    styleForGeneration({ lockedAtScope: 'team', style: 'flat vector' }, 'photoreal'),
+    { pinned: true, style: 'flat vector' },
+  )
+  // A person's own lock is not above them; their request still wins.
+  assert.deepEqual(
+    styleForGeneration({ lockedAtScope: 'user', style: 'flat vector' }, 'photoreal'),
+    { pinned: false, style: 'photoreal' },
+  )
+  assert.deepEqual(
+    styleForGeneration({ lockedAtScope: null, style: 'cartoon' }, undefined),
+    { pinned: false, style: 'cartoon' },
+  )
+  assert.deepEqual(
+    styleForGeneration({ lockedAtScope: null, style: null }, undefined),
+    { pinned: false, style: null },
+  )
 })

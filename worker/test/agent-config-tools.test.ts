@@ -449,3 +449,4 @@ dbTest('agent_avatar_generate says a deployment cannot draw rather than failing 
     assert.equal(unchanged?.avatarAttachmentId, null)
   })
 })
+

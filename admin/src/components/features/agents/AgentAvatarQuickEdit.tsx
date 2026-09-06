@@ -225,7 +225,8 @@ export const AgentAvatarQuickEdit = ({
                     value={style}
                   />
                   <span className="block text-xs text-[color:var(--tx3)]">
-                    Remembered for every agent portrait, here and in the Agent Designer.
+                    Saved when you generate, and used for every agent portrait after
+                    that — here and in the Agent Designer.
                   </span>
                 </label>
               </ScopedSettingGate>

@@ -190,11 +190,22 @@ house style and lock it; the personal write then refuses exactly as
 see on a personal write (a person may be in several teams, so the caller that
 knows which team is in play makes that check).
 
+A lock decides the *picture*, not merely whether the preference may be stored:
+`styleForGeneration` is the one rule, and enforcing the lock on the write alone
+would draw the billed portrait in the style asked for and then refuse to
+remember it — the house style pinned in name only, with the two faces
+disagreeing, because the form path resolves the style server-side and cannot be
+told otherwise.
+
 The style reaches the image model as *descriptive data* — a field of the user
 message's JSON, never a line of the prompt writer's system rules — for the same
 reason the dialog's free-text box always has: they are the person's words about
-a picture, not instructions to the run reading them. `style` is durable and
-remembered; `instructions` describe one portrait and are forgotten.
+a picture, not instructions to the run reading them. For the same reason the
+catalogue block states only **that** a style exists, never its words: that block
+is assembled into the Designer's system prompt, and an organisation-level style
+would put one person's free text in instruction position inside every member's
+run. `style` is durable and remembered; `instructions` describe one portrait and
+are forgotten.
 
 ## Standing up a place to work: project → team → channel
 

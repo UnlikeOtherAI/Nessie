@@ -68,6 +68,26 @@ export const resolveAgentAvatarStyle = async (
 }
 
 /**
+ * Which style this generation actually draws in.
+ *
+ * A lock above the person decides the picture, not merely whether their
+ * preference may be stored. Enforcing it on the write alone would draw the
+ * billed portrait in the style they asked for and then refuse to remember it —
+ * the house style pinned in name only, and the two faces disagreeing, because
+ * the form path resolves the style server-side and cannot be told otherwise.
+ */
+export const styleForGeneration = (
+  remembered: ResolvedAgentAvatarStyle,
+  requested?: string | null,
+): { pinned: boolean; style: string | null } => {
+  const pinned = remembered.lockedAtScope !== null && remembered.lockedAtScope !== 'user'
+  return {
+    pinned,
+    style: pinned ? remembered.style : requested ?? remembered.style,
+  }
+}
+
+/**
  * A style resolved for one generation, or null when a portrait should follow
  * the default look. Never throws: a portrait is not worth failing an agent
  * creation for, and neither is reading the taste behind it.

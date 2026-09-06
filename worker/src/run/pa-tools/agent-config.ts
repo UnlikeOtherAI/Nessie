@@ -14,6 +14,7 @@ import {
   loadAgentToolCatalog,
   readAgentRecordForActor,
   resolveAgentAvatarStyle,
+  styleForGeneration,
   updateAgentAvatar,
   updateAgentRecord,
   writeAgentAvatarStyle,
@@ -416,7 +417,7 @@ export const runAgentAvatarGenerateTool = async (
     userId: member.userId,
   }
   const remembered = await resolveAgentAvatarStyle(context.prisma, target)
-  const style = args.style ?? remembered.style
+  const { pinned, style } = styleForGeneration(remembered, args.style)
 
   const generated = await generateAgentAvatar({
     actorContext: member.actorContext,
@@ -446,7 +447,11 @@ export const runAgentAvatarGenerateTool = async (
   }
 
   let remembrance = ''
-  if (args.style && args.style !== remembered.style) {
+  if (pinned && args.style && args.style !== style) {
+    remembrance =
+      ` The style is pinned at the ${remembered.lockedAtScope} level, so the `
+      + 'portrait follows that rather than the one asked for. Say so.'
+  } else if (args.style && args.style !== remembered.style) {
     try {
       await writeAgentAvatarStyle(context.prisma, { ...target, style: args.style })
       remembrance = ` Saved "${args.style}" as their portrait style for next time.`
