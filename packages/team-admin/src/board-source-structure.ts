@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { ContainerDescription } from '@nessie/board-sources'
+import { boardSourcePollingIntervalMs, type ContainerDescription } from '@nessie/board-sources'
 import {
   type BoardSourceDetailRecord,
   type BoardSourceFieldMapping,
@@ -47,6 +47,11 @@ const sourceInclude = {
 
 type SourceRow = Prisma.BoardSourceGetPayload<{ include: typeof sourceInclude }>
 
+const pollingMinutes = (provider: BoardSourceProvider): number | null => {
+  const intervalMs = boardSourcePollingIntervalMs(provider)
+  return intervalMs === null ? null : Math.round(intervalMs / 60_000)
+}
+
 export const mapBoardSource = (source: SourceRow): BoardSourceRecord => ({
   id: source.id,
   projectId: parseProjectId(source.projectId),
@@ -61,7 +66,13 @@ export const mapBoardSource = (source: SourceRow): BoardSourceRecord => ({
   healthReason: source.healthReason,
   healthDetail: source.healthDetail,
   lastSyncCompletedAt: source.lastSyncCompletedAt?.toISOString() ?? null,
+  lastSyncStartedAt: source.lastSyncStartedAt?.toISOString() ?? null,
   lastErrorCode: source.lastErrorCode,
+  // The registration is the fact: a source holding a vendor webhook id is one
+  // the provider is calling. Nothing here infers it from configuration, which
+  // is how a deployment could believe it had live updates and be wrong.
+  webhookActive: source.webhookExternalId !== null,
+  pollingIntervalMinutes: pollingMinutes(source.provider),
   connectionOwnerUserId: parseUserId(source.connection.ownerUserId),
   connectionOwnerDisplayName: source.connection.owner?.displayName ?? null,
   itemCount: source._count.links,

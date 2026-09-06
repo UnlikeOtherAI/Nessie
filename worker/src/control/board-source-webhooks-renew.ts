@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
 
+import { sealSecret } from '@nessie/runtime'
+
 import { AdapterNotRegisteredError, resolveBoardSourceAdapter } from '@nessie/board-sources'
 import {
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
 } from '@nessie/team-admin'
 
-import type { BoardSourceSyncDeps } from './board-source-sync.js'
+import { buildWebhookCallback, type BoardSourceSyncDeps } from './board-source-sync.js'
 
 /**
  * Re-register webhooks that are about to expire.
@@ -17,8 +19,9 @@ import type { BoardSourceSyncDeps } from './board-source-sync.js'
  * the health standard was written after, so this keeps it from happening rather
  * than waiting for somebody to notice their board is five minutes stale.
  *
- * Providers that register app-level webhooks (Linear, GitHub) have no
- * per-source registration and no expiry, so they never appear here.
+ * A provider whose registration does not expire — Linear and GitHub both mint
+ * one that lives until it is deleted — leaves `webhookExpiresAt` null and never
+ * appears here.
  */
 export const renewBoardSourceWebhooks = async (
   deps: BoardSourceSyncDeps,
@@ -59,10 +62,7 @@ export const renewBoardSourceWebhooks = async (
       const registration = await adapter.ensureWebhook(
         context,
         source.container as Record<string, unknown>,
-        {
-          url: `${deps.publicApiUrl}/api/board-sources/webhooks/${source.provider}/${token}`,
-          token,
-        },
+        buildWebhookCallback(deps, source.provider, token),
       )
       if (!registration) continue
       await prisma.boardSource.update({
@@ -71,6 +71,9 @@ export const renewBoardSourceWebhooks = async (
           webhookExternalId: registration.externalId,
           webhookExpiresAt: registration.expiresAt ? new Date(registration.expiresAt) : null,
           webhookTokenHash: createHash('sha256').update(token).digest('hex'),
+          webhookSecretCiphertext: registration.signingSecret
+            ? sealSecret(deps.encryptionSecret, registration.signingSecret)
+            : null,
         },
       })
       renewed += 1
@@ -80,7 +83,12 @@ export const renewBoardSourceWebhooks = async (
       // successful sync re-registers from scratch.
       await prisma.boardSource.update({
         where: { id: source.id },
-        data: { webhookExternalId: null, webhookExpiresAt: null, webhookTokenHash: null },
+        data: {
+          webhookExternalId: null,
+          webhookExpiresAt: null,
+          webhookTokenHash: null,
+          webhookSecretCiphertext: null,
+        },
       })
     }
   }

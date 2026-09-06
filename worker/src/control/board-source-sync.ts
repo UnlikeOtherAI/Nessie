@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
@@ -14,6 +14,7 @@ import {
   BOARD_SOURCE_BACKOFF_CEILING_MS,
   BOARD_SOURCE_CLAIM_TIMEOUT_MS,
 } from '@nessie/schemas'
+import { sealSecret } from '@nessie/runtime'
 import {
   applyInboundItem,
   isBoardSourceCredentialError,
@@ -224,10 +225,15 @@ const ensureWebhook = async (
   if (source.webhookExternalId) return
   const token = randomUUID()
   try {
-    const registration = await adapter.ensureWebhook(context, container, {
-      url: `${deps.publicApiUrl}/api/board-sources/webhooks/${adapter.provider}/${token}`,
-      token,
-    })
+    const registration = await adapter.ensureWebhook(
+      context,
+      container,
+      buildWebhookCallback(deps, adapter.provider, token),
+    )
+    // Null is the provider declining, not a failure — an ordinary member's
+    // Linear key may not create webhooks, and a repository the person can read
+    // but not administer has no hook to hang. The declared poll covers both,
+    // and the board says which it is running on.
     if (!registration) return
     await deps.prisma.boardSource.update({
       where: { id: source.id },
@@ -238,6 +244,9 @@ const ensureWebhook = async (
         // the provider holds, and a leaked database row must not be enough to
         // forge a delivery.
         webhookTokenHash: createHash('sha256').update(token).digest('hex'),
+        webhookSecretCiphertext: registration.signingSecret
+          ? sealSecret(deps.encryptionSecret, registration.signingSecret)
+          : null,
       },
     })
   } catch {
@@ -249,6 +258,36 @@ const ensureWebhook = async (
     })
   }
 }
+
+/**
+ * The callback one registration is made against: where the provider calls, the
+ * token that identifies the source in that URL, and a signing secret offered to
+ * providers that let the caller choose one. A provider that mints its own
+ * ignores the offer and returns what it minted.
+ *
+ * A fresh token *and* a fresh secret every registration, so a re-registration
+ * rotates away from a leaked callback rather than re-blessing it.
+ */
+export const buildWebhookCallback = (
+  deps: Pick<BoardSourceSyncDeps, 'publicApiUrl'>,
+  provider: string,
+  token: string,
+): { url: string; token: string; secret: string } => ({
+  url: webhookCallbackUrl(deps.publicApiUrl ?? '', provider, token),
+  token,
+  secret: randomBytes(32).toString('hex'),
+})
+
+/**
+ * The one place a callback URL is spelled. Trello signs `body + callbackURL`,
+ * so verification rebuilds this from the delivery's own token — a second
+ * spelling would verify against a URL the provider is not calling.
+ */
+export const webhookCallbackUrl = (
+  publicApiUrl: string,
+  provider: string,
+  token: string,
+): string => `${publicApiUrl}/api/board-sources/webhooks/${provider}/${token}`
 
 const handleSyncFailure = async (
   deps: BoardSourceSyncDeps,

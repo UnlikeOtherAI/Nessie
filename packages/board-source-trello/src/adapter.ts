@@ -223,7 +223,7 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
 
     verifyWebhook: (request: WebhookRequest, secrets: WebhookSecrets): boolean => {
       const signature = request.headers['x-trello-webhook']
-      const callbackUrl = secrets.signingSecret
+      const callbackUrl = secrets.callbackUrl
       if (!signature || !callbackUrl) return false
       // Trello signs base64(HMAC-SHA1(body + callbackURL)) with the app secret,
       // so the callback URL is part of the signed material.

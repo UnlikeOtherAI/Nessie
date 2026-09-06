@@ -101,6 +101,44 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
     }
   }
 
+  /**
+   * Take this source's webhook down with it.
+   *
+   * Best-effort by design: a source must stay removable when the provider is
+   * unreachable or the credential has already been revoked. What it prevents is
+   * the person's Linear or GitHub accumulating a callback per removed source,
+   * each pointed at a URL that will answer 202 and drop the delivery forever.
+   */
+  const unregisterWebhook = async (projectId: string, sourceId: string): Promise<void> => {
+    const source = await prisma.boardSource.findFirst({
+      where: { id: sourceId, projectId },
+      select: {
+        connectionId: true,
+        container: true,
+        provider: true,
+        webhookExternalId: true,
+      },
+    })
+    if (!source?.webhookExternalId) return
+    try {
+      const adapter = resolveBoardSourceAdapter(source.provider)
+      if (!adapter.removeWebhook) return
+      const context = await loadBoardSourceConnectionContext(
+        prisma,
+        source.connectionId,
+        config.auth.secret ?? '',
+      )
+      if (isBoardSourceCredentialError(context)) return
+      await adapter.removeWebhook(
+        context,
+        source.container as Record<string, unknown>,
+        source.webhookExternalId,
+      )
+    } catch {
+      // Deliberately swallowed: see above.
+    }
+  }
+
   app.get('/api/projects/:projectId/sources', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -353,6 +391,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
     }
     if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
 
+    await unregisterWebhook(project.id, sourceId)
     const result = await deleteBoardSource(prisma, project.id, sourceId)
     if (isBoardSourceError(result)) {
       sourceError(reply, result)

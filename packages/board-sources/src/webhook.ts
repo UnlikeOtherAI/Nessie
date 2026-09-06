@@ -35,13 +35,33 @@ export type WebhookDelivery = {
 export type WebhookRegistration = {
   externalId: string
   expiresAt: string | null
+  /**
+   * The secret this registration's deliveries are signed with, when the
+   * provider has one and it is per-source. Linear mints its own and hands it
+   * back once at creation; GitHub takes the one the caller offered. Either way
+   * the caller persists it encrypted — a per-source secret is the whole point
+   * of registering per source, because it means a deployment needs no app-level
+   * webhook configured to get pushed changes.
+   */
+  signingSecret?: string
 }
 
 export type WebhookSecrets = {
-  /** The deployment's app-level signing secret, where the provider has one. */
+  /**
+   * The secret this source's deliveries are signed with: the one the
+   * registration returned, falling back to the deployment's app-level secret
+   * where the provider only has that.
+   */
   signingSecret?: string
   /** SHA-256 of the per-source callback token, where the provider does not sign. */
   tokenHash?: string
+  /**
+   * The exact URL this source's webhook was registered at. Only Trello needs
+   * it — it signs `body + callbackURL` rather than the body alone — and it is
+   * rebuilt from the delivery's own token rather than stored, so it cannot
+   * drift from the URL the provider is actually calling.
+   */
+  callbackUrl?: string
 }
 
 /** Constant-time comparison that cannot leak length through an early return. */
