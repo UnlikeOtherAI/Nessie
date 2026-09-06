@@ -6,6 +6,11 @@ import {
   touchVoiceDeviceCredential,
   verifyVoiceDeviceCredential,
 } from '../services/voice/voice-device-credential.js'
+import {
+  isAgentCredentialToken,
+  touchAgentAccessCredential,
+  verifyAgentAccessCredential,
+} from '../services/mcp-agent/agent-credential.js'
 import { createGlobalRateLimitCheck } from '../routes/auth-rate-limit.js'
 import { sendApiError } from './api.js'
 import type { ServerContext } from './server-context.js'
@@ -92,6 +97,36 @@ export const registerGlobalAuthHook = (
       // Best-effort: an operator looking at a device list wants to see which
       // one is on a call, and a failed bookkeeping write must not fail a call.
       void touchVoiceDeviceCredential(prisma, verified.credential.id)
+      return
+    }
+
+    // The agent access credential, on the same terms as the voice one: its own
+    // prefix, its own verifier, and refused outside the routes that opt in.
+    // Presenting it on an ordinary API route is not a partial success to be
+    // retried — it is a route this credential cannot reach, and saying so is
+    // what keeps "I lent an agent my boards" from meaning "I lent it my
+    // account".
+    if (presented && isAgentCredentialToken(presented)) {
+      if (request.routeOptions.config.agentCredential !== true) {
+        sendApiError(
+          reply,
+          403,
+          'AGENT_CREDENTIAL_OUT_OF_SCOPE',
+          'This credential is only accepted on the MCP endpoint.',
+        )
+        return
+      }
+      const verified = await verifyAgentAccessCredential(prisma, presented)
+      if (!verified.ok) {
+        sendApiError(reply, 401, verified.code, verified.message)
+        return
+      }
+      request.actorContext = verified.actorContext
+      request.agentCredential = verified.credential
+      // Best-effort: an operator looking at the credential list wants to know
+      // which agents are actually live, and a failed bookkeeping write must
+      // not fail the call it was recording.
+      void touchAgentAccessCredential(prisma, verified.credential.id)
       return
     }
 

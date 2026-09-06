@@ -1050,6 +1050,8 @@ model User {
   feedback                            Feedback[]
   refreshTokens                       RefreshToken[]
   authSessions                        AuthSession[]
+  agentAccessCredentials              AgentAccessCredential[]         @relation("AgentAccessCredentialUser")
+  agentAuthorizationApprovals         AgentAuthorizationRequest[]     @relation("AgentAuthorizationApprover")
   uoaSessionCredentials               UoaSessionCredential[]
   uoaTeamSwitchIntents                UoaTeamSwitchIntent[]
   productAccountLinks                 ProductAccountLink[]
@@ -1349,6 +1351,7 @@ model Organization {
   voiceInstallations     VoiceInstallation[]
   voiceSessions          VoiceSession[]
   voiceDeviceCredentials VoiceDeviceCredential[]
+  agentAccessCredentials AgentAccessCredential[]
 
   @@map("organizations")
 }
@@ -8134,4 +8137,117 @@ model AutomaticMembershipReconciliation {
 
   @@index([domainId, status])
   @@map("automatic_membership_reconciliations")
+}
+
+/// How far an agent credential reaches. Coarse and capability-shaped on
+/// purpose: a scope nobody can explain is a scope nobody sets correctly.
+enum AgentAccessScope {
+  boards_read
+  boards_write
+  documents_read
+  documents_write
+}
+
+enum AgentAuthorizationStatus {
+  pending
+  approved
+  denied
+  expired
+}
+
+/// A pairing request from an agent that has no browser it controls (RFC 8628
+/// device authorization grant).
+///
+/// The agent starts one, prints the short `userCode`, and polls. A signed-in
+/// human opens the verification URI, sees which agent is asking and for what,
+/// and approves — which is the only way a credential is ever minted. Nothing
+/// here creates access from nothing: the credential inherits the approving
+/// person's entitlements, so a person has to choose to lend them.
+model AgentAuthorizationRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// SHA-256 of the device code. Like every credential in this schema the
+  /// plaintext exists only in the response that returned it.
+  deviceCodeHash String @unique @map("device_code_hash")
+  /// Shown to the human and typed by them, so it comes from an alphabet with
+  /// no O/0 or I/1 confusion. Unique while pending; short-lived either way.
+  userCode       String @unique @map("user_code")
+
+  /// What the agent calls itself, for the approval screen. Untrusted display
+  /// text — it is whatever the client sent.
+  clientName     String            @map("client_name")
+  requestedScopes AgentAccessScope[] @map("requested_scopes")
+
+  status AgentAuthorizationStatus @default(pending)
+
+  /// Set only on approval, and the source of the minted credential's scope:
+  /// the human may approve less than was asked for.
+  approvedByUserId   String?            @map("approved_by_user_id") @db.Uuid
+  approvedScopes     AgentAccessScope[] @map("approved_scopes")
+  approvedOrganizationId String?        @map("approved_organization_id") @db.Uuid
+  approvedProjectId  String?            @map("approved_project_id") @db.Uuid
+  approvedTeamId     String?            @map("approved_team_id") @db.Uuid
+  approvedAt         DateTime?          @map("approved_at")
+
+  /// Single use: the poll that mints the credential stamps this, so a replayed
+  /// device code returns nothing even inside the expiry window.
+  redeemedAt DateTime? @map("redeemed_at")
+  expiresAt  DateTime  @map("expires_at")
+  /// Enforces RFC 8628's `slow_down`: a client polling faster than the
+  /// interval is told to back off rather than served.
+  lastPolledAt DateTime? @map("last_polled_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  approvedByUser User? @relation("AgentAuthorizationApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@map("agent_authorization_requests")
+}
+
+/// A scoped, revocable credential an agent presents to the MCP endpoint.
+///
+/// Mirrors `VoiceDeviceCredential` deliberately — that is this codebase's
+/// answer to "a non-browser client needs a scoped, revocable credential", and a
+/// second shape would be a second thing to reason about. The differences are
+/// that this one carries MCP scopes and is minted by a human approval rather
+/// than from a live WebView session.
+///
+/// It is never an identity of its own: it names a human, and every tool call
+/// runs as that human against the same service functions the HTTP routes call.
+model AgentAccessCredential {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  /// The human this credential acts as. Their entitlements are the ceiling.
+  userId         String @map("user_id") @db.Uuid
+
+  tokenHash String @unique @map("token_hash")
+  /// Shown in the credential list so an operator can tell two agents apart
+  /// without holding either secret.
+  label     String
+  /// First characters of the token, for the same reason.
+  tokenPrefix String @map("token_prefix")
+
+  scopes AgentAccessScope[]
+
+  /// The tenant scope the approving human held. Cost and content are scoped by
+  /// project/team, so the agent must carry the same rather than roam.
+  projectId String  @map("project_id") @db.Uuid
+  teamId    String? @map("team_id") @db.Uuid
+
+  /// `User.tokenVersion` at mint time. A forced sign-out or password change
+  /// bumps it and kills every credential that human minted, at the same
+  /// instant it kills their browser sessions.
+  tokenVersion Int @map("token_version")
+
+  expiresAt  DateTime  @map("expires_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("AgentAccessCredentialUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([organizationId, revokedAt])
+  @@map("agent_access_credentials")
 }
