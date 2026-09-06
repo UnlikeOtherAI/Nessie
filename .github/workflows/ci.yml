@@ -172,24 +172,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
       # The bundle takes its frontend from https://app.nessie.works, not from a
       # local admin build, so admin/api/worker changes cannot affect it. Its
       # real inputs are desktop/, the executor/windows-provenance crate it
       # depends on by path, and assets/. A change to none of them skips the
       # 6-minute Rust build; the job still reports success, which is what a
       # required check needs.
+      #
+      # The scope is resolved before the toolchain, and the toolchain is set up
+      # only when the bundle is actually being built. `setup-node`'s pnpm cache
+      # saves the pnpm store in a post step, and on a cache miss that post step
+      # FAILS the job when the store was never created — which is exactly what
+      # a skipped install leaves behind. Only the runner's preinstalled Node is
+      # needed to resolve the scope; ci-scope.mjs shells out to git and nothing
+      # else.
       - name: Determine CI scope
         id: scope
         run: node scripts/ci-scope.mjs
+
+      - name: Setup pnpm
+        if: steps.scope.outputs.desktop == '1'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.scope.outputs.desktop == '1'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
       - name: Install Linux desktop dependencies
         if: steps.scope.outputs.desktop == '1'
