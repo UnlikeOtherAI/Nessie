@@ -9,7 +9,13 @@ import {
 } from '@nessie/push'
 import { safeFetch, UrlSafetyError, type SafeFetchOptions } from '@nessie/runtime'
 
-import { claimPushSend, pushEndpointKey } from './push-send-claim.js'
+import {
+  claimPushSend,
+  markPushSendSent,
+  pushEndpointKey,
+  releasePushSendClaim,
+  type PushSendClaimRef,
+} from './push-send-claim.js'
 
 /**
  * Browser Web Push fan-out for a dispatched notification. Runs alongside (not
@@ -19,7 +25,9 @@ import { claimPushSend, pushEndpointKey } from './push-send-claim.js'
  * prunes subscriptions the push service reports gone, and logs each attempt to
  * the `push_deliveries` ledger as `provider: 'webpush'`. Each POST is gated by a
  * `push_send_claims` row for `(notificationKey, endpoint)` so a redelivered
- * dispatch job shows the notification once, not twice.
+ * dispatch job shows the notification once, not twice — and the claim is only
+ * made permanent once the push service has accepted it, so a POST that failed
+ * is retried by the next delivery instead of being suppressed forever.
  *
  * The prisma surface and sender are injected so the path is unit-testable with
  * no live database or network.
@@ -144,13 +152,16 @@ export const deliverWebPush = async (
   const deadSubscriptionIds: string[] = []
 
   for (const subscription of subscriptions) {
-    // The exactly-once gate: claimed before the credentialed POST, so a
-    // redelivered job loses the insert and skips this endpoint instead of
+    // The duplicate gate: claimed before the credentialed POST, so a
+    // redelivered job loses the claim and skips this endpoint instead of
     // showing the same notification twice. A loser is not a failure.
-    const claimed = await claimPushSend(input.prisma, {
+    const claimRef: PushSendClaimRef = {
       endpointKey: pushEndpointKey('webpush', subscription.endpoint),
       notificationKey: input.notificationKey,
       organizationId: input.organizationId,
+    }
+    const claimed = await claimPushSend(input.prisma, {
+      ...claimRef,
       provider: 'webpush',
     })
     if (!claimed) {
@@ -180,8 +191,16 @@ export const deliverWebPush = async (
 
     if (result.ok) {
       summary.sent += 1
+      // The one transition that makes a claim permanent: the push service
+      // accepted it, so a second POST would be a duplicate notification.
+      await markPushSendSent(input.prisma, claimRef)
     } else {
       summary.failed += 1
+      // Nothing was accepted — a refused safety check, a transport error, a
+      // rejection. Give the claim back so a redelivery of this job actually
+      // retries; a subscription the service reported gone is pruned below, so
+      // releasing cannot resurrect a dead endpoint.
+      await releasePushSendClaim(input.prisma, claimRef)
     }
     if (result.deadToken) {
       deadSubscriptionIds.push(subscription.id)

@@ -138,19 +138,22 @@ fan-out invoked from `handlePushDispatch` for the resolved recipient set:
 5. **Auto-prune dead subscriptions.** When the push service returns `404` or
    `410 Gone`, the subscription is deleted so it is never retried.
 
-Step 3 is preceded by the exactly-once claim described under **One
-notification, one device, one send** below — a subscription whose claim is
-already held is skipped, not POSTed to again.
+Step 3 is preceded by the send claim described under **One notification, one
+device, one send** below — a subscription whose claim is already held is
+skipped, not POSTed to again.
 
-The path never throws out of its loop — one failed endpoint cannot abort the
+A provider failure never escapes the loop — one failed endpoint cannot abort the
 rest — and the Prisma surface, sender, and SSRF guard are injected so it is
 unit-testable without a live database or network
-(`worker/test/web-push-delivery.test.ts`).
+(`worker/test/web-push-delivery.test.ts`). The claim statements are the
+deliberate exception: they sit outside that guard, so a database error taking or
+completing a claim fails the job rather than sending unguarded.
 
 ### One notification, one device, one send
 
-Delivery is exactly-once per (notification, endpoint), over both transports,
-and it takes two layers because either alone is insufficient.
+**The guarantee is that a send a provider accepted is never sent again.** It is
+deliberately *not* exactly-once, and the difference matters — see "What is not
+guaranteed" below. It takes two layers, because either alone is insufficient.
 
 1. **Every enqueue carries a deterministic idempotency key.** `queue_jobs`
    upserts on it, so two enqueues for one notification collapse to one job:
@@ -171,15 +174,40 @@ and it takes two layers because either alone is insufficient.
    device token or subscription endpoint, so no credential is copied into a
    second table.
 
+The claim has a state, and only one of them is permanent:
+
+- It is taken as `sending`, before the provider call.
+- A **confirmed provider accept** promotes it to `sent`. Only `sent` blocks a
+  later claimant forever, and that is what makes a duplicate impossible.
+- A **definitive failure or a thrown send deletes it**, so the next redelivery
+  of the job genuinely retries. This is not optional politeness: an incoming
+  call fans out `push:call:ring:<callId>:<userId>:<revision>`, and a claim held
+  after a failed send would mean the callee's phone never rings, with no in-app
+  surface that rings later and no re-ring at that revision to save it.
+  `push:budget:*` has the same shape.
+- A `sending` claim left behind by a **killed process** is taken over by the
+  next claimant once it is older than `PUSH_SEND_CLAIM_STALE_MS` (two minutes:
+  far longer than any legitimate single-endpoint send, and shorter than the
+  queue's 300 s lock TTL, so the first redelivery after a kill can actually take
+  it). The take-over is part of the claim statement itself — an
+  `INSERT … ON CONFLICT DO UPDATE … WHERE` — never a read-then-write.
+
+**What is not guaranteed.** Past the stale horizon a genuinely in-flight send
+can be sent a second time, and a process that dies *after* the provider accepted
+but before the claim is promoted leaves a `sending` row a later delivery will
+re-send. Both are deliberate: a duplicate ring is annoying, a ring that never
+happens is a missed call.
+
 `push_deliveries` is unchanged and is **not** the guard: it stays the post-send
 outcome log ops reads, one row per attempt with the provider, the status and
 the error code. Dead-endpoint pruning is unchanged too — it happens on the
-claimed path, so a `410 Gone` still deletes the row. The claim is taken before
-the send and never released, which makes the guarantee at-most-once per
-endpoint: a crash between claim and send drops that one notification rather
-than risking a duplicate, and the durable `UserAlert` row and the message
-itself are still there. Proven against a real unique index in
-`worker/test/db/push-dispatch-idempotency.test.ts`.
+claimed path, so a `410 Gone` still deletes the row. Claims are reaped by age
+(`worker/src/control/push-claim-sweep.ts`, 24 hours — two orders of magnitude
+past the longest window in which a job can still be redelivered), because
+nothing else removes them and a busy organisation writes tens of thousands a
+day. Proven against a real unique index in
+`worker/test/db/push-dispatch-idempotency.test.ts` and
+`worker/test/db/push-claim-sweep.test.ts`.
 
 ### Incoming calls
 

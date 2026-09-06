@@ -100,7 +100,24 @@ succeeds**, because a job whose work is already done is not a failed job. Put
 the claim on its own table rather than on the log when the log is nullable
 where you would need the key, carries no column for the thing being claimed, or
 is pruned on a schedule that would re-arm the duplicate — all three were true
-of `push_deliveries`. The full push contract is in
+of `push_deliveries`.
+
+**A claim taken before the side effect must have a state, or it is a silent
+drop.** A claim that is never released is at-most-once, and at-most-once is not
+a trade every effect can make: a push claim held after a failed send means an
+incoming call's ring is suppressed forever, and a ring has no surface that
+retries later. So `push_send_claims` carries `sending` / `sent`. Only a
+**confirmed** outcome makes the claim permanent; a definitive failure or an
+exception deletes it so the next redelivery genuinely retries; and a `sending`
+row left by a killed process is taken over once it is older than a stated
+horizon — inside the claim statement, as an `INSERT … ON CONFLICT DO UPDATE …
+WHERE`, never a read-then-write. Choose that horizon between the longest
+legitimate in-flight attempt and the queue's own 300 s lock TTL: at or beyond
+the lock TTL, the first redelivery after a kill still sees a "fresh" claim and
+drops the work. Say in the module which way the residual risk falls — for a
+notification it is a rare duplicate, never a silent loss. And give the claim
+table a reaper, because nothing else deletes a permanent claim
+(`worker/src/control/push-claim-sweep.ts`). The full push contract is in
 [docs/web-push.md](../web-push.md) → "One notification, one device, one send".
 
 ## 4. Every long-running handler is resumable

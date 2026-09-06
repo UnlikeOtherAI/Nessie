@@ -5954,6 +5954,19 @@ enum PushApnsEnvironment {
   production
 }
 
+// The life of one `push_send_claims` row. `sending` is taken BEFORE the
+// provider call and is provisional: it blocks a concurrent claimant, but a
+// later claimant takes it over once it is stale, because a process killed
+// between the claim and the send must not silence the notification forever.
+// `sent` is written only after a provider accepted, and is permanent — that is
+// the state that makes a duplicate impossible. A send that definitively failed
+// has no state at all: its row is deleted, so the next redelivery genuinely
+// retries. See `worker/src/control/push-send-claim.ts`.
+enum PushSendClaimState {
+  sending
+  sent
+}
+
 model PushCredential {
   id              String               @id @default(uuid()) @db.Uuid
   provider        PushProvider         @unique
@@ -6009,13 +6022,16 @@ model PushDelivery {
 // endpoint, so the credential itself is never copied into this table and the
 // claim survives a token row being pruned and re-registered.
 model PushSendClaim {
-  id              String       @id @default(uuid()) @db.Uuid
-  organizationId  String       @map("organization_id") @db.Uuid
-  notificationKey String       @map("notification_key")
-  endpointKey     String       @map("endpoint_key")
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @map("organization_id") @db.Uuid
+  notificationKey String             @map("notification_key")
+  endpointKey     String             @map("endpoint_key")
   provider        PushProvider
-  claimedAt       DateTime     @default(now()) @map("claimed_at")
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  state           PushSendClaimState @default(sending)
+  // Set on every claim and on every stale take-over, so it is the age of the
+  // CURRENT attempt — both the stale horizon and the reaper read it.
+  claimedAt       DateTime           @default(now()) @map("claimed_at")
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   // Named explicitly: the generated name would exceed Postgres' 63-character
   // identifier limit and be silently truncated.

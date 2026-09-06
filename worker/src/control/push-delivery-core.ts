@@ -19,7 +19,13 @@ import {
 } from './push-retry.js'
 import { findRecipientsViewingPushSurface } from './push-surface-presence.js'
 import type { PushSurfaceTarget } from './push-surface-presence.js'
-import { claimPushSend, pushEndpointKey } from './push-send-claim.js'
+import {
+  claimPushSend,
+  markPushSendSent,
+  pushEndpointKey,
+  releasePushSendClaim,
+  type PushSendClaimRef,
+} from './push-send-claim.js'
 
 /**
  * Provider-agnostic push delivery core, shared by every notification source:
@@ -32,11 +38,14 @@ import { claimPushSend, pushEndpointKey } from './push-send-claim.js'
  * delivery implementation. Credential loading lives in `./push-credentials.ts`
  * and is re-exported here so every existing import path keeps working.
  *
- * **Exactly-once.** Every caller supplies a `notificationKey` — the
- * notification's own durable identity, matching its enqueue idempotency key —
- * and this core takes a `push_send_claims` row for `(notificationKey, endpoint)`
- * *before* it calls a provider (`./push-send-claim.ts`). A redelivered job loses
- * that insert and skips the send instead of notifying the device twice.
+ * **No accepted send is sent twice.** Every caller supplies a
+ * `notificationKey` — the notification's own durable identity, matching its
+ * enqueue idempotency key — and this core claims a `push_send_claims` row for
+ * `(notificationKey, endpoint)` *before* it calls a provider
+ * (`./push-send-claim.ts`). A redelivered job loses that claim and skips the
+ * send instead of notifying the device twice. The claim is only made permanent
+ * once a provider has accepted; a send that definitively failed releases it, so
+ * a later redelivery genuinely retries rather than silently dropping a ring.
  * `push_deliveries` keeps its unchanged post-send meaning: the outcome log ops
  * reads, with the provider, the status and the error code.
  */
@@ -246,8 +255,14 @@ type NativeDeliveryInput = {
 
 /**
  * Deliver the notification to every recipient's registered native (APNs/FCM)
- * device tokens, pruning the ones the provider reports dead. Never throws out of
- * the per-token loop.
+ * device tokens, pruning the ones the provider reports dead.
+ *
+ * A provider failure never escapes the per-token loop — one dead endpoint must
+ * not abort the rest of the fan-out. The claim statements around it deliberately
+ * do escape: they sit outside the try, so a database error taking, releasing or
+ * completing a claim aborts the batch and fails the job. Without a working
+ * `push_send_claims` table there is no duplicate guard, and continuing anyway
+ * would send unguarded.
  */
 const deliverNativeTokens = async (
   input: NativeDeliveryInput,
@@ -288,15 +303,18 @@ const deliverNativeTokens = async (
       // No configured provider for this platform — skip silently.
       continue
     }
-    // The exactly-once gate. Everything above re-decides whether this device
+    // The duplicate gate. Everything above re-decides whether this device
     // should be rung at all; from here down a provider is contacted, so the
     // claim is taken first and a loser skips the send rather than failing the
     // job. `sendConfiguredToken`'s transient-failure retries all happen inside
     // this one claim, so a retry can never duplicate a send that succeeded.
-    const claimed = await claimPushSend(input.prisma, {
+    const claimRef: PushSendClaimRef = {
       endpointKey: pushEndpointKey(transport, token.token),
       notificationKey: input.notificationKey,
       organizationId: input.organizationId,
+    }
+    const claimed = await claimPushSend(input.prisma, {
+      ...claimRef,
       provider: transport,
     })
     if (!claimed) {
@@ -319,18 +337,29 @@ const deliverNativeTokens = async (
         platform: token.platform,
         err,
       })
+      // Nothing reached the provider, so the claim must not outlive the
+      // attempt: give it back and let the next delivery of this job try again.
+      await releasePushSendClaim(input.prisma, claimRef)
       continue
     }
 
     if (!outcome) {
       // Unreachable: `configuredTransportOf` above already refused this token.
+      await releasePushSendClaim(input.prisma, claimRef)
       continue
     }
 
     if (outcome.result.ok) {
       summary.sent += 1
+      // The one transition that makes a claim permanent. Only now is a second
+      // send of this notification to this device a duplicate.
+      await markPushSendSent(input.prisma, claimRef)
     } else {
       summary.failed += 1
+      // A definitive failure, retries already exhausted. Releasing is what
+      // stops a ring that never happened being suppressed forever; a dead
+      // endpoint is pruned below, so releasing cannot make it be retried.
+      await releasePushSendClaim(input.prisma, claimRef)
     }
     if (outcome.result.deadToken) {
       deadTokenIds.push(token.id)

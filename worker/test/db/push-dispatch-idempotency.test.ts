@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
 import type { PushPayload, PushResult, PushTarget } from '@nessie/push'
 
@@ -10,6 +10,10 @@ import {
   type PushDispatchPrisma,
   type PushSenders,
 } from '../../src/control/push-dispatch.js'
+import {
+  PUSH_SEND_CLAIM_STALE_MS,
+  pushEndpointKey,
+} from '../../src/control/push-send-claim.js'
 import { runDatabaseTest } from './support.js'
 
 // `push_deliveries` is an outcome log with no unique key, and the handler took
@@ -29,6 +33,7 @@ const AUTH_SECRET = 'push-idempotency-test-secret'
 
 type Seed = {
   channelId: string
+  deviceToken: string
   messageId: string
   organizationId: string
   otherMessageId: string
@@ -100,6 +105,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
 
   return {
     channelId: channel.id,
+    deviceToken: token.token,
     messageId: message.id,
     organizationId: organization.id,
     otherMessageId: otherMessage.id,
@@ -288,6 +294,128 @@ runDatabaseTest('a retry after a successful send does not re-send', async () => 
     })
     assert.equal(deliveries.length, 1)
     assert.equal(deliveries[0]?.status, 'sent')
+  } finally {
+    await cleanup(prisma, state)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a send the provider rejected is retried by the next delivery', async () => {
+  const prisma = new PrismaClient()
+  const state = await seed(prisma)
+  try {
+    const calls: SendCall[] = []
+    // A definitive provider rejection: APNs 400 is not retryable, so
+    // `sendWithRetry` gives up after one attempt with the claim still held.
+    const rejecting = recordingSenders(calls, {
+      ok: false,
+      status: 400,
+      deadToken: false,
+      error: 'InternalServerError',
+    })
+    const first = await handlePushDispatch(deps(prisma, rejecting), jobPayload(state, state.messageId))
+    assert.equal(first.failed, 1, 'the first delivery reached the provider and was refused')
+
+    const claimsAfterFailure = await prisma.pushSendClaim.count({
+      where: {
+        notificationKey: `push:message:${state.messageId}`,
+        organizationId: state.organizationId,
+      },
+    })
+    assert.equal(claimsAfterFailure, 0, 'a send that never happened holds no claim')
+
+    // The queue hands the same job out again with the provider healthy.
+    const succeeding = recordingSenders(calls)
+    const second = await handlePushDispatch(deps(prisma, succeeding), jobPayload(state, state.messageId))
+
+    assert.equal(calls.length, 2, 'the redelivery reaches the provider a second time')
+    assert.equal(second.sent, 1, 'and the notification is actually delivered')
+
+    const claim = await prisma.pushSendClaim.findFirst({
+      where: {
+        notificationKey: `push:message:${state.messageId}`,
+        organizationId: state.organizationId,
+      },
+    })
+    assert.equal(claim?.state, 'sent', 'only the accepted send leaves a permanent claim')
+  } finally {
+    await cleanup(prisma, state)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a claim left mid-flight is taken over only once it is stale', async () => {
+  const prisma = new PrismaClient()
+  const state = await seed(prisma)
+  try {
+    const notificationKey = `push:message:${state.messageId}`
+    const calls: SendCall[] = []
+    const senders = recordingSenders(calls)
+
+    // A worker claimed this endpoint and was killed before the provider
+    // answered: the row stays `sending` and nothing else ever clears it.
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO push_send_claims (
+        id, organization_id, notification_key, endpoint_key, provider, state, claimed_at
+      )
+      VALUES (
+        gen_random_uuid(),
+        ${state.organizationId}::uuid,
+        ${notificationKey},
+        ${pushEndpointKey('apns', state.deviceToken)},
+        'apns'::"PushProvider",
+        'sending'::"PushSendClaimState",
+        now()
+      )
+    `)
+
+    const tooSoon = await handlePushDispatch(deps(prisma, senders), jobPayload(state, state.messageId))
+    assert.equal(calls.length, 0, 'a fresh in-flight claim is left alone — no duplicate ring')
+    assert.equal(tooSoon.sent, 0)
+
+    // Age the abandoned claim just past the horizon. Nothing else changes.
+    const staleSeconds = PUSH_SEND_CLAIM_STALE_MS / 1000 + 1
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE push_send_claims
+      SET claimed_at = now() - make_interval(secs => ${staleSeconds}::double precision)
+      WHERE organization_id = ${state.organizationId}::uuid
+        AND notification_key = ${notificationKey}
+    `)
+
+    const takeover = await handlePushDispatch(deps(prisma, senders), jobPayload(state, state.messageId))
+    assert.equal(calls.length, 1, 'the stale claim is taken over and the device is finally rung')
+    assert.equal(takeover.sent, 1)
+
+    const claims = await prisma.pushSendClaim.findMany({
+      where: { notificationKey, organizationId: state.organizationId },
+    })
+    assert.equal(claims.length, 1, 'the take-over reuses the row rather than adding one')
+    assert.equal(claims[0]?.state, 'sent')
+  } finally {
+    await cleanup(prisma, state)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('an accepted send survives any number of redeliveries', async () => {
+  const prisma = new PrismaClient()
+  const state = await seed(prisma)
+  try {
+    const calls: SendCall[] = []
+    const senders = recordingSenders(calls)
+
+    // Releasing on failure must not weaken the duplicate guard: once a provider
+    // has accepted, no redelivery may reach it again, however many arrive.
+    for (let redelivery = 0; redelivery < 4; redelivery += 1) {
+      await handlePushDispatch(deps(prisma, senders), jobPayload(state, state.messageId))
+    }
+
+    assert.equal(calls.length, 1, 'the provider is contacted exactly once across four deliveries')
+
+    const deliveries = await prisma.pushDelivery.count({
+      where: { messageId: state.messageId, organizationId: state.organizationId },
+    })
+    assert.equal(deliveries, 1, 'and only one outcome is logged')
   } finally {
     await cleanup(prisma, state)
     await prisma.$disconnect()
