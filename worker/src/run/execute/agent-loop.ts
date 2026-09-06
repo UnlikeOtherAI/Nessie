@@ -491,7 +491,13 @@ export const runExecutionAgentLoop = async (
       onBudgetExhausted: async (reason) => {
         console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
       },
-      onCheckpoint: (state) => input.crashCheckpoint.write(state),
+      // The writer says whether the state actually became durable; the loop has
+      // nothing to do with the answer beyond not proceeding as if it had (the
+      // per-iteration fence probe below is what stops a fenced-out execution),
+      // and the writer has already said so in the log.
+      onCheckpoint: async (state) => {
+        await input.crashCheckpoint.write(state)
+      },
     },
     executeTool: executeMainTool,
     initialMessages: input.initialMessages,

@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { InferenceResult, ProviderMessage } from '@nessie/runtime'
 import { runAgenticLoop, type BudgetLimits } from './agentic-loop.js'
 import { classifyBudgetStop } from './execute/budget-stop.js'
+import type { LoopResumeState } from './loop-resume.js'
 
 const HIGH = 1_000_000
 
@@ -347,4 +348,132 @@ test('a model that ignores wind-down still hits the hard stop with a checkpointa
   assert.equal(result.exhaustedBudget, 'iterations')
   assert.equal(result.finalText, 'still going')
   assert.ok(result.messages.length > 1)
+})
+
+// Counters that outlive one execution (horizontal scaling, phase 3.1).
+//
+// The circuit breaker and the retry budget count failures, and a run that
+// crash-loops sees the same failures over and over on different workers. Both
+// therefore ride in the crash checkpoint: without that, every re-claim hands
+// the run a clean breaker and a full six retries, and a tool that has failed
+// since the first execution is retried forever.
+
+const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState => ({
+  compactionAttempts: 0,
+  compactionLastIteration: null,
+  elapsedMs: 0,
+  invocations: [],
+  iterations: 1,
+  lastAssistantText: '',
+  messages: [{ content: 'go', role: 'user' }],
+  pendingToolCalls: null,
+  retriesUsed: 0,
+  signatureCounts: {},
+  toolCallsUsed: 0,
+  toolFailureCounts: {},
+  toolMs: 0,
+  toolResults: {},
+  woundDown: false,
+  ...over,
+})
+
+test('a resumed run inherits the breaker counts its earlier executions earned', async () => {
+  let executions = 0
+  let call = 0
+  const states: LoopResumeState[] = []
+
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 5 }),
+    callbacks: {
+      ...noopCallbacks(),
+      onCheckpoint: async (state) => {
+        states.push(state)
+      },
+    },
+    executeTool: async () => {
+      executions += 1
+      return { inputSummary: 'flaky', output: 'upstream said no', success: false }
+    },
+    initialMessages: initial,
+    // Two failures already, on an executor that has since died.
+    resume: resumeStateFrom({ toolFailureCounts: { flaky: 2 } }),
+    runInference: async () => ({
+      ...toolCallInference('trying again'),
+      // Distinct ids and arguments: a repeated call would be answered from the
+      // recorder or stopped by loop detection, and neither is what is on trial.
+      toolCalls: [{ arguments: { n: (call += 1) }, toolCallId: `tc-${call}`, toolName: 'flaky' }],
+    }),
+    tools: [],
+  })
+
+  assert.equal(
+    executions,
+    1,
+    'the third failure trips the breaker, so only one more call ever reaches the tool',
+  )
+  assert.ok(
+    result.messages.some((message) => message.role === 'tool'
+      && typeof message.content === 'string'
+      && message.content.includes('disabled after 3 consecutive failures')),
+    'and the model is told the tool is disabled instead of being handed a fourth failure',
+  )
+  assert.deepEqual(
+    states.at(-1)?.toolFailureCounts,
+    { flaky: 3 },
+    'the count the next executor inherits carries this execution\'s failure too',
+  )
+})
+
+test('a resumed run does not get a fresh retry budget', async () => {
+  let attempts = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 5 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    // Six retries is the whole allowance; earlier executions spent it.
+    resume: resumeStateFrom({ retriesUsed: 6 }),
+    runInference: async () => {
+      attempts += 1
+      throw new Error('json parse error: unexpected token')
+    },
+    tools: [],
+  })
+
+  assert.equal(attempts, 1, 'a spent budget buys no further attempt')
+  assert.equal(
+    result.finalText,
+    'Too many retries. Please try again later.',
+    'the run surfaces the exhausted-retries message rather than retrying from zero',
+  )
+})
+
+test('the retries an execution spends are carried in its checkpoints', async () => {
+  const states: LoopResumeState[] = []
+  let attempts = 0
+
+  await runAgenticLoop({
+    budget: budget({ maxIterations: 3 }),
+    callbacks: {
+      ...noopCallbacks(),
+      onCheckpoint: async (state) => {
+        states.push(state)
+      },
+    },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('json parse error: unexpected token')
+      return toolCallInference('recovered')
+    },
+    tools: [],
+  })
+
+  assert.equal(attempts > 1, true, 'the format error was retried at least once')
+  assert.equal(
+    states.at(-1)?.retriesUsed,
+    1,
+    'so the next executor starts one retry down rather than at six',
+  )
 })

@@ -65,16 +65,43 @@ export type LoopResumeState = {
   lastAssistantText: string
   messages: ProviderMessage[]
   pendingToolCalls: ProviderToolCall[] | null
+  /**
+   * Inference retries already spent. Carried because the retry budget is a
+   * per-run allowance, not a per-executor one: a run that crashes inside its
+   * retries and is re-claimed must continue counting, or a crash-looping run
+   * gets six fresh attempts from every worker that touches it.
+   */
+  retriesUsed: number
   /** Loop-detection counters, so a resumed run does not restart its patience. */
   signatureCounts: Record<string, number>
   toolCallsUsed: number
+  /**
+   * The circuit breaker's per-tool consecutive-failure counts, so a tool that
+   * has been failing across executions still trips instead of being retried
+   * forever by a run that keeps being re-claimed. Boundary-aligned for the same
+   * reason `signatureCounts` is: a re-entered batch replays its own failures
+   * onto these counts, so a mid-batch snapshot would count them twice.
+   */
+  toolFailureCounts: Record<string, number>
   toolMs: number
   toolResults: Record<string, RecordedToolResult>
   woundDown: boolean
 }
 
 /**
- * A tool runs at most once across every execution of a run.
+ * A tool whose result reached durable storage never runs a second time.
+ *
+ * That is the real guarantee, and it is deliberately narrower than "a tool runs
+ * at most once across every execution of a run", which this cannot promise. The
+ * irreducible window is between a tool's side effect committing (the mail
+ * leaves the provider, inside `executeTool`) and the persist of its record
+ * committing in Postgres: a worker that dies in there leaves no record of a
+ * call that really happened, and the resumed run runs it again. Nothing short
+ * of a distributed transaction with the mail provider closes that window;
+ * everything on this side of it is closed here — the persist is issued the
+ * instant the record is taken, the persists are serialised so a slow one can
+ * never overwrite a later one's state, and the loop makes no further progress
+ * until the persist for the call it just ran has settled.
  *
  * Both dispatch seams are wrapped, because which one carries a call depends on
  * the caller: `executeToolBatch` uses `prepareTool` when it is supplied (the
@@ -82,8 +109,7 @@ export type LoopResumeState = {
  * otherwise (delegate sub-agents, unit tests). A call whose result an earlier
  * execution recorded is answered from the record — without re-authorizing,
  * because re-running the gate would consume a second one-time approval proof
- * for work that is already done — and a call that really runs is recorded, and
- * checkpointed, before the loop can be interrupted again.
+ * for work that is already done.
  */
 export type ToolExecutionRecorder = {
   executeTool: ExecuteToolFn
@@ -100,6 +126,27 @@ export const createToolExecutionRecorder = (input: {
 }): ToolExecutionRecorder => {
   const results = new Map<string, RecordedToolResult>(Object.entries(input.restored ?? {}))
 
+  // Persists run one at a time, in the order the records were taken.
+  //
+  // The calls in one batch overlap, so without this two persists are in flight
+  // together on different pool connections and commit in whatever order the
+  // database finishes them: a persist that snapshotted `{T1}` committing after
+  // one that snapshotted `{T1, T2}` leaves a durable row with no T2 in it, and
+  // the next crash re-runs T2's side effect — the exact duplicate this recorder
+  // exists to prevent. Chaining means each call builds its state only after the
+  // previous write has committed, so the last write always carries every record
+  // taken before it. The invariant: after N concurrent records, the durable row
+  // contains all N.
+  let persistQueue: Promise<void> = Promise.resolve()
+  const persist = (): Promise<void> => {
+    const queued = persistQueue.then(() => input.onRecorded())
+    // The chain must survive a failed write — the caller still sees the
+    // rejection, but a later record must not inherit it and skip its own
+    // persist.
+    persistQueue = queued.catch(() => undefined)
+    return queued
+  }
+
   const record = async (
     toolName: string,
     toolCallId: string,
@@ -114,7 +161,7 @@ export const createToolExecutionRecorder = (input: {
       success: result.success,
       toolName: result.toolName ?? toolName,
     })
-    await input.onRecorded()
+    await persist()
     return result
   }
 

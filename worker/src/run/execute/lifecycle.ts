@@ -7,7 +7,7 @@ import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schema
 import { parseAgentRunLimits } from '../run-budget.js'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
-import { clearCrashCheckpoint } from './crash-checkpoint.js'
+import { clearCrashCheckpoint, clearCrashCheckpointForUnheldRun } from './crash-checkpoint.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
@@ -199,6 +199,10 @@ export const updateRunStatus = async (
     ...(suspended ? { executorToken: null } : {}),
   }
   const fence = heldFence(runId)
+  // Read before the write below, because the suspended branch releases the
+  // fence as part of parking the run — and the crash-state clear still has to
+  // prove which executor is doing the clearing.
+  const fenceToken = fence?.token ?? null
   if (fence === null) {
     // No claim holds the run here: a status written before the claim (the quiet
     // PA-presence cancellation), or a caller outside a run execution.
@@ -227,9 +231,17 @@ export const updateRunStatus = async (
   // ninth terminal path added later cannot leave a resumable checkpoint behind
   // a finished run. A terminal run has nothing left to resume; a suspended one
   // is resumed by a NEW run from its note, never in place by this one.
+  //
+  // Fenced on the token this execution claimed with, so a superseded executor
+  // reaching a terminal status of its own cannot erase the state the live
+  // executor is still writing. The unfenced variant is only for a status
+  // written from outside any execution, which is the run's ending, not a
+  // competitor for it.
   if (terminal || suspended) {
     try {
-      await clearCrashCheckpoint(prisma, runId)
+      await (fenceToken
+        ? clearCrashCheckpoint(prisma, runId, fenceToken)
+        : clearCrashCheckpointForUnheldRun(prisma, runId))
     } catch (error) {
       console.warn('[worker] could not clear crash checkpoint for run', runId, error)
     }

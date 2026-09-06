@@ -105,14 +105,30 @@ matches no row. Beside it:
   written at every loop-iteration boundary, immediately before each tool batch,
   and as each tool in that batch settles. It carries the assembled transcript,
   the iteration count, the live invocation accumulator, spend and wall-clock so
-  far, compaction and loop-detection counters, the results of tool calls that
-  already ran, and the batch that was dispatching. It rides on
+  far, compaction and loop-detection counters, the circuit-breaker and retry
+  counters (failures belong to the run, so a crash-looping run neither retries
+  forever nor gets a clean breaker on each re-claim), the results of tool calls
+  that already ran, and the batch that was dispatching. It rides on
   `run_checkpoints` — already unique on `run_id`, which is the one-row-per-run
   invariant — in its own columns, so it never collides with the model-written
   note a budget stop or a suspension leaves for a person.
 - **Every write is fenced on the run row**, not on the checkpoint row: the
   statement proposes a row only while `runs.executor_token` still equals the
   claiming token, so a fenced-out executor's checkpoint write affects zero rows.
+  The fence covers the whole statement, not just its `SELECT` half — the run row
+  is locked `FOR NO KEY UPDATE` in a CTE, so a takeover committing mid-statement
+  cannot leave the `ON CONFLICT DO UPDATE` overwriting the new holder's state.
+  Clearing is fenced the same way, on the executor that wrote the state or still
+  holds the run; only a status written from outside any execution clears
+  unfenced, and that caller is the one ending the run.
+- **The persists are serialised.** Same-batch tool calls settle together, so
+  their writes would otherwise commit out of order and a state snapshotted
+  before the last record could land last — dropping that record and re-running
+  its tool. After N concurrent records the durable row holds all N.
+- **What the record guarantees, exactly.** A tool whose result reached durable
+  storage never runs again. The window that cannot be closed is between a tool's
+  side effect committing at the provider and its record committing in Postgres:
+  a worker that dies in there replays that one call.
 - **Resume is in place, not a continuation.** `claimRunForExecution` reports the
   pre-claim status; a `running` one means a takeover, so `executeRunJob` loads
   the crash state and the loop restores the transcript, iteration count,

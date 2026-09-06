@@ -300,8 +300,9 @@ const runLoop = async (input: {
       cacheReadWeight: 1,
       checkBudgetBlocked: async () => false,
       // Crash checkpoints are exercised in `worker/test/db/`; these cases are
-      // about authorization, so the writer records nothing.
-      crashCheckpoint: { write: async () => undefined },
+      // about authorization, so the writer records nothing and says so (false:
+      // nothing became durable).
+      crashCheckpoint: { write: async () => false },
       deepWaterHandoffGuard: quietGuard(),
       executorToolset,
       identityToolIds: new Set<string>(),

@@ -193,9 +193,16 @@ export const runAgenticLoop = async (input: {
     Object.entries(resume?.signatureCounts ?? {}),
   )
   const drainGate: DrainGate = createDrainGate(input.drainSignal)
+  // Both of these count failures, and failures belong to the run rather than to
+  // whichever executor happened to see them: a run that crashes and is
+  // re-claimed must not get a fresh retry allowance and a clean breaker every
+  // time round, or a run that crash-loops retries forever and a tool that has
+  // been failing since the first execution is never disabled.
   const retryBudget = createRetryBudget(6)
+  retryBudget.remaining = Math.max(0, retryBudget.total - (resume?.retriesUsed ?? 0))
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
   const circuitBreaker = new ToolCircuitBreaker()
+  circuitBreaker.restore(resume?.toolFailureCounts ?? {})
   const contextPlan = input.contextPlan
     ?? buildContextPlan({ model: null, toolSchemaTokens })
   const compactionGovernor = createCompactionGovernor(contextPlan)
@@ -229,17 +236,21 @@ export const runAgenticLoop = async (input: {
 
   const elapsed = (): number => priorElapsedMs + (Date.now() - startTime)
 
-  // The batch currently dispatching, and the loop-detection counters as they
-  // stood when it started. `executeToolBatch` mutates the live counters as it
-  // runs, so a snapshot taken part-way through must carry the counts the batch
-  // began with or a re-entry would count the same calls twice.
+  // The batch currently dispatching, and the loop-detection and breaker
+  // counters as they stood when it started. `executeToolBatch` mutates both
+  // live as it runs, so a snapshot taken part-way through must carry the counts
+  // the batch began with or a re-entry would count the same calls twice.
   let inFlightToolCalls: ProviderToolCall[] | null = null
   let boundarySignatureCounts: Record<string, number> = {
     ...(resume?.signatureCounts ?? {}),
   }
+  let boundaryToolFailureCounts: Record<string, number> = {
+    ...(resume?.toolFailureCounts ?? {}),
+  }
   const markDispatchBoundary = (pending: ProviderToolCall[] | null): void => {
     inFlightToolCalls = pending
     boundarySignatureCounts = Object.fromEntries(signatureCounts)
+    boundaryToolFailureCounts = circuitBreaker.snapshot()
   }
 
   const checkpoint = async (): Promise<void> => {
@@ -252,8 +263,10 @@ export const runAgenticLoop = async (input: {
       lastAssistantText,
       messages,
       pendingToolCalls: inFlightToolCalls,
+      retriesUsed: retryBudget.total - retryBudget.remaining,
       signatureCounts: boundarySignatureCounts,
       toolCallsUsed,
+      toolFailureCounts: boundaryToolFailureCounts,
       toolMs: totalToolMs,
       toolResults: toolRecorder.recorded(),
       woundDown,
