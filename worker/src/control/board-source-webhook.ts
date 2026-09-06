@@ -6,6 +6,8 @@ import {
 } from '@nessie/board-sources'
 import {
   applyInboundItem,
+  autoMatchItemAssignees,
+  externalTenantKeyFor,
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
   loadIdentityLinks,
@@ -80,6 +82,11 @@ export const processBoardSourceWebhook = async (
         : []
     if (items.length === 0) continue
 
+    const tenant = {
+      organizationId: source.organizationId,
+      provider: source.provider,
+      externalTenantKey: externalTenantKeyFor(source),
+    }
     const applyContext = {
       id: source.id,
       organizationId: source.organizationId,
@@ -87,17 +94,11 @@ export const processBoardSourceWebhook = async (
       provider: source.provider,
       stateMapping: parseStateMapping(source.stateMapping),
       fieldMappings: parseFieldMappings(source.fieldMappings),
-      identityByExternalUserId: await loadIdentityLinks(prisma, {
-        organizationId: source.organizationId,
-        provider: source.provider,
-        externalTenantKey:
-          source.provider === 'linear'
-            ? source.connection.externalTenantId
-            : source.provider === 'jira'
-              ? String(container.cloudId ?? '')
-              : source.provider,
-      }),
+      identityByExternalUserId: await loadIdentityLinks(prisma, tenant),
     }
+    // The same rule as a sync page: a reassignment upstream to somebody we can
+    // recognise by email resolves on the delivery that carried it.
+    await autoMatchItemAssignees(prisma, tenant, items, applyContext.identityByExternalUserId)
 
     for (const item of items) {
       const outcome = await applyInboundItem(prisma, applyContext, item)
