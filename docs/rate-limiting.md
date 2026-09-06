@@ -199,8 +199,30 @@ bucket-scoped prune; only the policy differs, and the two policies are named:
 The pacer's caps used to be two module-scope token buckets, which made the
 deployment-wide cap `20 × N` across N workers and gave one organisation `5 × N`
 whenever two workers reconciled it (horizontal-scaling audit 5.6). It waits
-rather than throwing, holds no connection or transaction while it sleeps, and
-bounds the wait at 30 s — after which it proceeds with a loud log, because for
-outbound pacing a bounded overshoot is a smaller failure than a reconciliation
-parked forever. `worker/test/db/automatic-membership-rate-limit.test.ts` drives
-two clients against one database to hold that line.
+rather than throwing and holds no connection or transaction while it sleeps.
+
+**The wait is bounded, and the ceiling is itself a counted cap.** Each call
+draws its own ceiling (30–60 s) rather than sharing a constant, because a
+constant is a deadline every co-launched waiter agrees on and a sweep that
+starts a hundred reconciliation jobs together would discharge them together —
+the herd the wide cap exists to prevent, arriving through the ceiling. Past its
+ceiling a call does not simply proceed: it competes for a third deployment-wide
+allowance (`uoa.automatic_membership.overshoot`, 2/s), so while the store
+answers the deployment's upstream rate is at most `20 + 2` per window **however
+many waiters there are**. Only a call still refused at 4× its own ceiling
+proceeds uncounted, at error level. Admitting rather than refusing is
+deliberate: no caller has a "refused" branch better than failing a person's
+membership grant.
+
+Two clocks that used to be the calling process's are now the database's. The
+window is floored from `NOW()` inside the statement — `window_start` is part of
+the conflict key, so a process-computed window put a clock-skewed replica on a
+private row with a private counter, invisibly. The expired-row sweep's cutoff is
+`NOW() - one window` for the mirror-image reason: a fast clock must not delete
+the live window a slower replica is still counting in. A failed sweep also logs
+as a sweep, never as `FAIL-OPEN` — that line means the cap is currently off, and
+nothing else may claim it.
+
+`worker/test/db/automatic-membership-rate-limit.test.ts` drives two clients
+against one database to hold all of that, including one client whose wall clock
+is deliberately wrong.

@@ -77,6 +77,14 @@ register(`data:text/javascript,${encodeURIComponent(dbLoader)}`, import.meta.url
 
 type BucketRow = { bucket: string; windowStartMs: number; count: number }
 
+/**
+ * Stands in for Postgres, which means it also stands in for Postgres's CLOCK.
+ * The statements in `packages/db/src/rate-limit-window.ts` floor the window
+ * from `NOW()` rather than from the calling process, precisely so replicas with
+ * disagreeing clocks share one row; the fake honours that by reading its own
+ * `Date.now()` — which is what `t.mock.timers` drives — and by using the
+ * caller's override only when one was bound.
+ */
 class FakeRateLimitStore {
   readonly rows = new Map<string, BucketRow>()
   failNext = false
@@ -85,7 +93,7 @@ class FakeRateLimitStore {
     $queryRaw: async (
       strings: TemplateStringsArray,
       ...values: unknown[]
-    ): Promise<Array<{ count: number }>> => {
+    ): Promise<Array<{ count: number; window_start_ms: number; now_ms: number }>> => {
       if (this.failNext) {
         this.failNext = false
         throw new Error('simulated store outage')
@@ -95,19 +103,18 @@ class FakeRateLimitStore {
         query.includes('INSERT INTO "rate_limit_buckets"'),
         `unexpected $queryRaw query: ${query}`,
       )
-      // Positional args: id, bucket, keyHash, windowStart, ...
-      const bucket = String(values[1])
-      const keyHash = String(values[2])
-      const windowStart = values[3] as Date
-      const key = `${bucket}|${keyHash}|${windowStart.toISOString()}`
-      const row = this.rows.get(key) ?? {
-        bucket,
-        windowStartMs: windowStart.getTime(),
-        count: 0,
-      }
+      // Positional args: clock override (null → this store's clock), windowMs,
+      // id, bucket, keyHash.
+      const nowMs = (values[0] as number | null) ?? Date.now()
+      const windowMs = Number(values[1])
+      const bucket = String(values[3])
+      const keyHash = String(values[4])
+      const windowStartMs = Math.floor(nowMs / windowMs) * windowMs
+      const key = `${bucket}|${keyHash}|${windowStartMs}`
+      const row = this.rows.get(key) ?? { bucket, windowStartMs, count: 0 }
       row.count += 1
       this.rows.set(key, row)
-      return [{ count: row.count }]
+      return [{ count: row.count, now_ms: nowMs, window_start_ms: windowStartMs }]
     },
     $executeRaw: async (
       strings: TemplateStringsArray,
@@ -118,14 +125,15 @@ class FakeRateLimitStore {
         query.includes('DELETE FROM "rate_limit_buckets"'),
         `unexpected $executeRaw query: ${query}`,
       )
-      // Mirror the real DELETE: optional bucket scoping, then window expiry.
-      const bucketFilter = query.includes('"bucket" = ?')
-        ? String(values[0])
-        : null
-      const thresholdMs = (values[values.length - 1] as Date).getTime()
+      // Both deletes scope by bucket; only the prune adds a clock override and
+      // an age, so `clearRateLimitWindows` (bucket alone) drops every row.
+      const bucketFilter = String(values[0])
+      const thresholdMs = values.length > 1
+        ? ((values[1] as number | null) ?? Date.now()) - Number(values[2])
+        : Number.POSITIVE_INFINITY
       let deleted = 0
       for (const [key, row] of this.rows) {
-        if (bucketFilter !== null && row.bucket !== bucketFilter) continue
+        if (row.bucket !== bucketFilter) continue
         if (row.windowStartMs < thresholdMs) {
           this.rows.delete(key)
           deleted += 1

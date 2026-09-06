@@ -145,22 +145,24 @@ export class RateLimiter {
     identity: string,
   ): Promise<RateLimitDecision> {
     this.stats.checks += 1
-    const now = Date.now()
     try {
+      // No `nowMs`: the window is floored from `NOW()` inside the statement, so
+      // every replica counts against the same row whatever its own clock says.
       const hit = await countRateLimitHit(this.prisma, {
         bucket,
         keyHash: rateLimitKeyHash(bucket, identity),
-        nowMs: now,
         rule,
       })
       // Bounded cleanup: 2% of hits sweep expired rows, keeping the table at
       // ~live keys per window without a background job. The sweep is scoped
       // to the triggering bucket: other buckets run on different windows, so
-      // their still-live rows must never be deleted here.
+      // their still-live rows must never be deleted here. The cutoff is
+      // database-anchored for the same reason the window is — a fast clock here
+      // would otherwise delete a window another replica is still counting in.
       if (Math.random() < this.cleanupProbability) {
         await pruneRateLimitWindows(this.prisma, {
-          before: new Date(now - rule.windowMs),
           bucket,
+          olderThanMs: rule.windowMs,
         })
       }
       if (hit.limited) {

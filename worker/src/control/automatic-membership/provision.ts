@@ -60,7 +60,9 @@ export const executeAutomaticMembershipProvisionJob = async (
       deps.rosterDeps ?? {},
       {
         ...defaultAutomaticGrantUpstream,
-        pace: () => awaitUpstreamSlot(prisma, payload.organizationId),
+        // `pace` only has to block; how the call was let through is the
+        // limiter's own log, not this caller's business.
+        pace: async () => { await awaitUpstreamSlot(prisma, payload.organizationId) },
       },
     )
 

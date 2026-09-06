@@ -71,16 +71,21 @@ class FakeRateLimitStore {
     $queryRaw: async (
       strings: TemplateStringsArray,
       ...values: unknown[]
-    ): Promise<Array<{ count: number }>> => {
+    ): Promise<Array<{ count: number; window_start_ms: number; now_ms: number }>> => {
       if (this.failAll) {
         throw new Error('simulated store outage')
       }
       const query = strings.join('?')
       assert.ok(query.includes('INSERT INTO "rate_limit_buckets"'))
-      const key = `${String(values[1])}|${String(values[2])}|${(values[3] as Date).toISOString()}`
+      // Positional args: clock override (null → the store's own clock, because
+      // the statement floors the window from the DATABASE's NOW()), windowMs,
+      // id, bucket, keyHash.
+      const nowMs = (values[0] as number | null) ?? Date.now()
+      const windowStartMs = Math.floor(nowMs / Number(values[1])) * Number(values[1])
+      const key = `${String(values[3])}|${String(values[4])}|${windowStartMs}`
       const count = (this.rows.get(key) ?? 0) + 1
       this.rows.set(key, count)
-      return [{ count }]
+      return [{ count, now_ms: nowMs, window_start_ms: windowStartMs }]
     },
     $executeRaw: async (): Promise<number> => 0,
   }

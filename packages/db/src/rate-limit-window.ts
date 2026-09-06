@@ -19,6 +19,23 @@ import type { PrismaClient } from '@prisma/client'
  * `2 × max` across a sliding window. That is bounded and independent of the
  * replica count, which is the property that matters here.
  *
+ * **The window comes from the database's clock, never from a caller's.**
+ * `window_start` is part of the conflict key, so it is the column that decides
+ * whether two replicas are counting the same thing. Computing it in the process
+ * — `Math.floor(Date.now() / windowMs)` — meant two workers whose clocks
+ * disagreed by more than a fraction of a window inserted *different* rows for
+ * the same real instant and each got a private counter, silently, with nothing
+ * in the logs to say why; a badly skewed host kept its own cap indefinitely.
+ * Every statement below therefore derives the window from `NOW()` inside the
+ * statement and returns the window and the database's own `now` it was derived
+ * from, so a caller's `resetInMs` is anchored to the same clock as its window.
+ * Fleet clock sync stops being a correctness input.
+ *
+ * `nowMs` survives as an explicit **override of the database clock**, bound as
+ * a parameter into that same expression rather than replacing it in the
+ * process: a suite that needs to pin a window still can, and the default —
+ * every production caller — is `NULL`, meaning `NOW()`.
+ *
  * Two policies sit on that one statement, and which one a caller wants is a
  * real decision rather than an accident:
  *
@@ -60,7 +77,11 @@ export type RateLimitWindowStore = Pick<PrismaClient, '$queryRaw' | '$executeRaw
 export const rateLimitKeyHash = (bucket: string, identity: string): string =>
   createHash('sha256').update(`${bucket}:${identity}`).digest('hex')
 
-/** The start of the fixed window `nowMs` falls in. Aligned to the epoch. */
+/**
+ * The start of the fixed window `nowMs` falls in. Aligned to the epoch — the
+ * same flooring the statements below do in SQL, for a caller (a test, a log
+ * line) that needs to name a window without issuing one.
+ */
 export const rateLimitWindowStart = (nowMs: number, windowMs: number): number =>
   Math.floor(nowMs / windowMs) * windowMs
 
@@ -91,48 +112,96 @@ export type RateLimitSlot = {
   resetInMs: number
 }
 
-const windowShape = (
-  nowMs: number,
+/**
+ * What every statement below returns: the counter (NULL when a conditional
+ * increment declined to move it) plus the window and the database `now` it was
+ * derived from, both in epoch milliseconds.
+ */
+type WindowRow = {
+  count: number | null
+  window_start_ms: bigint | number
+  now_ms: bigint | number
+}
+
+const readWindowRow = (
+  rows: WindowRow[],
   rule: FixedWindowRule,
-): { windowStartMs: number; resetInMs: number } => {
-  const windowStartMs = rateLimitWindowStart(nowMs, rule.windowMs)
-  return { resetInMs: windowStartMs + rule.windowMs - nowMs, windowStartMs }
+): { count: number | null; nowMs: number; windowStartMs: number; resetInMs: number } => {
+  const row = rows[0]
+  // A statement that reaches here always returns exactly one row: the window
+  // CTE is unconditional and the counter is a scalar sub-select over it. An
+  // empty result would mean the store answered something this module did not
+  // write, so it is a defect rather than a refusal.
+  if (row === undefined) {
+    throw new Error('rate-limit window statement returned no row')
+  }
+  const nowMs = Number(row.now_ms)
+  const windowStartMs = Number(row.window_start_ms)
+  return {
+    count: row.count === null ? null : Number(row.count),
+    nowMs,
+    resetInMs: windowStartMs + rule.windowMs - nowMs,
+    windowStartMs,
+  }
 }
 
 /**
  * Record one attempt against `(bucket, keyHash)` and say whether the window's
  * allowance is spent. Every attempt moves the counter, refusals included.
+ *
+ * `nowMs` overrides the database's clock for this one statement; leave it unset
+ * (every production caller does) and the window comes from `NOW()`.
  */
 export const countRateLimitHit = async (
   store: RateLimitWindowStore,
   input: { bucket: string; keyHash: string; rule: FixedWindowRule; nowMs?: number },
 ): Promise<RateLimitWindowHit> => {
-  const nowMs = input.nowMs ?? Date.now()
-  const { resetInMs, windowStartMs } = windowShape(nowMs, input.rule)
-  const rows = await store.$queryRaw<Array<{ count: number }>>`
-    INSERT INTO "rate_limit_buckets"
-      ("id", "bucket", "key_hash", "window_start", "count", "updated_at")
-    VALUES (
-      ${randomUUID()}::uuid,
-      ${input.bucket},
-      ${input.keyHash},
-      ${new Date(windowStartMs)},
-      1,
-      NOW()
+  const rows = await store.$queryRaw<WindowRow[]>`
+    WITH "clock" AS (
+      SELECT
+        COALESCE(
+          ${input.nowMs ?? null}::double precision,
+          (EXTRACT(EPOCH FROM NOW()) * 1000)::double precision
+        ) AS "now_ms",
+        ${input.rule.windowMs}::double precision AS "window_ms"
+    ),
+    "shape" AS (
+      SELECT
+        "now_ms",
+        FLOOR("now_ms" / "window_ms") * "window_ms" AS "start_ms"
+      FROM "clock"
+    ),
+    "hit" AS (
+      INSERT INTO "rate_limit_buckets"
+        ("id", "bucket", "key_hash", "window_start", "count", "updated_at")
+      SELECT
+        ${randomUUID()}::uuid,
+        ${input.bucket},
+        ${input.keyHash},
+        TO_TIMESTAMP("shape"."start_ms" / 1000),
+        1,
+        NOW()
+      FROM "shape"
+      ON CONFLICT ("bucket", "key_hash", "window_start")
+      DO UPDATE SET "count" = "rate_limit_buckets"."count" + 1,
+                    "updated_at" = NOW()
+      RETURNING "count"
     )
-    ON CONFLICT ("bucket", "key_hash", "window_start")
-    DO UPDATE SET "count" = "rate_limit_buckets"."count" + 1,
-                  "updated_at" = NOW()
-    RETURNING "count"
+    SELECT
+      (SELECT "count" FROM "hit") AS "count",
+      "shape"."start_ms"::bigint AS "window_start_ms",
+      "shape"."now_ms"::bigint AS "now_ms"
+    FROM "shape"
   `
-  const count = rows[0]?.count ?? 1
+  const window = readWindowRow(rows, input.rule)
+  const count = window.count ?? 1
   return {
     bucket: input.bucket,
     count,
     limit: input.rule.max,
     limited: count > input.rule.max,
-    resetInMs,
-    retryAfterSeconds: Math.max(1, Math.ceil(resetInMs / 1000)),
+    resetInMs: window.resetInMs,
+    retryAfterSeconds: Math.max(1, Math.ceil(window.resetInMs / 1000)),
   }
 }
 
@@ -142,41 +211,64 @@ export const countRateLimitHit = async (
  * The increment is conditional — `DO UPDATE … WHERE count < max` — so a refused
  * caller returns no row and leaves the counter alone. Postgres re-reads the
  * latest committed row version before evaluating that `WHERE`, which is what
- * makes the cap hold when several replicas race for the last slot.
+ * makes the cap hold when several replicas race for the last slot. A `max`
+ * below one admits nothing, which is why the INSERT itself is guarded: without
+ * that guard a first caller for an unseen key would insert `count = 1` and be
+ * admitted, because `ON CONFLICT` never fires on a fresh row.
+ *
+ * `nowMs` overrides the database's clock for this one statement; leave it unset
+ * (every production caller does) and the window comes from `NOW()`.
  */
 export const takeRateLimitSlot = async (
   store: RateLimitWindowStore,
   input: { bucket: string; keyHash: string; rule: FixedWindowRule; nowMs?: number },
 ): Promise<RateLimitSlot> => {
-  const nowMs = input.nowMs ?? Date.now()
-  const { resetInMs, windowStartMs } = windowShape(nowMs, input.rule)
-  if (input.rule.max < 1) {
-    return { admitted: false, bucket: input.bucket, count: 0, resetInMs, windowStartMs }
-  }
-  const rows = await store.$queryRaw<Array<{ count: number }>>`
-    INSERT INTO "rate_limit_buckets"
-      ("id", "bucket", "key_hash", "window_start", "count", "updated_at")
-    VALUES (
-      ${randomUUID()}::uuid,
-      ${input.bucket},
-      ${input.keyHash},
-      ${new Date(windowStartMs)},
-      1,
-      NOW()
+  const rows = await store.$queryRaw<WindowRow[]>`
+    WITH "clock" AS (
+      SELECT
+        COALESCE(
+          ${input.nowMs ?? null}::double precision,
+          (EXTRACT(EPOCH FROM NOW()) * 1000)::double precision
+        ) AS "now_ms",
+        ${input.rule.windowMs}::double precision AS "window_ms"
+    ),
+    "shape" AS (
+      SELECT
+        "now_ms",
+        FLOOR("now_ms" / "window_ms") * "window_ms" AS "start_ms"
+      FROM "clock"
+    ),
+    "slot" AS (
+      INSERT INTO "rate_limit_buckets"
+        ("id", "bucket", "key_hash", "window_start", "count", "updated_at")
+      SELECT
+        ${randomUUID()}::uuid,
+        ${input.bucket},
+        ${input.keyHash},
+        TO_TIMESTAMP("shape"."start_ms" / 1000),
+        1,
+        NOW()
+      FROM "shape"
+      WHERE ${input.rule.max}::int >= 1
+      ON CONFLICT ("bucket", "key_hash", "window_start")
+      DO UPDATE SET "count" = "rate_limit_buckets"."count" + 1,
+                    "updated_at" = NOW()
+      WHERE "rate_limit_buckets"."count" < ${input.rule.max}::int
+      RETURNING "count"
     )
-    ON CONFLICT ("bucket", "key_hash", "window_start")
-    DO UPDATE SET "count" = "rate_limit_buckets"."count" + 1,
-                  "updated_at" = NOW()
-    WHERE "rate_limit_buckets"."count" < ${input.rule.max}
-    RETURNING "count"
+    SELECT
+      (SELECT "count" FROM "slot") AS "count",
+      "shape"."start_ms"::bigint AS "window_start_ms",
+      "shape"."now_ms"::bigint AS "now_ms"
+    FROM "shape"
   `
-  const row = rows[0]
+  const window = readWindowRow(rows, input.rule)
   return {
-    admitted: row !== undefined,
+    admitted: window.count !== null,
     bucket: input.bucket,
-    count: row?.count ?? input.rule.max,
-    resetInMs,
-    windowStartMs,
+    count: window.count ?? input.rule.max,
+    resetInMs: window.resetInMs,
+    windowStartMs: window.windowStartMs,
   }
 }
 
@@ -184,14 +276,28 @@ export const takeRateLimitSlot = async (
  * Delete rows whose window has already passed, scoped to one bucket. The scope
  * is load-bearing: buckets run on different window lengths, so a short-window
  * sweep must never delete a longer bucket's live rows.
+ *
+ * The cutoff is `NOW() - olderThanMs` **computed in the database**, for the same
+ * reason the window is: a replica whose clock ran fast would otherwise delete
+ * the live window a slower replica is still counting against, handing that
+ * replica a fresh allowance and widening the cap with nothing to show for it.
+ * `nowMs` overrides that clock for a suite that pinned its windows.
  */
 export const pruneRateLimitWindows = async (
   store: RateLimitWindowStore,
-  input: { bucket: string; before: Date },
+  input: { bucket: string; olderThanMs: number; nowMs?: number },
 ): Promise<void> => {
   await store.$executeRaw`
     DELETE FROM "rate_limit_buckets"
-    WHERE "bucket" = ${input.bucket} AND "window_start" < ${input.before}
+    WHERE "bucket" = ${input.bucket}
+      AND "window_start" < TO_TIMESTAMP(
+        (
+          COALESCE(
+            ${input.nowMs ?? null}::double precision,
+            (EXTRACT(EPOCH FROM NOW()) * 1000)::double precision
+          ) - ${input.olderThanMs}::double precision
+        ) / 1000
+      )
   `
 }
 

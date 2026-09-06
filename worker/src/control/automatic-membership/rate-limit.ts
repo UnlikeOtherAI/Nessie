@@ -8,7 +8,7 @@
  * holds for the whole deployment so N organisations reconciling at once cannot
  * add up to a thundering herd against UOA.
  *
- * **Both caps live in Postgres** (audit 5.6, plan row 5.3). They used to be two
+ * **Every cap lives in Postgres** (audit 5.6, plan row 5.3). They used to be two
  * module-scope token buckets, which made the "whole instance" cap `20 × N`
  * calls per second across N workers and gave one organisation `5 × N` whenever
  * two workers reconciled it at the same time — the cap that mattered least was
@@ -20,7 +20,9 @@
  * the per-second window already bounds a single worker's burst to five calls
  * for one organisation, which is not the 150-call burst the local bucket was
  * written for, and a local fast path is exactly the thing that could admit a
- * call the deployment-wide cap would refuse.
+ * call the deployment-wide cap would refuse. The window itself is floored from
+ * the database's `NOW()`, not from any worker's clock, so a skewed host cannot
+ * end up counting against a row of its own.
  *
  * What the fixed window guarantees: `max` calls per window, and at worst
  * `2 × max` across a sliding window (the allowance of one window spent at its
@@ -50,28 +52,77 @@ const DEPLOYMENT_IDENTITY = 'all'
 const DEPLOYMENT_RULE: FixedWindowRule = { max: 20, windowMs: 1_000 }
 
 /**
- * How long one call may wait for a slot before it goes ahead anyway.
+ * The allowance a waiter that has run out of patience draws on, deployment-wide
+ * like the cap above and for the same reason. See `awaitUpstreamSlot`: a
+ * ceiling that simply admits is a cap of `waiters / ceiling` per second, which
+ * is no cap at all. Two per second against a 20/s deployment cap is a tenth
+ * more traffic in the worst case, and it is a *ceiling* rather than an
+ * estimate.
+ */
+const OVERSHOOT_BUCKET = 'uoa.automatic_membership.overshoot'
+const OVERSHOOT_IDENTITY = 'all'
+const OVERSHOOT_RULE: FixedWindowRule = { max: 2, windowMs: 1_000 }
+
+/**
+ * How long one call paces politely before it starts drawing on the overshoot
+ * allowance, and how long before it stops pacing altogether.
  *
- * It has to be bounded: a waiter that loops forever against a saturated
+ * Both have to be bounded: a waiter that loops forever against a saturated
  * deployment-wide bucket parks a reconciliation page indefinitely, and the
  * queue renews a job's lock for as long as the handler runs, so nothing else
- * would ever notice. Thirty seconds is comfortably inside the queue's 300 s
- * lock TTL (`packages/runtime/src/queue.ts`) even for a handler that hits the
- * ceiling several times, and long enough that ordinary contention — the org
- * cap is five per second — is absorbed by waiting rather than by overshoot.
+ * would ever notice. Both are also **drawn per call**, not shared. A fixed
+ * thirty-second ceiling is a deadline every co-launched waiter agrees on: a
+ * sweep that starts a hundred reconciliation jobs together would park them
+ * together and discharge them together, which is the thundering herd this
+ * module exists to prevent arriving by a different door. The draw is uniform
+ * over `[minCeilingMs, maxCeilingMs)`, and the hard stop is a multiple of that
+ * same draw so it inherits the spread instead of re-synchronising at 4×30 s.
  *
- * What happens at the ceiling: the call is **admitted**, with a loud log. This
- * limiter paces our own outbound traffic; it is not an authorization decision,
- * and none of its callers has a "refused" branch that means anything better
- * than failing the person's grant. Refusing would turn sustained contention
- * into failed reconciliations and released grant leases; admitting costs at
- * most one extra call per waiter per thirty seconds, which against a 20/s cap
- * is noise. The overshoot is bounded and observable; a stalled reconciliation
- * would be neither.
+ * With the defaults a waiter paces normally for 30–60 s, then competes for the
+ * overshoot allowance, and only if it is still refused 120–240 s in does it
+ * proceed uncounted — comfortably inside the queue's 300 s lock TTL
+ * (`packages/runtime/src/queue.ts`) and far outside ordinary contention, which
+ * the 5/s organisation cap absorbs in a window or two.
+ *
+ * What this guarantees, and what it does not: **while the store answers, the
+ * deployment's upstream rate is at most `DEPLOYMENT_RULE.max +
+ * OVERSHOOT_RULE.max` per window however many waiters there are** — the
+ * overshoot lane is a counted cap, not a per-waiter allowance. Past the hard
+ * stop a waiter proceeds without charging anything, so that bound stops
+ * holding; reaching it takes minutes of unbroken saturation, the admissions are
+ * spread by the same draw rather than arriving in a spike, and each one logs at
+ * error level. Admitting is still the right end of the trade: this limiter
+ * paces our own outbound traffic, it is not an authorization decision, and no
+ * caller has a "refused" branch better than failing a person's membership
+ * grant.
  */
-const MAX_WAIT_MS = 30_000
+export type UpstreamPacing = {
+  /** Inclusive lower bound of the per-call ceiling draw. */
+  minCeilingMs: number
+  /** Exclusive upper bound of the per-call ceiling draw. */
+  maxCeilingMs: number
+  /** The unconditional stop, as a multiple of this call's own drawn ceiling. */
+  hardCeilingMultiple: number
+}
 
-/** Fraction of admitted calls that sweep expired rows out of the two buckets. */
+export const DEFAULT_UPSTREAM_PACING: UpstreamPacing = {
+  hardCeilingMultiple: 4,
+  maxCeilingMs: 60_000,
+  minCeilingMs: 30_000,
+}
+
+/**
+ * Draw one call's ceiling. Exported so a suite can assert the spread directly
+ * rather than inferring it from timings.
+ */
+export const drawUpstreamCeilingMs = (
+  pacing: UpstreamPacing = DEFAULT_UPSTREAM_PACING,
+): number => {
+  const spread = Math.max(0, pacing.maxCeilingMs - pacing.minCeilingMs)
+  return pacing.minCeilingMs + Math.floor(Math.random() * spread)
+}
+
+/** Fraction of admitted calls that sweep expired rows out of the buckets. */
 const CLEANUP_PROBABILITY = 0.02
 
 const sleep = (ms: number): Promise<void> =>
@@ -86,10 +137,40 @@ const sleep = (ms: number): Promise<void> =>
 const backoffFor = (resetInMs: number): number =>
   resetInMs + Math.floor(Math.random() * 100)
 
+/**
+ * Housekeeping, and **never** a limiter outage.
+ *
+ * This runs on a fraction of admitted calls, after the store has already
+ * answered. Letting its error reach the caller's fail-open handler made a
+ * failed cleanup delete log `FAIL-OPEN: upstream pacing store unavailable,
+ * allowing the call` when the store was fine and nothing extra had been
+ * allowed — a cleanup fault impersonating the one signal that says the cap is
+ * off. It gets its own line, and the call it was riding on is unaffected.
+ *
+ * The cutoffs are database-anchored (`olderThanMs` against `NOW()`), so a
+ * worker with a fast clock cannot delete the live window a slower worker is
+ * still counting against and hand it a second allowance.
+ */
 const pruneExpired = async (store: RateLimitWindowStore): Promise<void> => {
-  const before = new Date(Date.now() - ORG_RULE.windowMs)
-  await pruneRateLimitWindows(store, { before, bucket: ORG_BUCKET })
-  await pruneRateLimitWindows(store, { before, bucket: DEPLOYMENT_BUCKET })
+  try {
+    await pruneRateLimitWindows(store, {
+      bucket: ORG_BUCKET,
+      olderThanMs: ORG_RULE.windowMs,
+    })
+    await pruneRateLimitWindows(store, {
+      bucket: DEPLOYMENT_BUCKET,
+      olderThanMs: DEPLOYMENT_RULE.windowMs,
+    })
+    await pruneRateLimitWindows(store, {
+      bucket: OVERSHOOT_BUCKET,
+      olderThanMs: OVERSHOOT_RULE.windowMs,
+    })
+  } catch (error) {
+    console.warn(
+      '[automatic-membership] upstream pacing: expired-window sweep failed; the '
+      + `limiter itself answered and nothing extra was allowed: ${String(error)}`,
+    )
+  }
 }
 
 export type UpstreamSlot = {
@@ -120,11 +201,18 @@ export type UpstreamSlot = {
  *
  * Fails **open** on a store error, loudly. A limiter outage must not stop
  * membership work; the same trade the API's limiter makes on the same table.
+ * Only the limiter's own statements are inside that handler — see
+ * `pruneExpired`.
+ *
+ * `cleanupProbability` is a test seam, the same one `RateLimiter` carries in
+ * the API: 1 makes the housekeeping sweep deterministic.
  */
 export const tryUpstreamSlot = async (
   store: RateLimitWindowStore,
   organizationId: string,
+  cleanupProbability: number = CLEANUP_PROBABILITY,
 ): Promise<UpstreamSlot> => {
+  let windows: { deployment: number; org: number }
   try {
     const org = await takeRateLimitSlot(store, {
       bucket: ORG_BUCKET,
@@ -146,12 +234,7 @@ export const tryUpstreamSlot = async (
         windows: null,
       }
     }
-    if (Math.random() < CLEANUP_PROBABILITY) await pruneExpired(store)
-    return {
-      admitted: true,
-      retryInMs: 0,
-      windows: { deployment: deployment.windowStartMs, org: org.windowStartMs },
-    }
+    windows = { deployment: deployment.windowStartMs, org: org.windowStartMs }
   } catch (error) {
     console.error(
       '[automatic-membership] FAIL-OPEN: upstream pacing store unavailable, '
@@ -159,6 +242,68 @@ export const tryUpstreamSlot = async (
     )
     return { admitted: true, retryInMs: 0, windows: null }
   }
+  if (Math.random() < cleanupProbability) await pruneExpired(store)
+  return { admitted: true, retryInMs: 0, windows }
+}
+
+type OvershootSlot = {
+  admitted: boolean
+  /** True when the store errored, so the admission was not counted anywhere. */
+  storeError: boolean
+  retryInMs: number
+  windowStartMs: number | null
+}
+
+/**
+ * Take one slot from the overshoot allowance. Only `awaitUpstreamSlot` past its
+ * ceiling calls this; it is deliberately not exported, because "I have waited
+ * long enough" is the only reason to spend it.
+ */
+const tryOvershootSlot = async (
+  store: RateLimitWindowStore,
+): Promise<OvershootSlot> => {
+  try {
+    const slot = await takeRateLimitSlot(store, {
+      bucket: OVERSHOOT_BUCKET,
+      keyHash: rateLimitKeyHash(OVERSHOOT_BUCKET, OVERSHOOT_IDENTITY),
+      rule: OVERSHOOT_RULE,
+    })
+    return {
+      admitted: slot.admitted,
+      retryInMs: slot.admitted ? 0 : backoffFor(slot.resetInMs),
+      storeError: false,
+      windowStartMs: slot.admitted ? slot.windowStartMs : null,
+    }
+  } catch (error) {
+    console.error(
+      '[automatic-membership] FAIL-OPEN: upstream overshoot store unavailable, '
+      + `allowing the call: ${String(error)}`,
+    )
+    return { admitted: true, retryInMs: 0, storeError: true, windowStartMs: null }
+  }
+}
+
+/** How a call was let through, so an operator (and a suite) can tell them apart. */
+export type UpstreamAdmissionMode =
+  /** A normal paced slot: both caps had room. */
+  | 'slot'
+  /** The waiter passed its ceiling and drew on the counted overshoot allowance. */
+  | 'overshoot'
+  /** The waiter passed its hard stop. Nothing was charged; the cap is exceeded. */
+  | 'hard-ceiling'
+  /** The pacing store did not answer. Nothing was charged; the cap is off. */
+  | 'store-error'
+
+export type UpstreamAdmission = {
+  mode: UpstreamAdmissionMode
+  /**
+   * The one-second window that paid for this call — the organisation window for
+   * a `slot`, the overshoot window for an `overshoot`. `null` for the two
+   * uncounted modes, where by definition nothing paid.
+   */
+  windowStartMs: number | null
+  /** How long the caller waited before it was let through. */
+  waitedMs: number
 }
 
 /**
@@ -170,34 +315,73 @@ export const tryUpstreamSlot = async (
  * a connection Prisma hands straight back, and there is no transaction — a
  * waiter parked on a pooled connection is how N workers exhaust a pool.
  *
- * Bounded by `MAX_WAIT_MS`; see that constant for what the ceiling does and
- * why it does that.
+ * A real slot is preferred at every iteration, ceiling or no ceiling: passing
+ * the ceiling adds the overshoot lane, it does not abandon the normal one.
+ *
+ * See `UpstreamPacing` for what the two deadlines are, why each call draws its
+ * own, and exactly what the pair does and does not guarantee.
  */
 export const awaitUpstreamSlot = async (
   store: RateLimitWindowStore,
   organizationId: string,
-): Promise<void> => {
-  const deadline = Date.now() + MAX_WAIT_MS
+  pacing: UpstreamPacing = DEFAULT_UPSTREAM_PACING,
+): Promise<UpstreamAdmission> => {
+  const startedAt = Date.now()
+  const ceilingMs = drawUpstreamCeilingMs(pacing)
+  const ceilingAt = startedAt + ceilingMs
+  const hardCeilingAt = startedAt + ceilingMs * pacing.hardCeilingMultiple
+  let announcedCeiling = false
   for (;;) {
     const slot = await tryUpstreamSlot(store, organizationId)
-    if (slot.admitted) return
-    const remaining = deadline - Date.now()
-    if (remaining <= 0) {
-      console.warn(
-        `[automatic-membership] upstream pacing: waited ${MAX_WAIT_MS}ms for a slot for `
-        + `organisation ${organizationId} and proceeded anyway; the deployment is at its `
-        + 'UnlikeOtherAI call ceiling.',
-      )
-      return
+    if (slot.admitted) {
+      return {
+        mode: slot.windows === null ? 'store-error' : 'slot',
+        waitedMs: Date.now() - startedAt,
+        windowStartMs: slot.windows?.org ?? null,
+      }
     }
-    await sleep(Math.min(slot.retryInMs, remaining))
+
+    const beforeCeiling = Date.now()
+    if (beforeCeiling < ceilingAt) {
+      await sleep(Math.min(slot.retryInMs, ceilingAt - beforeCeiling))
+      continue
+    }
+
+    if (!announcedCeiling) {
+      announcedCeiling = true
+      console.warn(
+        `[automatic-membership] upstream pacing: waited ${beforeCeiling - startedAt}ms `
+        + `for a slot for organisation ${organizationId} and is now competing for the `
+        + 'overshoot allowance; the deployment is at its UnlikeOtherAI call ceiling.',
+      )
+    }
+    const overshoot = await tryOvershootSlot(store)
+    if (overshoot.admitted) {
+      return {
+        mode: overshoot.storeError ? 'store-error' : 'overshoot',
+        waitedMs: Date.now() - startedAt,
+        windowStartMs: overshoot.windowStartMs,
+      }
+    }
+
+    const afterOvershoot = Date.now()
+    if (afterOvershoot >= hardCeilingAt) {
+      console.error(
+        `[automatic-membership] upstream pacing: waited ${afterOvershoot - startedAt}ms `
+        + `for organisation ${organizationId}, could not take even an overshoot slot, `
+        + 'and proceeded UNCOUNTED; the deployment-wide UnlikeOtherAI cap is exceeded '
+        + 'for this call.',
+      )
+      return { mode: 'hard-ceiling', waitedMs: afterOvershoot - startedAt, windowStartMs: null }
+    }
+    await sleep(Math.min(overshoot.retryInMs, hardCeilingAt - afterOvershoot))
   }
 }
 
 /**
  * Test seam: forget every accumulated window, live ones included.
  *
- * Both buckets are deployment-wide, so this discards allowance a running
+ * All three buckets are deployment-wide, so this discards allowance a running
  * deployment is relying on — it belongs to a suite that owns its database.
  */
 export const resetUpstreamRateLimit = async (
@@ -205,10 +389,12 @@ export const resetUpstreamRateLimit = async (
 ): Promise<void> => {
   await clearRateLimitWindows(store, ORG_BUCKET)
   await clearRateLimitWindows(store, DEPLOYMENT_BUCKET)
+  await clearRateLimitWindows(store, OVERSHOOT_BUCKET)
 }
 
 /** The caps this module enforces, published so nothing has to restate them. */
 export const UPSTREAM_RATE_LIMITS = {
   deployment: DEPLOYMENT_RULE,
   org: ORG_RULE,
+  overshoot: OVERSHOOT_RULE,
 } as const

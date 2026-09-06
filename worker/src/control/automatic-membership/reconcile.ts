@@ -255,7 +255,9 @@ export const executeAutomaticMembershipReconcileJob = async (
         deps.rosterDeps ?? {},
         {
           ...defaultAutomaticGrantUpstream,
-          pace: () => awaitUpstreamSlot(prisma, run.domain.organizationId),
+          // `pace` only has to block; how the call was let through is the
+          // limiter's own log, not this caller's business.
+          pace: async () => { await awaitUpstreamSlot(prisma, run.domain.organizationId) },
         },
       )
       if (result.outcome === 'granted') {

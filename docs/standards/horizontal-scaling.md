@@ -54,22 +54,48 @@ choice between them is explicit, never implicit:
   calls admitted in that window. An outbound pacer needs this: it polls in a
   loop while it waits and must not spend the slots it is waiting for.
 
+**The window comes from the database's clock, not the process's.**
+`window_start` is part of the conflict key, so it is the column that decides
+whether two replicas are counting the same thing at all. Flooring it from
+`Date.now()` meant replicas whose clocks disagreed by a fraction of a window
+inserted *different* rows for the same instant and each got a private counter —
+one cap per clock, with nothing in the logs to say so, and a badly skewed host
+keeping its own allowance indefinitely. Derive it inside the statement, and
+derive any expiry cutoff the same way: a fast pruner deleting the live window a
+slower replica is still counting in widens the cap just as silently. Fleet clock
+sync must never be a correctness input.
+
 Three rules for a pacer built on it. **It waits, it does not throw**, when its
 callers are walking a large collection and have nowhere to put a refusal.
 **Nothing is held while it sleeps** — each attempt is one statement on a
 connection the pool takes straight back, and never a transaction, because a
 waiter parked on a pooled connection is how N instances exhaust a pool. **The
-wait is bounded, and the module says what the ceiling does**: an unbounded loop
-against a contended deployment-wide bucket parks the job forever, invisibly,
-because the queue keeps renewing its lock. The automatic-membership pacer waits
-30 s — well inside the queue's 300 s lock TTL — and then proceeds with a loud
-log, because for outbound pacing a bounded overshoot is a smaller failure than a
-stalled reconciliation; a limiter guarding an authorization decision would have
-to choose the other way and say so.
+wait is bounded, the ceiling is drawn per call, and what happens at it is itself
+capped.** An unbounded loop against a contended deployment-wide bucket parks the
+job forever, invisibly, because the queue keeps renewing its lock — so there has
+to be a ceiling. But a ceiling that simply admits is not a cap: with W waiters
+it is `W ÷ ceiling` calls per second, unbounded in W, and if every waiter shares
+the same constant they park together and discharge together, which is the same
+herd through a different door. The automatic-membership pacer draws its ceiling
+uniformly from 30–60 s per call, then competes for a third counted allowance
+(2/s deployment-wide) rather than bypassing the limiter, and only proceeds
+uncounted at 4× its own draw — still inside the queue's 300 s lock TTL, and at
+error level when it happens. Admitting rather than refusing is right here
+because no caller has a better "refused" branch than failing a person's
+membership grant; a limiter guarding an authorization decision would have to
+choose the other way and say so.
+
+**A failure in the limiter's housekeeping must not impersonate a limiter
+outage.** The expired-row sweep runs on a fraction of admitted calls, after the
+store has already answered; letting its error reach the fail-open handler made a
+failed `DELETE` print `FAIL-OPEN … allowing the call` when nothing extra had
+been allowed. `FAIL-OPEN` means the cap is off right now. Nothing else may say
+it.
 
 What a fixed window guarantees, stated so nobody over-claims it: `max` per
 window, and at worst `2 × max` across a sliding window. That bound does not grow
-with the replica count, which is the property being bought.
+with the replica count, which is the property being bought. State the guarantee
+the code actually delivers, not an estimate that holds for one waiter.
 
 ## 2. Every periodic job claims its work, or runs under `withSweepLock`
 
