@@ -18,8 +18,14 @@ export type WebhookRequest = {
 }
 
 export type WebhookDelivery = {
-  /** Provider-supplied delivery id, for idempotency. */
-  deliveryId: string
+  /**
+   * Provider-supplied delivery id, for idempotency — **null** when this
+   * provider gives none, which the intake route turns into a hash of the body
+   * rather than inventing one. It used to fall back to `Date.now()`, which
+   * reads like an id and dedupes nothing: a retry minted a fresh key and
+   * became a second job.
+   */
+  deliveryId: string | null
   /** The adapter's canonical container key this delivery belongs to. */
   containerKey: string | null
   /** External ids to re-read, when the payload carries ids rather than items. */

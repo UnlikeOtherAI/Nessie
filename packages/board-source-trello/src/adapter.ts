@@ -238,7 +238,10 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
         action?: { id?: string; data?: { card?: { id?: string }; board?: { id?: string } } }
       }
       return {
-        deliveryId: parsed.action?.id ?? `trello:${Date.now()}`,
+        // Trello identifies the action, not the delivery, and repeats that id
+        // on every retry of it. Null rather than a clock reading when the
+        // payload carries none — the caller hashes the body instead.
+        deliveryId: parsed.action?.id ?? null,
         containerKey: parsed.action?.data?.board?.id ?? null,
         externalIds: parsed.action?.data?.card?.id ? [parsed.action.data.card.id] : [],
       }

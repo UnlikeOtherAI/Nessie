@@ -8,10 +8,13 @@ import type { BrowserbaseClient } from '../src/browserbase-client.js'
 import {
   openCloudBrowserSession,
   reapExpiredCloudBrowserSessions,
+  releaseCloudBrowserSession,
   releaseSessionsForRun,
   resolveConnectionForRun,
   type CloudBrowserDeps,
+  type OpenSessionInput,
 } from '../src/session-lifecycle.js'
+import { loadSessionCapability, persistOriginGate } from '../src/session-capability.js'
 
 /**
  * The claims here all cost money or correctness if they are wrong: a second
@@ -22,6 +25,20 @@ import {
  * partial unique indexes and an advisory lock.
  */
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
+
+const AUTH_SECRET = 'test-auth-secret'
+const EMPTY_GATE = { authenticatedOrigins: [], touchedAuthenticated: false, currentUrl: null }
+
+/** The capability arguments, for the tests that are about something else. */
+const openSession = (
+  deps: CloudBrowserDeps,
+  input: Omit<OpenSessionInput, 'encryptionSecret' | 'originGate'>,
+) =>
+  openCloudBrowserSession(deps, {
+    ...input,
+    encryptionSecret: AUTH_SECRET,
+    originGate: EMPTY_GATE,
+  })
 
 type Seed = {
   organizationId: string
@@ -131,7 +148,7 @@ runDatabaseTest('a run cannot hold two cloud browsers at once', async () => {
       },
     })
 
-    const first = await openCloudBrowserSession(deps, {
+    const first = await openSession(deps, {
       organizationId: seed.organizationId,
       runId: seed.runId,
       threadId: seed.threadId,
@@ -141,7 +158,7 @@ runDatabaseTest('a run cannot hold two cloud browsers at once', async () => {
     assert.ok(first.browserbaseSessionId)
 
     await assert.rejects(
-      openCloudBrowserSession(deps, {
+      openSession(deps, {
         organizationId: seed.organizationId,
         runId: seed.runId,
         threadId: seed.threadId,
@@ -172,7 +189,7 @@ runDatabaseTest('releasing a run tells the provider to stop the browser', async 
         createdByUserId: seed.userId,
       },
     })
-    const opened = await openCloudBrowserSession(deps, {
+    const opened = await openSession(deps, {
       organizationId: seed.organizationId,
       runId: seed.runId,
       threadId: seed.threadId,
@@ -364,6 +381,154 @@ runDatabaseTest('a needs_attention connection stops resolving for new runs', asy
     // A dead key must stop the toolset advertising a browser, rather than
     // failing at the moment somebody actually needs one.
     assert.equal(resolved, null)
+  } finally {
+    await seed.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('an open session is re-attachable by a worker that did not open it', async () => {
+  const prisma = new PrismaClient()
+  const seed = await seedTeam(prisma, 'browser capability')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await prisma.cloudBrowserConnection.create({
+      data: {
+        organizationId: seed.organizationId,
+        scope: 'organization',
+        projectId: 'proj',
+        apiKeyRef: 'secret_browserbase_x',
+        createdByUserId: seed.userId,
+      },
+    })
+
+    const opened = await openCloudBrowserSession(deps, {
+      organizationId: seed.organizationId,
+      runId: seed.runId,
+      threadId: seed.threadId,
+      agentId: seed.agentId,
+      requestedByUserId: seed.userId,
+      encryptionSecret: AUTH_SECRET,
+      originGate: EMPTY_GATE,
+    })
+
+    const stored = await prisma.cloudBrowserSession.findUniqueOrThrow({
+      where: { id: opened.sessionId },
+      select: { status: true, connectCapabilityCiphertext: true, originGate: true },
+    })
+    // Written in the same statement as `active`: a live session another worker
+    // cannot reach is the whole defect (audit 8.1).
+    assert.equal(stored.status, 'active')
+    assert.ok(stored.connectCapabilityCiphertext, 'the connect capability must be stored')
+    // Sealed, not stored: the row is a bearer capability if anyone can read it.
+    assert.equal(
+      stored.connectCapabilityCiphertext?.includes('connect.browserbase.com'),
+      false,
+      'the connect URL must never sit in the column as plaintext',
+    )
+    assert.deepEqual(stored.originGate, EMPTY_GATE)
+
+    // What the second worker does: read the row, unseal, drive the same browser.
+    const capability = await loadSessionCapability(prisma, {
+      sessionId: opened.sessionId,
+      encryptionSecret: AUTH_SECRET,
+    })
+    assert.equal(capability?.connectUrl, opened.connectUrl)
+
+    // The gate travels with it, so the resumed run gates on what the first
+    // worker learned from the browser's cookies.
+    await persistOriginGate(prisma, {
+      sessionId: opened.sessionId,
+      originGate: {
+        authenticatedOrigins: ['https://mail.example.com'],
+        touchedAuthenticated: true,
+        currentUrl: 'https://mail.example.com/inbox',
+      },
+    })
+    const resumed = await loadSessionCapability(prisma, {
+      sessionId: opened.sessionId,
+      encryptionSecret: AUTH_SECRET,
+    })
+    assert.deepEqual(resumed?.originGate, {
+      authenticatedOrigins: ['https://mail.example.com'],
+      touchedAuthenticated: true,
+      currentUrl: 'https://mail.example.com/inbox',
+    })
+
+    // A deployment whose auth secret has rotated cannot drive it, and says so
+    // by returning nothing rather than by handing back a broken URL.
+    assert.equal(
+      await loadSessionCapability(prisma, {
+        sessionId: opened.sessionId,
+        encryptionSecret: 'a-different-auth-secret',
+      }),
+      null,
+    )
+
+    await releaseCloudBrowserSession(deps, {
+      sessionId: opened.sessionId,
+      releasedBy: 'test',
+    })
+    const released = await prisma.cloudBrowserSession.findUniqueOrThrow({
+      where: { id: opened.sessionId },
+      select: { status: true, connectCapabilityCiphertext: true, originGate: true },
+    })
+    // Cleared with the release claim, not at `released`: a sealed connect URL
+    // outliving its session is a bearer token with nothing bounding it.
+    assert.equal(released.status, 'released')
+    assert.equal(released.connectCapabilityCiphertext, null)
+    assert.equal(released.originGate, null)
+    assert.equal(
+      await loadSessionCapability(prisma, {
+        sessionId: opened.sessionId,
+        encryptionSecret: AUTH_SECRET,
+      }),
+      null,
+      'a released session is drivable by nobody',
+    )
+  } finally {
+    await releaseSessionsForRun(deps, { runId: seed.runId, releasedBy: 'test' })
+    await seed.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a deployment with no auth secret refuses before it spends money', async () => {
+  const prisma = new PrismaClient()
+  const seed = await seedTeam(prisma, 'browser no secret')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  try {
+    await prisma.cloudBrowserConnection.create({
+      data: {
+        organizationId: seed.organizationId,
+        scope: 'organization',
+        projectId: 'proj',
+        apiKeyRef: 'secret_browserbase_x',
+        createdByUserId: seed.userId,
+      },
+    })
+
+    await assert.rejects(
+      openCloudBrowserSession(deps, {
+        organizationId: seed.organizationId,
+        runId: seed.runId,
+        threadId: seed.threadId,
+        agentId: seed.agentId,
+        requestedByUserId: seed.userId,
+        encryptionSecret: '',
+        originGate: EMPTY_GATE,
+      }),
+      (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_NO_CONNECTION',
+    )
+    // Before the row and before the remote create: a browser nobody can resume
+    // must not have been paid for.
+    assert.deepEqual(calls, [])
+    assert.equal(
+      await prisma.cloudBrowserSession.count({ where: { runId: seed.runId } }),
+      0,
+    )
   } finally {
     await seed.cleanup()
     await prisma.$disconnect()

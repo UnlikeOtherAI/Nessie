@@ -325,3 +325,38 @@ runDatabaseTest('mapped fields land on native columns and custom fields', async 
     await prisma.$disconnect()
   }
 })
+
+runDatabaseTest('two workers applying one new item create exactly one task', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    // What a provider retry looks like once it has become two queue jobs: two
+    // workers apply the same external item at the same instant. The link's
+    // unique constraint stops a second *link*, but nothing constrains
+    // `(sourceId, externalId)` on `Task`, so before the advisory lock both
+    // read "no link", both inserted, and the loser's task was an orphan on
+    // nobody's board (audit 9.1).
+    const outcomes = await Promise.all([
+      applyInboundItem(prisma, context(seeded), item()),
+      applyInboundItem(prisma, context(seeded), item()),
+      applyInboundItem(prisma, context(seeded), item()),
+      applyInboundItem(prisma, context(seeded), item()),
+    ])
+
+    const tasks = await prisma.task.findMany({ where: { projectId: seeded.projectId } })
+    assert.equal(tasks.length, 1, 'one external item is one task, however many appliers race')
+    const links = await prisma.taskExternalLink.findMany({ where: { sourceId: seeded.sourceId } })
+    assert.equal(links.length, 1)
+    assert.equal(links[0]?.taskId, tasks[0]?.id, 'the surviving link points at the surviving task')
+    // Every applier reports the same task, so no caller is holding an id that
+    // is about to stop existing.
+    for (const outcome of outcomes) {
+      assert.equal('taskId' in outcome ? outcome.taskId : null, tasks[0]?.id)
+    }
+    // Exactly one of them created it; the rest saw the first's work.
+    assert.equal(outcomes.filter((outcome) => outcome.applied === 'created').length, 1)
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})

@@ -567,7 +567,6 @@ export default [
       '**/__fixtures__/**',
       '**/fixtures/**',
       // --- (a) audited defects, each with the finding that owns its fix ---
-      'worker/src/run/browser-cloud/session-pool.ts', // 8.1 — in-memory CDP pool; becomes a re-attaching socket cache in Phase 2.7.
       'worker/src/control/registry-sync-sweep.ts', // 5.9 — process-local `inFlight` flag; moves under withSweepLock in Phase 2.9.
       'worker/src/control/automatic-membership/rate-limit.ts', // 5.6 — per-process buckets; Postgres token bucket in Phase 5.3.
       'worker/src/run/external-conversation-store.ts', // 5.11 — per-process thread locks; covered by the run-slot advisory lock above them.
@@ -583,6 +582,7 @@ export default [
       'api/src/services/uoa-directory-cache.ts', // read-through LRU of UOA-verified directories; UOA stays the authority.
       'worker/src/control/knowledge-extract.ts', // `loggedSkips` — log-once dedupe; the worst N-instance outcome is N warnings.
       'worker/src/run/browser-cloud/release-hook.ts', // in-process wiring seam for the release chokepoint, set once at startup.
+      'worker/src/run/browser-cloud/session-pool.ts', // 8.1 fixed in Phase 2.7 — now a read-through socket cache; the sealed capability on the session row is the authority, and a miss re-attaches from it.
       'worker/src/run/pa-tools/agent-email-context.ts', // memoised mail deployment config/transport; derived from immutable config.
       'worker/src/run/pa-tools/dashboard-context.ts', // memoised dashboard tool services (the FileService chokepoint), one per process.
       'worker/src/run/pa-tools/people.ts', // short-TTL roster cache per (org, UOA org, UOA team); UOA stays the authority.
