@@ -258,6 +258,24 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
   const queryClient = useQueryClient()
   const [controlling, setControlling] = useState(false)
 
+  // A claim belongs to one session, and the flag has to end with it.
+  //
+  // The panel owns this hook so that going in and out of full screen does not
+  // hand the keyboard back (that remount used to destroy the hook, which is
+  // what reset this). The hook now outlives the session instead: when the
+  // agent opens a new browser after somebody finished with the last one, the
+  // cleanup below releases the old claim — but `controlling` would survive,
+  // and the heartbeat would then silently claim the *new* session every thirty
+  // seconds. The person never pressed anything, the agent's every verb comes
+  // back "somebody is at the controls", and it looks hung.
+  const claimedSessionId = useRef<string | null>(null)
+  useEffect(() => {
+    if (claimedSessionId.current === sessionId) return
+    claimedSessionId.current = null
+    setControlling(false)
+  }, [sessionId])
+
+
   const invalidate = () => {
     void queryClient.invalidateQueries({
       queryKey: browserCloudKeys.session(sessionId ?? undefined),
@@ -268,6 +286,7 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
     mutationFn: () =>
       apiClient.post<{ controlling: boolean }>(`/api/browser-sessions/${sessionId}/control`, {}),
     onSuccess: () => {
+      claimedSessionId.current = sessionId
       setControlling(true)
       invalidate()
     },
@@ -276,6 +295,7 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
   const handBack = useMutation({
     mutationFn: () => apiClient.delete<void>(`/api/browser-sessions/${sessionId}/control`),
     onSuccess: () => {
+      claimedSessionId.current = null
       setControlling(false)
       invalidate()
     },
