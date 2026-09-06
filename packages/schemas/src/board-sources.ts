@@ -214,6 +214,15 @@ export const TaskExternalLinkRecordSchema = z.object({
   externalKey: z.string(),
   externalUrl: z.string(),
   remoteStateName: z.string().nullable(),
+  /**
+   * The provider's own id and name for an assignee no identity link resolves.
+   * Both are provider data about the provider's own user and never a Nessie
+   * person (`BoardSourceIdentityLink` is the only bridge). The id travels
+   * beside the name because a name is not an identity: two Linear members can
+   * share a display name, and a filter or a search that keyed on the name
+   * alone would silently merge them.
+   */
+  remoteAssigneeExternalId: z.string().nullable(),
   remoteAssigneeDisplay: z.string().nullable(),
   lastInboundAt: TimestampSchema.nullable(),
   writeMode: BoardSourceWriteModeSchema,

@@ -1,13 +1,22 @@
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
+import { BoardAssigneeFilter } from '../../components/features/projects/kanban/BoardAssigneeFilter'
+import {
+  ALL_ASSIGNEES,
+  assigneeFilterOptions,
+  matchesAssigneeFilter,
+  parseAssigneeFilter,
+  type AssigneeFilter,
+} from '../../components/features/projects/kanban/board-assignee-filter'
 import type { BoardColumnView } from '../../components/features/projects/kanban/kanban-config'
 import type { BoardRecord } from '../../facades/boards/hooks'
 import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { useCanAdministerProject } from '../../facades/projects/administration'
-import { useMoveTask } from '../../facades/tasks/hooks'
+import { useMoveTask, useTaskAssignees } from '../../facades/tasks/hooks'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { useProjectSources } from '../../facades/board-sources/hooks'
 import { SourceStatusStrip } from '../../components/features/projects/kanban/SourceStatusStrip'
@@ -23,6 +32,8 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   const { data: projects = [] } = useProjects()
   const { data: sources = [] } = useProjectSources(projectId)
   const canAdminister = useCanAdministerProject(projectId)
+  const { data: assignableUsers = [] } = useTaskAssignees()
+  const { me } = useAuthSession()
   const moveTask = useMoveTask()
   useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
 
@@ -36,7 +47,31 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   )
 
   const columns: BoardColumnView[] = board?.columns ?? []
-  const tasks = tasksQuery.data?.tasks ?? []
+  const tasks = useMemo(() => tasksQuery.data?.tasks ?? [], [tasksQuery.data])
+
+  // A view over the board, not part of it: the choice lives in the URL beside
+  // `?board=`, so a reload keeps it and a narrowed board is a link somebody can
+  // send, while `Board.filter` stays the board's shared definition.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const assignee = parseAssigneeFilter(searchParams.get('assignee'))
+  const currentUserId = me?.user.id ?? null
+  const setAssignee = (next: AssigneeFilter) => {
+    const params = new URLSearchParams(searchParams)
+    if (next === ALL_ASSIGNEES) params.delete('assignee')
+    else params.set('assignee', next)
+    setSearchParams(params, { replace: true })
+  }
+
+  // Options come from the whole pool, so narrowing to one person does not empty
+  // the list you would use to pick somebody else.
+  const filterOptions = useMemo(
+    () => assigneeFilterOptions(tasks, assignableUsers),
+    [tasks, assignableUsers],
+  )
+  const visibleTasks = useMemo(
+    () => tasks.filter((task) => matchesAssigneeFilter(task, assignee, currentUserId)),
+    [tasks, assignee, currentUserId],
+  )
 
   const handleMove = (taskId: string, columnId: string, position: number) => {
     moveTask.mutate({ id: taskId, columnId, position })
@@ -73,13 +108,27 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
-      <SourceStatusStrip
-        canAdminister={canAdminister}
-        projectId={projectId}
-        sources={sources}
-      />
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <SourceStatusStrip
+            canAdminister={canAdminister}
+            projectId={projectId}
+            sources={sources}
+          />
+        </div>
+        <BoardAssigneeFilter
+          currentUserId={currentUserId}
+          onChange={setAssignee}
+          people={filterOptions.people}
+          remote={filterOptions.remote}
+          value={assignee}
+        />
+      </div>
       {tasksQuery.data?.truncated ? (
         <div className="text-xs text-[color:var(--tx3)]">
+          {/* The cap is on the board read, so it bounds what any filter can
+              possibly match — say so before somebody reads an empty column as
+              "nobody is working on this". */}
           Showing the 500 most recently updated cards.
         </div>
       ) : null}
@@ -105,6 +154,24 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             New tasks appear in the first column — or bring in work from Jira, Linear,
             Trello or GitHub.
           </EmptyState>
+        ) : visibleTasks.length === 0 && tasks.length > 0 ? (
+          // Empty columns under a filter would otherwise read as "nobody is
+          // working on anything"; the board is not empty, this view is.
+          <EmptyState
+            action={
+              <button
+                className="admin-button"
+                onClick={() => setAssignee(ALL_ASSIGNEES)}
+                type="button"
+              >
+                Show all assignees
+              </button>
+            }
+            title="No cards for this assignee."
+          >
+            This board has {tasks.length} {tasks.length === 1 ? 'card' : 'cards'}, none
+            of them assigned to whoever the filter names.
+          </EmptyState>
         ) : columns.length === 0 ? (
           <EmptyState
             action={
@@ -127,7 +194,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             projectId={projectId}
             projectNameById={projectNameById}
             showProject={false}
-            tasks={tasks}
+            tasks={visibleTasks}
           />
         )}
       </div>
