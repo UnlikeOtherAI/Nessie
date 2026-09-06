@@ -5,7 +5,10 @@
 // Run: pnpm --filter @nessie/worker test:smoke:multi [--chaos] [--verbose]
 // Needs api/dist + worker/dist and a DEDICATED, freshly migrated Postgres at
 // DATABASE_URL: it bootstraps the owner over HTTP, which only works while no
-// user exists, so it cannot share a database the way smoke.ts can.
+// user exists, so it cannot share a database the way smoke.ts can. It also needs
+// an S3-compatible bucket both instances share, because `filesystem` storage
+// gives each replica a private directory and `selfHosted` mode refuses it:
+//   docker compose -f infrastructure/compose/docker-compose.multi.yml up -d minio minio-setup
 // `--chaos` adds the Phase 0.4 kill steps (SIGTERM one worker mid-run, one API
 // mid-stream) and asserts the durability properties the horizontal-scaling plan
 // names: (a) no duplicate agent message, (b) no unfinished run without a live
@@ -17,7 +20,9 @@ import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import http from 'node:http'
 import { dirname, resolve } from 'node:path'
+import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { getStorage } from '@nessie/runtime'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const CHAOS = process.argv.includes('--chaos')
@@ -34,6 +39,17 @@ const EXPECTED_ANSWER =
 const CHAOS_TURN_LATENCY_MS = 8_000
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://nessie:nessie@localhost:55432/nessie'
+// Two instances sharing one bucket, because that is the invariant under test:
+// `filesystem` storage gives each replica a private directory, so instance 1
+// writes an attachment instance 2 answers 404 for. `selfHosted` mode now refuses
+// it at config load, which is what this harness must run against. Credentials
+// mirror `infrastructure/compose/docker-compose.multi.yml` so the compose stack
+// and this harness talk to the same MinIO.
+const STORAGE_ENDPOINT = process.env.SMOKE_MULTI_STORAGE_ENDPOINT ?? 'http://127.0.0.1:9010'
+const STORAGE_BUCKET = process.env.SMOKE_MULTI_STORAGE_BUCKET ?? 'nessie'
+const STORAGE_ACCESS_KEY_ID = process.env.SMOKE_MULTI_STORAGE_ACCESS_KEY_ID ?? 'nessie'
+const STORAGE_SECRET_ACCESS_KEY =
+  process.env.SMOKE_MULTI_STORAGE_SECRET_ACCESS_KEY ?? 'nessie-multi-instance'
 process.env.DATABASE_URL = DATABASE_URL
 process.env.NESSIE_DB_URL = DATABASE_URL
 
@@ -193,6 +209,42 @@ type Seed = { messageId: string; threadId: string }
 const checks: Check[] = []
 const check = (name: string, ok: boolean, detail: string): void => { checks.push({ detail, name, ok }) }
 
+// A boot timeout tells you nothing about why, and the commonest local failure is
+// simply that nobody started MinIO. An unauthenticated HEAD cannot tell a missing
+// bucket from a present one — MinIO answers 403 either way — so this does the real
+// round trip through the same client the API will use, which also proves the
+// credentials, the region and path-style addressing before two processes depend on
+// them.
+const assertSharedStorageReachable = async (): Promise<void> => {
+  const storage = getStorage({
+    accessKeyId: STORAGE_ACCESS_KEY_ID,
+    bucket: STORAGE_BUCKET,
+    endpoint: STORAGE_ENDPOINT,
+    forcePathStyle: true,
+    maxUploadBytes: 5 * 1024 * 1024 * 1024,
+    provider: 's3',
+    region: 'us-east-1',
+    secretAccessKey: STORAGE_SECRET_ACCESS_KEY,
+  })
+  const key = `smoke-multi/preflight-${randomUUID()}`
+  try {
+    await storage.putStream(key, Readable.from([Buffer.from('preflight')]), 'text/plain')
+    const read = await storage.getStream(key)
+    if (!read) throw new Error('the object could not be read back')
+    read.destroy()
+    await storage.delete(key)
+  } catch (error) {
+    throw new Error(
+      `Shared object storage is not usable at ${STORAGE_ENDPOINT}/${STORAGE_BUCKET}`
+      + ` (${error instanceof Error ? error.message : String(error)}). Two instances`
+      + ' must share one bucket; start it with `docker compose -f'
+      + ' infrastructure/compose/docker-compose.multi.yml up -d minio minio-setup`,'
+      + ' or point SMOKE_MULTI_STORAGE_ENDPOINT at your own S3-compatible endpoint.',
+      { cause: error },
+    )
+  }
+}
+
 const main = async (): Promise<void> => {
   const { createMockLlmServer, loadScenario } = await import('@nessie/mock-llm')
   const base = await loadScenario(SCENARIO)
@@ -202,6 +254,7 @@ const main = async (): Promise<void> => {
       (index === 0 && CHAOS ? { ...turn, latencyMs: CHAOS_TURN_LATENCY_MS } : turn)),
   }
   for (const port of [PORT_BASE, ...API_PORTS]) await assertPortFree(port)
+  await assertSharedStorageReachable()
   // One mock server per worker: its counter tells the chaos step who is running.
   const mocks = [await createMockLlmServer({ scenario }), await createMockLlmServer({ scenario })]
 
@@ -222,6 +275,13 @@ const main = async (): Promise<void> => {
     UOA_CONFIG_JWT_KID: 'multi-instance-smoke',
     UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(pem).toString('base64'),
     UOA_CONFIG_URL: 'http://127.0.0.1:1/config',
+    NESSIE_STORAGE_ACCESS_KEY_ID: STORAGE_ACCESS_KEY_ID,
+    NESSIE_STORAGE_BUCKET: STORAGE_BUCKET,
+    NESSIE_STORAGE_ENDPOINT: STORAGE_ENDPOINT,
+    NESSIE_STORAGE_FORCE_PATH_STYLE: 'true',
+    NESSIE_STORAGE_PROVIDER: 's3',
+    NESSIE_STORAGE_REGION: 'us-east-1',
+    NESSIE_STORAGE_SECRET_ACCESS_KEY: STORAGE_SECRET_ACCESS_KEY,
     UOA_DOMAIN: 'multi-instance-smoke.invalid',
   }
   const apis = API_PORTS.map((port, index) =>

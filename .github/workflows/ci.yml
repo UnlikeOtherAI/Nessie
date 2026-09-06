@@ -532,6 +532,31 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/api prisma:migrate:deploy
 
+      # Two instances must share one bucket: `filesystem` storage gives each
+      # replica a private directory, so instance 1 writes an attachment instance 2
+      # answers 404 for, and `selfHosted` mode refuses it at config load. Not a
+      # `services:` container because MinIO needs `server /data` as its command and
+      # service containers cannot override one. Credentials match
+      # `infrastructure/compose/docker-compose.multi.yml`.
+      - name: Start shared object storage
+        if: steps.scope.outputs.code == '1'
+        run: |
+          docker run -d --name minio \
+            -p 9010:9000 \
+            -e MINIO_ROOT_USER=nessie \
+            -e MINIO_ROOT_PASSWORD=nessie-multi-instance \
+            minio/minio:latest server /data
+          for attempt in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9010/minio/health/live > /dev/null; then break; fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "MinIO did not become live in 60s"; docker logs minio; exit 1
+            fi
+            sleep 2
+          done
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+            "mc alias set local http://127.0.0.1:9010 nessie nessie-multi-instance \
+             && mc mb --ignore-existing local/nessie"
+
       - name: Run multi-instance smoke
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/worker test:smoke:multi
