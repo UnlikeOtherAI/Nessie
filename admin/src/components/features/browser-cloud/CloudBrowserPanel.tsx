@@ -9,6 +9,7 @@ import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { FormError } from '../../shared/FormActions'
+import { BrowserHomepageField } from './BrowserHomepageField'
 import { CloudBrowserConnectionForm } from './CloudBrowserConnectionForm'
 import {
   SETTING_KEYS,
@@ -57,19 +58,31 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
 }
 
 /**
- * One panel, both homes: the owner-only company account on organisation
- * settings and a person's own account on their connections page.
+ * One panel, three homes: the owner-only company account on organisation
+ * settings, a team's on its own, and a person's on their connections page.
+ *
+ * One component rather than three because everything it carries — the
+ * connection, the lock that stops a level below overriding it, the home page —
+ * cascades the same way, and a second copy of that reasoning is how the levels
+ * drift apart.
  */
 export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelProps) => {
   const connections = useCloudBrowserConnections()
   const disconnect = useDisconnectCloudBrowser()
-  const settings = useScopedSettings(scope, [SETTING_KEYS.browserConnection], teamId)
+  // Both browser keys in one request: they are drawn a few centimetres apart
+  // at the same level, and a second query would resolve the same cascade again.
+  const settings = useScopedSettings(
+    scope,
+    [SETTING_KEYS.browserConnection, SETTING_KEYS.browserHomepage],
+    teamId,
+  )
   const writeSetting = useWriteScopedSetting()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const copy = SCOPE_COPY[scope]
   const setting = settingFor(settings.data, SETTING_KEYS.browserConnection)
+  const homepageSetting = settingFor(settings.data, SETTING_KEYS.browserHomepage)
   const rows: CloudBrowserConnectionRecord[] = connections.data?.connections ?? []
   const connection = rows.find((row) =>
     scope === 'organization' ? row.scope === 'organization'
@@ -154,6 +167,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           />
         </div>
       ) : null}
+
+      <BrowserHomepageField scope={scope} setting={homepageSetting} teamId={teamId} />
 
       {connection ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">

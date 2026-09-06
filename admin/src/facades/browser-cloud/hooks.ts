@@ -169,6 +169,46 @@ export const useEndResumedSession = (threadId: string | null, agentId: string | 
   })
 }
 
+/**
+ * Resize the agent's browser.
+ *
+ * Stored on the browser, so it is the size the *agent's* next session opens
+ * at too, not only this person's. The session detail carries the size the
+ * running session is actually at, so invalidating it is what makes the
+ * control agree with the window after a resize the provider would not apply.
+ */
+export const useSetAgentBrowserViewport = (threadId: string | null, agentId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (viewport: { width: number; height: number }) =>
+      apiClient.post<{ appliedToLiveSession: boolean; viewport: { width: number; height: number } }>(
+        `/api/threads/${threadId}/agents/${agentId}/browser/viewport`,
+        viewport,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
+      })
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
+    },
+  })
+}
+
+/**
+ * Send the browser to the home page the cascade resolves for this person in
+ * this conversation. The address is the server's answer, never the client's:
+ * an administrator sets it at a level, and a client that resolved it itself
+ * would be a second implementation of the cascade.
+ */
+export const useSendBrowserHome = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      apiClient.post<{ url: string }>(`/api/browser-sessions/${sessionId}/home`, {}),
+  })
+}
+
 export const useResetAgentBrowser = (agentId: string | null) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

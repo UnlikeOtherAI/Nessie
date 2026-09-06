@@ -5,6 +5,8 @@
 
 export const browserCloudKeys = {
   connections: ['browser-cloud', 'connections'] as const,
+  /** The family root, for the rare change that touches whichever session is on screen. */
+  sessions: ['browser-cloud', 'sessions'] as const,
   session: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId] as const,
   threadSessions: (threadId?: string) =>
     ['browser-cloud', 'threads', threadId, 'sessions'] as const,

@@ -16,6 +16,15 @@ export type ResumeAgentBrowserInput = {
   teamId: string | null
   /** The person resuming. Never null: a resume is somebody's ask. */
   userId: string
+  /**
+   * Where to land when the browser has no stored tabs — a brand new one, or
+   * one that was reset. Resolved by the caller through the settings cascade,
+   * because that resolution belongs to the organisation's configuration and
+   * not to this package, which must stay reachable from the worker with no
+   * settings reader attached. Absent means "leave it on a blank page", which
+   * is what a caller with no opinion gets.
+   */
+  homepage?: string
 }
 
 /**
@@ -32,6 +41,29 @@ export type ResumeAgentBrowserInput = {
  * resumed, the agent's own `browser_open` is told the browser is open in
  * another run, exactly as when two runs collide.
  */
+/**
+ * Best effort, deliberately: see the call site. A browser that came up but did
+ * not reach its home page is still a working browser, and releasing it would
+ * turn a cosmetic miss into a resume that failed.
+ */
+const openHomepage = async (
+  deps: CloudBrowserDeps,
+  connectUrl: string,
+  homepage: string,
+): Promise<void> => {
+  const dial = deps.connect ?? connectCdp
+  let cdp: CdpClient | null = null
+  try {
+    cdp = await dial(connectUrl)
+    await cdp.attachToPage()
+    await cdp.call('Page.navigate', { url: homepage })
+  } catch {
+    // Left on a blank page, which the reader can see and act on.
+  } finally {
+    cdp?.close()
+  }
+}
+
 export const resumeAgentBrowser = async (
   deps: CloudBrowserDeps,
   input: ResumeAgentBrowserInput,
@@ -65,17 +97,30 @@ export const resumeAgentBrowser = async (
     originGate: {
       authenticatedOrigins: [],
       touchedAuthenticated: false,
-      currentUrl: tabs[0]?.url ?? null,
+      currentUrl: tabs[0]?.url ?? input.homepage ?? null,
     },
     agentBrowser: {
       id: browser.id,
       connectionId: browser.connectionId,
       browserbaseContextId: browser.browserbaseContextId,
       hasLogins: browser.loginCount > 0,
+      // The same window the agent's own runs get, so a person resuming sees
+      // the pages laid out the way the agent left them rather than reflowed.
+      viewport: browser.viewport,
     },
   })
 
-  if (tabs.length === 0) return { sessionId: opened.sessionId, restoredTabs: 0 }
+  if (tabs.length === 0) {
+    // Nothing to put back, so this is a browser opening for the first time.
+    // Landing it on the home page rather than a blank page is the difference
+    // between a window somebody can use and one they have to type an address
+    // into — and unlike a restore, failing to get there is not worth ending
+    // the session over: the browser is up, it is simply still blank.
+    if (input.homepage !== undefined) {
+      await openHomepage(deps, opened.connectUrl, input.homepage)
+    }
+    return { sessionId: opened.sessionId, restoredTabs: 0 }
+  }
 
   // The restore holds the socket only long enough to issue the navigations.
   // Nothing else drives this session, so there is no rival connection to

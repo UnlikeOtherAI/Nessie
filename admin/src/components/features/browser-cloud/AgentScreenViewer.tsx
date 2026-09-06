@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { BROWSER_VIEWPORT_PRESETS, type BrowserViewport } from '@nessie/schemas'
+
 import {
   useCloudBrowserSession,
   useEndResumedSession,
+  useSendBrowserHome,
+  useSetAgentBrowserViewport,
   type BrowserControl,
 } from '../../../facades/browser-cloud/hooks'
 import { useTabParam } from '../../../navigation/useTabParam'
@@ -85,6 +89,8 @@ export const AgentScreenViewer = ({
   // stops — not "hand back to the agent".
   const resumed = session.data?.runId === null
   const endResumed = useEndResumedSession(threadId, agent?.id ?? null)
+  const sendHome = useSendBrowserHome()
+  const setViewport = useSetAgentBrowserViewport(threadId, agent?.id ?? null)
   // Whether signing in here signs in for other people is the session's answer.
   // Reading it off the agent's visibility said "shared" for every browser a
   // team agent owned — including the Personal Assistant's, which since the
@@ -157,6 +163,21 @@ export const AgentScreenViewer = ({
   }
   const frameUrl = heldFrame.current?.url ?? null
 
+  // The size the running session is actually at, which is not always the size
+  // the browser is set to: Browserbase fixes a window when the session is
+  // created, so a resize the provider would not apply live shows here as the
+  // old size until the next open. Naming the size rather than the preset when
+  // the two disagree is what keeps that honest.
+  const viewport: BrowserViewport | null = session.data?.viewport ?? null
+  const presetId = viewport === null
+    ? null
+    : BROWSER_VIEWPORT_PRESETS.find((option) =>
+      option.viewport.width === viewport.width && option.viewport.height === viewport.height,
+    )?.id ?? null
+  const viewportLabel = viewport === null
+    ? 'Window size'
+    : `${viewport.width}×${viewport.height}`
+
   // A held URL outlives its session if the provider retires it, which looks
   // like a frame that has simply stopped. Re-minting is one press away rather
   // than a reason to go back to swapping `src` on a timer.
@@ -168,7 +189,10 @@ export const AgentScreenViewer = ({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-shrink-0 items-center gap-2 px-4 py-2">
+      {/* Wraps rather than overflows: full screen on a phone is a 390px row
+          carrying a name, two pills and up to four controls, and a header that
+          scrolls sideways hides the one control the reader came for. */}
+      <div className="flex flex-shrink-0 flex-wrap items-center gap-2 px-4 py-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">
           {session.data?.agentName ?? 'Agent'}
         </span>
@@ -181,16 +205,52 @@ export const AgentScreenViewer = ({
           </Pill>
         ) : null}
         {live ? (
-          <span className="ml-auto flex items-center gap-2">
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {variant === 'fullscreen' ? (
-              <button
-                aria-label="Reload the live view"
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={reloadFrame}
-                type="button"
-              >
-                Reload
-              </button>
+              <>
+                <label className="sr-only" htmlFor="browser-viewport">Window size</label>
+                <select
+                  // `.admin-input` is full-width by design; in a header row it
+                  // is one control among several, so the width is its content's.
+                  className="admin-input admin-input-sm w-auto"
+                  disabled={setViewport.isPending}
+                  id="browser-viewport"
+                  onChange={(event) => {
+                    const preset = BROWSER_VIEWPORT_PRESETS
+                      .find((option) => option.id === event.target.value)
+                    if (preset) setViewport.mutate(preset.viewport)
+                  }}
+                  value={presetId ?? ''}
+                >
+                  {presetId === null ? (
+                    <option value="">{viewportLabel}</option>
+                  ) : null}
+                  {BROWSER_VIEWPORT_PRESETS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label} · {option.viewport.width}×{option.viewport.height}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  disabled={!control.controlling || sendHome.isPending}
+                  onClick={() => sendHome.mutate(sessionId)}
+                  title={control.controlling
+                    ? 'Go to the home page set for this organisation'
+                    : 'Take control first'}
+                  type="button"
+                >
+                  {sendHome.isPending ? 'Going…' : 'Home'}
+                </button>
+                <button
+                  aria-label="Reload the live view"
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  onClick={reloadFrame}
+                  type="button"
+                >
+                  Reload
+                </button>
+              </>
             ) : null}
             {resumed && control.controlling ? (
               <button
@@ -276,6 +336,10 @@ export const AgentScreenViewer = ({
         <p className="flex-shrink-0 px-4 py-2 text-xs text-[color:var(--tx3)]">
           {claimFailed
             ? 'Couldn’t take control — try Take control above.'
+          : setViewport.data?.appliedToLiveSession === false
+            ? `Saved ${setViewport.variables?.width}×${setViewport.variables?.height}. `
+              + 'This browser keeps the window it opened with; the next one opens at the '
+              + 'new size.'
             : resumed
               ? control.controlling
                 ? 'You are driving. What you type goes straight to the browser — it never '
