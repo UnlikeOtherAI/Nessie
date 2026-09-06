@@ -6,6 +6,7 @@ import { Notice } from '../../../primitives/Notice'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../../primitives/TabBar'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../../../shared/AssigneePicker'
+import { RemotePersonPill } from './RemotePersonPill'
 import { ConfirmDialog } from '../../../shared/ConfirmDialog'
 import { Dialog } from '../../../shared/Dialog'
 import { FieldLabel } from '../../../primitives/FieldLabel'
@@ -152,6 +153,17 @@ export const TaskDialog = ({
     (patch: Partial<TaskDraft>) => setDraft((current) => ({ ...current, ...patch })),
     [setDraft],
   )
+
+  // Who the provider says is on it, when that is nobody Nessie knows. Hidden as
+  // soon as the draft names somebody, because choosing a colleague is the
+  // answer to it.
+  const remoteAssignee =
+    !assignee && task?.externalLink?.remoteAssigneeDisplay
+      ? {
+          displayName: task.externalLink.remoteAssigneeDisplay,
+          provider: task.externalLink.provider,
+        }
+      : null
 
   const assigneeOptions = useMemo<AssigneeOption[]>(
     () => [
@@ -352,6 +364,17 @@ export const TaskDialog = ({
               options={assigneeOptions}
               value={assignee}
             />
+            {remoteAssignee ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-[color:var(--tx3)]">
+                <RemotePersonPill
+                  displayName={remoteAssignee.displayName}
+                  provider={remoteAssignee.provider}
+                />
+                <span>
+                  has it in {PROVIDER_LABEL[remoteAssignee.provider]} and has no Nessie account.
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <FormField label="Deadline">

@@ -10,6 +10,38 @@ fact. Read this before treating any section above as a description of the code.
 
 ### Deltas
 
+- **§5.8 email auto-matching shipped later than the rest of §5.8.** The column,
+  the `matchedBy: 'email'` vocabulary and the People table all shipped with the
+  first release; nothing wrote a match, so every provider user had to be mapped
+  by hand. It now runs in `packages/team-admin/src/board-source-identity.ts`
+  from three places: attaching a container matches the members the adapter
+  describes, and each sync page and webhook delivery matches the assignees the
+  items themselves name — which is what covers somebody who joined the upstream
+  team after the source was attached, without a second provider call. An
+  external user that already has a link row is never re-matched, so a person's
+  choice — including a deliberate *Not linked* — survives every sync.
+- **A mapping reaches the items already mirrored.** §5.8 did not say what
+  happens to the cards that were synced before a link existed, and the answer
+  was "nothing until somebody upstream touches them", because an unchanged item
+  fingerprints identically and is skipped. `reprojectIdentityLinks` re-applies
+  a changed link to every `TaskExternalLink` in the tenant that names that
+  provider user: the assignee, the `todo`-category `inbox`/`assigned` split,
+  and `remoteAssigneeDisplay`.
+- **§6.4 the unmapped-assignee pill is not "muted".** A muted chip is what a
+  *known* colleague and *Unassigned* both render as, so a third identical chip
+  claimed an account that does not exist. It ships as
+  `admin/src/components/kanban/RemotePersonPill.tsx`: the outlined chip the
+  item's own key pill uses, a crossed-out person glyph, and a title naming the
+  remedy. The `TaskDialog` says the same thing in words beside the assignee
+  picker, and the People table shows each member's address with a *Matched by
+  email* chip on the rows an address resolved.
+- **Two defects the above closed.** A link row that named nobody used to count
+  as a resolved identity, which cleared `remoteAssigneeDisplay` and left the
+  card reading *Unassigned* rather than naming the provider user; and saving the
+  People table rewrote every submitted row as `matchedBy: 'manual'`, which both
+  erased the provenance the table shows and created an empty row for every
+  stranger — the row that then blocks a later email match. The save now writes
+  only the rows whose identity actually changed.
 - **§3.7 the board filter** is stored, contract-checked and applied
   (`boardFilterWhere`), but **has no editor**. A board's filter can only be set
   through the API today. Deliberate: a control that narrows a board is only

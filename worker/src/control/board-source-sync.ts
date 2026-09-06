@@ -17,6 +17,8 @@ import {
 import { sealSecret } from '@nessie/runtime'
 import {
   applyInboundItem,
+  autoMatchItemAssignees,
+  externalTenantKeyFor,
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
   loadIdentityLinks,
@@ -115,6 +117,11 @@ export const executeBoardSourceSync = async (
   }
 
   const container = source.container as Record<string, unknown>
+  const tenant = {
+    organizationId: source.organizationId,
+    provider: source.provider,
+    externalTenantKey: externalTenantKeyFor(source),
+  }
   const applyContext = {
     id: source.id,
     organizationId: source.organizationId,
@@ -122,11 +129,7 @@ export const executeBoardSourceSync = async (
     provider: source.provider,
     stateMapping: parseStateMapping(source.stateMapping),
     fieldMappings: parseFieldMappings(source.fieldMappings),
-    identityByExternalUserId: await loadIdentityLinks(prisma, {
-      organizationId: source.organizationId,
-      provider: source.provider,
-      externalTenantKey: externalTenantKey(source.provider, container, source.connection),
-    }),
+    identityByExternalUserId: await loadIdentityLinks(prisma, tenant),
   }
 
   await prisma.boardSource.update({
@@ -143,6 +146,15 @@ export const executeBoardSourceSync = async (
       const result = await adapter.fetchPage(context, container, checkpoint, {
         syncWindowDays: source.syncWindowDays,
       })
+      // Before the page is applied, not after: an assignee this run can
+      // recognise by email must land on the very items that named them, rather
+      // than on whatever changes next.
+      await autoMatchItemAssignees(
+        prisma,
+        tenant,
+        result.items,
+        applyContext.identityByExternalUserId,
+      )
       for (const item of result.items) {
         const outcome = await applyInboundItem(prisma, applyContext, item)
         if (outcome.applied === 'unmapped_state') {
@@ -199,21 +211,6 @@ export const executeBoardSourceSync = async (
 
 const pollingIntervalMs = (adapter: { incrementalPollingIntervalMs?: number }): number =>
   adapter.incrementalPollingIntervalMs ?? 15 * 60 * 1000
-
-/**
- * The tenant one identity mapping covers. Jira's is the site (a 3LO token spans
- * sites, so the container carries it); Linear's is the workspace; the others
- * have no tenant of their own, so the provider name is the key.
- */
-const externalTenantKey = (
-  provider: string,
-  container: Record<string, unknown>,
-  connection: { externalTenantId: string },
-): string => {
-  if (provider === 'jira') return String(container.cloudId ?? '')
-  if (provider === 'linear') return connection.externalTenantId
-  return provider
-}
 
 const ensureWebhook = async (
   deps: BoardSourceSyncDeps,

@@ -203,11 +203,15 @@ export const applyInboundItem = async (
       return { applied: 'unmapped_state', stateName: item.stateName || item.stateId }
     }
 
-    const identity = item.assignee
+    // A link row that names nobody — a person left them unmapped, or an email
+    // match found no account — is the same as no link at all here: the card
+    // must still show who the provider says is on it.
+    const linked = item.assignee
       ? source.identityByExternalUserId.get(item.assignee.externalUserId) ?? null
       : null
+    const identity = linked?.userId || linked?.agentId ? linked : null
     const { taskData, fieldValues } = applyFieldMappings(item, source.fieldMappings)
-    const status = statusForItem(category, Boolean(identity?.userId || identity?.agentId))
+    const status = statusForItem(category, identity !== null)
 
     const base = {
       title: item.title,
@@ -289,29 +293,4 @@ export const applyInboundItem = async (
 
     return { applied: existing ? 'updated' : 'created', taskId: id as string }
   })
-}
-
-/**
- * Every identity link for one provider tenant, as the apply context wants it.
- * Scoped to the tenant rather than the source, so one mapping serves every
- * project that reads the same Linear organisation or Jira site.
- */
-export const loadIdentityLinks = async (
-  prisma: PrismaClient,
-  input: { organizationId: string; provider: string; externalTenantKey: string },
-): Promise<Map<string, { userId: string | null; agentId: string | null }>> => {
-  const links = await prisma.boardSourceIdentityLink.findMany({
-    where: {
-      organizationId: input.organizationId,
-      provider: input.provider as 'jira' | 'linear' | 'trello' | 'github',
-      externalTenantKey: input.externalTenantKey,
-    },
-    select: { externalUserId: true, userId: true, agentId: true },
-  })
-  return new Map(
-    links.map((link) => [
-      link.externalUserId,
-      { userId: link.userId, agentId: link.agentId },
-    ]),
-  )
 }

@@ -12,6 +12,12 @@ import {
 } from '@nessie/schemas'
 
 import { parseFieldMappings, parseStateMapping } from './board-source-apply.js'
+import {
+  autoMatchIdentitiesByEmail,
+  externalTenantKeyFor,
+  type IdentityLinkProjection,
+  reprojectIdentityLinks,
+} from './board-source-identity.js'
 
 /**
  * Board sources as the API manages them: attach, describe, map, pause, remove.
@@ -141,17 +147,6 @@ export const getBoardSourceDetail = async (
   }
 }
 
-export const externalTenantKeyFor = (source: {
-  provider: BoardSourceProvider
-  container: unknown
-  connection?: { externalTenantId?: string }
-}): string => {
-  const container = (source.container ?? {}) as Record<string, unknown>
-  if (source.provider === 'jira') return String(container.cloudId ?? '')
-  if (source.provider === 'linear') return source.connection?.externalTenantId ?? ''
-  return source.provider
-}
-
 /**
  * Attach a container to a project. Seeds the mapping from the adapter's own
  * description so the first sync is right without anybody configuring anything:
@@ -176,7 +171,7 @@ export const createBoardSource = async (
 ): Promise<BoardSourceRecord | BoardSourceError> => {
   const connection = await prisma.boardSourceConnection.findFirst({
     where: { id: input.connectionId, organizationId: input.organizationId },
-    select: { id: true, ownerUserId: true, provider: true },
+    select: { id: true, ownerUserId: true, provider: true, externalTenantId: true },
   })
   if (!connection || connection.provider !== input.provider) {
     return { error: 'CONNECTION_NOT_FOUND' }
@@ -199,6 +194,30 @@ export const createBoardSource = async (
 
   const stateMapping = seedStateMapping(input.description)
   const fieldMappings = seedFieldMappings(input.description, input.fieldTargets)
+
+  // The people the container already names, resolved before the source exists —
+  // so a board that syncs a minute from now shows colleagues by their Nessie
+  // identity rather than waiting for somebody to map them by hand. Ahead of the
+  // create rather than after it, because a failure here must leave nothing
+  // attached: a half-attached source answers the retry with
+  // `CONTAINER_ALREADY_ATTACHED`.
+  await autoMatchIdentitiesByEmail(
+    prisma,
+    {
+      organizationId: input.organizationId,
+      provider: input.provider,
+      externalTenantKey: externalTenantKeyFor({
+        provider: input.provider,
+        container: input.container,
+        connection: { externalTenantId: connection.externalTenantId },
+      }),
+    },
+    input.description.members.map((member) => ({
+      externalUserId: member.externalUserId,
+      displayName: member.displayName,
+      email: member.email ?? null,
+    })),
+  )
 
   const source = await prisma.boardSource.create({
     data: {
@@ -335,30 +354,66 @@ export const putBoardSourceMappings = async (
     include: { connection: { select: { externalTenantId: true } } },
   })
   if (!source) return { error: 'SOURCE_NOT_FOUND' }
-  const tenantKey = externalTenantKeyFor(source)
+  const tenant = {
+    organizationId: source.organizationId,
+    provider: source.provider,
+    externalTenantKey: externalTenantKeyFor(source),
+  }
+
+  // The whole People table is submitted every save, so what a person actually
+  // *decided* is the difference against what is stored. Rewriting every row
+  // would stamp `manual` over links an email match made — losing the
+  // distinction the table shows — and would create an empty "seen, unmapped"
+  // row for every stranger, which is exactly the row that then blocks a future
+  // match. Only changed rows are written, and only named ones are created.
+  const stored = await prisma.boardSourceIdentityLink.findMany({
+    where: {
+      organizationId: tenant.organizationId,
+      provider: tenant.provider,
+      externalTenantKey: tenant.externalTenantKey,
+    },
+    select: { externalUserId: true, userId: true, agentId: true },
+  })
+  const storedByExternalUserId = new Map(stored.map((link) => [link.externalUserId, link]))
+  const changed: IdentityLinkProjection[] = []
+  for (const link of input.identityLinks) {
+    const userId = link.userId ?? null
+    const agentId = link.agentId ?? null
+    const current = storedByExternalUserId.get(link.externalUserId)
+    if (current ? current.userId === userId && current.agentId === agentId : !userId && !agentId) {
+      continue
+    }
+    changed.push({
+      externalUserId: link.externalUserId,
+      displayName: link.externalDisplayName ?? null,
+      email: null,
+      userId,
+      agentId,
+    })
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
-    for (const link of input.identityLinks) {
+    for (const link of changed) {
       const data = {
-        externalDisplayName: link.externalDisplayName ?? null,
-        userId: link.userId ?? null,
-        agentId: link.agentId ?? null,
+        externalDisplayName: link.displayName,
+        userId: link.userId,
+        agentId: link.agentId,
         matchedBy: 'manual',
         createdByUserId: input.actorUserId,
       }
       await tx.boardSourceIdentityLink.upsert({
         where: {
           organizationId_provider_externalTenantKey_externalUserId: {
-            organizationId: source.organizationId,
-            provider: source.provider,
-            externalTenantKey: tenantKey,
+            organizationId: tenant.organizationId,
+            provider: tenant.provider,
+            externalTenantKey: tenant.externalTenantKey,
             externalUserId: link.externalUserId,
           },
         },
         create: {
-          organizationId: source.organizationId,
-          provider: source.provider,
-          externalTenantKey: tenantKey,
+          organizationId: tenant.organizationId,
+          provider: tenant.provider,
+          externalTenantKey: tenant.externalTenantKey,
           externalUserId: link.externalUserId,
           ...data,
         },
@@ -379,5 +434,9 @@ export const putBoardSourceMappings = async (
       include: sourceInclude,
     })
   })
+  // A mapping a person makes today is about work that already exists: without
+  // this, every card already assigned to that provider user would keep showing
+  // an unknown name until somebody upstream happened to touch it.
+  await reprojectIdentityLinks(prisma, tenant, changed)
   return mapBoardSource(updated)
 }
