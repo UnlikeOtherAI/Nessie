@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { useTenantHost, useTenantTeam } from '../../facades/team/tenant-host'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
+import { TeamHostSignIn } from './TeamHostSignIn'
 
 /**
  * What the browser's hostname means, decided once, above the router.
@@ -17,12 +18,15 @@ import { OrgPortal } from './OrgPortal'
  *   switches the session onto that team so a cold load lands where the address
  *   says. Resolving a name grants nothing — the switch that follows is where
  *   membership is checked, and it fails closed for a team the person is not in.
+ *   With no session it shows the tenant's branded sign-in instead of falling
+ *   through to the product's marketing page, which is what a customer's team
+ *   address used to serve their own people.
  * - **Anything else** renders the app untouched. That is every deployment with
  *   no tenant base domain configured, which is all of them until one opts in.
  */
 export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { data, isLoading } = useTenantHost()
-  const { switchUoaTeam, token } = useAuthSession()
+  const { sessionState, switchUoaTeam, token } = useAuthSession()
   const switched = useRef<string | null>(null)
 
   // The ids only exist for a signed-in caller on a team host — the public
@@ -51,6 +55,14 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
 
   if (data?.kind === 'organisation') {
     return <OrgPortal organisation={data.organisation} signInOrigin={data.signInOrigin} />
+  }
+
+  // Only once the session has actually settled. 'loading' would flash the
+  // sign-in card at somebody who is signed in, and 'bootstrap' is the
+  // first-run flow, which owns the screen and must not be interrupted by a
+  // tenant's branding.
+  if (data?.kind === 'team' && sessionState === 'unauthenticated') {
+    return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
   }
 
   return <>{children}</>
