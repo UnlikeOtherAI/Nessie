@@ -116,6 +116,32 @@ choosing a key that is an external fact rather than a clock reading: the
 provider's delivery id, `run:<id>`, `mailbox:<messageId>`. The audit's
 "Enqueue sites without an idempotency key" list is the current debt.
 
+**A receiver enqueues and acks; it does not do the work first.** Every HTTP
+receiver in this codebase answers the caller as soon as it has decided the
+delivery is real — `board-sources/webhooks.ts`, `comms-webhooks.ts`,
+`POST /api/events` — and two did not: trigger webhook intake dispatched the
+whole fire inline, and the DeepSignal insight receiver walked a team's linked
+members and wrote a digest transaction each (9.2). Neither was racy; both were
+wrong at N. Latency scaled with fan-out, and — the part the audit rated INFO —
+an instance recycled mid-request had already accepted an event a sender will
+never send again. Autoscaling makes that recycling routine rather than
+exceptional.
+
+**What must not move is the caller's answer to "did this reach anything".** A
+receiver that starts answering 202 for deliveries it will silently drop has
+traded a visible misconfiguration for an invisible one, and a webhook sender has
+no other channel. So the split is: validation and routing stay synchronous —
+a malformed body is a 4xx and is never enqueued; `trigger-intake.ts` resolves
+`resolveTriggerFireReadiness` before it queues, so a paused trigger and an agent
+bound to no channel are still the 409s they were; the DeepSignal receiver
+resolves the payload's enabled team, one indexed lookup, and answers
+`accepted: false` when it names none — and only the fan-out is queued. What the
+caller loses is what the ack cannot honestly carry: an id for a row that does not
+exist yet. `POST /api/triggers/webhook` returns the `dedupeKey` its delivery will
+be keyed by instead of the delivery record and `runId` it used to return, and the
+insight receiver returns `insightId` and `existing` instead of a `delivered`
+count.
+
 **A key on the enqueue is only half of it.** It coalesces two *enqueues*; it
 says nothing about the same *job row* being handed out twice — a dropped ack
 during a drain, a lease expiry, a nack-and-retry — which is exactly what N

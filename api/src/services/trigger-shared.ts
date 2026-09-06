@@ -7,6 +7,7 @@ import { parseRunId, type AgentTriggerRecord } from '@nessie/schemas'
 import { toTimestamp } from '@nessie/team-admin'
 import type { AgentTriggerDeliveryRecord } from '../contracts/triggers.js'
 import { toInputJson } from '../db/prisma-json.js'
+import { isWorkflowInstallationRunnable } from './workflow-templates.js'
 
 // Dispatch-side internals for the trigger service: delivery mapping, payload
 // normalization, retry bookkeeping, and the DispatchTriggerResult contract.
@@ -234,3 +235,81 @@ export type DispatchTriggerResult =
       trigger: AgentTriggerRecord
       workflowRunId?: string
     }
+
+/**
+ * Whether a trigger would fire right now, without firing it.
+ *
+ * The webhook intake enqueues rather than dispatching
+ * (docs/standards/horizontal-scaling.md § 3), and an enqueue on its own cannot
+ * tell a sender that its trigger is paused or that its agent is bound to no
+ * channel — the two things a misconfigured integration has to hear on the
+ * delivery it sent, and exactly what `POST /api/triggers/webhook`'s 409s carry.
+ * So the questions a couple of indexed lookups can answer stay on the request
+ * path, and only the fire itself moves.
+ *
+ * This is a *predicate*, deliberately not a second dispatcher: what decides
+ * whether a fire happens is still `queueTriggerRun`'s own gate, re-evaluated in
+ * the worker because a trigger can be paused between the ack and the fire. It
+ * mirrors that gate rather than `dispatchAgentTrigger`'s in one place — the
+ * personal assistant is exempt from the *binding* check, being its owner's
+ * delegate rather than an agent bound to channels — so the receiver never
+ * refuses a delivery the worker would happily have fired.
+ */
+export type TriggerFireReadiness =
+  | { kind: 'ready' }
+  | {
+      kind: 'not_ready'
+      reason: Extract<DispatchTriggerResult, { kind: 'rejected' }>['reason']
+    }
+
+const notReady = (
+  reason: Extract<DispatchTriggerResult, { kind: 'rejected' }>['reason'],
+): TriggerFireReadiness => ({ kind: 'not_ready', reason })
+
+export const resolveTriggerFireReadiness = async (
+  prisma: PrismaClient,
+  triggerId: string,
+): Promise<TriggerFireReadiness> => {
+  const trigger = await prisma.agentTrigger.findUnique({
+    where: { id: triggerId },
+    select: {
+      agent: { select: { agentKind: true } },
+      agentId: true,
+      enabled: true,
+      status: true,
+      targetChannelId: true,
+      targetThreadId: true,
+      workflowInstallation: { select: { active: true, status: true } },
+      workflowInstallationId: true,
+    },
+  })
+
+  if (!trigger) return notReady('trigger_not_found')
+  if (!trigger.enabled || trigger.status !== 'active') return notReady('trigger_paused')
+
+  if (trigger.workflowInstallationId) {
+    return trigger.workflowInstallation
+      && isWorkflowInstallationRunnable(trigger.workflowInstallation)
+      ? { kind: 'ready' }
+      : notReady('workflow_installation_not_ready')
+  }
+
+  if (!trigger.agentId || !trigger.agent) return notReady('agent_not_bound')
+  if (!trigger.targetChannelId || !trigger.targetThreadId) return notReady('agent_not_bound')
+
+  const thread = await prisma.thread.findUnique({
+    where: { id: trigger.targetThreadId },
+    select: { channelId: true },
+  })
+  if (!thread || thread.channelId !== trigger.targetChannelId) {
+    return notReady('agent_not_bound')
+  }
+
+  if (trigger.agent.agentKind === 'personal_assistant') return { kind: 'ready' }
+
+  const binding = await prisma.agentBinding.findFirst({
+    where: { agentId: trigger.agentId, channelId: trigger.targetChannelId },
+    select: { id: true },
+  })
+  return binding ? { kind: 'ready' } : notReady('agent_not_bound')
+}

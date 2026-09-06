@@ -8,8 +8,11 @@ import {
   viewerSatisfiesBasis,
 } from '@nessie/runtime'
 import { parseAgentId, parseThreadId, parseUserId } from '@nessie/schemas'
+import { messageInclude, type MessageWithReactions } from '@nessie/team-admin'
 
-import type { ThreadMessageRecord } from '../contracts/messaging.js'/**
+import type { ThreadMessageRecord } from '../contracts/messaging.js'
+
+/**
  * How a message row is loaded, shaped and paged for a reader.
  *
  * This is the bottom of the messaging stack: the Prisma `include` every writer
@@ -17,31 +20,14 @@ import type { ThreadMessageRecord } from '../contracts/messaging.js'/**
  * mutation and no read cursor, so `message-create.ts` can depend on it without
  * the two files importing each other — the cycle that used to exist while the
  * shared shape lived in a module that also wrote.
+ *
+ * The `include` itself now lives in `@nessie/team-admin`, because the worker
+ * authors messages too (the DeepSignal digest); it is re-exported here so this
+ * module stays the one place the API asks for the shared shape.
  */
 
-// Hydrate every message with its reactions and the authoring user's identity so
-// the client can render the real sender name + avatar without a second lookup.
-// `select` keeps the user payload to just the avatar-source fields.
-export const messageInclude = {
-  reactions: true,
-  user: {
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      avatarUrl: true,
-      avatarAttachmentId: true,
-    },
-  },
-  // Disclosure basis: zero rows means unrestricted, which is the common case.
-  // Loaded with the message so the list can withhold content the caller is not
-  // entitled to without a second round trip.
-  basisScopes: { select: { scopeType: true, scopeId: true } },
-} satisfies Prisma.MessageInclude
-
-export type MessageWithReactions = Prisma.MessageGetPayload<{
-  include: typeof messageInclude
-}>
+export { messageInclude }
+export type { MessageWithReactions }
 
 /**
  * How many attachments each of these messages carries.

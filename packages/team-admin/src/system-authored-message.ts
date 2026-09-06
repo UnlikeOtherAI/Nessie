@@ -6,7 +6,7 @@ import {
 } from '@nessie/runtime'
 import type { MessageRole } from '@nessie/schemas'
 
-import { messageInclude, type MessageWithReactions } from './message-read-model.js'
+import { messageInclude, type MessageWithReactions } from './message-include.js'
 
 /**
  * Messages the *server* authors — a product handoff prompt, a mirrored

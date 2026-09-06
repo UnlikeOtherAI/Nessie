@@ -11,11 +11,10 @@ import {
 } from '@nessie/runtime'
 import type { IntegrationUiCard, McpTransportConfig } from '@nessie/schemas'
 
-import { ensureDefaultThread } from '@nessie/team-admin'
+import { createSystemAuthoredMessage, ensureDefaultThread } from '@nessie/team-admin'
 import { callDeepSignalMcpTool } from './deepsignal-mcp-call.js'
 import { getExternalAgentProduct } from './external-agent.js'
 import { resolveUserScopedProductTransport } from './external-agent-instance.js'
-import { createSystemAuthoredMessage } from './system-authored-message.js'
 import { asArray, extractList, firstString, isRecord, readToolJson } from './mcp-tool-json.js'
 
 /**

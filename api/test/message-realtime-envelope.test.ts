@@ -174,7 +174,6 @@ test('no message announcement is hand-assembled in the routes that used to build
   for (const path of [
     'src/routes/voice-call-record.ts',
     'src/routes/executors.ts',
-    'src/routes/external-agent.ts',
     'src/services/integration-handoffs.ts',
   ]) {
     const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -185,6 +184,18 @@ test('no message announcement is hand-assembled in the routes that used to build
       `${path} must not build a message.new payload of its own`,
     )
   }
+
+  // The DeepSignal receiver used to announce its own digests. It enqueues and
+  // acks now (audit 9.2), so the announcement moved with the fan-out to
+  // `worker/src/control/deepsignal-insight.ts`, which publishes through
+  // `publishMessageEnvelope` — the same builder, one level down. What still has
+  // to hold here is the half that outlives the move: this route builds no
+  // announcement payload of its own.
+  assert.doesNotMatch(
+    readFileSync(new URL('../src/routes/external-agent.ts', import.meta.url), 'utf8'),
+    /event: 'message\.new'/,
+    'src/routes/external-agent.ts must not build a message.new payload of its own',
+  )
 })
 
 test('the card press announces through the API scope rule, not a hand-built pair', () => {
@@ -214,6 +225,9 @@ test('no message announcement is hand-assembled in the worker either', () => {
     '../worker/src/run/pa-tools/comms-card.ts',
     '../worker/src/control/mailbox.ts',
     '../worker/src/control/call-lifecycle.ts',
+    // The DeepSignal digest, which announces here since the fan-out left the
+    // receiver's request path (audit 9.2).
+    '../worker/src/control/deepsignal-insight.ts',
     // The run executor's own announcement — the last hand-built envelope.
     '../worker/src/run/execute/realtime.ts',
   ]) {

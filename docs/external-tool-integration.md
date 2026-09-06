@@ -502,6 +502,19 @@ Signals all reuse the shared `@nessie/mcp-manage` "connect + call one tool" seam
   and team. Unknown, disabled, mismatched, or team-less payloads deliver
   nothing. Accepted events are coalesced into a budgeted rolling digest per
   linked recipient rather than posting one card per event.
+  The receiver **enqueues and acknowledges**: it verifies the signature,
+  refuses a body with no insight id (`400`), resolves the payload's enabled
+  team, and then queues `deepsignal.insight.fanout` keyed on
+  `deepsignal-insight:<orgId>:<insightId>` — answering `202` with
+  `{ accepted, existing, insightId }`. The per-recipient fan-out runs in the
+  worker, so a team of fifty is not fifty digest transactions on one HTTP
+  request, and an instance recycled part-way through cannot lose the remainder
+  of an event DeepSignal has already been told 2xx for
+  (docs/standards/horizontal-scaling.md § 3). An event that routes to no enabled
+  team is still answered synchronously — `200` with
+  `{ accepted: false, reason: 'team_not_enabled' }` — which is what the old
+  `delivered: 0` said; the count itself is gone, because no count exists at
+  acknowledgement time.
 - **Signals digest** — insight digests remain in the recipient's DeepSignal
   conversation. There is no separate Signals API or custom navigation surface;
   product integrations cannot add entries to the left rail.

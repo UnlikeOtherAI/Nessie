@@ -1,6 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread, loadChannelTeamProject } from '@nessie/team-admin'
+import {
+  ensureDefaultThread,
+  externalAgentDmKey,
+  loadChannelTeamProject,
+} from '@nessie/team-admin'
 
 /**
  * External-agent conversation surface bootstrap.
@@ -152,12 +156,10 @@ export const ensureExternalAgent = async (
     return parseAgentId(agent.id)
   })
 
-export const externalAgentDmKey = (
-  productSlug: string,
-  organizationId: string,
-  userId: string,
-  externalTeamId: string,
-): string => `extagent:${productSlug}:${organizationId}:${userId}:${externalTeamId}`
+// Re-exported so the channel bootstrap stays the API's one door to the key; the
+// definition moved to `@nessie/team-admin` when the worker began resolving the
+// same channel for DeepSignal insight fan-out.
+export { externalAgentDmKey }
 
 const setSoleMember = async (
   prisma: PrismaClient,

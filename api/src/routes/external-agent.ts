@@ -1,12 +1,20 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { enqueueQueueJob } from '@nessie/db'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
 import { attributionFromActorContext } from '@nessie/runtime'
-import { isAdminActor } from '@nessie/schemas'
+import {
+  DEEPSIGNAL_INSIGHT_FANOUT_TOPIC,
+  isAdminActor,
+} from '@nessie/schemas'
+import {
+  DEEPSIGNAL_SLUG,
+  resolveEnabledExternalTeam,
+  resolveInsightId,
+} from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
-import { publishMessageNew } from '../services/message-delivery.js'
 import {
   ExternalAgentSyncError,
   EXTERNAL_AGENT_SYNC_ERROR_CODES,
@@ -17,11 +25,6 @@ import {
   resolveSignedWebhookOrg,
   setProductWebhookSecret,
 } from '../services/product-webhook-secret.js'
-import {
-  DEEPSIGNAL_SLUG,
-  handleDeepSignalInsightSurfaced,
-} from '../services/deepsignal-webhook.js'
-import type { SignalDigestOptions } from '../services/deepsignal-digest.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -32,7 +35,10 @@ import type { RouteDeps } from './types.js'
  *   - `PUT  /api/integrations/products/:productSlug/webhook-secret` — org admin
  *     sets the per-org inbound-webhook signing secret.
  *   - `POST /api/integrations/deepsignal/events` — unauthenticated, HMAC-verified
- *     receiver for `insight.surfaced`.
+ *     receiver for `insight.surfaced`. It verifies, decides whether the event
+ *     routes anywhere at all, and enqueues `deepsignal.insight.fanout`; the
+ *     per-recipient digest work runs in the worker
+ *     (docs/standards/horizontal-scaling.md § 3).
  */
 
 const ChannelIdParamsSchema = z.object({ channelId: z.string().min(1) })
@@ -58,30 +64,6 @@ const syncErrorStatus = (code: string): number => {
 const firstHeader = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value
 
-/**
- * Non-negative-integer env override, else undefined (service default applies).
- * `0` is a valid, distinct value — notably `NESSIE_SIGNAL_BUDGET_MAX=0` suppresses
- * every fresh proactive digest. Negatives and fractions are rejected (fall back
- * to the default) rather than silently coerced.
- */
-const envNonNegativeInt = (name: string): number | undefined => {
-  const raw = process.env[name]
-  if (raw === undefined || raw.trim() === '') return undefined
-  const value = Number(raw)
-  return Number.isInteger(value) && value >= 0 ? value : undefined
-}
-
-/**
- * Delivery-shaping options for the proactive digest, from env. Absent vars leave
- * the service's heuristic defaults (coalesce ~1h, budget ~6 fresh digests / 24h)
- * in force — deliberate, overridable defaults, not hard rules.
- */
-const digestOptionsFromEnv = (): SignalDigestOptions => ({
-  coalesceWindowMs: envNonNegativeInt('NESSIE_SIGNAL_DIGEST_WINDOW_MS'),
-  budgetWindowMs: envNonNegativeInt('NESSIE_SIGNAL_BUDGET_WINDOW_MS'),
-  budgetMax: envNonNegativeInt('NESSIE_SIGNAL_BUDGET_MAX'),
-})
-
 export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     prisma,
@@ -89,9 +71,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     requireUserActor,
     authSecret,
     isJsonContentType,
-    realtimeHub,
     deepSignalMcpIdentity,
-    buildChannelRealtimeScopes,
     getChannelIfMember,
   } = deps
 
@@ -221,64 +201,53 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
       if (event !== 'insight.surfaced') {
         // Acknowledge unknown events so DeepSignal does not retry a body we do
         // not (yet) act on.
-        return createApiResponse({ accepted: false })
+        return createApiResponse({ accepted: false, reason: 'unsupported_event' })
       }
 
-      const result = await handleDeepSignalInsightSurfaced(
-        prisma,
-        organizationId,
-        payload as Record<string, unknown>,
-        digestOptionsFromEnv(),
-      )
+      const body = payload as Record<string, unknown>
+      const insightId = resolveInsightId(body)
+      if (!insightId) {
+        // An `insight.surfaced` with no insight id is malformed, and it is the
+        // one field this receiver cannot proceed without: it is the enqueue's
+        // idempotency key and the digest's own dedupe token. It used to be
+        // answered 200 with `delivered: 0`, which delivered nothing and said so
+        // in a field a sender had to know to read. A 4xx never enqueues.
+        sendApiError(reply, 400, 'INVALID_BODY', 'insight.surfaced requires an insight id')
+        return reply
+      }
 
-      await publishInsightDeliveries(realtimeHub, buildChannelRealtimeScopes, organizationId, result)
+      // The routing decision stays on the request path; the fan-out does not.
+      // An unknown, disabled or mismatched team is DeepSignal's own
+      // misconfiguration, and it is the only thing this receiver can tell it
+      // about — answering 202 for an event that will reach nobody would hide
+      // exactly the case a `delivered: 0` used to expose. One indexed lookup.
+      const team = await resolveEnabledExternalTeam(prisma, organizationId, body)
+      if (!team) {
+        return createApiResponse({ accepted: false, insightId, reason: 'team_not_enabled' })
+      }
 
-      return createApiResponse({
-        accepted: true,
-        insightId: result.insightId,
-        delivered: result.deliveries.length,
+      // Everything past here — a channel, a thread, a binding and a digest
+      // transaction per linked recipient — is the fan-out, and it runs in the
+      // worker. Keyed on the insight so a redelivery collapses into the job
+      // already queued rather than walking the team a second time
+      // (docs/standards/horizontal-scaling.md § 3).
+      const enqueued = await enqueueQueueJob(prisma, {
+        idempotencyKey: `deepsignal-insight:${organizationId}:${insightId}`,
+        payload: {
+          insightId,
+          organizationId,
+          payload: body,
+        },
+        topic: DEEPSIGNAL_INSIGHT_FANOUT_TOPIC,
       })
+
+      return reply.code(202).send(
+        createApiResponse({
+          accepted: true,
+          existing: !enqueued,
+          insightId,
+        }),
+      )
     },
   )
-}
-
-/**
- * Best-effort live notification, only for a *freshly posted* digest message.
- * Coalesced/suppressed insights update an existing message in place, so they must
- * not re-emit `message.new` — that is the whole point of batching over interrupts.
- */
-const publishInsightDeliveries = async (
-  realtimeHub: RouteDeps['realtimeHub'],
-  buildChannelRealtimeScopes: RouteDeps['buildChannelRealtimeScopes'],
-  organizationId: string,
-  result: Awaited<ReturnType<typeof handleDeepSignalInsightSurfaced>>,
-): Promise<void> => {
-  for (const delivery of result.deliveries) {
-    if (delivery.mode !== 'posted') continue
-    try {
-      await publishMessageNew({ buildChannelRealtimeScopes, realtimeHub }, {
-        channel: {
-          id: delivery.channelId,
-          organizationId,
-          systemChannelType: 'external_agent',
-        },
-        message: {
-          agentId: delivery.agentId,
-          // The digest body is fetched by the feed; the announcement only says
-          // a fresh digest landed.
-          content: 'New signals from DeepSignal',
-          id: delivery.messageId,
-          // The one role `postDigestMessage` writes (services/deepsignal-digest.ts).
-          // It cannot be read off the row here because `DigestDelivery` returns
-          // only the id; that result should carry its row's role, as
-          // `writeVoiceCallRecord` now does.
-          role: 'assistant',
-        },
-        threadId: delivery.threadId,
-      })
-    } catch {
-      // A realtime publish failure must never fail the webhook — the message row
-      // is already persisted and will load on the next fetch/hydration.
-    }
-  }
 }
