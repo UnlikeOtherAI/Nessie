@@ -145,55 +145,70 @@ export const applyInboundItem = async (
   item: NormalisedItem,
 ): Promise<ApplyOutcome> => {
   const fingerprint = itemFingerprint(item, mappedFieldKeys(source.fieldMappings))
-  const existing = await prisma.taskExternalLink.findUnique({
-    where: { sourceId_externalId: { sourceId: source.id, externalId: item.externalId } },
-    select: {
-      id: true,
-      taskId: true,
-      inboundFingerprint: true,
-      outboundFingerprint: true,
-    },
-  })
 
-  // Our own write coming back, or nothing we can see having changed. Either way
-  // the item is current: advance the clock and write no event.
-  if (
-    existing &&
-    (fingerprint === existing.outboundFingerprint ||
-      fingerprint === existing.inboundFingerprint)
-  ) {
-    await prisma.taskExternalLink.update({
-      where: { id: existing.id },
-      data: {
-        externalUpdatedAt: new Date(item.updatedAt),
-        lastInboundAt: new Date(),
-        remoteStateId: item.stateId,
-        remoteStateName: item.stateName,
+  return prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
+    // The whole apply is one read-then-insert: the link lookup below decides
+    // whether a task is created, and `Task` carries no constraint on
+    // (sourceId, externalId) to catch a second one. A provider retry that two
+    // workers both pick up would otherwise create two tasks, and the loser's is
+    // an orphan nobody can reach. So appliers of the same external item
+    // serialise here and the second sees the first's link — the two-int
+    // `pg_advisory_xact_lock` idiom `deepsignal-digest.ts` uses per thread.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${source.id}),
+        hashtext(${item.externalId})
+      )
+    `
+
+    const existing = await tx.taskExternalLink.findUnique({
+      where: { sourceId_externalId: { sourceId: source.id, externalId: item.externalId } },
+      select: {
+        id: true,
+        taskId: true,
+        inboundFingerprint: true,
+        outboundFingerprint: true,
       },
     })
-    return {
-      applied: fingerprint === existing.outboundFingerprint ? 'echo' : 'unchanged',
-      taskId: existing.taskId,
+
+    // Our own write coming back, or nothing we can see having changed. Either
+    // way the item is current: advance the clock and write no event.
+    if (
+      existing
+      && (fingerprint === existing.outboundFingerprint
+        || fingerprint === existing.inboundFingerprint)
+    ) {
+      await tx.taskExternalLink.update({
+        where: { id: existing.id },
+        data: {
+          externalUpdatedAt: new Date(item.updatedAt),
+          lastInboundAt: new Date(),
+          remoteStateId: item.stateId,
+          remoteStateName: item.stateName,
+        },
+      })
+      return {
+        applied: fingerprint === existing.outboundFingerprint ? 'echo' : 'unchanged',
+        taskId: existing.taskId,
+      }
     }
-  }
 
-  const stateRow = source.stateMapping.find(
-    (entry) => entry.externalStateId === item.stateId,
-  )
-  const category = item.archived ? 'archived' : stateRow?.category ?? null
-  if (category === null) {
-    // Nothing guesses what an unmapped state means. The source says so, and a
-    // person maps it — docs/standards/capability-health-alerts.md.
-    return { applied: 'unmapped_state', stateName: item.stateName || item.stateId }
-  }
+    const stateRow = source.stateMapping.find(
+      (entry) => entry.externalStateId === item.stateId,
+    )
+    const category = item.archived ? 'archived' : stateRow?.category ?? null
+    if (category === null) {
+      // Nothing guesses what an unmapped state means. The source says so, and a
+      // person maps it — docs/standards/capability-health-alerts.md.
+      return { applied: 'unmapped_state', stateName: item.stateName || item.stateId }
+    }
 
-  const identity = item.assignee
-    ? source.identityByExternalUserId.get(item.assignee.externalUserId) ?? null
-    : null
-  const { taskData, fieldValues } = applyFieldMappings(item, source.fieldMappings)
-  const status = statusForItem(category, Boolean(identity?.userId || identity?.agentId))
+    const identity = item.assignee
+      ? source.identityByExternalUserId.get(item.assignee.externalUserId) ?? null
+      : null
+    const { taskData, fieldValues } = applyFieldMappings(item, source.fieldMappings)
+    const status = statusForItem(category, Boolean(identity?.userId || identity?.agentId))
 
-  const taskId = await prisma.$transaction(async (tx) => {
     const base = {
       title: item.title,
       detail: item.description,
@@ -271,10 +286,9 @@ export const applyInboundItem = async (
       create: { taskId: id as string, ...linkData },
       update: linkData,
     })
-    return id as string
-  })
 
-  return { applied: existing ? 'updated' : 'created', taskId }
+    return { applied: existing ? 'updated' : 'created', taskId: id as string }
+  })
 }
 
 /**
