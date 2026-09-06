@@ -222,8 +222,11 @@ test('channel members can download attachments from accessible messages', async 
     assert.equal(usageEvent.success, true)
     assert.equal(typeof usageEvent.latencyMs, 'number')
     assert.ok(usageEvent.occurredAt instanceof Date)
+    // `recordConnectorUsage` stamps every event's metering; an attachment
+    // download is ordinary billable storage traffic.
     assert.deepEqual(usageEvent.metadata, {
       attachmentId: '00000000-0000-4000-8000-0000000000a1',
+      metering: 'billable',
       source: 'api.attachments',
     })
   } finally {

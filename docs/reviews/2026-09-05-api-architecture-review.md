@@ -61,7 +61,7 @@ ones for the same question.
 | 3.1 | `NESSIE_AUTH_SECRET` is one root key for ~10 purposes with no domain separation: `deriveSecretKey` is bare `sha256(secret)`, so one AES key encrypts UOA refresh tokens, MCP OAuth tokens, mailbox and push credentials and webhook secrets, while the same string HMACs session tokens and executor challenges. `keyVersion` columns exist on three tables and are read by nothing. Config accepts a one-character secret. | critical | follow-up — needs a keyed derivation *and* a re-encryption migration; changing the derivation alone bricks every ciphertext |
 | 3.2 | Three session-revocation authorities are checked per request (`tokenVersion`, `AuthSession`, live refresh row); the registry documents itself as the sole authority and is fail-open on absence. | high | follow-up — consolidation needs a proof that issuance covers every path |
 | 3.3 | Two rate limiters: an in-process `Map` in `lib/rate-limit.ts` on the global hook (raw IP, hard-coded rules, per replica) and a Postgres-backed, audited, config-driven one in `services/rate-limit.ts`. The same login route is limited twice with the same numbers and different IPv6 keying. | high | fixed (one limiter; rules moved to config buckets; check moved to `onRequest`) |
-| 3.4 | `DELETE /api/auth/session` never reads or clears the refresh cookie and returns 204 when the bearer is missing, leaving a live 30-day credential in the browser. | high | fixed |
+| 3.4 | `DELETE /api/auth/session` never reads or clears the refresh cookie and returns 204 when the bearer is missing, leaving a live 30-day credential in the browser. | high | fixed (logout now revokes the family named by the presented refresh cookie; the cookie itself is left for the next refresh to clear, per the authentication spec's stale-instance rule) |
 | 3.5 | `createServerContext()` runs at module import in `index.ts`, opening the DB pool and calling `process.exit(1)` before any handler exists — the guardrail `docs/architecture.md` names. | medium | fixed |
 | 3.6 | Rate limiting and auth run at `preHandler`, after the body is buffered and parsed. | medium | fixed |
 | 3.7 | Rate-limit coverage is per-call-site opt-in: six of seven executor-daemon routes, every webhook intake and `GET /api/auth/me` are unlimited; `POST /api/triggers/webhook` scans every tenant's webhook triggers per request. | medium | fixed (default bucket for public routes; webhook key looked up by hash) |
@@ -81,7 +81,7 @@ ones for the same question.
 | 4.6 | Advisory locking has no owner: ~46 sites across two mutually invisible Postgres lock namespaces and two key conventions. | medium | follow-up — a single owner and a one-deploy conversion |
 | 4.7 | Three modules under `services/` take `FastifyReply` and write HTTP bodies; one imports upward from `../routes/`. | medium | fixed (moved to `routes/`) |
 | 4.8 | Twelve pure re-export shims in `services/`, four byte-identical, three renaming on the way through. | medium | fixed (deleted; importers use the package) |
-| 4.9 | Eighteen files exceed the 500-line cap; five services have clear seams (`inference-control-plane.ts` is four CRUD families, `messages.ts` is read model + read state + mutations and forms an import cycle with `message-create.ts`). | medium | fixed for those five services; the route-file splits are a follow-up |
+| 4.9 | Eighteen files exceed the 500-line cap; five services have clear seams (`inference-control-plane.ts` is four CRUD families, `messages.ts` is read model + read state + mutations and forms an import cycle with `message-create.ts`). | medium | fixed for `inference-control-plane`, `policy`, `messages` and `message-create` (four files became ten domain modules; `token-ledger` and `agent-tool-policy-registry` were already under the cap); the route-file splits are a follow-up |
 | 4.10 | No single convention for a service reporting a domain failure: 31 result-union modules, 39 error-class modules, three status-carrying classes, two reply-writing modules. | low | recorded |
 | 4.11 | A dead duplicate of the tenancy rule `validateWorkflowRunReferences` in `api/` beside the live `@nessie/team-admin` copy. | high | fixed (deleted) |
 
@@ -136,8 +136,18 @@ read → decide → write → publish sequence.
 | 8.1 | Two api tests import `../../worker/src/...` directly instead of the package export. | medium | fixed |
 | 8.2 | 96 of 149 route modules have no test importing them, including executors, agent-mailbox and app-connection-requests. | high | recorded |
 | 8.3 | 147 `as unknown as PrismaClient` fakes; at least one models 2 of the 10 delegates its subject uses. | medium | recorded |
-| 8.4 | Six dead exports in a sample of fifteen; fifteen `as unknown as Prisma.InputJsonValue` casts. | low | fixed (dead exports removed; one `toInputJson` owner) |
+| 8.4 | Six dead exports in a sample of fifteen; fifteen `as unknown as Prisma.InputJsonValue` casts. | low | fixed (three genuinely unused exports unexported; the other three the mechanical pass called dead were live and stay; one `toInputJson` owner for the Prisma JSON cast) |
 | 8.5 | `file-storage.md` names "attachment-linking" as a `FileService` operation the service does not have; `team-model.md` cites a file that does not exist; `personal-assistant-tools.md` contradicts itself on where `project_list` lives. | low | fixed (docs) |
+
+## Found while fixing
+
+Two defects surfaced only once the fixes were being written, so they carry no
+finding number.
+
+| Defect | Severity | Status |
+|---|---|---|
+| The custom JSON content-type parser that captures `request.rawBody` never ran for exact `application/json`, because Fastify's built-in exact-match parser wins over the regexp one. Every HMAC-signed `POST /api/triggers/:triggerId/webhook` therefore failed with 401, and the comms webhooks verified a re-serialised body. `registerRawBodyJsonParser` now removes the built-in parser first; a Fastify-level test proves a signed body authenticates and that the captured bytes equal the sent bytes. | high | fixed |
+| A card press inside a delegated system DM (the Personal Assistant's, or a global agent's home) announced its response preview on the organization scope, because `routes/agent-cards.ts` built its realtime scopes inline instead of through `buildChannelRealtimeScopes`. The card loader now carries `systemChannelType` and the press announces to the channel alone; a DB-backed test fails without the fix. | high | fixed |
 
 ## What was confirmed correct
 

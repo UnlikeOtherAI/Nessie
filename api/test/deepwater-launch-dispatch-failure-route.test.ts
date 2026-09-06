@@ -133,6 +133,11 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
     productTeamEnablement: {
       findUnique: async () => ({ enabled: true }),
     },
+    // A system-authored message follows its requester in the same
+    // transaction (`followReplyThread`), so the fake must model the follow row.
+    messageThreadFollow: {
+      createMany: async () => ({ count: 1 }),
+    },
     run: {
       create: async () => {
         paRuns.push(paRunId)
@@ -220,6 +225,9 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
         type: 'dm',
         unreadCount: 0,
         lastMessageAt: null,
+        // A system channel is never manageable: `canManageChannel` refuses
+        // every viewer on one, so the record carries the decision, not a guess.
+        viewerCanManage: false,
         updatedAt: now.toISOString(),
         visibility: 'private',
       },

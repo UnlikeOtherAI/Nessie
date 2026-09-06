@@ -277,6 +277,10 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         defaultThreadId: parseThreadId(thread.id),
         unreadCount: 0,
         lastMessageAt: lastMessageAt ?? null,
+        // System channels are lifecycle-protected: `canManageChannel` refuses
+        // every viewer on one, so the Personal Assistant's home is never
+        // manageable — a decision the predicate makes, not a placeholder.
+        viewerCanManage: false,
         createdAt: channel.createdAt.toISOString(),
         updatedAt: channel.updatedAt.toISOString(),
       },

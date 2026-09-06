@@ -119,6 +119,7 @@ const makeApp = (options: {
           actor: { actorId: userId, actorType: 'user', roles: ['admin'] },
           tenant: { organizationId, teamId },
         }) as unknown as AuthorizedActionContext,
+      requireOrgAdmin: () => true,
       requireOwner: () => true,
       resolveMembershipRole: () => 'member',
       MEMBERSHIP_ROLES: ['owner', 'admin', 'member'],
