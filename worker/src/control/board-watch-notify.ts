@@ -1,0 +1,77 @@
+import type { PrismaClient } from '@prisma/client'
+import {
+  claimBoardWatchNotification,
+  resolveBoardWatchRecipients,
+  type BoardWatchEvent,
+} from '@nessie/team-admin'
+
+/**
+ * Telling a board's watchers that a ticket moved.
+ *
+ * The rules that decide who hears anything live in
+ * `@nessie/team-admin` `board-watch-notify.ts` — which boards show the task,
+ * which watchers they carry, and which of those may actually read it. This is
+ * the delivery half: it claims the telling so it happens once, then writes the
+ * durable bell.
+ *
+ * The bell is durable rather than push-only for the reason the other alert
+ * kinds state: somebody explicitly asked to be told, and a push at 06:00 is
+ * missable. `eventKey` makes the row itself idempotent, so a retry that gets
+ * past the claim still cannot double-ring.
+ */
+
+export type BoardWatchDelivery = 'sweep' | 'webhook'
+
+export const notifyBoardWatchers = async (
+  prisma: PrismaClient,
+  events: BoardWatchEvent[],
+  options: { delivery: BoardWatchDelivery },
+): Promise<{ told: number }> => {
+  if (events.length === 0) return { told: 0 }
+
+  // Claim first. A sweep page and a webhook can both apply one change — the
+  // notify runs after the apply transaction commits, so nothing else keys on
+  // it — and both would otherwise tell the same people the same news.
+  const claimed: BoardWatchEvent[] = []
+  for (const event of events) {
+    if (await claimBoardWatchNotification(prisma, event)) claimed.push(event)
+  }
+  if (claimed.length === 0) return { told: 0 }
+
+  const recipients = await resolveBoardWatchRecipients(prisma, claimed)
+  if (recipients.length === 0) return { told: 0 }
+
+  const organizationId = claimed[0]!.organizationId
+  const projectId = claimed[0]!.projectId
+
+  // A sweep is reconciliation and may carry a backlog after an outage, so its
+  // watchers hear one bell naming the board; a webhook is "this one changed
+  // just now", which is the per-ticket case somebody actually asked for.
+  const rows = recipients.flatMap((recipient) => {
+    if (recipient.kind !== 'user') return []
+    if (options.delivery === 'sweep') {
+      return [{
+        organizationId,
+        userId: recipient.userId,
+        kind: 'board_ticket_changed' as const,
+        projectId,
+        taskId: recipient.taskIds[0] ?? null,
+        eventKey: `board-watch:sweep:${recipient.boardId}:${recipient.userId}:${claimed[0]!.fingerprint}`,
+      }]
+    }
+    return recipient.taskIds.map((taskId) => ({
+      organizationId,
+      userId: recipient.userId,
+      kind: 'board_ticket_changed' as const,
+      projectId,
+      taskId,
+      eventKey: `board-watch:${taskId}:${recipient.userId}:${
+        claimed.find((event) => event.taskId === taskId)?.fingerprint ?? ''
+      }`,
+    }))
+  })
+
+  if (rows.length === 0) return { told: 0 }
+  const result = await prisma.userAlert.createMany({ data: rows, skipDuplicates: true })
+  return { told: result.count }
+}

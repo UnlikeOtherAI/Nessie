@@ -18,6 +18,7 @@ export type UserAlertRecord = {
     | 'approval_requested'
     | 'automatic_membership_health'
     | 'board_source_health'
+    | 'board_ticket_changed'
   messageId: string | null
   rootMessageId: string | null
   threadId: string | null
@@ -188,6 +189,16 @@ export const getAlertLink = (
     // a settings page the reader then has to search.
     return {
       to: `/projects/${alert.projectId}/settings?section=sources&source=${alert.boardSourceId}`,
+    }
+  }
+  if (alert.kind === 'board_ticket_changed' && alert.projectId) {
+    // Straight to the board carrying the ticket that moved. The task id opens
+    // its card, so the reader lands on the thing that changed rather than on a
+    // board they then have to scan.
+    return {
+      to: alert.taskId
+        ? `/projects/${alert.projectId}/board?task=${alert.taskId}`
+        : `/projects/${alert.projectId}/board`,
     }
   }
   if (alert.kind === 'task_assigned' && alert.projectId) {

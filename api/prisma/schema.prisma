@@ -1074,6 +1074,7 @@ model User {
   agentHandoffRequests     AgentHandoffRequest[]
   boardSourceConnections   BoardSourceConnection[]   @relation("BoardSourceConnectionOwner")
   boardSourceIdentityLinks BoardSourceIdentityLink[] @relation("BoardSourceIdentityLinkUser")
+  boardWatchers            BoardWatcher[]            @relation("BoardWatcherUser")
 
   @@map("users")
 }
@@ -1594,11 +1595,58 @@ model Board {
   project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   columns      BoardColumn[]
+  watchers     BoardWatcher[]
   placements   TaskBoardPlacement[]
   tasks        Task[]
 
   @@index([projectId, position])
   @@map("boards")
+}
+
+/// Who to tell when a ticket on this board changes.
+///
+/// A board is a view, so a watcher is a statement about a slice of the pool and
+/// never about the tasks: the same task on two watched boards still tells each
+/// recipient once. Exactly one of `userId` / `agentId` is set.
+model BoardWatcher {
+  id             String   @id @default(uuid()) @db.Uuid
+  boardId        String   @map("board_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  agentId        String?  @map("agent_id") @db.Uuid
+  /// The administrator who spent this recipient's attention. Kept because
+  /// adding somebody to a watch list is an act with a subject.
+  addedByUserId  String   @map("added_by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User? @relation("BoardWatcherUser", fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation("BoardWatcherAgent", fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@unique([boardId, agentId])
+  @@index([organizationId])
+  @@map("board_watchers")
+}
+
+/// One telling of one change, claimed so it happens once.
+///
+/// A sync sweep and a webhook can both apply the same item — the notify runs
+/// after the apply transaction commits, so nothing else keys on it — and both
+/// would then tell the same people the same news. The fingerprint is the one
+/// `applyInboundItem` already computes, so this claims exactly what changed
+/// rather than "something about this task".
+model BoardWatchNotification {
+  id          String   @id @default(uuid()) @db.Uuid
+  taskId      String   @map("task_id") @db.Uuid
+  fingerprint String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, fingerprint])
+  @@index([createdAt])
+  @@map("board_watch_notifications")
 }
 
 model BoardColumn {
@@ -2078,6 +2126,10 @@ enum UserAlertKind {
   // failure this alerts on is one that otherwise nobody sees until they happen
   // to open the tab.
   automatic_membership_health
+  // A ticket on a board this person watches moved or changed. Durable rather
+  // than push-only: the whole point is that somebody asked to be told, and a
+  // push at 06:00 is missable.
+  board_ticket_changed
   // A project board's external source stopped syncing. Durable for the same
   // reason: a board that quietly stops updating still looks like a board.
   board_source_health
@@ -2642,6 +2694,7 @@ model Agent {
   @@index([routingProfileId])
   // "which agents does this person steward" — the first non-channel-derived
   // agent read, and the tree's level-3 query.
+  boardWatchers            BoardWatcher[]            @relation("BoardWatcherAgent")
   @@index([organizationId, ownerUserId])
   @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
   @@map("agents")
@@ -4255,6 +4308,7 @@ model Task {
   workflowStepRuns    WorkflowStepRun[]    @relation("WorkflowTask")
   placements          TaskBoardPlacement[]
   externalLink        TaskExternalLink?
+  boardWatchNotifications  BoardWatchNotification[]
 
   @@index([agentId, status])
   @@index([organizationId, status])

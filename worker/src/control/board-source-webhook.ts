@@ -6,6 +6,7 @@ import {
 } from '@nessie/board-sources'
 import {
   applyInboundItem,
+  type BoardWatchEvent,
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
   loadIdentityLinks,
@@ -14,6 +15,8 @@ import {
 } from '@nessie/team-admin'
 
 import type { BoardSourceSyncDeps } from './board-source-sync.js'
+
+import { notifyBoardWatchers } from './board-watch-notify.js'
 
 /**
  * A vendor webhook delivery.
@@ -99,10 +102,26 @@ export const processBoardSourceWebhook = async (
       }),
     }
 
+    const events: BoardWatchEvent[] = []
     for (const item of items) {
       const outcome = await applyInboundItem(prisma, applyContext, item)
-      if (outcome.applied === 'created' || outcome.applied === 'updated') applied += 1
+      if (outcome.applied === 'created' || outcome.applied === 'updated') {
+        applied += 1
+        if (outcome.changes.length > 0) {
+          events.push({
+            taskId: outcome.taskId,
+            projectId: source.projectId,
+            organizationId: source.organizationId,
+            fingerprint: outcome.fingerprint,
+            changes: outcome.changes,
+          })
+        }
+      }
     }
+
+    // A webhook is "this one changed just now", which is the case a person asked
+    // to hear about per ticket.
+    await notifyBoardWatchers(prisma, events, { delivery: 'webhook' })
 
     if (applied > 0) {
       await deps.publishBoardUpdated({

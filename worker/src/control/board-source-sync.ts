@@ -16,6 +16,7 @@ import {
 } from '@nessie/schemas'
 import {
   applyInboundItem,
+  type BoardWatchEvent,
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
   loadIdentityLinks,
@@ -24,6 +25,8 @@ import {
 } from '@nessie/team-admin'
 
 import { claimHealthTransition, clearHealth } from './board-source-health.js'
+
+import { notifyBoardWatchers } from './board-watch-notify.js'
 
 /**
  * Keeping a project's mirrored items current.
@@ -134,6 +137,12 @@ export const executeBoardSourceSync = async (
   })
 
   let checkpoint = parseCheckpoint(source.checkpoint)
+  // An initial sync is a `created` for every row — 543 of them on the first
+  // real board this ran against. Nobody asked to be told that a board they
+  // just connected has tickets on it, so a first sync tells nobody and the
+  // watchers start from the next change.
+  const initialSync = checkpoint.phase === 'initial'
+  const events: BoardWatchEvent[] = []
   let applied = 0
   let unmappedState: string | null = null
 
@@ -148,7 +157,18 @@ export const executeBoardSourceSync = async (
           unmappedState = outcome.stateName
           continue
         }
-        if (outcome.applied === 'created' || outcome.applied === 'updated') applied += 1
+        if (outcome.applied === 'created' || outcome.applied === 'updated') {
+          applied += 1
+          if (!initialSync && outcome.changes.length > 0) {
+            events.push({
+              taskId: outcome.taskId,
+              projectId: source.projectId,
+              organizationId: source.organizationId,
+              fingerprint: outcome.fingerprint,
+              changes: outcome.changes,
+            })
+          }
+        }
       }
       checkpoint = result.checkpoint
       // Persisted after every page, so a killed worker resumes rather than
@@ -189,6 +209,10 @@ export const executeBoardSourceSync = async (
         projectId: source.projectId,
       })
     }
+    // A sweep is reconciliation and may carry a backlog after an outage, so its
+    // watchers hear one summary rather than one message per ticket. A webhook —
+    // "this changed just now" — is the per-ticket case, and lives elsewhere.
+    await notifyBoardWatchers(prisma, events, { delivery: 'sweep' })
     return { applied, outcome: 'completed' }
   } catch (cause) {
     await handleSyncFailure(deps, source, cause, adapter)

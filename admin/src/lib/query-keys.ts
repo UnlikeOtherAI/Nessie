@@ -423,6 +423,9 @@ export const projectKeys = {
   // read. The payload is the boards with their columns and carries no project
   // name, so this is about reachability, not about a rename showing through.
   boards: (projectId: string) => ['projects', projectId, 'boards'] as const,
+  // Nested under the board so deleting a board reaches its watcher list too.
+  boardWatchers: (projectId: string, boardId: string) =>
+    ['projects', projectId, 'boards', boardId, 'watchers'] as const,
   // Nested for the same reason as `boards`: a definition change alters what
   // every card of the project renders.
   fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
@@ -487,6 +490,10 @@ export const taskKeys = {
   // every drag.
   assignees: ['task-assignees'] as const,
   documents: (taskId?: string) => ['task-pages', taskId ?? 'none'] as const,
+  // One task, read for a card shown in chat. Deliberately outside `['tasks']`
+  // for the same reason `assignees` is: `optimisticPatch` sweeps that family as
+  // `TaskRecord[]`, and a single record is a foreign shape to it.
+  presented: (taskId?: string) => ['task-presented', taskId ?? 'none'] as const,
   // Aggregate and per-project boards share the family root, so one invalidate
   // or optimistic write reaches every board at once.
   forProject: (projectId?: string) => ['tasks', projectId ?? 'all'] as const,

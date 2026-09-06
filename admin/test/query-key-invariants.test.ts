@@ -28,6 +28,10 @@ const ROOT_EXCEPTIONS: Record<string, string> = {
   'taskKeys.assignees':
     'AssignableUser[], not TaskRecord[]. The board\'s optimistic sweep over ["tasks"] rewrites every '
     + 'match as TaskRecord[], so nesting would hand it a foreign shape.',
+  'taskKeys.presented':
+    'One TaskRecord, not TaskRecord[]. A ticket card shown in a conversation reads its task '
+    + "through the ordinary endpoint, and the board's optimistic sweep over [\"tasks\"] rewrites "
+    + 'every match as an array — so nesting would hand it a single record to patch.',
   'taskKeys.documents':
     'Task documents are invalidated by their own mutations (facades/knowledge/task-docs-hooks.ts); '
     + 'no task mutation changes them, and the board sweep over ["tasks"] would misread the shape.',

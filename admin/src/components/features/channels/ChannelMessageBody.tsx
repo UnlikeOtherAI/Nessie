@@ -25,6 +25,7 @@ import { VoiceCallMessage, readVoiceCallRecord } from './VoiceCallMessage'
 import { WorkflowPreviewCard } from './WorkflowPreviewCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
 import { DashboardPresentation } from '../dashboards/DashboardPresentation'
+import { TaskPresentation } from './TaskPresentation'
 import { EmbeddedWidget, readMessageEmbedIds } from '../dashboards/EmbeddedWidget'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import { getReplyBroadcastRootId, type ThreadParticipant } from './thread-panel/thread-panel-helpers'
@@ -178,6 +179,7 @@ export const ChannelMessageBody = ({
         ))
         : null}
       {!isEditingMessage ? <DashboardPresentation metadata={message.metadata} threadId={message.threadId} /> : null}
+      {!isEditingMessage ? <TaskPresentation metadata={message.metadata} /> : null}
       {!isEditingMessage ? <CommsConnectCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <EmailAccountConnectCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <GmailDraftCard metadata={message.metadata} /> : null}

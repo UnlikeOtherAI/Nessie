@@ -163,3 +163,41 @@ export const useDeleteColumn = (projectId: string, boardId: string) => {
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
+
+export type BoardWatcherRecord = {
+  id: string
+  boardId: string
+  kind: 'user' | 'agent'
+  recipientId: string
+  displayName: string
+  addedByUserId: string
+  createdAt: string
+}
+
+export const useBoardWatchers = (projectId?: string, boardId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery<BoardWatcherRecord[]>({
+    // Id-keyed, so switching boards must not show the previous board's list.
+    placeholderData: keepPreviousData,
+    queryKey: projectKeys.boardWatchers(projectId ?? '', boardId ?? ''),
+    queryFn: () =>
+      apiClient.get(`/api/projects/${projectId}/boards/${boardId}/watchers`),
+    enabled: Boolean(projectId && boardId),
+  })
+}
+
+/** The whole list is replaced at once: it is short and edited as a document. */
+export const useSetBoardWatchers = (projectId: string, boardId: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (watchers: { kind: 'user' | 'agent'; id: string }[]) =>
+      apiClient.put<BoardWatcherRecord[]>(
+        `/api/projects/${projectId}/boards/${boardId}/watchers`,
+        { watchers },
+      ),
+    onSuccess: (records) => {
+      queryClient.setQueryData(projectKeys.boardWatchers(projectId, boardId), records)
+    },
+  })
+}

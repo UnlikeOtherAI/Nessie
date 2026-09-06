@@ -1,6 +1,6 @@
 # Board watchers: telling somebody a ticket moved
 
-**Date:** 2026-09-06 · **Status:** design, not built
+**Date:** 2026-09-06 · **Status:** built (§10 records the as-built deltas)
 **Owning surface:** Project → **Settings → Boards → <board> → Watchers**
 (`/projects/:projectId/settings?section=boards&board=<id>`)
 **Doorways:** the board header's Configure menu; the `SourceStatusStrip`'s
@@ -278,3 +278,31 @@ added.
    owner's ask was explicitly *"any board needs to have a dropdown"* — narrowing
    a stated requirement is the owner's call, not the design's. Flagged here so
    it can be overruled cheaply.
+
+## 10. As built
+
+Three things the build settled differently. Read this before treating a section
+above as a description of the code.
+
+- **§6 amends no standard, because there is no card.** The design added a
+  `task` block to the agent-card vocabulary. It did not need to: that system is
+  for cards a person *presses*, and a watcher notification has no press. The
+  ticket in chat is an ordinary message carrying
+  `TaskPresentationMessageMetadataSchema` — a pointer, exactly as
+  `DashboardPresentationMessageMetadataSchema` already does it — and
+  `TaskPresentation` mounts the board's own `KanbanCardContent`. Same one
+  drawing, closed vocabulary untouched. §6's fallback was the wrong second
+  option; this was the right first one.
+- **§2's de-duplication answers a case that cannot arise.** Two boards cannot
+  both show one task: `boardTaskPoolWhere` gives the default board every task
+  with a null `board_id` and a non-default board only its own, so a task is in
+  exactly one board's pool. The recipient collapse is still correct and still
+  earns its place for the *concurrency* case — a sweep page and a webhook
+  applying one change — which is what `BoardWatchNotification` claims on.
+- **The agent half is not built.** A watcher may be an agent, the row stores
+  it, and the fan-out resolves it — but nothing wakes it yet. Waking one needs
+  either a managed `AgentTrigger` per watcher or a message posted with no run
+  context, and both are a design rather than an addition. People are told
+  durably today; agents are recorded and silent. This is the first thing to
+  close, and until it is, the picker should arguably refuse an agent rather
+  than accept one it cannot reach.

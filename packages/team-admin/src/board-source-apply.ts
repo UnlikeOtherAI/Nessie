@@ -27,8 +27,23 @@ export type BoardSourceApplyContext = {
   identityByExternalUserId: Map<string, { userId: string | null; agentId: string | null }>
 }
 
+/**
+ * What changed, for the board watchers. Deliberately two values: nothing
+ * branches on more yet, and a wider vocabulary now would be speculative.
+ */
+export type ApplyChange = 'status' | 'assignee'
+
 export type ApplyOutcome =
-  | { applied: 'created' | 'updated'; taskId: string }
+  | {
+      applied: 'created' | 'updated'
+      taskId: string
+      /**
+       * The inbound fingerprint this apply wrote. A sweep page and a webhook can
+       * both apply one change, so whoever tells the watchers claims on this.
+       */
+      fingerprint: string
+      changes: ApplyChange[]
+    }
   | { applied: 'echo'; taskId: string }
   | { applied: 'unchanged'; taskId: string }
   | { applied: 'unmapped_state'; stateName: string }
@@ -193,7 +208,7 @@ export const applyInboundItem = async (
   const { taskData, fieldValues } = applyFieldMappings(item, source.fieldMappings)
   const status = statusForItem(category, Boolean(identity?.userId || identity?.agentId))
 
-  const taskId = await prisma.$transaction(async (tx) => {
+  const applied = await prisma.$transaction(async (tx) => {
     const base = {
       title: item.title,
       detail: item.description,
@@ -204,14 +219,23 @@ export const applyInboundItem = async (
       ...taskData,
     }
 
+    const changes: ApplyChange[] = []
     let id = existing?.taskId
     if (id) {
       const previous = await tx.task.findUnique({
         where: { id },
-        select: { status: true },
+        select: { status: true, assigneeUserId: true, assigneeAgentId: true },
       })
       await tx.task.update({ where: { id }, data: base })
+      if (
+        previous &&
+        (previous.assigneeUserId !== base.assigneeUserId ||
+          previous.assigneeAgentId !== base.assigneeAgentId)
+      ) {
+        changes.push('assignee')
+      }
       if (previous && previous.status !== status) {
+        changes.push('status')
         // The vendor is the authority for its own item, so this bypasses
         // `VALID_TRANSITIONS` — but it still records who moved it and from what.
         await tx.taskEvent.create({
@@ -271,10 +295,15 @@ export const applyInboundItem = async (
       create: { taskId: id as string, ...linkData },
       update: linkData,
     })
-    return id as string
+    return { id: id as string, changes }
   })
 
-  return { applied: existing ? 'updated' : 'created', taskId }
+  return {
+    applied: existing ? 'updated' : 'created',
+    taskId: applied.id,
+    fingerprint,
+    changes: applied.changes,
+  }
 }
 
 /**

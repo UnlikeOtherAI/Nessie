@@ -6,6 +6,7 @@ import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { useProjectSources } from '../../../facades/board-sources/hooks'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
+import { BoardWatchersEditor } from './BoardWatchersEditor'
 import { BoardCreateDialog } from '../../../components/kanban/BoardCreateDialog'
 
 const errorMessage = (cause: unknown, fallback: string): string =>
@@ -230,6 +231,14 @@ export const BoardsSettingsSection = ({
             </div>
           )}
         </Section>
+      ) : null}
+
+      {selected && canAdminister ? (
+        <BoardWatchersEditor
+          boardId={selected.id}
+          boardName={selected.name}
+          projectId={projectId}
+        />
       ) : null}
 
       <BoardCreateDialog
