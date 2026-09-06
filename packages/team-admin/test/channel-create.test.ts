@@ -66,6 +66,25 @@ const createStandalonePrisma = (slugTaken = false) => {
         }
       },
       findFirst: async () => slugTaken ? { id: IDS.channel } : null,
+      // `mapChannelRecord` computes `viewerCanManage` through `canManageChannel`,
+      // which re-reads the channel row and the viewer's three memberships.
+      findUnique: async () => ({
+        id: IDS.channel,
+        organizationId: IDS.organization,
+        systemChannelType: null,
+        teamId: IDS.team,
+      }),
+    },
+    channelMember: {
+      // The creator is written as the channel owner (asserted below), so the
+      // membership the manage predicate reads back is that owner row.
+      findUnique: async () => ({ role: 'owner' }),
+    },
+    organizationMember: {
+      findFirst: async () => ({ role: 'member' }),
+    },
+    teamMember: {
+      findFirst: async () => null,
     },
     thread: {
       findFirst: async () => ({ id: IDS.thread }),
@@ -103,6 +122,9 @@ test('standalone channels use a hidden organization-level container', async () =
     members: { create: { userId: IDS.user, role: 'owner' } },
   })
   assert.equal(created?.scope, 'standalone')
+  // The creator is the channel owner, so the record they get back says they
+  // may manage it.
+  assert.equal(created?.viewerCanManage, true)
 })
 
 test('a duplicate standalone slug names its own scope', async () => {
