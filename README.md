@@ -5,7 +5,7 @@
 <h1 align="center">Nessie</h1>
 
 <p align="center">
-  The Slack alternative for an AI world.<br>
+  The European Slack alternative for an AI world.<br>
   Channels, threads and DMs your team already knows &mdash; with agents that do the work in them.
 </p>
 
