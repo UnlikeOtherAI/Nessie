@@ -92,6 +92,7 @@ export const LOCAL_BACK_PRIORITY = {
   columnBase: 20,
   columnStep: 2,
   executorsCreate: 30,
+  chatToolPanel: 30,
   dashboardPanel: 30,
   dashboardVersions: 31,
 } as const

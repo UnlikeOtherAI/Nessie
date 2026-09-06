@@ -8,8 +8,9 @@ import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/M
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { UserAvatar } from '../../shared/UserAvatar'
-import { AgentScreenDisclosure } from '../browser-cloud/AgentScreenDisclosure'
 import { IdentityTile } from '../../primitives/IdentityTile'
+import { RAIL_POLL_MS, useThreadBrowserSessions } from '../../../facades/browser-cloud/hooks'
+import { CHAT_TOOLS, type ChatToolId } from './tool-rail/chat-tools'
 
 type ConversationInfoFlowProps = {
   activeChannel: ChannelRecord
@@ -18,8 +19,11 @@ type ConversationInfoFlowProps = {
   allUsers: UserRecord[]
   canAddPeople: boolean
   channelUsers: UserRecord[]
+  /** This conversation has one agent, so the agent's tools apply to it. */
+  hasAgentTools: boolean
   me: MeResponse
   onGroupCreated: (channelId: string) => void
+  onOpenTool: (tool: ChatToolId) => void
 }
 
 const matchPerson = (person: UserRecord, query: string): boolean => {
@@ -52,27 +56,65 @@ const Disclosure = ({
   </button>
 )
 
+/**
+ * The agent's tools on a single-column layout, where the rail beside the chat
+ * has no room to stand.
+ *
+ * Same table as the rail (`CHAT_TOOLS`), so a tool is added once and shows up
+ * in both doorways — and this is the only doorway a phone has, which is the
+ * whole of Rule zero check 1 for this surface. Selecting one closes the info
+ * screen and opens the tool over the conversation.
+ */
+const ChatToolDisclosures = ({
+  onOpenTool,
+  threadId,
+}: {
+  onOpenTool: (tool: ChatToolId) => void
+  threadId: string | null
+}) => {
+  const sessions = useThreadBrowserSessions(threadId, { refetchInterval: RAIL_POLL_MS })
+  const browsing = (sessions.data?.sessions.length ?? 0) > 0
+  return (
+    <>
+      {CHAT_TOOLS.map((tool) => (
+        <Disclosure
+          detail={
+            tool.id === 'browser' && browsing
+              ? 'Browsing now — watch what it sees'
+              : tool.description
+          }
+          key={tool.id}
+          label={tool.label}
+          onClick={() => onOpenTool(tool.id)}
+        />
+      ))}
+    </>
+  )
+}
+
 const ConversationOverview = ({
   activeChannel,
   channelUsers,
+  hasAgentTools,
   memberCount,
   canAddPeople,
   onOpenMembers,
   onOpenAddPeople,
-  onOpenAgentScreen,
   onOpenFiles,
   onOpenMessages,
+  onOpenTool,
   threadId,
 }: {
   activeChannel: ChannelRecord
   channelUsers: UserRecord[]
+  hasAgentTools: boolean
   memberCount: number
   canAddPeople: boolean
   onOpenMembers: () => void
   onOpenAddPeople: () => void
-  onOpenAgentScreen: (sessionId: string) => void
   onOpenFiles: () => void
   onOpenMessages: () => void
+  onOpenTool: (tool: ChatToolId) => void
   threadId: string | null
 }) => {
   const setMute = useSetChannelMute()
@@ -115,7 +157,9 @@ const ConversationOverview = ({
       </div>
 
       <div className="mt-3 border-y border-[color:var(--sep)]">
-        <AgentScreenDisclosure onOpen={onOpenAgentScreen} threadId={threadId} />
+        {hasAgentTools ? (
+          <ChatToolDisclosures onOpenTool={onOpenTool} threadId={threadId} />
+        ) : null}
         <Disclosure label="Messages" onClick={onOpenMessages} />
         <Disclosure label="Files and links" onClick={onOpenFiles} />
       </div>
@@ -269,8 +313,10 @@ export const ConversationInfoFlow = ({
   allUsers,
   canAddPeople,
   channelUsers,
+  hasAgentTools,
   me,
   onGroupCreated,
+  onOpenTool,
 }: ConversationInfoFlowProps) => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -315,14 +361,13 @@ export const ConversationInfoFlow = ({
           activeChannel={activeChannel}
           canAddPeople={canManageMembers}
           channelUsers={members}
+          hasAgentTools={hasAgentTools}
           memberCount={memberCount}
           onOpenAddPeople={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
           onOpenFiles={() => void navigate(`/channels/${activeChannel.id}?tab=files`)}
           onOpenMembers={() => void navigate(`/channels/${activeChannel.id}/info/members`)}
-          onOpenAgentScreen={(sessionId) => void navigate(
-            `/channels/${activeChannel.id}/threads/${activeThreadId}/browser/${sessionId}`,
-          )}
           onOpenMessages={() => void navigate(`/channels/${activeChannel.id}`)}
+          onOpenTool={onOpenTool}
           threadId={activeThreadId}
         />
       ) : null}
