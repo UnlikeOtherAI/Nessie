@@ -170,6 +170,31 @@ export const useEndResumedSession = (threadId: string | null, agentId: string | 
 }
 
 /**
+ * "I am still here."
+ *
+ * The only thing that extends a resumed session's idle window now that the
+ * column's poll does not. The answer carries the server's own new expiry —
+ * the extension is capped at the hard TTL, so the countdown has to agree with
+ * the reaper rather than with the client's arithmetic — and it is written
+ * straight into the cached session so the countdown resets without waiting
+ * for the next poll.
+ */
+export const useKeepBrowserAlive = (sessionId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient.post<{ expiresAt: string }>(`/api/browser-sessions/${sessionId}/continue`, {}),
+    onSuccess: (answer) => {
+      queryClient.setQueryData<CloudBrowserSessionDetail>(
+        browserCloudKeys.session(sessionId ?? undefined),
+        (current) => (current ? { ...current, expiresAt: answer.expiresAt } : current),
+      )
+    },
+  })
+}
+
+/**
  * Resize the agent's browser.
  *
  * Stored on the browser, so it is the size the *agent's* next session opens

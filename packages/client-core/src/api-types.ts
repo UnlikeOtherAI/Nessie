@@ -507,6 +507,8 @@ export type CloudBrowserSessionDetail = CloudBrowserSessionSummary & {
   shared: boolean
   /** The window the session is running in, already defaulted. */
   viewport: { width: number; height: number }
+  /** When the idle window closes; the countdown reads this, not a local timer. */
+  expiresAt: string
   /** Minted per read, never persisted: whoever holds it can drive the browser. */
   liveViewUrl: string | null
   tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }>

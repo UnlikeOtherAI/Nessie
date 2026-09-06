@@ -85,6 +85,12 @@ export const CloudBrowserSessionDetailSchema = CloudBrowserSessionSummarySchema.
    * reach a session that was already open.
    */
   viewport: BrowserViewportSchema,
+  /**
+   * When the idle window closes. The countdown reads this rather than running
+   * a timer of its own: a reload would restart a local timer and go on showing
+   * time remaining on a session the reaper had already taken.
+   */
+  expiresAt: z.string(),
   liveViewUrl: z.string().url().nullable(),
   tabs: z.array(z.object({
     id: z.string(),
@@ -183,3 +189,9 @@ export const BrowserHomeResponseSchema = z.object({
 })
 
 export type SetAgentBrowserViewportBody = z.infer<typeof SetAgentBrowserViewportBodySchema>
+
+
+/** What a press of Continue answers with, so the countdown can reset. */
+export const BrowserSessionContinueResponseSchema = z.object({
+  expiresAt: z.string(),
+})
