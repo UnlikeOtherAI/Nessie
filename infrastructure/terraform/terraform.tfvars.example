@@ -1,0 +1,51 @@
+# Copy to terraform.tfvars and fill in. Every value here is a placeholder:
+# example.com is IANA's reserved documentation domain and REPLACE_ME is not a
+# valid project id, so an unedited copy fails rather than applying somewhere.
+#
+# terraform.tfvars is git-ignored. Do not commit a filled-in copy: it names the
+# project, the region and the deployment's public domains.
+
+# --- Required. No defaults exist for these. ---------------------------------
+project_id  = "REPLACE_ME"
+region      = "REPLACE_ME"
+environment = "staging"
+
+api_hostname     = "api.example.com"
+admin_public_url = "https://app.example.com"
+cors_origins     = ["https://app.example.com"]
+
+ledger_public_url = "https://ledger.example.com"
+uoa_base_url      = "https://authentication.example.com"
+
+# First apply: any image that exists. The deploy workflow owns the tag from
+# then on — terraform ignores image drift after create.
+app_image     = "REPLACE_ME-docker.pkg.dev/REPLACE_ME/nessie-staging/nessie-app:bootstrap"
+gateway_image = "REPLACE_ME-docker.pkg.dev/REPLACE_ME/nessie-staging/nessie-gateway:bootstrap"
+
+# --- Optional. ---------------------------------------------------------------
+# Turns on the deploy service account and GitHub OIDC federation.
+# github_repository = "ExampleOrg/example"
+
+# Two-step: apply, add a version to each secret, then list them here and apply
+# again. A name here whose secret has no version parks every revision.
+# injected_secret_env = [
+#   "NESSIE_MODEL_API_KEY",
+#   "LEDGER_PROXY_TOKEN",
+#   "DEEPSIGNAL_MCP_APP_KEY",
+#   "UOA_BILLING_APP_KEY_NESSIE",
+#   "UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE",
+# ]
+
+# Measure this before trusting it — docs/deployment/gcloud.md has the
+# procedure. The default of 1 errs low on purpose.
+# trusted_proxy_hops = 1
+
+# Staging does not need a synchronous standby.
+# db_availability_type    = "ZONAL"
+# db_deletion_protection  = false
+
+# The long tail of optional integrations, without editing a module.
+# extra_env = {
+#   NESSIE_COMMS_GOOGLE_CLIENT_ID = "..."
+#   NESSIE_JITSI_DOMAIN           = "meet.example.com"
+# }

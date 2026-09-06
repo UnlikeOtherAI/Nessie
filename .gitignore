@@ -50,3 +50,13 @@ desktop/src-tauri/appstore/
 
 # Agent worktrees (Claude Code isolation)
 .claude/worktrees/
+
+# Terraform working state. terraform.tfvars names the project, the region and
+# the deployment's public domains; the plugin cache and local state are
+# machine-local. The remote GCS backend holds the real state.
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfvars
+!infrastructure/terraform/*.tfvars.example
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.*
+infrastructure/terraform/*.tfplan
