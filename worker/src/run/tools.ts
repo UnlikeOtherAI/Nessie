@@ -48,7 +48,9 @@ import {
   runTicketIterationSetTool,
   runTicketListTool,
   runTicketMoveTool,
+  runTicketPeopleReadTool,
   runTicketReadTool,
+  runTicketSearchTool,
   runTicketTransitionTool,
   runTicketUpdateTool,
   runUpdatePreferencesTool,
@@ -264,6 +266,10 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runTeamCreateTool(context, args))
     case 'ticket_list':
       return wrapTool(inputSummary, () => runTicketListTool(context, args))
+    case 'ticket_search':
+      return wrapTool(inputSummary, () => runTicketSearchTool(context, args))
+    case 'ticket_people_read':
+      return wrapTool(inputSummary, () => runTicketPeopleReadTool(context, args))
     case 'ticket_read':
       return wrapTool(inputSummary, () => runTicketReadTool(context, args))
     case 'ticket_board_read':

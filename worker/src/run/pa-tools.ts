@@ -107,6 +107,10 @@ export {
   runTicketUpdateTool,
 } from './pa-tools/tickets.js'
 export {
+  runTicketPeopleReadTool,
+  runTicketSearchTool,
+} from './pa-tools/ticket-search.js'
+export {
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,

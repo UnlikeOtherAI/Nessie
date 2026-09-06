@@ -15,6 +15,18 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     parameters: { type: 'object', properties: { projectId: UUID, status: { type: 'string', description: 'Optional ticket status.' } }, required: ['projectId'] },
   },
   {
+    id: 'ticket_search', category: 'projects', label: 'Search Tickets', personalAssistantOnly: true,
+    summary: 'Search tickets across projects.', safe: true,
+    description: 'Search tickets by text and narrow by project, board, status, priority or assignee. Text matches the title, purpose, detail and the provider key of a mirrored ticket (for example ENG-214). Use assigneeUserId for a colleague; use unmappedAssignee for somebody who works in Jira, Linear, Trello or GitHub but has no Nessie account — resolve them with ticket_people_read. Omit every filter but text to search everything you can reach.',
+    parameters: { type: 'object', properties: { text: { type: 'string', description: 'Words to look for. Omit to list by filter alone.' }, projectId: UUID, boardId: UUID, status: { type: 'string', description: 'Optional ticket status.' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, assigneeUserId: UUID, unmappedAssignee: { type: 'string', description: 'A provider person with no Nessie account, by the externalUserId or displayName from ticket_people_read.' }, unassigned: { type: 'boolean', description: 'Only tickets nobody at all is on.' }, includeArchived: { type: 'boolean' }, limit: { type: 'integer', description: 'Up to 200; 50 by default.' } }, required: [] },
+  },
+  {
+    id: 'ticket_people_read', category: 'projects', label: 'Read Ticket People', personalAssistantOnly: true,
+    summary: 'List who can hold a ticket, mapped or not.', safe: true,
+    description: 'List the people tickets can be attributed to: colleagues with a Nessie account, and the Jira, Linear, Trello or GitHub users a mirrored ticket names that Nessie has no account for. Use it to turn a name into the assigneeUserId or unmappedAssignee that ticket_search takes.',
+    parameters: { type: 'object', properties: { projectId: UUID }, required: [] },
+  },
+  {
     id: 'ticket_read', category: 'projects', label: 'Read Ticket', personalAssistantOnly: true,
     summary: 'Read one ticket after resolving its ID.', safe: true,
     description: 'Read a ticket returned by ticket_list, including its full detail and current assignment.',
