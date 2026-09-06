@@ -63,16 +63,39 @@ const ResolveHostQuerySchema = z.object({
   host: z.string().trim().min(1).max(253),
 })
 
-/**
- * Split `<team>.<org>.<base>` into its two labels.
- *
- * Returns null unless the host sits exactly two labels under the configured
- * base domain, so a hostname that merely *ends* with the base — a different
- * registrable domain that happens to share the suffix — is never treated as
- * one of ours.
- */
 /** A legal DNS label — the same shape the slug rules enforce. */
 const LEGAL_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+/**
+ * Labels this product uses for itself, which can therefore never be a tenant.
+ *
+ * UOA refuses these as organisation slugs already, and that is the primary
+ * defence. This is the second one, and it is here because the thing being
+ * protected is OURS: `app.nessie.works` is where sign-in happens and
+ * `api.nessie.works` is this API. If a label like these ever resolved to an
+ * organisation, the host gate would render that tenant's portal in place of
+ * the product on its own canonical origin, and the edge would be told the
+ * name is a tenant worth a certificate.
+ *
+ * Depending on another repository's list for that is a dependency this file
+ * should not have. A label added to the deployment later — a status page, a
+ * docs host — belongs here too, and in the edge config, before it is used.
+ */
+const PRODUCT_RESERVED_LABELS: ReadonlySet<string> = new Set([
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'auth',
+  'cdn',
+  'docs',
+  'internal',
+  'mail',
+  'static',
+  'status',
+  'vault',
+  'www',
+])
 
 type ParsedHost =
   | { kind: 'organisation'; orgSlug: string }
@@ -88,8 +111,13 @@ type ParsedHost =
  *
  * Returns null unless the host sits exactly under the configured base domain,
  * so a different registrable domain that merely ends with the same string —
- * `evil-nessie.works` — is never treated as one of ours. That is a label
- * comparison, deliberately, not `endsWith`.
+ * `evil-nessie.works` — is never treated as one of ours.
+ *
+ * The invariant that buys that, stated precisely because a future edit could
+ * destroy it while looking like a simplification: the suffix match includes a
+ * LEADING DOT (`.${base}`), and what remains is then split and checked label by
+ * label. Matching `endsWith(base)` without the dot would admit
+ * `evil-nessie.works`; dropping the label check would admit any depth.
  */
 const parseTenantHost = (
   host: string,
@@ -106,6 +134,7 @@ const parseTenantHost = (
   if (labels.length === 1) {
     const [orgSlug] = labels
     if (!orgSlug || !LEGAL_LABEL.test(orgSlug)) return null
+    if (PRODUCT_RESERVED_LABELS.has(orgSlug)) return null
     return { kind: 'organisation', orgSlug }
   }
 
@@ -127,8 +156,17 @@ const parseTenantHost = (
  */
 const TlsCheckQuerySchema = z.object({
   domain: z.string().trim().min(1).max(253),
-  key: z.string().min(1).max(512),
 })
+
+/**
+ * The gate's key travels in a HEADER, never the query string.
+ *
+ * It used to ride in the URL, which is exactly what request logging records:
+ * every ask wrote the shared secret in clear text into this API's logs, and
+ * into the edge's. Verified on the running system before this changed —
+ * `"url":"/api/hosts/tls-check?domain=...&key=<the actual key>"`.
+ */
+const TLS_CHECK_KEY_HEADER = 'x-nessie-tls-check-key'
 
 /**
  * Compare without leaking the answer through how long it took.
@@ -396,9 +434,13 @@ export const registerTeamProvisioningRoutes = (
     // not happen there.
     if (!tlsCheckKey) return refuse()
 
+    const presented = request.headers[TLS_CHECK_KEY_HEADER]
+    if (typeof presented !== 'string' || !timingSafeEquals(presented, tlsCheckKey)) {
+      return refuse()
+    }
+
     const query = TlsCheckQuerySchema.safeParse(request.query)
     if (!query.success) return refuse()
-    if (!timingSafeEquals(query.data.key, tlsCheckKey)) return refuse()
 
     const parsed = parseTenantHost(query.data.domain, teamHostBaseDomain)
     if (!parsed) return refuse()
@@ -415,10 +457,18 @@ export const registerTeamProvisioningRoutes = (
       )
       return team ? reply.code(204).send() : refuse()
     } catch (error) {
-      // UOA being unreachable must not mint a certificate. It also must not
-      // spend the tenant's first visit on a 500 the edge cannot use.
-      if (error instanceof UoaRosterUnavailableError) return refuse()
-      throw error
+      // EVERY failure refuses, not just the one error class this used to name.
+      // The docblock promises an indistinguishable 404, and a 500 escaping here
+      // — a malformed UOA payload, a transport error the roster client does not
+      // wrap — would be a refusal the caller can tell apart from the others.
+      // Nothing is minted either way; the guarantee is what was wrong.
+      if (!(error instanceof UoaRosterUnavailableError)) {
+        request.log.warn(
+          { err: error },
+          '[tls-check] refusing after an unexpected error',
+        )
+      }
+      return refuse()
     }
   })
 

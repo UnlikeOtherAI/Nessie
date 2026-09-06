@@ -63,8 +63,17 @@ export const TenantReturnHandoff = () => {
 
   useEffect(() => {
     if (sessionState !== 'authenticated') return
-    const target = readTenantReturn()
-    if (!target) return
+    const stored = readTenantReturn()
+    if (!stored) return
+    // Re-check the shape at the moment of use. Nothing cross-origin can write
+    // this key, so the stored value is only as suspect as this origin itself —
+    // but the check costs nothing and removes the assumption that whatever put
+    // it there validated it.
+    const target = parseTenantReturn(stored, window.location.origin)?.href
+    if (!target) {
+      forgetTenantReturn()
+      return
+    }
     // Consume it first: if the navigation is interrupted, a stale address must
     // not hijack the next sign-in in this tab.
     forgetTenantReturn()
