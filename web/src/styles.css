@@ -52,6 +52,12 @@ body {
   text-wrap: pretty;
 }
 
+/* The doorway themes its own selection; the sections carry the same one. */
+.landing-section ::selection {
+  background: var(--accent-soft);
+  color: var(--tx);
+}
+
 @media (max-width: 40rem) {
   .landing-section {
     padding: 64px 20px 80px;
