@@ -1494,6 +1494,7 @@ model OrganizationMember {
   cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
   scopedSettings          ScopedSetting[]          @relation("ScopedSettingOwner")
   agentBrowserLogins      AgentBrowserLogin[]      @relation("AgentBrowserLoginMember")
+  agentBrowsers      AgentBrowser[]      @relation("AgentBrowserPrincipal")
   /// Personal SMTP/IMAP mailboxes. Tenancy only, exactly as `ownedAgents`.
   mailboxConnections      MailboxConnection[]      @relation("MailboxConnectionOwner")
 
@@ -7699,6 +7700,20 @@ model AgentBrowser {
   /// agent starts a fresh browser rather than migrating — one login per
   /// service again, which the UI says out loud.
   connectionId         String @map("connection_id") @db.Uuid
+  /// Whose browser this is, for an agent every person meets as their own.
+  ///
+  /// The Personal Assistant is one agent row per organisation and every global
+  /// agent is one row per slug; what makes them feel personal is a per-user DM
+  /// and a per-user presence binding, not a per-user agent. Keyed by agent
+  /// alone, one durable browser therefore served the whole organisation — so
+  /// one person signing into Gmail put their mailbox inside every colleague's
+  /// assistant, and anything a colleague signed into landed in theirs. It is
+  /// the principal, not the agent, that owns the cookie jar for those.
+  ///
+  /// NULL for an ordinary team or private agent, whose browser is shared with
+  /// everyone who can reach it — which is what its sharing banner says, and
+  /// deliberate.
+  principalUserId      String? @map("principal_user_id") @db.Uuid
   /// The persistent Browserbase context holding cookies and localStorage.
   /// Retained on a tombstoned row so the delete job still has its target.
   browserbaseContextId String @map("browserbase_context_id")
@@ -7718,12 +7733,17 @@ model AgentBrowser {
   /// never ride another tenant's key.
   agent        Agent                  @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
   connection   CloudBrowserConnection @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
+  /// Composite, the `AgentBrowserLogin.member` precedent: the principal must
+  /// be a member of THIS organization, so one tenant's person can never hold a
+  /// browser inside another tenant's.
+  principal    OrganizationMember?    @relation("AgentBrowserPrincipal", fields: [organizationId, principalUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
   logins   AgentBrowserLogin[]
   sessions CloudBrowserSession[]
   tabs     AgentBrowserTab[]
 
   @@index([organizationId, agentId])
+  @@index([organizationId, agentId, principalUserId])
   @@index([connectionId])
   @@map("agent_browsers")
 }

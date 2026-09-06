@@ -8,6 +8,7 @@ import type { Prisma } from '@prisma/client'
 import { AgentCardMessageMetadataSchema, type AgentCardSpec } from '@nessie/schemas'
 import { renderAgentCardPlainText } from '@nessie/team-admin'
 
+import { resolveBrowserPrincipal } from './browser-principal.js'
 import { createAgentMessage } from '../execute/agent-message.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
 import { publishMessageCreated } from '../execute/realtime.js'
@@ -73,6 +74,7 @@ export const requestBrowserLogin = async (
       agentId: context.agentId,
       agentVisibility: context.agentIdentity?.visibility ?? 'team',
       agentOwnerUserId: context.agentIdentity?.ownerUserId ?? null,
+      principalUserId: await resolveBrowserPrincipal(context),
     })
     browserId = browser.id
   } catch (error) {
