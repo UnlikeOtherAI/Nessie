@@ -103,6 +103,11 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - **Authoritative guide: [docs/deployment.md](docs/deployment.md)** — first
   deploy, redeploy, the container stack and compose files, proxy trust,
   config reference, MCP secret store, and SSO status.
+- `infrastructure/terraform/` and `.github/workflows/deploy-gcloud.yml` are the
+  **planned** Cloud Run topology from Phase 4 of the horizontal-scaling plan,
+  not the retired 2024 attempt and not production. Nothing has been applied and
+  the workflow has no push trigger. Runbook:
+  [docs/deployment/gcloud.md](docs/deployment/gcloud.md).
 
 ## Linting
 
