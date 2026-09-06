@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import {
@@ -117,6 +119,28 @@ const parseTenantHost = (
   return null
 }
 
+/**
+ * The edge appends `domain` to whatever URL it is configured with, so the key
+ * rides along in that configured URL. Both are bounded here: a hostname is at
+ * most 253 bytes, and an unbounded key would let a caller make this route do
+ * arbitrary-length comparison work.
+ */
+const TlsCheckQuerySchema = z.object({
+  domain: z.string().trim().min(1).max(253),
+  key: z.string().min(1).max(512),
+})
+
+/**
+ * Compare without leaking the answer through how long it took.
+ *
+ * `timingSafeEqual` throws on a length mismatch, which would leak the length,
+ * so both sides are hashed to a fixed width first.
+ */
+const timingSafeEquals = (a: string, b: string): boolean => {
+  const digest = (value: string): Buffer => createHash('sha256').update(value).digest()
+  return timingSafeEqual(digest(a), digest(b))
+}
+
 const AddressQuerySchema = z.object({
   teamId: z.string().trim().min(1).max(64).optional(),
   orgId: z.string().trim().min(1).max(64).optional(),
@@ -214,7 +238,13 @@ export const registerTeamProvisioningRoutes = (
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
 ): void => {
-  const { prisma, requireActorContext, requireUserActor, teamHostBaseDomain } = deps
+  const {
+    prisma,
+    requireActorContext,
+    requireUserActor,
+    teamHostBaseDomain,
+    tlsCheckKey,
+  } = deps
 
   /**
    * Found a new UOA organisation, owned by the caller.
@@ -331,6 +361,67 @@ export const registerTeamProvisioningRoutes = (
    * names the organisation, and the choice reaches only that organisation's own
    * address. `app.nessie.works` stays neutral, and §4.3 still governs it.
    */
+  /**
+   * May the edge issue a certificate for this hostname?
+   *
+   * Caddy's on-demand TLS asks this during the TLS handshake for a hostname it
+   * has never seen, and treats **any 2xx as yes**. That is the whole reason
+   * this route exists separately from `/api/hosts/resolve`, which answers 200
+   * with `kind: null` for a hostname it does not recognise — wired to that, the
+   * edge would mint a certificate for every name anyone ever tried.
+   *
+   * It is also strictly stricter than resolution in a way that matters.
+   * `/api/hosts/resolve` verifies only the ORGANISATION label of a team
+   * hostname, because a branded page for `<anything>.acme.nessie.works` is
+   * harmless — it shows Acme's mark and a sign-in button. A certificate is not
+   * harmless: Let's Encrypt allows roughly 50 per registered domain per week,
+   * counted across the whole of the base domain, so a made-up team label that
+   * earned a certificate would let anybody exhaust issuance for every tenant at
+   * once. So this verifies the TEAM.
+   *
+   * The key is not decoration. The answer is "does this team exist", which this
+   * product deliberately keeps behind authentication: `/api/hosts/team` is
+   * authenticated and the branded team page never names its team, so that a
+   * guessable address cannot be confirmed. Answering that to anyone who asked
+   * would give it back through the side door.
+   *
+   * Failures answer 404, never 5xx: to the edge they mean the same thing, and a
+   * 404 gives an unauthenticated caller nothing to tell apart.
+   */
+  app.get('/api/hosts/tls-check', { config: { public: true } }, async (request, reply) => {
+    const refuse = (): FastifyReply => reply.code(404).send()
+
+    // Unset key = closed gate. An install that has not configured this cannot
+    // be turned into an existence oracle, and on-demand issuance simply does
+    // not happen there.
+    if (!tlsCheckKey) return refuse()
+
+    const query = TlsCheckQuerySchema.safeParse(request.query)
+    if (!query.success) return refuse()
+    if (!timingSafeEquals(query.data.key, tlsCheckKey)) return refuse()
+
+    const parsed = parseTenantHost(query.data.domain, teamHostBaseDomain)
+    if (!parsed) return refuse()
+
+    try {
+      if (parsed.kind === 'organisation') {
+        const organisation = await resolveUoaOrgHost({ orgSlug: parsed.orgSlug }, rosterDeps)
+        return organisation ? reply.code(204).send() : refuse()
+      }
+
+      const team = await resolveUoaTeamHost(
+        { orgSlug: parsed.orgSlug, teamSlug: parsed.teamSlug },
+        rosterDeps,
+      )
+      return team ? reply.code(204).send() : refuse()
+    } catch (error) {
+      // UOA being unreachable must not mint a certificate. It also must not
+      // spend the tenant's first visit on a 500 the edge cannot use.
+      if (error instanceof UoaRosterUnavailableError) return refuse()
+      throw error
+    }
+  })
+
   app.get('/api/hosts/resolve', { config: { public: true } }, async (request, reply) => {
     const query = parseInput(ResolveHostQuerySchema, request.query, reply)
     if (!query) return reply

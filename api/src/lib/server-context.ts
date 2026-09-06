@@ -102,6 +102,22 @@ export const createServerContext = () => {
     .toLowerCase()
     .replace(/^\.+|\.+$/g, '') || undefined
 
+  /**
+   * Shared secret the edge presents when asking whether a hostname may be
+   * issued a certificate (`GET /api/hosts/tls-check`).
+   *
+   * The answer is "does this team exist", which this product deliberately keeps
+   * behind authentication — `/api/hosts/team` is authenticated and the branded
+   * team page never names its team, precisely so a guessable address cannot be
+   * confirmed. An unauthenticated gate would hand that back through the side
+   * door, so the gate is only open to a caller holding this.
+   *
+   * Unset means the gate refuses everything, which is the safe direction: an
+   * install that has not configured it cannot be used as an existence oracle,
+   * and on-demand issuance simply does not happen.
+   */
+  const tlsCheckKey = process.env.NESSIE_TLS_CHECK_KEY?.trim() || undefined
+
   const allowedCorsOrigins = parseOriginList(
     process.env.NESSIE_CORS_ORIGINS,
     process.env.NESSIE_ALLOWED_ORIGINS,
@@ -525,6 +541,7 @@ export const createServerContext = () => {
     authSecret,
     allowedCorsOrigins,
     teamHostBaseDomain,
+    tlsCheckKey,
     DEFAULT_LOCAL_PROVIDER_TYPE,
     MEMBERSHIP_ROLES,
     resolveBootstrapState,
