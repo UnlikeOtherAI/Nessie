@@ -343,6 +343,17 @@ export class PgRealtimeTransport {
     return message
   }
 
+  /**
+   * Broadcast a session revocation to every listening replica. Fire-and-forget
+   * by design: the durable authority is the `auth_sessions` row the caller
+   * already wrote, and every replica re-reads it when its own cache entry
+   * expires, so a lost NOTIFY costs latency (up to the cache TTL) and never
+   * correctness.
+   */
+  async publishSessionRevocation(sessionId: string): Promise<void> {
+    await notifyRealtime(this.pool, this.channel, { kind: 'auth', sessionId })
+  }
+
   listRealtimeEventsAfter(input: {
     afterEventId: bigint
     channelIds: string[]

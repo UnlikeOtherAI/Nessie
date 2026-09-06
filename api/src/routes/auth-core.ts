@@ -377,5 +377,11 @@ export const registerAuthCoreRoutes = (
     })
   })
 
-  registerAuthLogoutRoute(app, { authSecret, getAuthorizationToken, prisma })
+  registerAuthLogoutRoute(app, {
+    authSecret,
+    getAuthorizationToken,
+    invalidateSessionRevocationCache: deps.invalidateSessionRevocationCache,
+    prisma,
+    publishSessionRevocation: (sessionId) => deps.realtimeHub.publishSessionRevocation(sessionId),
+  })
 }

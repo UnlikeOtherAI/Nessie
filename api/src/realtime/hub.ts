@@ -47,6 +47,12 @@ export const createRealtimeHub = async (input: {
   }) => Promise<boolean>
   databaseUrl: string
   logger?: RealtimeFanOutLogger
+  /**
+   * Drop one `sid` from this replica's session-revocation cache when another
+   * replica announces a logout. Wired from the composition root to the
+   * checker's own `invalidate`; the hub only carries it to the listener.
+   */
+  onSessionRevoked?: (sessionId: string) => void
   poolMax: number
   poolMin: number
   prisma: PrismaClient
@@ -262,6 +268,13 @@ export const createRealtimeHub = async (input: {
 
       userSseConnections.delete(connection)
     },
+    /**
+     * Tell every replica to forget one revoked `sid` now. The caller has
+     * already written the durable revocation and invalidated its own cache;
+     * this only removes the other replicas' TTL wait.
+     */
+    publishSessionRevocation: (sessionId: string): Promise<void> =>
+      transport.publishSessionRevocation(sessionId),
     publishSse: async (
       threadId: string,
       event: SseEvent['event'],

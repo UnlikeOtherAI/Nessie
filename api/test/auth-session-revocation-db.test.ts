@@ -192,6 +192,9 @@ const buildAppWithActor = (prisma: PrismaClient) => {
           : null,
       prisma,
       rateLimiter: new RateLimiter(prisma, { error: () => {} } as never),
+      // The route announces the revocation to the other replicas; this suite
+      // is about the durable write, so the broadcast is a no-op here.
+      realtimeHub: { publishSessionRevocation: async () => undefined },
       requireActorContext: (request: FastifyRequest, reply: FastifyReply) => {
         const ctx = (request as unknown as { actorContext?: unknown }).actorContext
         if (!ctx) {

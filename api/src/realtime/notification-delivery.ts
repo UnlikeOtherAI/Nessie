@@ -283,6 +283,12 @@ export const createWsNotificationDelivery = (input: {
   logger?: RealtimeFanOutLogger
   /** Clock behind the per-connection entitlement cache's TTL. */
   now?: () => number
+  /**
+   * Drop one `sid` from this process's session-revocation cache. Called for
+   * the cross-replica control notification, so a logout on any replica is
+   * honoured everywhere at once rather than after each cache's own TTL.
+   */
+  onSessionRevoked?: (sessionId: string) => void
 }) => {
   const warnDuplicate = createWatermarkDuplicateWarning(input.logger)
   const threadSseConnections = new Set<ThreadSseConnection>()
@@ -393,6 +399,15 @@ export const createWsNotificationDelivery = (input: {
           connection.lastSequence = notification.sequence
         }
       }
+      return
+    }
+
+    // A control message between replicas: no connection receives it. It has to
+    // be answered ahead of the `message` guard below, which would otherwise
+    // drop the payload — it deliberately carries no `message` — before the
+    // revocation had been applied to this process's cache.
+    if (notification.kind === 'auth') {
+      input.onSessionRevoked?.(notification.sessionId)
       return
     }
 

@@ -180,6 +180,10 @@ export const buildApp = async (
     canAccessDashboardEvent: canAccessDashboardRealtimeEvent,
     databaseUrl,
     logger: app.log,
+    // A revocation announced by any replica drops the sid from this one's
+    // cache immediately; the 30 s TTL stays as the backstop for a replica
+    // whose LISTEN was down when the NOTIFY went out.
+    onSessionRevoked: serverContext.invalidateSessionRevocationCache,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
     prisma,

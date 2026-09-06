@@ -53,6 +53,17 @@ export type RealtimeNotificationPayload =
       message: WsEventMessage
       scopes: WsScope[]
     }
+  | {
+      /**
+       * A control message between replicas, never delivered to a client: the
+       * replica that revoked a login session tells the others to drop that
+       * `sid` from their revocation caches at once, instead of each waiting
+       * out its own TTL. Nothing is persisted — a replica that was not
+       * listening converges on its TTL, which stays the backstop.
+       */
+      kind: 'auth'
+      sessionId: string
+    }
 
 /**
  * What actually travels over NOTIFY. A `*-ref` variant carries the row id in
