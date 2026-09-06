@@ -173,13 +173,22 @@ test('the level holding the lock still edits its own value', () => {
 })
 
 test('an address the browser must not be sent to is refused before anything is sent', () => {
-  for (const address of ['javascript:alert(1)', 'data:text/html,<b>x', 'https://user:pass@example.com']) {
+  for (const address of [
+    'javascript:alert(1)',
+    'data:text/html,<b>x',
+    'https://user:pass@example.com',
+    // The browser runs on the provider's machine, so its loopback and its
+    // metadata address are the ones worth refusing here.
+    'http://169.254.169.254/latest/meta-data',
+    'http://127.0.0.1:5454/api/health',
+    'http://192.168.1.1/',
+  ]) {
     const decision = decideBrowserHomepageSave(address)
     assert.equal(decision.kind, 'refused', `${address} reached the server`)
     assert.equal(
       decision.kind === 'refused' ? decision.message : '',
       // The schema's own sentence — the one the server would answer with.
-      'Enter a http:// or https:// address with no username or password in it.',
+      'Enter a public http:// or https:// address, with no username or password in it.',
     )
   }
 
