@@ -8,6 +8,7 @@ import { parseAgentRunLimits } from '../run-budget.js'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
 import { clearCrashCheckpoint, clearCrashCheckpointForUnheldRun } from './crash-checkpoint.js'
+import { clearRunToolEffects } from './tool-effect-ledger.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
@@ -244,6 +245,20 @@ export const updateRunStatus = async (
         : clearCrashCheckpointForUnheldRun(prisma, runId))
     } catch (error) {
       console.warn('[worker] could not clear crash checkpoint for run', runId, error)
+    }
+    // The run's tool-effect claims go with it, and here for the same reason:
+    // there is one row per side-effecting tool call, so without a chokepoint
+    // that sheds them the table grows with every call the platform ever makes.
+    // A terminal run is never resumed, and a suspended one is continued by a
+    // NEW run whose tool calls carry new ids — so from this statement onwards
+    // nothing can consult these rows, which is exactly when they stop being
+    // worth keeping. Unfenced, unlike the crash state above: a competing
+    // executor cannot lose anything that matters by deleting claims for a run
+    // this caller is declaring over. See `tool-effect-ledger.ts`.
+    try {
+      await clearRunToolEffects(prisma, runId)
+    } catch (error) {
+      console.warn('[worker] could not clear tool-effect claims for run', runId, error)
     }
   }
 

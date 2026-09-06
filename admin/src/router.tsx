@@ -271,6 +271,13 @@ export const router = createBrowserRouter([
             // A presented dashboard is a sibling workspace panel, never a modal.
             path: ':channelId/threads/:threadId/dashboards/:dashboardId',
           },
+          {
+            // An agent tool opened from the conversation info screen. The rail
+            // beside a wide conversation keeps its choice in component state;
+            // a single-column layout has no rail and pushes a real screen, so
+            // Back and a deep link both resolve.
+            path: ':channelId/tools/:toolId',
+          },
           // Conversation information is a route, not a transient popup: phone
           // Back, notification deep links, tablet inspectors, and desktop all
           // resolve the same explicit hierarchy.

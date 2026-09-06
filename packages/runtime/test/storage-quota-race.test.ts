@@ -187,8 +187,14 @@ runIfDatabase('an upload waits for the organisation\'s storage admission lock', 
   const held = new Promise<void>((resolve) => {
     release = resolve
   })
+  // Resolved by the holder once the lock is actually its own. Waiting on a
+  // fixed sleep instead raced the very thing under test: on a loaded runner
+  // the holder could still be acquiring when the assertion started, the
+  // contender sailed through, and the failure read as "the gate is not taking
+  // the lock" when the gate was fine. It failed CI twice on an admin-only
+  // branch in September 2026.
   let acquired!: () => void
-  const lockHeld = new Promise<void>((resolve) => {
+  const holdsLock = new Promise<void>((resolve) => {
     acquired = resolve
   })
 
@@ -204,19 +210,16 @@ runIfDatabase('an upload waits for the organisation\'s storage admission lock', 
       },
       { timeout: 30_000 },
     )
-    // Wait for the lock to actually be held, rather than sleeping and hoping.
-    // A fixed delay is a guess about how long another client needs to connect,
-    // open a transaction and take a lock; on a loaded runner it is too short,
-    // the upload below then walks through a gate nobody is holding, and the
-    // assertion fails for a reason that has nothing to do with the gate.
-    // Racing the holder itself turns a holder that died before locking into
-    // that error, instead of a test that hangs waiting for a signal.
-    await Promise.race([
-      lockHeld,
-      holding.then(() => {
-        throw new Error('the lock holder finished before it took the lock')
-      }),
-    ])
+    // Bounded by the holder's own transaction timeout rather than by a guess:
+    // if it ends or fails without ever taking the lock, this says so instead
+    // of hanging. `holderEnded` handles both settlements, so the loser of the
+    // race never becomes an unhandled rejection.
+    const holderEnded = holding.then(() => 'ended' as const, () => 'failed' as const)
+    assert.equal(
+      await Promise.race([holdsLock.then(() => 'acquired' as const), holderEnded]),
+      'acquired',
+      'the holder must own the lock before the contender starts',
+    )
 
     const upload = files.store({
       attribution,

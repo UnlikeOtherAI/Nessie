@@ -22,6 +22,7 @@ import {
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
   listAgentsForUser,
+  resolveAgentAvatarStyleSafely,
 } from '@nessie/team-admin'
 import { z } from 'zod'
 
@@ -195,10 +196,12 @@ export const runAgentCreateTool = async (
     modelSubscriptionId = selection.modelSubscriptionId
   }
 
-  // The same generate-then-attach seam `POST /api/agents` runs. Without it an
-  // agent created in chat was the only faceless one in the team. A failed
-  // picture never fails the creation — the seam resolves to undefined and the
-  // agent is created without one.
+  // The same generate-then-attach seam `POST /api/agents` runs, in whatever
+  // style this person's portraits are drawn in. Without it an agent created in
+  // chat was the only faceless one in the team. A failed picture never fails
+  // the creation — the seam resolves to undefined and the agent is created
+  // without one.
+  let avatarFailure: string | null = null
   const generatedAvatar = await generateAvatarForNewAgent({
     actorContext: member.actorContext,
     agent: {
@@ -210,6 +213,18 @@ export const runAgentCreateTool = async (
     fileService: fileServiceFor(context.prisma),
     ledgerIdentity: context.ledgerIdentity,
     modelClient: context.modelClient,
+    // A silent failure here is what left a person looking at a blank tile with
+    // nobody able to say why: the seam swallowed the error and the tool output
+    // never mentioned a portrait at all, so the agent that just built them an
+    // agent could not tell them it had no face.
+    onFailure: (error) => {
+      avatarFailure = error instanceof Error ? error.message : 'unknown error'
+    },
+    style: await resolveAgentAvatarStyleSafely(context.prisma, {
+      organizationId: member.organizationId,
+      teamId: context.actorContext.tenant.teamId ?? null,
+      userId: member.userId,
+    }),
   })
 
   const agent = await createAgentRecord(context.prisma, {
@@ -247,6 +262,12 @@ export const runAgentCreateTool = async (
       agent.homeChannelId
         ? `Its private home is channelId=${agent.homeChannelId}.`
         : 'It is not in any channel yet — an owner can bind it with agent_bind_channel.',
+      generatedAvatar
+        ? 'It has a generated portrait. agent_avatar_generate redraws it in a '
+          + 'style they name.'
+        : 'It has NO portrait — only a tile colour — because the picture could '
+          + `not be drawn: ${avatarFailure ?? 'unknown error'}. Say so rather `
+          + 'than letting them find the blank tile.',
     ].join('\n'),
     toolName: 'agent_create',
   }

@@ -110,3 +110,61 @@ test('an unconfigured deployment reports rather than throws', async () => {
     /model service is not configured/,
   )
 })
+
+test('a remembered style reaches the prompt writer as descriptive data', async () => {
+  const seen: unknown[] = []
+  await generateAvatarForNewAgent({
+    actorContext,
+    agent,
+    config,
+    fileService,
+    imageRequest,
+    ledgerIdentity: null,
+    modelClient: {
+      chat: async (messages) => {
+        seen.push(messages)
+        return 'a portrait prompt'
+      },
+    },
+    style: 'photorealistic, natural light',
+  })
+
+  const messages = seen[0] as { role: string; content: string }[]
+  const system = messages.find((message) => message.role === 'system')?.content ?? ''
+  const user = messages.find((message) => message.role === 'user')?.content ?? ''
+  // The person's own words describe the picture; they never become rules for
+  // the writer, which is why they travel in the user message alone.
+  assert.equal(system.includes('photorealistic'), false)
+  assert.equal(
+    JSON.parse(user).avatarStyle,
+    'photorealistic, natural light',
+    'the style is a field of the descriptive JSON',
+  )
+  assert.match(system, /avatarStyle/)
+})
+
+test('with no style the writer keeps its default look', async () => {
+  const seen: unknown[] = []
+  await generateAvatarForNewAgent({
+    actorContext,
+    agent,
+    config,
+    fileService,
+    imageRequest,
+    ledgerIdentity: null,
+    modelClient: {
+      chat: async (messages) => {
+        seen.push(messages)
+        return 'a portrait prompt'
+      },
+    },
+  })
+
+  const messages = seen[0] as { role: string; content: string }[]
+  const user = messages.find((message) => message.role === 'user')?.content ?? ''
+  assert.equal('avatarStyle' in JSON.parse(user), false)
+  assert.match(
+    messages.find((message) => message.role === 'system')?.content ?? '',
+    /clean cartoon style when there is not/,
+  )
+})

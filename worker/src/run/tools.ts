@@ -9,6 +9,7 @@ import {
   runAttachmentListTool,
   runAttachmentReadTool,
   runAttachmentUploadTool,
+  runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
   runAgentBindChannelTool,
   runAgentCreateTool,
@@ -304,6 +305,8 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentUpdateTool(context, args))
     case 'agent_tool_catalog':
       return wrapTool(inputSummary, () => runAgentToolCatalogTool(context, args))
+    case 'agent_avatar_generate':
+      return wrapTool(inputSummary, () => runAgentAvatarGenerateTool(context, args))
     case 'agent_avatar_update':
       return wrapTool(inputSummary, () => runAgentAvatarUpdateTool(context, args))
     case 'agent_bind_channel':

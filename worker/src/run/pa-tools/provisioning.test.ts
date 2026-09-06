@@ -186,6 +186,10 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
   assert.match(result.outputPreview, /Created agent "Researcher"/)
   assert.equal(created.length, 1)
   assert.equal(created[0]?.['avatarAttachmentId'], undefined)
+  // And it SAYS so. A silent seam is what left a person looking at a blank
+  // tile with the agent that built it unable to explain why.
+  assert.match(result.outputPreview, /It has NO portrait/)
+  assert.match(result.outputPreview, /model service is not configured/)
 })
 
 const SECOND_AGENT_ID = '4f7d1c00-0e64-4d10-a517-0d0b69c1d012'

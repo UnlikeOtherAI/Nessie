@@ -40,6 +40,7 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
   randomAgentAvatarBackgroundColor,
+  resolveAgentAvatarStyleSafely,
   unbindAgentFromChannel,
   updateAgentAvatar,
 } from '@nessie/team-admin'
@@ -251,6 +252,14 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
             'agent avatar generation failed; creating the agent without one',
           )
         },
+        // The same remembered style the Agent Designer draws in, so an agent
+        // made from the form and one made in chat look like they belong to the
+        // same person.
+        style: await resolveAgentAvatarStyleSafely(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId: actorContext.tenant.teamId ?? null,
+          userId: actorContext.actor.actorId,
+        }),
       })
       agent = await createAgentRecord(prisma, {
         modelSubscriptionId,
@@ -569,6 +578,14 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         fileService: deps.fileService,
         ledgerIdentity: deps.ledgerIdentity,
         modelClient: deps.sharedModelClient,
+        // Their remembered look. The dialog's own box stays what it has always
+        // been — guidance for this one picture — so regenerating from the form
+        // does not quietly change the style every later portrait is drawn in.
+        style: (await resolveAgentAvatarStyleSafely(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId: actorContext.tenant.teamId ?? null,
+          userId: actorContext.actor.actorId,
+        })) ?? undefined,
       })
       return createApiResponse(GeneratedAgentAvatarSchema.parse(generated))
     } catch (error) {

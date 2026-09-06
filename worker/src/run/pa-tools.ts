@@ -112,6 +112,7 @@ export {
   runTicketSearchTool,
 } from './pa-tools/ticket-search.js'
 export {
+  runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,
