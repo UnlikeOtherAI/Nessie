@@ -131,6 +131,19 @@ const writeThreadSseEvent = (
 export const formatUserSseEvent = (event: RealtimeReplayEvent) =>
   `id: ${event.id.toString()}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`
 
+/**
+ * The same frame with no `id:`, for a notification that carries no `eventId`.
+ * Those come from an older publisher mid rolling deploy, and they still have to
+ * reach the user lane: a client parked on a new replica would otherwise see
+ * nothing at all from an old one for the whole length of the deploy. But the
+ * `realtime_events` id such an event would replay from is unknown here, so
+ * writing any `id:` would move the client's Last-Event-ID onto a value its next
+ * reconnect cannot resume from. Delivered live, never bookkept — the same
+ * bargain an ephemeral thread event strikes.
+ */
+export const formatLiveUserSseEvent = (message: WsEventMessage) =>
+  `event: ${message.event}\ndata: ${JSON.stringify(message)}\n\n`
+
 // The last frame a draining replica writes to an SSE stream. `retry:` resets
 // the EventSource reconnection time to 2 s for any native-EventSource client;
 // the admin runs its own fetch-based loop (`admin/src/lib/sse.ts` drops the
@@ -241,9 +254,9 @@ export const shouldDeliverWsNotification = async (
  * pg LISTEN connection. It never writes to `realtime_events`: the publisher
  * inserted the row and issued the NOTIFY inside one locked transaction
  * (`PgRealtimeTransport.publishWs`), so with N api replicas listening, N
- * appends here would corrupt the shared Last-Event-ID sequence. A notification carrying no `eventId` comes from an
- * older publisher mid rolling deploy and is fanned out live with no replay
- * bookkeeping.
+ * appends here would corrupt the shared Last-Event-ID sequence. A notification
+ * carrying no `eventId` comes from an older publisher mid rolling deploy and is
+ * fanned out live with no replay bookkeeping.
  */
 export const createWsNotificationDelivery = (input: {
   canAccessChannelEvent?: (input: {
@@ -397,57 +410,70 @@ export const createWsNotificationDelivery = (input: {
           }
         : null
 
-    if (replayEvent) {
-      for (const connection of userSseConnections) {
-        if (connection.lastEventId >= replayEvent.id) {
-          warnDuplicate({
-            eventId: replayEvent.id.toString(),
-            lane: 'user',
-            lastEventId: connection.lastEventId.toString(),
-            userId: connection.userId,
-          })
-          continue
-        }
-
-        const gates = gatesFor(connection, {
-          organizationId: connection.organizationId,
+    for (const connection of userSseConnections) {
+      // The watermark is replay bookkeeping, so it only judges an event that
+      // has a row id. An id-less one is never a duplicate this side can detect
+      // and is never compared against the watermark it must not move.
+      if (replayEvent && connection.lastEventId >= replayEvent.id) {
+        warnDuplicate({
+          eventId: replayEvent.id.toString(),
+          lane: 'user',
+          lastEventId: connection.lastEventId.toString(),
           userId: connection.userId,
         })
-        const shouldDeliver = await shouldDeliverWsNotification({
-          connectionScopes: connection.scopes,
-          notificationScopes: notification.scopes,
-          canAccessAgent: gates.agent,
-          canAccessOrganization: gates.organization,
-          canAccessChannel: async (channelId) =>
-            input.canAccessChannelEvent
-              ? input.canAccessChannelEvent({
-                  channelId,
-                  organizationId: connection.organizationId,
-                  userId: connection.userId,
-                })
-              : connection.channelIds.has(channelId),
-          canAccessDashboard: async (dashboardId) =>
-            input.canAccessDashboardEvent
-              ? input.canAccessDashboardEvent({
-                  dashboardId,
-                  organizationId: connection.organizationId,
-                  userId: connection.userId,
-                })
-              : false,
-        })
-
-        if (!shouldDeliver) {
-          continue
-        }
-
-        if (connection.hydrating) {
-          connection.pending.push(replayEvent)
-          continue
-        }
-
-        connection.response.write(formatUserSseEvent(replayEvent))
-        connection.lastEventId = replayEvent.id
+        continue
       }
+
+      const gates = gatesFor(connection, {
+        organizationId: connection.organizationId,
+        userId: connection.userId,
+      })
+      const shouldDeliver = await shouldDeliverWsNotification({
+        connectionScopes: connection.scopes,
+        notificationScopes: notification.scopes,
+        canAccessAgent: gates.agent,
+        canAccessOrganization: gates.organization,
+        canAccessChannel: async (channelId) =>
+          input.canAccessChannelEvent
+            ? input.canAccessChannelEvent({
+                channelId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : connection.channelIds.has(channelId),
+        canAccessDashboard: async (dashboardId) =>
+          input.canAccessDashboardEvent
+            ? input.canAccessDashboardEvent({
+                dashboardId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : false,
+      })
+
+      if (!shouldDeliver) {
+        continue
+      }
+
+      if (!replayEvent) {
+        // Live-only, exactly as the mixed-version window is documented to
+        // behave: written with no `id:` and no watermark move. A hydrating
+        // connection drops it instead of queueing — `pending` is drained in id
+        // order and this has no id, and the bootstrap the client just ran
+        // covers the gap by construction.
+        if (!connection.hydrating) {
+          connection.response.write(formatLiveUserSseEvent(notification.message))
+        }
+        continue
+      }
+
+      if (connection.hydrating) {
+        connection.pending.push(replayEvent)
+        continue
+      }
+
+      connection.response.write(formatUserSseEvent(replayEvent))
+      connection.lastEventId = replayEvent.id
     }
 
     for (const connection of wsConnections) {

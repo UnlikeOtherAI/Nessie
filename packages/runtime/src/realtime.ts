@@ -13,7 +13,9 @@ import {
   notifyRealtime,
   publishThreadStreamEvent,
   publishWsEvent,
+  resolveRealtimeNotification,
   type RealtimeEventRow,
+  type RealtimeNotificationEnvelope,
   type RealtimeNotificationPayload,
   type RealtimeReplayEvent,
   type ThreadStreamEvent,
@@ -21,11 +23,13 @@ import {
   type WsEventMessage,
 } from './realtime-publish.js'
 
-export type {
-  RealtimeNotificationPayload,
-  RealtimeReplayEvent,
-  ThreadStreamEvent,
-  WsEventMessage,
+export {
+  resolveRealtimeNotification,
+  type RealtimeNotificationEnvelope,
+  type RealtimeNotificationPayload,
+  type RealtimeReplayEvent,
+  type ThreadStreamEvent,
+  type WsEventMessage,
 } from './realtime-publish.js'
 
 // The message announcement envelope rides this transport and is published by
@@ -215,12 +219,26 @@ export class PgRealtimeTransport {
           return
         }
 
+        let envelope: RealtimeNotificationEnvelope
         try {
-          const payload = JSON.parse(notification.payload) as RealtimeNotificationPayload
-          void onNotification(payload)
+          envelope = JSON.parse(notification.payload) as RealtimeNotificationEnvelope
         } catch {
           // Ignore malformed notifications. They are not recoverable locally.
+          return
         }
+
+        // A payload too large for NOTIFY travelled as its row id, so the row is
+        // read back here and nothing above the transport ever meets the compact
+        // form. That read costs a round trip, so such an event can reach the
+        // fan-out behind a smaller one published after it; the connection
+        // watermark then skips it and the client picks it up on its next
+        // reconnect replay — which is exactly what an over-limit NOTIFY did
+        // before it was made survivable, and far short of losing the row.
+        void resolveRealtimeNotification(this.pool, envelope)
+          .then((payload) => (payload ? onNotification(payload) : undefined))
+          .catch(() => {
+            // The row could not be read back; replay recovers it on reconnect.
+          })
       })
 
       try {

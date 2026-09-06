@@ -54,6 +54,35 @@ export type RealtimeNotificationPayload =
       scopes: WsScope[]
     }
 
+/**
+ * What actually travels over NOTIFY. A `*-ref` variant carries the row id in
+ * place of the payload; `resolveRealtimeNotification` reads the row back and
+ * hands a plain `RealtimeNotificationPayload` to the fan-out, so nothing above
+ * the transport ever meets one. See `notifyWithinTransaction` for why an
+ * oversized payload has to be announced this way rather than raise.
+ */
+export type RealtimeNotificationEnvelope =
+  | RealtimeNotificationPayload
+  | {
+      kind: 'sse-ref'
+      /** `thread_stream_events.id` of the row to re-read. */
+      sequence: number
+      threadId: string
+    }
+  | {
+      /** `realtime_events.id` of the row to re-read. */
+      eventId: string
+      kind: 'ws-ref'
+      /**
+       * Delivery scopes are not a column on `realtime_events` — only
+       * `channel_id` and `recipient_user_id` are, which cannot express an agent
+       * or dashboard scope — so they ride the notification even in the compact
+       * form. They are a handful of ids, orders of magnitude below the payload
+       * the compact form exists to leave behind.
+       */
+      scopes: WsScope[]
+    }
+
 export type RealtimeReplayEvent = {
   id: bigint
   channelId: string | null
@@ -126,6 +155,15 @@ const withOrderedPublish = async <T>(
   run: (client: PoolClient) => Promise<T>,
 ): Promise<T> => {
   const client = await pool.connect()
+  // node-postgres does not roll a transaction back when a client is released.
+  // So if the ROLLBACK itself fails while the connection survives — the server
+  // refused the command, a blip landed mid-statement — a plain `release()`
+  // would hand the next borrower a client still inside this transaction: its
+  // statements would run in it, still holding this scope's advisory lock, and
+  // be thrown away by whatever rolls back next. Releasing *with* an error is
+  // the only way to be sure the transaction is gone: the pool destroys that
+  // connection instead of reusing it.
+  let destroyReason: Error | undefined
   try {
     await client.query('BEGIN')
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockScope])
@@ -133,11 +171,103 @@ const withOrderedPublish = async <T>(
     await client.query('COMMIT')
     return result
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined)
+    try {
+      await client.query('ROLLBACK')
+    } catch (rollbackError) {
+      destroyReason =
+        rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError))
+    }
     throw error
   } finally {
-    client.release()
+    client.release(destroyReason)
   }
+}
+
+/**
+ * Postgres caps a NOTIFY payload at 8000 bytes and raises above it. Inside this
+ * transaction that raise would take the INSERT down with it — and `stream.done`
+ * carries the whole assistant reply, which has no bound (horizontal-scaling
+ * audit 2.7), so it is reachable in ordinary use. Before the publish became one
+ * transaction the row was already committed when the notify threw, and the
+ * client recovered the event on its next reconnect replay: late, but never
+ * lost, and the caller's operation still succeeded. Losing the row instead
+ * would be a straight regression.
+ *
+ * So the payload is measured first — in bytes, because the cap is bytes and a
+ * reply full of non-ASCII counts for more than its length — and an oversized
+ * one is announced by row id alone. The row commits either way and the listener
+ * re-reads it (`resolveRealtimeNotification`). The margin below 8000 leaves the
+ * compact envelope room and keeps the check clear of the terminator Postgres
+ * counts for itself.
+ */
+const NOTIFY_PAYLOAD_LIMIT_BYTES = 7_000
+
+const notifyWithinTransaction = async (
+  client: PoolClient,
+  channel: string,
+  payload: RealtimeNotificationEnvelope,
+  compact: () => RealtimeNotificationEnvelope,
+): Promise<void> => {
+  const full = JSON.stringify(payload)
+  const body =
+    Buffer.byteLength(full, 'utf8') <= NOTIFY_PAYLOAD_LIMIT_BYTES
+      ? full
+      : JSON.stringify(compact())
+
+  if (Buffer.byteLength(body, 'utf8') > NOTIFY_PAYLOAD_LIMIT_BYTES) {
+    // Not reachable unless the scope list alone is enormous, and the row is
+    // committed regardless — so stay silent rather than raise and destroy it.
+    // The client still recovers the event from replay on its next reconnect.
+    return
+  }
+
+  await client.query('SELECT pg_notify($1, $2)', [channel, body])
+}
+
+/**
+ * Turn what arrived on the wire back into a payload the fan-out understands,
+ * reading the row when only its id travelled. `null` means the row is gone —
+ * pruned, or its transaction rolled back after the notify was already queued —
+ * and there is nothing to deliver.
+ */
+export const resolveRealtimeNotification = async (
+  pool: Pool,
+  envelope: RealtimeNotificationEnvelope,
+): Promise<RealtimeNotificationPayload | null> => {
+  if (envelope.kind === 'sse-ref') {
+    const result = await pool.query<ThreadStreamEventRow>(
+      `
+        SELECT id, thread_id, event_name, data, created_at
+        FROM thread_stream_events
+        WHERE id = $1::bigint
+      `,
+      [envelope.sequence],
+    )
+    const row = result.rows[0]
+    return row ? { kind: 'sse', ...mapThreadStreamEvent(row) } : null
+  }
+
+  if (envelope.kind === 'ws-ref') {
+    const result = await pool.query<RealtimeEventRow>(
+      `
+        SELECT id, organization_id, channel_id, recipient_user_id, event_type, payload, created_at
+        FROM realtime_events
+        WHERE id = $1::bigint
+      `,
+      [envelope.eventId],
+    )
+    const row = result.rows[0]
+    return row
+      ? {
+          eventId: BigInt(row.id).toString(),
+          kind: 'ws',
+          message: row.payload as WsEventMessage,
+          scopes: envelope.scopes,
+        }
+      : null
+  }
+
+  return envelope
 }
 
 /**
@@ -172,10 +302,12 @@ export const publishThreadStreamEvent = async (
     )
 
     const record = mapThreadStreamEvent(result.rows[0]!)
-    await client.query('SELECT pg_notify($1, $2)', [
+    await notifyWithinTransaction(
+      client,
       channel,
-      JSON.stringify({ kind: 'sse', ...record } satisfies RealtimeNotificationPayload),
-    ])
+      { kind: 'sse', ...record },
+      () => ({ kind: 'sse-ref', sequence: record.sequence, threadId: record.threadId }),
+    )
     return record
   })
 }
@@ -280,15 +412,21 @@ export const publishWsEvent = async (
     )
 
     const replayEvent = mapRealtimeEventRow(result.rows[0]!)
-    await client.query('SELECT pg_notify($1, $2)', [
+    await notifyWithinTransaction(
+      client,
       channel,
-      JSON.stringify({
+      {
         eventId: replayEvent.id.toString(),
         kind: 'ws',
         message: input.message,
         scopes: input.scopes,
-      } satisfies RealtimeNotificationPayload),
-    ])
+      },
+      () => ({
+        eventId: replayEvent.id.toString(),
+        kind: 'ws-ref',
+        scopes: input.scopes,
+      }),
+    )
     return replayEvent
   })
 }

@@ -14,8 +14,10 @@ import {
 
 import {
   PgRealtimeTransport,
-  type RealtimeNotificationPayload,
+  resolveRealtimeNotification,
+  type RealtimeNotificationEnvelope,
 } from '../src/realtime.js'
+import { publishThreadStreamEvent } from '../src/realtime-publish.js'
 
 const runIfDatabase = process.env.DATABASE_URL ? test : test.skip
 
@@ -40,16 +42,16 @@ const startListener = async (
   connectionString: string,
   channel: string,
 ): Promise<{
-  received: RealtimeNotificationPayload[]
+  received: RealtimeNotificationEnvelope[]
   stop: () => Promise<void>
 }> => {
   const client = new Client({ connectionString })
-  const received: RealtimeNotificationPayload[] = []
+  const received: RealtimeNotificationEnvelope[] = []
   client.on('notification', (notification) => {
     if (!notification.payload) {
       return
     }
-    received.push(JSON.parse(notification.payload) as RealtimeNotificationPayload)
+    received.push(JSON.parse(notification.payload) as RealtimeNotificationEnvelope)
   })
   await client.connect()
   await client.query(`LISTEN ${channel}`)
@@ -64,7 +66,7 @@ const startListener = async (
 }
 
 const waitForNotifications = async (
-  received: RealtimeNotificationPayload[],
+  received: RealtimeNotificationEnvelope[],
   count: number,
 ): Promise<void> => {
   const deadline = Date.now() + NOTIFICATION_TIMEOUT_MS
@@ -360,4 +362,120 @@ runIfDatabase('a user-scoped publish persists under the organization the scope n
     await dropTenant(pool, seed.organizationId)
     await pool.end()
   }
+})
+
+/**
+ * Size. Postgres caps a NOTIFY payload at 8000 bytes, and `stream.done` carries
+ * the whole assistant reply, which has no bound at all (horizontal-scaling
+ * audit 2.7). Once the INSERT and the NOTIFY share a transaction, the raise the
+ * oversized notify produces would roll the row back with it — turning an event
+ * that used to be merely *late* (the row was already committed, so the client's
+ * next reconnect replayed it) into one that never existed, and failing the
+ * caller's publish besides. So the publisher measures the payload first and
+ * announces an oversized one by row id alone: the row commits, the notification
+ * stays well inside the cap, and the listener reads the event back whole.
+ */
+runIfDatabase('an oversized payload still commits its row and is announced by id', async () => {
+  const connectionString = process.env.DATABASE_URL!
+  const channel = `nessie_realtime_test_${randomUUID().replaceAll('-', '')}`
+  const pool = new Pool({ connectionString, max: 5 })
+  const listener = await startListener(connectionString, channel)
+  const seed = await seedTenant(pool)
+  // Comfortably past the cap, and no larger than a long model answer really is.
+  const content = 'x'.repeat(20_000)
+
+  try {
+    const transport = new PgRealtimeTransport(pool, connectionString, channel)
+    const runId = parseRunId(randomUUID())
+
+    // Nothing here may throw: the caller's operation must not fail because its
+    // announcement was too big to fit down a notification channel.
+    const record = await transport.publishSse(seed.threadId, 'stream.delta', { content, runId })
+
+    const persisted = await pool.query<{ data: { content: string }; id: string }>(
+      'SELECT id, data FROM thread_stream_events WHERE thread_id = $1',
+      [seed.threadId],
+    )
+    assert.equal(persisted.rowCount, 1, 'an oversized payload must still commit its row')
+    assert.equal(persisted.rows[0]!.data.content, content, 'the row must hold the whole payload')
+    assert.equal(Number(persisted.rows[0]!.id), record.sequence)
+
+    await waitForNotifications(listener.received, 1)
+    const [envelope] = listener.received
+    assert.equal(listener.received.length, 1, 'an oversized payload must still notify exactly once')
+    if (!envelope || envelope.kind !== 'sse-ref') {
+      assert.fail(`expected an id-only notification, got ${JSON.stringify(envelope).slice(0, 200)}`)
+    }
+    assert.equal(envelope.sequence, record.sequence)
+    assert.ok(
+      Buffer.byteLength(JSON.stringify(envelope), 'utf8') < 8_000,
+      'the id-only notification must fit inside the NOTIFY cap',
+    )
+
+    // Recoverable: the listener side turns the id back into the whole event
+    // before anything above the transport sees it.
+    const resolved = await resolveRealtimeNotification(pool, envelope)
+    if (!resolved || resolved.kind !== 'sse') {
+      assert.fail(`the id-only notification must resolve to its row, got ${JSON.stringify(resolved)}`)
+    }
+    assert.equal(resolved.sequence, record.sequence)
+    assert.equal((resolved.data as { content: string }).content, content)
+    assertNoLeakedClients(pool, 'pool')
+  } finally {
+    await listener.stop()
+    await dropTenant(pool, seed.organizationId)
+    await pool.end()
+  }
+})
+
+/**
+ * The rollback can fail too — the server refuses the command, a blip lands mid
+ * statement — and node-postgres does not roll a transaction back when a client
+ * is released. A plain `release()` would then hand the next borrower a client
+ * still inside this publish's transaction, still holding this scope's advisory
+ * lock, and that borrower's statements would run in it and be discarded by
+ * whatever rolls back next. Releasing *with* an error makes the pool destroy
+ * the connection instead. No database here: the assertion is which argument
+ * `release` receives, and only a fake client can fail a ROLLBACK on demand.
+ */
+test('a publish whose rollback fails destroys the pooled client instead of reusing it', async () => {
+  const insertFailure = new Error('insert failed')
+  const rollbackFailure = new Error('rollback failed')
+  const released: unknown[] = []
+  const statements: string[] = []
+
+  const client = {
+    query: async (text: string) => {
+      statements.push(text.trim().split('\n')[0]!.trim())
+      if (text.includes('INSERT INTO thread_stream_events')) {
+        throw insertFailure
+      }
+      if (text.trim() === 'ROLLBACK') {
+        throw rollbackFailure
+      }
+      return { rows: [] }
+    },
+    release: (reason?: unknown) => {
+      released.push(reason)
+    },
+  }
+  const pool = { connect: async () => client } as unknown as Pool
+
+  await assert.rejects(
+    () =>
+      publishThreadStreamEvent(pool, 'nessie_realtime_test', {
+        data: { content: 'x', runId: parseRunId(randomUUID()) },
+        event: 'stream.delta',
+        threadId: randomUUID(),
+      }),
+    (error) => error === insertFailure,
+    'the original failure must reach the caller, not the rollback failure',
+  )
+
+  assert.ok(statements.includes('ROLLBACK'), 'a failed publish must attempt a rollback')
+  assert.deepEqual(
+    released,
+    [rollbackFailure],
+    'a client whose ROLLBACK failed must be released with an error so the pool destroys it',
+  )
 })
