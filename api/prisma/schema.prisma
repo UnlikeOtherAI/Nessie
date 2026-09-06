@@ -8153,6 +8153,15 @@ enum AgentAccessScope {
   boards_write
   documents_read
   documents_write
+  /// Publishing, separated from writing on purpose.
+  ///
+  /// "Agents draft; only a human may publish" is a rule this codebase already
+  /// enforces for its own agents. An MCP credential resolves as the human who
+  /// approved it, so it would otherwise walk straight past that rule. Making
+  /// publication its own scope keeps the decision human — a person ticks a box
+  /// that says this agent may publish, once, and can revoke it — rather than
+  /// letting it arrive as a side effect of "can write documents".
+  documents_publish
 }
 
 enum AgentAuthorizationStatus {
@@ -8194,6 +8203,9 @@ model AgentAuthorizationRequest {
   approvedOrganizationId String?        @map("approved_organization_id") @db.Uuid
   approvedProjectId  String?            @map("approved_project_id") @db.Uuid
   approvedTeamId     String?            @map("approved_team_id") @db.Uuid
+  /// The approver's UOA workspace at the moment they approved, carried onto the
+  /// credential the redeem step mints. See `AgentAccessCredential.uoaIdentity`.
+  approvedUoaIdentity Json?             @map("approved_uoa_identity")
   approvedAt         DateTime?          @map("approved_at")
 
   /// Single use: the poll that mints the credential stamps this, so a replayed
@@ -8245,6 +8257,18 @@ model AgentAccessCredential {
   /// bumps it and kills every credential that human minted, at the same
   /// instant it kills their browser sessions.
   tokenVersion Int @map("token_version")
+
+  /// The approving human's UOA workspace, captured while a real session
+  /// existed — a `UoaSessionIdentity`.
+  ///
+  /// A credential has no session, and work an agent starts can outlive the
+  /// call: creating a document enqueues an embedding job, and on a signing
+  /// deployment that job's Ledger call needs the originating person's UOA
+  /// identity. The account link proves subject, status and epoch but not which
+  /// UOA workspace they were acting in, so without this the job fails in the
+  /// background after the tool has already reported success. Same capture,
+  /// same reason, as a scheduled trigger's `launchOrigin.uoaIdentity`.
+  uoaIdentity Json? @map("uoa_identity")
 
   expiresAt  DateTime  @map("expires_at")
   lastUsedAt DateTime? @map("last_used_at")

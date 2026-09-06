@@ -21,12 +21,18 @@ import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
  * predicates underneath it are what actually decide, and those are what these
  * call.
  *
- * **Publishing is deliberately absent.** The route refuses it outright for an
- * agent actor — "agents draft; only a human may publish" — and routes an agent
- * to an approval instead. An agent credential resolves as the human who
- * approved it, so a publish tool here would walk straight past a gate written
- * for exactly this kind of caller. Drafting and editing are the useful writes;
- * publication stays a human act.
+ * **Publishing has its own scope, and that is the whole design.** The route
+ * refuses publication for an `agent` actor outright — "agents draft; only a
+ * human may publish" — and sends it to an approval. An MCP credential resolves
+ * as the human who approved it, so that check does not catch it: the rule would
+ * be bypassed by exactly the kind of caller it was written for.
+ *
+ * Dropping the rule was not acceptable, and refusing publication forever left
+ * an agent unable to finish work a person asked it to do. So the decision stays
+ * human and moves to pairing time: `documents_publish` is granted only by
+ * ticking a box that says this agent may publish, it is deliberately not
+ * pre-selected the way the other scopes are, and it can be revoked. A person
+ * decides once, explicitly, instead of per document or never.
  */
 
 const NOT_AVAILABLE = {
@@ -275,6 +281,60 @@ export const documentTools = (): McpToolDefinition[] => [
         }
         throw error
       }
+    },
+  },
+  {
+    description:
+      'Publish a document, making it visible to everyone who can read its '
+      + 'space. Needs the separate `documents_publish` scope, which a person '
+      + 'grants deliberately — publication is normally a human act.',
+    inputSchema: { pageId: z.string().uuid() },
+    name: 'nessie_doc_publish',
+    run: async (context, input) => {
+      requireScope(context.scopes, 'documents_publish')
+      const access = context.knowledge
+      if (!access) return NOT_AVAILABLE
+
+      // The same policy action the route checks — `approve`, not `edit`.
+      // Publishing is a different decision from writing, and the policy engine
+      // already says so.
+      const decision = await context.checkPolicy(
+        context.prisma,
+        context.actorContext,
+        'knowledge_page',
+        'approve',
+      )
+      if (!decision.allowed) {
+        return { error: `Knowledge base access denied: ${decision.reasonCode}` }
+      }
+
+      const organizationId = context.actorContext.tenant.organizationId
+      const pageId = input.pageId as string
+      const existing = await access.provider.getPage(organizationId, pageId)
+      if (!existing) return PAGE_UNREACHABLE
+
+      const space = await access.provider.getSpace(organizationId, existing.spaceId)
+      const viewer = await access.buildViewer(context.actorContext)
+      if (!space || !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
+
+      const page = await access.provider.publishPage({
+        actorUserId: context.actorContext.actor.actorId,
+        organizationId,
+        pageId,
+      })
+      if (!page) return PAGE_UNREACHABLE
+
+      await emitAuditEvent(context.prisma, {
+        action: 'kb.page.published',
+        actorContext: context.actorContext,
+        // `via` is what separates a person's own publication from one their
+        // agent made for them, which for publishing is the interesting fact.
+        metadata: { publishedVersionId: page.publishedVersionId, via: 'mcp_agent_credential' },
+        outcome: 'success',
+        resourceId: page.id,
+        resourceType: 'knowledge_page',
+      })
+      return { page }
     },
   },
 ]

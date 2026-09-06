@@ -44,10 +44,6 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
       const credential = request.agentCredential
       const actorContext = request.actorContext
       if (!credential || !actorContext) {
-        // Reached only by a caller holding an ordinary session rather than an
-        // agent credential. Named rather than generically refused, because a
-        // person testing the endpoint with their own token deserves to know
-        // why it will not work.
         sendApiError(
           reply,
           401,

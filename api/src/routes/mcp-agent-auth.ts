@@ -13,6 +13,7 @@ import {
   DEVICE_POLL_INTERVAL_SECONDS,
 } from '../services/mcp-agent/device-authorization.js'
 import { revokeAgentAccessCredential } from '../services/mcp-agent/agent-credential.js'
+import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -25,6 +26,10 @@ import type { RouteDeps } from './types.js'
  * signed-in human approves the request through the approval routes below, which
  * are ordinary authenticated routes.
  */
+
+// Read once at startup, exactly as the runtime signer is: whether this
+// deployment signs Ledger calls is never a per-request decision.
+const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 
 const ScopeSchema = z.nativeEnum(AgentAccessScope)
 
@@ -197,6 +202,27 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
     // The credential will act as this person, in this tenant. Taking the scope
     // from their live session rather than anything the agent proposed is what
     // stops an agent naming a workspace its human cannot reach.
+    // A signing deployment cannot let an agent write documents without an
+    // identity to sign the indexing that follows: the tool would report success
+    // and the embedding would fail later, in the background, where nobody is
+    // looking. Refuse now, while there is somebody to tell — the same refusal
+    // the scheduled-trigger create route makes, for the same reason.
+    const writesDocuments =
+      body.approve && (body.scopes ?? []).some((scope) => scope.startsWith('documents_'))
+    if (
+      writesDocuments
+      && ledgerSigningConfigured
+      && !actorContext.actionContext.uoaIdentity
+    ) {
+      sendApiError(
+        reply,
+        400,
+        'AGENT_ACCESS_UOA_IDENTITY_REQUIRED',
+        'Granting document access needs an UnlikeOtherAI SSO session. Sign in through SSO and approve again.',
+      )
+      return reply
+    }
+
     const outcome = await decideDeviceAuthorization(prisma, {
       approve: body.approve,
       approvedScopes: body.scopes ?? [],
@@ -204,6 +230,9 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
       projectId: projectId ?? '',
       requestId: pending.id,
       teamId: teamId ?? null,
+      ...(actorContext.actionContext.uoaIdentity
+        ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+        : {}),
       userId: actorContext.actor.actorId,
     })
 

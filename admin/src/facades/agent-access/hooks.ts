@@ -17,6 +17,7 @@ export type AgentAccessScope =
   | 'boards_write'
   | 'documents_read'
   | 'documents_write'
+  | 'documents_publish'
 
 export type PendingAgentAuthorization = {
   clientName: string

@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { AgentAccessCredential, AgentAccessScope, PrismaClient } from '@prisma/client'
-import { AuthorizedActionContextSchema, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  AuthorizedActionContextSchema,
+  UoaSessionIdentitySchema,
+  type AuthorizedActionContext,
+  type UoaSessionIdentity,
+} from '@nessie/schemas'
 
 /**
  * The credential an agent presents to the MCP endpoint.
@@ -55,6 +60,8 @@ export const mintAgentAccessCredential = async (
     scopes: AgentAccessScope[]
     teamId: string | null
     ttlMs?: number
+    /** The approving human's UOA workspace, when their session carried one. */
+    uoaIdentity?: unknown
     userId: string
   },
 ): Promise<MintedAgentCredential> => {
@@ -80,11 +87,29 @@ export const mintAgentAccessCredential = async (
       // secret; never enough to reconstruct one.
       tokenPrefix: token.slice(0, AGENT_CREDENTIAL_PREFIX.length + 6),
       tokenVersion: user.tokenVersion,
+      ...(input.uoaIdentity === undefined || input.uoaIdentity === null
+        ? {}
+        : { uoaIdentity: input.uoaIdentity as never }),
       userId: input.userId,
     },
   })
 
   return { credential, token }
+}
+
+/**
+ * The stored UOA workspace, if it still matches the contract.
+ *
+ * Returns undefined rather than throwing: a credential whose captured identity
+ * has gone malformed should still read boards, and the paths that genuinely
+ * need the identity fail closed on their own.
+ */
+const replayableUoaIdentity = (
+  stored: unknown,
+): UoaSessionIdentity | undefined => {
+  if (stored === null || stored === undefined) return undefined
+  const parsed = UoaSessionIdentitySchema.safeParse(stored)
+  return parsed.success ? parsed.data : undefined
 }
 
 export type AgentCredentialRejection =
@@ -194,6 +219,15 @@ export const verifyAgentAccessCredential = async (
       actionContext: {
         effectiveUserId: credential.userId,
         requestId: randomUUID(),
+        // Replayed so background work this call starts — an embedding job for a
+        // document the agent just wrote — can sign as the person who approved
+        // the pairing. Re-verified downstream against the live account link
+        // exactly as a session's is, so this is replay, not a second source of
+        // truth. Parsed rather than cast: a stored shape that no longer matches
+        // is dropped instead of reaching the signer.
+        ...(replayableUoaIdentity(credential.uoaIdentity)
+          ? { uoaIdentity: replayableUoaIdentity(credential.uoaIdentity) }
+          : {}),
       },
       actor: {
         actorId: credential.userId,

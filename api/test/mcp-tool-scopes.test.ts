@@ -53,7 +53,7 @@ test('read scopes never imply write ones', () => {
   assert.throws(() => requireScope([...readOnly], 'documents_write'), McpScopeError)
 })
 
-test('the tool set covers boards and documents, and does not publish', () => {
+test('the tool set covers boards and documents, publishing included', () => {
   const names = nessieMcpTools().map((tool) => tool.name)
 
   for (const expected of [
@@ -68,17 +68,23 @@ test('the tool set covers boards and documents, and does not publish', () => {
     'nessie_doc_get',
     'nessie_doc_create',
     'nessie_doc_update',
+    'nessie_doc_publish',
   ]) {
     assert.ok(names.includes(expected), `${expected} is missing from the tool set`)
   }
+})
 
-  // Publishing is a human act: the HTTP route refuses an agent outright and
-  // routes it to an approval. An agent credential resolves as the human who
-  // approved it, so a publish tool here would walk straight past a gate written
-  // for exactly this kind of caller.
-  assert.equal(
-    names.some((name) => name.includes('publish')),
-    false,
-    'an agent must not be able to publish a document',
+test('publishing is never implied by writing', () => {
+  // "Agents draft; only a human may publish" survives because publishing has
+  // its own scope. A credential holding every write scope still cannot
+  // publish; only a person ticking `documents_publish` at pairing time does.
+  const publish = nessieMcpTools().find((tool) => tool.name === 'nessie_doc_publish')
+  assert.ok(publish)
+  assert.rejects(
+    () => publish.run(
+      { scopes: ['boards_write', 'documents_read', 'documents_write'] } as never,
+      {},
+    ),
+    McpScopeError,
   )
 })
