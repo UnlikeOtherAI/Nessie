@@ -326,6 +326,14 @@ runIfDatabase("admission waits for the governing scope's advisory lock", async (
   const held = new Promise<void>((resolve) => {
     release = resolve
   })
+  // Resolved from *inside* the holder transaction, once the lock is actually
+  // taken. Waiting a fixed 250ms instead was the flake: on a loaded runner the
+  // holder had not reached its lock statement yet, so the write below sailed
+  // through and the test read that as "the write does not take the lock".
+  let acquired!: () => void
+  const lockHeld = new Promise<void>((resolve) => {
+    acquired = resolve
+  })
 
   try {
     await prisma.budget.create({
@@ -344,12 +352,13 @@ runIfDatabase("admission waits for the governing scope's advisory lock", async (
     const holding = holder.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}::text, 0))`
+        acquired()
         await held
       },
       { timeout: 30_000 },
     )
     // Give the holder a moment to actually acquire it before racing.
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    await lockHeld
 
     const admission = admitRunToBudget(
       prisma,
