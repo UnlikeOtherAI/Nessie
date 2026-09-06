@@ -126,14 +126,28 @@ matches no row. Beside it:
   `NESSIE_RUN_DRAIN_GRACE_MS` (default 5 s) to land, then the loop throws
   `RunDrainedError`. The run stays `running`, its token and heartbeat are
   cleared so the next worker claims it on its next poll rather than waiting out
-  the takeover window, and the job is nacked with reason `worker_drain`. This is
-  what makes invariant 6's sixty seconds true for a 45-minute run.
+  the takeover window, and the job is nacked with reason `worker_drain`.
 
-Still outstanding from this finding: a `run_tool_effects (run_id, tool_call_id)`
-unique row written before any side-effecting builtin executes (plan row 3.2).
-The recorded results above make a resumed run skip tools it already ran, but
-they live in the checkpoint rather than in a constraint, so a tool interrupted
-between its side effect and its result being recorded can still run twice.
+Two things this finding still owes, both proved by the two-instance chaos smoke:
+
+- **The handler is signalled at the drain deadline, not at its start.**
+  `drainQueueSubscriptions` (`worker/src/lifecycle.ts`) stops the subscriptions
+  and waits; the per-job `AbortSignal` fires only when the deadline passes and
+  `subscription.abandon` runs, and `stop()` then closes the pool without waiting
+  for the abandoned handler to unwind. So the loop reaches its checkpoint path
+  with the process already exiting, and `releaseRunForDrain` never lands: the
+  successor claims the released job, finds the run still carrying a fresh
+  heartbeat, and skips it. The chaos smoke's check (b) fails on exactly this,
+  and did before this phase too. The fix is a second `AbortController` for
+  in-flight handlers, aborted at the *start* of the drain, with the drain
+  awaiting `subscription.done` after abandoning — invariant 6's territory.
+- **Tool idempotency is a checkpoint, not a constraint.** A
+  `run_tool_effects (run_id, tool_call_id)` unique row written before any
+  side-effecting builtin executes is plan row 3.2. The recorded results above
+  make a resumed run skip tools it already ran, but a tool interrupted between
+  its side effect and its result being recorded can still run twice. A re-entered
+  batch also re-emits `agent.tool.start`/`end`, so its `ToolCall` telemetry row
+  is written twice for a tool that ran once.
 
 ## 5. Boot connects and listens — nothing else
 
