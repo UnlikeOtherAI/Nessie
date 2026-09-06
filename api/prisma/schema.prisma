@@ -1302,6 +1302,7 @@ model Organization {
   auditLogs                        AuditLog[]
   tokenLedgerEvents                TokenLedgerEvent[]
   budgetAlerts                     BudgetAlert[]
+  budgetReservations               BudgetReservation[]
   modelPricingProfiles             ModelPricingProfile[]
   connectorUsageEvents             ConnectorUsageEvent[]
   storageUsageEvents               StorageUsageEvent[]
@@ -2885,6 +2886,8 @@ model Run {
   resumedFromAgentCard AgentCard?  @relation("AgentCardResumedByRun")
 
   cloudBrowserSessions CloudBrowserSession[]
+
+  budgetReservation BudgetReservation?
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -4897,6 +4900,43 @@ model BudgetAlert {
   @@unique([scopeType, scopeId, periodStart, kind])
   @@index([organizationId, createdAt])
   @@map("budget_alerts")
+}
+
+/// An admitted run's budget ceiling, held while its real spend is still
+/// unrecorded.
+///
+/// The spend gate reads `token_ledger_events`, which a run only writes when it
+/// records usage. With one instance that made the cap soft; with N instances it
+/// made it meaningless — every replica admitting at the same moment saw the
+/// same pre-run total. Admission in `enforce`/`degrade` mode now takes
+/// `pg_advisory_xact_lock` on the governing budget scope and inserts a row here
+/// inside the same transaction, so the next admitter counts this run's ceiling
+/// alongside recorded spend and the two cannot both pass a cap they jointly
+/// exceed.
+///
+/// The reservation is an ESTIMATE (`Agent.runLimits.maxCostCents/maxTokens`,
+/// else the `NESSIE_RUN_BACKSTOP_*` envelope), never money spent: it is counted
+/// only by the admission read, never by the owner-facing usage totals or the
+/// mid-run recheck, so nobody is shown an estimate as spend. It is deleted the
+/// moment the run records actual usage, and rows whose run reached a terminal
+/// state are both ignored by the aggregate and swept in the worker.
+model BudgetReservation {
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @map("organization_id") @db.Uuid
+  scopeType       BudgetScopeType @map("scope_type")
+  scopeId         String          @map("scope_id") @db.Uuid
+  /// One reservation per run: re-admitting a redelivered run replaces its own
+  /// row rather than reserving twice.
+  runId           String          @unique @map("run_id") @db.Uuid
+  reservedCostUsd Decimal         @default(0) @map("reserved_cost_usd") @db.Decimal(14, 4)
+  reservedTokens  Int             @default(0) @map("reserved_tokens")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([scopeType, scopeId, createdAt])
+  @@map("budget_reservations")
 }
 
 model ModelPricingProfile {
@@ -7176,6 +7216,26 @@ model ScopedSetting {
   owner        OrganizationMember? @relation("ScopedSettingOwner", fields: [organizationId, userId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, key])
+  /// ONE ROW PER LEVEL PER KEY, and it is already enforced — by three PARTIAL
+  /// unique indexes created in 20260903130000_scoped_settings, one per scope:
+  /// `scoped_settings_org_scope_key` (organization_id, key) WHERE
+  /// scope='organization', `scoped_settings_team_scope_key` (team_id, key)
+  /// WHERE scope='team', and `scoped_settings_user_scope_key`
+  /// (organization_id, user_id, key) WHERE scope='user'. Together with
+  /// `scoped_settings_scope_target_chk` they cover every value of
+  /// `SettingScope`, so no duplicate target is representable.
+  ///
+  /// They are partial because `teamId`/`userId` are NULL at the levels that do
+  /// not use them and Postgres treats NULLs as distinct, which a plain
+  /// `@@unique` across the five columns would not survive. Prisma cannot
+  /// express a partial unique index, so they are raw SQL and this comment is
+  /// where they are visible from the schema — read it before concluding, as an
+  /// audit once did, that nothing constrains this table.
+  ///
+  /// The indexes make a duplicate impossible; they do NOT make a concurrent
+  /// write correct on their own — the loser of a find-then-create race gets a
+  /// unique violation instead of updating the winner's row. That is what the
+  /// per-target advisory lock in `writeScopedSetting` is for.
   @@map("scoped_settings")
 }
 

@@ -50,6 +50,39 @@ summary and points here; **this file is the rule**.
     runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
     toolCount }`, no cost data (`run-timing.ts`), written after the status flip
     so it can never fail a finished run. Owners: `GET /api/ledger/runs/timing`.
+- **Budget and storage-quota admission are atomic, and say what they promise.**
+  A run enters through `admitRunToBudget` (`packages/runtime/src/budget.ts`),
+  not `evaluateBudget`: for an `enforce`/`degrade` budget with a limit it takes
+  `pg_advisory_xact_lock` on the governing scope, reads recorded spend **plus
+  the ceilings of runs already admitted and not yet settled**
+  (`budget_reservations`, written from the run's `Agent.runLimits` ?? backstop
+  envelope), and reserves inside one transaction. The guarantee is that
+  admissions for one scope are serialised and a run that has recorded nothing
+  yet is counted at its **full ceiling**, so two runs that fit one at a time but
+  not together can never both be admitted, however many replicas are admitting.
+  **State its limit alongside it** — an overclaimed cap is worse than an
+  honestly documented soft one. The reservation is dropped by
+  `recordInferenceUsage` on the run's **first** recorded usage (leaving the
+  estimate beside the real number would double-count it), so from then on the
+  run counts at what it has recorded, not at what it may still spend: "past the
+  cap by at most one ceiling" is exact only while the competing runs have not
+  started spending, and across a period of long, partially-recorded runs the
+  excess is bounded by their unrecorded headroom instead. Bounding a single
+  run's own total remains the envelope's and the mid-run recheck's job.
+  Reservations are an estimate, so only admission reads them: `/ops/usage`,
+  `listBudgetStatuses` and the mid-run recheck stay on recorded spend. A
+  reservation is ignored once its run is terminal, and swept in
+  `worker/src/control/budget-reservation-sweep.ts`. `warn`/`unlimited`/`off`
+  never take the lock. The storage quota is the same shape:
+  `withStorageAdmission` (`packages/runtime/src/storage-quota.ts`) runs the
+  check and the `storage_usage_events` writes in one transaction under the
+  organisation's lock, which makes it exact rather than "exact modulo
+  concurrent uploads". **Both** paths that store bytes go through it — the
+  upload itself (`files/index.ts`) and the deferred preview backfill
+  (`files/attachment-thumbnails.ts`, whose pre-check is only a cheap early-out);
+  a preview is stored bytes like any other, so a check that is not atomic with
+  the write making it visible would reopen the same race. What the guarantee
+  rests on is that `FileService` is the only writer of those bytes.
 - **Budget threshold alerts + failed-run attribution** (local ops only, never
   UOA credits). The gate no longer only observes usage passively: `evaluateBudget`
   (`packages/runtime/src/budget.ts`) returns the byte-identical verdict PLUS an

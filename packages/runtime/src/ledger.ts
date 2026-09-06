@@ -5,6 +5,8 @@ import type {
   UoaSessionIdentity,
 } from '@nessie/schemas'
 
+import { releaseBudgetReservation } from './budget-reservations.js'
+
 export {
   currentStorageUsageBytes,
   recordStorageStored,
@@ -410,6 +412,15 @@ export const recordInferenceUsage = async (
   )
 
   await prisma.tokenLedgerEvent.createMany({ data: rows, skipDuplicates: true })
+
+  // The run's admission reservation was a placeholder for exactly these rows.
+  // Now that its real spend is on the ledger, holding the estimate as well
+  // would double-count it against the next admitter. Released here rather than
+  // on each terminal path because this is the one writer all five of them go
+  // through — see budget-reservations.ts.
+  if (attribution.runId) {
+    await releaseBudgetReservation(prisma, attribution.runId)
+  }
 }
 
 /**

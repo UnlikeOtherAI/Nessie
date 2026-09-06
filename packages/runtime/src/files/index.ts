@@ -3,13 +3,18 @@ import type { Readable } from 'node:stream'
 
 import type { Attachment, PrismaClient } from '@prisma/client'
 
-import { type BudgetScope, checkStorageQuota, type StorageQuotaDecision } from '../budget.js'
+import type { BudgetScope } from '../budget.js'
 import {
   currentStorageUsageBytes,
   type LedgerAttribution,
   recordStorageStored,
   type StorageUsageScope,
 } from '../ledger.js'
+import {
+  checkStorageQuota,
+  type StorageQuotaDecision,
+  withStorageAdmission,
+} from '../storage-quota.js'
 import type { Storage } from '../storage/index.js'
 import {
   createThumbnailOps,
@@ -260,19 +265,11 @@ export const createFileService = (deps: {
       throw new FileTooLargeError(bytesWritten, maxUploadBytes)
     }
 
-    // Authoritative quota re-check now that the exact size is known. The
-    // thumbnail counts against the same budget — it is stored bytes like any
-    // other — so it can never push an org over the cap after the fact.
-    const thumbnailBytes = thumbnail?.data.byteLength ?? 0
-    const post = await checkStorageQuota(prisma, scope, bytesWritten + thumbnailBytes)
-    if (!post.allowed) {
-      await storage.delete(storageKey).catch(() => undefined)
-      throw new QuotaExceededError(post.reason, post.usedBytes, post.limitBytes)
-    }
-
-    // Write the preview before the row so the row is never created pointing at
-    // an object that does not exist. A failed preview write is not fatal: the
-    // upload succeeds without one.
+    // Write the preview before the quota transaction, for the same reason the
+    // original bytes go first: object I/O has no business inside a database
+    // transaction, and the transaction below is what serialises uploaders. A
+    // failed preview write is not fatal — the upload succeeds without one — and
+    // a preview whose upload is then refused is deleted with the original.
     const thumbnailKey = thumbnail ? thumbnailStorageKey(storageKey) : null
     let storedThumbnail: GeneratedThumbnail | null = null
     if (thumbnail && thumbnailKey) {
@@ -284,33 +281,11 @@ export const createFileService = (deps: {
       }
     }
 
-    let attachment: Attachment
-    try {
-      attachment = await prisma.attachment.create({
-        data: {
-          organizationId: input.organizationId,
-          uploaderId: input.uploaderId,
-          messageId: input.messageId ?? null,
-          knowledgePageId: input.knowledgePageId ?? null,
-          emailMessageId: input.emailMessageId ?? null,
-          kind: kindFromMime(input.mime),
-          mime: input.mime,
-          filename: input.filename,
-          sizeBytes: BigInt(bytesWritten),
-          storageKey,
-          width,
-          height,
-          ...(storedThumbnail && thumbnailKey
-            ? thumbnailColumns(thumbnailKey, storedThumbnail)
-            : {}),
-        },
-      })
-    } catch (error) {
+    const discardObjects = async (): Promise<void> => {
       await storage.delete(storageKey).catch(() => undefined)
       if (thumbnailKey) {
         await storage.delete(thumbnailKey).catch(() => undefined)
       }
-      throw error
     }
 
     const usageScope = {
@@ -320,27 +295,77 @@ export const createFileService = (deps: {
       spaceId: input.scope?.spaceId ?? null,
       uploaderId: input.uploaderId,
     }
-    await recordStorageStored(prisma, {
-      attribution: input.attribution,
-      scope: usageScope,
-      deltaBytes: BigInt(bytesWritten),
-      operation: 'store',
-      attachmentId: attachment.id,
-    })
-    if (storedThumbnail) {
-      // A separate signed event, not a larger `store`: usage sums every row, so
-      // the preview's bytes stay individually auditable and its later `-bytes`
-      // counterpart nets it to zero.
-      await recordStorageStored(prisma, {
-        attribution: input.attribution,
-        scope: usageScope,
-        deltaBytes: BigInt(storedThumbnail.data.byteLength),
-        operation: 'store.thumbnail',
-        attachmentId: attachment.id,
-      })
+
+    // Authoritative quota check now that the exact size is known, and the usage
+    // events that make this upload visible to the next one — one transaction,
+    // under the organisation's admission lock. Two uploads that each fit alone
+    // but not together can no longer both pass: the second reads the first's
+    // committed events. The thumbnail counts against the same quota, because it
+    // is stored bytes like any other.
+    const thumbnailBytes = storedThumbnail?.data.byteLength ?? 0
+    let admission: Awaited<ReturnType<typeof withStorageAdmission<Attachment>>>
+    try {
+      admission = await withStorageAdmission(
+        prisma,
+        scope,
+        bytesWritten + thumbnailBytes,
+        async (tx) => {
+          const attachment = await tx.attachment.create({
+            data: {
+              organizationId: input.organizationId,
+              uploaderId: input.uploaderId,
+              messageId: input.messageId ?? null,
+              knowledgePageId: input.knowledgePageId ?? null,
+              emailMessageId: input.emailMessageId ?? null,
+              kind: kindFromMime(input.mime),
+              mime: input.mime,
+              filename: input.filename,
+              sizeBytes: BigInt(bytesWritten),
+              storageKey,
+              width,
+              height,
+              ...(storedThumbnail && thumbnailKey
+                ? thumbnailColumns(thumbnailKey, storedThumbnail)
+                : {}),
+            },
+          })
+          await recordStorageStored(tx, {
+            attribution: input.attribution,
+            scope: usageScope,
+            deltaBytes: BigInt(bytesWritten),
+            operation: 'store',
+            attachmentId: attachment.id,
+          })
+          if (storedThumbnail) {
+            // A separate signed event, not a larger `store`: usage sums every
+            // row, so the preview's bytes stay individually auditable and its
+            // later `-bytes` counterpart nets it to zero.
+            await recordStorageStored(tx, {
+              attribution: input.attribution,
+              scope: usageScope,
+              deltaBytes: BigInt(storedThumbnail.data.byteLength),
+              operation: 'store.thumbnail',
+              attachmentId: attachment.id,
+            })
+          }
+          return attachment
+        },
+      )
+    } catch (error) {
+      await discardObjects()
+      throw error
     }
 
-    return { attachment, bytesWritten }
+    if (!admission.admitted) {
+      await discardObjects()
+      throw new QuotaExceededError(
+        admission.decision.reason,
+        admission.decision.usedBytes,
+        admission.decision.limitBytes,
+      )
+    }
+
+    return { attachment: admission.value, bytesWritten }
   }
 
   const openStream: FileService['openStream'] = async (attachmentId, organizationId) => {
