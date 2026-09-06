@@ -1,6 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
 import type { BoardWatcherRecord } from '@nessie/schemas'
 
+import { resolveAgentConversation } from './agent-conversation.js'
+
 /**
  * Who to tell when a ticket on a board changes.
  *
@@ -22,9 +24,24 @@ import type { BoardWatcherRecord } from '@nessie/schemas'
  */
 export type BoardWatcherInput = { kind: 'user' | 'agent'; id: string }
 
+/**
+ * The adder's session, captured so a wake can replay it.
+ *
+ * A wake has no session of its own. Both halves matter: `teamId` decides which
+ * DM the agent is woken in (the key includes it, and the interactive route
+ * takes it from the session), and `uoaIdentity` is what the Ledger signer
+ * verifies — a trigger captures the same thing as its `launchOrigin`, for the
+ * same reason.
+ */
+export type BoardWatcherOrigin = {
+  teamId: string
+  uoaIdentity?: unknown
+}
+
 export type BoardWatcherError =
   | { error: 'BOARD_NOT_FOUND' }
   | { error: 'RECIPIENT_NOT_REACHABLE'; recipientId: string }
+  | { error: 'AGENT_HAS_NO_CONVERSATION'; recipientId: string }
 
 export const isBoardWatcherError = <T>(
   value: T | BoardWatcherError,
@@ -77,6 +94,7 @@ export const setBoardWatchers = async (
     boardId: string
     organizationId: string
     addedByUserId: string
+    origin: BoardWatcherOrigin
     watchers: BoardWatcherInput[]
   },
 ): Promise<BoardWatcherRecord[] | BoardWatcherError> => {
@@ -88,6 +106,7 @@ export const setBoardWatchers = async (
 
   const userIds = input.watchers.filter((w) => w.kind === 'user').map((w) => w.id)
   const agentIds = input.watchers.filter((w) => w.kind === 'agent').map((w) => w.id)
+  const agentTargets = new Map<string, { channelId: string; threadId: string }>()
 
   if (userIds.length > 0) {
     const reachable = await prisma.organizationMember.findMany({
@@ -111,6 +130,25 @@ export const setBoardWatchers = async (
     const found = new Set(reachable.map((row) => row.id))
     const missing = agentIds.find((id) => !found.has(id))
     if (missing) return { error: 'RECIPIENT_NOT_REACHABLE', recipientId: missing }
+
+    // An agent is *woken* rather than told, and a wake needs a conversation it
+    // is bound to. A system agent and the personal assistant have none they
+    // could be woken in — they own no automation at all — so accepting one
+    // would be a watcher that silently never fires. Resolved here, where a
+    // person is still looking at the picker, and stored: the worker must not
+    // work out the destination a second time (see `channelId` on the row).
+    for (const agentId of agentIds) {
+      const conversation = await resolveAgentConversation(prisma, {
+        agentId,
+        organizationId: input.organizationId,
+        onBehalfOfUserId: input.addedByUserId,
+        teamId: input.origin.teamId,
+      })
+      if (!conversation) {
+        return { error: 'AGENT_HAS_NO_CONVERSATION', recipientId: agentId }
+      }
+      agentTargets.set(agentId, conversation)
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -123,7 +161,18 @@ export const setBoardWatchers = async (
         addedByUserId: input.addedByUserId,
         ...(watcher.kind === 'user'
           ? { userId: watcher.id }
-          : { agentId: watcher.id }),
+          : {
+              agentId: watcher.id,
+              channelId: agentTargets.get(watcher.id)?.channelId ?? null,
+              threadId: agentTargets.get(watcher.id)?.threadId ?? null,
+              launchOrigin: {
+                teamId: input.origin.teamId,
+                userId: input.addedByUserId,
+                ...(input.origin.uoaIdentity
+                  ? { uoaIdentity: input.origin.uoaIdentity }
+                  : {}),
+              } as object,
+            }),
       })),
     })
   })

@@ -49,7 +49,11 @@ const ENQUEUE_RUN_EXECUTION_SITES: Record<string, 'stamps' | 'inherits' | 'unatt
   'packages/team-admin/src/global-agent-brief.ts': 'stamps',
   'worker/src/control/agent-email/inbound.ts': 'unattended',
   'worker/src/control/mailbox.ts': 'unattended',
-  'worker/src/control/trigger-run.ts': 'unattended',
+  // The one run-start: a trigger fire and a board watcher's wake both reach
+  // the queue through it. Both are automation — the kickoff is a `system`
+  // message and nobody is at the keyboard — so `interactive` is never set and
+  // `resolveDelegatedRequesterUserId` refuses either way.
+  'worker/src/control/agent-run-start.ts': 'unattended',
   'worker/src/run/execute/continuation.ts': 'unattended',
   'worker/src/run/orchestrate.ts': 'inherits',
   'worker/src/run/subtask-tools.ts': 'unattended',

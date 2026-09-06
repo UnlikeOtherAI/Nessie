@@ -1623,6 +1623,17 @@ model BoardWatcher {
   /// The administrator who spent this recipient's attention. Kept because
   /// adding somebody to a watch list is an act with a subject.
   addedByUserId  String   @map("added_by_user_id") @db.Uuid
+  /// Agent rows only: the conversation the wake lands in, resolved once when
+  /// the watcher was added and never guessed at afterwards. The DM key includes
+  /// a team, and only the session that added the watcher knows which team that
+  /// is — the worker recomputing it would open a second DM nobody is reading.
+  channelId      String?  @map("channel_id") @db.Uuid
+  threadId       String?  @map("thread_id") @db.Uuid
+  /// Agent rows only: the adder's identity, replayed at every wake exactly as a
+  /// trigger replays its `launchOrigin`. A wake has no session, so without this
+  /// the Ledger signer has nothing to verify and the run dies at its first
+  /// inference — unattended, so it would post nothing to say why.
+  launchOrigin   Json?    @map("launch_origin")
   createdAt      DateTime @default(now()) @map("created_at")
 
   board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)

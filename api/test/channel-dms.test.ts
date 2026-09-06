@@ -189,14 +189,12 @@ test('findOrCreateDmChannel migrates a legacy one-member self DM key', async () 
 test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
   let upsertArgs: {
     create: {
-      agentBindings: { create: { agentId: string } }
       dmKey: string
       members: { create: { role: string; userId: string } }
       type: string
     }
   } | null = null
   const bindingRows: Array<{ agentId: string; channelId: string }> = []
-  let channelCreated = false
 
   const prisma = {
     organizationMember: {
@@ -238,10 +236,6 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
       findUnique: async () => null,
       upsert: async (args: NonNullable<typeof upsertArgs>) => {
         upsertArgs = args
-        if (!channelCreated) {
-          bindingRows.push({ agentId: args.create.agentBindings.create.agentId, channelId })
-          channelCreated = true
-        }
         return {
           archivedAt: null,
           createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -263,9 +257,28 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
           visibility: 'private',
         }
       },
-      findUniqueOrThrow: async () => {
-        throw new Error('unexpected existing agent DM lookup')
-      },
+      // The route reads the channel back by id once `ensureSharedAgentDm` has
+      // written it, so the record it returns is the stored one.
+      findUniqueOrThrow: async () => ({
+        archivedAt: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        description: null,
+        dmKey: `${organizationId}:${teamId}:${userId}:agent:${agentId}`,
+        id: channelId,
+        label: 'Planner',
+        organizationId,
+        slug: null,
+        systemChannelType: null,
+        team: {
+          name: 'Default Team',
+          project: { id: projectId, name: 'Default Project' },
+        },
+        teamId,
+        topic: null,
+        type: 'dm',
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        visibility: 'private',
+      }),
     },
     thread: {
       findFirst: async () => ({ id: threadId }),
@@ -285,7 +298,8 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
   assert.equal(upsertArgs?.create.type, 'dm')
   assert.equal(upsertArgs?.create.dmKey, `${organizationId}:${teamId}:${userId}:agent:${agentId}`)
   assert.deepEqual(upsertArgs?.create.members.create, { userId, role: 'owner' })
-  assert.deepEqual(upsertArgs?.create.agentBindings.create, { agentId })
+  // The binding is what makes the agent addressable in this DM at all, and
+  // what a later wake checks before starting a run.
   assert.deepEqual(bindingRows, [{ agentId, channelId }])
 })
 

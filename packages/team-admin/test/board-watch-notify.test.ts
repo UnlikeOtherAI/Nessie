@@ -287,3 +287,36 @@ runDatabaseTest('a task the board filter hides tells that board nobody', async (
     await prisma.$disconnect()
   }
 })
+
+runDatabaseTest('an agent whose reader cannot see the task is dropped too', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    // An agent watcher is woken in a DM a *person* reads, and the kickoff
+    // carries ticket titles. So the same entitlement rule the user branch
+    // applies has to reach whoever is on the other side of the agent —
+    // otherwise the agent branch is a way around it.
+    const agent = await prisma.agent.create({
+      data: {
+        name: 'Triage',
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        role: 'assistant',
+        visibility: 'team',
+      },
+    })
+    await prisma.boardWatcher.create({
+      data: {
+        boardId: seeded.boardId,
+        organizationId: seeded.organizationId,
+        agentId: agent.id,
+        // The outsider is in the organisation but not in this project.
+        addedByUserId: seeded.outsiderUserId,
+      },
+    })
+    assert.deepEqual(await resolveBoardWatchRecipients(prisma, [event(seeded)]), [])
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
