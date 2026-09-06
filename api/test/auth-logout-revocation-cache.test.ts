@@ -132,6 +132,45 @@ test('an auth control notification reaches no client connection', async () => {
   assert.equal(wsConnections.size, 0)
 })
 
+test('a revocation with no handler registered is reported once, not swallowed', async () => {
+  const warnings: { details: Record<string, unknown>; message: string }[] = []
+  const { deliverNotification } = createWsNotificationDelivery({
+    logger: { warn: (details, message) => warnings.push({ details, message }) },
+  })
+
+  // `onSessionRevoked` is optional on the hub's input, so a wiring regression
+  // is silent by construction: this replica would go on serving every revoked
+  // session for a full cache TTL with nothing in the logs saying so.
+  await deliverNotification({ kind: 'auth', scopes: [], sessionId: SESSION_ID })
+  await deliverNotification({ kind: 'auth', scopes: [], sessionId: randomUUID() })
+
+  assert.equal(warnings.length, 1, 'one line per process, not one per sign-out')
+  assert.match(warnings[0]?.message ?? '', /no handler/)
+})
+
+test('a revocation carrying no session id is dropped with a reason', async () => {
+  const dropped: string[] = []
+  const warnings: string[] = []
+  const { deliverNotification } = createWsNotificationDelivery({
+    logger: { warn: (_details, message) => warnings.push(message) },
+    onSessionRevoked: (sessionId) => {
+      dropped.push(sessionId)
+    },
+  })
+
+  // The envelope is `JSON.parse`d and cast, never validated, so `sessionId` is
+  // a string only by declaration. Unguarded this invalidates the cache key
+  // `undefined`: it evicts nothing, leaves the real session live, and looks
+  // exactly like a successful revocation.
+  await deliverNotification(
+    { kind: 'auth', scopes: [] } as unknown as RealtimeNotificationPayload,
+  )
+
+  assert.deepEqual(dropped, [], 'nothing is invalidated from a malformed envelope')
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0] ?? '', /no session id/)
+})
+
 test('a broadcast failure never fails the logout', async () => {
   const shared = { at: null as Date | null }
   const replica = createAuthSessionRevocationChecker(makeRegistryPrisma(shared))

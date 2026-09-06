@@ -2243,7 +2243,7 @@ model RealtimeEvent {
 // ─── User presence registry (foreground SSE streams) ────────────────────────
 // One row per user, shared through Postgres so out-of-process workers can
 // decide whether a user is present. Liveness is the `last_seen_at` heartbeat
-// and nothing else: the connection counter this table used to carry was
+// and nothing else: the connection counter this table still carries was
 // incremented on connect and decremented only from the same process's close
 // handler, so a hard kill leaked it permanently and nothing repaired it
 // (horizontal-scaling audit 2.4). Relation-free like device tokens: the SSE
@@ -2256,6 +2256,17 @@ enum UserPresenceManualState {
 model UserPresence {
   userId         String                   @id @map("user_id") @db.Uuid
   organizationId String                   @map("organization_id") @db.Uuid
+  // Dead, and retained only until every replica has stopped writing it. No
+  // code on this build reads or writes the counter, but Nessie applies
+  // migrations before the blue-green swap, so the previous build serves for
+  // the whole build-and-swap window and still increments it on every stream
+  // open (docs/deployment/redeploying.md). Dropping the column in the same
+  // deploy that stops writing it would fail that build's upsert with Prisma
+  // P2022, 500 the stream open, and throw the close handler's decrement into
+  // an unawaited promise, which ends the process on Node 22. Plan row 5.10 of
+  // docs/plans/2026-09-05-horizontal-scaling-statelessness/overview.md drops
+  // the column in a later deploy, once no replica writes it any more.
+  connections    Int                      @default(0)
   lastSeenAt     DateTime                 @map("last_seen_at")
   lastActiveAt   DateTime?                @map("last_active_at")
   manualState    UserPresenceManualState? @map("manual_state")
