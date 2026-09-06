@@ -427,6 +427,23 @@ let a completed job go back to `pending` for a second worker to run when the
 nack committed last, and let a row the successor already held flip to `done`
 mid-run when the acknowledge did.
 
+**And whichever one is applied must still own the job.** `claimNextJob`
+increments `attempt` on every claim and hands it back, so `(id, attempt)` is the
+identity of the *claim* rather than of the row, and every statement that speaks
+for a claim carries it: `renewLock` and both settles. Matching on the id alone
+let a worker whose lease had expired settle a job another instance had already
+re-claimed and was running — its nack put that job back to `pending` for a third
+worker to pick up beside the second, its acknowledge marked it `done` mid-run,
+and the successor's own honest nack later resurrected a completed job. A settle
+that matches zero rows is a lost race, not a no-op: it returns `false` and is
+logged with the job, the topic and *both* attempts, because the difference
+between them is the whole diagnosis. The attempt belongs in the renewal fence
+for the same reason — a re-claim leaves the row `processing`, so a status-only
+fence let the superseded owner go on renewing, extending its successor's lock
+and never learning it had lost, where naming the attempt makes it miss twice and
+have its handler aborted. That abort is how a lost claim takes the loser's
+in-flight work away; a refused settle is only ever the report that it happened.
+
 **And the shutdown itself is bounded end to end, once.** The settle window buys
 nothing if the close that follows it can block forever: `pool.end()` resolves
 only when every checked-out client is back, and a handler already written off —

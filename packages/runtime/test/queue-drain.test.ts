@@ -9,6 +9,7 @@ import {
   LOCK_EXPIRED_AT_MAX_ATTEMPTS_REASON,
   LOCK_RENEWAL_FAILED_REASON,
   PgQueueProvider,
+  type QueueJobClaim,
   type QueueSubscription,
 } from '../src/queue.js'
 
@@ -180,7 +181,7 @@ runIfDatabase('a handler that completes during a drain is acked', async () => {
   })
 })
 
-runIfDatabase('two consecutive lock-renewal failures abort the handler and nack the job', async () => {
+runIfDatabase('two consecutive lock-renewal failures abort the handler and settle nothing', async () => {
   await withPool(async (pool) => {
     const topic = uniqueTopic()
     // A one-second TTL renews once a second, so two consecutive misses land in
@@ -189,23 +190,23 @@ runIfDatabase('two consecutive lock-renewal failures abort the handler and nack 
     const jobId = await seedPendingJob(pool, topic, { seq: 1 })
 
     const claimed = deferred()
-    let sawAbort = false
+    let abortReason: unknown
     let subscription: QueueSubscription | undefined
     subscription = provider.subscribe(
       topic,
       async (_job, { signal }) => {
         claimed.resolve()
         // Bounded, so a renewal policy that only logs (the old behaviour) fails
-        // the `sawAbort` assertion instead of hanging the suite.
+        // the abort assertion instead of hanging the suite.
         await Promise.race([
           new Promise<void>((resolve) => {
             signal.addEventListener('abort', () => resolve(), { once: true })
           }),
           delay(6_000),
         ])
-        sawAbort = signal.aborted
+        abortReason = signal.aborted ? signal.reason : undefined
         // Stop from inside the handler so the loop cannot re-claim the row the
-        // nack is about to make pending again, and the assertions are stable.
+        // thief left `pending`, and the assertions are stable.
         subscription?.stop()
       },
       { pollIntervalMs: 25 },
@@ -222,13 +223,20 @@ runIfDatabase('two consecutive lock-renewal failures abort the handler and nack 
 
       await subscription.done
 
-      assert.equal(sawAbort, true, 'the handler was never aborted')
+      assert.equal(
+        (abortReason as Error | undefined)?.message,
+        LOCK_RENEWAL_FAILED_REASON,
+        'the handler was never aborted on the lost lock',
+      )
       const rows = await readJobs(pool, topic)
       assert.equal(rows.length, 1)
-      assert.equal(rows[0]!.error_message, LOCK_RENEWAL_FAILED_REASON)
-      // Re-claimable immediately rather than after the lock TTL expires.
+      // The handler's nack is fenced on the claim it lost, so it writes
+      // nothing and the row is exactly as whoever took it left it. Releasing it
+      // from here is what would hand a job its new owner is running to a third
+      // worker, so an empty `error_message` is the assertion that it did not.
+      assert.equal(rows[0]!.error_message, null)
       assert.equal(rows[0]!.status, 'pending')
-      assert.equal(rows[0]!.locked_until, null)
+      assert.equal(rows[0]!.attempt, 1)
     } finally {
       subscription.stop()
       await pool.query('DELETE FROM queue_jobs WHERE topic = $1', [topic])
@@ -339,15 +347,15 @@ runIfDatabase('a handler completing as the deadline fires applies exactly one se
     const releaseAck = deferred()
     const realAcknowledge = provider.acknowledge.bind(provider)
     const realNack = provider.nack.bind(provider)
-    provider.acknowledge = async (id: string): Promise<void> => {
+    provider.acknowledge = async (claim: QueueJobClaim): Promise<boolean> => {
       applied.push('acknowledge')
       ackEntered.resolve()
       await releaseAck.promise
-      await realAcknowledge(id)
+      return realAcknowledge(claim)
     }
-    provider.nack = async (id: string, reason?: string): Promise<void> => {
+    provider.nack = async (claim: QueueJobClaim, reason?: string): Promise<boolean> => {
       applied.push('nack')
-      await realNack(id, reason)
+      return realNack(claim, reason)
     }
 
     const claimed = deferred()
@@ -404,13 +412,13 @@ runIfDatabase('a job abandoned on the deadline is nacked once and its straggler 
     const applied: string[] = []
     const realAcknowledge = provider.acknowledge.bind(provider)
     const realNack = provider.nack.bind(provider)
-    provider.acknowledge = async (id: string): Promise<void> => {
+    provider.acknowledge = async (claim: QueueJobClaim): Promise<boolean> => {
       applied.push('acknowledge')
-      await realAcknowledge(id)
+      return realAcknowledge(claim)
     }
-    provider.nack = async (id: string, reason?: string): Promise<void> => {
+    provider.nack = async (claim: QueueJobClaim, reason?: string): Promise<boolean> => {
       applied.push('nack')
-      await realNack(id, reason)
+      return realNack(claim, reason)
     }
 
     const claimed = deferred()
