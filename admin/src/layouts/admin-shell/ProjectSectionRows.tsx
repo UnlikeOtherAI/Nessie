@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link } from 'react-router-dom'
 import { useCanAdministerProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
+import { BoardIcon } from '../../components/features/projects/kanban/BoardIcon'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
 import { BOARD_ICON, projectSections } from '../../navigation/project-sections'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
@@ -185,7 +186,10 @@ export const ProjectSectionRows = ({
                         to={to}
                         {...prewarmRowHandlers(prewarm, section.to)}
                       >
-                        {rowIcon(BOARD_ICON)}
+                        <BoardIcon
+                          className="text-[color:var(--tx3)]"
+                          iconEmoji={board.iconEmoji}
+                        />
                         <span className="min-w-0 flex-1 truncate">{board.name}</span>
                       </Link>
                     )

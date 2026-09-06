@@ -1576,6 +1576,10 @@ model Board {
   projectId      String     @map("project_id") @db.Uuid
   organizationId String     @map("organization_id") @db.Uuid
   name           String
+  /// The board's glyph in the Projects sidebar: one emoji, or NULL for the
+  /// shared board icon. Emoji only — no attachment, so a board decorates
+  /// itself without promising a picture to upload and crop.
+  iconEmoji      String?    @map("icon_emoji")
   style          BoardStyle @default(kanban)
   /// The board `/projects/:id/board` opens on with no `?board=`, and the one
   /// the personal assistant's ticket tools use when none is named. Exactly one
