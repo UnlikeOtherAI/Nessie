@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { CRASH_CHECKPOINT_REASON } from './crash-checkpoint.js'
 import { persistRunBasis } from './agent-message.js'
 import type { BasisScope } from './disclosure-basis.js'
 import type { RunEndReason } from './budget-stop.js'
@@ -69,6 +70,12 @@ export const loadRunCheckpointForRun = async (
   const row = await prisma.runCheckpoint.findFirst({
     where: {
       threadId: input.threadId,
+      // A crash checkpoint shares this row but is not one of these: it carries
+      // machine state and an empty note, and it belongs to a run that is still
+      // executing. Loading one would inject nothing useful into this run AND
+      // consume the other run's resume state. (A row a budget stop or a
+      // suspension has since written its note into no longer reads 'crash'.)
+      reason: { not: CRASH_CHECKPOINT_REASON },
       OR: [
         // Already assigned to this run — the API's /continue endpoint claims
         // the checkpoint up front, and a re-driven job must see the same state.

@@ -74,6 +74,14 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       captured.queueJobs.push(query)
       return 1
     },
+    // `claimRunForExecution` reports the status the run carried before the
+    // claim, so it reads rows rather than counting them. One row means the
+    // claim was won; `pending` means this is a fresh run rather than a takeover,
+    // which is what this harness always drives.
+    $queryRaw: async (query: unknown) => {
+      captured.queueJobs.push(query)
+      return [{ prior_status: 'pending' }]
+    },
     run: {
       // Both doors record the status. `updateRunStatus` writes through the
       // conditional `updateMany` when a claim holds the run in the surrounding

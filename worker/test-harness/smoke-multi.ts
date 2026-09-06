@@ -7,9 +7,11 @@
 // DATABASE_URL: it bootstraps the owner over HTTP, which only works while no
 // user exists, so it cannot share a database the way smoke.ts can.
 // `--chaos` adds the Phase 0.4 kill steps (SIGTERM one worker mid-run, one API
-// mid-stream) and asserts the three durability properties the horizontal-scaling
-// plan names. (c) fails today — a resumed stream never receives what was
-// published while its instance was gone — so the CI job runs it advisory-only.
+// mid-stream) and asserts the durability properties the horizontal-scaling plan
+// names: (a) no duplicate agent message, (b) no unfinished run without a live
+// lease, (c) SSE resumes with no sequence gap, and (d) the killed worker left a
+// crash checkpoint for its successor to resume from (phase 3.1). The CI job
+// runs the chaos step advisory-only.
 import { spawn, type ChildProcess } from 'node:child_process'
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -256,7 +258,16 @@ const main = async (): Promise<void> => {
 
   const workers = mocks.map((mock, index) =>
     startProcess(`worker-${index + 1}`, resolve(REPO_ROOT, 'worker', 'dist', 'index.js'), {
-      ...shared, NESSIE_MODEL_BASE_URL: `${mock.url}/v1`,
+      ...shared,
+      NESSIE_MODEL_BASE_URL: `${mock.url}/v1`,
+      // The SIGKILL escalation below is compressed to two seconds, while the
+      // production drain deadline is 25 s and the run-drain grace 5 s — so at
+      // the defaults the chaos step can only ever observe the SIGKILL, never a
+      // drain. Compressed to match, which is what puts the abandoned job back
+      // to `pending` inside the window instead of leaving it on a dead lease.
+      ...(CHAOS
+        ? { NESSIE_RUN_DRAIN_GRACE_MS: '300', NESSIE_WORKER_DRAIN_TIMEOUT_MS: '300' }
+        : {}),
     }))
   const ready = (w: Managed): boolean => /"status": "ready"/.test(w.log())
   await Promise.all(workers.map((w) => waitFor(`${w.label} ready`, () => ready(w), 180_000)))
@@ -361,6 +372,14 @@ const main = async (): Promise<void> => {
     const atKill = await pool.query(
       `SELECT status, locked_until FROM queue_jobs WHERE payload->>'runId' = $1`, [runId],
     )
+    // What the killed worker left behind. This is the scenario phase 3.1 was
+    // written for: without a crash checkpoint the successor has nothing but the
+    // prompt, and re-executes every tool the dead worker already ran.
+    const checkpointAtKill = await pool.query<{ recorded: number }>(
+      `SELECT COALESCE(jsonb_array_length(
+                jsonb_path_query_array(crash_state, '$.toolResults.keyvalue()')), 0) AS recorded
+         FROM run_checkpoints WHERE run_id = $1::uuid AND crash_state IS NOT NULL`, [runId],
+    )
     // The abandoned job keeps its five-minute lease, held by a dead process.
     // Production waits that out; the smoke expires it to re-claim in-window.
     await pool.query(
@@ -379,6 +398,10 @@ const main = async (): Promise<void> => {
     check('(a) no duplicate agent message after a worker SIGTERM', duplicates.length === 0,
       `${contents.length} agent message(s) after ${claims.rows[0]?.attempt ?? 0} claim(s),`
       + ` run ${status}, killed worker-${executor + 1}`)
+    check('(d) the killed worker left a crash checkpoint to resume from',
+      (checkpointAtKill.rowCount ?? 0) === 1,
+      `${checkpointAtKill.rowCount ?? 0} crash checkpoint row(s) at kill,`
+      + ` ${checkpointAtKill.rows[0]?.recorded ?? 0} tool result(s) recorded`)
 
     const stranded = await pool.query(
       `SELECT r.id FROM runs r

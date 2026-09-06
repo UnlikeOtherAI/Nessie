@@ -338,7 +338,11 @@ export const startWorker = async (
 
   subscribe(
     'run.execute',
-    async (job) => {
+    // The per-job signal, not the subscription's: it fires on a drain, on a
+    // lost lock, and on an abandon, and it is what lets a 45-minute agentic run
+    // reach its crash checkpoint and hand the run back inside the shutdown
+    // grace instead of being killed mid-inference.
+    async (job, { signal }) => {
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
       await executeRunJob(
         {
@@ -359,6 +363,7 @@ export const startWorker = async (
         },
         payload,
         { attempt: job.attempt, maxAttempts: job.maxAttempts },
+        { signal },
       )
     },
     {

@@ -154,9 +154,17 @@ const TERMINAL_STATUSES = new Set(['cancelled', 'completed', 'failed'])
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 export type MockPipeline = {
+  /**
+   * The same dependency bundle the subscribers hand `executeRunJob`. Exposed
+   * for suites that drive the handler themselves — the crash/resume tests need
+   * to control when an execution stops, which a queue subscriber cannot give
+   * them.
+   */
+  deps: ExecutionDependencies
   enqueueRun: (payload: RunExecuteJobPayload) => Promise<void>
   pool: ReturnType<typeof createPgPool>
   prisma: PrismaClient
+  queueProvider: PgQueueProvider
   stop: () => Promise<void>
   waitForTerminalRuns: (
     runIds: string[],
@@ -191,27 +199,33 @@ export const startMockPipeline = async (
   }
 
   const abort = new AbortController()
-  const workers = Math.max(1, input.workers ?? 1)
+  // Zero is legitimate: a suite that drives `executeRunJob` itself wants the
+  // pipeline's wiring without a subscriber racing it for the same job.
+  const workers = Math.max(0, input.workers ?? 1)
   for (let index = 0; index < workers; index += 1) {
     queueProvider.subscribe(
       'run.execute',
-      async (job) => {
+      async (job, { signal }) => {
         const payload = RunExecuteJobPayloadSchema.parse(job.payload)
-        await executeRunJob(deps, payload, {
-          attempt: job.attempt,
-          maxAttempts: job.maxAttempts,
-        })
+        await executeRunJob(
+          deps,
+          payload,
+          { attempt: job.attempt, maxAttempts: job.maxAttempts },
+          { signal },
+        )
       },
       { pollIntervalMs: 25, signal: abort.signal },
     )
   }
 
   return {
+    deps,
     enqueueRun: async (payload) => {
       await enqueueQueueJob(prisma, { payload, topic: 'run.execute' })
     },
     pool,
     prisma,
+    queueProvider,
     stop: async () => {
       abort.abort()
       modelClient.close()

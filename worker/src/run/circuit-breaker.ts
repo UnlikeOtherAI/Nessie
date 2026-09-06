@@ -24,4 +24,19 @@ export class ToolCircuitBreaker {
   reset(): void {
     this._consecutiveErrors.clear()
   }
+
+  /**
+   * The counts, for a crash checkpoint. The breaker object is per-execution,
+   * but the failures it counts are the run's: a run re-claimed after every
+   * crash would otherwise start each execution with a clean breaker and keep
+   * retrying a tool that has been failing all along.
+   */
+  snapshot(): Record<string, number> {
+    return Object.fromEntries(this._consecutiveErrors)
+  }
+
+  /** Adopt a resumed run's counts, replacing whatever this breaker holds. */
+  restore(counts: Record<string, number>): void {
+    this._consecutiveErrors = new Map(Object.entries(counts))
+  }
 }
