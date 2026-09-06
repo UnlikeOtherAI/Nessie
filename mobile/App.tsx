@@ -46,8 +46,8 @@ import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
-  nativePhoneTabBarClearanceScript,
   nativeListColumnClearanceScript,
+  nativePhoneTabBarClearanceScript,
   nativePushPathScript,
   nativeShellInfoScript,
   wrapNativeWebViewScript,
@@ -80,8 +80,8 @@ import { ANDROID_TABLET_TAB_BAR_BOTTOM_GAP } from './src/lib/android-tablet-dock
 import { NATIVE_CREATION_LANE_CLEARANCE } from './src/lib/native-creation-menu'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
-import { NativeCreationMenu } from './src/components/NativeCreationMenu'
 import { MobileAdminWebView } from './src/components/MobileAdminWebView'
+import { NativeCreationMenu } from './src/components/NativeCreationMenu'
 import {
   NativePhoneConversationMenuChrome,
 } from './src/components/NativePhoneConversationMenuChrome'
@@ -116,11 +116,11 @@ import {
   reduceNativeScreenBar,
 } from './src/lib/native-screen-bar-state'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
+const IS_ANDROID = Platform.OS === 'android'
+const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 // The iPad's creation lane is its list column, inset from the column's own
 // edges exactly as the phone's is from the screen's.
 const IPAD_NATIVE_CREATION_LANE_INSET = 16
-const IS_ANDROID = Platform.OS === 'android'
-const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 
 const checkForDirectAndroidUpdate = async (): Promise<void> => {
   if (!IS_ANDROID || RELEASE_CHANNEL !== 'direct') return
