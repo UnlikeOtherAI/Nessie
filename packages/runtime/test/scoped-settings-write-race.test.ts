@@ -157,6 +157,16 @@ runIfDatabase('a write waits for its own target\'s advisory lock', async () => {
   const held = new Promise<void>((resolve) => {
     release = resolve
   })
+  // Resolved by the holder once the lock is actually its own. Waiting on a
+  // fixed sleep instead raced the very thing under test: on a loaded runner
+  // the holder could still be acquiring when the assertion started, the
+  // contender sailed through, and the failure read as "the gate is not taking
+  // the lock" when the gate was fine. It failed CI twice on an admin-only
+  // branch in September 2026.
+  let acquired!: () => void
+  const holdsLock = new Promise<void>((resolve) => {
+    acquired = resolve
+  })
 
   try {
     await prisma.organization.create({
@@ -169,11 +179,21 @@ runIfDatabase('a write waits for its own target\'s advisory lock', async () => {
     const holding = holder.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}::text, 0))`
+        acquired()
         await held
       },
       { timeout: 30_000 },
     )
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    // Bounded by the holder's own transaction timeout rather than by a guess:
+    // if it ends or fails without ever taking the lock, this says so instead
+    // of hanging. `holderEnded` handles both settlements, so the loser of the
+    // race never becomes an unhandled rejection.
+    const holderEnded = holding.then(() => 'ended' as const, () => 'failed' as const)
+    assert.equal(
+      await Promise.race([holdsLock.then(() => 'acquired' as const), holderEnded]),
+      'acquired',
+      'the holder must own the lock before the contender starts',
+    )
 
     const write = writeScopedSetting(prisma, {
       key,
