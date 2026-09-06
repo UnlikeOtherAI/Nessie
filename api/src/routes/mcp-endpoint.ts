@@ -22,6 +22,39 @@ import type { RouteDeps } from './types.js'
  * and resolves its own actor, so there is nothing to remember between them —
  * and nothing to pin a client to one replica for.
  */
+/**
+ * Answer a request whose response nobody else will write.
+ *
+ * Extracted so the behaviour can be tested: the failure it exists for happens
+ * inside the MCP transport, which a route test cannot easily provoke, and an
+ * untested error path on a hijacked socket is exactly the kind that rots into a
+ * hang without anybody noticing.
+ *
+ * The message is deliberately bounded. An upstream error string can carry
+ * another tenant's data, and a JSON-RPC error goes straight back to a client
+ * that may read it into a model.
+ */
+export const answerHijackedFailure = (raw: {
+  end: (chunk?: string) => void
+  headersSent: boolean
+  writeHead: (status: number, headers: Record<string, string>) => void
+}): void => {
+  if (raw.headersSent) {
+    // The transport already started writing; the only thing left that helps is
+    // not leaving the socket open.
+    raw.end()
+    return
+  }
+  raw.writeHead(500, { 'content-type': 'application/json' })
+  raw.end(JSON.stringify({
+    // -32603 is JSON-RPC's internal error, which is what a client reading this
+    // knows how to handle.
+    error: { code: -32603, message: 'Internal server error' },
+    id: null,
+    jsonrpc: '2.0',
+  }))
+}
+
 export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, isProjectAccessibleToActor, listAccessibleProjectIds } = deps
 
@@ -89,10 +122,18 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
       // Fastify has already read and parsed the body, so it is handed over
       // rather than re-read from the socket — the transport would otherwise
       // wait for data that has already been consumed.
+      // Hijacking hands the socket to the transport, which also means Fastify's
+      // error handler no longer runs for this request. Anything thrown from
+      // here has to answer the client itself, or the connection simply hangs
+      // until the client's own timeout — the worst failure shape available,
+      // because it looks like a slow server rather than a broken one.
       reply.hijack()
       try {
         await server.connect(transport)
         await transport.handleRequest(request.raw, reply.raw, request.body)
+      } catch (error) {
+        console.error('[mcp] request failed', error)
+        answerHijackedFailure(reply.raw)
       } finally {
         await transport.close().catch(() => undefined)
         await server.close().catch(() => undefined)

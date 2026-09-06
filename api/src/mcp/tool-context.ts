@@ -15,6 +15,18 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
  * sets for the assistant's own tools.
  */
 export type McpToolContext = {
+  /**
+   * The granting human, resolved fresh from the credential on every call.
+   *
+   * Its `tenant.projectId` / `tenant.teamId` are pinned at pairing time and are
+   * **attribution, not authority**. Only organisation membership and role are
+   * re-read per call, so a tool must never treat the pinned project or team as
+   * proof of access — derive that from the live predicates instead
+   * (`isProjectAccessibleToActor`, `getTask`'s visibility narrowing,
+   * `canReadSpace` / `canWriteSpace`, `checkPolicy`). Every tool here does; a
+   * new one that reads `tenant.projectId` to decide what a caller may see
+   * would be the first to get this wrong.
+   */
   actorContext: AuthorizedActionContext
   /**
    * The deployment auth secret, which the task mutations need: they build the
