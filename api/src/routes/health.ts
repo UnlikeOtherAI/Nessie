@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { OpsHealthResponseSchema, ReadinessResponseSchema } from '../contracts.js'
+import { OpsHealthResponseSchema, ReadinessResponseSchema } from '../contracts/ops-budget.js'
 import { createApiResponse } from '../lib/api.js'
 import { getOpsHealth, getReadiness } from '../services/ops-health.js'
 import type { RouteDeps } from './types.js'

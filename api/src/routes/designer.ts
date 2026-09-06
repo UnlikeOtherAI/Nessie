@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { checkBudget } from '@nessie/runtime'
 import { AGENT_DESIGNER_SLUG } from '@nessie/team-admin'
-import { DesignerChatBodySchema, DesignerContinueBodySchema } from '../contracts.js'
+import { DesignerChatBodySchema, DesignerContinueBodySchema } from '../contracts/designer.js'
 import { parseInput, sendApiError } from '../lib/api.js'
 import { buildStreamCorsHeaders } from '../lib/server-context.js'
 import { resolveDesignerModel, streamDesignerChat } from '../services/designer.js'

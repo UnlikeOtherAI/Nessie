@@ -1,5 +1,8 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import type { CreateInferenceCredentialBindingBody, InferenceCredentialBindingRecord } from '../contracts.js'
+import type {
+  CreateInferenceCredentialBindingBody,
+  InferenceCredentialBindingRecord,
+} from '../contracts/inference-control-plane.js'
 import {
   ensureProvider,
   mapCredentialBindingRecord,

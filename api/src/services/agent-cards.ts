@@ -18,6 +18,7 @@ import {
   AgentCardValueError,
 } from '@nessie/team-admin'
 
+import { toInputJson } from '../db/prisma-json.js'
 import { findThreadForUser } from './message-read-state.js'
 
 /**
@@ -287,13 +288,15 @@ export const buildResponseMetadata = (input: {
   actionKey: string
   cardId: string
 }): Prisma.InputJsonValue =>
-  AgentCardResponseMetadataSchema.parse({
-    agentCardResponse: {
-      actionKey: input.actionKey,
-      cardId: input.cardId,
-      schemaVersion: 1,
-    },
-  }) as unknown as Prisma.InputJsonValue
+  toInputJson(
+    AgentCardResponseMetadataSchema.parse({
+      agentCardResponse: {
+        actionKey: input.actionKey,
+        cardId: input.cardId,
+        schemaVersion: 1,
+      },
+    }),
+  )
 
 export const validateSubmission = (input: {
   actionKey: string

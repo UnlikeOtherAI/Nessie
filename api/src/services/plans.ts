@@ -6,7 +6,7 @@ import {
   parseRunId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-import type { PlanRecord, PlanStepRecord } from '../contracts.js'
+import type { PlanRecord, PlanStepRecord } from '../contracts/plans-mailbox.js'
 import {
   parseOptional,
   toInputJsonObjectWithDefault,

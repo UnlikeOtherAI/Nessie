@@ -12,8 +12,9 @@ import {
 } from '@nessie/schemas'
 
 import type { createRealtimeHub } from '../realtime/hub.js'
-import { ChannelRecordSchema, ThreadRecordSchema } from '../contracts.js'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
+import { ChannelRecordSchema } from '../contracts/team.js'
+import { ThreadRecordSchema } from '../contracts/messaging.js'
+import { enqueueRunExecution } from '@nessie/db'
 import { publishMessageNew } from './message-delivery.js'
 import { mapMessageRecord } from './message-read-model.js'
 import { createSystemAuthoredMessage } from './system-authored-message.js'

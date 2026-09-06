@@ -5,7 +5,7 @@ import {
   CreatePlanStepBodySchema,
   PlanRecordSchema,
   PlanStepRecordSchema,
-} from '../contracts.js'
+} from '../contracts/plans-mailbox.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   addPlanStep,

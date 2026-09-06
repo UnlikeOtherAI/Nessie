@@ -4,7 +4,7 @@ import { decodeKeysetCursor, encodeKeysetCursor, parseAgentId, parseChannelId, p
 
 import { resolveDisclosureViewer } from '@nessie/runtime'
 
-import type { ThreadActivityRecord } from '../contracts.js'
+import type { ThreadActivityRecord } from '../contracts/thread-activity.js'
 import { evaluateMessageReadAccess } from './message-read-access.js'
 
 const DEFAULT_LIMIT = 50

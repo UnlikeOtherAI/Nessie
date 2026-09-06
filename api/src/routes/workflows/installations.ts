@@ -1,16 +1,15 @@
 import { auditWorkflowMutation, WorkflowRunOverlapError } from '@nessie/team-admin'
 import type { FastifyInstance } from 'fastify'
 
+import { AgentTriggerRecordSchema, CreateWorkflowTriggerBodySchema } from '../../contracts/triggers.js'
 import {
-  AgentTriggerRecordSchema,
   CreateWorkflowRunBodySchema,
-  CreateWorkflowTriggerBodySchema,
   InstallWorkflowTemplateBodySchema,
   UpdateWorkflowInstallationBodySchema,
   WorkflowInstallationRecordSchema,
   WorkflowListQuerySchema,
   WorkflowRunRecordSchema,
-} from '../../contracts.js'
+} from '../../contracts/workflows.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { createWorkflowTrigger, listWorkflowInstallationTriggers } from '../../services/triggers.js'
 import {

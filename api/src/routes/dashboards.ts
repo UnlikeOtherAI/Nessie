@@ -51,7 +51,7 @@ import type { RouteDeps } from './types.js'
 import type { DashboardEgressPolicy } from '@nessie/dashboard'
 import { DashboardDeltaSchema, DashboardLayoutSchema } from '@nessie/schemas'
 import { randomUUID } from 'node:crypto'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 
 const HomeSchema = z.enum(['organization', 'project', 'team', 'channel', 'personal'])
 

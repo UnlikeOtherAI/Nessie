@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
-import { AddChannelMemberBodySchema } from '../contracts.js'
+import { AddChannelMemberBodySchema } from '../contracts/team.js'
 import { parseInput, sendApiError } from '../lib/api.js'
 import {
   addMemberToChannel,

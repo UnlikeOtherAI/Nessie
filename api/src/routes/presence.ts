@@ -6,7 +6,7 @@ import {
   PresenceListResponseSchema,
   PushSurfaceHeartbeatBodySchema,
   SetManualPresenceBodySchema,
-} from '../contracts.js'
+} from '../contracts/users-presence.js'
 import { createApiResponse, parseInput } from '../lib/api.js'
 import {
   getPresenceEntry,

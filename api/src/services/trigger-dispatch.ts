@@ -15,8 +15,7 @@ import {
   parseThreadId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
-import { claimThreadRunOrPend } from '@nessie/db'
+import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import { createSystemAuthoredMessage } from './system-authored-message.js'
 import { dispatchWorkflowTrigger } from './trigger-dispatch-workflow.js'
 import {

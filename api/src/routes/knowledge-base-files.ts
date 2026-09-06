@@ -4,7 +4,7 @@ import type { FileService } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { z } from 'zod'
 
-import { toAttachmentRecord } from '../contracts.js'
+import { toAttachmentRecord } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   MARKDOWN_IMPORT_MAX_BYTES,

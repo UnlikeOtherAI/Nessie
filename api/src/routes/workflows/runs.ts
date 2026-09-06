@@ -9,7 +9,7 @@ import {
   UnblockWorkflowStepRunBodySchema,
   WorkflowRunRecordSchema,
   WorkflowStepRunRecordSchema,
-} from '../../contracts.js'
+} from '../../contracts/workflows.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   blockWorkflowStepRun,

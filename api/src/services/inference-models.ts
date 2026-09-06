@@ -1,10 +1,10 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { ModelCapabilitySnapshotSchema } from '../contracts.js'
+import { ModelCapabilitySnapshotSchema } from '../contracts/inference-core.js'
 import type {
   CreateInferenceModelBody,
   InferenceModelRecord,
   UpdateInferenceModelBody,
-} from '../contracts.js'
+} from '../contracts/inference-control-plane.js'
 import { toJsonRecord } from './contract-helpers.js'
 import {
   approveInferenceEntity,

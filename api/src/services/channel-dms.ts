@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { ChannelRecord } from '../contracts.js'
+import type { ChannelRecord } from '../contracts/team.js'
 import {
   channelTeamInclude,
   loadChannelTeamProject,

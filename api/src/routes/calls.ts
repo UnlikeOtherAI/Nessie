@@ -10,7 +10,7 @@ import {
   verifyCallActionToken,
 } from '@nessie/team-admin'
 import { z } from 'zod'
-import { CallRecordSchema, EmptyBodySchema } from '../contracts.js'
+import { CallRecordSchema, EmptyBodySchema } from '../contracts/team.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   acceptCallInvite,

@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import {
-  CreateTemporaryContextSessionBodySchema,
-  TemporaryContextSessionSchema,
-} from '../contracts.js'
+import { CreateTemporaryContextSessionBodySchema, TemporaryContextSessionSchema } from '../contracts/tools.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   CAPABILITY_ERROR_CODES,

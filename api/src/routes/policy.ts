@@ -5,7 +5,7 @@ import {
   CreatePolicyRuleBodySchema,
   PolicyCheckBodySchema,
   UpdatePolicyRuleBodySchema,
-} from '../contracts.js'
+} from '../contracts/policy.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { checkPolicy, getEffectivePolicy } from '../services/policy.js'

@@ -15,7 +15,7 @@ import {
   UpdateInferenceModelBodySchema,
   UpdateInferenceProviderBodySchema,
   UpdateInferenceRoutingProfileBodySchema,
-} from '../contracts.js'
+} from '../contracts/inference-control-plane.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   createInferenceCredentialBinding,

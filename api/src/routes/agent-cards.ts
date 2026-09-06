@@ -10,7 +10,9 @@ import {
 import { forgetMessageThoughts } from '@nessie/memory'
 import type { ReplyRootMetadata } from '@nessie/runtime'
 import { inheritAgentCardResponseBasis } from '@nessie/team-admin'
+import { enqueueOrchestrateDecide } from '@nessie/db'
 
+import { toInputJson } from '../db/prisma-json.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
@@ -32,7 +34,6 @@ import {
 import { publishMessageReply } from '../services/message-delivery.js'
 import { createSystemAuthoredReply } from '../services/system-authored-message.js'
 import { ResumeRollback, resumeSuspendedRun } from '../services/run-resume-core.js'
-import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -194,7 +195,7 @@ export const registerAgentCardRoutes = (
         // expiry sweep, have exactly one winner.
         const claimed = await tx.agentCard.updateMany({
           data: {
-            resolutionValues: submission.values as unknown as Prisma.InputJsonValue,
+            resolutionValues: toInputJson(submission.values),
             resolvedActionKey: body.actionKey,
             resolvedAt: new Date(),
             resolvedByUserId: userId,
@@ -354,7 +355,7 @@ export const registerAgentCardRoutes = (
     }
 
     await emitAuditEvent(prisma, {
-      action: 'agent_card.responded' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'agent_card.responded',
       actorContext,
       metadata: {
         actionKey: body.actionKey,
@@ -388,7 +389,7 @@ export const registerAgentCardRoutes = (
       // A secret saved through a card belongs in the same audit trail as one
       // saved on the Secrets screen, or that trail is silently incomplete.
       await emitAuditEvent(prisma, {
-        action: 'secret.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+        action: 'secret.created',
         actorContext,
         metadata: { cardId: card.id, fieldKey: key, scopeType: stored.scopeType },
         outcome: 'success',
@@ -410,7 +411,7 @@ export const registerAgentCardRoutes = (
         ).catch(() => undefined)
       }
       await emitAuditEvent(prisma, {
-        action: 'message.redacted' as Parameters<typeof emitAuditEvent>[1]['action'],
+        action: 'message.redacted',
         actorContext,
         metadata: { cardId: card.id, fieldKey: key },
         outcome: 'success',

@@ -14,7 +14,7 @@ import {
   ThreadThinkingSchema,
   ToggleMessageReactionBodySchema,
   UpdateThreadMessageBodySchema,
-} from '../contracts.js'
+} from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canManageChannel } from '../services/channels.js'
 import { softDeleteMessage, updateMessage } from '../services/message-edit.js'

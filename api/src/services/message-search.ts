@@ -3,9 +3,7 @@ import type { PrismaClient } from '@prisma/client'
 import { buildPrefixTsQuery } from '@nessie/runtime'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
-import type { MessageSearchResult } from '../contracts.js'
-
-/**
+import type { MessageSearchResult } from '../contracts/messaging.js'/**
  * Full-text search across the channels a caller can see.
  *
  * A separate read from the thread feed rather than a mode of it: it spans

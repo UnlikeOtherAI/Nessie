@@ -14,8 +14,8 @@ import {
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import { readStreamCapped } from '../lib/markdown.js'
-import { toAttachmentRecord } from '../contracts.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { toAttachmentRecord } from '../contracts/messaging.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { canAccessAttachment, canAccessMessageAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
 

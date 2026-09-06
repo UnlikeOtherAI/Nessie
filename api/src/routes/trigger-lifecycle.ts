@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import {
-  AgentTriggerRecordSchema,
-  ReauthorizeAgentTriggerBodySchema,
-} from '../contracts.js'
+import { AgentTriggerRecordSchema, ReauthorizeAgentTriggerBodySchema } from '../contracts/triggers.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {

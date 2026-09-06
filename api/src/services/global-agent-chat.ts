@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { claimThreadRunOrPend } from '@nessie/db'
+import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import {
   GlobalAgentDraftMetadataSchema,
   parseAgentId,
@@ -18,10 +18,7 @@ import {
   listGlobalAgentBlueprints,
 } from '@nessie/team-admin'
 
-import { enqueueRunExecution } from '../queue/pgqueue.js'
-import type { DesignerContinueInput } from '../contracts.js'
-
-/**
+import type { DesignerContinueInput } from '../contracts/designer.js'/**
  * "Continue in chat" — moving a sidebar draft into the person's own Agent
  * Designer conversation (D9).
  *

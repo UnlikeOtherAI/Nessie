@@ -1,10 +1,12 @@
-import type { PrismaClient, Prisma } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import {
   computeScopeHash,
   sealSecret,
   type ConnectResult,
   type CommsProviderId,
 } from '@nessie/comms-connect'
+
+import { toInputJson } from '../../db/prisma-json.js'
 
 /**
  * Persist the outcome of a successful provider `connect()` into durable state:
@@ -35,7 +37,7 @@ export const persistConnectedAccount = async (
   input: PersistConnectedAccountInput,
 ): Promise<string> => {
   const { connect, encryptionSecret } = input
-  const grantedScopes = connect.grantedScopes as unknown as Prisma.InputJsonValue
+  const grantedScopes = toInputJson(connect.grantedScopes)
   const accessTokenCiphertext = sealSecret(
     encryptionSecret,
     connect.credential.accessToken,
@@ -47,9 +49,9 @@ export const persistConnectedAccount = async (
     ? new Date(connect.credential.expiresAt)
     : null
   const scopeHash = computeScopeHash(connect.credential.scopes)
-  const requestedCapabilities = [
+  const requestedCapabilities = toInputJson([
     ...(input.requestedCapabilities ?? []),
-  ] as unknown as Prisma.InputJsonValue
+  ])
 
   return prisma.$transaction(async (tx) => {
     const connection = await tx.commsConnection.upsert({

@@ -128,8 +128,8 @@ Applied by the handler:
 | `mcpSecretWriteAccount` | same, per actor | `NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_ACCOUNT_` | 10 / 10 min |
 | `stepUpIp` | current-password re-proof (`POST /api/auth/password`, executor access changes and workspace promotions) | `NESSIE_RATE_LIMIT_STEP_UP_IP_` | 10 / 10 min |
 | `stepUpAccount` | same, per actor | `NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_` | 5 / 10 min |
-| `subscriptionDeviceIp` | personal model-subscription device-code start/poll/confirm/cancel | *(config file only — no env var yet)* | 240 / 10 min |
-| `subscriptionDeviceAccount` | same, per actor | *(config file only — no env var yet)* | 120 / 10 min |
+| `subscriptionDeviceIp` | personal model-subscription device-code start/poll/confirm/cancel | `NESSIE_RATE_LIMIT_SUBSCRIPTION_DEVICE_IP_` | 240 / 10 min |
+| `subscriptionDeviceAccount` | same, per actor | `NESSIE_RATE_LIMIT_SUBSCRIPTION_DEVICE_ACCOUNT_` | 120 / 10 min |
 
 Applied by the global hook:
 

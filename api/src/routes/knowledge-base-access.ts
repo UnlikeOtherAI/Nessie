@@ -22,7 +22,7 @@ import type {
   PolicyResourceType,
 } from '@nessie/schemas'
 import { sendApiError } from '../lib/api.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { createKnowledgePublicationAttention } from '../services/push-attention.js'
 import {
   enterKnowledgeInferenceActorContext,

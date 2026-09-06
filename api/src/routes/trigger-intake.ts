@@ -4,13 +4,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import { verifyHmacSignature } from '@nessie/runtime'
 import { type TriggerEventDispatchJobPayload } from '@nessie/schemas'
-import {
-  AgentTriggerDeliveryRecordSchema,
-  PublishEventBodySchema,
-} from '../contracts.js'
+import { AgentTriggerDeliveryRecordSchema, PublishEventBodySchema } from '../contracts/triggers.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { dispatchAgentTrigger } from '../services/triggers.js'
 import type { RouteDeps } from './types.js'
 

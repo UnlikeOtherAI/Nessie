@@ -13,10 +13,8 @@ import {
   type AuthorizedActionContext,
   type WsScope,
 } from '@nessie/schemas'
-import {
-  PersonalAssistantStateResponseSchema,
-  ThreadRecordSchema,
-} from '../contracts.js'
+import { PersonalAssistantStateResponseSchema } from '../contracts/agents.js'
+import { ThreadRecordSchema } from '../contracts/messaging.js'
 import {
   canAdministerProject,
   ensureDefaultThread,

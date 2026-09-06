@@ -5,17 +5,6 @@ import type {
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '@nessie/db'
 
-// The raw queue insert, the `run.execute` enqueue and the `orchestrate.decide`
-// chokepoint that stamps a single-member system DM's delegated identity all
-// live in `@nessie/db` (shared with the worker, whose `send_message` tool wakes
-// the same topic); re-exported here so existing API call sites keep their
-// import path.
-export {
-  enqueueOrchestrateDecide,
-  enqueueQueueJob,
-  enqueueRunExecution,
-} from '@nessie/db'
-
 export const enqueuePushDispatch = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
   payload: PushDispatchJobPayload,

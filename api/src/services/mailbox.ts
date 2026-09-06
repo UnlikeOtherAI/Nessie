@@ -5,7 +5,7 @@ import {
   parseOrganizationId,
   parseThreadId,
 } from '@nessie/schemas'
-import type { MailboxMessageRecord } from '../contracts.js'
+import type { MailboxMessageRecord } from '../contracts/plans-mailbox.js'
 import { parseOptional } from './contract-helpers.js'
 
 export const MAILBOX_ERROR_CODES = {

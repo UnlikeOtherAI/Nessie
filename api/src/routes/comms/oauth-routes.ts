@@ -14,11 +14,10 @@ import {
   ConnectorNotRegisteredError,
   resolveConnector,
 } from '@nessie/comms-connect'
-import { writeAuditEntry } from '@nessie/db'
+import { enqueueQueueJob, writeAuditEntry } from '@nessie/db'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { PublicOriginConfigError } from '../../lib/public-origin.js'
-import { enqueueQueueJob } from '../../queue/pgqueue.js'
 import type { RouteDeps } from '../types.js'
 import {
   buildAuthorizeUrl,

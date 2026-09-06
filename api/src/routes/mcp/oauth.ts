@@ -17,7 +17,7 @@ import {
   toPublicOrigin,
 } from '../../lib/public-origin.js'
 import type { AppConfig } from '../../lib/server-context.js'
-import { guardAuthRequest, RATE_LIMIT_BUCKETS } from '../auth-rate-limit.js'
+import { guardAuthRequest, rateLimitFor } from '../auth-rate-limit.js'
 
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -245,10 +245,7 @@ export const registerMcpOAuthRoutes = (
     if (
       !(await guardAuthRequest(
         rateLimiter,
-        {
-          bucket: RATE_LIMIT_BUCKETS.mcpOauthIp,
-          rule: config.api.rateLimit.mcpOauthIp,
-        },
+        rateLimitFor(config, 'mcpOauthIp'),
         request,
         reply,
         { auditContext: actorContext },
@@ -327,10 +324,7 @@ export const registerMcpOAuthRoutes = (
     if (
       !(await guardAuthRequest(
         rateLimiter,
-        {
-          bucket: RATE_LIMIT_BUCKETS.mcpOauthIp,
-          rule: config.api.rateLimit.mcpOauthIp,
-        },
+        rateLimitFor(config, 'mcpOauthIp'),
         request,
         reply,
       ))

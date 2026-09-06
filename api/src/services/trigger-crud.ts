@@ -13,7 +13,7 @@ import type {
   AgentTriggerRecord,
   AgentTriggerStatus,
   AgentTriggerType,
-} from '../contracts.js'
+} from '../contracts/triggers.js'
 import {
   ensureWebhookConfig,
   extractWebhookApiKey,

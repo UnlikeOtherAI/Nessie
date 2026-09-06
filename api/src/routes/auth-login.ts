@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client'
 
 import { verifyPassword } from '../auth/password.js'
 import type { SessionTokenClaims } from '../auth/session.js'
-import { LoginRequestSchema } from '../contracts.js'
+import { LoginRequestSchema } from '../contracts/auth.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   buildMeResponse,

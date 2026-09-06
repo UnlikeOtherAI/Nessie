@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
-import { AcquireResourceLockBodySchema, ResourceLockRecordSchema } from '../contracts.js'
+import { AcquireResourceLockBodySchema, ResourceLockRecordSchema } from '../contracts/execution.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   acquireResourceLock,

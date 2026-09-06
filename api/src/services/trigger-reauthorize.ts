@@ -13,8 +13,7 @@ import {
   loadLedgerIdentitySettings,
 } from '@nessie/runtime'
 import type { AgentTriggerType, AuthorizedActionContext } from '@nessie/schemas'
-import type { AgentTriggerRecord } from '../contracts.js'
-
+import type { AgentTriggerRecord } from '../contracts/triggers.js'
 const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 
 /**

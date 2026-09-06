@@ -17,10 +17,7 @@ const EXPLICIT_GRANT_TOOL_IDS = new Set(
 const BUILTIN_TOOL_CATEGORIES = new Map(
   SYSTEM_TOOL_DEFINITIONS.map((tool) => [tool.id, tool.category]),
 )
-import type {
-  ToolDescriptor,
-  ToolRegistryEntry,
-} from '../contracts.js'
+import type { ToolDescriptor, ToolRegistryEntry } from '../contracts/tools.js'
 import {
   toInputJsonObject,
   toJsonRecord,

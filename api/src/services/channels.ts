@@ -8,7 +8,7 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
-import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts.js'
+import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts/team.js'
 import {
   canManageChannel,
   channelTeamInclude,

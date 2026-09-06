@@ -1,12 +1,11 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { RouteGraphSchema } from '../contracts.js'
+import { RouteGraphSchema } from '../contracts/inference-core.js'
 import type {
   CreateInferenceRoutingProfileBody,
-  InferenceRoutingMode,
   InferenceRoutingProfileRecord,
-  RouteGraph,
   UpdateInferenceRoutingProfileBody,
-} from '../contracts.js'
+} from '../contracts/inference-control-plane.js'
+import type { InferenceRoutingMode, RouteGraph } from '../contracts/inference-core.js'
 import { toJsonRecord } from './contract-helpers.js'
 import {
   approveInferenceEntity,

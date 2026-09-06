@@ -9,7 +9,7 @@ import {
   GeneratedAgentAvatarSchema,
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
-} from '../contracts.js'
+} from '../contracts/agents.js'
 import { AgentMessagePageSchema, parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { parseAgentId, parseChannelId, parseTaskId } from '@nessie/schemas'
-import { ApprovalRequestRecordSchema, ResolveApprovalBodySchema } from '../contracts.js'
+import { ApprovalRequestRecordSchema, ResolveApprovalBodySchema } from '../contracts/approvals.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   getApprovalRequest,

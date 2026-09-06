@@ -9,7 +9,7 @@ import {
   ExecutionRunnerRecordSchema,
   ExecutionUsageLedgerRecordSchema,
   LaunchExecutionEnvironmentBodySchema,
-} from '../contracts.js'
+} from '../contracts/execution.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { requestExecutionEnvironmentTermination } from '../services/execution-control-plane.js'
 import {

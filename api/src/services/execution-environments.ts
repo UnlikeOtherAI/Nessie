@@ -10,8 +10,8 @@ import type {
   ExecutionLeaseRecord,
   ExecutionRunnerRecord,
   ExecutionUsageLedgerRecord,
-} from '../contracts.js'
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+} from '../contracts/execution.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { parseOptional } from './contract-helpers.js'
 
 export const EXECUTION_ENVIRONMENT_ERROR_CODES = {

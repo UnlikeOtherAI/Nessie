@@ -6,7 +6,7 @@ import {
   CreateChannelBodySchema,
   StartChannelConversationBodySchema,
   UpdateChannelBodySchema,
-} from '../contracts.js'
+} from '../contracts/team.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   findOrCreatePrivateConversationChannel,

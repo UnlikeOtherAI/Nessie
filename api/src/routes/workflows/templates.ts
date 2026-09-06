@@ -8,7 +8,7 @@ import {
   WorkflowListQuerySchema,
   WorkflowStepSamplesRecordSchema,
   WorkflowTemplateRecordSchema,
-} from '../../contracts.js'
+} from '../../contracts/workflows.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   readIfMatchRevision,

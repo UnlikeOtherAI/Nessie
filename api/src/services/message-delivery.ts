@@ -9,8 +9,9 @@ import {
   type AuthorizedActionContext,
   type WsScope,
 } from '@nessie/schemas'
+import { enqueueOrchestrateDecide } from '@nessie/db'
 
-import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
+import { enqueuePushDispatch } from '../queue/pgqueue.js'
 import type { CreateThreadMessageResult } from './message-create.js'
 
 /**

@@ -15,7 +15,7 @@ import {
   ExecutorWorkspacePromotionRecordSchema,
   OriginatingExecutorWorkspaceReviewRecordSchema,
   PreparedExecutorWorkspacePromotionSchema,
-} from '../contracts.js'
+} from '../contracts/executors.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'

@@ -1,5 +1,5 @@
 import { type Prisma } from '@prisma/client'
-import { isThreadRunSlotBusy } from '@nessie/db'
+import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
 import {
   AuthorizedActionContextSchema,
   parseAgentId,
@@ -12,8 +12,6 @@ import {
   withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-
-import { enqueueRunExecution } from '../queue/pgqueue.js'
 
 /**
  * Bringing a stopped run back — the one implementation.

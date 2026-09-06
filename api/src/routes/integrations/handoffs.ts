@@ -10,11 +10,8 @@ import {
   markDeepWaterResearchRunFailed,
 } from '@nessie/runtime'
 
-import {
-  ChannelRecordSchema,
-  ThreadMessageRecordSchema,
-  ThreadRecordSchema,
-} from '../../contracts.js'
+import { ChannelRecordSchema } from '../../contracts/team.js'
+import { ThreadMessageRecordSchema, ThreadRecordSchema } from '../../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   DeepWaterLaunchAuthorizationError,

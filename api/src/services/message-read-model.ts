@@ -9,9 +9,7 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseThreadId, parseUserId } from '@nessie/schemas'
 
-import type { ThreadMessageRecord } from '../contracts.js'
-
-/**
+import type { ThreadMessageRecord } from '../contracts/messaging.js'/**
  * How a message row is loaded, shaped and paged for a reader.
  *
  * This is the bottom of the messaging stack: the Prisma `include` every writer

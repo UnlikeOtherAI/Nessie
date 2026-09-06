@@ -7,7 +7,7 @@ import {
 import { AGENT_EMAIL_INBOUND_TOPIC } from '@nessie/schemas'
 import { safeFetch } from '@nessie/runtime'
 
-import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { enqueueQueueJob } from '@nessie/db'
 import { sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
 import type { RouteDeps } from './types.js'

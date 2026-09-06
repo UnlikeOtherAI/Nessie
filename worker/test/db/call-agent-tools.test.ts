@@ -20,6 +20,7 @@ type Seed = {
   homeTeamId: string
   targetChannelId: string
   targetOrganizationId: string
+  targetTeamId: string
 }
 
 const seed = async (prisma: PrismaClient): Promise<Seed> => {
@@ -52,6 +53,11 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
       { organizationId: targetOrganization.id, userId: caller.id },
       { organizationId: targetOrganization.id, userId: invitee.id },
     ],
+  })
+  // Minting a link for a named team requires standing in that team, not just
+  // in its organisation; the caller belongs to the home team they mint for.
+  await prisma.teamMember.create({
+    data: { teamId: homeTeam.id, userId: caller.id },
   })
   const [homeChannel, targetChannel] = await Promise.all([
     prisma.channel.create({
@@ -95,6 +101,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     inviteeId: invitee.id,
     targetChannelId: targetChannel.id,
     targetOrganizationId: targetOrganization.id,
+    targetTeamId: targetTeam.id,
   }
 }
 
@@ -186,6 +193,23 @@ runDatabaseTest('PA call tools use the target channel tenant, honour a provider 
   assert.equal(call.provider, 'jitsi')
   assert.equal(await prisma.callInvite.count({ where: { callId: call.id, state: 'ringing' } }), 1)
   assert.deepEqual(publications.sort(), ['call.incoming', 'call.updated'])
+})
+
+runDatabaseTest('meeting_link_create mirrors the route: a team outside the run tenant is Team not found', async (t) => {
+  const prisma = new PrismaClient()
+  const team = await seed(prisma)
+  t.after(async () => {
+    await cleanup(prisma, team)
+    await prisma.$disconnect()
+  })
+
+  // The caller is a member of both organisations, but the run's tenant is the
+  // home organisation, and the target team lives in the other one — the same
+  // indistinguishable refusal POST /api/meetings/links gives for that session.
+  await assert.rejects(
+    runMeetingLinkCreateTool(contextFor(prisma, team).context, { teamId: team.targetTeamId }),
+    /Team not found/,
+  )
 })
 
 runDatabaseTest('call tools refuse an unattended PA run before minting a link', async (t) => {

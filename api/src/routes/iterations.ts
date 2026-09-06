@@ -7,7 +7,7 @@ import {
   IterationRecordSchema,
   ProjectInsightsRecordSchema,
   UpdateIterationBodySchema,
-} from '../contracts.js'
+} from '../contracts/tasks-board.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   createIteration,

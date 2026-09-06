@@ -10,7 +10,7 @@ import {
   AGENT_DESIGNER_BLUEPRINT,
   ensureGlobalAgentBootstrap,
 } from '@nessie/team-admin'
-import { enqueueOrchestrateDecide } from '../src/queue/pgqueue.js'
+import { enqueueOrchestrateDecide } from '@nessie/db'
 import { resumeSuspendedRun } from '../src/services/run-resume-core.js'
 import {
   resolveDelegatedRequesterUserId,

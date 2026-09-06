@@ -1,10 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import {
-  CreateToolRegistryEntryBodySchema,
-  ToolDescriptorSchema,
-  ToolRegistryEntrySchema,
-} from '../contracts.js'
+import { CreateToolRegistryEntryBodySchema, ToolDescriptorSchema, ToolRegistryEntrySchema } from '../contracts/tools.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   listAvailableTools,

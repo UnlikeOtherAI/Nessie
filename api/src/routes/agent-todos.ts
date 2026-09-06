@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { publishAgentTodoUpdated, startAgentTodoRun } from '@nessie/team-admin'
-import { claimThreadRunOrPend } from '@nessie/db'
+import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import { z } from 'zod'
 
 import {
@@ -19,14 +19,13 @@ import {
   RunAgentTodoBodySchema,
   UpdateAgentTodoStepBodySchema,
   UpdateAgentTodoTemplateBodySchema,
-} from '../contracts.js'
+} from '../contracts/agent-todos.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   readIfMatchRevision,
   sendMalformedIfMatch,
   sendRevisionConflict,
 } from '../lib/if-match.js'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
 import {
   AGENT_TODO_ERROR_CODES,
   AgentTodoError,

@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { parseAgentId, parseRunId } from '@nessie/schemas'
 
-import type { RunThinkingEntry, RunThinkingLog, ThreadThinking } from '../contracts.js'
+import type { RunThinkingEntry, RunThinkingLog, ThreadThinking } from '../contracts/messaging.js'
 import { canUserReadRunBasis } from './run-disclosure.js'
 
 // The full log is capped so a very long run cannot return an unbounded payload;

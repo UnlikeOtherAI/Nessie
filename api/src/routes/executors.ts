@@ -54,7 +54,7 @@ import {
   PrepareExecutorAccessChangeBodySchema,
   PreparedExecutorAccessChangeSchema,
   SubmitExecutorEnrollmentBodySchema,
-} from '../contracts.js'
+} from '../contracts/executors.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'

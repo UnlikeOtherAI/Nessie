@@ -1,11 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { hashPassword } from '../auth/password.js'
-import {
-  CreateUserBodySchema,
-  UpdateUserRoleBodySchema,
-  UserRecordSchema,
-} from '../contracts.js'
+import { CreateUserBodySchema, UpdateUserRoleBodySchema, UserRecordSchema } from '../contracts/users-presence.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
 import { requireUnboundMembershipManagement } from './membership-mode-gate.js'

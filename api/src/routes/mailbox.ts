@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { CreateMailboxMessageBodySchema, MailboxMessageRecordSchema } from '../contracts.js'
+import { CreateMailboxMessageBodySchema, MailboxMessageRecordSchema } from '../contracts/plans-mailbox.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   claimMailboxMessage,

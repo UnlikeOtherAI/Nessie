@@ -17,7 +17,7 @@ import {
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
   SsoConfigQuerySchema,
-} from '../contracts.js'
+} from '../contracts/auth.js'
 import {
   BootstrapAlreadyInitializedError,
   seedBootstrapRecords,

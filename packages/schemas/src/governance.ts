@@ -240,6 +240,10 @@ export const AuditActionSchema = z.enum([
   'personal_assistant.access_denied',
   'tool.granted',
   'tool.revoked',
+  // A human-in-the-loop card (a secret request, a todo confirmation, …)
+  // being answered. `resourceId` is the card id; the values a person typed
+  // never enter the metadata even through redaction.
+  'agent_card.responded',
   // Personal secret vault (org/team/project/personal scoped secrets stored
   // in the external Infisical vault). Reference and scope only — never the
   // plaintext value.
@@ -247,6 +251,10 @@ export const AuditActionSchema = z.enum([
   'secret.rotated',
   'secret.revoked',
   'secret.access_granted',
+  // A message whose body was overwritten after a secret typed into it was
+  // captured out to the vault — the plaintext must not linger in the
+  // channel history or in message memory recall.
+  'message.redacted',
   // A scoped setting write (org/team/project/personal). Value shape is
   // setting-specific, so the audit metadata carries the key and scope, not
   // a fixed schema.

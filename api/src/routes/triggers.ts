@@ -7,7 +7,7 @@ import {
   CreateAgentTriggerBodySchema,
   FireAgentTriggerBodySchema,
   UpdateAgentTriggerBodySchema,
-} from '../contracts.js'
+} from '../contracts/triggers.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { checkPolicy } from '../services/policy.js'

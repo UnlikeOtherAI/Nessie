@@ -1,10 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { followReplyThread, unfollowReplyThread } from '@nessie/runtime'
-import {
-  SetMessageThreadFollowBodySchema,
-  ThreadMessageRecordSchema,
-} from '../contracts.js'
+import { SetMessageThreadFollowBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   mapMessageRecordWithAttachments,

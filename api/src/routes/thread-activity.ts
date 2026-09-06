@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { ListThreadActivityQuerySchema, ThreadActivityResponseSchema } from '../contracts.js'
+import { ListThreadActivityQuerySchema, ThreadActivityResponseSchema } from '../contracts/thread-activity.js'
 import { createApiResponse, parseInput } from '../lib/api.js'
 import { listThreadActivity } from '../services/thread-activity.js'
 import type { RouteDeps } from './types.js'

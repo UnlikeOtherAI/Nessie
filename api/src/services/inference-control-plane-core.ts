@@ -1,16 +1,13 @@
 import { Prisma, type PrismaClient as PrismaDbClient } from '@prisma/client'
 import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 import { parseOrganizationId } from '@nessie/schemas'
-import {
-  ModelCapabilitySnapshotSchema,
-  RouteGraphSchema,
-} from '../contracts.js'
+import { ModelCapabilitySnapshotSchema, RouteGraphSchema } from '../contracts/inference-core.js'
 import type {
   InferenceCredentialBindingRecord,
   InferenceModelRecord,
   InferenceProviderRecord,
   InferenceRoutingProfileRecord,
-} from '../contracts.js'
+} from '../contracts/inference-control-plane.js'
 import {
   toJsonRecord,
 } from './contract-helpers.js'

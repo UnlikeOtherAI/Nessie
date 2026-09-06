@@ -8,11 +8,7 @@ import {
   ProjectValidationError,
 } from '@nessie/team-admin'
 
-import {
-  ProjectMemberRecordSchema,
-  ProjectRecordSchema,
-  UpdateProjectBodySchema,
-} from '../contracts.js'
+import { ProjectMemberRecordSchema, ProjectRecordSchema, UpdateProjectBodySchema } from '../contracts/team.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { canAccessAttachment } from '../services/attachments.js'
@@ -136,7 +132,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'project.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'project.created',
       resourceType: 'project',
       resourceId: project.id,
       outcome: 'success',
@@ -228,7 +224,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'project.updated' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'project.updated',
       resourceType: 'project',
       resourceId: updatedProject.id,
       outcome: 'success',
@@ -281,7 +277,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     await emitAuditEvent(prisma, {
       actorContext,
-      action: 'project.deleted' as Parameters<typeof emitAuditEvent>[1]['action'],
+      action: 'project.deleted',
       resourceType: 'project',
       resourceId: projectId,
       outcome: 'success',

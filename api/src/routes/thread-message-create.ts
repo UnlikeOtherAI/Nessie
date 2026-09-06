@@ -6,10 +6,7 @@ import {
   parseAgentId,
   parseUserId,
 } from '@nessie/schemas'
-import {
-  CreateThreadMessageBodySchema,
-  ThreadMessageRecordSchema,
-} from '../contracts.js'
+import { CreateThreadMessageBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage } from '../services/message-create.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'

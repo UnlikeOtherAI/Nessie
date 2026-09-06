@@ -1,10 +1,10 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type {
   CreateInferenceProviderBody,
-  InferenceHealthStatus,
   InferenceProviderRecord,
   UpdateInferenceProviderBody,
-} from '../contracts.js'
+} from '../contracts/inference-control-plane.js'
+import type { InferenceHealthStatus } from '../contracts/inference-core.js'
 import {
   approveInferenceEntity,
   assertProviderBaseUrlSafe,

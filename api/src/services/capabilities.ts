@@ -6,7 +6,7 @@ import {
   parseThreadId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-import type { TemporaryContextSession } from '../contracts.js'
+import type { TemporaryContextSession } from '../contracts/tools.js'
 import { parseOptional } from './contract-helpers.js'
 
 export const CAPABILITY_ERROR_CODES = {

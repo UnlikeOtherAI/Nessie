@@ -4,7 +4,7 @@ import {
   parseOrganizationId,
   parseRunId,
 } from '@nessie/schemas'
-import type { ResourceLockRecord } from '../contracts.js'
+import type { ResourceLockRecord } from '../contracts/execution.js'
 import { parseOptional } from './contract-helpers.js'
 
 const DEFAULT_LOCK_TTL_MS = 60_000

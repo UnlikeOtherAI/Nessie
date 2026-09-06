@@ -12,7 +12,7 @@ import {
   BudgetStatusResponseSchema,
   SetBudgetBodySchema,
   SetPricingProfileBodySchema,
-} from '../contracts.js'
+} from '../contracts/ops-budget.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   createPricingProfile,

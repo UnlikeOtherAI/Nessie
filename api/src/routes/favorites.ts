@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import {
-  FavoriteRecordSchema,
-  FavoriteTargetParamsSchema,
-} from '../contracts.js'
+import { FavoriteRecordSchema, FavoriteTargetParamsSchema } from '../contracts/favorites.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   FavoriteServiceError,

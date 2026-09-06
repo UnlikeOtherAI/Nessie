@@ -3,10 +3,7 @@ import { MeResponseSchema, SessionSummarySchema } from '@nessie/schemas'
 
 import { hashPassword, verifyPassword } from '../auth/password.js'
 import { verifySessionToken } from '../auth/session.js'
-import {
-  ChangePasswordRequestSchema,
-  SwitchContextBodySchema,
-} from '../contracts.js'
+import { ChangePasswordRequestSchema, SwitchContextBodySchema } from '../contracts/auth.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie } from '../lib/refresh-cookie.js'
 import {

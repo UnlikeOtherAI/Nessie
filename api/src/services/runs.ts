@@ -12,8 +12,7 @@ import {
   type RunStatus,
 } from '@nessie/schemas'
 
-import { enqueueRunExecution } from '../queue/pgqueue.js'
-import { isThreadRunSlotBusy } from '@nessie/db'
+import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
 import { buildAgentVisibilityWhere } from '@nessie/team-admin'
 import { cancelAgentCardsForRun } from './agent-card-sweep.js'
 import { expirePendingToolApprovalsForRun } from './approval-resume.js'
