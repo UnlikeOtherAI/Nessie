@@ -234,11 +234,13 @@ when one changes, the same turn updates it, not this section.
   is unique only inside it, so a flat `<team>.<base>` is forbidden rather than
   merely discouraged. Resolving a hostname is a lookup that grants nothing — the
   team switch that follows is the authorization — and matching one is a
-  label comparison, never a suffix test, or `evil-nessie.works` passes. The edge
-  needs one DNS record and one wildcard certificate **per organisation**, and
-  why it is per organisation rather than per team is a rate limit with teeth:
+  label comparison, never a suffix test, or `evil-nessie.works` passes. On a
+  tenant hostname the tenant is the brand, palette included, which is the one
+  carve-out from "the sign-in screen is instance state". The edge needs no DNS
+  record per tenant but **one certificate line per hostname**, and the reasons
+  it cannot be a wildcard are three separate constraints on a shared proxy:
   read [docs/standards/team-hosts.md](docs/standards/team-hosts.md) before
-  touching host routing, CORS, or the edge.
+  touching host routing, CORS, tenant branding, or the edge.
 - **Automatic team access by verified email domain — Nessie holds the policy,
   UOA still authorizes every grant.** Every grant is a relay to `addTeamMember`
   carrying a fresh org-scoped subject assertion for the administrator who
