@@ -366,6 +366,25 @@ cancel/checkpoint path, awaits in-flight handlers under a deadline, and acks or
 nacks before the pool closes. Drain is solved by checkpointing inside sixty
 seconds, not by asking the platform for a longer grace.
 
+**That signal is raised when the drain BEGINS, never at its deadline**, and the
+distinction is the whole point: a warning that arrives when the time is already
+gone buys a long run nothing. `PgQueueProvider`'s `stop()` therefore aborts the
+in-flight job's `context.signal` in the same call that stops the claim loop
+(`DRAIN_STARTED_REASON`), and the abort is a warning rather than a verdict — a
+handler that ignores it runs to completion and is acked exactly as before, and
+only the deadline's `abandon()` takes a job away. **And nothing a handler writes
+through may be closed while it is still writing.** `drainQueueSubscriptions`
+awaits every subscription's `done` under `NESSIE_WORKER_DRAIN_TIMEOUT_MS`,
+abandons what is left (which nacks, so a successor re-claims at once rather than
+waiting out the five-minute lock), then waits a second, shorter window
+(`DEFAULT_WORKER_ABANDON_SETTLE_MS`) for those handlers to fall out before
+`stop()` closes the transport, the pool and the Prisma client. Returning at the
+nack instead is what left a run's release write executing against a closing pool,
+so a successor saw a run "held by a live executor" that had already exited. The
+settle window is bounded and its expiry is reported, because a handler parked in
+an uninterruptible await must not hold `SIGTERM` open until the platform
+`SIGKILL`s the process.
+
 ## 7. No local disk beyond per-request scratch the same request deletes
 
 **A file one instance wrote is not there for the next call.** `filesystem` is

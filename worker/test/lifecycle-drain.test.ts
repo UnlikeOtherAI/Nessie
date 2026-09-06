@@ -17,7 +17,14 @@ type FakeSubscription = QueueSubscription & {
 
 // Stands in for a `PgQueueProvider` subscription: `done` resolves only once the
 // in-flight handler settles, which is exactly what the drain has to wait for.
-const fakeSubscription = (options: { handlerMs: number | 'never' }): FakeSubscription => {
+//
+// `settleMs` is how long the handler keeps writing AFTER it has been abandoned.
+// The real provider nacks first and lets the handler fall out afterwards, so
+// `done` does not resolve just because `abandon()` returned; a drain that treats
+// the nack as the end closes the pool on a handler mid-write.
+const fakeSubscription = (
+  options: { handlerMs: number | 'never'; settleMs?: number | 'never' },
+): FakeSubscription => {
   const abandonedWith: string[] = []
   let stopped = false
   let stoppedBeforeSettling = false
@@ -46,7 +53,15 @@ const fakeSubscription = (options: { handlerMs: number | 'never' }): FakeSubscri
 
       inFlight = false
       abandonedWith.push(reason)
-      finish()
+      const settleMs = options.settleMs ?? 0
+      if (settleMs === 'never') {
+        return
+      }
+      if (settleMs === 0) {
+        finish()
+        return
+      }
+      void delay(settleMs).then(finish)
     },
     abandonedWith,
     stoppedBeforeSettling: () => stoppedBeforeSettling,
@@ -97,7 +112,44 @@ describe('drainQueueSubscriptions', () => {
   })
 
   test('an empty subscription list drains immediately', async () => {
-    assert.deepEqual(await drainQueueSubscriptions([], { timeoutMs: 10 }), { timedOut: false })
+    assert.deepEqual(await drainQueueSubscriptions([], { timeoutMs: 10 }), {
+      settleTimedOut: false,
+      timedOut: false,
+    })
+  })
+
+  test('waits for an abandoned handler to fall out before the caller tears down', async () => {
+    // Abandoning nacks the row, which the queue is satisfied by; the handler is
+    // still writing. `stop()` closes the pool and the Prisma client next, so the
+    // drain owes it this window.
+    const subscription = fakeSubscription({ handlerMs: 'never', settleMs: 200 })
+
+    const started = Date.now()
+    const result = await drainQueueSubscriptions([subscription], {
+      settleMs: 2_000,
+      timeoutMs: 60,
+    })
+    const elapsed = Date.now() - started
+
+    assert.deepEqual(result, { settleTimedOut: false, timedOut: true })
+    assert.deepEqual(subscription.abandonedWith, [WORKER_DRAIN_TIMEOUT_REASON])
+    assert.ok(elapsed >= 240, `drain returned after ${elapsed}ms, before the handler settled`)
+  })
+
+  test('reports the handler that was still writing when the settle window closed', async () => {
+    const subscription = fakeSubscription({ handlerMs: 'never', settleMs: 'never' })
+
+    const started = Date.now()
+    const result = await drainQueueSubscriptions([subscription], {
+      settleMs: 120,
+      timeoutMs: 60,
+    })
+    const elapsed = Date.now() - started
+
+    // The one outcome the drain cannot prevent, so it is reported rather than
+    // swallowed: the caller closes the pool under a handler that never fell out.
+    assert.deepEqual(result, { settleTimedOut: true, timedOut: true })
+    assert.ok(elapsed >= 150, `drain gave up after ${elapsed}ms, before the settle window closed`)
   })
 })
 

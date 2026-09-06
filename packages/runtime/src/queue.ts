@@ -12,17 +12,24 @@ export type QueueJob = {
 
 export type QueueHandlerContext = {
   // Aborted when the subscription's own signal aborts, when the job's lock is
-  // lost, or when a draining worker runs out of time. A long handler (an
-  // agentic run) should reach its cancel/checkpoint path on it.
+  // lost, or when a drain BEGINS — not when it runs out of time. A long handler
+  // (an agentic run) should reach its cancel/checkpoint path on it, and it only
+  // gets to do that if it is told at the start of the grace window rather than
+  // at the end of it.
+  //
+  // The abort is a warning, not a verdict: a handler that ignores it runs to
+  // completion and is acked exactly as before. Only the deadline (`abandon`)
+  // takes the job away.
   signal: AbortSignal
 }
 
 export type QueueHandler = (job: QueueJob, context: QueueHandlerContext) => Promise<void>
 
 // The handle `subscribe` hands back. `stop()` is the graceful half of a drain:
-// the loop takes no new job, the one it holds runs to completion, and `done`
-// resolves when it has been acked or nacked. `abandon()` is the ungraceful
-// half, for a caller that has run out of patience.
+// the loop takes no new job, the job it holds is told the drain has begun (its
+// `context.signal` aborts), and `done` resolves once that job has been acked or
+// nacked. `abandon()` is the ungraceful half, for a caller that has run out of
+// patience.
 export type QueueSubscription = {
   abandon(reason: string): Promise<void>
   done: Promise<void>
@@ -70,6 +77,10 @@ const LOCK_RENEWAL_FRACTION = 3
 const MAX_CONSECUTIVE_LOCK_RENEWAL_FAILURES = 2
 export const LOCK_RENEWAL_FAILED_REASON = 'lock_renewal_failed'
 export const LOCK_EXPIRED_AT_MAX_ATTEMPTS_REASON = 'lock_expired_at_max_attempts'
+// `signal.reason` when the abort came from the drain starting rather than from
+// a lost lock or an exhausted deadline. A handler that wants to tell "wind down
+// and hand the work back" apart from "you no longer hold this row" reads it.
+export const DRAIN_STARTED_REASON = 'worker_drain_started'
 
 const logQueueError = (message: string, error?: unknown): void => {
   if (error === undefined) {
@@ -161,7 +172,9 @@ export class PgQueueProvider implements QueueProvider {
     const externalSignal = options.signal
     // The drain gate. Checked before every claim and used to cut the poll
     // delay short, so a stopping worker never sits out a full interval and
-    // never takes a job it has no time left to run.
+    // never takes a job it has no time left to run. It is also handed to
+    // `runClaimedJob`, which forwards it to the in-flight job's own controller:
+    // that is what makes `stop()` the moment the handler hears about the drain.
     const loopController = new AbortController()
     const state: SubscriptionState = { inFlight: null }
 
@@ -197,7 +210,7 @@ export class PgQueueProvider implements QueueProvider {
           continue
         }
 
-        await this.runClaimedJob(job, handler, state, externalSignal)
+        await this.runClaimedJob(job, handler, state, externalSignal, loopController.signal)
       }
     })().catch((error) => {
       logQueueError(`Queue subscription stopped unexpectedly for topic "${topic}"`, error)
@@ -214,6 +227,13 @@ export class PgQueueProvider implements QueueProvider {
         // Nack before the handler settles, on purpose: the caller is out of
         // time (a drain deadline), and the row must be re-claimable now rather
         // than after the five-minute lock TTL burns down.
+        //
+        // The controller is normally aborted already — `stop()` raised it when
+        // the drain began — so this is the record of *why* the job was taken
+        // away, not the first warning the handler gets. `abandonedReason` is
+        // what makes `runClaimedJob` discard the handler's own outcome, so a
+        // straggler that finishes after this cannot ack a row someone else now
+        // owns.
         entry.abandonedReason = reason
         entry.controller.abort(new Error(reason))
         await this.nack(entry.jobId, reason).catch((error) => {
@@ -230,15 +250,31 @@ export class PgQueueProvider implements QueueProvider {
     handler: QueueHandler,
     state: SubscriptionState,
     externalSignal: AbortSignal | undefined,
+    drainSignal: AbortSignal,
   ): Promise<void> {
     const controller = new AbortController()
     const forwardAbort = (): void => {
       controller.abort(externalSignal?.reason)
     }
+    // A drain that has begun reaches the handler immediately — both the job
+    // already running when `stop()` was called (the listener) and one the loop
+    // claimed in the same tick the drain started (the `aborted` branch). Waiting
+    // for the deadline instead gives a long agentic run no window at all in
+    // which to checkpoint, and it simply dies when the platform escalates.
+    const forwardDrain = (): void => {
+      if (!controller.signal.aborted) {
+        controller.abort(new Error(DRAIN_STARTED_REASON))
+      }
+    }
     if (externalSignal?.aborted) {
       forwardAbort()
     } else {
       externalSignal?.addEventListener('abort', forwardAbort, { once: true })
+    }
+    if (drainSignal.aborted) {
+      forwardDrain()
+    } else {
+      drainSignal.addEventListener('abort', forwardDrain, { once: true })
     }
 
     const entry: InFlightJob = { abandonedReason: null, controller, jobId: job.id }
@@ -282,6 +318,7 @@ export class PgQueueProvider implements QueueProvider {
       logQueueError(`Failed to settle queue job ${job.id}`, error)
     } finally {
       externalSignal?.removeEventListener('abort', forwardAbort)
+      drainSignal.removeEventListener('abort', forwardDrain)
       state.inFlight = null
     }
   }
