@@ -11,6 +11,7 @@ import type {
   UserRecord,
 } from '../../lib/api-client'
 import type { MentionEntity } from '../../components/shared/MentionInput'
+import { dashboardCloseTarget } from './dashboard-close-target'
 import { ChannelMembersPopup } from '../../components/shared/ChannelMembersPopup'
 import { ChannelSettingsDialog } from '../../components/shared/ChannelSettingsDialog'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
@@ -157,15 +158,11 @@ export const ChannelOverlays = ({
   onSelectAgent,
   onSendAsFile,
 }: ChannelOverlaysProps) => {
-  const { dashboardId, threadId } = useParams()
+  const { dashboardId } = useParams()
   const navigate = useNavigate()
   const closeDashboard = () => {
     if (activeChannel) {
-      void navigate(
-        threadId
-          ? `/channels/${activeChannel.id}/threads/${threadId}`
-          : `/channels/${activeChannel.id}`,
-      )
+      void navigate(dashboardCloseTarget(activeChannel.id))
     }
   }
 
