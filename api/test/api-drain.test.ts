@@ -20,7 +20,12 @@ import websocket from '@fastify/websocket'
 import Fastify, { type FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 
-import { drainApiServer, isDraining, runShutdown } from '../src/lifecycle.js'
+import {
+  createLifecycleState,
+  drainApiServer,
+  isDraining,
+  runShutdown,
+} from '../src/lifecycle.js'
 import { createRealtimeHub } from '../src/realtime/hub.js'
 
 const databaseUrl = process.env.DATABASE_URL
@@ -146,14 +151,19 @@ dbTest('drain ends every SSE stream with a shutdown frame and closes WebSockets 
     socket.addEventListener('error', () => reject(new Error('websocket failed to open')))
   })
 
-  assert.equal(isDraining(), false, 'precondition: the process is serving normally')
+  const lifecycle = createLifecycleState()
+  assert.equal(isDraining(lifecycle), false, 'precondition: the server is serving normally')
 
   // The whole drain, exactly as the signal handler runs it.
-  await drainApiServer({ app, hub })
+  await drainApiServer({ app, hub, lifecycle })
 
   // `app.close()` resolved. With the hub's stream teardown removed this line is
   // never reached: Fastify's 'idle' close waits on the two open SSE requests.
-  assert.equal(isDraining(), true, 'readiness must answer 503 for the rest of the drain')
+  assert.equal(
+    isDraining(lifecycle),
+    true,
+    'readiness must answer 503 for the rest of the drain',
+  )
 
   await threadStream.ended
   await userStream.ended
@@ -203,6 +213,7 @@ test('a shutdown timeout that is not a positive number falls back instead of fir
   await runShutdown('SIGTERM', {
     app: { close: async () => {} } as unknown as FastifyInstance,
     hub: { closeLiveConnections: () => {} },
+    lifecycle: createLifecycleState(),
     timeoutMs: undefined as unknown as number,
     exit: ((code: number) => {
       exits.push(code)

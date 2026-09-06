@@ -31,7 +31,7 @@ import {
   ModelUsageTracker,
 } from '@nessie/runtime'
 import { registerGlobalAuthHook } from './lib/global-auth-hook.js'
-import { installApiShutdownHandlers } from './lifecycle.js'
+import { createLifecycleState, installApiShutdownHandlers } from './lifecycle.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import { backfillProtectedMcpToolGrants } from './services/agent-tool-policy-registry.js'
@@ -339,8 +339,14 @@ export const buildApp = async () => {
     }`,
   )
 
+  // This server's drain flag: created here, read by the health routes, flipped
+  // by the drain. One per built app, so an embedder hosting two of them drains
+  // them independently (`src/lifecycle.ts`).
+  const lifecycle = createLifecycleState()
+
   const deps: RouteDeps = {
     ...serverContext,
+    lifecycle,
     realtimeHub,
     sharedModelClient,
     messageMemoryCaptureConfig,
@@ -409,14 +415,15 @@ export const buildApp = async () => {
     stopApiMaintenance()
   })
 
-  // The hub travels with the app because a drain has to reach the live
-  // connections it tracks: Fastify's own close leaves in-flight requests alone,
-  // and an open SSE stream is an in-flight request (`src/lifecycle.ts`).
-  return { app, realtimeHub }
+  // The hub and the drain flag travel with the app because a drain has to reach
+  // the live connections the hub tracks (Fastify's own close leaves in-flight
+  // requests alone, and an open SSE stream is an in-flight request) and has to
+  // flip the flag the health routes read (`src/lifecycle.ts`).
+  return { app, lifecycle, realtimeHub }
 }
 
 export const startApiServer = async () => {
-  const { app, realtimeHub } = await buildApp()
+  const { app, lifecycle, realtimeHub } = await buildApp()
   await runRefreshCredentialSweep(prisma, true)
   const initialBootstrapState = await resolveBootstrapState()
   if (initialBootstrapState) {
@@ -441,17 +448,18 @@ export const startApiServer = async () => {
     port: config.api.port,
   })
 
-  return { app, realtimeHub }
+  return { app, lifecycle, realtimeHub }
 }
 
 // Only a standalone API process owns the OS signals — the same guard the worker
 // uses (`worker/src/index.ts`), so an embedder that imports `buildApp` keeps its
 // own SIGINT/SIGTERM instead of having this drain hijack them.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { app, realtimeHub } = await startApiServer()
+  const { app, lifecycle, realtimeHub } = await startApiServer()
   installApiShutdownHandlers({
     app,
     hub: realtimeHub,
+    lifecycle,
     timeoutMs: config.shutdownTimeoutMs,
   })
 }

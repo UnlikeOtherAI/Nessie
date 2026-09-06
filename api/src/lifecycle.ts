@@ -20,23 +20,34 @@ export type DrainableRealtimeHub = {
   closeLiveConnections: () => void
 }
 
-// Process-wide, because readiness has to answer for the process, not for one
-// route instance: `/api/health/ready` reads it (`routes/health.ts`) so the load
-// balancer stops sending new work the moment the signal lands, while the
-// requests already in flight finish.
-let draining = false
+/**
+ * Whether this server is going away. One object per built app, created in
+ * `buildApp` and handed to the health routes through `RouteDeps` — deliberately
+ * *not* a module-scope `let`: rule 1 of
+ * [`docs/standards/horizontal-scaling.md`](../../docs/standards/horizontal-scaling.md)
+ * bans module state, and the eslint ratchet that enforces it only ever shrinks.
+ * Per-app is also the truthful scope: an embedder that hosts two `buildApp`
+ * instances in one process drains them independently, and a test that drains
+ * one app leaves the next one serving.
+ */
+export type LifecycleState = {
+  draining: boolean
+}
 
-export const isDraining = (): boolean => draining
+export const createLifecycleState = (): LifecycleState => ({ draining: false })
+
+export const isDraining = (state: LifecycleState): boolean => state.draining
 
 /**
  * Flip readiness to "going away" without closing anything yet.
  *
  * Exported separately from `drainApiServer` because an orchestrator that polls
  * readiness needs a window between "stop routing to me" and "sockets closed";
- * how long that window is belongs to the deployment, not to this process.
+ * how long that window is belongs to the deployment, not to this process. One
+ * way: nothing un-drains a server.
  */
-export const beginDraining = (): void => {
-  draining = true
+export const beginDraining = (state: LifecycleState): void => {
+  state.draining = true
 }
 
 /**
@@ -59,8 +70,9 @@ export const beginDraining = (): void => {
 export const drainApiServer = async (input: {
   app: FastifyInstance
   hub: DrainableRealtimeHub
+  lifecycle: LifecycleState
 }): Promise<void> => {
-  beginDraining()
+  beginDraining(input.lifecycle)
   input.hub.closeLiveConnections()
   await input.app.close()
 }
@@ -68,6 +80,8 @@ export const drainApiServer = async (input: {
 export type ShutdownHandlerOptions = {
   app: FastifyInstance
   hub: DrainableRealtimeHub
+  /** The same object the health routes read, so the 503 lands with the signal. */
+  lifecycle: LifecycleState
   /**
    * Hard ceiling on the whole drain (`NESSIE_SHUTDOWN_TIMEOUT_MS`, default
    * 25 s). A drain that has not finished by then exits 1 rather than waiting
@@ -133,7 +147,11 @@ export const runShutdown = async (
 
   try {
     log(`${signal} received; draining`)
-    await drainApiServer({ app: options.app, hub: options.hub })
+    await drainApiServer({
+      app: options.app,
+      hub: options.hub,
+      lifecycle: options.lifecycle,
+    })
     clearTimeout(deadline)
     log('drain complete')
     exit(0)

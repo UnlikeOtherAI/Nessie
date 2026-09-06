@@ -16,7 +16,7 @@ import test from 'node:test'
 import Fastify from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 
-import { beginDraining, isDraining } from '../src/lifecycle.js'
+import { beginDraining, createLifecycleState, isDraining } from '../src/lifecycle.js'
 import { registerHealthRoutes } from '../src/routes/health.js'
 import type { RouteDeps } from '../src/routes/types.js'
 
@@ -39,15 +39,18 @@ const buildHealthApp = (stub: PrismaStub) => {
   } as unknown as PrismaClient
 
   const app = Fastify()
-  registerHealthRoutes(app, { prisma } as unknown as RouteDeps)
-  return app
+  // The drain flag the routes read is per built server, so each test gets its
+  // own and nothing leaks from the draining case into the others.
+  const lifecycle = createLifecycleState()
+  registerHealthRoutes(app, { lifecycle, prisma } as unknown as RouteDeps)
+  return { app, lifecycle }
 }
 
 const readyBody = (payload: string) =>
   (JSON.parse(payload) as { data: { ready: boolean; checks: { worker: string } } }).data
 
 test('readiness is 200 on a live database even with no worker heartbeat at all', async () => {
-  const app = buildHealthApp({ databaseUp: true, runners: [] })
+  const { app } = buildHealthApp({ databaseUp: true, runners: [] })
 
   const response = await app.inject({ method: 'GET', url: '/api/health/ready' })
 
@@ -61,7 +64,7 @@ test('readiness is 200 on a live database even with no worker heartbeat at all',
 })
 
 test('readiness is 200 when the worker heartbeat is merely stale', async () => {
-  const app = buildHealthApp({
+  const { app } = buildHealthApp({
     databaseUp: true,
     runners: [{ heartbeatAt: new Date(Date.now() - 120_000), status: 'active' }],
   })
@@ -74,7 +77,7 @@ test('readiness is 200 when the worker heartbeat is merely stale', async () => {
 })
 
 test('readiness is 503 when the database round trip fails', async () => {
-  const app = buildHealthApp({
+  const { app } = buildHealthApp({
     databaseUp: false,
     runners: [{ heartbeatAt: new Date(), status: 'active' }],
   })
@@ -87,7 +90,7 @@ test('readiness is 503 when the database round trip fails', async () => {
 })
 
 test('liveness is a flat 200 while the process is serving', async () => {
-  const app = buildHealthApp({ databaseUp: true, runners: [] })
+  const { app } = buildHealthApp({ databaseUp: true, runners: [] })
 
   const response = await app.inject({ method: 'GET', url: '/api/health' })
 
@@ -99,19 +102,19 @@ test('liveness is a flat 200 while the process is serving', async () => {
   await app.close()
 })
 
-// Last: `beginDraining` is process-wide and one-way, exactly as a real
-// shutdown is. Everything above must run while this process is still serving.
+// `beginDraining` is one-way, exactly as a real shutdown is — but it is scoped
+// to this server, so the tests above keep serving on their own apps.
 test('a draining replica reports 503 on both health endpoints', async () => {
-  const app = buildHealthApp({
+  const { app, lifecycle } = buildHealthApp({
     databaseUp: true,
     runners: [{ heartbeatAt: new Date(), status: 'active' }],
   })
 
-  assert.equal(isDraining(), false)
+  assert.equal(isDraining(lifecycle), false)
   const beforeDrain = await app.inject({ method: 'GET', url: '/api/health/ready' })
   assert.equal(beforeDrain.statusCode, 200)
 
-  beginDraining()
+  beginDraining(lifecycle)
 
   const ready = await app.inject({ method: 'GET', url: '/api/health/ready' })
   assert.equal(ready.statusCode, 503, 'a draining replica must not be routed new work')

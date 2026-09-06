@@ -7,18 +7,19 @@ import { getOpsHealth, getReadiness } from '../services/ops-health.js'
 import type { RouteDeps } from './types.js'
 
 export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, rateLimiter, requireActorContext, requireSuperAdmin } = deps
+  const { lifecycle, prisma, rateLimiter, requireActorContext, requireSuperAdmin } = deps
 
   // Liveness: is this process still running? A flat 200 until the process
   // begins draining, at which point it answers 503 so an orchestrator that
   // probes liveness (rather than readiness) also stops routing here instead of
   // watching requests land on a replica that is closing its sockets.
   app.get('/api/health', { config: { public: true } }, async (_request, reply) => {
+    const draining = isDraining(lifecycle)
     const payload = createApiResponse({
       service: 'api',
-      status: isDraining() ? 'draining' : 'ok',
+      status: draining ? 'draining' : 'ok',
     })
-    return reply.code(isDraining() ? 503 : 200).send(payload)
+    return reply.code(draining ? 503 : 200).send(payload)
   })
 
   // Readiness — the load-balancer probe. May this replica take new requests?
@@ -31,7 +32,7 @@ export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   // still reports it in `checks.worker` for that reason, as information.
   app.get('/api/health/ready', { config: { public: true } }, async (_request, reply) => {
     const readiness = await getReadiness(prisma)
-    const ready = readiness.checks.database && !isDraining()
+    const ready = readiness.checks.database && !isDraining(lifecycle)
     const payload = createApiResponse(
       ReadinessResponseSchema.parse({ ...readiness, ready }),
     )
