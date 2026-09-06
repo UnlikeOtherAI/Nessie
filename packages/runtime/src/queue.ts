@@ -176,11 +176,18 @@ export class PgQueueProvider implements QueueProvider {
       .then((result) => result.rows[0])
       .catch(() => undefined)
 
+    // Only a row that a successor now holds says anything about concurrent
+    // execution. A row that is gone was swept or deleted, and saying "alongside
+    // its successor" about it would name a worker that does not exist.
+    const diagnosis = observed === undefined
+      ? 'The row is gone — swept or deleted — so this settle had nothing to act on.'
+      : `This worker lost the claim to attempt ${observed.attempt}, so it may have `
+        + 'been running the job alongside its successor.'
+
     logQueueError(
       `Refused to ${settle} queue job ${claim.id} on topic "${claim.topic}": claimed attempt `
       + `${claim.attempt}, the row now carries attempt ${observed?.attempt ?? 'none'} `
-      + `(${observed?.status ?? 'deleted'}). This worker lost the claim, so it may have been `
-      + 'running the job alongside its successor.',
+      + `(${observed?.status ?? 'deleted'}). ${diagnosis}`,
     )
 
     return false

@@ -31,9 +31,17 @@ export type QueueHandlerContext = {
   // gets to do that if it is told at the start of the grace window rather than
   // at the end of it.
   //
-  // The abort is a warning, not a verdict: a handler that ignores it runs to
-  // completion and is acked exactly as before. Only the deadline (`abandon`)
-  // takes the job away.
+  // What ignoring it costs depends on WHY it aborted, and the three reasons
+  // differ:
+  //
+  // - **Drain begun.** A warning, not a verdict. A handler that ignores it runs
+  //   to completion and is acked exactly as before.
+  // - **Lock lost.** The job is already gone. Two consecutive renewal failures
+  //   abort the handler precisely because the claim is no longer ours, and the
+  //   settle that follows is a nack, not an ack — so ignoring this one does not
+  //   keep the claim, it only wastes the rest of the work. If a successor has
+  //   re-claimed the row, even that nack is refused by the fence.
+  // - **Deadline (`abandon`).** The job is taken away outright.
   signal: AbortSignal
 }
 
