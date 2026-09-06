@@ -1,12 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import '@fontsource-variable/geist'
 import { AppProvider } from './providers/AppProvider'
 import { installBuildFreshnessCheck } from './lib/build-freshness'
 import { disableWebviewZoom } from './lib/disable-zoom'
 import { installReloadShortcut } from './lib/reload-shortcut'
 import { serviceWorkerUrl } from './lib/web-push'
 import './styles.css'
+import './providers/notifications.css'
 import '@nessie/sign-in-surface/styles.css'
 
 // Webview-shell behaviours (no-ops in regular browsers): Cmd/Ctrl+R refresh and

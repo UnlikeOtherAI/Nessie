@@ -4,10 +4,11 @@ import type {
   CommsConnectionListResponse,
   CommsConnectionStartResponse,
   CommsProvider,
+  CommsProvidersResponse,
   CommsResourceToggle,
   GoogleCapabilityId,
 } from '../../lib/api-client'
-import { commsKeys } from '../../lib/query-keys'
+import { commsKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -21,6 +22,22 @@ export const useCommsConnections = () => {
   return useQuery<CommsConnectionListResponse>({
     queryKey: commsKeys.connections,
     queryFn: () => apiClient.get('/api/comms/connections'),
+  })
+}
+
+/**
+ * Which providers this deployment can complete a connect for. Read before any
+ * surface offers a provider button: an unconfigured provider can only be
+ * refused by `/start` after the click, which reads as a fault rather than as
+ * the deployment gap it is. Deployment config does not change under a session,
+ * so this is cached for the session rather than refetched per dialog.
+ */
+export const useCommsProviders = () => {
+  const apiClient = useApiClient()
+  return useQuery<CommsProvidersResponse>({
+    queryKey: commsKeys.providers,
+    queryFn: () => apiClient.get('/api/comms/providers'),
+    staleTime: Infinity,
   })
 }
 

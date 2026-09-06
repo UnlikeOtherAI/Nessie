@@ -12,7 +12,7 @@ import { UNSAFE_LocationContext, useNavigate } from 'react-router-dom'
 import {
   getPhoneNavigationDirection,
   type PhoneNavigationDirection,
-} from './phone-navigation'
+} from '../../navigation/phone-navigation'
 import {
   advancePhoneNavigationStack,
   committedPhoneNavigationRoute,
@@ -21,12 +21,14 @@ import {
   dropPhoneNavigationEntriesAboveCurrent,
   hasPhoneNavigationStage,
   isPhoneNavigationStageEntry,
+  STAGE_KEY_PREFIX,
   popPhoneNavigationStage,
   pushPhoneNavigationStage,
   refreshPhoneNavigationRoute,
   type PhoneNavigationStack,
 } from './phone-navigation-stack'
-import { runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { NAV_MOTION, runStackTransition, type StackTransitionRun } from '../../navigation/motion'
+import { publishCurrentLayerKey, publishScreenTransition } from '../../navigation/screen-bar'
 import { beginStackTransition } from '../../navigation/transition-state'
 import { useReducedMotion } from '../../navigation/reduced-motion'
 import type { NavigationLayout } from '../../navigation/layout'
@@ -34,8 +36,8 @@ import { NestedStageHostContext, type NestedStageHost } from '../../navigation/N
 import { haptic } from '../../lib/haptics'
 import { announceScreen, blurBeforePush, layerHoldsFocus, settleFocus } from '../../navigation/settle'
 import { resolveBack } from '../../navigation/back'
-import { usePhoneBackSwipeGesture } from './use-phone-back-swipe'
-import { useLocalBackSnapshot } from './local-back/LocalBackContext'
+import { usePhoneBackSwipeGesture } from './usePhoneBackSwipe'
+import { useLocalBackSnapshot } from '../../navigation/LocalBackContext'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
 import {
   PhoneNavigationLayer,
@@ -160,6 +162,18 @@ export const PhoneNavigationViewport = ({
     // A push closes the soft keyboard on purpose, not as a side effect of
     // the outgoing layer becoming inert.
     if (direction === 'forward') blurBeforePush(active)
+    // Announced as the transition starts, from this layout effect — ahead of
+    // the bridge's passive effect, and well ahead of the incoming layer
+    // mounting and publishing its own descriptor. Only `single` announces: a
+    // split layout's detail column is not the phone's one bar.
+    if (layout === 'single') {
+      publishScreenTransition({
+        direction,
+        durationMs: reducedMotion ? 0 : NAV_MOTION.durationMs,
+        from: fromLayerKey,
+        to: toLayerKey,
+      })
+    }
     transitionId.current += 1
     commitTransition({
       direction,
@@ -172,7 +186,7 @@ export const PhoneNavigationViewport = ({
       phase: direction === 'forward' && !reducedMotion ? 'preparing' : 'running',
       toLayerKey,
     })
-  }, [commitTransition, reducedMotion])
+  }, [commitTransition, layout, reducedMotion])
 
   // Route children are captured only after the route commits. Until this
   // layout effect, React continues to render the previous stack unchanged;
@@ -267,6 +281,17 @@ export const PhoneNavigationViewport = ({
     startTransition('back', outgoing.layerKey, currentPhoneNavigationEntry(next).layerKey)
   }, [commitStack, commitTransition, finishTransition, startTransition])
 
+  // Every live stage entry's layer key, by stage id.
+  const stageLayerKeys = useMemo(() => {
+    const keys = new Map<string, string>()
+    for (const entry of stack.entries) {
+      if (isPhoneNavigationStageEntry(entry)) {
+        keys.set(entry.key.slice(STAGE_KEY_PREFIX.length), entry.layerKey)
+      }
+    }
+    return keys
+  }, [stack])
+
   const stageIds = useMemo(
     () => stack.entries
       .filter((entry, index) => index <= stack.currentIndex && isPhoneNavigationStageEntry(entry))
@@ -281,9 +306,17 @@ export const PhoneNavigationViewport = ({
   )
   const stageHost = useMemo<NestedStageHost | null>(
     () => (layout === 'single'
-      ? { activate: activateStage, deactivate: deactivateStage, retainedIds, stageIds }
+      ? {
+        activate: activateStage,
+        deactivate: deactivateStage,
+        // A stage's layer key embeds the section and depth it was pushed at,
+        // which the stage component cannot know for itself.
+        layerKeyOf: (id: string) => stageLayerKeys.get(id) ?? null,
+        retainedIds,
+        stageIds,
+      }
       : null),
-    [activateStage, deactivateStage, layout, retainedIds, stageIds],
+    [activateStage, deactivateStage, layout, retainedIds, stageIds, stageLayerKeys],
   )
 
   useEffect(() => {
@@ -361,6 +394,17 @@ export const PhoneNavigationViewport = ({
   // stage on top of this stack and allows the gesture.
   const backAction = navigation?.resolveBackAction(pathname) ?? null
   const topEntry = currentPhoneNavigationEntry(stack)
+
+  // Which layer the native bar should be reading. The bridge cannot derive
+  // this: `nessie:screen` carries a pathname, and a pathname cannot name a
+  // layer — a stage does not change it, and a channel and its info route
+  // share a classifier key. Only `single` publishes: a split layout's detail
+  // column is not the phone's one bar (screen-bar.ts).
+  useEffect(() => {
+    if (layout !== 'single') return undefined
+    publishCurrentLayerKey(topEntry.layerKey)
+    return () => publishCurrentLayerKey(null)
+  }, [layout, topEntry.layerKey])
   const gestureArmed = backAction?.kind === 'route'
     || (backAction?.kind === 'owner' && backAction.swipeable && topEntry.key === backAction.id)
 
@@ -395,6 +439,21 @@ export const PhoneNavigationViewport = ({
   const gesture = usePhoneBackSwipeGesture({
     enabled: layout === 'single' && stack.currentIndex > 0 && transition === null && gestureArmed,
     onCommit: performGestureBack,
+    // The gesture's own settle, which `startTransition` never sees: the
+    // viewport suppresses the route animation because this already ran it.
+    // A cancel settles back to the layer it started from.
+    onSettleStart: (outcome, durationMs) => {
+      if (layout !== 'single') return
+      const top = stack.entries[stack.currentIndex]
+      const beneath = stack.entries[stack.currentIndex - 1]
+      if (!top || !beneath) return
+      publishScreenTransition({
+        direction: outcome === 'commit' ? 'back' : 'forward',
+        durationMs,
+        from: outcome === 'commit' ? top.layerKey : beneath.layerKey,
+        to: outcome === 'commit' ? beneath.layerKey : top.layerKey,
+      })
+    },
     reducedMotion,
     viewportRef,
   })

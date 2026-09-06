@@ -10,7 +10,7 @@ import {
   phoneTabRootHasContextualList,
   resolveKnowledgeSidebarSelectionPath,
   resolvePhoneNavigationBackAction,
-} from '../src/layouts/admin-shell/phone-navigation'
+} from '../src/navigation/phone-navigation'
 
 test('URL state never changes the semantic route: search/hash normalize away', () => {
   assert.equal(isPhoneTabRoot('/channels?filter=unread#list'), true)

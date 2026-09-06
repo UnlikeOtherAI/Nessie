@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { MentionEntity } from '../../components/shared/MentionInput'
-import { getAgentGlyph } from '../../components/features/channels/channel-helpers'
+import { getAgentGlyph } from '../../components/shared/AgentAvatar'
 import { useNavigateToAgentDm } from '../../facades/channels/dm-navigation'
 import { isUserDmChannel } from '../../facades/personal-assistant/hooks'
 import type {

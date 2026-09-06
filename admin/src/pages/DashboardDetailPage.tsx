@@ -12,9 +12,11 @@
  * (docs/navigation/overview.md → "Drafts").
  */
 
+import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
 import { Skeleton } from '../components/primitives/Skeleton'
 import { DashboardCanvas } from '../components/features/dashboards/DashboardCanvas'
@@ -26,8 +28,8 @@ import {
 } from '../facades/dashboards/hooks'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
-import { dashboardKeys } from '../lib/query-keys'
+import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
+import { dashboardKeys } from '../facades/dashboards/keys'
 import { draftKey, useDraft } from '../navigation/useDraft'
 import { NestedStage } from '../navigation/NestedStage'
 
@@ -86,7 +88,9 @@ export const DashboardDetailPage = () => {
       { layout, ...(revision === undefined ? {} : { revision }) },
       {
         onError: (error) => {
-          const details = (error as { details?: { currentRevision?: number } }).details
+          const details = error instanceof ApiClientError
+            ? (error.details as { currentRevision?: number } | undefined)
+            : undefined
           setConflictRevision(
             typeof details?.currentRevision === 'number' ? details.currentRevision : null,
           )
@@ -145,8 +149,11 @@ export const DashboardDetailPage = () => {
               priority: 30,
             },
             ...(editing ? [{
+              // The plus is the icon slot's job: a label that draws its own
+              // mark reads as a typo now that the action is a real button.
+              icon: faPlus,
               id: 'dashboard-add-widget',
-              label: '+ Add widget',
+              label: 'Add widget',
               onSelect: () => setShowAddWidget(true),
               priority: 60,
             }] : []),
@@ -171,7 +178,7 @@ export const DashboardDetailPage = () => {
               },
           ]}
           subtitle={dashboard.description ? (
-            <p className="truncate">
+            <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>
               {dashboard.description}
             </p>
           ) : null}
@@ -191,7 +198,7 @@ export const DashboardDetailPage = () => {
             <button
               className="rounded px-2.5 py-1 font-medium"
               onClick={() => saveArrangement()}
-              style={{ background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}
+              style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               type="button"
             >
               Keep mine
@@ -253,6 +260,7 @@ export const DashboardDetailPage = () => {
         label="Back to dashboard"
         onBack={() => setShowAddWidget(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardPanel}
+        title="Add widget"
       >
         <AddWidgetPanel
           dashboardId={dashboard.id}
@@ -267,6 +275,7 @@ export const DashboardDetailPage = () => {
         label="Back to dashboard"
         onBack={() => setShowVersions(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardVersions}
+        title="Versions"
       >
         <DashboardVersionsPanel
           dashboardId={dashboard.id}

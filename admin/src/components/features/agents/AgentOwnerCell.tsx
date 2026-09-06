@@ -1,5 +1,5 @@
 import type { AgentOwner } from '../../../lib/api-client'
-import { UserAvatar } from '../../primitives/UserAvatar'
+import { UserAvatar } from '../../shared/UserAvatar'
 
 type AgentOwnerCellProps = {
   owner?: AgentOwner | null

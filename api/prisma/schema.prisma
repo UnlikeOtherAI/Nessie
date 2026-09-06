@@ -297,6 +297,14 @@ enum BoardSourceConnectionStatus {
   revoked
 }
 
+/// How a connection's credential was obtained. Persisted because the remedies
+/// differ: an OAuth grant is re-authorized by signing in again, a pasted key is
+/// replaced by pasting a new one, and offering the wrong button is a dead end.
+enum BoardSourceAuthMethod {
+  oauth
+  api_key
+}
+
 enum BoardSourceWriteMode {
   read_only
   read_write
@@ -1212,6 +1220,15 @@ model Organization {
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.
   stripImageMetadata         Boolean                     @default(true) @map("strip_image_metadata")
+  // The organisation's own colour scheme: the four authored seeds
+  // (appearance, accent, surface, sidebar) validated by
+  // `OrganizationThemeSchema`, never the forty-eight derived tokens — those are
+  // recomputed from these by `@nessie/schemas` `evaluateOrganizationTheme` on
+  // both ends. Null = no palette, and everyone who has not chosen a theme sees
+  // Sandstone. Colours only: the schema is `.strict()`, so type, radii and
+  // spacing cannot arrive here.
+  // docs/plans/2026-09-05-organisation-custom-theme.md
+  theme                      Json?                       @map("theme")
   // Narrow, product-specific early-access gate for conversational agent setup.
   // It is organization configuration, not UOA-owned identity or hierarchy.
   createdAt                  DateTime                    @default(now()) @map("created_at")
@@ -1578,6 +1595,7 @@ model Board {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   columns      BoardColumn[]
   placements   TaskBoardPlacement[]
+  tasks        Task[]
 
   @@index([projectId, position])
   @@map("boards")
@@ -1645,6 +1663,7 @@ model BoardSourceConnection {
   /// token spans sites, so the container carries the cloudId) and for Trello.
   externalTenantId  String                      @default("") @map("external_tenant_id")
   status            BoardSourceConnectionStatus @default(active)
+  authMethod        BoardSourceAuthMethod        @default(oauth) @map("auth_method")
   grantedScopes     Json                        @default("[]") @map("granted_scopes")
   lastVerifiedAt    DateTime?                   @map("last_verified_at")
   createdAt         DateTime                    @default(now()) @map("created_at")
@@ -4191,6 +4210,12 @@ model Task {
   agentId             String?              @map("agent_id") @db.Uuid
   organizationId      String               @map("organization_id") @db.Uuid
   projectId           String?              @map("project_id") @db.Uuid
+  /// The board this task lives on. A board owns its tasks: a project's boards
+  /// no longer share one pool, so work created on "Dev" is not also on "Board".
+  /// `null` means the project's default board — that is what the seventeen
+  /// task-creating call sites (agent runs, triggers, mailbox, source sync)
+  /// produce, and it is where a deleted board's work returns to.
+  boardId             String?              @map("board_id") @db.Uuid
   iterationId         String?              @map("iteration_id") @db.Uuid
   /// `{ "<taskFieldDefinitionId>": <value> }` — an absent key is no value.
   /// One JSONB column rather than an EAV table: the board already reads whole
@@ -4216,6 +4241,7 @@ model Task {
   agent               Agent?               @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  board               Board?               @relation(fields: [boardId], references: [id], onDelete: SetNull)
   iteration           Iteration?           @relation(fields: [iterationId], references: [id], onDelete: SetNull)
   assignee            User?                @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   assigneeAgent       Agent?               @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
@@ -4233,6 +4259,7 @@ model Task {
   @@index([agentId, status])
   @@index([organizationId, status])
   @@index([organizationId, projectId, status])
+  @@index([boardId])
   @@index([iterationId])
   @@index([assigneeUserId, status])
   @@index([assigneeAgentId, status])
@@ -5516,6 +5543,12 @@ model Secret {
   provider       String?
   scopeType      SecretScopeType @map("scope_type")
   scopeId        String          @map("scope_id") @db.Uuid
+  /// Stops every narrower scope overriding this name, the same way a locked
+  /// `ScopedSetting` row does (docs/standards/scoped-settings.md). Resolution
+  /// walks organisation → team → project → personal and halts here; a lower
+  /// level still sees the secret, greyed out. Always false at `personal`,
+  /// which has nothing below it.
+  locked         Boolean         @default(false)
   vaultReference String          @unique @map("vault_reference")
   createdById    String          @map("created_by_id") @db.Uuid
   rotatedAt      DateTime?       @map("rotated_at")

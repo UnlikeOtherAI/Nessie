@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AgentAvatarBackgroundColor, AgentRunLimits } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
-import { agentKeys } from '../../lib/query-keys'
+import { agentKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useCreateAgent = () => {

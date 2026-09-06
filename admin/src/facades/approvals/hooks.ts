@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { EmailDraftPreview } from '@nessie/schemas'
 
-import { approvalKeys } from '../../lib/query-keys'
+import { approvalKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type ApprovalRequest = {

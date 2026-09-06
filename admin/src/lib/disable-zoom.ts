@@ -1,5 +1,5 @@
 import { isDesktopApp } from './desktop'
-import { isReactNativeWebView } from './mobile-shell'
+import { isReactNativeWebView } from './native-shell'
 
 // Disable user zoom inside the embedded webviews (Tauri desktop + React Native
 // WebView on iPad/iPhone). Accidental pinch / Cmd+/- zoom in an app shell looks

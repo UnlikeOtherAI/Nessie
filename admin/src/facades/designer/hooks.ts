@@ -1,12 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
-import type {
-  AgentDesignerActions,
-  AgentFormState,
-} from '../../components/features/agents/designer/useAgentDesigner'
+import type { AgentDesignerActions, AgentFormState } from './types'
 import { getBaseUrl, type AgentModelOption } from '../../lib/api-client'
 import { readSseStream } from '../../lib/sse'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import type { DesignerPageContext } from '../../components/features/agents/designer/DesignerAssistantPanelContext'
+import type { DesignerPageContext } from './types'
 
 export type ChatMessage = {
   content: string

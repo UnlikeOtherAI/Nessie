@@ -7,10 +7,13 @@ import {
   type CredentialBundle,
   type NormalisedItem,
   type OAuthExchangeInput,
+  type OAuthMethod,
+  type CredentialForm,
   type OutboundChange,
   type SyncCheckpoint,
   type SyncPage,
   SourceContainerGoneError,
+  SourceCredentialRejectedError,
   SourceRejectedError,
   type WebhookDelivery,
   type WebhookRegistration,
@@ -38,34 +41,31 @@ import {
 } from './queries.js'
 
 export type LinearAdapterConfig = {
-  clientId: string
-  clientSecret: string
+  /**
+   * The deployment's OAuth app, when one is registered. Absent on an install
+   * that never registered one — Linear is still fully reachable there with a
+   * personal API key, which is why these are optional and `auth.oauth` is
+   * declared only when both are present.
+   */
+  clientId?: string
+  clientSecret?: string
   /** The app-level webhook signing secret, when webhooks are configured. */
   webhookSecret?: string
 }
 
 /**
- * Linear as a board source.
- *
- * Deliberately the vendor's own GraphQL API rather than the curated Linear MCP
- * server: an MCP OAuth token is resource-bound to `mcp.linear.app` (RFC 8707)
- * and is not accepted by `api.linear.app`, and MCP has no cursors and no
- * webhooks. The MCP connector keeps its own job — an agent talking to Linear in
- * a run — and this keeps a board fresh. Design §5.2.
+ * The OAuth half, present only when this deployment registered a Linear app.
+ * Spread into `auth`, so an install with no app simply has no `auth.oauth` and
+ * the picker offers the API key alone rather than a sign-in that cannot finish.
  */
-export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAdapter => ({
-  provider: 'linear',
-
-  // Webhooks are the fast path; this is the floor, so a missed delivery costs
-  // freshness rather than correctness.
-  incrementalPollingIntervalMs: 5 * 60 * 1000,
-
-  allowedHosts: LINEAR_ALLOWED_HOSTS,
-
-  oauth: {
+const buildOAuthMethod = (config: LinearAdapterConfig): { oauth?: OAuthMethod } => {
+  const { clientId, clientSecret } = config
+  if (!clientId || !clientSecret) return {}
+  return {
+    oauth: {
     buildAuthorizeUrl: ({ state, redirectUri }) => {
       const url = new URL(`https://${LINEAR_AUTH_HOST}/oauth/authorize`)
-      url.searchParams.set('client_id', config.clientId)
+      url.searchParams.set('client_id', clientId)
       url.searchParams.set('redirect_uri', redirectUri)
       url.searchParams.set('response_type', 'code')
       url.searchParams.set('scope', 'read,write')
@@ -88,8 +88,8 @@ export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAda
         allowedHosts: LINEAR_ALLOWED_HOSTS,
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
+          client_id: clientId,
+          client_secret: clientSecret,
           code,
           grant_type: 'authorization_code',
           redirect_uri: redirectUri,
@@ -134,8 +134,8 @@ export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAda
         allowedHosts: LINEAR_ALLOWED_HOSTS,
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
+          client_id: clientId,
+          client_secret: clientSecret,
           grant_type: 'refresh_token',
           refresh_token: credential.refreshToken,
         }).toString(),
@@ -148,6 +148,103 @@ export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAda
           : {}),
         scopes: credential.scopes,
       }
+    },
+    },
+  }
+}
+
+/**
+ * A Linear personal API key: one field, pasted.
+ *
+ * Linear needs no site URL and no tenant discovery — the key identifies its own
+ * workspace — so this is the whole form. The key's own scopes are chosen in
+ * Linear when it is created, which is why the help text names them: a key made
+ * without Write syncs happily and refuses the first drag, and no API reports
+ * that up front.
+ */
+const LINEAR_API_KEY_FORM: CredentialForm = {
+  createUrl: 'https://linear.app/settings/account/security',
+  createLabel: 'Linear → Settings → Security & access',
+  fields: [
+    {
+      key: 'apiKey',
+      label: 'Personal API key',
+      kind: 'secret',
+      placeholder: 'lin_api_…',
+      help:
+        'Create one under Personal API keys. Give it Read to mirror a team onto a ' +
+        'board, or Read and Write if you also want dragging a card here to move the ' +
+        'issue in Linear.',
+    },
+  ],
+}
+
+/**
+ * Prove the key works and say whose workspace it opens.
+ *
+ * `VIEWER_QUERY` is the cheapest call that answers both, and it is the same one
+ * the OAuth exchange makes — so a connection made either way carries the same
+ * `externalAccountId` and `externalTenantId`, and the identity links keyed on
+ * them keep working when a workspace moves from one method to the other.
+ *
+ * `scopes` stays empty deliberately: Linear does not report a key's scopes, and
+ * inventing `['read', 'write']` here would be a claim nothing checked. The
+ * first refused write is what discovers it, through `SourceRejectedError`.
+ */
+const verifyLinearApiKey = async (values: Record<string, string>): Promise<ConnectResult> => {
+  const apiKey = (values.apiKey ?? '').trim()
+  if (!apiKey) {
+    throw new SourceCredentialRejectedError('LINEAR_KEY_MISSING', 'Paste your Linear API key')
+  }
+
+  let viewer: {
+    viewer: { id: string; name: string; email: string }
+    organization: { id: string; name: string; urlKey: string }
+  }
+  try {
+    viewer = await linearGraphQl(apiKey, VIEWER_QUERY)
+  } catch {
+    // Linear answers a bad key with an authentication error inside a 200, which
+    // `linearGraphQl` turns into a throw. Either way the person's remedy is the
+    // same one sentence, and the vendor's own wording ("Authentication failed")
+    // tells them nothing they can act on.
+    throw new SourceCredentialRejectedError(
+      'LINEAR_KEY_REJECTED',
+      'Linear did not accept that key. Check you copied all of it, and that it has not been revoked.',
+    )
+  }
+
+  return {
+    externalAccountId: viewer.viewer.id,
+    externalTenantId: viewer.organization.id,
+    credential: { accessToken: apiKey, scopes: [] },
+    grantedScopes: [],
+  }
+}
+
+/**
+ * Linear as a board source.
+ *
+ * Deliberately the vendor's own GraphQL API rather than the curated Linear MCP
+ * server: an MCP OAuth token is resource-bound to `mcp.linear.app` (RFC 8707)
+ * and is not accepted by `api.linear.app`, and MCP has no cursors and no
+ * webhooks. The MCP connector keeps its own job — an agent talking to Linear in
+ * a run — and this keeps a board fresh. Design §5.2.
+ */export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAdapter => ({
+  provider: 'linear',
+
+  // Webhooks are the fast path; this is the floor, so a missed delivery costs
+  // freshness rather than correctness.
+  incrementalPollingIntervalMs: 5 * 60 * 1000,
+
+  allowedHosts: LINEAR_ALLOWED_HOSTS,
+
+  auth: {
+    ...buildOAuthMethod(config),
+
+    apiKey: {
+      form: LINEAR_API_KEY_FORM,
+      verify: verifyLinearApiKey,
     },
   },
 

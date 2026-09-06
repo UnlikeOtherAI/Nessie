@@ -4,6 +4,7 @@
 // The routes keep importing it from here.
 export {
   acceptTeamInvitation,
+  checkUoaSlugAvailability,
   createUoaOrganisation,
   createUoaTeamTeam,
   createTeamInvitation,
@@ -15,6 +16,10 @@ export {
   removeTeamMember,
   resendTeamInvitation,
   resolveLocalUserIdsByUoaSub,
+  resolveUoaOrgAddress,
+  resolveUoaOrgHost,
+  resolveUoaTeamAddress,
+  resolveUoaTeamHost,
   resolveUoaRosterTeam,
   revokeTeamInvitation,
   reviewTeamInvitation,
@@ -50,7 +55,7 @@ export {
   listMemberInvitationTargets,
   listOrganisationMemberInvitations,
   listOrganisationMembers,
-  listOrganisationMemberWorkspaceAccess,
+  listOrganisationMemberTeamAccess,
   updateOrganisationMemberRole,
   withUoaOrgRosterSubjectAssertion,
 } from '@nessie/team-admin'

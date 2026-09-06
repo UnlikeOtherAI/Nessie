@@ -13,12 +13,12 @@ import {
 import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
 import { useCurrentOrganization } from '../../facades/organization/hooks';
-import type { AgentRecord } from '../../lib/api-client';
+import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { newChannelComposeLocationState } from '../../lib/channel-compose-navigation';
 import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
-import { useIsOwner } from '../../components/shared/OwnerGate';
+import { useIsOwner } from '../../facades/auth/hooks';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
-import { matchesAdminRoute } from './nav-items';
+import { matchesAdminRoute } from '../../navigation/nav-items';
 import { useSidebarDms } from './useSidebarDms';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
@@ -27,6 +27,7 @@ import {
   type CreateChannelTarget,
   type PreferenceStarredItem,
   type EditProjectTarget,
+  type RevealedChannel,
   type SidebarMenu,
   type StarredItem,
 } from './types';
@@ -99,6 +100,7 @@ export const useAdminShell = () => {
   const personalAssistantBootstrap = usePersonalAssistantBootstrap();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
+  const [revealedChannel, setRevealedChannel] = useState<RevealedChannel | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [editProjectTarget, setEditProjectTarget] = useState<EditProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
@@ -110,6 +112,8 @@ export const useAdminShell = () => {
   const {
     channelsCollapsed,
     dmCollapsed,
+    expandChannels,
+    expandProjects,
     projectsCollapsed,
     starredCollapsed,
     starred: preferenceStarred,
@@ -225,6 +229,19 @@ export const useAdminShell = () => {
     setCreateChannelTarget(target ?? { scope: 'standalone' });
   }, []);
   const closeCreateChannel = useCallback(() => setCreateChannelTarget(null), []);
+  // A channel nobody can see is not a channel that was created. The dialog
+  // navigates to it, which is what makes it the active row; this opens whatever
+  // it landed inside so that row is on screen to be active. Keyed by the new
+  // channel's own id so collapsing a section and creating a second channel
+  // opens it again — a stable projectId alone would fire only once.
+  const revealCreatedChannel = useCallback((channel: ChannelRecord) => {
+    if (channel.scope === 'standalone') {
+      expandChannels();
+      return;
+    }
+    expandProjects();
+    setRevealedChannel({ channelId: channel.id, projectId: channel.projectId });
+  }, [expandChannels, expandProjects]);
   const openCreateProject = useCallback(() => {
     setSidebarMenu(null);
     setCreateProjectOpen(true);
@@ -399,6 +416,8 @@ export const useAdminShell = () => {
     createChannelTarget,
     createProjectOpen,
     currentChannelId,
+    revealCreatedChannel,
+    revealedChannel,
     currentProjectId,
     canManageOrganization,
     dmCollapsed,

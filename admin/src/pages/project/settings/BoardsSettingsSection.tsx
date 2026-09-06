@@ -5,11 +5,9 @@ import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { useProjectSources } from '../../../facades/board-sources/hooks'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { BoardColumnsEditor, type BindableState } from './BoardColumnsEditor'
-import { BoardCreateDialog } from './BoardCreateDialog'
-
-const errorMessage = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
+import { BoardCreateDialog } from '../../../components/features/projects/kanban/BoardCreateDialog'
 
 type BoardsSettingsSectionProps = {
   boards: BoardRecord[]
@@ -72,7 +70,7 @@ export const BoardsSettingsSection = ({
     updateBoard.mutate(
       { id: board.id, name: trimmed },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not rename board')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not rename board')),
         onSuccess: onSaved,
       },
     )
@@ -88,7 +86,7 @@ export const BoardsSettingsSection = ({
         ...(board.isDefault && replacement ? { newDefaultBoardId: replacement.id } : {}),
       },
       {
-        onError: (cause) => onSaveError(errorMessage(cause, 'Could not delete board')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not delete board')),
         onSuccess: () => {
           if (board.id === selectedBoardId && replacement) onSelectBoard(replacement.id)
           onSaved()
@@ -100,8 +98,8 @@ export const BoardsSettingsSection = ({
   return (
     <>
       <Section
-        description="A board is a saved way of looking at this project's work. Every board sees
-          the same tasks; deleting one deletes no work."
+        description="Each board keeps its own tickets and its own columns. Deleting one
+          deletes no work — its tickets return to the project's default board."
         title="Boards"
       >
         <div className="grid gap-1">
@@ -135,7 +133,7 @@ export const BoardsSettingsSection = ({
                       { id: board.id, isDefault: true },
                       {
                         onError: (cause) =>
-                          onSaveError(errorMessage(cause, 'Could not set the default board')),
+                          onSaveError(formErrorMessage(cause, 'Could not set the default board')),
                         onSuccess: onSaved,
                       },
                     )
@@ -174,7 +172,7 @@ export const BoardsSettingsSection = ({
       {selected ? (
         <Section
           description="Each column maps to a lifecycle stage so agents and approvals keep working.
-            A board with no column for a stage simply does not show that work."
+            Work at a stage this board has no column for shows in the nearest one it has."
           title={`“${selected.name}” columns`}
         >
           {canAdminister ? (
@@ -197,7 +195,7 @@ export const BoardsSettingsSection = ({
                     { id: selected.id, style: event.target.value as BoardStyle },
                     {
                       onError: (cause) =>
-                        onSaveError(errorMessage(cause, 'Could not change board style')),
+                        onSaveError(formErrorMessage(cause, 'Could not change board style')),
                       onSuccess: onSaved,
                     },
                   )
@@ -235,7 +233,7 @@ export const BoardsSettingsSection = ({
       <BoardCreateDialog
         boards={boards}
         onClose={() => setCreateOpen(false)}
-        onCreated={onSelectBoard}
+        onCreated={(board) => onSelectBoard(board.id)}
         open={createOpen}
         projectId={projectId}
       />

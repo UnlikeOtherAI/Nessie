@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -10,10 +10,12 @@ import { useTeamAvatarRevision } from '../../facades/team/hooks'
 import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
+import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
+import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
+import { useTheme } from '../../providers/ThemeProvider'
 import { CreateTeamDialog } from './CreateTeamDialog'
 import { recoverTeamSwitchFailure } from './team-switch-recovery'
 import { teamSwitchFailureMessage } from './team-switch-message'
@@ -23,6 +25,8 @@ import { useTransientMenu } from './TransientMenuContext'
 type NativeTeamWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieToggleTeamMenu?: (left?: unknown) => void
+  /** LEGACY_NATIVE_SHELL: pre-rename installed builds. Drop once none remain. */
+  __nessieToggleWorkspaceMenu?: (left?: unknown) => void
 }
 
 /**
@@ -48,10 +52,11 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     switchUoaTeam,
     token,
   } = useAuthSession()
+  const apiClient = useApiClient()
   const { data: providers = [] } = useAuthProviders()
   const { data: organization } = useCurrentOrganization()
   const avatarRevision = useTeamAvatarRevision()
-  const { theme } = useTheme()
+  const { signInTheme } = useTheme()
   const navigate = useNavigate()
   const acceptInvitation = useAcceptTeamInvitation()
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -84,11 +89,14 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   // never withheld.
   const canCreateTeam = isAdminRole(organization?.role)
 
-  const toggleMenu = (): void => {
+  // Memoised because the native-bridge effect below installs it on `window`:
+  // the effect depends on this identity rather than re-deriving which pieces
+  // of busy state the closure happens to read.
+  const toggleMenu = useCallback((): void => {
     if (busyTeamId !== null || busyInviteId !== null) return
     setSwitchError(null)
     toggle()
-  }
+  }, [busyInviteId, busyTeamId, toggle])
 
   const closeMenu = (): void => {
     if (busyTeamId === null && busyInviteId === null) close()
@@ -142,6 +150,22 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
         })
       }
       close()
+
+      // On a deployment that routes tenants by hostname, the address bar has to
+      // follow the switch — otherwise somebody lands in a different team while
+      // the URL still names the old one, and copying that link sends a
+      // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
+      // deployment does not route by hostname, when UOA cannot be reached, or
+      // when the team has no address, so the ordinary same-origin navigation
+      // below stays the behaviour everywhere else.
+      if (team.uoaTeam) {
+        const hostUrl = await fetchTeamHostUrl(apiClient, team.teamId)
+        if (hostUrl && new URL(hostUrl).host !== window.location.host) {
+          window.location.assign(`${hostUrl}/channels`)
+          return
+        }
+      }
+
       void navigate('/channels', { replace: true })
     } catch (error) {
       const recovery = await recoverTeamSwitchFailure({
@@ -166,7 +190,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
                 organizationId: team.organizationId,
                 teamId: team.teamId,
               },
-              theme: resolveAppliedTheme(theme),
+              theme: signInTheme,
             })
             close()
           } catch {
@@ -200,31 +224,41 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       setCreateOpen(true)
       return
     }
-    void startExternalSignIn(providerId, resolveAppliedTheme(theme))
+    void startExternalSignIn(providerId, signInTheme)
   }
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined
     const target = window as NativeTeamWindow
-    target.__nessieToggleTeamMenu = (left?: unknown) => {
+    const toggle = (left?: unknown) => {
       if (typeof left === 'number' && Number.isFinite(left)) {
         setNativeAnchorLeft(Math.max(8, left))
       }
       toggleMenu()
     }
+    target.__nessieToggleTeamMenu = toggle
+    // The app injects this call by name, and an installed build older than the
+    // workspace->team rename still injects the old one. The admin is loaded
+    // into that build remotely, so without the alias its team button silently
+    // does nothing until the user updates the app. See LEGACY_NATIVE_SHELL.
+    target.__nessieToggleWorkspaceMenu = toggle
     return () => {
       delete target.__nessieToggleTeamMenu
+      delete target.__nessieToggleWorkspaceMenu
     }
-  }, [busyTeamId, variant])
+  }, [toggleMenu, variant])
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return
-    ;(window as NativeTeamWindow).ReactNativeWebView?.postMessage(
-      JSON.stringify({
-        name: active?.label ?? null,
-        type: 'nessie:team',
-        teamAvatarUrl: active?.avatarImageUrl ?? null,
-      }),
+    const bridge = (window as NativeTeamWindow).ReactNativeWebView
+    const name = active?.label ?? null
+    const avatarImageUrl = active?.avatarImageUrl ?? null
+    bridge?.postMessage(JSON.stringify({ name, type: 'nessie:team', teamAvatarUrl: avatarImageUrl }))
+    // Same reason, in the other direction: an older build recognises only the
+    // old message type and field, and drops anything else, so it would stop
+    // updating its identity bar the moment this deploy lands.
+    bridge?.postMessage(
+      JSON.stringify({ name, type: 'nessie:workspace', workspaceAvatarUrl: avatarImageUrl }),
     )
   }, [active?.avatarImageUrl, active?.label, variant])
 

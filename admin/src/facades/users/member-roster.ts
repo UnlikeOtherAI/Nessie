@@ -2,16 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   CreateMemberInvitationRequest,
   MemberInvitationTarget,
-  MemberWorkspaceAccessResponse,
+  MemberTeamAccessResponse,
   MemberRosterPermissions,
   TeamInvitationRecord,
   TeamMemberCandidate,
   TeamMemberRecord,
 } from '@nessie/schemas'
 
-import { teamKeys, organizationKeys } from '../../lib/query-keys'
+import { organizationKeys } from '../organization/keys'
+import { teamKeys } from '../team/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { usePagedList } from '../usePagedList'
+import { usePagedList } from '../pagination/usePagedList'
 
 export type MemberRosterScope = 'organization' | 'team'
 
@@ -76,14 +77,20 @@ export const useTeamMemberCandidates = (query: string, enabled: boolean) => {
   })
 }
 
-export const useMemberWorkspaceAccess = (uoaSub: string | null, enabled: boolean) => {
+export const useMemberTeamAccess = (uoaSub: string | null, enabled: boolean) => {
   const api = useApiClient()
   return useQuery({
     enabled: enabled && uoaSub !== null,
-    queryFn: () => api.getPage<MemberWorkspaceAccessResponse>(
-      `/api/organization/members/${encodeURIComponent(uoaSub!)}/workspaces`,
-    ),
-    queryKey: organizationKeys.memberWorkspaces(uoaSub ?? undefined),
+    queryFn: () => {
+      // `enabled` keeps react-query from calling this while `uoaSub` is null.
+      if (uoaSub === null) {
+        throw new Error('useMemberTeamAccess: queryFn ran without a uoaSub')
+      }
+      return api.getPage<MemberTeamAccessResponse>(
+        `/api/organization/members/${encodeURIComponent(uoaSub)}/teams`,
+      )
+    },
+    queryKey: organizationKeys.memberTeams(uoaSub ?? undefined),
   })
 }
 
@@ -125,13 +132,13 @@ export const useUpdateTeamMemberRole = () => {
   })
 }
 
-export const useUpdateMemberWorkspaceAccess = () => {
+export const useUpdateMemberTeamAccess = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { uoaSub: string; workspaceIds: string[] }) =>
-      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/workspaces`, {
-        workspaceIds: input.workspaceIds,
+    mutationFn: (input: { uoaSub: string; teamIds: string[] }) =>
+      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/teams`, {
+        teamIds: input.teamIds,
       }),
     onSuccess: () => invalidateRosters(queryClient),
   })

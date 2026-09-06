@@ -4,19 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#f3f5f8" />
+    <meta name="theme-color" content="#0b0d12" />
     <title>Nessie Admin</title>
     <script>
-      var t = null
+      // Paint the person's theme before React runs, so a reload does not flash
+      // Sandstone. `choice` is what they picked, `applied` is what was last on
+      // screen, and `css` is the organisation palette's rule — a hint only,
+      // replaced by the API's answer on every load.
+      // docs/plans/2026-09-05-organisation-custom-theme.md §4.2
+      var choice = null
+      var applied = null
+      var css = null
       try {
-        t = localStorage.getItem('nessie.theme')
+        choice = localStorage.getItem('nessie.theme.choice')
+        applied = localStorage.getItem('nessie.theme.applied')
+        css = localStorage.getItem('nessie.theme.css')
       } catch (e) {}
       var systemTheme =
         window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
           ? 'nebula'
-          : 'space-white'
+          : 'daylight'
       var themes = [
-        'space-white',
         'nebula',
         'midnight',
         'daylight',
@@ -28,8 +36,33 @@
         'sandstone',
         'contrast',
       ]
-      document.documentElement.dataset.theme =
-        t === 'system' ? systemTheme : (!t || themes.indexOf(t) < 0 ? 'space-white' : t)
+      if (choice === 'system') {
+        document.documentElement.dataset.theme = systemTheme
+      } else if (applied === 'organization' && css) {
+        var style = document.createElement('style')
+        style.id = 'nessie-organization-theme'
+        style.textContent = css
+        document.head.appendChild(style)
+        document.documentElement.dataset.theme = 'organization'
+      } else {
+        document.documentElement.dataset.theme =
+          applied && themes.indexOf(applied) >= 0 ? applied : 'sandstone'
+      }
+
+      // Same idea for reading size. All type is rem-based, so the root
+      // font-size is the whole page's scale: without this a "Large" reader
+      // gets one full paint at 16px and a reflow once React mounts.
+      // This map is ROOT_FONT_SIZE in src/providers/FontScaleProvider.tsx —
+      // the provider is the only writer of `nessie.fontScale`, this is the
+      // only pre-paint reader, and the two maps must be changed together.
+      var fontScales = { small: '14px', medium: '16px', large: '18px' }
+      var fontScale = null
+      try {
+        fontScale = localStorage.getItem('nessie.fontScale')
+      } catch (e) {}
+      if (fontScale && fontScales[fontScale]) {
+        document.documentElement.style.fontSize = fontScales[fontScale]
+      }
     </script>
   </head>
   <body>

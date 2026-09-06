@@ -11,8 +11,8 @@ import {
   useStartWorkflowRun,
   useWorkflowInstallationTriggers,
 } from '../../../facades/workflows/hooks'
-import { usePagedList } from '../../../facades/usePagedList'
-import { workflowKeys } from '../../../lib/query-keys'
+import { usePagedList } from '../../../facades/pagination/usePagedList'
+import { workflowKeys } from '../../../facades/workflows/keys'
 import { EmptyState } from '../../shared/EmptyState'
 import { KeyValueList } from '../../shared/KeyValueList'
 import { PaginationFooter } from '../../shared/PaginationFooter'

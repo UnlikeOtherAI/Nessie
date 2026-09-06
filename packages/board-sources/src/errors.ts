@@ -17,6 +17,25 @@ export class SourceRejectedError extends Error {
   }
 }
 
+/**
+ * A credential a person just pasted is not usable, and the reason is theirs to
+ * act on: the wrong kind of token, a missing scope, a typo. Distinct from
+ * `SourceAuthError`, which is a working credential that has since stopped being
+ * accepted — that one's remedy is "reconnect", this one's is "fix what you
+ * typed", and the connect form says which field.
+ */
+export class SourceCredentialRejectedError extends Error {
+  readonly code: string
+  readonly detail: string
+
+  constructor(code: string, detail: string) {
+    super(`${code}: ${detail}`)
+    this.name = 'SourceCredentialRejectedError'
+    this.code = code
+    this.detail = detail
+  }
+}
+
 /** The credential is no longer accepted. A person must reconnect. */
 export class SourceAuthError extends Error {
   constructor(message = 'The provider rejected this connection’s credential') {

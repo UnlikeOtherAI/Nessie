@@ -3,11 +3,17 @@ import type {
   PageHeaderAction,
   PageHeaderButtonAction,
   PageHeaderMenuItem,
+  PageHeaderToggleAction,
 } from './ResponsivePageHeader'
 
 type PageHeaderMenuProps = {
   action: PageHeaderAction
-  onSelect: (item: Exclude<PageHeaderMenuItem, { href: string }> | PageHeaderButtonAction) => void
+  onSelect: (
+    item:
+      | Exclude<PageHeaderMenuItem, { href: string }>
+      | PageHeaderButtonAction
+      | PageHeaderToggleAction,
+  ) => void
 }
 
 export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
@@ -39,8 +45,14 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
           )
         }
 
+        // A toggle that overflowed keeps its meaning here: it is still one
+        // state you turn on and off, so it is a checkbox item rather than the
+        // radio choice a menu action's `checked` marks.
+        const toggle = 'kind' in item && item.kind === 'toggle'
         const checked = 'checked' in item ? item.checked : undefined
-        const role = checked === undefined ? 'menuitem' : 'menuitemradio'
+        const role = checked === undefined
+          ? 'menuitem'
+          : toggle ? 'menuitemcheckbox' : 'menuitemradio'
         return (
           <button
             aria-checked={checked}

@@ -138,6 +138,36 @@ project-scoped; it is scoped — not yet fully specified — in
 [docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md),
 and `scripts/inspect-team-shape.sql` sizes it against real data.
 
+## Channel names, and what an archived channel keeps
+
+A channel's name is its slug and its label at once — one name, and it is the
+addressable one (`validateChannelLabel` is the single chokepoint every write
+goes through). The name is unique **within the container the person is looking
+at**, which under the model above is one team's body of work:
+
+- A channel inside a project is unique across that project. A project holds one
+  team, so per-project and per-team are the same rule stated at the row that
+  exists today; do not add a second constraint that assumes otherwise.
+- A shared (standalone) channel is unique across the organisation's
+  `channelRoot` project — the one container all shared channels live in.
+- The two namespaces are independent. `#general` may exist as a shared channel
+  *and* in every project; twice inside one of them, never.
+
+**An archived channel does not hold its name.** `DELETE /api/channels/:id`
+archives rather than hard-deletes, and every list a person can see hides
+archived channels — so before this, deleting `#random` left no trace except the
+refusal to create a new one, naming a channel nobody could see, open, or
+rename. Both halves of the rule carry the condition: the partial unique index
+`channels_project_slug_standard_key` is `WHERE type = 'standard' AND archived_at
+IS NULL`, and `ensureChannelSlugAvailable` filters `archivedAt: null`. Never
+change one without the other — a check looser than the index is a 500, and a
+check tighter than the index is an invisible conflict again.
+
+The cost is paid at the other end: unarchiving can now collide, so
+`setChannelArchived` re-checks the name on the way back and refuses in a
+sentence that says which channel to rename (409 `CHANNEL_SLUG_CONFLICT`), rather
+than failing on the constraint.
+
 ## Changing what UOA owns, from inside Nessie
 
 "UOA is the authority" is a rule about **where the value is stored**, not about
@@ -191,11 +221,23 @@ matter most:
   organisation's origin domain is deliberately not a predicate. This is the path
   for anything about the team the session is standing in.
 
-An assertion is pinned to the team it names: UOA requires
-`active.teamId` to equal the route's `:teamId`, so `/org/*` can only ever reach
-the current team. Reads of *another* team (the picker) therefore stay
-on `/domain/*`, backstopped by UOA's public team image. `/domain/*` keeps its
-local owner/admin backstop because it has no acting-person assertion. The
+An assertion is pinned to the **organisation** it names, not the team.
+`org-role-guard.ts` compares `active.orgId` to the route's `:orgId`, and
+separately requires `active.teamId` to be one of the caller's *live* teams in
+that organisation; the route's own `:teamId` is deliberately not compared, and
+UOA's contract says why — "the active team is caller provenance, not authority
+for a requested team". So `/org/*` **can** reach another team in the same
+organisation, and a service handling one must resolve the actor's capability
+for that exact target rather than trusting the provenance field.
+
+*(This paragraph previously said the opposite — that an assertion was pinned to
+the team it names and `/org/*` could only ever reach the current team. That was
+never true of the code, and reading it as true is what would push a
+same-organisation read onto `/domain/*` unnecessarily.)*
+
+Reads of a team in *another organisation* still stay on `/domain/*`, backstopped
+by UOA's public team image. `/domain/*` keeps its local owner/admin backstop
+because it has no acting-person assertion. The
 **Organization** section is different: Nessie declares
 `nessie.organisation.manage` in its signed UOA config, gives that capability to
 the configured organisation-admin role, and reads the caller's fresh

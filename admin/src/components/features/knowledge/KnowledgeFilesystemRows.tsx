@@ -12,7 +12,7 @@ import { EmptyState } from '../../shared/EmptyState'
 import { Row } from '../../shared/RowList'
 import { Pill } from '../../primitives/Pill'
 import { AgentDraftBadge } from './AgentDraftBadge'
-import { iconForFilename } from './file-icons'
+import { iconForFilename } from '../../shared/file-icons'
 import { isAgentDraft, pageStatusPillTone } from './page-status'
 
 export type KnowledgeFilesystemItemKind = 'file' | 'folder'

@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const SHELL = resolve(SRC, 'components/shared/Dialog.tsx')
-const A11Y_HOOK = resolve(SRC, 'components/shared/useModalA11y.ts')
+const A11Y_HOOK = resolve(SRC, 'hooks/useModalA11y.ts')
 // The shared overlay hook (docs/navigation/overview.md §7) composes useModalA11y for
 // every modal; a file on it is guarded the same way.
 const OVERLAY_HOOK = resolve(SRC, 'components/overlays/useOverlay.ts')
@@ -214,7 +214,7 @@ test('useModalA11y and useOverlayDismiss are composed only by useOverlay', () =>
     const source = stripComments(readFileSync(path, 'utf8'))
     const imports = importTargets(source, path)
     const importsA11yHook = (imports.get(A11Y_HOOK) ?? []).includes('useModalA11y')
-    const importsDismissHook = (imports.get(resolve(SRC, 'components/shared/useOverlayDismiss.ts')) ?? [])
+    const importsDismissHook = (imports.get(resolve(SRC, 'hooks/useOverlayDismiss.ts')) ?? [])
       .includes('useOverlayDismiss')
     if (importsA11yHook || importsDismissHook) {
       offenders.push(`src/${relative(SRC, path)}`)

@@ -107,6 +107,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 ## Linting
 
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
+- **React hooks**: `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` run as errors over `admin/src`, `admin/test` and `packages/sign-in-surface/src`; a deliberate omission needs an `eslint-disable-next-line` with the reason beside it, never a silent one.
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
 ## Natural-language intent is model-judged — never string-matched
@@ -228,6 +229,16 @@ when one changes, the same turn updates it, not this section.
   writing code here — the local model is still called `Team` and its
   `projectId` foreign key currently points the wrong way. The rule itself
   lives in `docs/brief.md` → "Current SSO identity invariant".
+- **A team is reachable at `<team>.<org>.<base domain>`, and Nessie stores
+  neither label.** The organisation slug is the tenant DNS key and the team slug
+  is unique only inside it, so a flat `<team>.<base>` is forbidden rather than
+  merely discouraged. Resolving a hostname is a lookup that grants nothing — the
+  team switch that follows is the authorization — and matching one is a
+  label comparison, never a suffix test, or `evil-nessie.works` passes. The edge
+  needs one DNS record and one wildcard certificate **per organisation**, and
+  why it is per organisation rather than per team is a rate limit with teeth:
+  read [docs/standards/team-hosts.md](docs/standards/team-hosts.md) before
+  touching host routing, CORS, or the edge.
 - **Automatic team access by verified email domain — Nessie holds the policy,
   UOA still authorizes every grant.** Every grant is a relay to `addTeamMember`
   carrying a fresh org-scoped subject assertion for the administrator who
@@ -261,13 +272,17 @@ when one changes, the same turn updates it, not this section.
   press is claimed once by a conditional UPDATE and writes a real user message.
   Read [`docs/standards/agent-cards.md`](docs/standards/agent-cards.md)
   before writing code here.
-- **Project boards are views, never containers.** A project has many
-  `Board`s over one task pool; `Task.status` stays the single lifecycle truth
-  and a board placement is a `TaskBoardPlacement` pin over it that is ignored
-  once its column's category no longer matches. Placement is resolved
-  server-side by `resolveBoardPlacement` (`@nessie/team-admin`) — never in the
-  client — and board/column/field/source administration is gated by
-  `canAdministerProject`, not organisation ownership.
+- **A board owns its tickets and its columns.** A project has many `Board`s,
+  and `Task.boardId` says which one a ticket is on — `null` meaning the
+  project's default board, which is where every writer that knows nothing about
+  boards (agent runs, triggers, inbound mail, source sync) lands. One board's
+  work never appears on another; `boardTaskPoolWhere` is the only place that
+  decides. `Task.status` stays the single lifecycle truth and a board placement
+  is a `TaskBoardPlacement` pin over it that is ignored once its column's
+  category no longer matches. Placement is resolved server-side by
+  `resolveBoardPlacement` (`@nessie/team-admin`) — never in the client — and
+  board/column/field/source administration is gated by `canAdministerProject`,
+  not organisation ownership.
   Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
   before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call
@@ -304,6 +319,13 @@ when one changes, the same turn updates it, not this section.
   the root `eslint.config.js` egress block bans global `fetch` as the ratchet.
   Read [`docs/standards/egress.md`](docs/standards/egress.md)
   before writing code that dials out.
+- **Nothing a second instance cannot see.** The API and the worker run as N
+  replicas: no module-scope mutable state, every periodic job claims its work
+  or takes `withSweepLock`, every run is fenced and resumable, `SIGTERM` drains
+  inside sixty seconds, and realtime persists and notifies in one transaction;
+  the horizontal-scaling block in the root `eslint.config.js` is the ratchet.
+  Read [`docs/standards/horizontal-scaling.md`](docs/standards/horizontal-scaling.md)
+  before writing code here.
 - **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
   reads a decision rather than re-deriving one, and connect orchestrates the
   existing OAuth/instance machinery.

@@ -2,23 +2,25 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   AdapterNotRegisteredError,
-  listRegisteredProviders,
+  SourceCredentialRejectedError,
+  listProviderMethods,
   resolveBoardSourceAdapter,
 } from '@nessie/board-sources'
 import {
   BoardSourceConnectionRecordSchema,
   BoardSourceProviderSchema,
+  ConnectApiKeyBodySchema,
   parseUserId,
 } from '@nessie/schemas'
 import {
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
-  storeBoardSourceCredential,
 } from '@nessie/team-admin'
 
-import { createApiResponse, sendApiError } from '../../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import type { RouteDeps } from '../types.js'
 import { callbackPage } from './callback-page.js'
+import { persistBoardSourceConnection } from './connection-persist.js'
 import { consumeOAuthState, createOAuthState, createPkcePair } from './oauth-state.js'
 
 /**
@@ -41,11 +43,10 @@ export const registerBoardSourceConnectionRoutes = (
   app.get('/api/board-sources/providers', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    // Only providers this deployment has credentials for: a picker that offers
-    // a provider whose OAuth cannot complete is a dead end with a nice label.
-    return createApiResponse(
-      listRegisteredProviders().map((provider) => ({ provider })),
-    )
+    // Every registered provider, each saying how it can be connected *here*:
+    // a provider whose OAuth app is not configured still offers its API-key
+    // form, and the picker renders exactly what can actually complete.
+    return createApiResponse(listProviderMethods())
   })
 
   app.post('/api/board-sources/connections/:provider/start', async (request, reply) => {
@@ -76,6 +77,20 @@ export const registerBoardSourceConnectionRoutes = (
         return reply
       }
       throw cause
+    }
+
+    // A provider may be reachable by a pasted key and still have no OAuth app
+    // registered here. Refusing by name beats building an authorize URL around
+    // an empty client id and letting the vendor show the person the error.
+    const oauth = adapter.auth.oauth
+    if (!oauth) {
+      sendApiError(
+        reply,
+        503,
+        'PROVIDER_OAUTH_NOT_CONFIGURED',
+        'This deployment has no sign-in app for that provider. Connect it with an API key instead.',
+      )
+      return reply
     }
 
     let expectedAccountId: string | undefined
@@ -110,7 +125,7 @@ export const registerBoardSourceConnectionRoutes = (
     })
 
     return createApiResponse({
-      authorizeUrl: adapter.oauth.buildAuthorizeUrl({
+      authorizeUrl: oauth.buildAuthorizeUrl({
         state,
         redirectUri: callbackUrl(parsed.data),
         codeChallenge: pkce.challenge,
@@ -139,7 +154,9 @@ export const registerBoardSourceConnectionRoutes = (
 
     try {
       const adapter = resolveBoardSourceAdapter(claimed.provider)
-      const result = await adapter.oauth.exchange({
+      const oauth = adapter.auth.oauth
+      if (!oauth) throw new Error('no oauth method')
+      const result = await oauth.exchange({
         code: query.code as string,
         redirectUri: callbackUrl(claimed.provider),
         ...(claimed.payload.codeVerifier
@@ -159,42 +176,13 @@ export const registerBoardSourceConnectionRoutes = (
           .send(callbackPage(false, 'That is a different account than the one being reconnected.'))
       }
 
-      const connection = await prisma.boardSourceConnection.upsert({
-        where: {
-          organizationId_ownerUserId_provider_externalAccountId_externalTenantId: {
-            organizationId: claimed.organizationId,
-            ownerUserId: claimed.userId,
-            provider: claimed.provider,
-            externalAccountId: result.externalAccountId,
-            externalTenantId: result.externalTenantId,
-          },
-        },
-        create: {
-          organizationId: claimed.organizationId,
-          ownerUserId: claimed.userId,
-          provider: claimed.provider,
-          externalAccountId: result.externalAccountId,
-          externalTenantId: result.externalTenantId,
-          grantedScopes: result.grantedScopes,
-          status: 'active',
-          lastVerifiedAt: new Date(),
-        },
-        update: {
-          grantedScopes: result.grantedScopes,
-          status: 'active',
-          lastVerifiedAt: new Date(),
-        },
-      })
-      await storeBoardSourceCredential(
-        prisma,
-        connection.id,
-        result.credential,
-        config.auth.secret ?? '',
-      )
-      // Everything this connection runs is healthy again by construction.
-      await prisma.boardSource.updateMany({
-        where: { connectionId: connection.id, healthState: 'needs_reauthorization' },
-        data: { healthState: 'active', healthReason: null, nextRunAt: new Date() },
+      const connection = await persistBoardSourceConnection(prisma, {
+        organizationId: claimed.organizationId,
+        ownerUserId: claimed.userId,
+        provider: claimed.provider,
+        authMethod: 'oauth',
+        result,
+        encryptionSecret: config.auth.secret ?? '',
       })
 
       return reply.type('text/html').send(callbackPage(true, connection.id))
@@ -235,43 +223,95 @@ export const registerBoardSourceConnectionRoutes = (
       const adapter = resolveBoardSourceAdapter('trello')
       // Trello has no code to exchange, so `exchange` proves the token by
       // asking Trello whose it is.
-      const result = await adapter.oauth.exchange({ code: body.token, redirectUri: '' })
-      const connection = await prisma.boardSourceConnection.upsert({
-        where: {
-          organizationId_ownerUserId_provider_externalAccountId_externalTenantId: {
-            organizationId: claimed.organizationId,
-            ownerUserId: claimed.userId,
-            provider: 'trello',
-            externalAccountId: result.externalAccountId,
-            externalTenantId: result.externalTenantId,
-          },
-        },
-        create: {
-          organizationId: claimed.organizationId,
-          ownerUserId: claimed.userId,
-          provider: 'trello',
-          externalAccountId: result.externalAccountId,
-          externalTenantId: result.externalTenantId,
-          grantedScopes: result.grantedScopes,
-          lastVerifiedAt: new Date(),
-        },
-        update: {
-          grantedScopes: result.grantedScopes,
-          status: 'active',
-          lastVerifiedAt: new Date(),
-        },
+      const oauth = adapter.auth.oauth
+      if (!oauth) throw new Error('no oauth method')
+      const result = await oauth.exchange({ code: body.token, redirectUri: '' })
+      const connection = await persistBoardSourceConnection(prisma, {
+        organizationId: claimed.organizationId,
+        ownerUserId: claimed.userId,
+        provider: 'trello',
+        authMethod: 'oauth',
+        result,
+        encryptionSecret: config.auth.secret ?? '',
       })
-      await storeBoardSourceCredential(
-        prisma,
-        connection.id,
-        result.credential,
-        config.auth.secret ?? '',
-      )
       return createApiResponse({ connectionId: connection.id })
     } catch {
       sendApiError(reply, 502, 'PROVIDER_UNREACHABLE', 'Trello did not accept that token.')
       return reply
     }
+  })
+
+  /**
+   * Connect by pasting a credential the person made in their own vendor
+   * account. Needs nothing registered on this deployment, which is the whole
+   * point: an install with no OAuth app can still reach every provider whose
+   * adapter offers a key.
+   *
+   * The values are proved against the provider before anything is written, and
+   * the adapter — not this route — decides what the stored credential is made
+   * of. Nothing here is ever echoed back: the response carries a connection id.
+   */
+  app.post('/api/board-sources/connections/:provider/api-key', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const parsed = BoardSourceProviderSchema.safeParse(
+      (request.params as { provider: string }).provider,
+    )
+    if (!parsed.success) {
+      sendApiError(reply, 404, 'PROVIDER_UNKNOWN', 'Unknown provider')
+      return reply
+    }
+    const body = parseInput(ConnectApiKeyBodySchema, request.body, reply)
+    if (!body) return reply
+
+    let adapter
+    try {
+      adapter = resolveBoardSourceAdapter(parsed.data)
+    } catch (cause) {
+      if (cause instanceof AdapterNotRegisteredError) {
+        sendApiError(reply, 503, 'PROVIDER_NOT_CONFIGURED', 'That provider is not configured.')
+        return reply
+      }
+      throw cause
+    }
+
+    const apiKey = adapter.auth.apiKey
+    if (!apiKey) {
+      sendApiError(
+        reply,
+        400,
+        'PROVIDER_NO_API_KEY',
+        'That provider cannot be connected with a key.',
+      )
+      return reply
+    }
+
+    let result
+    try {
+      result = await apiKey.verify(body.values)
+    } catch (cause) {
+      // The person's own typo or wrong token kind, told back in the adapter's
+      // words; anything else is the vendor being unreachable, which is not
+      // theirs to fix and must not read as "your key is wrong".
+      if (cause instanceof SourceCredentialRejectedError) {
+        sendApiError(reply, 400, cause.code, cause.detail)
+        return reply
+      }
+      sendApiError(reply, 502, 'PROVIDER_UNREACHABLE', 'Could not reach that provider.')
+      return reply
+    }
+
+    const connection = await persistBoardSourceConnection(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      ownerUserId: actorContext.actor.actorId,
+      provider: parsed.data,
+      authMethod: 'api_key',
+      result,
+      encryptionSecret: config.auth.secret ?? '',
+    })
+    return createApiResponse({ connectionId: connection.id })
   })
 
   app.get('/api/board-sources/connections', async (request, reply) => {
@@ -297,6 +337,7 @@ export const registerBoardSourceConnectionRoutes = (
           id: connection.id,
           provider: connection.provider,
           status: connection.status,
+          authMethod: connection.authMethod,
           externalAccountId: connection.externalAccountId,
           externalTenantId: connection.externalTenantId,
           ownerUserId: parseUserId(connection.ownerUserId),

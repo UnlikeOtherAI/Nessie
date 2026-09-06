@@ -10,12 +10,12 @@ import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { startExternalSignIn } from '../lib/external-auth'
 import { desktopPlatform, isDesktopApp } from '../lib/desktop'
-import { isReactNativeWebView } from '../lib/mobile-shell'
+import { isReactNativeWebView } from '../lib/native-shell'
 import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
 import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { resolveAppliedTheme, useTheme } from '../providers/ThemeProvider'
+import { useTheme } from '../providers/ThemeProvider'
 
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
@@ -35,7 +35,7 @@ export const LoginPage = () => {
   const location = useLocation()
   const redirect = useRedirect()
   const { devLogin, login, sessionState } = useAuthSession()
-  const { theme } = useTheme()
+  const { signInTheme } = useTheme()
   const {
     data: providers = [],
     error: providersError,
@@ -70,8 +70,8 @@ export const LoginPage = () => {
     ?? (launchRequested ? singleSsoProvider ?? ssoProviders[0] ?? null : null)
 
   const beginSsoSignIn = useCallback(
-    (providerId: string): Promise<void> => startExternalSignIn(providerId, resolveAppliedTheme(theme)),
-    [theme],
+    (providerId: string): Promise<void> => startExternalSignIn(providerId, signInTheme),
+    [signInTheme],
   )
 
   useEffect(() => {

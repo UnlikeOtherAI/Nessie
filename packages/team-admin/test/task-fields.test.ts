@@ -141,13 +141,23 @@ runDatabaseTest('a board filtered on an option shows only matching cards', async
     })
     assert.ok('id' in field)
 
+    const bugsOnly = await createBoard(prisma, project, { name: 'Bugs' })
+    assert.ok('columns' in bugsOnly)
+
+    // Both cards live on the board being filtered: a board owns its tickets,
+    // so the filter narrows the board's own set rather than the project's.
     const other = await prisma.task.create({
       data: {
         organizationId: seeded.organizationId,
         projectId: seeded.projectId,
+        boardId: bugsOnly.id,
         status: 'inbox',
         title: 'Chore task',
       },
+    })
+    await prisma.task.update({
+      where: { id: seeded.taskId },
+      data: { boardId: bugsOnly.id },
     })
     await updateProjectTask(prisma, {
       taskId: seeded.taskId,
@@ -160,8 +170,6 @@ runDatabaseTest('a board filtered on an option shows only matching cards', async
       fields: { fieldValues: { [field.id]: 'chore' } },
     })
 
-    const bugsOnly = await createBoard(prisma, project, { name: 'Bugs' })
-    assert.ok('columns' in bugsOnly)
     const filtered = await updateBoard(prisma, project.id, bugsOnly.id, {
       filter: { sources: 'all', field: { fieldId: field.id, optionIds: ['bug'] } },
     })
@@ -173,10 +181,15 @@ runDatabaseTest('a board filtered on an option shows only matching cards', async
       ['Field task'],
     )
 
-    // The unfiltered board still shows both, so the narrowing is the board's,
-    // not something the field did to the project.
-    const all = await listBoardTasks(prisma, defaultBoard, { limit: 50 })
-    assert.equal(all.tasks.length, 2)
+    // Clearing the filter shows both again, so the narrowing is the filter's
+    // and not something the field did to the tasks.
+    const unfiltered = await updateBoard(prisma, project.id, bugsOnly.id, {
+      filter: { sources: 'all' },
+    })
+    assert.ok('columns' in unfiltered)
+    assert.equal((await listBoardTasks(prisma, unfiltered, { limit: 50 })).tasks.length, 2)
+    // And neither card is on the project's default board any more.
+    assert.deepEqual((await listBoardTasks(prisma, defaultBoard, { limit: 50 })).tasks, [])
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
 
 export type NativePhoneCreationAction = 'project' | 'channel' | 'message' | 'agent'
 

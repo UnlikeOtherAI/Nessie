@@ -99,3 +99,92 @@ test('a direct provider 402 remains a provider billing error', () => {
 
   assert.equal(classifyError(error), 'billing')
 })
+
+test('a Ledger 403 is a permission refusal, not an unexpected error', () => {
+  // The real one, from production on 2026-09-05: the proxy token authenticates
+  // fine (`GET /v1/models` answered 200 in the same second) but its openrouter
+  // scope does not list the model the deployment had just been pointed at, so
+  // Ledger answers `meta/muse-spark-1.3-contributor is not allowed for
+  // openrouter`. 403 had no branch, so this reached `unknown` — "an unexpected
+  // error", recovery `abort` — and every agent in the deployment failed
+  // identically with nothing naming the model configuration.
+  const error = new ProviderInvocationError(
+    'openai-compatible chat request failed with HTTP 403',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-403',
+      latencyMs: 1,
+      model: 'meta/muse-spark-1.3-contributor',
+      operationType: 'chat',
+      provider: 'openai-compatible',
+      requestId: 'request-403',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 403 },
+  )
+
+  assert.equal(classifyError(error), 'provider_forbidden')
+  assert.match(
+    userMessageForFailureReason(classifyError(error)),
+    /not permitted to use the configured model/,
+  )
+  // Terminal: no amount of retrying widens a credential's scope.
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 }),
+    {
+      action: 'surface_error',
+      userMessage: userMessageForFailureReason('provider_forbidden'),
+    },
+  )
+})
+
+test('403 stays distinct from 401 — permitted is not the same question as authenticated', () => {
+  const forbidden = new Error('provider request failed with HTTP 403')
+  const unauthorized = new Error('provider request failed with HTTP 401')
+
+  assert.equal(classifyError(forbidden), 'provider_forbidden')
+  assert.equal(classifyError(unauthorized), 'auth')
+  assert.notEqual(
+    userMessageForFailureReason('provider_forbidden'),
+    userMessageForFailureReason('auth'),
+  )
+})
+
+test('a provider 404 is a model-availability failure, not an unexpected error', () => {
+  // Production, 2026-09-05 21:08 UTC. With the token scope and the account's
+  // age gate both cleared, OpenRouter answered 404: "0 endpoints out of 1
+  // requested are available matching your guardrail restrictions and data
+  // policy … Paid model training violation (account settings)". The route
+  // exists — it is the provider's own — so a 404 here can only mean the
+  // configured model is not available to this deployment. It reached `unknown`
+  // and was reported as an unexpected error, exactly like the 403 before it.
+  const error = new ProviderInvocationError(
+    'openai-compatible chat request failed with HTTP 404',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-404',
+      latencyMs: 1,
+      model: 'meta/muse-spark-1.3-contributor',
+      operationType: 'chat',
+      provider: 'openai-compatible',
+      requestId: 'request-404',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 404 },
+  )
+
+  assert.equal(classifyError(error), 'model_not_found')
+  assert.match(
+    userMessageForFailureReason(classifyError(error)),
+    /configured model was not found/,
+  )
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 }),
+    {
+      action: 'surface_error',
+      userMessage: userMessageForFailureReason('model_not_found'),
+    },
+  )
+})

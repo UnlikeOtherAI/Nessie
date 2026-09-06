@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SetChannelMuteRequest } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
-import { agentKeys, channelKeys, userKeys } from '../../lib/query-keys'
+import { agentKeys } from '../agents/keys'
+import { userKeys } from '../users/keys'
+import { channelKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { upsertChannel } from './channel-cache'
 

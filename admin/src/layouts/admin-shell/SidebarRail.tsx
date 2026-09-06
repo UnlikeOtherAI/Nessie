@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useViewport } from '../../hooks/useViewport';
 import { CreateMenuTrigger } from './CreateMenuTrigger';
-import { NAV_ITEMS } from './nav-items';
+import { NAV_ITEMS } from '../../navigation/nav-items';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 import { RailTooltip } from './RailTooltip';
-import { sidebarAriaCurrent } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { UserMenuTrigger } from './UserMenuTrigger';
 import { TeamSwitcher } from './TeamSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
@@ -61,7 +61,7 @@ export const SidebarRail = ({
     <aside
       className={[
         'flex h-full w-[65px] flex-col items-center overflow-x-hidden overflow-y-auto',
-        'bg-[color:var(--rail)] px-2 py-2',
+        'bg-[color:var(--rail)] px-2 pt-2 pb-8',
       ].join(' ')}
     >
       <TeamSwitcher />

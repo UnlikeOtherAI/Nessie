@@ -4,29 +4,20 @@ import {
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import type { ReactNode } from 'react'
 import { Popover } from '../overlays/Popover'
-import {
-  partitionPageHeaderActions,
-  type PageHeaderActionLayout,
-} from './responsive-page-header-layout'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
+import { Switch } from '../primitives/Switch'
 import {
   HeaderAccountMenu,
   useHeaderAccountMenuVisible,
-} from '../../layouts/admin-shell/AccountMenuContext'
-import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
+} from '../../layouts/admin-shell/ShellStateContext'
+import { PhoneBackButton } from '../../navigation/PhoneBackButton'
+import {
+  MORE_ACTION_ID,
+  useResponsivePageHeaderOverflow,
+} from './useResponsivePageHeaderOverflow'
 
 type PageHeaderMenuItemBase = {
   checked?: boolean
@@ -85,7 +76,20 @@ export type PageHeaderMenuAction = PageHeaderActionBase & {
   kind: 'menu'
 }
 
-export type PageHeaderAction = PageHeaderButtonAction | PageHeaderLinkAction | PageHeaderMenuAction
+// A header filter that is on or off rather than an action you fire: the label
+// stays readable and the switch carries the state, so the bar says what it is
+// filtered by without the reader having to decode a highlighted button.
+export type PageHeaderToggleAction = PageHeaderActionBase & {
+  checked: boolean
+  kind: 'toggle'
+  onChange: (checked: boolean) => void
+}
+
+export type PageHeaderAction =
+  | PageHeaderButtonAction
+  | PageHeaderLinkAction
+  | PageHeaderMenuAction
+  | PageHeaderToggleAction
 
 export type ResponsivePageHeaderProps = {
   actions?: PageHeaderAction[]
@@ -110,11 +114,6 @@ export type ResponsivePageHeaderProps = {
   titleTone?: 'page' | 'section'
 }
 
-const ACTION_GAP = 8
-const ACCOUNT_MENU_WIDTH = 40
-// Minimum title lane when the header carries no measured extras at all.
-const MIN_LEADING_WIDTH = 152
-const MORE_ACTION_ID = '__page-header-more'
 const moreAction: PageHeaderButtonAction = {
   compact: true,
   id: MORE_ACTION_ID,
@@ -128,24 +127,37 @@ const menuPanelClassName = [
   'bg-[color:var(--main)] p-1 shadow-lg',
 ].join(' ')
 
-const sameIds = (left: string[], right: string[]): boolean =>
-  left.length === right.length && left.every((id, index) => id === right[index])
-
+// The action's role, not its colours. Which fill a role wears — and what a
+// theme does to it — belongs to `.admin-page-action*` in `styles.css`, where
+// the hover and focus treatment already lives; utilities that stayed here own
+// the box (height, width, gap, padding) and nothing about how it reads. Spelt
+// as colours at this call site, a hover rule in the stylesheet had nothing to
+// attach to, which is how the header's hover became a no-op the moment the
+// resting state gained a fill of its own.
 const actionClassName = (action: PageHeaderAction, open: boolean): string => {
-  const colour = action.primary
+  const role = action.primary
     ? 'admin-page-action-primary'
     : action.selected
       ? 'admin-page-action-selected'
       : 'admin-page-action-secondary'
   return [
-    'admin-page-action inline-flex h-9 items-center justify-center text-[13px] transition-colors',
-    action.compact ? 'w-9 px-0' : 'gap-1.5 px-2.5',
-    colour,
+    'admin-page-action inline-flex h-8 items-center justify-center text-xs transition-colors',
+    action.compact ? 'w-8 px-0' : 'gap-1.5 px-2.5',
+    role,
     action.tone === 'danger' ? 'page-header-action-danger' : '',
     open ? 'admin-page-action-open' : '',
     action.disabled ? 'cursor-not-allowed opacity-50' : '',
   ].join(' ')
 }
+
+// A toggle is read, not clicked: it keeps the action row's height and type
+// scale but drops the button box, so it reads as a labelled switch rather than
+// one more control competing with the page's real actions.
+const toggleClassName = (action: PageHeaderToggleAction): string => [
+  'admin-page-toggle inline-flex h-8 items-center gap-2 px-1 text-xs font-medium',
+  'whitespace-nowrap text-[color:var(--tx2)]',
+  action.disabled ? 'cursor-not-allowed opacity-50' : '',
+].join(' ')
 
 // A shared header for dense admin surfaces. It measures the actual controls at
 // runtime, so the same action declarations remain usable in a wide team,
@@ -163,158 +175,55 @@ export const ResponsivePageHeader = ({
   titleTone = 'page',
 }: ResponsivePageHeaderProps) => {
   const showHeaderAccountMenu = useHeaderAccountMenuVisible()
-  const headerRef = useRef<HTMLElement>(null)
-  const measurementRef = useRef<HTMLDivElement>(null)
-  const leadingMeasureRef = useRef<HTMLDivElement>(null)
-  const actionMeasureRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const moreMeasureRef = useRef<HTMLDivElement>(null)
-  const triggerRefs = useRef<Record<string, HTMLElement | null>>({})
-  // One stable RefObject per action id, reading through to the live trigger
-  // node: the Popover keeps its anchor across renders, and a trigger that has
-  // not mounted yet simply reads null.
-  const anchorRefs = useRef<Record<string, RefObject<HTMLElement | null>>>({})
-  const anchorRefFor = (id: string): RefObject<HTMLElement | null> => {
-    anchorRefs.current[id] ??= { get current() { return triggerRefs.current[id] ?? null } }
-    return anchorRefs.current[id] as RefObject<HTMLElement | null>
-  }
-  const [visibleIds, setVisibleIds] = useState(() => actions.map((action) => action.id))
-  const [overflowIds, setOverflowIds] = useState<string[]>([])
-  const [openMenu, setOpenMenu] = useState<string | null>(null)
-  const menuIdPrefix = useId().replaceAll(':', '')
-
-  const actionById = useMemo(
-    () => new Map(actions.map((action) => [action.id, action])),
-    [actions],
-  )
-  const visibleActions = visibleIds.flatMap((id) => {
-    const action = actionById.get(id)
-    return action ? [action] : []
-  })
-  const overflowActions = overflowIds.flatMap((id) => {
-    const action = actionById.get(id)
-    return action ? [action] : []
-  })
-
-  useLayoutEffect(() => {
-    const header = headerRef.current
-    if (!header) return undefined
-
-    let frame: number | undefined
-    const recalculate = () => {
-      const moreWidth = moreMeasureRef.current?.getBoundingClientRect().width ?? 0
-      const layouts: PageHeaderActionLayout[] = actions.map((action) => ({
-        id: action.id,
-        primary: action.primary,
-        priority: action.priority,
-        width: actionMeasureRefs.current[action.id]?.getBoundingClientRect().width ?? 0,
-      }))
-      if (moreWidth === 0 || layouts.some((action) => action.width === 0)) return
-
-      // The leading lane reserve is measured, never element-truthiness:
-      // leading can be a conditional doorway (the phone navigation button)
-      // that renders null on desktop, where `Boolean(leading)` would still
-      // reserve ~48px and collapse the actions early (D7). The intrinsic row
-      // holds whatever leading/onBack actually rendered this pass; only the
-      // title lane's minimum width stays a constant.
-      const leadingReserve = Math.max(
-        leadingMeasureRef.current?.getBoundingClientRect().width ?? 0,
-        MIN_LEADING_WIDTH,
-      )
-      const next = partitionPageHeaderActions(
-        layouts,
-        Math.max(
-          0,
-          header.clientWidth - leadingReserve - (showHeaderAccountMenu ? ACCOUNT_MENU_WIDTH : 0),
-        ),
-        moreWidth,
-        ACTION_GAP,
-      )
-      setVisibleIds((current) => (sameIds(current, next.visibleIds) ? current : next.visibleIds))
-      setOverflowIds((current) => (sameIds(current, next.overflowIds) ? current : next.overflowIds))
-    }
-    const schedule = () => {
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(recalculate)
-    }
-
-    schedule()
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
-    observer?.observe(header)
-    // The hidden intrinsic row holds the measured content: observing it keeps
-    // the partition honest when the intrinsics change without a header resize
-    // — font-scale/zoom, a doorway appearing on phone, late-loaded controls
-    // (D8).
-    const measurement = measurementRef.current
-    if (measurement) observer?.observe(measurement)
-    return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      observer?.disconnect()
-    }
-  }, [actions, onBack, showHeaderAccountMenu])
-
-  // Outside press and Escape belong to the Popover primitive; the header keeps
-  // only the menu's own keyboard model — first item focused on open, arrows
-  // between items — because a menu that opens under the pointer still has to
-  // be reachable from the keyboard.
-  useEffect(() => {
-    if (!openMenu) return undefined
-    const menuId = `${menuIdPrefix}-${openMenu}`
-    const frame = requestAnimationFrame(() => {
-      document.getElementById(menuId)?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus()
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [menuIdPrefix, openMenu])
-
-  useEffect(() => {
-    const focusedOverflowAction = overflowIds.find((id) => document.activeElement === triggerRefs.current[id])
-    if (!focusedOverflowAction) return
-    requestAnimationFrame(() => triggerRefs.current[MORE_ACTION_ID]?.focus())
-  }, [overflowIds])
-
-  const closeMenu = (restoreFocus = true) => {
-    const menu = openMenu
-    setOpenMenu(null)
-    if (menu && restoreFocus) requestAnimationFrame(() => triggerRefs.current[menu]?.focus())
-  }
-  const selectMenuItem = (item: PageHeaderMenuButtonItem | PageHeaderButtonAction) => {
-    closeMenu(false)
-    item.onSelect()
-  }
-  const handleMenuKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      closeMenu()
-      return
-    }
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]'),
-    )
-    if (items.length === 0) return
-    event.preventDefault()
-    const current = items.indexOf(document.activeElement as HTMLElement)
-    const next = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? items.length - 1
-        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
-    items[next]?.focus()
-  }
-  const toggleMenu = (id: string) => setOpenMenu((current) => (current === id ? null : id))
+  const {
+    actionMeasureRefs,
+    anchorRefFor,
+    closeMenu,
+    handleMenuKeys,
+    headerRef,
+    leadingMeasureRef,
+    measurementRef,
+    menuIdPrefix,
+    moreMeasureRef,
+    openMenu,
+    overflowActions,
+    selectMenuItem,
+    toggleMenu,
+    triggerRefs,
+    visibleActions,
+  } = useResponsivePageHeaderOverflow({ actions, onBack, showHeaderAccountMenu })
   const renderAction = (action: PageHeaderAction, measuring = false): ReactNode => {
     if (action.kind === 'link') {
       return (
         <a
           aria-label={action.compact ? action.label : undefined}
           className={actionClassName(action, false)}
+          data-page-header-action={action.id}
           href={action.href}
           rel={action.rel}
           target={action.target}
           title={action.title ?? action.label}
         >
-          {action.icon ? <FontAwesomeIcon className="h-4 w-4" fixedWidth icon={action.icon} /> : null}
+          {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
           {action.compact ? null : <span>{action.label}</span>}
         </a>
+      )
+    }
+    if (action.kind === 'toggle') {
+      return (
+        <span className={toggleClassName(action)} title={action.title ?? action.label}>
+          <span>{action.label}</span>
+          {/* The switch's name stays the label whichever way it is thrown —
+              `aria-checked` is what says on or off, so a name that flipped
+              with the state would announce the filter twice and never the
+              same way. */}
+          <Switch
+            checked={action.checked}
+            disabled={action.disabled}
+            label={action.label}
+            onChange={measuring ? () => undefined : action.onChange}
+          />
+        </span>
       )
     }
     const isMenu = action.kind === 'menu'
@@ -329,6 +238,11 @@ export const ResponsivePageHeader = ({
         aria-label={action.compact ? action.label : undefined}
         aria-pressed={isMenu ? undefined : action.pressed}
         className={actionClassName(action, isOpen)}
+        // The screen's own actions, marked so a test can tell them from the
+        // header chrome beside them — the overflow trigger and the account
+        // menu are not actions and must not be counted as ones the native bar
+        // dropped.
+        data-page-header-action={action.id}
         disabled={action.disabled}
         form={action.form}
         onClick={
@@ -344,10 +258,10 @@ export const ResponsivePageHeader = ({
         title={action.title ?? action.label}
         type={buttonAction?.submit ? 'submit' : 'button'}
       >
-        {action.icon ? <FontAwesomeIcon className="h-4 w-4" fixedWidth icon={action.icon} /> : null}
+        {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
         {action.compact ? null : <span>{action.label}</span>}
         {isMenu && !action.compact ? (
-          <FontAwesomeIcon className="h-3 w-3" icon={faChevronDown} />
+          <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} />
         ) : null}
       </button>
     )
@@ -360,10 +274,10 @@ export const ResponsivePageHeader = ({
     // beneath it (subtitle, tab row). The border closes the whole block, so a
     // subtitle is inside the header rather than a second bar under it.
     <header
-      className="admin-page-header relative flex flex-shrink-0 flex-col border-b border-[color:var(--sep)]"
+      className="relative flex flex-shrink-0 flex-col border-b border-[color:var(--sep)]"
       ref={headerRef}
     >
-      <div className="admin-page-header-row flex h-[60px] flex-shrink-0 items-center gap-3 px-[var(--page-gutter)]">
+      <div className="flex h-[50px] flex-shrink-0 items-center gap-3 px-[var(--page-gutter)]">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {leading || onBack ? (
             <div className="flex flex-shrink-0 items-center gap-3">
@@ -375,14 +289,14 @@ export const ResponsivePageHeader = ({
           ) : null}
           <div className="min-w-0 flex-1">
             {eyebrow ? (
-              <div className="admin-page-eyebrow truncate text-[11px] font-medium text-[color:var(--tx3)]">
+              <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
                 {eyebrow}
               </div>
             ) : null}
             {titleInput ? (
               <input
                 aria-label={titleInput.ariaLabel}
-                className="admin-page-title-input w-full border-none bg-transparent text-[22px] font-normal text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
                 onChange={(event) => titleInput.onChange(event.target.value)}
                 placeholder={titleInput.placeholder}
                 value={titleInput.value}
@@ -392,7 +306,7 @@ export const ResponsivePageHeader = ({
                 {title}
               </SectionLabel>
             ) : (
-              <Heading className="admin-page-title truncate text-[22px] font-normal text-[color:var(--tx)]" id={titleId}>
+              <Heading className="truncate text-[17px] font-bold text-[color:var(--tx)]" id={titleId}>
                 {title}
               </Heading>
             )}
@@ -434,7 +348,7 @@ export const ResponsivePageHeader = ({
                   title="More page actions"
                   type="button"
                 >
-                  <FontAwesomeIcon className="h-4 w-4" icon={faEllipsis} />
+                  <FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} />
                 </button>
                 <Popover
                   anchorRef={anchorRefFor(MORE_ACTION_ID)}
@@ -485,7 +399,7 @@ export const ResponsivePageHeader = ({
         ))}
         <div ref={moreMeasureRef}>
           <button className={actionClassName(moreAction, false)} type="button">
-            <FontAwesomeIcon className="h-4 w-4" icon={faEllipsis} />
+            <FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} />
           </button>
         </div>
       </div>

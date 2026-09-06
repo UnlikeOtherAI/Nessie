@@ -53,6 +53,15 @@ export const ProjectToolConnections = () => {
     )
   }
 
+  // Only providers this deployment can actually sign in to. One that is
+  // reachable by a pasted key alone gets no button here: the key is pasted
+  // where it is aimed, in a project's Settings → Sources, and a button that
+  // could only answer "no sign-in app is configured" is a dead end.
+  const signInProviders = providers.filter((entry) => entry.methods.includes('oauth'))
+  const keyOnly = providers.filter(
+    (entry) => !entry.methods.includes('oauth') && entry.apiKeyForm,
+  )
+
   if (providers.length === 0) return null
 
   return (
@@ -61,13 +70,21 @@ export const ProjectToolConnections = () => {
         <div>
           <h2 className="font-semibold text-[color:var(--tx)]">Project tools</h2>
           <p className="mt-1 text-sm text-[color:var(--tx2)]">
-            Connect Jira, Linear, Trello or GitHub once, then bring any of their boards
-            into a project from that project&rsquo;s Settings → Sources. Syncing runs as
-            you, and sees exactly what you can see.
+            Connect an account once, then bring any of its boards into a project from
+            that project&rsquo;s Settings → Sources. Syncing runs as you, and sees exactly
+            what you can see.
           </p>
+          {keyOnly.length > 0 ? (
+            <p className="mt-1 text-sm text-[color:var(--tx3)]">
+              {keyOnly.map((entry) => PROVIDER_LABEL[entry.provider]).join(', ')}
+              {keyOnly.length === 1 ? ' connects' : ' connect'} with an API key, pasted
+              from a project&rsquo;s Settings → Sources. The connection appears here
+              afterwards.
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {providers.map(({ provider }) => (
+          {signInProviders.map(({ provider }) => (
             <button
               className="admin-button admin-button-compact"
               key={provider}

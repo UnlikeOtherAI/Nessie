@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import {
   hasWebExternalAuthCallback,
   WEB_EXTERNAL_AUTH_COMPLETION_PATH,
-} from '../providers/external-auth-callback'
+} from '../lib/external-auth-callback'
 import { LoginPage } from './LoginPage'
 
 /**

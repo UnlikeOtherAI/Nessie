@@ -462,6 +462,114 @@ jobs:
         if: steps.scope.outputs.code != '1'
         run: echo "Documentation-only change — no runtime code for the smoke pipeline to exercise."
 
+  # The same scenario as `smoke`, but through two API processes behind a
+  # round-robin proxy with two worker processes claiming from one Postgres.
+  # Phase 0.4 of docs/plans/2026-09-05-horizontal-scaling-statelessness.
+  # Deliberately its own service container: the harness bootstraps the owner
+  # account over HTTP, which only works on a database with no users.
+  multi-instance-smoke:
+    name: Multi-Instance Smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nessie_test
+          POSTGRES_USER: nessie
+          POSTGRES_PASSWORD: nessie
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-multi-instance-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-multi-instance-
+
+      - name: Install dependencies
+        if: steps.scope.outputs.code == '1'
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/api prisma:generate
+
+      # The harness spawns api/dist and worker/dist as real processes, so the
+      # API's closure is built here too — `smoke` only needs the worker's.
+      - name: Build api and worker
+        if: steps.scope.outputs.code == '1'
+        run: pnpm exec turbo run build --filter=@nessie/api... --filter=@nessie/worker...
+
+      - name: Apply database migrations
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/api prisma:migrate:deploy
+
+      - name: Run multi-instance smoke
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/worker test:smoke:multi
+
+      # Advisory until Phase 3 (run durability) lands: the API has no SIGTERM
+      # handler, so the SSE-resume assertion fails today; the other two hold and
+      # are a regression net, not a green light. Flip continue-on-error off in
+      # the PR that lands Phase 3 and this becomes a real gate.
+      # A second database, because the harness bootstraps an owner account and the
+      # run above already consumed the first one's one-time bootstrap window.
+      - name: Prepare the chaos database
+        if: steps.scope.outputs.code == '1'
+        env:
+          PGPASSWORD: nessie
+        run: |
+          psql -h localhost -U nessie -d postgres -c 'CREATE DATABASE nessie_multi_chaos;'
+          DATABASE_URL=postgresql://nessie:nessie@localhost:5432/nessie_multi_chaos \
+            pnpm --filter @nessie/api prisma:migrate:deploy
+
+      - name: Run multi-instance chaos smoke (advisory)
+        id: chaos
+        if: steps.scope.outputs.code == '1'
+        continue-on-error: true
+        env:
+          DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_multi_chaos
+        run: pnpm --filter @nessie/worker test:smoke:multi -- --chaos
+
+      - name: Summarise chaos outcome
+        if: steps.scope.outputs.code == '1'
+        run: |
+          echo "Chaos step outcome: ${{ steps.chaos.outcome }}. Advisory only —" \
+            "it becomes blocking once Phase 3 of the horizontal-scaling plan lands." \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report skip
+        if: steps.scope.outputs.code != '1'
+        run: echo "Documentation-only change — no runtime code for the two-instance stack to exercise."
+
   navigation-e2e:
     name: Navigation Transitions
     runs-on: ubuntu-latest

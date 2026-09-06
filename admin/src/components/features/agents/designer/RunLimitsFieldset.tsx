@@ -1,4 +1,4 @@
-import type { RunLimitsField, RunLimitsFormState } from './run-limits'
+import type { RunLimitsField, RunLimitsFormState } from '../../../../facades/designer/run-limits'
 import { FormField } from '../../../shared/FormField'
 import { Input } from '../../../shared/FormControls'
 

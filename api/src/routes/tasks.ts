@@ -171,8 +171,13 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const result = await archiveDoneTasks(prisma, {
       organizationId: actorContext.tenant.organizationId,
       projectId: body.projectId,
+      boardId: body.boardId,
       olderThanDays: body.olderThanDays,
     })
+    if ('error' in result) {
+      sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found in this project')
+      return reply
+    }
     return createApiResponse(result)
   })
 
@@ -198,6 +203,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       purpose: body.purpose,
       detail: body.detail,
       projectId: body.projectId,
+      boardId: body.boardId,
       iterationId: body.iterationId,
       storyPoints: body.storyPoints,
       priority: body.priority,
@@ -208,8 +214,17 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     if ('error' in result) {
-      if (result.error === 'PROJECT_NOT_FOUND' || result.error === 'ITERATION_NOT_FOUND') {
-        sendApiError(reply, 404, result.error, 'Project or iteration not found in this organization')
+      if (
+        result.error === 'PROJECT_NOT_FOUND' ||
+        result.error === 'ITERATION_NOT_FOUND' ||
+        result.error === 'BOARD_NOT_FOUND'
+      ) {
+        sendApiError(
+          reply,
+          404,
+          result.error,
+          'Project, board or iteration not found in this organization',
+        )
         return reply
       }
       sendApiError(reply, 400, result.error, 'Assignee or owner is not a member of this organization')

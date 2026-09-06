@@ -10,7 +10,7 @@ import type {
   ToolCallEntry,
 } from '@nessie/schemas'
 import type { AgentRecord, ApiClient } from '../../lib/api-client'
-import { agentKeys } from '../../lib/query-keys'
+import { agentKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type AgentListScope = 'all' | 'visible'

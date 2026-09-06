@@ -2,7 +2,7 @@ import { WorkflowPreviewMessageMetadataSchema } from '@nessie/schemas'
 import { useState } from 'react'
 
 import { useWorkflowTemplate } from '../../../facades/workflows/hooks'
-import { useIsOwner } from '../../shared/OwnerGate'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { Dialog } from '../../shared/Dialog'
 import { WorkflowTemplatePreviewCanvas } from '../workflows/WorkflowTemplatePreviewCanvas'
 

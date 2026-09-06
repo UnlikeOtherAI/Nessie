@@ -1,10 +1,8 @@
 import { faPlay } from '@fortawesome/free-solid-svg-icons'
 import { DEFAULT_WORKFLOW_NAME } from '../../../lib/workflow-designer/constants'
-import type { WorkflowTestRunState } from '../../../pages/workflow-designer/useWorkflowTestRun'
-import {
-  ResponsivePageHeader,
-  type PageHeaderAction,
-} from '../../shared/ResponsivePageHeader'
+import type { WorkflowTestRunState } from './useWorkflowTestRun'
+import { ScreenHeader } from '../../shared/ScreenHeader'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type WorkflowDesignerHeaderProps = {
   workflowName: string
@@ -110,9 +108,15 @@ export const WorkflowDesignerHeader = ({
   ]
 
   return (
-    <ResponsivePageHeader
+    <ScreenHeader
       actions={actions}
       eyebrow={status}
+      // The designer's edit origin is not something the registry can name —
+      // it is whichever workflow (or the list) sent the reader here, carried
+      // as a return address — so it declares `flowOwnsBack` and keeps the one
+      // control on every layout rather than growing a second doorway beside
+      // the shared one (docs/navigation/deep-links-and-headers.md §9).
+      flowOwnsBack
       onBack={onBack}
       title="Workflow Designer"
       titleInput={{

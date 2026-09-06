@@ -1,13 +1,5 @@
 @import 'tailwindcss';
 
-@font-face {
-  font-family: 'Starleague';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 400;
-  src: url('./assets/fonts/starleague-regular.ttf') format('truetype');
-}
-
 /* The sole numeric source for viewport breakpoints (see
    docs/plans/2026-08-13-responsive-coherence.md §A). Values match Tailwind's
    defaults, so this is behaviour-preserving for CSS; `static` also emits these
@@ -71,6 +63,12 @@
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The sign-in showcase (packages/sign-in-surface) is a dark stage with a
+     white thread card in every theme; the theme does not restyle it. */
+  --signin-stage: #0a0a0a;
+  --signin-on-stage: #ffffff;
+  --signin-stage-card: #ffffff;
+  --signin-stage-card-fg: #0a0a0a;
   /* The aura: the one place chroma touches an ordinary surface. A blurred
      pastel wash behind the sign-in column and the showcase panel
      (packages/sign-in-surface); never a text, button or border colour. */
@@ -166,43 +164,6 @@
   --warning-border: rgba(217, 119, 6, 0.34); --warning-text: #92400e; --info: #0284c7; --info-soft: rgba(2, 132, 199, 0.12);
   --info-border: rgba(2, 132, 199, 0.35); --info-text: #0369a1; --overlay-weak: rgba(15, 23, 42, 0.05); --overlay: rgba(15, 23, 42, 0.08);
   --overlay-strong: rgba(15, 23, 42, 0.14); --scrim-weak: rgba(15, 23, 42, 0.08); --scrim: rgba(15, 23, 42, 0.18); --scrim-strong: rgba(15, 23, 42, 0.45);
-}
-
-/* Space White is the monochrome product theme derived from the supplied app,
-   chat, docs, and admin specimens. It keeps Nessie's semantic state colours,
-   but every ordinary navigation, content, and control surface is black, white,
-   or cool gray. Spacing and geometry live here too so the complete shell moves
-   as one theme rather than collecting page-local overrides. */
-[data-theme="space-white"] {
-  color-scheme: light;
-  --rail: #f3f5f8; --sb: #f8f8f8; --sb-active: #000000; --ink: #0a0a0a;
-  --muted: #8a8a8a; --line: rgba(10, 10, 10, 0.1); --main: #ffffff; --main-hover: #f8f8f8;
-  --sep: #e3e6ea; --border-strong: #b5b5b5; --tx: #0a0a0a; --tx2: #4b4b4b;
-  --tx3: #8a8a8a; --lnk: #0a0a0a; --accent: #000000; --accent-soft: rgba(10, 10, 10, 0.08);
-  --danger: #d63b3b; --warning: #d98a00; --thinking: #222222; --executing: #1f9d55;
-  --panel: #ffffff; --panel-soft: #f3f5f8; --accent-hover: #1a1a1a; --accent-strong: #000000;
-  --on-accent: #ffffff; --surface-inverse: #000000; --surface-inverse-2: #222222; --success: #1f9d55;
-  --success-soft: rgba(31, 157, 85, 0.11); --success-border: rgba(31, 157, 85, 0.28); --success-text: #187944; --danger-soft: rgba(214, 59, 59, 0.1);
-  --danger-border: rgba(214, 59, 59, 0.28); --danger-text: #c23232; --danger-strong: #b82f2f; --warning-soft: rgba(217, 138, 0, 0.11);
-  --warning-border: rgba(217, 138, 0, 0.3); --warning-text: #9d6500; --info: #2f6fdb; --info-soft: rgba(47, 111, 219, 0.1);
-  --info-border: rgba(47, 111, 219, 0.28); --info-text: #285fba; --overlay-weak: rgba(10, 10, 10, 0.04); --overlay: rgba(10, 10, 10, 0.07);
-  --overlay-strong: rgba(10, 10, 10, 0.14); --scrim-weak: rgba(10, 10, 10, 0.08); --scrim: rgba(10, 10, 10, 0.18); --scrim-strong: rgba(10, 10, 10, 0.42);
-  --font-family-body: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-family-display: 'Starleague', 'Geist Variable', sans-serif;
-  --font-size-base: 1rem;
-  --line-height-base: 1.5;
-  --radius-sm: 7px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
-  --radius-panel: 40px;
-  --page-gutter: 24px;
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
-  --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.05);
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.06);
-  --shadow-float: 0 20px 60px rgba(0, 0, 0, 0.18);
 }
 
 [data-theme="forest"] {
@@ -1896,8 +1857,26 @@ html[data-desktop-platform='linux'] #root {
   color: var(--tx);
 }
 
+/* An empty section's one line of explanation. It is a row for geometry only:
+   nothing to click, nothing to hover, and quieter than a real row so the list
+   reads as empty rather than as holding one odd item. */
+.admin-sb-empty {
+  cursor: default;
+  color: var(--tx3);
+}
+
+.admin-sb-empty:hover {
+  background: transparent;
+}
+
 .admin-sb-item.sidebar-child {
   padding-left: 32px;
+}
+
+/* Third level: the boards inside a project's Board section. One more indent
+   step of the same size, so the tree reads as depth rather than as a new list. */
+.admin-sb-item.sidebar-grandchild {
+  padding-left: 44px;
 }
 
 .knowledge-sidebar-tree {
@@ -1943,6 +1922,10 @@ html[data-desktop-platform='linux'] #root {
 
 .touch-sidebar .admin-sb-item.sidebar-child {
   padding-left: 32px;
+}
+
+.touch-sidebar .admin-sb-item.sidebar-grandchild {
+  padding-left: 44px;
 }
 
 .touch-sidebar .sidebar-project-tile {
@@ -2233,7 +2216,12 @@ html[data-desktop-platform='linux'] #root {
   outline-offset: 1px;
 }
 
+/* Equal-width segments (`flex-basis: 0`) that still refuse to shrink below
+   their own label. Without the floor a full-width strip absorbs any shortage
+   by crushing its items into each other instead of overflowing, and the strip
+   never reports the overflow that tells it to become a dropdown. */
 .tabbar-full .tabbar-item {
+  min-width: max-content;
   flex: 1 1 0;
 }
 
@@ -2252,6 +2240,149 @@ html[data-desktop-platform='linux'] #root {
 .tabbar-count {
   color: var(--tx3);
   font-variant-numeric: tabular-nums;
+}
+
+/* The strip's measuring box, and the anchor its dropdown hangs off. It is a
+   block-level flex container so it fills the width available in normal flow,
+   and a shrinkable flex item (`min-width: 0`, the default `flex: 0 1 auto`)
+   when a call site drops it into a row — either way `.tabbar` inside it is
+   clamped by `max-width: 100%`, which is what makes `scrollWidth` vs
+   `clientWidth` an honest answer to "do the labels still fit?". */
+.tabbar-shell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tabbar-shell-full {
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+/* Below the width its labels need, the strip is a dropdown naming the current
+   selection. It keeps the strip's own height and ground so a row does not
+   jump as it crosses that width. */
+.tabbar-trigger {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  background: var(--overlay-weak);
+  padding: 0 10px;
+  color: var(--tx);
+  font-weight: var(--font-weight-semibold);
+  transition: background var(--duration-fast) var(--easing-standard);
+}
+
+.tabbar-shell-full .tabbar-trigger {
+  width: 100%;
+}
+
+.tabbar-trigger:hover {
+  background: var(--overlay);
+}
+
+.tabbar-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Matches the strip's outer height exactly (item height + its 3px padding),
+   so swapping one for the other never reflows the row around it. */
+.tabbar-trigger-sm {
+  height: 32px;
+  font-size: 12px;
+}
+
+.tabbar-trigger-md {
+  height: 38px;
+  font-size: 13px;
+}
+
+.tabbar-trigger-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tabbar-trigger-chevron {
+  flex-shrink: 0;
+  color: var(--tx3);
+  font-size: 10px;
+  transition: transform var(--duration-fast) var(--easing-standard);
+}
+
+.tabbar-trigger[aria-expanded='true'] .tabbar-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-trigger-chevron {
+    transition: none;
+  }
+}
+
+/* Sized by its own labels, not by the trigger: the trigger is only as wide as
+   the *current* selection, and matching it is what clipped "Notifications"
+   down to "Notific…" in the very case the dropdown exists to serve. */
+.tabbar-menu {
+  min-width: 9rem;
+  max-width: min(20rem, calc(100vw - 24px));
+  overflow-y: auto;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: 4px;
+  box-shadow: 0 8px 24px var(--scrim-weak);
+}
+
+.tabbar-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border-radius: calc(var(--radius-md) - 4px);
+  padding: 7px 10px;
+  color: var(--tx2);
+  text-align: left;
+  font-size: 13px;
+}
+
+.tabbar-option:hover:not(:disabled) {
+  background: var(--overlay-weak);
+  color: var(--tx);
+}
+
+.tabbar-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tabbar-option[aria-selected='true'] {
+  background: var(--overlay);
+  color: var(--tx);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tabbar-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.tabbar-option-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Agents list table: zebra striping over the row-hover highlight. The `:hover`
@@ -2293,7 +2424,7 @@ html[data-desktop-platform='linux'] #root {
    rewrap the whole thread on every frame, which reads as the panel being
    crushed rather than pushed — so the footprint goes with a negative margin
    while the panel itself rides out on a transform. Duration is mirrored in
-   `thread-panel-helpers.ts` THREAD_PANEL_CLOSE_MS, which holds the route
+   `thread-panel-layout.ts` THREAD_PANEL_CLOSE_MS, which holds the route
    change until the move is done; change both together. */
 .thread-panel {
   transition:
@@ -2621,8 +2752,8 @@ button.reaction-pill-active:focus-visible {
    say `admin-card rounded-md`), but it also handed EVERY other utility a win
    against this rule: `bg-*`, `border-*`, `hover:bg-*` all began painting on
    cards where they had been silently inert, including through indirect
-   composition (`hoverCardClass` in `pages/settings/settings-shared.tsx`, the
-   joined class array in `pages/settings/statuses/status-components.tsx`).
+   composition (`hoverCardClass` in `pages/settings/settings-presentation.ts`, the
+   joined class array in `pages/settings/statuses/StatusList.tsx`).
    Two site-by-site audits could not enumerate the blast radius; the flips
    they did catch repainted the appearance panels, four App Store panels,
    three executor panels and five hover rows. Do not repeat it as part of a
@@ -2750,6 +2881,37 @@ button.reaction-pill-active:focus-visible {
   width: auto;
 }
 
+/* The swatch half of `ColourField`. A native `<input type="color">` paints its
+   value in its content box, so `.admin-input`'s 10px padding leaves a sliver of
+   colour and reads as a broken text field. Stated here rather than as
+   utilities at the call site because these rules are unlayered — a Tailwind
+   `p-1` loses to `.admin-input-compact`'s padding, which is how the swatch
+   came out four pixels wide the first time. */
+.admin-input.admin-input-colour {
+  width: 2.25rem;
+  height: 30px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.admin-input.admin-input-colour:disabled {
+  cursor: not-allowed;
+}
+
+.admin-input.admin-input-colour::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.admin-input.admin-input-colour::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.admin-input.admin-input-colour::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
 /* `.admin-button-secondary` carries a 1px border and `.admin-button-primary`
    does not, so without this the two would differ by 2px and break the shared
    30px box whenever a primary and a secondary sit side by side. */
@@ -2769,6 +2931,81 @@ button.reaction-pill-active:focus-visible {
    other action in the row shares. */
 .page-header-action-danger:hover:not(:disabled) svg {
   color: var(--danger);
+}
+
+/* Page-header actions (`ResponsivePageHeader`). The header is where a screen
+   says what a person can do here, so its controls carry a box and the role the
+   call site declares decides the fill. Colour lives here rather than in the
+   utility string the component builds, because a stylesheet rule can only
+   reach these buttons if they carry a name — spelt as utilities, the hover
+   below had nothing to attach to and the record action was the only control in
+   the row that answered a pointer at all. Geometry stays at the call site:
+   height, width, gap and padding are unclaimed here on purpose, since these
+   rules are unlayered and would beat the `px-2.5` / `px-0` utilities that size
+   a labelled action against an icon-only one.
+
+     - primary — the one action the screen exists for. Creating the item the
+       screen lists is always this, as is committing an edit in progress
+       (Save, Publish, Done). One per header: two filled buttons name no
+       decision.
+     - selected, and a menu that is open — a control that is currently on.
+       Tinted, never filled, so it does not outrank the primary.
+     - secondary — everything else. */
+.admin-page-action {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.admin-page-action-secondary {
+  border-color: var(--sep);
+  background: var(--overlay-weak);
+  color: var(--tx2);
+}
+
+.admin-page-action-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-page-action-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* A menu that is down, marked on its trigger rather than by moving it to
+   another role: `open` rides on top of whichever fill the action already
+   wears, so a primary that opens a menu stays filled. */
+.admin-page-action-open {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Hover and keyboard focus answer alike. Every one of these is guarded with
+   `:not(:disabled)`: these rules are unlayered, so a bare `:hover` would beat
+   the `opacity-50` utility that marks a disabled action and repaint the one
+   cue saying it cannot be pressed, exactly as the pointer arrives. A step
+   past the resting fill rather than onto it — `--overlay-weak` is what a
+   secondary already sits on, which is why the hover it was given first
+   changed nothing. */
+.admin-page-action-secondary:hover:not(:disabled),
+.admin-page-action-secondary:focus-visible:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--overlay);
+  color: var(--tx);
+}
+
+.admin-page-action-selected:hover:not(:disabled),
+.admin-page-action-selected:focus-visible:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-page-action-primary:hover:not(:disabled),
+.admin-page-action-primary:focus-visible:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--on-accent);
 }
 
 /* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
@@ -3515,500 +3752,6 @@ button.reaction-pill-active:focus-visible {
 }
 .kb-prose a.kb-wikilink-unresolved:hover {
   background: var(--overlay-weak);
-}
-
-/* Space White component geometry. The supplied specimens use the same small
-   scale everywhere: 36px compact controls, 44px default controls, 7px action
-   corners, 14px fields, 20px cards, and 28px floating panels. Keeping these
-   selectors theme-scoped preserves the other palettes while making this theme
-   a complete UI treatment rather than a color swap. */
-[data-theme='space-white'] .admin-topbar {
-  background: var(--rail);
-}
-
-[data-theme='space-white'] .admin-topbar-search-input {
-  height: 34px;
-  border-color: var(--sep);
-  border-radius: 9px;
-  background: var(--panel);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
-}
-
-[data-theme='space-white'] .admin-topbar-search-input:focus {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 3px rgb(10 10 10 / 10%);
-}
-
-[data-theme='space-white'] .admin-rail-btn {
-  margin-block: 3px;
-  border-radius: var(--radius-md);
-  padding-block: 6px;
-}
-
-[data-theme='space-white'] .admin-rail-btn-icon {
-  border: 1px solid var(--sep);
-  border-radius: 12px;
-  background: var(--panel);
-}
-
-[data-theme='space-white'] .admin-rail-btn:hover {
-  background: #e9ecf1;
-}
-
-[data-theme='space-white'] .admin-rail-btn.active {
-  background: #e3e6ea;
-}
-
-[data-theme='space-white'] .admin-rail-btn.active .admin-rail-btn-icon {
-  border-color: #000000;
-  background: #000000;
-  color: #ffffff;
-}
-
-[data-theme='space-white'] .admin-sb-item {
-  min-height: 32px;
-  border-radius: 8px;
-  font-size: 14px;
-  transition:
-    background var(--duration-fast) var(--easing-standard),
-    color var(--duration-fast) var(--easing-standard);
-}
-
-[data-theme='space-white'] .admin-sec-hdr {
-  min-height: 32px;
-  border-radius: 8px;
-  transition:
-    background var(--duration-fast) var(--easing-standard),
-    color var(--duration-fast) var(--easing-standard);
-}
-
-[data-theme='space-white'] .admin-sec-hdr:hover,
-[data-theme='space-white'] .admin-sb-item:hover {
-  background: #eceef2;
-  color: var(--tx);
-}
-
-[data-theme='space-white'] .admin-sb-item.active {
-  background: #e3e6ea;
-  color: var(--tx);
-  font-weight: 500;
-}
-
-[data-theme='space-white'] .admin-sb-item.active-parent {
-  background: #eceef2;
-  color: var(--tx);
-  font-weight: 500;
-}
-
-[data-theme='space-white'] .admin-sb-item.active:hover,
-[data-theme='space-white'] .admin-sb-item:active {
-  background: #dce0e5;
-}
-
-[data-theme='space-white'] .admin-sb-item.active-parent:hover {
-  background: #e3e6ea;
-}
-
-[data-theme='space-white'] .admin-sidebar-plus,
-[data-theme='space-white'] .admin-sidebar-more {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  font-size: inherit;
-  transition:
-    background var(--duration-fast) var(--easing-standard),
-    color var(--duration-fast) var(--easing-standard),
-    transform var(--duration-fast) var(--easing-standard);
-}
-
-[data-theme='space-white'] .admin-sidebar-plus:hover,
-[data-theme='space-white'] .admin-sidebar-more:hover {
-  background: #e3e6ea;
-  color: var(--tx);
-}
-
-[data-theme='space-white'] .admin-sidebar-plus:active,
-[data-theme='space-white'] .admin-sidebar-more:active {
-  transform: scale(0.94);
-}
-
-[data-theme='space-white'] .admin-sidebar-more[aria-haspopup='menu'][aria-expanded='true'] {
-  background: #000000;
-  color: #ffffff;
-}
-
-[data-theme='space-white'] .admin-page-header-row {
-  min-height: 60px;
-}
-
-[data-theme='space-white'] .admin-page-title,
-[data-theme='space-white'] .admin-page-title-input,
-[data-theme='space-white'] .admin-document-title {
-  font-family: var(--font-family-display);
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-[data-theme='space-white'] .admin-page-eyebrow {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 12px;
-  line-height: 16px;
-}
-
-[data-theme='space-white'] .admin-page-subtitle {
-  color: var(--tx2);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-[data-theme='space-white'] .admin-page-subtitle > p {
-  color: inherit;
-  font-size: inherit;
-  line-height: inherit;
-}
-
-[data-theme='space-white'] .admin-page-action {
-  min-height: 36px;
-  border: 0;
-  border-radius: 7px;
-  padding-inline: 14px;
-  font-family: var(--font-family-display);
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
-  transition:
-    background var(--duration-fast) var(--easing-standard),
-    color var(--duration-fast) var(--easing-standard),
-    transform var(--duration-fast) var(--easing-standard);
-}
-
-[data-theme='space-white'] .admin-page-action[aria-label] {
-  padding-inline: 0;
-}
-
-[data-theme='space-white'] .admin-page-action:active:not(:disabled) {
-  transform: scale(0.99);
-}
-
-[data-theme='space-white'] .admin-page-action-primary,
-[data-theme='space-white'] .admin-page-action-selected,
-[data-theme='space-white'] .admin-page-action-open,
-[data-theme='space-white'] .admin-page-action[aria-pressed='true'] {
-  background: #000000;
-  color: #ffffff;
-}
-
-[data-theme='space-white'] .admin-page-action-primary:hover,
-[data-theme='space-white'] .admin-page-action-selected:hover,
-[data-theme='space-white'] .admin-page-action-open:hover,
-[data-theme='space-white'] .admin-page-action[aria-pressed='true']:hover {
-  background: #1a1a1a;
-}
-
-[data-theme='space-white'] .admin-page-action-secondary {
-  background: var(--panel-soft);
-  color: var(--tx);
-}
-
-[data-theme='space-white'] .admin-page-action-secondary:hover {
-  background: #e9ecf1;
-}
-
-[data-theme='space-white'] .admin-card {
-  border-color: var(--sep);
-  border-radius: 20px;
-  background: var(--panel);
-  box-shadow: var(--shadow-card);
-}
-
-[data-theme='space-white'] .admin-input {
-  min-height: 44px;
-  border-color: transparent;
-  border-radius: 14px;
-  background: var(--panel-soft);
-  padding: 10px 14px;
-}
-
-[data-theme='space-white'] .admin-input:focus {
-  border-color: transparent;
-  box-shadow: 0 0 0 3px rgb(10 10 10 / 12%);
-}
-
-[data-theme='space-white'] .admin-input.admin-input-compact {
-  min-height: 36px;
-  padding: 7px 12px;
-}
-
-[data-theme='space-white'] .admin-button {
-  min-height: 36px;
-  border: 0;
-  border-radius: 7px;
-  padding: 0 14px;
-  font-family: var(--font-family-display);
-  font-weight: 400;
-  line-height: 1;
-  transition:
-    background var(--duration-fast) var(--easing-standard),
-    color var(--duration-fast) var(--easing-standard),
-    transform var(--duration-fast) var(--easing-standard);
-}
-
-[data-theme='space-white'] .admin-button:hover {
-  opacity: 1;
-}
-
-[data-theme='space-white'] .admin-button:active:not(:disabled) {
-  transform: scale(0.99);
-}
-
-[data-theme='space-white'] .admin-button-primary {
-  background: #000000;
-  color: #ffffff;
-}
-
-[data-theme='space-white'] .admin-button-primary:hover {
-  background: #1a1a1a;
-}
-
-[data-theme='space-white'] .admin-button-secondary {
-  border: 0;
-  background: var(--panel-soft);
-  color: var(--tx);
-}
-
-[data-theme='space-white'] .admin-button-secondary:hover {
-  background: #e9ecf1;
-}
-
-[data-theme='space-white'] .admin-button-secondary[aria-pressed='true'],
-[data-theme='space-white'] .admin-button-secondary[aria-expanded='true'] {
-  background: #000000;
-  color: #ffffff;
-}
-
-[data-theme='space-white'] .admin-button.admin-button-compact {
-  min-height: 36px;
-  padding: 0 12px;
-}
-
-[data-theme='space-white'] .tabbar {
-  gap: 20px;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
-[data-theme='space-white'] .tabbar-indicator {
-  top: auto;
-  bottom: 0;
-  height: 2px;
-  border-radius: 999px;
-  background: #000000;
-  box-shadow: none;
-}
-
-[data-theme='space-white'] .tabbar-item {
-  border-radius: 0;
-  padding-inline: 0;
-  color: var(--tx2);
-  font-weight: 400;
-}
-
-[data-theme='space-white'] .tabbar-item[aria-selected='true'],
-[data-theme='space-white'] .tabbar-item[aria-checked='true'] {
-  color: var(--tx);
-  font-weight: 500;
-}
-
-[data-theme='space-white'] .tabbar-item:hover:not(:disabled) {
-  color: var(--tx);
-}
-
-[data-theme='space-white'] :is(
-  .admin-page-action,
-  .admin-button,
-  .admin-sidebar-plus,
-  .admin-sidebar-more,
-  .admin-sec-hdr,
-  .admin-sb-item
-):focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-[data-theme='space-white'] .tabbar-sm .tabbar-item {
-  height: 36px;
-  padding-inline: 0;
-  font-size: 13px;
-}
-
-[data-theme='space-white'] .tabbar-md .tabbar-item {
-  height: 44px;
-  padding-inline: 0;
-  font-size: 14px;
-}
-
-[data-theme='space-white'] .admin-compose {
-  border-color: var(--sep);
-  border-radius: 14px;
-  background: var(--panel);
-  box-shadow: 0 0 0 1px transparent;
-  transition: box-shadow var(--duration-fast) var(--easing-standard);
-}
-
-[data-theme='space-white'] .admin-compose:focus-within {
-  box-shadow: 0 0 0 1px var(--ink);
-}
-
-[data-theme='space-white'] .admin-compose-bar {
-  border-top-color: var(--sep);
-}
-
-[data-theme='space-white'] .admin-compose-send {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  padding: 0;
-}
-
-[data-theme='space-white'] .admin-msg-row {
-  gap: 12px;
-  padding: 8px 20px;
-}
-
-[data-theme='space-white'] .admin-msg-actions {
-  border: 0;
-  border-radius: 10px;
-  background: rgb(255 255 255 / 96%);
-  box-shadow: var(--shadow-card);
-}
-
-[data-theme='space-white'] .reaction-pill {
-  border-color: transparent;
-  border-radius: 999px;
-  background: var(--panel-soft);
-}
-
-[data-theme='space-white'] .agents-table tbody tr:nth-child(even),
-[data-theme='space-white'] .admin-table tbody tr:nth-child(even) {
-  background: var(--panel);
-}
-
-[data-theme='space-white'] .agents-table tbody tr,
-[data-theme='space-white'] .admin-table tbody tr {
-  border-bottom-color: var(--sep);
-}
-
-[data-theme='space-white'] .admin-sidebar-menu,
-[data-theme='space-white'] .admin-topbar-results,
-[data-theme='space-white'] .admin-topbar-menu,
-[data-theme='space-white'] .admin-compose-emoji-menu,
-[data-theme='space-white'] .admin-msg-emoji-menu {
-  border-color: transparent;
-  border-radius: 20px;
-  background: var(--panel);
-  box-shadow: var(--shadow-float);
-}
-
-[data-theme='space-white'] .create-channel-panel {
-  border-color: transparent;
-  border-radius: 28px;
-  box-shadow: var(--shadow-float);
-}
-
-[data-theme='space-white'] .create-channel-header h2 {
-  font-family: var(--font-family-display);
-  font-weight: 400;
-}
-
-[data-theme='space-white'] .admin-breadcrumbs button {
-  border-radius: 6px;
-  padding: 2px 4px;
-}
-
-[data-theme='space-white'] .admin-breadcrumbs button:hover {
-  background: var(--panel-soft);
-}
-
-[data-theme='space-white'] input.admin-document-title {
-  min-height: 3.75rem;
-  font-size: 3.25rem;
-  line-height: 1.1;
-}
-
-[data-theme='space-white'] .kb-editor-toolbar {
-  min-height: 52px;
-  border: 0;
-  border-radius: 14px;
-  background: var(--panel-soft);
-  padding: 8px 12px;
-}
-
-[data-theme='space-white'] .kb-editor-toolbar button {
-  display: inline-flex;
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  padding: 0;
-}
-
-@media (min-width: 40rem) {
-  [data-theme='space-white'] input.admin-document-title {
-    min-height: 4.75rem;
-    font-size: 4.25rem;
-  }
-}
-
-[data-theme='space-white'] .kb-reader {
-  --tx: #0a0a0a;
-  --tx2: #4b4b4b;
-  --tx3: #8a8a8a;
-  --sep: #e3e6ea;
-  --main-hover: #f8f8f8;
-  --panel-soft: #f3f5f8;
-  border-radius: 20px;
-  box-shadow: none;
-}
-
-[data-theme='space-white'] .kb-prose {
-  color: var(--tx2);
-  font-size: 1rem;
-  line-height: 1.65;
-}
-
-[data-theme='space-white'] .kb-prose h1,
-[data-theme='space-white'] .kb-prose h2,
-[data-theme='space-white'] .kb-prose h3 {
-  font-family: var(--font-family-display);
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-[data-theme='space-white'] .kb-prose h1 { font-size: 2.125rem; }
-[data-theme='space-white'] .kb-prose h2 { font-size: 1.5rem; }
-[data-theme='space-white'] .kb-prose h3 { font-size: 1.125rem; }
-
-[data-theme='space-white'] .kb-prose blockquote {
-  padding: 12px 18px;
-  border-left: 0;
-  border-radius: 12px;
-  background: var(--main-hover);
-  color: var(--tx);
-}
-
-@media (max-width: 48rem) {
-  [data-theme='space-white'] {
-    --page-gutter: 16px;
-  }
-
-  [data-theme='space-white'] .admin-page-title,
-  [data-theme='space-white'] .admin-page-title-input {
-    font-size: 19px;
-  }
 }
 
 /* Windows High Contrast (docs/navigation/overview.md §12): every colour token is

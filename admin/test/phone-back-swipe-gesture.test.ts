@@ -7,7 +7,7 @@ import {
   isPhoneBackSwipeVertical,
   phoneBackSwipeVelocity,
   resolvePhoneBackSwipeOutcome,
-} from '../src/layouts/admin-shell/phone-navigation-gesture'
+} from '../src/navigation/phone-navigation-gesture'
 
 test('claims only unambiguous horizontal drags', () => {
   assert.equal(isPhoneBackSwipeHorizontal(12, 2), true)

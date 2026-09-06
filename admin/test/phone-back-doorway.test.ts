@@ -9,7 +9,7 @@ const readSource = (relativePath: string): string =>
 // ─── One reusable control ────────────────────────────────────────────────────
 
 test('every phone Back doorway renders through the one shared PhoneBackButton', () => {
-  const navigation = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  const navigation = readSource('../src/navigation/PhoneNavigationButton.tsx')
   // The doorway renders the one resolver's decision and never re-derives it.
   assert.match(navigation, /resolveBackAction\(location\.pathname\)/)
   assert.doesNotMatch(navigation, /getPhoneNavigationBackTarget/)
@@ -28,7 +28,7 @@ test('every phone Back doorway renders through the one shared PhoneBackButton', 
 })
 
 test('registrations use explicit numeric priority, never mount order', () => {
-  const context = readSource('../src/layouts/admin-shell/local-back/LocalBackContext.tsx')
+  const context = readSource('../src/navigation/LocalBackContext.tsx')
   assert.match(context, /LOCAL_BACK_PRIORITY/)
   assert.match(context, /columnBackPriority/)
   assert.match(context, /useLayoutEffect/)
@@ -36,7 +36,7 @@ test('registrations use explicit numeric priority, never mount order', () => {
   const viewport = readSource('../src/components/shared/column-browser/ColumnBrowserViewport.tsx')
   assert.match(viewport, /columnBackPriority\(index\)/)
 
-  const hook = readSource('../src/layouts/admin-shell/local-back/local-back-registry.ts')
+  const hook = readSource('../src/navigation/local-back-registry.ts')
   assert.match(hook, /byPriority\(right\) - byPriority\(left\)/)
 })
 
@@ -55,12 +55,18 @@ test('admin column-browser pages delegate Back to the shared column, with no ad-
 
 test('app detail keeps Apps as its one visible return doorway', () => {
   // Step 9: the page's own Back moved into `ScreenHeader`'s leading lane. On
-  // a phone the shared doorway resolves it; on a wide layout the header
-  // renders this `onBack` because the registry says the screen has a parent.
+  // a phone the shared doorway renders it; on a wide layout the header renders
+  // this `onBack` because the registry says the screen has a parent. Both run
+  // the one resolver — a hand-written `/apps` here would drop the `?filter=`
+  // the catalogue keeps its view in (`apps-back-to-catalogue.test.ts`).
   const page = readSource('../src/pages/AppDetailPage.tsx')
-  assert.match(page, /usePhoneLayout/)
   assert.match(page, /usePhoneNavigation/)
   assert.match(page, /phoneNavigation\.performBack\(\)/)
+  // No layout fork: a wide layout that navigated to its own `/apps` instead
+  // dropped the `?filter=` the catalogue keeps its view in, and the reader
+  // landed on the view the page was loaded with rather than the one they left.
+  assert.doesNotMatch(page, /usePhoneLayout/)
+  assert.doesNotMatch(page, /phoneLayout &&/)
   assert.match(page, /<ScreenHeader/)
   assert.match(page, /backLabel="Back to Apps"/)
   assert.doesNotMatch(page, /<header/, 'no second header beside the ScreenHeader')
@@ -89,13 +95,13 @@ test('a pushed column browser column owns Back through its stage, registered onc
   // A plain track keeps the shared circular Back beside the column title.
   assert.match(column, /: <PhoneBackButton label=\{backLabel\} onBack=\{onBack\}/)
 
-  const context = readSource('../src/layouts/admin-shell/local-back/LocalBackContext.tsx')
+  const context = readSource('../src/navigation/LocalBackContext.tsx')
   assert.match(context, /reportBack: \(\(index: number, report: ColumnStageReport \| null\) => void\) \| null/)
   assert.doesNotMatch(context, /phoneVisible/)
 
   // The doorway no longer reads the column context at all: the stack decides
   // which layer is interactive.
-  const navigation = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  const navigation = readSource('../src/navigation/PhoneNavigationButton.tsx')
   assert.doesNotMatch(navigation, /useColumnBackContext/)
 })
 
@@ -109,6 +115,9 @@ test('every stateful column-browser detail column owns exactly one Back action',
   }
 
   const workflows = readSource('../src/pages/WorkflowsPage.tsx')
-  // Failed runs, template, installation, and run columns each own one Back.
-  assert.equal((workflows.match(/^        showBack$/gm) ?? []).length, 4, workflows)
+  // Template, installation, and run columns each own one Back; the
+  // failed-runs column extracted to its own file (06-F7) owns the fourth.
+  assert.equal((workflows.match(/^        showBack$/gm) ?? []).length, 3, workflows)
+  const failedRunsColumn = readSource('../src/components/features/workflows/WorkflowFailedRunsColumn.tsx')
+  assert.match(failedRunsColumn, /showBack/)
 })

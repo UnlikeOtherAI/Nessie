@@ -77,6 +77,35 @@ const waitForThreads = (page, source, accountId, expected) => page.waitForRespon
     value === undefined ? !url.searchParams.has(key) : url.searchParams.get(key) === String(value))
 })
 
+// The size the mailbox treats as its default, and therefore the one it leaves
+// out of the address bar.
+const DEFAULT_PAGE_SIZE = 25
+
+/**
+ * Choose a page size and wait until the app is actually on it.
+ *
+ * `selectOption` resolves as soon as the DOM value is set and `change` is
+ * dispatched — *before* React has re-rendered onto the new size. Refresh
+ * refetches whatever query key the current render holds, so a click landing in
+ * that window refetches the previous size instead. For a size this session has
+ * already loaded that is fatal rather than merely wasteful: the new key then
+ * mounts from a cache still inside the admin's five-minute `staleTime` and
+ * issues no request at all, leaving `waitForThreads` nothing to match and
+ * burning its whole timeout. That is the intermittent 20s failure this suite
+ * used to hit under CI load, where the render reliably loses the race that it
+ * wins on an idle machine.
+ *
+ * The size is a URL write, made in the same discrete-event flush as the render
+ * it triggers, so seeing it in the address bar means the render landed.
+ */
+const choosePageSize = async (page, pageSize) => {
+  await page.getByLabel('Items per page').selectOption(String(pageSize))
+  await page.waitForFunction(
+    (expected) => new URL(window.location.href).searchParams.get('pageSize') === expected,
+    pageSize === DEFAULT_PAGE_SIZE ? null : String(pageSize),
+  )
+}
+
 const fillCompose = async (page, subject) => {
   await page.getByRole('textbox', { name: 'To', exact: true }).fill('casey@acme.example')
   await page.getByRole('textbox', { name: 'Subject', exact: true }).fill(subject)
@@ -109,22 +138,17 @@ const desktopMail = async ({ browser, fixture }) => {
     await page.getByRole('button', { name: 'Next' }).click()
     await nextPage
     for (const pageSize of [10, 25, 50, 100]) {
-      // A previously viewed size may already be React Query-cached. Refresh
-      // makes this control's provider request observable either way, so the
-      // wait is armed first and satisfied by whichever request actually
-      // happens — the uncached size's own fetch, or the one Refresh asks for.
+      // Armed before the control rather than between it and Refresh: a size
+      // that is not cached fetches on the select itself, and React Query hands
+      // a Refresh landing mid-flight the in-flight promise instead of starting
+      // a second request — so that first response can be the only one there is.
       const resizedPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize, query: undefined })
-      await page.getByLabel('Items per page').selectOption(String(pageSize))
-      // Refresh reissues whatever key the mailbox has already rendered.
-      // Clicking before the new size reaches the address bar therefore asks
-      // the provider for the PREVIOUS size, and this wait never sees its own.
-      await page.waitForFunction(
-        (size) => new URL(window.location.href).searchParams.get('pageSize') === (size === 25 ? null : String(size)),
-        pageSize,
-      )
+      await choosePageSize(page, pageSize)
+      // A size already in cache fetches nothing on the select, so Refresh is
+      // still what makes this control's provider request observable.
       await page.getByRole('button', { name: 'Refresh' }).click()
       await resizedPage
-      assert(new URL(page.url()).searchParams.get('pageSize') === (pageSize === 25 ? null : String(pageSize)), `page size ${pageSize} was not reflected in the mailbox state`)
+      assert(new URL(page.url()).searchParams.get('pageSize') === (pageSize === DEFAULT_PAGE_SIZE ? null : String(pageSize)), `page size ${pageSize} was not reflected in the mailbox state`)
     }
 
     const mailboxThreads = waitForThreads(page, 'mailbox', 'mailbox-1', { cursor: undefined, pageSize: 100, query: undefined })
@@ -133,14 +157,14 @@ const desktopMail = async ({ browser, fixture }) => {
     await Promise.all([mailboxThreads, mailboxNavigation])
     assert(new URL(page.url()).pathname === '/mail/mailbox/mailbox-1', 'account switching did not navigate to the selected mailbox')
     const gmailNavigation = page.waitForURL(/\/mail\/gmail\/gmail-1/)
+    const gmailThreads = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 100, query: undefined })
     await page.getByLabel('Mail account').selectOption('gmail:gmail-1')
     await gmailNavigation
-    const gmailThreads = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 100, query: undefined })
     await page.getByRole('button', { name: 'Refresh' }).click()
     await gmailThreads
 
-    await page.getByLabel('Items per page').selectOption('25')
-    const defaultPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: 25, query: undefined })
+    const defaultPage = waitForThreads(page, 'gmail', 'gmail-1', { cursor: undefined, pageSize: DEFAULT_PAGE_SIZE, query: undefined })
+    await choosePageSize(page, DEFAULT_PAGE_SIZE)
     await page.getByRole('button', { name: 'Refresh' }).click()
     await defaultPage
     await page.getByLabel('Search mail').fill('private provider query')

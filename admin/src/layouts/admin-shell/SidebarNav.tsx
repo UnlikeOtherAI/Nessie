@@ -1,15 +1,17 @@
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { useLocation } from 'react-router-dom';
 import { useScrollMemory } from '../../hooks/useScrollMemory';
-import { isReactNativeWebView } from '../../lib/mobile-shell';
+import { isReactNativeWebView } from '../../lib/native-shell';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
-import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
+import { renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
+  RevealedChannel,
   SidebarAgentDm,
   SidebarGroupDm,
   SidebarMenu,
@@ -44,6 +46,7 @@ type SidebarNavProps = {
   personalAssistantChannelId?: string;
   personalAssistantUnreadCount: number;
   projectsCollapsed: boolean;
+  revealedChannel: RevealedChannel | null;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
   sidebarAgentDms: SidebarAgentDm[];
   sidebarGroupDms: SidebarGroupDm[];
@@ -96,6 +99,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     personalAssistantChannelId,
     personalAssistantUnreadCount,
     projectsCollapsed,
+    revealedChannel,
     setSidebarMenu,
     sidebarAgentDms,
     sidebarGroupDms,
@@ -190,6 +194,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onOpenEditProject={onOpenEditProject}
           onToggleStar={onToggleStar}
           projectsCollapsed={projectsCollapsed}
+          revealedChannel={revealedChannel}
           setSidebarMenu={setSidebarMenu}
           sidebarMenu={sidebarMenu}
           sidebarProjects={sidebarProjects}

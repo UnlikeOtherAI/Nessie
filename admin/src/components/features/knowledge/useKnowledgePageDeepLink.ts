@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useKnowledgePageLookup } from '../../../facades/knowledge/hooks'
 import { useConsumedIntents } from '../../../navigation/intent'
 import { useKnowledge } from './KnowledgeProvider'
@@ -21,21 +21,32 @@ export const useKnowledgePageDeepLink = (): void => {
   const { serial, values } = useConsumedIntents(PAGE_INTENTS)
   const { pageId, spaceId } = values
 
+  // The link is the trigger, so the effect keys on the link alone —
+  // `serial`/`pageId`/`spaceId` — and reads the openers through a ref. Both of
+  // them change identity as the jump lands (the provider re-renders, and
+  // useMutation returns a new object every render), so depending on either
+  // would re-fire the jump and, in the pageId-only branch, re-POST the lookup
+  // without bound. `serial` still makes the same document linked twice open
+  // twice, which is the one repeat that is wanted.
+  const openers = useRef({ openPageDeepLink, pageLookup })
+  openers.current = { openPageDeepLink, pageLookup }
+
   useEffect(() => {
     if (!pageId) return undefined
+    const { openPageDeepLink: open, pageLookup: lookup } = openers.current
     if (spaceId) {
-      openPageDeepLink({ pageId, spaceId })
+      open({ pageId, spaceId })
       return undefined
     }
     // Cancellation is scoped to unmount and to the next arrival only; the
     // captured values are stable through the strip, so nothing here re-runs
     // and cancels the in-flight lookup before it resolves.
     let cancelled = false
-    void pageLookup
+    void lookup
       .mutateAsync(pageId)
       .then((page) => {
         if (cancelled) return
-        openPageDeepLink({ pageId: page.id, spaceId: page.spaceId })
+        openers.current.openPageDeepLink({ pageId: page.id, spaceId: page.spaceId })
       })
       .catch(() => {
         // Page no longer exists / not visible to this user — nothing to open.
@@ -43,8 +54,5 @@ export const useKnowledgePageDeepLink = (): void => {
     return () => {
       cancelled = true
     }
-    // `pageLookup` is intentionally not a dependency: useMutation returns a
-    // new object every render, so depending on it would re-fire the lookup
-    // forever. `serial` makes the same document linked twice open twice.
-  }, [openPageDeepLink, pageId, serial, spaceId])
+  }, [pageId, serial, spaceId])
 }

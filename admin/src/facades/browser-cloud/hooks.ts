@@ -9,7 +9,7 @@ import type {
   CloudBrowserSessionSummary,
   MyBrowserLoginRecord,
 } from '../../lib/api-client'
-import { browserCloudKeys } from '../../lib/query-keys'
+import { browserCloudKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useCloudBrowserConnections = () => {

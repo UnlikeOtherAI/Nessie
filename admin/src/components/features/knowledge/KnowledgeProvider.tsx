@@ -1,28 +1,21 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { reportPushSurface } from '../../../lib/push-surface'
 import {
-  useArchiveKnowledgePage,
-  useCreateKnowledgePage,
-  useCreateKnowledgeSpace,
   useEnsureMyDocsSpace,
   useKnowledgePages,
   useKnowledgeSpace,
   useKnowledgeSpaces,
-  usePublishKnowledgePage,
-  useRestoreKnowledgeVersion,
   useSeedKnowledgeBase,
-  useUpdateKnowledgePage,
-  useUpdateKnowledgeSpace,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
   type SavePageInput,
@@ -33,11 +26,10 @@ import {
   EXAMPLE_PAGE_SUMMARY,
   EXAMPLE_PAGE_TITLE,
 } from './example-page'
+import { useKnowledgeMutations } from './useKnowledgeMutations'
+import { useKnowledgeNavigation, type KnowledgeEditorState } from './useKnowledgeNavigation'
 
-export type KnowledgeEditorState =
-  | { mode: 'create'; parentPageId: string | null; initialTitle?: string }
-  | { mode: 'edit'; page: KnowledgePageRecord }
-  | null
+export type { KnowledgeEditorState } from './useKnowledgeNavigation'
 
 type KnowledgeContextValue = {
   // Set when this provider is scoped to one project (a project's Documents
@@ -148,7 +140,9 @@ export const useDisplayedKnowledgeSpace = (
   return listedSpace ?? detailQuery.data ?? null
 }
 
-// The provider is the team parameterisation seam. `projectId` scopes the
+// The provider is the team parameterisation seam: it wires the knowledge
+// facade's queries to `useKnowledgeNavigation` (where the reader is) and
+// `useKnowledgeMutations` (what a write does to that). `projectId` scopes the
 // project Documents tab to that project's spaces; `spaceId` scopes an owning
 // surface such as an agent Documents tab to one canonical knowledge space.
 // Scoped mounts never ensure My Docs or seed first-visit example content.
@@ -177,25 +171,21 @@ export const KnowledgeProvider = ({
     return [...all].sort((left, right) => left.name.localeCompare(right.name))
   }, [spaceId, spaceQuery.data, spacesQuery.items])
 
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>(spaceId)
-  const [pagePath, setPagePath] = useState<string[]>([])
-  const [openPageId, setOpenPageId] = useState<string | undefined>()
-  const [editor, setEditor] = useState<KnowledgeEditorState>(null)
-  const [historyPageId, setHistoryPageId] = useState<string | undefined>()
-  const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false)
-  const [activeProductView, setActiveProductView] = useState<string | undefined>()
+  const navigation = useKnowledgeNavigation({ navigate, scopeSpaceId: spaceId })
+  const {
+    activeProductView,
+    editor,
+    historyPageId,
+    openPageId,
+    pagePath,
+    selectedSpaceId,
+    setSelectedSpaceId,
+    spaceSettingsOpen,
+  } = navigation
   const selectedSpace = useDisplayedKnowledgeSpace(spaces, selectedSpaceId)
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
-
-  const createSpaceMutation = useCreateKnowledgeSpace()
-  const updateSpaceMutation = useUpdateKnowledgeSpace()
-  const createPageMutation = useCreateKnowledgePage(selectedSpaceId)
-  const updatePageMutation = useUpdateKnowledgePage()
-  const publishPageMutation = usePublishKnowledgePage()
-  const archivePageMutation = useArchiveKnowledgePage()
-  const restoreVersionMutation = useRestoreKnowledgeVersion()
   const seedMutation = useSeedKnowledgeBase()
 
   useEffect(() => {
@@ -206,7 +196,7 @@ export const KnowledgeProvider = ({
     if (!selectedSpaceId && spaces[0]) {
       setSelectedSpaceId(spaces[0].id)
     }
-  }, [selectedSpaceId, spaceId, spaces])
+  }, [selectedSpaceId, setSelectedSpaceId, spaceId, spaces])
 
   // First visit with no spaces: seed a "General" space + one example page.
   const seededRef = useRef(false)
@@ -227,7 +217,15 @@ export const KnowledgeProvider = ({
         onSuccess: (space) => setSelectedSpaceId(space.id),
       },
     )
-  }, [projectId, spaceId, spacesQuery.query.isSuccess, spacesQuery.total, me, seedMutation])
+  }, [
+    me,
+    projectId,
+    seedMutation,
+    setSelectedSpaceId,
+    spaceId,
+    spacesQuery.query.isSuccess,
+    spacesQuery.total,
+  ])
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()
@@ -260,8 +258,15 @@ export const KnowledgeProvider = ({
     return result
   }, [pagePath, pagesById])
 
-  const rootPages = pagesByParent.get(null) ?? []
+  const rootPages = useMemo(() => pagesByParent.get(null) ?? [], [pagesByParent])
   const validOpenPageId = openPageId && validPath.at(-1) === openPageId ? openPageId : undefined
+
+  const mutations = useKnowledgeMutations({
+    navigation,
+    pagesById,
+    projectId,
+    sessionProjectId: me?.context.projectId,
+  })
 
   useEffect(() => {
     reportPushSurface(
@@ -273,180 +278,16 @@ export const KnowledgeProvider = ({
     return () => reportPushSurface(null, location)
   }, [activeProductView, location, selectedSpaceId])
 
-  const selectSpace = (nextSpaceId: string) => {
-    if (spaceId && nextSpaceId !== spaceId) return
-    setSelectedSpaceId(nextSpaceId)
-    setPagePath([])
-    setOpenPageId(undefined)
-    setEditor(null)
-    setHistoryPageId(undefined)
-    setSpaceSettingsOpen(false)
-    setActiveProductView(undefined)
-  }
+  const { refetch: refetchPagesQuery } = pagesQuery
+  const refetchPages = useCallback(() => refetchPagesQuery(), [refetchPagesQuery])
+  const childrenOf = useCallback(
+    (parentPageId: string) => pagesByParent.get(parentPageId) ?? [],
+    [pagesByParent],
+  )
+  const pageById = useCallback((pageId: string) => pagesById.get(pageId), [pagesById])
 
-  const selectProductView = (view: string) => {
-    setActiveProductView(view)
-    setPagePath([])
-    setOpenPageId(undefined)
-    setEditor(null)
-    setHistoryPageId(undefined)
-    setSpaceSettingsOpen(false)
-  }
-
-  const createSpace = async (
-    name: string,
-    memberAgentIds?: string[],
-    visibility?: KnowledgeSpaceRecord['visibility'],
-  ) => {
-    const created = await createSpaceMutation.mutateAsync({
-      name,
-      memberAgentIds,
-      // In project scope a new space belongs to the project being viewed, not
-      // to whichever project the session's claim happens to name.
-      projectId: projectId ?? me?.context.projectId,
-      visibility,
-    })
-    setSelectedSpaceId(created.id)
-    setPagePath([])
-    setOpenPageId(undefined)
-    setEditor(null)
-    setHistoryPageId(undefined)
-    return created
-  }
-
-  const openSpaceSettings = () => setSpaceSettingsOpen(true)
-  const closeSpaceSettings = () => setSpaceSettingsOpen(false)
-
-  const updateSpace = async (input: Omit<UpdateSpaceInput, 'spaceId'>) => {
-    if (!selectedSpaceId) return
-    await updateSpaceMutation.mutateAsync({ spaceId: selectedSpaceId, ...input })
-    setSpaceSettingsOpen(false)
-  }
-
-  const browseTo = (path: string[]) => {
-    setPagePath(path)
-    setOpenPageId(undefined)
-    setEditor(null)
-    setHistoryPageId(undefined)
-  }
-
-  const openPagePath = (path: string[]) => {
-    const pageId = path.at(-1)
-    if (!pageId) return
-    setPagePath(path)
-    setOpenPageId(pageId)
-    setEditor(null)
-    setHistoryPageId(undefined)
-  }
-
-  const openRootPage = (pageId: string) => openPagePath([pageId])
-
-  // Jumps straight to a page from outside the browsing flow (an approval's
-  // "Open page" link, a search result, a DeepWater research run's native
-  // Knowledge document). We don't know the page's ancestor chain up front, so
-  // the path is just the page itself — enough for the preview to open;
-  // breadcrumbs/back just fall back to the space root. Also clears any active
-  // product view (e.g. the DeepWater "Research" Documents view) so a deep
-  // link always lands on the real document instead of staying stuck behind
-  // whichever product surface the caller happened to be viewing.
-  const openPageDeepLink = (input: { spaceId: string; pageId: string }) => {
-    if (spaceId && input.spaceId !== spaceId) {
-      void navigate(
-        `/knowledge-base/spaces/${encodeURIComponent(input.spaceId)}`
-        + `?pageId=${encodeURIComponent(input.pageId)}`,
-      )
-      return
-    }
-    setActiveProductView(undefined)
-    setSelectedSpaceId(input.spaceId)
-    setPagePath([input.pageId])
-    setOpenPageId(input.pageId)
-    setEditor(null)
-    setHistoryPageId(undefined)
-  }
-
-  const drillTo = (depth: number, childPageId: string) => {
-    setPagePath((current) => [...current.slice(0, depth + 1), childPageId])
-    setOpenPageId(childPageId)
-    setEditor(null)
-    setHistoryPageId(undefined)
-  }
-
-  const popTo = (depth: number) => {
-    const nextPath = pagePath.slice(0, depth)
-    setPagePath(nextPath)
-    setOpenPageId(nextPath.at(-1))
-    setEditor(null)
-    setHistoryPageId(undefined)
-  }
-
-  const openCreate = (parentPageId: string | null, initialTitle?: string) =>
-    setEditor({ mode: 'create', parentPageId, initialTitle })
-  const openEdit = (page: KnowledgePageRecord) => setEditor({ mode: 'edit', page })
-  const closeEditor = () => setEditor(null)
-
-  const savePage = async (input: SavePageInput) => {
-    if (editor?.mode === 'edit') {
-      await updatePageMutation.mutateAsync({ ...input, pageId: editor.page.id })
-      setEditor(null)
-      return
-    }
-
-    const created = await createPageMutation.mutateAsync(input)
-    const parentPageId = input.parentPageId ?? null
-    if (parentPageId) {
-      const parentPath: string[] = []
-      const visited = new Set<string>()
-      let current = pagesById.get(parentPageId)
-      while (current && !visited.has(current.id)) {
-        visited.add(current.id)
-        parentPath.unshift(current.id)
-        current = current.parentPageId ? pagesById.get(current.parentPageId) : undefined
-      }
-      setPagePath([...parentPath, created.id])
-    } else {
-      setPagePath([created.id])
-    }
-    setOpenPageId(created.id)
-    setEditor(null)
-  }
-
-  // A folder is a title-only page flagged `metadata.folder` so it renders as a
-  // container even while empty. Unlike savePage we never open it as a document —
-  // it just appears in the active column, ready to be drilled into.
-  const createFolder = async (parentPageId: string | null, title: string) => {
-    await createPageMutation.mutateAsync({ title, parentPageId, metadata: { folder: true } })
-  }
-
-  const openHistory = (pageId: string) => setHistoryPageId(pageId)
-  const closeHistory = () => setHistoryPageId(undefined)
-
-  const publishPage = (pageId: string) => {
-    void publishPageMutation.mutateAsync({ pageId })
-  }
-
-  const archivePage = async (pageId: string) => {
-    await archivePageMutation.mutateAsync({ pageId })
-    const pageIndex = pagePath.indexOf(pageId)
-    const nextPath = pageIndex >= 0 ? pagePath.slice(0, pageIndex) : []
-    setPagePath(nextPath)
-    setOpenPageId(nextPath.at(-1))
-    setEditor(null)
-    setHistoryPageId(undefined)
-  }
-
-  const restoreVersion = (input: { pageId: string; versionId: string }) => {
-    void restoreVersionMutation.mutateAsync({
-      ...input,
-      changeComment: 'Restored from admin version history',
-    })
-  }
-
-  const value: KnowledgeContextValue = {
-    scopeAgentId: agentId,
-    scopeProjectId: projectId,
-    spaces,
-    spacePagination: spaceId
+  const spacePagination = useMemo(
+    () => spaceId
       ? undefined
       : {
           canNext: spacesQuery.canNext,
@@ -458,54 +299,103 @@ export const KnowledgeProvider = ({
           pageCount: spacesQuery.pageCount,
           pageSize: spacesQuery.pageSize,
         },
+    [
+      spaceId,
+      spacesQuery.canNext,
+      spacesQuery.canPrevious,
+      spacesQuery.label,
+      spacesQuery.onPageChange,
+      spacesQuery.onPageSizeChange,
+      spacesQuery.page,
+      spacesQuery.pageCount,
+      spacesQuery.pageSize,
+    ],
+  )
+
+  // Memoized deliberately: `useKnowledgePageDeepLink` keys its effect on the
+  // callbacks published here, so a fresh object per render would re-open the
+  // same `?pageId=` link forever.
+  const value = useMemo<KnowledgeContextValue>(() => ({
+    scopeAgentId: agentId,
+    scopeProjectId: projectId,
+    spaces,
+    spacePagination,
     spacesLoaded: spaceId ? spaceQuery.isSuccess : spacesQuery.query.isSuccess,
     spacesLoadFailed: spaceId ? spaceQuery.isError : spacesQuery.query.isError,
     myDocsSpace: myDocsSpaceQuery.data ?? null,
     selectedSpaceId,
     selectedSpace,
-    selectSpace,
+    selectSpace: navigation.selectSpace,
     activeProductView,
-    selectProductView,
-    createSpace,
-    createSpacePending: createSpaceMutation.isPending,
+    selectProductView: navigation.selectProductView,
+    createSpace: mutations.createSpace,
+    createSpacePending: mutations.createSpacePending,
     spaceSettingsOpen,
-    openSpaceSettings,
-    closeSpaceSettings,
-    updateSpace,
-    updateSpacePending: updateSpaceMutation.isPending,
+    openSpaceSettings: navigation.openSpaceSettings,
+    closeSpaceSettings: navigation.closeSpaceSettings,
+    updateSpace: mutations.updateSpace,
+    updateSpacePending: mutations.updateSpacePending,
     pages,
     pagesLoading: pagesQuery.isLoading,
     pagesLoadFailed: pagesQuery.isError,
-    refetchPages: () => pagesQuery.refetch(),
+    refetchPages,
     rootPages,
-    childrenOf: (parentPageId) => pagesByParent.get(parentPageId) ?? [],
-    pageById: (pageId) => pagesById.get(pageId),
+    childrenOf,
+    pageById,
     pagePath: validPath,
     openPageId: validOpenPageId,
-    browseTo,
-    openPagePath,
-    openRootPage,
-    openPageDeepLink,
-    drillTo,
-    popTo,
+    browseTo: navigation.browseTo,
+    openPagePath: navigation.openPagePath,
+    openRootPage: navigation.openRootPage,
+    openPageDeepLink: navigation.openPageDeepLink,
+    drillTo: navigation.drillTo,
+    popTo: navigation.popTo,
     editor,
-    openCreate,
-    openEdit,
-    closeEditor,
-    createFolder,
-    createFolderPending: createPageMutation.isPending,
-    savePage,
-    savePending: createPageMutation.isPending || updatePageMutation.isPending,
+    openCreate: navigation.openCreate,
+    openEdit: navigation.openEdit,
+    closeEditor: navigation.closeEditor,
+    createFolder: mutations.createFolder,
+    createFolderPending: mutations.createFolderPending,
+    savePage: mutations.savePage,
+    savePending: mutations.savePending,
     historyPageId,
-    openHistory,
-    closeHistory,
-    publishPage,
-    publishPending: publishPageMutation.isPending,
-    archivePage,
-    archivePending: archivePageMutation.isPending,
-    restoreVersion,
-    restorePending: restoreVersionMutation.isPending,
-  }
+    openHistory: navigation.openHistory,
+    closeHistory: navigation.closeHistory,
+    publishPage: mutations.publishPage,
+    publishPending: mutations.publishPending,
+    archivePage: mutations.archivePage,
+    archivePending: mutations.archivePending,
+    restoreVersion: mutations.restoreVersion,
+    restorePending: mutations.restorePending,
+  }), [
+    activeProductView,
+    agentId,
+    childrenOf,
+    editor,
+    historyPageId,
+    mutations,
+    myDocsSpaceQuery.data,
+    navigation,
+    pageById,
+    pages,
+    pagesQuery.isError,
+    pagesQuery.isLoading,
+    projectId,
+    refetchPages,
+    rootPages,
+    selectedSpace,
+    selectedSpaceId,
+    spaceId,
+    spacePagination,
+    spaceQuery.isError,
+    spaceQuery.isSuccess,
+    spaceSettingsOpen,
+    spaces,
+    spacesQuery.query.isError,
+    spacesQuery.query.isSuccess,
+    validOpenPageId,
+    validPath,
+  ])
 
   return <KnowledgeContext.Provider value={value}>{children}</KnowledgeContext.Provider>
 }

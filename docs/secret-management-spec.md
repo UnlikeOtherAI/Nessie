@@ -118,7 +118,7 @@ the four separate capabilities:
 Every vault location is hard-partitioned as
 `/nessie/<organizationId>/<scopeType>/<scopeId>`, using only stable structural
 IDs. Personal paths use the owner user ID, team paths the team ID, project paths
-the project ID, and team paths the organisation ID. Nessie uses the same
+the project ID, and organisation paths the organisation ID. Nessie uses the same
 path for create, rotate, and revoke; `vaultReference` records that exact path
 with the server-minted opaque secret name. Display names never enter a vault
 path, and secret values are neither returned nor logged. The folder hierarchy
@@ -132,13 +132,64 @@ returns a secret value.
 ## Scope
 
 A secret has exactly one home scope: `personal`, `team`, `project`, or
-`team`. A personal secret is bound to its owner. Team, team, and
-project mutation is owner-gated and confirms the requested target belongs to
-the caller's organisation. Reads are entitlement-scoped: an owner sees all
-metadata; other users see their own personal secrets and explicit user grants.
+`organization`. A personal secret is bound to its owner. Team, project and
+organisation mutation is owner-gated and confirms the requested target belongs
+to the caller's organisation.
 
-Phase 1 exposes Personal and Project selection in the UI. Team and Team
-are preserved in the metadata model and API for an owner-managed surface.
+### The cascade, and the lock
+
+Scopes resolve as one cascade, in the containment order of
+[the team model](standards/team-model.md) — **organisation → team → project →
+personal** — and the rule is the sentence
+[`ScopedSetting`](standards/scoped-settings.md) already states for settings:
+**walk from the organisation down, take the most specific secret for a name,
+and stop at the first level marked `locked`.** The organisation is the base
+everyone inherits; a team overrides it; a person overrides both.
+
+`Secret.locked` is how a level says "this is the credential for everyone
+below". It is refused at `personal`, which has nothing beneath it. While a lock
+stands:
+
+- `POST /api/secrets` refuses a narrower write for that name with
+  `409 SECRET_LOCKED_ABOVE`, and so does an agent card's `vault_secret` press —
+  both doors, because one seam cannot accept a row the resolver would then
+  never consult.
+- Rows already saved below stay visible and are **greyed out**, saying which
+  level decided, exactly as `ScopedSettingGate` treats a locked control.
+  Hiding them would leave a person wondering where their credential went.
+
+One implementation resolves this for both ends: `@nessie/schemas`
+`secret-precedence.ts` (`computeSecretPrecedence` for the screen,
+`findSecretLockAbove` for the write). A second ordering beside either caller is
+the defect, not the pattern.
+
+### Reads
+
+An owner sees all metadata. Everyone else sees their own personal secrets,
+their explicit user grants, **the organisation's secrets, and those of every
+team and project they belong to** — the levels above them are what the cascade
+on their own page is made of, and a member whose personal secret silently
+stopped applying had nothing on screen to explain why. This exposes no value,
+ciphertext or vault path: a `Secret` row holds none (see "Authority split"), and
+using a secret still runs through `SecretGrant`.
+
+### The three screens
+
+One page per level, all three the same component
+(`admin/src/pages/settings/SecretsPanel.tsx`):
+
+| Page | Route | Shows | "New secret" writes |
+| --- | --- | --- | --- |
+| User → Secrets | `/settings/secrets` | organisation + team + project + own | personal, or a project |
+| Team → Secrets | `/settings/team/secrets` | organisation + this team | this team |
+| Organization → Secrets | `/settings/organization/secrets` | organisation | the organisation |
+
+Each page splits Active from Revoked with a `TabBar` in a `?tab=` param, and
+the organisation page drops the Scope column — every row there is the
+organisation's. The two upper pages are owner-only doorways, matching
+`canManageSecretScope`; a member reaches what their team and organisation set
+through their own page, where it is the part of the cascade that applies to
+them.
 
 ## Capture and ingestion
 

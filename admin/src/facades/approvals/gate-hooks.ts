@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { gmailKeys } from '../gmail/hooks'
+import { gmailKeys } from '../gmail/keys'
 
 /**
  * "Don't ask me again", from the in-thread approval gate.

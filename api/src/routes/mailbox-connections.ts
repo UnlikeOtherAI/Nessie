@@ -11,7 +11,6 @@ import {
   createMailboxDiscoveryService,
   MailboxDiscoveryAddressError,
 } from '@nessie/agent-mail'
-import { hasConnector } from '@nessie/comms-connect'
 import {
   MailboxConnectionError,
   createMailboxConnection,
@@ -25,7 +24,9 @@ import {
 } from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { isCommsProviderConnectable } from './comms/oauth-config.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { mailboxDiscoveryTelemetry } from '../services/mailbox-discovery-telemetry.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -61,19 +62,15 @@ export const registerMailboxConnectionRoutes = (
 ): void => {
   const { prisma, requireActorContext, authSecret } = deps
   // Classification alone must never promise an OAuth button that this process
-  // cannot complete. `hasConnector` proves the adapter was registered at
-  // startup; the matching client pair proves its deployment config exists.
+  // cannot complete. `isCommsProviderConnectable` is the same question the
+  // OAuth start route and `/api/comms/providers` ask, so discovery cannot
+  // offer a provider those two would refuse.
   const discovery = createMailboxDiscoveryService({
     capabilities: {
       appleAuthorization: false,
-      google: hasConnector('google')
-        && Boolean(
-          process.env.NESSIE_COMMS_GOOGLE_CLIENT_ID
-          && process.env.NESSIE_COMMS_GOOGLE_CLIENT_SECRET,
-        ),
+      google: isCommsProviderConnectable('google'),
       jmap: false,
-      microsoft: hasConnector('microsoft')
-        && Boolean(process.env.NESSIE_COMMS_MICROSOFT_CLIENT_ID),
+      microsoft: isCommsProviderConnectable('microsoft'),
     },
   })
 
@@ -179,10 +176,14 @@ export const registerMailboxConnectionRoutes = (
         ...(body.scope ? { scope: body.scope } : {}),
         ...(body.teamId ? { teamId: body.teamId } : {}),
       })
-      return reply.send(createApiResponse(MailboxDiscoveryResultSchema.parse({
+      const discovered = MailboxDiscoveryResultSchema.parse({
         ...result,
         ...(existingConnection ? { existingConnection } : {}),
-      })))
+      })
+      // Domain and categories only — see mailbox-discovery-telemetry.ts for why
+      // the address itself never reaches the log.
+      request.log.info(mailboxDiscoveryTelemetry(discovered), 'mailbox.discovery')
+      return reply.send(createApiResponse(discovered))
     } catch (error) {
       if (error instanceof MailboxDiscoveryAddressError) {
         return sendApiError(reply, 400, 'INVALID_EMAIL_ADDRESS', error.message, 'email')

@@ -1,10 +1,10 @@
 import { TeamMembersSection } from './TeamMembersSection'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { useIsOwner } from '../../components/shared/OwnerGate'
+import { useIsOwner } from '../../facades/auth/hooks'
 import { startExternalSignIn } from '../../lib/external-auth'
-import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
-import { MembersRosterPanel } from './MembersRosterPanel'
+import { useTheme } from '../../providers/ThemeProvider'
+import { MembersRosterPanel } from '../../components/features/settings/MembersRosterPanel'
 
 /**
  * A team's own roster — the direct, top-level peer of
@@ -24,7 +24,7 @@ export const TeamMembersPage = () => {
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
-  const { theme } = useTheme()
+  const { signInTheme } = useTheme()
 
   if (!me) return null
 
@@ -39,7 +39,7 @@ export const TeamMembersPage = () => {
         onReconnect={async () => {
           const providerId = me.auth.providerId
           if (!providerId) throw new Error('UnlikeOtherAI sign-in is not configured.')
-          await startExternalSignIn(providerId, resolveAppliedTheme(theme), {
+          await startExternalSignIn(providerId, signInTheme, {
             returnPath: window.location.pathname + window.location.search,
           })
         }}

@@ -4,6 +4,8 @@ import {
   clampSidebarWidthPercent,
   minimumSidebarWidthPercent,
   parseStoredSidebarWidthPercent,
+  resolveStoredSidebarWidthPercent,
+  sidebarWidthCookieName,
 } from '../src/layouts/admin-shell/ResizableSidebar'
 import { RESIZE_HANDLE_AUTO_HIDE_MS } from '../src/hooks/useResizeHandleReveal'
 import { readFileSync } from 'node:fs'
@@ -25,6 +27,37 @@ test('a stored viewport-relative width remains proportional when it is in bounds
 test('an absent device preference uses the current sidebar width as its baseline', () => {
   assert.equal(parseStoredSidebarWidthPercent(null), null)
   assert.equal(parseStoredSidebarWidthPercent('30'), 30)
+})
+
+// Channels, Projects, Knowledge and Admin each show a different kind of list,
+// so one shared cookie meant resizing any of them resized all four.
+test('each shell section persists its own sidebar width', () => {
+  assert.equal(sidebarWidthCookieName('channels'), 'sidebarWidthPercent-channels')
+  assert.equal(sidebarWidthCookieName('projects'), 'sidebarWidthPercent-projects')
+  assert.notEqual(sidebarWidthCookieName('knowledge'), sidebarWidthCookieName('admin'))
+
+  // getCookie compiles the name into a RegExp, so a metacharacter in it would
+  // let one section read another's value.
+  assert.doesNotMatch(sidebarWidthCookieName('knowledge'), /[.*+?^${}()|[\]\\]/)
+})
+
+test('a section that has never been resized falls back to the pre-section width', () => {
+  assert.equal(resolveStoredSidebarWidthPercent(null, '30'), 30)
+  assert.equal(resolveStoredSidebarWidthPercent('22', '30'), 22)
+  assert.equal(resolveStoredSidebarWidthPercent(null, null), null)
+})
+
+test('the sidebar re-reads its width when the section changes', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
+    'utf8',
+  )
+
+  // The width is state seeded at mount, so the per-section key is what stops
+  // one section's width from being carried — and then persisted — into another.
+  assert.match(source, /<SectionResizableSidebar[\s\S]*?key=\{section\}/)
+  assert.match(source, /setCookie\(sidebarWidthCookieName\(section\)/)
+  assert.doesNotMatch(source, /setCookie\(LEGACY_SIDEBAR_WIDTH_COOKIE/)
 })
 
 test('the large-phone landscape sidebar is fixed and exposes no resize control', () => {

@@ -1,8 +1,8 @@
-import { activeNavSection, type NavSectionId } from '../layouts/admin-shell/nav-items'
+import { activeNavSection, type NavSectionId } from './nav-items'
 import {
   type PhoneHistoryLedger,
   pathnameOf,
-} from '../layouts/admin-shell/phone-navigation-ledger'
+} from './phone-navigation-ledger'
 
 // Reads on the one history ledger that the top bar, the iPad toolbar and the
 // rail used to keep for themselves. The ledger (phone-navigation-ledger.ts)

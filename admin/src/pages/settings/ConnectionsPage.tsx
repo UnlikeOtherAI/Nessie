@@ -13,7 +13,7 @@ import {
 } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { QueryState } from '../../components/shared/QueryState'
-import { SettingsPanel } from './settings-shared'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { ProjectToolConnections } from './connections/ProjectToolConnections'

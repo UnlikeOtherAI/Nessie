@@ -12,16 +12,44 @@ summary and points here; **this file is the rule**.
   **no** raw hex or Tailwind named-color utilities; they reference tokens via
   `var(--x)` / `bg-[var(--x)]`.
 - Switcher: `ThemeProvider` (`admin/src/providers/`) + Appearance page
-  (`/settings/appearance`); choice persists in `localStorage["nessie.theme"]`
-  for logged-out screens and on `User.preferences.theme` for signed-in users, so
-  web, desktop, and mobile use the same account theme.
-- Adding a color theme = add a `[data-theme]` block (redeclare every token) +
-  register the id in `ThemeProvider`. A product theme may additionally own a
-  coherent geometry and typography treatment through selectors scoped to the
-  same `[data-theme]`; those selectors still live only in `styles.css` and
-  must restyle shared primitives rather than individual routes. Space White is
-  the reference implementation. See
-  [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+  (`/settings/appearance`); the choice persists on `User.preferences.theme` for
+  signed-in users, so web, desktop, and mobile use the same account theme, and
+  in **three** `localStorage` keys for the logged-out screen and for a themed
+  first paint — `nessie.theme.choice` (what the person picked, written only by
+  the picker), `nessie.theme.applied` (what was last on screen) and
+  `nessie.theme.css` (the organisation palette's rule, a hint the API's answer
+  replaces on every load). They replaced the single `nessie.theme`, which
+  conflated a choice with a default: the apply effect wrote its own default
+  back as though it were a pick, and first sign-in copied it onto the account,
+  so every row read `'sandstone'` and no organisation default could ever reach
+  an existing person.
+- Adding a theme = add a `[data-theme]` block (redeclare every token) + register
+  the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+- **One theme is data, not CSS: the organisation's own.** An organisation
+  administrator authors a palette on `/settings/organization?tab=appearance`; it
+  appears as one more card on the per-user Colours panel, labelled with the
+  organisation's name, and is the default for anyone who has not chosen. It is
+  **colours only** — type, radii, spacing, motion and `--aura-wash` are `:root`
+  in `styles.css` and are not authorable, which the `.strict()` four-field seed
+  schema enforces at the wire. The admin authors four seeds
+  (appearance, accent, surface, optional sidebar) and `@nessie/schemas`
+  `organization-theme.ts` derives the other forty-eight tokens; that derivation
+  lives in the shared package for the `secret-precedence.ts` reason — the API
+  refuses a palette that fails a contrast floor and the admin previews the same
+  one, so two derivations would be two themes. `ThemeProvider` keeps the result
+  in one runtime-filled `<style id="nessie-organization-theme">` declaring
+  `[data-theme="organization"]`, so switching stays a single `data-theme` write
+  and picking a built-in makes it inert — inline custom properties on the root
+  element would instead beat every `[data-theme]` block until removed by hand.
+  `THEME_TOKENS` is pinned against the stylesheet by
+  `admin/test/organization-theme-tokens.test.ts`: a token added to the built-ins
+  without a derivation rule fails CI rather than rendering as the `@property`
+  registration's black. The palette is tenant state and deliberately does not
+  reach `/login`, which is instance state (the `instanceBrand` doctrine).
+  There is no lock — an organisation theme is a default, never a mandate, since
+  forcing one takes High Contrast away from the person who needs it. Full
+  design, formulas and contrast floors:
+  [docs/plans/2026-09-05-organisation-custom-theme.md](../plans/2026-09-05-organisation-custom-theme.md).
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
   validation, feedback, loading/empty/error states, chips, key-value views and
   confirm flows were audited across every content page; the primitives mostly
@@ -49,15 +77,55 @@ summary and points here; **this file is the rule**.
   that are part of Projects, Knowledge, or Channels use `true`, so the shared
   viewport keeps its horizontal-scroll behaviour without leaking an expand
   control into operational screens.
-- **One selection strip, everywhere.** Every compact single-select strip in
+- **A page-header action is styled by the role it declares.** The header is
+  where a screen says what a person can do here, so its controls carry a box:
+  `ResponsivePageHeader` puts `.admin-page-action` plus one role class on every
+  action, `styles.css` owns the fill, and the utilities that stay at the call
+  site own the box (height, width, gap, padding — deliberately unclaimed by the
+  unlayered rules). Colour spelt as utilities instead is how the row's hover
+  rule ended up with nothing to attach to, leaving a stylesheet rule live in
+  the file and dead on the screen. The roles:
+  - `primary` (filled with `--accent`) — **the one action the screen exists
+    for. Creating the item the screen lists is always primary**, as is
+    committing an edit in progress (Save, Publish, Done, Send invitation).
+  - `selected`, and a menu that is open (tinted with `--accent-soft`) — a
+    control that is currently on. Tinted, never filled, so it does not
+    outrank the primary.
+  - everything else (bordered, `--overlay-weak`) — secondary.
+
+  **One primary per header.** Two filled buttons name no decision, so where a
+  creation and a commit meet, the commit wins and the creation drops to
+  secondary — the Knowledge reader fills Publish while a page is a draft and
+  New page only once it is not; Knowledge's space header fills New page and
+  leaves New folder and Upload file beside it; a dashboard being arranged
+  fills Done, not Add widget. Re-reading a screen (Refresh) and closing a
+  panel are never primary. A label never draws its own mark — "+ Add widget"
+  is `icon: faPlus` and the label `Add widget`. Every hover and focus rule is
+  guarded with `:not(:disabled)`: the rules are unlayered, so a bare `:hover`
+  beats the `opacity-50` utility marking a disabled action and repaints the
+  one cue that it cannot be pressed, exactly as the pointer arrives.
+  `admin/test/page-header-actions.test.ts` holds all of this, and
+  `pnpm --filter @nessie/admin test:e2e:page-header` screenshots every theme's
+  header into `e2e/screenshots/page-header/`.
+- **One segmented strip, everywhere.** Every compact single-select strip in
   the admin — detail tabs, page sections, filter segments, and inline form
-  choices — is `components/primitives/TabBar.tsx` (a single sliding indicator,
-  rendered as a pill or underline by the active theme, `role="tablist"` or
-  `role="radiogroup"`). `ChoiceGroup` delegates its inline
+  choices — is `components/primitives/TabBar.tsx` (a single sliding pill,
+  `role="tablist"` or `role="radiogroup"`). `ChoiceGroup` delegates its inline
   form variant to it; explanatory card choices remain cards. Page and filter
   state lives in a URL param written with `replace`, never a history entry;
   transient form values do not. The navigation rule against another fork lives
   in [docs/navigation/overview.md](../navigation/overview.md).
+  **Below the width its labels need, the strip is a dropdown** naming the
+  current selection — not a row that scrolls, which hides the very options it
+  exists to offer. That is a measurement, never a breakpoint: the same strip
+  collapses inside a narrow side panel on a desktop and stays a strip on a
+  phone when it holds two short words, and only measuring tells those apart.
+  The decision is `components/primitives/tab-bar-fit.ts`, kept pure because a
+  `ResizeObserver` feeds it and browsers stop delivering one to a hidden tab.
+  A call site may pass `collapse="never"` only where the row is known to fit.
+  Full-width strips therefore floor each item at `min-width: max-content`:
+  without it a shortage is absorbed by crushing labels into each other and the
+  strip never reports the overflow that would turn it into a dropdown.
 - **One identity picture, one shape, one source.** Every avatar in the admin is
   `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
   for its kind; a call site says what it depicts and never assembles a tile. Its
@@ -70,7 +138,7 @@ summary and points here; **this file is the rule**.
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
 - **One agent-visibility marker wherever identity drives an action.** Every
   agent picker and actionable agent row uses
-  `components/features/agents/AgentVisibilityPill.tsx`: `Public` for an
+  `components/shared/AgentVisibilityPill.tsx`: `Public` for an
   organization-visible shared
   agent and a lock-bearing `Private` for a personal one. Native `<select>`
   controls use that component's text formatter because option elements cannot
@@ -108,34 +176,14 @@ summary and points here; **this file is the rule**.
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never
   the page.
-- **One header hierarchy, and every line earns its place.** `ScreenHeader` owns
-  the title, optional eyebrow, optional subtitle and tabs. An eyebrow names a
-  stable scope or product area (`User`, `Team`, `Organization`, `Agents`); it
-  is not a second title. A subtitle exists only when it carries entity metadata,
-  a capability state, or the meaning of the active tab. Root catalogues and
-  lists do not repeat their title with generic explanatory copy. The shared
-  `.admin-page-subtitle` owns subtitle size, colour and line-height, so call
-  sites supply content and layout constraints only. Header icons are 16px in a
-  36px action, action labels are 13px, and compact actions are 36px squares.
-  Selected, pressed and open
-  controls expose their state structurally (`selected`, `aria-pressed`,
-  `aria-expanded`) and the theme styles those states; a route never paints a
-  private active treatment.
-- **One icon family for product controls.** Repeated interface actions use the
-  installed Font Awesome set through a shared primitive, never text glyphs or
-  one-off inline SVGs. In the sidebar, section add actions, disclosure chevrons,
-  row menus and starred state are rendered by `SidebarIcons.tsx`; their
-  28px hit areas and hover, pressed, open and focus-visible states live in
-  `styles.css`. Text symbols remain valid only when the symbol is the content
-  itself (for example a mathematical sign), not when it stands in for a button
-  icon.
 - **One sign-in surface.** The admin login (`/login`) and the public landing
   (`nessie.works`) are the same screen: `packages/sign-in-surface` owns the
   layout (`SignInSurface`), the showcase panel, the app-download tiles and
   the shared copy, and ships only `.signin-*` classes that read host tokens.
   The admin supplies its themes; the landing imports the package's
-  `tokens.css`, whose values mirror the Space White block here. A change to
-  the sign-in doorway is made in the package, never by restyling one host.
+  `tokens.css`, which owns the doorway palette for that themeless host. A
+  change to the sign-in doorway is made in the package, never by restyling
+  one host.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
   minted on the admin origin, so the landing hands off and the admin starts
   the provider flow at once.

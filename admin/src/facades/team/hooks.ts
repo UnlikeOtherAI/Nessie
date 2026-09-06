@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { teamKeys } from '../../lib/query-keys'
+import { teamKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { uploadTeamAvatar } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'

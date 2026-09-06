@@ -10,7 +10,9 @@ import {
 } from '../services/infisical-vault.js'
 import {
   canManageSecretScope,
+  findLockAboveScope,
   putSecretInVault,
+  secretsVisibleToActor,
   SecretScopeSchema,
   vaultSecretName,
 } from '../services/secret-vault-write.js'
@@ -23,6 +25,13 @@ const CreateSecretBodySchema = z.object({
   provider: z.string().trim().max(120).optional(),
   scopeType: SecretScopeSchema,
   scopeId: z.string().uuid().optional(),
+  /**
+   * Stop every narrower scope overriding this name. Meaningless at `personal`
+   * — nothing sits below a person — and refused there rather than silently
+   * stored, so the switch the form shows and the row the database holds cannot
+   * disagree.
+   */
+  locked: z.boolean().optional(),
   expiresAt: z.string().datetime().optional(),
 }).strict()
 
@@ -42,6 +51,7 @@ const publicSecret = (secret: {
   provider: string | null
   scopeType: string
   scopeId: string
+  locked: boolean
   rotatedAt: Date | null
   expiresAt: Date | null
   status: string
@@ -54,6 +64,7 @@ const publicSecret = (secret: {
   provider: secret.provider,
   scopeType: secret.scopeType,
   scopeId: secret.scopeId,
+  locked: secret.locked,
   rotatedAt: secret.rotatedAt?.toISOString() ?? null,
   expiresAt: secret.expiresAt?.toISOString() ?? null,
   status: secret.status,
@@ -127,26 +138,11 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   app.get('/api/secrets', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const isOwner = actorContext.actor.roles?.includes('owner') ?? false
-    const secrets = await prisma.secret.findMany({
-      where: {
-        organizationId: actorContext.tenant.organizationId,
-        ...(isOwner ? {} : {
-          OR: [
-            { scopeType: 'personal', scopeId: actorContext.actor.actorId },
-            {
-              grants: {
-                some: {
-                  principalType: 'user',
-                  principalId: actorContext.actor.actorId,
-                  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-                },
-              },
-            },
-          ],
-        }),
-      },
-      orderBy: { createdAt: 'desc' },
+    const secrets = await secretsVisibleToActor({
+      actorId: actorContext.actor.actorId,
+      isOwner: actorContext.actor.roles?.includes('owner') ?? false,
+      organizationId: actorContext.tenant.organizationId,
+      prisma,
     })
     return createApiResponse(secrets.map(publicSecret))
   })
@@ -170,6 +166,34 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     })
     if (!scope.allowed) {
       sendApiError(reply, 403, 'SECRET_SCOPE_DENIED', 'You cannot manage secrets in this scope.')
+      return reply
+    }
+    if (body.locked && body.scopeType === 'personal') {
+      sendApiError(
+        reply,
+        400,
+        'SECRET_LOCK_SCOPE_INVALID',
+        'A personal secret has nothing below it to lock.',
+      )
+      return reply
+    }
+    // A lock above has already settled this name, so the write cannot be
+    // stored as an override the resolver would then ignore. Refusing here is
+    // what makes the greyed-out row on a lower page honest.
+    const lock = await findLockAboveScope({
+      actorId: actorContext.actor.actorId,
+      name: body.name,
+      organizationId: actorContext.tenant.organizationId,
+      prisma,
+      scopeType: body.scopeType,
+    })
+    if (lock) {
+      sendApiError(
+        reply,
+        409,
+        'SECRET_LOCKED_ABOVE',
+        `"${body.name}" is locked at the ${lock.scopeType} level and cannot be overridden here.`,
+      )
       return reply
     }
 
@@ -197,6 +221,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
           createdById: actorContext.actor.actorId,
           description: body.description,
           expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
+          locked: body.locked ?? false,
           name: body.name,
           organizationId: actorContext.tenant.organizationId,
           provider: body.provider,
@@ -217,7 +242,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       resourceId: secret.id,
       resourceType: 'secret',
       outcome: 'success',
-      metadata: { reference: secret.reference, scopeType: secret.scopeType },
+      metadata: { locked: secret.locked, reference: secret.reference, scopeType: secret.scopeType },
     })
     return reply.code(201).send(createApiResponse(publicSecret(secret)))
   })

@@ -5,7 +5,7 @@ import {
   resolvePhoneBackSwipeOutcome,
   type PhoneBackSwipeOutcome,
   type PhoneBackSwipeSample,
-} from '../../layouts/admin-shell/phone-navigation-gesture'
+} from '../../navigation/phone-navigation-gesture'
 import type { SheetSide } from '../../navigation/overlay'
 
 // Swipe-to-close for a Sheet, along the sheet's own axis. It is the phone

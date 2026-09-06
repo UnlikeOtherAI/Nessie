@@ -1,13 +1,17 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocalBack } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { useLocalBack } from './LocalBackContext'
+import { ScreenBarLayerProvider } from './ScreenBarLayer'
+import { setLayerFallback } from './screen-bar'
 
 // A nested stage is how a state-driven screen joins the navigation stack: a
 // column browser's next column, a Knowledge folder → document → history →
@@ -29,6 +33,9 @@ export type NestedStageHost = {
   // change) re-asserts itself instead of rendering into a container nothing
   // shows.
   stageIds: readonly string[]
+  // A stage's layer key (`section:depth:key`), which the stage itself cannot
+  // compute: the section and the depth it was pushed at belong to the stack.
+  layerKeyOf: (id: string) => string | null
   // Every stage entry the stack still holds, including one sliding out
   // above the current position: its page keeps rendering it until the
   // stack releases the layer, so the Back slide never plays empty.
@@ -56,6 +63,11 @@ export type NestedStageProps = {
   priority: number
   // Whether the edge swipe may close it. An editor mid-flush says false.
   swipeable?: boolean
+  // What the native navigation bar says while this stage is on top, for a
+  // stage that draws no header of its own (the dashboard panels, the executor
+  // create panel). It is used only when nothing inside the stage has published
+  // one, so a stage that does draw a header still wins (screen-bar.ts).
+  title?: string
 }
 
 const createContainer = (): HTMLElement | null => {
@@ -74,6 +86,7 @@ export const NestedStage = ({
   onBack,
   priority,
   swipeable,
+  title,
 }: NestedStageProps) => {
   const host = useContext(NestedStageHostContext)
   const [container] = useState(createContainer)
@@ -93,16 +106,23 @@ export const NestedStage = ({
   // one id; only the instance that pushed the entry may pop it, or the
   // second instance's unmount would close the first one's open stage.
   const owns = useRef(false)
+  // Ownership decides whether this instance may publish the native bar for
+  // the stage, and the children's own effects run before this layout effect —
+  // so the first publish from a fresh instance is inert and needs a render to
+  // follow. State, not a ref read, is what guarantees that render happens.
+  const [owned, setOwned] = useState(false)
   useLayoutEffect(() => {
     if (!host || !container) return
     if (active) {
       if (!host.stageIds.includes(id)) {
         host.activate(id, container)
         owns.current = true
+        setOwned(true)
       }
     } else if (owns.current && host.stageIds.includes(id)) {
       host.deactivate(id, { animate: true })
       owns.current = false
+      setOwned(false)
     }
   }, [active, container, host, id])
 
@@ -110,6 +130,28 @@ export const NestedStage = ({
   // unmount leave reads the latest host through a ref rather than
   // re-running — a cleanup on every commit would pop the stage it just
   // pushed.
+  // The stage's bar of last resort, for a stage that draws no header. Set
+  // only by the owning instance, and only while it is the stage on top, so a
+  // retained instance beneath cannot overwrite it.
+  const stageLayerKey = owned && host ? host.layerKeyOf(id) : null
+  const backRef = useRef(onBack)
+  backRef.current = onBack
+  // Handed to whatever renders inside: a pane owns its title and its actions
+  // but not the way out of the stage it sits in.
+  const stageBack = useMemo(
+    () => ({ label, onBack: () => backRef.current() }),
+    [label],
+  )
+  useEffect(() => {
+    if (!stageLayerKey) return undefined
+    setLayerFallback(stageLayerKey, title === undefined ? null : {
+      actions: [],
+      back: { label, onBack: () => backRef.current() },
+      title,
+    })
+    return () => setLayerFallback(stageLayerKey, null)
+  }, [label, stageLayerKey, title])
+
   const hostRef = useRef(host)
   hostRef.current = host
   useLayoutEffect(() => () => {
@@ -118,7 +160,21 @@ export const NestedStage = ({
 
   if (hosted) {
     const shown = active || host.retainedIds.includes(id)
-    return shown ? createPortal(children, container) : null
+    // The children are portalled from this component's React position, so a
+    // header inside the stage would otherwise read the *route* layer's key
+    // from context and publish its bar over the page beneath it.
+    return shown
+      ? createPortal(
+        <ScreenBarLayerProvider
+          back={stageBack}
+          isStage
+          layerKey={owned ? host.layerKeyOf(id) : null}
+        >
+          {children}
+        </ScreenBarLayerProvider>,
+        container,
+      )
+      : null
   }
   return active ? <>{children}</> : null
 }

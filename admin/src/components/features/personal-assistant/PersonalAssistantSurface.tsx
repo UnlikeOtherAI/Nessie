@@ -4,12 +4,11 @@ import type {
   PersonalAssistantConfigSummary,
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
-import { sidebarAriaCurrent } from '../../../layouts/admin-shell/SidebarRow'
+import { sidebarAriaCurrent } from '../../shared/row-a11y'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../../shared/AgentAvatar'
-import { SidebarStarIcon } from '../../../layouts/admin-shell/SidebarIcons'
 import { IdentityTile } from '../../primitives/IdentityTile'
 
 type PersonalAssistantSidebarEntryProps = {
@@ -139,7 +138,7 @@ export const PersonalAssistantSidebarEntry = ({
             onToggleStar()
           }}
         >
-          <SidebarStarIcon starred={starred} />
+          {starred ? '★' : '☆'}
         </span>
       ) : null}
     </button>

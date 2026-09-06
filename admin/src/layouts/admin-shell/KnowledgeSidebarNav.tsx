@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { faBook, faChartColumn, faLayerGroup, faPlus, faUser } from '@fortawesome/free-solid-svg-icons'
+import { faBook, faChartColumn, faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
@@ -10,14 +10,14 @@ import { StorageUsageMeter } from '../../components/features/knowledge/StorageUs
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
 import { useScrollMemory } from '../../hooks/useScrollMemory'
-import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
+import { isReactNativeWebView } from '../../lib/native-shell'
+import { usePhoneLayout } from '../../navigation/mobile-shell'
 import {
   resolveKnowledgeSidebarSelectionPath,
   shouldHighlightKnowledgeSidebarSelection,
-} from './phone-navigation'
+} from '../../navigation/phone-navigation'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
-import { SidebarIconButton } from './SidebarIcons'
-import { sidebarAriaCurrent } from './SidebarRow'
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 
 // Same cookie-backed persistence the channels, projects and admin rails use.
 // The previous plain-label version was deliberate — collapse state was
@@ -224,12 +224,14 @@ export const KnowledgeSidebarNav = () => {
 
         <SidebarMenuSection
           action={(
-            <SidebarIconButton
+            <button
               aria-label="Create space"
-              icon={faPlus}
+              className="admin-sidebar-plus"
               onClick={() => setCreateOpen(true)}
-              placement="section"
-            />
+              type="button"
+            >
+              +
+            </button>
           )}
           id="kb-spaces"
           isCollapsed={collapsedSections.spaces ?? false}

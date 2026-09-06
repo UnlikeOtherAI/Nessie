@@ -1,5 +1,6 @@
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
+import reactHooksPlugin from 'eslint-plugin-react-hooks'
 
 // Shared with the navigation-gate blocks below (docs/navigation/overview.md §4.18):
 // ESLint flat config replaces a rule's whole value — including every
@@ -23,6 +24,86 @@ const FORWARDED_HEADER_RESTRICTED_SYNTAX = [
   },
 ]
 
+// The egress block's syntax half, hoisted for the same reason as the pair
+// above: the horizontal-scaling block at the bottom of this file also sets
+// 'no-restricted-syntax' for api/src and worker/src, and flat config replaces
+// a rule's whole value rather than merging it. Whichever block matches last
+// owns every selector for those two trees, so both must carry these.
+const EGRESS_RESTRICTED_SYNTAX = [
+  {
+    selector: "MemberExpression[object.name='globalThis'][property.name='fetch']",
+    message:
+      'globalThis.fetch bypasses the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
+  },
+  {
+    selector: "MemberExpression[object.name='window'][property.name='fetch']",
+    message:
+      'window.fetch bypasses the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
+  },
+  {
+    selector: "TSTypeQuery[exprName.name='fetch']",
+    message:
+      "'typeof fetch' makes the ambient fetch part of this module's contract — take a PinnedFetch/"
+      + 'FetchLike type from the transport module instead (criteria in eslint.config.js).',
+  },
+]
+
+// Horizontal-scaling invariant 1 (docs/standards/horizontal-scaling.md): no
+// module-scope mutable state in the API or the worker. A second instance
+// cannot see it, so anything written there is either lost work or an
+// authority only one replica holds — the bootstrap token minted per process
+// (audit 1.2), the per-replica rate-limit Map that makes the effective limit
+// `max × N` (audit 1.3), and the cloud-browser CDP pool that strands a
+// suspended run on the worker that opened it (audit 8.1) are all this shape.
+//
+// The selectors are deliberately narrow, because module-scope `new Set([...])`
+// is far more often a frozen constant table (allowed MIME types, tool-name
+// lists) than a store. A mutable store is created empty and filled at runtime,
+// so only the zero-argument constructor is banned; `new Set([...])` and
+// `new Map([[k, v]])` are constant tables and stay legal, and so is an empty
+// one annotated `ReadonlySet`/`ReadonlyMap` (the type makes it unfillable
+// through that binding — `NO_IDENTITY_TOOLS` in worker/src/run/delegated-
+// identity.ts is the case that earned the exemption). `let` at module scope is
+// banned outright: a memo, a cached client or a "did we already do this" flag
+// is per process by definition.
+//
+// Known gap, stated so nobody reads a green lint as a proof: the selectors
+// anchor on `Program`, so per-process state held in a closure inside a
+// once-per-process factory is invisible to them. `bootstrapTokenState` in
+// api/src/lib/server-context.ts (audit 1.2) and the `buckets` Map inside
+// api/src/lib/rate-limit.ts (audit 1.3) are exactly that shape and neither
+// trips this rule. Widening to every function-scoped `let` would flag the
+// whole tree; the standards file is the rule, this block is only the ratchet.
+const MODULE_MUTABLE_STATE_MESSAGE =
+  'Module-scope mutable state is per replica: a second instance cannot see it, and a restart loses it. '
+  + 'Put the state in Postgres (a claimed row, a conditional UPDATE, rate_limit_buckets), or make it a '
+  + 'read-through bounded cache with a TTL that is never an authority. '
+  + 'See docs/standards/horizontal-scaling.md.'
+const NOT_READONLY_COLLECTION =
+  ':not([id.typeAnnotation.typeAnnotation.typeName.name=/^Readonly(Map|Set|WeakMap)$/])'
+const NEW_EMPTY_COLLECTION =
+  ' > NewExpression[callee.name=/^(Map|Set|WeakMap)$/][arguments.length=0]'
+const MODULE_MUTABLE_STATE_SYNTAX = [
+  {
+    selector: 'Program > VariableDeclaration[kind="let"]',
+    message: `Module-scope 'let' is per-process state. ${MODULE_MUTABLE_STATE_MESSAGE}`,
+  },
+  {
+    selector: 'Program > ExportNamedDeclaration > VariableDeclaration[kind="let"]',
+    message: `An exported module-scope 'let' is per-process state. ${MODULE_MUTABLE_STATE_MESSAGE}`,
+  },
+  {
+    selector: 'Program > VariableDeclaration > '
+      + `VariableDeclarator${NOT_READONLY_COLLECTION}${NEW_EMPTY_COLLECTION}`,
+    message: `An empty module-scope Map/Set/WeakMap is a per-process store. ${MODULE_MUTABLE_STATE_MESSAGE}`,
+  },
+  {
+    selector: 'Program > ExportNamedDeclaration > VariableDeclaration > '
+      + `VariableDeclarator${NOT_READONLY_COLLECTION}${NEW_EMPTY_COLLECTION}`,
+    message: `An exported empty Map/Set/WeakMap is a per-process store. ${MODULE_MUTABLE_STATE_MESSAGE}`,
+  },
+]
+
 // Navigation stack containers are overflow: clip, never hidden — a
 // scrollIntoView() run while a screen is `useLayoutEffect`-mounted off to the
 // side (parked for a push) scrolls the clipped container itself, and the
@@ -37,6 +118,21 @@ const SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX = {
     "scrollIntoView() inside useLayoutEffect can run while the screen is parked "
     + "off-screen mid-push and scroll the clipped stack container itself — see "
     + 'docs/navigation/overview.md §2. Move the call to useEffect, or drop the layout timing.',
+}
+
+// React hook correctness gate (AGENTS.md → "Linting"): the plugin
+// ships a `configs.flat['recommended-latest']` preset, but that preset also
+// turns on the react-compiler diagnostics (set-state-in-effect,
+// immutability, …) which are a separate, much larger conversation. Only the
+// two hook-correctness rules are registered here, and both at 'error' —
+// admin's lint script is `--max-warnings 0`, so 'warn' would fail the build
+// anyway and would only hide the severity from a reader of this file.
+// Rules set: 'react-hooks/*' only, so this block cannot clobber the
+// admin-scoped 'no-restricted-syntax' gates below (see the note on
+// FORWARDED_HEADER_RESTRICTED_SYNTAX above).
+const REACT_HOOKS_RULES = {
+  'react-hooks/rules-of-hooks': 'error',
+  'react-hooks/exhaustive-deps': 'error',
 }
 
 export default [
@@ -113,7 +209,7 @@ export default [
     // (docs/plans/2026-08-13-responsive-coherence.md §B/§D, Phase 6): viewport
     // bands derive only from the useViewport store (the @theme static tokens in
     // styles.css are the sole numeric source), and shell-vs-viewport composition
-    // lives in lib/mobile-shell.ts + ShellEnvironmentProvider. Pages must never
+    // lives in navigation/mobile-shell.ts + ShellEnvironmentProvider. Pages must never
     // re-classify the viewport from raw window reads. The allowlisted modules
     // below are either the classification owners themselves (useViewport,
     // mobile-shell), ThemeProvider's prefers-color-scheme listener, or
@@ -125,9 +221,8 @@ export default [
     ignores: [
       'admin/src/hooks/useViewport.ts',
       'admin/src/providers/ThemeProvider.tsx',
-      'admin/src/lib/mobile-shell.ts',
+      'admin/src/navigation/mobile-shell.ts',
       'admin/src/layouts/admin-shell/ResizableSidebar.tsx',
-      'admin/src/pages/channels/useReplyThread.ts',
       // The same drag geometry, lifted out of useReplyThread so the reply
       // panel and the agent-screen panel cannot disagree about clamping.
       'admin/src/hooks/useSidePanelGeometry.ts',
@@ -146,33 +241,14 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            {
-              name: '../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-            {
-              name: '../../../../hooks/useMediaQuery',
-              message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
-            },
-          ],
+          // A `patterns` group entry already matches `../hooks/useMediaQuery`
+          // at every relative depth (F15) — the four depth-spelled `paths`
+          // entries this used to carry were exact duplicates of it.
           patterns: [
             {
               group: ['**/hooks/useMediaQuery'],
               message:
-                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in lib/mobile-shell.ts.',
+                'useMediaQuery is retired (plan §B): use useViewport() bands or the semantic shell hooks in navigation/mobile-shell.ts.',
             },
           ],
         },
@@ -288,6 +364,31 @@ export default [
     },
   },
   {
+    // Error-shape reading ratchet (F4): one local `errorMessage` helper after
+    // another hand-rolled `error instanceof Error ? error.message : fallback`,
+    // throwing away the `ApiClientError.details` field errors a validation
+    // failure carries. `facades/forms/form-errors.ts` exports `formErrorMessage` for
+    // exactly this — import it instead of re-declaring the same helper.
+    // Same files/ignores as the navigate() admission block above, so this
+    // does not reintroduce FORWARDED_HEADER_RESTRICTED_SYNTAX or
+    // SCROLL_INTO_VIEW_IN_LAYOUT_EFFECT_SYNTAX for files where the block
+    // above already turns 'no-restricted-syntax' off — see the file-top
+    // comment on FORWARDED_HEADER_RESTRICTED_SYNTAX for why that matters.
+    files: ['admin/src/**/*.ts', 'admin/src/**/*.tsx'],
+    ignores: ['admin/src/navigation/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "VariableDeclarator[id.name='errorMessage'] > ArrowFunctionExpression",
+          message:
+            "A local 'errorMessage' helper duplicates facades/forms/form-errors.ts — import "
+            + 'formErrorMessage(error, fallback) instead of hand-rolling error.message reading.',
+        },
+      ],
+    },
+  },
+  {
     // Egress fetch boundary gate (docs/plans/2026-08-13-security-boundary-hardening.md,
     // Workstream 3d): the *transport* boundary is the branded `SecureTransport`
     // built inside packages/runtime (safeFetch/pinnedFetch, redirect-policy.ts)
@@ -393,22 +494,7 @@ export default [
       'no-restricted-syntax': [
         'error',
         ...FORWARDED_HEADER_RESTRICTED_SYNTAX,
-        {
-          selector: "MemberExpression[object.name='globalThis'][property.name='fetch']",
-          message:
-            'globalThis.fetch bypasses the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
-        },
-        {
-          selector: "MemberExpression[object.name='window'][property.name='fetch']",
-          message:
-            'window.fetch bypasses the pinned egress boundary — use safeFetch/pinnedFetch (@nessie/runtime).',
-        },
-        {
-          selector: "TSTypeQuery[exprName.name='fetch']",
-          message:
-            "'typeof fetch' makes the ambient fetch part of this module's contract — take a PinnedFetch/"
-            + 'FetchLike type from the transport module instead (criteria in eslint.config.js).',
-        },
+        ...EGRESS_RESTRICTED_SYNTAX,
       ],
       'no-restricted-imports': [
         'error',
@@ -427,6 +513,107 @@ export default [
             },
           ],
         },
+      ],
+    },
+  },
+  {
+    // Every React tree in the repo: admin's app and its node:test suite, plus
+    // the shared sign-in surface. packages/client-core is deliberately absent —
+    // it is framework-free (no hook, no JSX) and registering the plugin there
+    // would claim a React dependency it does not have.
+    files: [
+      'admin/src/**/*.ts',
+      'admin/src/**/*.tsx',
+      'admin/test/**/*.ts',
+      'admin/test/**/*.tsx',
+      'packages/sign-in-surface/src/**/*.ts',
+      'packages/sign-in-surface/src/**/*.tsx',
+    ],
+    plugins: {
+      'react-hooks': reactHooksPlugin,
+    },
+    rules: REACT_HOOKS_RULES,
+  },
+  {
+    // Horizontal-scaling ratchet (docs/standards/horizontal-scaling.md
+    // invariant 1; docs/plans/2026-09-05-horizontal-scaling-statelessness/
+    // overview.md Phase 0.2). Same shape as the egress block above: this lint
+    // is NOT the boundary — Postgres is, and the standards file is the rule —
+    // it is the ratchet that keeps today's tree from growing a new per-process
+    // authority while Phases 1–5 remove the ones that exist.
+    //
+    // It repeats the forwarded-header and egress selectors because it is the
+    // last block matching api/src and worker/src, and flat config would
+    // otherwise drop them for those two trees (see the comment on
+    // EGRESS_RESTRICTED_SYNTAX).
+    //
+    // Allowlist admission criteria — an entry must be one of:
+    //   (a) an audited item with a numbered fix in the horizontal-scaling
+    //       plan, named here with its finding number, or
+    //   (b) process-local state that is genuinely correct per process: a
+    //       resource whose lifetime IS this process (a pool, a listener, a
+    //       socket), or a lazily-built immutable table that any replica would
+    //       rebuild identically.
+    // Nothing else is admissible. **The list only shrinks.** A file leaves it
+    // in the change that removes its last offense; adding a file needs a
+    // finding number or a (b) justification in the comment beside it.
+    files: ['api/src/**/*.ts', 'worker/src/**/*.ts'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.spec.ts',
+      '**/test/**',
+      '**/tests/**',
+      '**/test-*.ts',
+      '**/__fixtures__/**',
+      '**/fixtures/**',
+      // --- (a) audited defects, each with the finding that owns its fix ---
+      'worker/src/run/browser-cloud/session-pool.ts', // 8.1 — in-memory CDP pool; becomes a re-attaching socket cache in Phase 2.7.
+      'worker/src/control/registry-sync-sweep.ts', // 5.9 — process-local `inFlight` flag; moves under withSweepLock in Phase 2.9.
+      'worker/src/control/automatic-membership/rate-limit.ts', // 5.6 — per-process buckets; Postgres token bucket in Phase 5.3.
+      'worker/src/run/external-conversation-store.ts', // 5.11 — per-process thread locks; covered by the run-slot advisory lock above them.
+      'worker/src/run/execute/tool-registry.ts', // 5.12 — per-process memo of seeded builtin-tool organisations; waste only.
+      'api/src/services/uoa-roster-subjects.ts', // 3.1 — 30 s roster-subject cache gating the avatar relay; documented trade-off.
+      'api/src/services/knowledge-query-embedding.ts', // 4.4 — 15 min / 500-entry query-embedding cache; a cold replica recomputes.
+      // --- (b) genuinely per process: a process-lifetime resource, or a
+      //         lazily-built table any replica would rebuild identically ---
+      'api/src/index.ts', // `sharedModelClient` — one ModelClient per process; its lifetime IS the process.
+      'api/src/routes/auth-core.ts', // `cachedBrandIcon` — the brand PNG baked into the image, read once.
+      'api/src/routes/agent-email-inbound.ts', // bounded read-through cache of Amazon's immutable SNS PEMs (audit: verified safe).
+      'api/src/services/automatic-membership/signin.ts', // memoised `loadConfig()` rollout flag; config is immutable per process.
+      'api/src/services/uoa-directory-cache.ts', // read-through LRU of UOA-verified directories; UOA stays the authority.
+      'worker/src/control/knowledge-extract.ts', // `loggedSkips` — log-once dedupe; the worst N-instance outcome is N warnings.
+      'worker/src/run/browser-cloud/release-hook.ts', // in-process wiring seam for the release chokepoint, set once at startup.
+      'worker/src/run/pa-tools/agent-email-context.ts', // memoised mail deployment config/transport; derived from immutable config.
+      'worker/src/run/pa-tools/dashboard-context.ts', // memoised dashboard tool services (the FileService chokepoint), one per process.
+      'worker/src/run/pa-tools/people.ts', // short-TTL roster cache per (org, UOA org, UOA team); UOA stays the authority.
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...FORWARDED_HEADER_RESTRICTED_SYNTAX,
+        ...EGRESS_RESTRICTED_SYNTAX,
+        ...MODULE_MUTABLE_STATE_SYNTAX,
+      ],
+    },
+  },
+  {
+    // The three worker DI seams the egress block allowlists for `typeof fetch`
+    // sit inside the tree the block above re-imposes those selectors on, so
+    // their egress exemption is restored here while the module-state ratchet
+    // keeps applying to them. Keep this list identical to the worker entries
+    // in the egress allowlist that carry a `typeof fetch`; if one of them ever
+    // needs a module-state exemption too, it belongs on the list above
+    // instead.
+    files: [
+      'worker/src/run/tool-dispatch.ts',
+      'worker/src/run/tool-http.ts',
+      'worker/src/run/builtin-handlers/http-fetch.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...FORWARDED_HEADER_RESTRICTED_SYNTAX,
+        ...MODULE_MUTABLE_STATE_SYNTAX,
       ],
     },
   },

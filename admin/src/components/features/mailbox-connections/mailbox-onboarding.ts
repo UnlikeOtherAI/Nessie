@@ -1,3 +1,7 @@
+import { faApple, faGoogle, faMicrosoft, faYahoo } from '@fortawesome/free-brands-svg-icons'
+import { faEnvelope } from '@fortawesome/free-solid-svg-icons'
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+
 import type { MailboxConnectionScope, MailboxDiscoveryResult } from '../../../lib/api-client'
 
 /**
@@ -96,28 +100,59 @@ export const unavailableAuthenticationMessage = (result: MailboxDiscoveryResult)
 export const appPasswordAccountName = (result: MailboxDiscoveryResult): string =>
   result.provider === 'apple' ? 'Apple Account' : `${result.ui.providerName} account`
 
-export const providerMark = (icon: string, providerName: string): string => {
-  switch (icon) {
-    case 'google':
-      return 'G'
-    case 'microsoft':
-      return 'M'
-    case 'icloud':
-    case 'apple':
-      return 'i'
-    default:
-      return providerName.slice(0, 1).toUpperCase() || '?'
-  }
+type MailboxProviderFamily = MailboxDiscoveryResult['provider']
+
+/**
+ * Where a person actually issues an app-specific password, taken from each
+ * provider's own current documentation rather than from a pattern. A provider
+ * whose page has not been verified is deliberately absent: guidance with no
+ * link is a smaller failure than guidance with a wrong one.
+ */
+export const appPasswordPages: Partial<Record<MailboxProviderFamily, string>> = {
+  apple: 'https://account.apple.com',
+  fastmail: 'https://app.fastmail.com/settings/security',
+  google: 'https://myaccount.google.com/apppasswords',
+  yahoo: 'https://login.yahoo.com/account/security',
+  zoho: 'https://accounts.zoho.com',
 }
+
+export const appPasswordPageUrl = (result: MailboxDiscoveryResult): string | null =>
+  appPasswordPages[result.provider] ?? null
+
+/**
+ * The mark shown beside a provider. The keys are discovery's `ui.providerIcon`
+ * values plus `icloud`, which the address screen's shortcut rows use directly;
+ * a provider with no brand mark (Fastmail, Zoho, anything unrecognised) falls
+ * back to the envelope rather than to an initial, so no row renders a letter
+ * where its neighbours render a logo.
+ */
+const PROVIDER_ICONS: Record<string, IconDefinition> = {
+  apple: faApple,
+  google: faGoogle,
+  icloud: faApple,
+  microsoft: faMicrosoft,
+  yahoo: faYahoo,
+}
+
+export const providerIcon = (icon: string): IconDefinition =>
+  PROVIDER_ICONS[icon] ?? faEnvelope
 
 type CodedError = { code?: string; message?: string }
 
-export const mailboxErrorMessage = (cause: unknown, fallback: string): string => {
-  const code = typeof cause === 'object' && cause !== null && 'code' in cause
-    ? String((cause as CodedError).code ?? '').toUpperCase()
-    : ''
+/**
+ * The code a person may quote to support: upper-cased, punctuation folded to
+ * `_`, and length-capped, so a provider string can never smuggle markup or a
+ * paragraph of server detail into the technical-details disclosure.
+ */
+export const mailboxErrorCode = (cause: unknown): string | null => {
+  if (typeof cause !== 'object' || cause === null || !('code' in cause)) return null
+  const raw = String((cause as CodedError).code ?? '')
+  const code = raw.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
+  return code ? code.slice(0, 64) : null
+}
 
-  switch (code) {
+export const mailboxErrorMessage = (cause: unknown, fallback: string): string => {
+  switch (mailboxErrorCode(cause) ?? '') {
     case 'INVALID_EMAIL_ADDRESS':
       return 'Enter a valid email address.'
     case 'ADDRESS_TAKEN':
@@ -126,8 +161,31 @@ export const mailboxErrorMessage = (cause: unknown, fallback: string): string =>
     case 'CREDENTIAL_REJECTED':
     case 'AUTH_FAILED':
       return 'Your email address or password was not accepted.'
+    case 'APP_PASSWORD_REQUIRED':
+    case 'APPLICATION_PASSWORD_REQUIRED':
+      return 'This provider requires an app-specific password.'
     case 'TEST_FAILED':
       return 'Could not complete the mailbox connection test.'
+    case 'OAUTH_CANCELLED':
+    case 'OAUTH_CANCELED':
+    case 'AUTHORIZATION_CANCELLED':
+    case 'USER_CANCELLED':
+      return 'Connection wasn\'t completed.'
+    case 'ACCESS_DENIED':
+    case 'CONSENT_DENIED':
+    case 'CONSENT_REQUIRED':
+    case 'SCOPES_DENIED':
+      return 'We need permission to access your email to connect this account.'
+    case 'ADMIN_BLOCKED':
+    case 'ADMIN_CONSENT_REQUIRED':
+    case 'APP_BLOCKED':
+    case 'TENANT_POLICY_BLOCKED':
+      return 'Your organisation doesn\'t currently allow this app to access email.'
+    case 'PROVIDER_UNAVAILABLE':
+    case 'PROVIDER_OUTAGE':
+    case 'RATE_LIMITED':
+    case 'TOO_MANY_REQUESTS':
+      return 'Your email provider is temporarily unavailable.'
     case 'SERVER_UNAVAILABLE':
     case 'CONNECTION_FAILED':
       return 'We found your email settings, but could not connect to the server.'
@@ -138,7 +196,59 @@ export const mailboxErrorMessage = (cause: unknown, fallback: string): string =>
     case 'DISCOVERY_EXHAUSTED':
     case 'DISCOVERY_FAILED':
       return 'We could not find the settings automatically.'
+    // Deployment configuration, not a transient failure: retrying cannot
+    // succeed, so the copy must not invite one.
+    case 'PROVIDER_NOT_CONFIGURED':
+      return 'Sign-in with this provider has not been set up on this Nessie '
+        + 'server. An administrator has to register it first.'
+    case 'NOT_IMPLEMENTED':
+      return 'Connecting this provider is not available yet.'
+    case 'PUBLIC_ORIGIN_NOT_CONFIGURED':
+      return 'This server does not know its own public address, so sign-in '
+        + 'cannot start. An administrator has to set it.'
     default:
       return fallback
   }
+}
+
+/** Domain only. The local part is never diagnostic and is nobody's business. */
+export const mailboxAddressDomain = (address: string): string | null => {
+  const at = address.lastIndexOf('@')
+  if (at <= 0) return null
+  const domain = address.slice(at + 1).trim().toLowerCase()
+  return domain || null
+}
+
+const confidencePercent = (value: number): string =>
+  `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`
+
+const evidenceSummary = (result: MailboxDiscoveryResult): string =>
+  result.evidence.length === 0
+    ? 'none'
+    : result.evidence
+      .map((entry) => `${entry.source} ${entry.score}${entry.trustedForCredentials ? ' trusted' : ''}`)
+      .join(', ')
+
+/**
+ * What support needs and nothing more: the sanitised code, the domain, and the
+ * server's own confidence and evidence. No credential and no full address ever
+ * reaches these lines, because neither is passed in.
+ */
+export const mailboxTechnicalDetails = (input: {
+  address: string
+  code: string | null
+  result: MailboxDiscoveryResult | null
+}): string[] => {
+  const lines: string[] = []
+  if (input.code) lines.push(`Error code: ${input.code}`)
+  const domain = input.result?.domain ?? mailboxAddressDomain(input.address)
+  if (domain) lines.push(`Domain: ${domain}`)
+  if (input.result) {
+    lines.push(`Configuration confidence: ${confidencePercent(input.result.configurationConfidence)}`)
+    lines.push(
+      `Credential destination trust: ${confidencePercent(input.result.credentialDestinationTrust)}`,
+    )
+    lines.push(`Evidence: ${evidenceSummary(input.result)}`)
+  }
+  return lines
 }

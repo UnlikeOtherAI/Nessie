@@ -36,6 +36,9 @@ export const useChannelMessageSearch = (activeChannelId?: string) => {
     }
     element.scrollIntoView({ behavior: 'smooth', block: 'center' })
     element.classList.add('admin-msg-highlight')
+    // Fire-once DOM animation with no component to unmount against: if the
+    // message row is gone by the time this fires, classList.remove on a
+    // detached node is a harmless no-op.
     window.setTimeout(() => element.classList.remove('admin-msg-highlight'), 1600)
   }, [])
 

@@ -36,7 +36,7 @@ test('DashboardDetailPage wraps its side panels in NestedStage with the shared i
   assert.match(source, /^import \{ NestedStage \} from '\.\.\/navigation\/NestedStage'$/m)
   assert.match(
     source,
-    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/layouts\/admin-shell\/local-back\/LocalBackContext'$/m,
+    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/navigation\/LocalBackContext'$/m,
   )
 
   assert.match(source, /<NestedStage[\s\S]{0,200}id="dashboard:add-widget"/)
@@ -76,7 +76,7 @@ test('ExecutorsPage wraps ExecutorCreatePanel in NestedStage with the shared id 
   assert.match(source, /^import \{ NestedStage \} from '\.\.\/navigation\/NestedStage'$/m)
   assert.match(
     source,
-    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/layouts\/admin-shell\/local-back\/LocalBackContext'$/m,
+    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/navigation\/LocalBackContext'$/m,
   )
 
   assert.match(source, /<NestedStage[\s\S]{0,200}id="executors:create"/)
@@ -101,7 +101,7 @@ test('ExecutorsPage wraps ExecutorCreatePanel in NestedStage with the shared id 
 })
 
 test('LOCAL_BACK_PRIORITY carries the three new stage priorities', () => {
-  const source = readSource('../src/layouts/admin-shell/local-back/LocalBackContext.tsx')
+  const source = readSource('../src/navigation/LocalBackContext.tsx')
   assert.match(source, /executorsCreate: 30,/)
   assert.match(source, /dashboardPanel: 30,/)
   assert.match(source, /dashboardVersions: 31,/)

@@ -16,11 +16,8 @@ import {
 } from '../../lib/markdown-editor'
 import { useConcealedFenceInput } from '../../hooks/useConcealedFenceInput'
 import { readAgentMentions } from './mention-input-agents'
-import { AgentVisibilityPill } from '../features/agents/AgentVisibilityPill'
-import { IdentityTile } from '../primitives/IdentityTile'
-import { UserAvatar } from '../primitives/UserAvatar'
-import { AgentAvatar } from './AgentAvatar'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { clearChildren, getMentionContext, matchesEntityQuery } from './mention-input-dom'
+import { MentionSuggestionList } from './MentionSuggestionList'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -71,124 +68,6 @@ type Props = {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-function clearChildren(el: HTMLElement): void {
-  while (el.firstChild) {
-    el.removeChild(el.firstChild)
-  }
-}
-
-function getLastTextNode(node: Node): Text | null {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return node as Text
-  }
-
-  for (let i = node.childNodes.length - 1; i >= 0; i -= 1) {
-    const child = node.childNodes[i]
-    if (!child) continue
-    const textNode = getLastTextNode(child)
-    if (textNode) return textNode
-  }
-
-  return null
-}
-
-function getSelectionTextNode(
-  editor: HTMLElement,
-  node: Node,
-  offset: number,
-): { node: Text; offset: number } | null {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return { node: node as Text, offset }
-  }
-
-  if (node.nodeType !== Node.ELEMENT_NODE) return null
-  if (!editor.contains(node)) return null
-
-  const element = node as HTMLElement
-  const before = element.childNodes[offset - 1]
-  const beforeText = before ? getLastTextNode(before) : null
-  if (beforeText) {
-    return { node: beforeText, offset: beforeText.textContent?.length ?? 0 }
-  }
-
-  const onlyChild = offset === 0 && element === editor && element.childNodes.length === 1
-    ? element.childNodes[0]
-    : null
-  const onlyText = onlyChild ? getLastTextNode(onlyChild) : null
-  if (onlyText) {
-    return { node: onlyText, offset: onlyText.textContent?.length ?? 0 }
-  }
-
-  return null
-}
-
-function getMentionContext(
-  editor: HTMLElement,
-): { query: string; range: Range; trigger: '@' | '#' } | null {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null
-
-  const { startContainer: node, startOffset: offset } = sel.getRangeAt(0)
-  const textSelection = getSelectionTextNode(editor, node, offset)
-  if (!textSelection) return null
-
-  const text = (textSelection.node.textContent ?? '').slice(0, textSelection.offset)
-  const match = text.match(/(^|[\s\u00A0([{])([@#])([^\s\u00A0]*)$/)
-  if (!match) return null
-
-  const trigger = match[2] === '#' ? '#' : '@'
-  const query = match[3] ?? ''
-  const atPos = textSelection.offset - query.length - 1
-
-  const range = document.createRange()
-  range.setStart(textSelection.node, atPos)
-  range.setEnd(textSelection.node, textSelection.offset)
-  return { query, range, trigger }
-}
-
-/**
- * The picture beside a mention suggestion. A user and an agent both carry a
- * real id here, so both resolve their actual portrait; only a channel is a
- * type rather than an identity and keeps its `#`.
- */
-const MentionEntityAvatar = ({ entity }: { entity: MentionEntity }) => {
-  const { token } = useAuthSession()
-
-  if (entity.type === 'channel') {
-    return (
-      <IdentityTile
-        background="var(--overlay)"
-        color="var(--tx2)"
-        fallback={{ kind: 'glyph', glyph: '#' }}
-        imageUrl={null}
-        label={entity.name}
-        size={24}
-      />
-    )
-  }
-  if (entity.type === 'agent') {
-    return (
-      <AgentAvatar
-        agent={{ id: entity.id, name: entity.name, role: '' }}
-        agentId={entity.id}
-        size={24}
-        token={token}
-      />
-    )
-  }
-  return <UserAvatar displayName={entity.name} size={24} token={token} userId={entity.id} />
-}
-
-function matchesEntityQuery(entity: MentionEntity, query: string): boolean {
-  return `${entity.name} ${entity.insertName ?? ''} ${entity.detail ?? ''}`
-    .toLowerCase()
-    .includes(query.toLowerCase())
-}
-
-/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -200,6 +79,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
     const editorRef = useRef<HTMLDivElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
     const composingRef = useRef(false)
+    const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [mentionContext, setMentionContext] = useState<{
       query: string
       trigger: '@' | '#'
@@ -238,6 +118,16 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
       const item = popup.children[selectedIdx] as HTMLElement | undefined
       item?.scrollIntoView({ block: 'nearest' })
     }, [selectedIdx])
+
+    // The blur-close delay (below) is a plain event-handler timer, not an
+    // effect's own — this is the one thing that owns its lifetime and clears
+    // it on unmount so a blur just before unmount can't fire into disposed
+    // state.
+    useEffect(() => {
+      return () => {
+        if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
+      }
+    }, [])
 
     const showPopup = mentionContext !== null && filtered.length > 0
 
@@ -324,7 +214,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         const range = sel.getRangeAt(0)
         range.insertNode(span)
 
-        const space = document.createTextNode('\u00A0')
+        const space = document.createTextNode(' ')
         span.after(space)
 
         const cursor = document.createRange()
@@ -392,47 +282,13 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
     return (
       <div className="relative" style={{ isolation: 'isolate' }}>
         {showPopup ? (
-          <div
-            ref={popupRef}
-            className={[
-              'absolute bottom-full left-0 z-50 mb-1 max-h-[220px] w-[320px] max-w-[calc(100vw-40px)]',
-              'overflow-y-auto rounded-lg border border-[color:var(--sep)]',
-              'bg-[color:var(--main)] shadow-xl',
-            ].join(' ')}
-          >
-            {filtered.map((entity, i) => (
-              <button
-                key={`${entity.type}:${entity.id}:${entity.principalUserId ?? ''}`}
-                className={[
-                  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
-                  i === selectedIdx
-                    ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-                    : 'text-[color:var(--tx)] hover:bg-[color:var(--overlay-weak)]',
-                ].join(' ')}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  insertMentionRef.current(entity)
-                }}
-                onMouseEnter={() => setSelectedIdx(i)}
-                type="button"
-              >
-                <MentionEntityAvatar entity={entity} />
-                <span className="min-w-0 flex flex-col">
-                  <span className="truncate">{entity.name}</span>
-                  {entity.detail ? (
-                    <span className="truncate text-xs opacity-60">{entity.detail}</span>
-                  ) : null}
-                </span>
-                <span className="ml-auto flex-shrink-0">
-                  {entity.type === 'agent' && entity.agentVisibility ? (
-                    <AgentVisibilityPill visibility={entity.agentVisibility} />
-                  ) : (
-                    <span className="text-xs opacity-50">{entity.type}</span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
+          <MentionSuggestionList
+            filtered={filtered}
+            listRef={popupRef}
+            onHover={setSelectedIdx}
+            onPick={(entity) => insertMentionRef.current(entity)}
+            selectedIdx={selectedIdx}
+          />
         ) : null}
 
         <div
@@ -457,7 +313,8 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           }}
           onBlur={() => {
             // Delay so mouseDown on popup fires first
-            setTimeout(() => setMentionContext(null), 150)
+            if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
+            blurTimeoutRef.current = setTimeout(() => setMentionContext(null), 150)
           }}
           onInput={() => {
             sync()

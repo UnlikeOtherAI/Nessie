@@ -219,12 +219,23 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     const { channelId } = request.params as { channelId: string }
-    const channel = await setChannelArchived(prisma, {
-      archived: false,
-      channelId,
-      organizationId: actorContext.tenant.organizationId,
-      userId: actorContext.actor.actorId,
-    })
+    let channel
+    try {
+      channel = await setChannelArchived(prisma, {
+        archived: false,
+        channelId,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      // An archived channel does not hold its name, so somebody may have taken
+      // it while this one was away. Say which name, not "internal error".
+      if (error instanceof ChannelSlugConflictError) {
+        sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
+        return reply
+      }
+      throw error
+    }
     if (!channel) {
       sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
       return reply

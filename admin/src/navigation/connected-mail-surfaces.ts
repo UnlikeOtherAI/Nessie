@@ -17,7 +17,6 @@ export const createConnectedMailSurfaces = (adminRoot: string): Surface[] => {
     },
     {
       depth: 2,
-      flowPresentation: 'screen',
       identityOf: (match) => `mail-compose:${match[1]}:${match[2]}`,
       intent: { state: ['draftId', 'reply', 'threadId'] },
       keyScope: () => 'mail-compose',

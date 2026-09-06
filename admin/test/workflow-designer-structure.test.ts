@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { analyzeWorkflowCanvasStructure } from '../src/lib/workflow-designer/canvas-structure'
 import {
-  analyzeWorkflowCanvasStructure,
   buildWorkflowGraph,
   buildWorkflowTriggers,
-  parseWorkflowTemplate,
   WorkflowCanvasStructureError,
-} from '../src/lib/workflow-designer/serialization'
+} from '../src/lib/workflow-designer/graph-serialization'
+import { parseWorkflowTemplate } from '../src/lib/workflow-designer/template-parsing'
 import { isInvalidWorkflowConnection } from '../src/lib/workflow-designer/geometry'
 import type {
   WorkflowCanvasNode,
@@ -159,6 +159,7 @@ test('W10: parseWorkflowTemplate preserves unrenderable steps verbatim', () => {
     parsed.nodes,
     parsed.connections,
     parsed.preservedSteps,
+    parsed.loadedStepOrder,
   )
   assert.deepEqual(graph.steps.map((step) => step.id), ['a', 'env', 'b'])
   assert.equal(graph.steps[1]?.type, 'environment_launch')
@@ -183,10 +184,39 @@ test('W10: canvas round-trip keeps input keys the inspector does not edit', () =
     [],
     null,
   )
-  const graph = buildWorkflowGraph(parsed.nodes, parsed.connections, parsed.preservedSteps)
+  const graph = buildWorkflowGraph(
+    parsed.nodes,
+    parsed.connections,
+    parsed.preservedSteps,
+    parsed.loadedStepOrder,
+  )
   const stepInput = graph.steps[0]?.input ?? {}
   assert.equal(stepInput.channelId, 'chan-1')
   assert.equal(stepInput.prompt, 'hi')
+})
+
+test('W10: loadedStepOrder is an explicit parameter, not shared state across calls', () => {
+  // One "designer instance" loaded a graph with an original order of a, c, b
+  // (c and b never connected, so the implicit sequence is all that orders
+  // them).
+  const firstLoadedOrder = ['a', 'c', 'b']
+  const graphOne = buildWorkflowGraph(
+    [node('a'), node('b'), node('c')],
+    [],
+    [],
+    firstLoadedOrder,
+  )
+  assert.deepEqual(graphOne.steps.map((step) => step.id), ['a', 'c', 'b'])
+
+  // A second, unrelated call that never loaded anything must not inherit the
+  // first call's order — this is exactly the cross-instance corruption the
+  // module-level singleton risked (audit 06-F11): with `loadedStepOrder`
+  // threaded explicitly, two disconnected nodes with no loaded order of their
+  // own still refuse to save instead of silently reusing `firstLoadedOrder`.
+  assert.throws(
+    () => buildWorkflowGraph([node('x'), node('y')], []),
+    WorkflowCanvasStructureError,
+  )
 })
 
 test('W13: trigger nodes save as labelled markers — no schedule config round-trips', () => {

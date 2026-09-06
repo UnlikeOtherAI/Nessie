@@ -1,19 +1,18 @@
-import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
-import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { UserAvatar } from '../../components/shared/UserAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { IdentityTile } from '../../components/primitives/IdentityTile';
 import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import type { AgentRecord } from '../../lib/api-client';
-import { isReactNativeWebView } from '../../lib/mobile-shell';
+import { isReactNativeWebView } from '../../lib/native-shell';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
-import { renderUnreadCount, sidebarAriaCurrent } from './SidebarRow';
+import { renderUnreadCount } from './SidebarRow';
+import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import { SidebarIconButton, SidebarStarIcon } from './SidebarIcons';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {
   SidebarAgentDm,
@@ -95,13 +94,15 @@ export const SidebarDmSection = ({
   return (
     <SidebarMenuSection
       action={
-        <SidebarIconButton
+        <button
           aria-label="Start new chat"
-          icon={faPlus}
+          className="admin-sidebar-plus"
           onClick={onStartNewConversation}
-          placement="section"
           title="Start new chat"
-        />
+          type="button"
+        >
+          +
+        </button>
       }
       className="mt-2"
       id="sidebar-nav-direct-messages"
@@ -267,7 +268,7 @@ export const SidebarDmSection = ({
                 onToggleStar('user', person.id);
               }}
             >
-              <SidebarStarIcon starred={isStarredUser} />
+              {isStarredUser ? '★' : '☆'}
             </span>
           </button>
         );

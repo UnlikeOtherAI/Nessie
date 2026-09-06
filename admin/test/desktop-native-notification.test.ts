@@ -8,7 +8,7 @@ import {
   setDesktopBadgeCount,
   showDesktopNativeNotification,
 } from '../src/facades/notifications/desktop-native-notification.js'
-import { attentionBadgeCounts } from '../src/providers/AttentionDisplayManager.js'
+import { attentionBadgeCounts } from '../src/bridges/AttentionDisplayManager.js'
 
 const withDesktopWindow = async (run: (notifications: unknown[]) => void | Promise<void>): Promise<void> => {
   const originalWindow = globalThis.window

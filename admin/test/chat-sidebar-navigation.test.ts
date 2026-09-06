@@ -95,7 +95,7 @@ test('the Personal Assistant has the same favorite control as a direct-message u
   assert.match(sidebar, /onToggleStar\('agent', personalAssistantAgent\.id\)/)
   assert.match(sidebar, /starred=\{Boolean\([\s\S]*?starredAgentIds\.has\(personalAssistantAgent\.id\)/)
   assert.match(assistant, /sidebar-row-star/)
-  assert.match(assistant, /<SidebarStarIcon starred=\{starred\} \/>/)
+  assert.match(assistant, /\{starred \? '★' : '☆'\}/)
   assert.doesNotMatch(assistant, /sidebar-pa-badge/)
 })
 
@@ -132,7 +132,10 @@ test('the compose route retains the channel team and hides mobile navigation chr
   const nativeShell = readSource('../../mobile/App.tsx')
 
   assert.match(router, /path: '\/channels',\n        element: <ChannelsPage \/>/)
-  assert.match(router, /path: 'new',\n            element: <ChannelConversationComposePage \/>/)
+  // Route-level code splitting (05-pages-routing.md F1): the compose screen
+  // is lazy-loaded through the shared `lazyElement` Suspense wrapper rather
+  // than a static import, so the element is no longer a bare JSX literal.
+  assert.match(router, /path: 'new',\n            element: lazyElement\(ChannelConversationComposePage, 'list'\)/)
   assert.match(shell, /mobileLayout && !nativeShell && !isComposeRoute/)
   assert.match(nativeShell, /isFullScreenTaskRoute\(currentPath\)/)
 })

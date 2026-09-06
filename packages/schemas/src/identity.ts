@@ -8,6 +8,7 @@ import {
   ThreadIdSchema,
   UserIdSchema,
 } from './ids.js'
+import { OrganizationThemeSchema } from './organization-theme.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 export const AuthProviderResponseTypeSchema = z.enum([
@@ -93,8 +94,13 @@ export const UserPreferencesSchema = z.object({
   pushPublishedKnowledge: z.boolean().optional(),
   // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.
   pushQuietHours: PushQuietHoursSchema.nullish(),
+  // `organization` means "my organisation's colours, wherever I am" — a fixed
+  // id, not an organisation id, because the preference is account-level and
+  // follows the person into every organisation they belong to. It resolves to
+  // Sandstone in one that has no palette.
+  // docs/plans/2026-09-05-organisation-custom-theme.md §5.1
   theme: z.enum([
-    'space-white',
+    'organization',
     'nebula',
     'midnight',
     'daylight',
@@ -265,6 +271,9 @@ export const OrganizationSummarySchema = z.object({
   administration: z.object({
     status: z.enum(['allowed', 'forbidden', 'unavailable']),
   }),
+  // The organisation's authored colour seeds, or null. Read by every member —
+  // it is what their theme renders from — and written only by an administrator.
+  theme: OrganizationThemeSchema.nullable(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
 
@@ -283,14 +292,19 @@ export const UpdateOrganizationRequestSchema = z
     name: z.string().trim().min(1).max(120).optional(),
     logoAttachmentId: z.string().uuid().nullable().optional(),
     stripImageMetadata: z.boolean().optional(),
+    // `null` removes the palette; everyone who has not chosen a theme returns
+    // to Sandstone. The seeds are re-evaluated server-side, so a palette that
+    // fails a contrast floor cannot exist in the database whatever sent it.
+    theme: OrganizationThemeSchema.nullable().optional(),
   })
   .refine(
     (body) =>
       body.name !== undefined ||
       body.logoAttachmentId !== undefined ||
-      body.stripImageMetadata !== undefined,
+      body.stripImageMetadata !== undefined ||
+      body.theme !== undefined,
     {
-      message: 'Provide a name, logoAttachmentId or stripImageMetadata to update',
+      message: 'Provide a name, logoAttachmentId, stripImageMetadata or theme to update',
     },
   )
 export type UpdateOrganizationRequest = z.infer<typeof UpdateOrganizationRequestSchema>

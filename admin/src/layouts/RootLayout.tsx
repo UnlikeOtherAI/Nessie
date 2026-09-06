@@ -1,8 +1,8 @@
 import { Outlet } from 'react-router-dom';
-import { ExternalAuthRouterBridge } from '../providers/ExternalAuthRouterBridge';
-import { DirectDesktopUpdatePrompt } from '../providers/DirectDesktopUpdatePrompt';
+import { ExternalAuthRouterBridge } from '../bridges/ExternalAuthRouterBridge';
+import { DirectDesktopUpdatePrompt } from '../bridges/DirectDesktopUpdatePrompt';
 import { IncomingCallProvider } from '../providers/IncomingCallProvider';
-import { NativeShellBridge } from '../providers/NativeShellBridge';
+import { NativeShellBridge } from '../bridges/NativeShellBridge';
 import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
 
 // Wraps every route (including /login and /bootstrap) so the native shell bridge

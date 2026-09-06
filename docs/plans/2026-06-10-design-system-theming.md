@@ -1,30 +1,5 @@
 # Design system + color theming
 
-## Space White product theme (2026-09-04)
-
-Space White is the first complete product theme rather than a palette-only
-variant. It is based on the supplied workspace, chat, admin, kanban, and docs
-specimens and is now the default for new and logged-out sessions. Existing
-stored choices remain respected.
-
-- Color: white work surfaces, cool-gray navigation and controls, black primary
-  actions, and semantic color only where status or risk requires it.
-- Type: bundled Geist Variable for UI/body copy and the supplied licensed
-  Starleague Regular for page and document display titles.
-- Scale: 4/8px spacing rhythm; 36px compact and 44px default controls; 7px
-  action, 14px field, 20px card, and 28px dialog radii.
-- Shared surfaces: `ResponsivePageHeader`, `TabBar`, `.admin-button`,
-  `.admin-input`, `.admin-card`, chat rows/composer, tables, menus, dialogs,
-  navigation rail/sidebar, and knowledge prose are styled centrally in
-  `admin/src/styles.css`. Route-local visual forks are not introduced.
-- Hosted sign-in and first paint use the matching monochrome palette, so the
-  theme does not flash or change visual language at the authentication edge.
-
-Space White's geometry and typography selectors are scoped under
-`[data-theme='space-white']`. This deliberately extends the original
-palette-only architecture while keeping the same invariant: a route never
-guesses or reimplements the active theme.
-
 Status: **in progress** (2026-06-10). Goal: make the admin UI fully
 theme-able by color alone — a new theme is just a list of color values. Today
 `admin/src/styles.css` has a centralized `:root` token palette (~24 CSS custom
@@ -216,9 +191,19 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
 
 **To add a theme:** add a `[data-theme="<id>"]` block to `styles.css` that
 redeclares **every** token the base `:root` defines, add the id to the `Theme`
-union + `THEMES` list in `ThemeProvider.tsx`, and add the matching UOA palette
-id to `SsoThemeSchema` / `UOA_SIGN_IN_THEMES`. No component edits — that's the
-point.
+union in `providers/theme-storage.ts` + the `BUILT_IN_THEMES` list in
+`ThemeProvider.tsx`, and add the matching UOA palette id to `SsoThemeSchema` /
+`UOA_SIGN_IN_THEMES`. No component edits — that's the point.
+
+**To add a token:** it is no longer enough to add it to every `[data-theme]`
+block. An organisation's theme (2026-09-05) is derived rather than written, so
+the token also needs a name in `THEME_TOKENS` and a derivation rule in
+`@nessie/schemas` `organization-theme.ts`; without both, an organisation
+palette renders it as the `@property` registration's `initial-value: #000000`.
+`admin/test/organization-theme-tokens.test.ts` fails the build rather than
+letting that ship. See
+[docs/plans/2026-09-05-organisation-custom-theme.md](2026-09-05-organisation-custom-theme.md)
+§1.3.
 
 **Open items for review:** (a) the live in-app switch was not Playwright-verified
 (Playwright's synthetic events don't drive a controlled radio; each theme's

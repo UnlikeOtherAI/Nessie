@@ -3,7 +3,7 @@ import type { DragEvent } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar, agentAvatarPx } from '../../shared/AgentAvatar'
-import { identityRingRadius } from '../../primitives/identity-shape'
+import { identityRingRadius } from '../../../lib/identity-shape'
 import { CircleImageCropper } from '../../shared/CircleImageCropper'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { Dialog } from '../../shared/Dialog'
@@ -100,7 +100,7 @@ export const AgentAvatarQuickEdit = ({
     if (preview) setGenerated(preview)
   }
 
-  const useGenerated = async () => {
+  const handleUseGenerated = async () => {
     if (!generated) return
     if (await avatarChanges.replace(generated)) close()
   }
@@ -164,7 +164,7 @@ export const AgentAvatarQuickEdit = ({
               <button
                 className="admin-button admin-button-primary flex-1"
                 disabled={avatarChanges.isReplacing}
-                onClick={() => void useGenerated()}
+                onClick={() => void handleUseGenerated()}
                 type="button"
               >
                 {avatarChanges.isReplacing ? 'Saving…' : 'Use this'}

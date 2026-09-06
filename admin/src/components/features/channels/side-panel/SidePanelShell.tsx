@@ -11,7 +11,7 @@ import {
 import { useResizeHandleReveal } from '../../../../hooks/useResizeHandleReveal'
 import { useViewport } from '../../../../hooks/useViewport'
 import { ColumnResizeHandle } from '../../../primitives/ColumnResizeHandle'
-import { THREAD_PANEL_MIN_WIDTH } from '../thread-panel/thread-panel-helpers'
+import { SIDE_PANEL_MIN_WIDTH } from '../../../../hooks/useSidePanelGeometry'
 
 const KEYBOARD_RESIZE_STEP = 16
 
@@ -129,7 +129,7 @@ export const SidePanelShell = ({
     if (event.key === 'ArrowLeft') nextWidth = panelWidth + KEYBOARD_RESIZE_STEP
     if (event.key === 'ArrowRight') nextWidth = panelWidth - KEYBOARD_RESIZE_STEP
     if (event.key === 'Home') nextWidth = viewportWidth / 2
-    if (event.key === 'End') nextWidth = THREAD_PANEL_MIN_WIDTH
+    if (event.key === 'End') nextWidth = SIDE_PANEL_MIN_WIDTH
     if (nextWidth === null) return
 
     event.preventDefault()
@@ -153,7 +153,16 @@ export const SidePanelShell = ({
           // WebView bridge. This fixed overlay sits outside those columns, so
           // it owns the inset itself and keeps its header controls out from
           // under an iOS notch in both phone and tablet overlay modes.
+          //
+          // The same goes for the bottom. The iPhone shell's tab-bar clearance
+          // is a spacer on `.phone-navigation-page`, and this overlay is not
+          // inside one — so without this its composer sits under the
+          // translucent native tab bar. The variable is published only by that
+          // shell, so every other surface falls back to the safe-area inset it
+          // had before. Padding rather than inset keeps the background running
+          // under the glass while the content clears it.
           'max-[900px]:fixed max-[900px]:inset-0 max-xl:pt-[env(safe-area-inset-top,0px)]',
+          'max-[900px]:pb-[var(--nessie-native-phone-tabbar-clearance,env(safe-area-inset-bottom,0px))]',
           'min-[900px]:w-[var(--thread-panel-width)]',
           'min-[900px]:max-xl:fixed min-[900px]:max-xl:inset-y-0 min-[900px]:max-xl:right-0',
           'min-[900px]:max-xl:shadow-[0_32px_80px_var(--scrim-strong)]',
@@ -166,8 +175,8 @@ export const SidePanelShell = ({
         <div
           aria-label={`Resize ${ariaLabel.toLowerCase()}`}
           aria-orientation="vertical"
-          aria-valuemax={Math.floor(Math.max(viewportWidth / 2, THREAD_PANEL_MIN_WIDTH))}
-          aria-valuemin={THREAD_PANEL_MIN_WIDTH}
+          aria-valuemax={Math.floor(Math.max(viewportWidth / 2, SIDE_PANEL_MIN_WIDTH))}
+          aria-valuemin={SIDE_PANEL_MIN_WIDTH}
           aria-valuenow={panelWidth}
           className={[
             'column-resize-control thread-panel-resize-control absolute inset-y-0 z-[var(--layer-stack)] hidden touch-none xl:flex',

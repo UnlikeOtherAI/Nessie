@@ -9,7 +9,7 @@ import {
   runOverlayTransition,
 } from '../src/navigation/overlay'
 import { OVERLAY_MOTION } from '../src/navigation/motion'
-import { LOCAL_BACK_PRIORITY } from '../src/layouts/admin-shell/local-back/LocalBackContext'
+import { LOCAL_BACK_PRIORITY } from '../src/navigation/LocalBackContext'
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 

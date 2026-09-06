@@ -15,7 +15,7 @@ import {
   AGENT_SCOPE_META,
   getAgentScope,
   type AgentScope,
-} from './agent-scope'
+} from '../../shared/agent-scope'
 import { loadAgentsListState, saveAgentsListState } from './agents-list-state'
 
 const emptyBuckets = (): Record<AgentScope, AgentRecord[]> => ({
@@ -93,7 +93,9 @@ export const AgentsList = () => {
           priority: 100,
         }]}
         subtitle={
-          <p>{AGENT_SCOPE_META[activeScope].description}</p>
+          <p className="text-sm text-[color:var(--tx3)]">
+            {AGENT_SCOPE_META[activeScope].description}
+          </p>
         }
         tabs={
           <TabBar

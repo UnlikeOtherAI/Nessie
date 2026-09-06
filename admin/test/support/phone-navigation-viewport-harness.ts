@@ -124,7 +124,7 @@ const { PhoneNavigationProvider } = await import(
   '../../src/layouts/admin-shell/PhoneNavigationProvider'
 )
 const { LocalBackProvider, useLocalBackSnapshot } = await import(
-  '../../src/layouts/admin-shell/local-back/LocalBackContext'
+  '../../src/navigation/LocalBackContext'
 )
 type BackOwner = { id: string; label: string; onBack: () => void } | null
 

@@ -32,7 +32,7 @@ import { useUsers } from '../facades/users/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { LOCAL_BACK_PRIORITY } from '../layouts/admin-shell/local-back/LocalBackContext'
+import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
 import { NestedStage } from '../navigation/NestedStage'
 import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
 
@@ -80,6 +80,9 @@ export const ExecutorsPage = () => {
   const promotionId = searchParams.get('promotion') ?? undefined
   const promotionQuery = useExecutorWorkspacePromotion(promotionId)
   const pendingPairing = usePendingExecutorEnrollment(selected?.id)
+  // A plain const narrows across the closure below; `pendingPairing.data`
+  // itself does not, which is what the `!` it replaces was working around.
+  const pendingFingerprint = pendingPairing.data?.fingerprint
   const confirmPairing = useConfirmExecutorEnrollment()
   const confirmChange = useConfirmExecutorAccessChange()
   const rejectChange = useRejectExecutorAccessChange()
@@ -219,13 +222,15 @@ export const ExecutorsPage = () => {
             id: 'pair-executor',
             label: showCreate ? 'Close pairing' : 'Pair executor',
             onSelect: () => setShowCreate((open) => !open),
-            primary: true,
+            // Primary while it opens the pairing form; closing that form again
+            // is not the action this screen exists for.
+            primary: !showCreate,
             priority: 100,
           },
         ]}
         eyebrow="Agents"
         subtitle={
-          <p className="max-w-3xl">
+          <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
             Pair governed sandboxes and coding sessions. Executors are separate from connectors:
             connectors provide remote services; executors run approved work on a paired machine or guest runtime.
           </p>
@@ -241,6 +246,7 @@ export const ExecutorsPage = () => {
           label="Back to executors"
           onBack={() => setShowCreate(false)}
           priority={LOCAL_BACK_PRIORITY.executorsCreate}
+          title="New executor"
         >
           {me ? (
             <ExecutorCreatePanel
@@ -368,7 +374,26 @@ export const ExecutorsPage = () => {
           <section className="admin-card flex flex-wrap items-center gap-3 p-4 text-sm text-[color:var(--tx2)]">
             <span>When the companion has submitted its descriptor, inspect and confirm the fingerprint here.</span>
             <button className="admin-button admin-button-secondary" onClick={() => void pendingPairing.refetch()} type="button">Check pairing</button>
-            {pendingPairing.data ? <><code className="text-xs">{pendingPairing.data.fingerprint}</code><button className="admin-button admin-button-primary" disabled={confirmPairing.isPending} onClick={() => void confirmPairing.mutateAsync({ executorId: selected.id, fingerprint: pendingPairing.data!.fingerprint })} type="button">Confirm fingerprint</button></> : null}
+            {pendingFingerprint ? (
+              <>
+                <code className="text-xs">{pendingFingerprint}</code>
+                <button
+                  className="admin-button admin-button-primary"
+                  disabled={confirmPairing.isPending}
+                  onClick={() => {
+                    // No local onError: the app-wide mutation default
+                    // (providers/QueryProvider.tsx) surfaces a failure as a
+                    // toast; `.catch` here only stops an unhandled rejection.
+                    void confirmPairing
+                      .mutateAsync({ executorId: selected.id, fingerprint: pendingFingerprint })
+                      .catch(() => undefined)
+                  }}
+                  type="button"
+                >
+                  Confirm fingerprint
+                </button>
+              </>
+            ) : null}
           </section>
         ) : null}
         </div>

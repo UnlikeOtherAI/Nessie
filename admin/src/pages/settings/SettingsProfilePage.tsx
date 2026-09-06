@@ -4,13 +4,13 @@ import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { useTeams } from '../../facades/projects/hooks'
 import { useStatuses } from '../../facades/statuses/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { AvatarPanel } from './profile/AvatarPanel'
+import { AvatarPanel } from '../../components/features/settings/AvatarPanel'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { Notice } from '../../components/primitives/Notice'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { Card } from '../../components/shared/Card'
 import { KeyValueList } from '../../components/shared/KeyValueList'
-import { SettingsPanel, type SettingsTabHostProps } from './settings-shared'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 
 // Friendly names for the authenticator a user signed in through. Keyed by the
 // provider *type* so the brand shows even when the configured label is a login

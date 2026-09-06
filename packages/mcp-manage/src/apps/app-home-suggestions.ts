@@ -19,7 +19,7 @@ export const APP_HOME_SUGGESTIONS: Record<AppCategory, readonly string[]> = {
     'com.microsoft/workiq-teamsserver',
     'io.github.zoom/zoom-team-chat',
     'io.github.zoom/zoom-meetings',
-    'io.github.zoom/zoom-team',
+    'io.github.zoom/zoom-workspace',
     'com.green-api/whatsapp',
     'ai.izap/whatsapp',
     'com.uni-msg/whatsapp',

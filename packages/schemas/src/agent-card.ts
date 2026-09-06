@@ -48,13 +48,21 @@ export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
  * Designer just created. Both are Prisma-backed operations which commit with
  * the press.
  *
- * `vault_secret` is the general destination: the person's own Secrets, for a
- * credential that belongs to them rather than to one connector. It is the
- * only one whose write is an external HTTP call and so cannot join the press
- * transaction — the vault write is performed first and rolled back if the
- * press does not commit, exactly as `POST /api/secrets` does. The agent names
- * the secret so the form arrives pre-filled; it can never read the value back,
- * and `scopeType` beyond `personal` is refused for anyone but an owner.
+ * `vault_secret` is the general destination: Secrets, for a credential that
+ * belongs to a person or a level of the organisation rather than to one
+ * connector. It is the only one whose write is an external HTTP call and so
+ * cannot join the press transaction — the vault write is performed first and
+ * rolled back if the press does not commit, exactly as `POST /api/secrets`
+ * does. The agent names the secret so the form arrives pre-filled; it can never
+ * read the value back.
+ *
+ * `scopeType` decides who the credential serves, so the card tool's
+ * description makes an agent state its choice rather than let the `personal`
+ * default pass silently. Anything beyond `personal` is refused for anyone but
+ * an owner, and a level above may have **locked** the name — the press then
+ * fails `SECRET_LOCKED_ABOVE`, the same refusal `POST /api/secrets` makes,
+ * because one door cannot write a row the resolver would never consult
+ * (`@nessie/schemas` `secret-precedence.ts`).
  */
 export const AgentCardSecretDestinationSchema = z
   .union([

@@ -5,7 +5,7 @@ import {
   type AppCardAction,
   type AppCardActionTone,
 } from './app-card-presentation'
-import type { ConnectPhase } from './connect-flow'
+import type { ConnectPhase } from '../../../facades/apps/connect-flow'
 
 /**
  * What the app detail page shows and in which tab.

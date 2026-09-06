@@ -78,6 +78,15 @@ export const createServerContext = () => {
     log: config.mode === 'local' ? ['warn', 'error'] : ['error'],
   })
 
+  /**
+   * Base domain for team hostnames, e.g. `nessie.works`, so a team lives at
+   * `<team>.<org>.nessie.works`. Unset means this deployment does not route
+   * teams by hostname at all — every existing install, until it opts in.
+   */
+  const teamHostBaseDomain = process.env.NESSIE_TEAM_HOST_BASE_DOMAIN?.trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, '') || undefined
+
   const allowedCorsOrigins = parseOriginList(
     process.env.NESSIE_CORS_ORIGINS,
     process.env.NESSIE_ALLOWED_ORIGINS,
@@ -454,6 +463,7 @@ export const createServerContext = () => {
     databaseUrl,
     authSecret,
     allowedCorsOrigins,
+    teamHostBaseDomain,
     DEFAULT_LOCAL_PROVIDER_TYPE,
     MEMBERSHIP_ROLES,
     resolveBootstrapState,

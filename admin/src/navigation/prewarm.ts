@@ -9,8 +9,8 @@
 // Two rules make this safe to wire onto ordinary rows:
 //
 // 1. **Never a second fetcher.** A registry entry calls the exact `fetch*`
-//    function the destination's hook calls, under the exact key from
-//    `lib/query-keys.ts`. Spelling a URL here would fill the cache under the
+//    function the destination's hook calls, under the exact key from that
+//    facade's `keys.ts`. Spelling a URL here would fill the cache under the
 //    right key with a shape that drifts the first time the hook changes.
 // 2. **No storms.** `pointerdown` and `focus` both fire cheaply and often, so a
 //    short-TTL set remembers what was recently prewarmed and a repeat inside
@@ -23,14 +23,12 @@
 import { useCallback, useRef } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { ApiClient, ChannelRecord } from '../lib/api-client'
-import {
-  appKeys,
-  channelKeys,
-  dashboardKeys,
-  knowledgeKeys,
-  projectKeys,
-  agentKeys,
-} from '../lib/query-keys'
+import { agentKeys } from '../facades/agents/keys'
+import { appKeys } from '../facades/apps/keys'
+import { channelKeys } from '../facades/channels/keys'
+import { dashboardKeys } from '../facades/dashboards/keys'
+import { knowledgeKeys } from '../facades/knowledge/keys'
+import { projectKeys } from '../facades/projects/keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { fetchAgentStatus } from '../facades/agents/queries'
 import { fetchApp } from '../facades/apps/hooks'

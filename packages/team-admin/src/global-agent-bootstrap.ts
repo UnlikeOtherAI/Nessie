@@ -315,19 +315,49 @@ export const ensureGlobalAgentBootstrap = async (
   return { agentId, channelId, threadId: parseThreadId(threadId) }
 }
 
+export class GlobalAgentBootstrapFailures extends Error {
+  override readonly name = 'GlobalAgentBootstrapFailures'
+
+  constructor(readonly failures: readonly { blueprintSlug: string; cause: unknown }[]) {
+    super(
+      `global agent bootstrap failed for: ${
+        failures.map((failure) => failure.blueprintSlug).join(', ')
+      }`,
+    )
+  }
+}
+
 /**
  * Every registered global agent, ensured for one organisation and one person.
  * Idempotent and cheap enough to run wherever the Personal Assistant's own
  * bootstrap runs (login, provisioning) — the sidebar DM row is a discovery
  * surface and should simply be there.
+ *
+ * Each blueprint is ensured independently, and a failure is collected rather
+ * than thrown at once. The loop used to abort on the first one, and its only
+ * caller (`attemptGlobalAgentsBootstrap`) swallows what it throws by design —
+ * so one blueprint that could not be provisioned silently withheld every
+ * blueprint AFTER it, for as long as the cause lasted. That is invisible from
+ * the outside and reads as "this global agent does not exist here": the Agents
+ * page's Global tab, the DM address book and the identity directory all list
+ * the tier from the rows, so a row nobody ever wrote is a capability nobody can
+ * reach. Whatever is ensurable is ensured; the rest is reported together.
  */
 export const ensureGlobalAgentsForUser = async (
   prisma: PrismaClient,
   input: { organizationId: string; teamId: string; userId: string },
 ): Promise<GlobalAgentBootstrapResult[]> => {
   const results: GlobalAgentBootstrapResult[] = []
+  const failures: { blueprintSlug: string; cause: unknown }[] = []
   for (const blueprint of listGlobalAgentBlueprints()) {
-    results.push(await ensureGlobalAgentBootstrap(prisma, { ...input, blueprint }))
+    try {
+      results.push(await ensureGlobalAgentBootstrap(prisma, { ...input, blueprint }))
+    } catch (error) {
+      failures.push({ blueprintSlug: blueprint.slug, cause: error })
+    }
+  }
+  if (failures.length > 0) {
+    throw new GlobalAgentBootstrapFailures(failures)
   }
   return results
 }

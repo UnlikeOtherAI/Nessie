@@ -79,7 +79,11 @@ export const loadBoardSourceConnectionContext = async (
       : [],
   }
 
-  if (needsRefresh(connection.credential.expiresAt)) {
+  // Only an OAuth grant can be refreshed, and only when the provider actually
+  // issued a refresh token. A pasted API key that carries an expiry has nothing
+  // to exchange, so refreshing it would fail every time and park a connection
+  // whose real remedy is "paste a new key" behind one that says "sign in again".
+  if (needsRefresh(connection.credential.expiresAt) && connection.credential.refreshTokenCiphertext) {
     const refreshed = await refreshCredential(
       prisma,
       connection.id,
@@ -110,8 +114,16 @@ const refreshCredential = async (
   encryptionSecret: string,
 ): Promise<CredentialBundle | BoardSourceCredentialError> => {
   const adapter = resolveBoardSourceAdapter(provider)
+  const oauth = adapter.auth.oauth
+  if (!oauth) {
+    await prisma.boardSourceConnection.update({
+      where: { id: connectionId },
+      data: { status: 'needs_reauthorization' },
+    })
+    return { error: 'CONNECTION_NEEDS_REAUTHORIZATION' }
+  }
   try {
-    const refreshed = await adapter.oauth.refresh(bundle)
+    const refreshed = await oauth.refresh(bundle)
     await prisma.boardSourceConnectionCredential.update({
       where: { connectionId },
       data: {

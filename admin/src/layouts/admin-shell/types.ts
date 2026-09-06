@@ -10,6 +10,13 @@ export type CreateChannelTarget = {
   teamId?: string
 }
 export type EditProjectTarget = ProjectRecord
+// The channel a create just produced, so the section holding it can open. The
+// channel id rather than the project id alone: it changes on every create, so
+// the sidebar hears about the second channel added to the same project.
+export type RevealedChannel = {
+  channelId: string
+  projectId: string
+}
 export type SidebarMenu =
   | { type: 'channels' }
   | { type: 'project'; projectId: string }
@@ -49,7 +56,11 @@ export type VisibleStarredEntry =
   | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }
   | { type: 'user'; person: SidebarPerson }
 
-export type AdminShellOutletContext = {
+// The shell actions a routed or seeded page may call — named for what it is
+// now, not for the `useOutletContext` mechanism it replaced (the shell
+// renders a captured route element, not a live `<Outlet>`; see
+// `AdminShellLayout.tsx`'s own `useOutlet()`).
+export type ShellActions = {
   onCreateAgent: () => void
   onCreateChannel: (target?: CreateChannelTarget) => void
   onSelectAgent: (agentId: string) => void
