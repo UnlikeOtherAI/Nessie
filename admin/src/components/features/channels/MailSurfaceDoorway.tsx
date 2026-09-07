@@ -226,7 +226,10 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   }, [doorway, refetchAccounts])
 
   useEffect(() => {
-    if (!storageKey || !targetRef.current || !doorway || doorway.threadIds?.length) return
+    const inlineReview = doorway?.threadIds?.length || (
+      doorway?.source === 'gmail' && doorway.mode === 'compose' && doorway.draftId
+    )
+    if (!storageKey || !targetRef.current || !doorway || inlineReview) return
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry?.isIntersecting) return
       try {
@@ -289,7 +292,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="mail-surface-doorway" ref={targetRef}>
       <span className="text-xs text-[color:var(--tx2)]">{title}</span>
-      <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">{doorway.mode === 'compose' ? 'Edit' : 'Open mail'}</button>
+      {!isGmailDraftDoorway ? <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">{doorway.mode === 'compose' ? 'Edit' : 'Open mail'}</button> : null}
       {accessError ? <span aria-live="polite" className="text-xs text-[color:var(--danger)]">{accessError}</span> : null}
       {accessError && matchingAccount ? <button className="text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(matchingAccount))} type="button">Open mailbox settings</button> : null}
       {isGmailDraftDoorway && doorway.draftId && authorizedDoorwayAccount ? (
@@ -309,17 +312,17 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
           />
         </div>
       ) : null}
-      {doorway.mode === 'compose' && account ? (
+      {doorway.mode === 'compose' && authorizedDoorwayAccount && account ? (
         <ConnectedMailComposeDialog
-          account={account}
-          address={{ accountId: account.id, source: account.source }}
+          account={authorizedDoorwayAccount}
+          address={{ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source }}
           gmailDraftId={doorway.draftId}
           onClose={close}
-          onOpenSettings={() => navigate(connectedMailSettingsPath(account))}
+          onOpenSettings={() => navigate(connectedMailSettingsPath(authorizedDoorwayAccount))}
           onSent={close}
           onStartNewEmail={(id) => {
             close()
-            navigate(`${mailPath({ accountId: account.id, source: account.source })}/compose?compose=${id}&new=1`)
+            navigate(`${mailPath({ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source })}/compose?compose=${id}&new=1`)
           }}
           open={open}
           replyTo={replyTo}
