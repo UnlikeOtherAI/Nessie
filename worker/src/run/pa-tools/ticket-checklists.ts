@@ -2,13 +2,14 @@ import {
   applyTaskChecklistTemplate,
   getTaskChecklist,
   isAgentAccessibleToActor,
-  isAgentVisibleToUser,
+  publishTaskUpdated,
   updateTaskChecklistStep,
 } from '@nessie/team-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import { buildScopes } from '../execute/scopes.js'
 import { IdSchema, projectTicketFor, recordProjectRead, result } from './ticket-context.js'
 
 const ReadInput = z.object({ ticketId: IdSchema })
@@ -39,27 +40,58 @@ const checklistText = (checklist: {
   ].join('\n')),
 ].join('\n')
 
-const assertProjectChecklistDestination = async (
+export const assertProjectChecklistDestination = async (
   context: BuiltinToolRuntimeContext,
-  input: { agentId?: string; organizationId: string; projectId: string },
+  input: {
+    agentId?: string
+    organizationId: string
+    projectId: string
+    taskUserIds?: Array<string | null>
+  },
 ): Promise<void> => {
-  const carried = context.consumedSources?.list() ?? []
-  if (carried.some((scope) => scope.scopeType !== 'organization'
-    && !(scope.scopeType === 'project' && scope.scopeId === input.projectId))) {
-    throw new Error('I cannot copy restricted research into this shared ticket checklist.')
-  }
-  if (!input.agentId) return
   const members = await context.prisma.projectMember.findMany({
     where: { projectId: input.projectId },
     select: { userId: true },
   })
-  const hiddenFrom = await Promise.all(members.map(async ({ userId }) => (
-    await isAgentVisibleToUser(context.prisma, userId, input.organizationId, input.agentId)
-      ? null
-      : userId
-  )))
-  if (hiddenFrom.some(Boolean)) {
+  const projectMemberIds = new Set(members.map(({ userId }) => userId))
+  const taskUserIds = new Set(input.taskUserIds?.filter((id): id is string => id !== null) ?? [])
+  const organizationMembers = await context.prisma.organizationMember.findMany({
+    where: { deactivatedAt: null, organizationId: input.organizationId },
+    select: { role: true, userId: true },
+  })
+  const readers = organizationMembers.filter(({ role, userId }) => (
+    role === 'owner' || projectMemberIds.has(userId) || taskUserIds.has(userId)
+  ))
+  const audienceCanSeeAgent = async (agentId: string): Promise<boolean> => {
+    const visible = await Promise.all(readers.map(async ({ role, userId }) => (
+      isAgentAccessibleToActor(context.prisma, {
+        ...context.actorContext,
+        actor: { ...context.actorContext.actor, actorId: userId, roles: [role] },
+      }, agentId)
+    )))
+    return !visible.includes(false)
+  }
+  const carried = context.consumedSources?.list() ?? []
+  for (const scope of carried) {
+    const implied = (scope.scopeType === 'organization' && scope.scopeId === input.organizationId)
+      || (scope.scopeType === 'project' && scope.scopeId === input.projectId)
+      || (scope.scopeType === 'agent' && await audienceCanSeeAgent(scope.scopeId))
+    if (!implied) throw new Error('I cannot copy restricted research into this shared ticket checklist.')
+  }
+  if (input.agentId && !(await audienceCanSeeAgent(input.agentId))) {
     throw new Error('This template is private to an agent some project collaborators cannot access.')
+  }
+}
+
+const publishChecklistTask = async (
+  context: BuiltinToolRuntimeContext,
+  task: {
+    id: string
+    status: 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'failed' | 'cancelled' | 'awaiting_approval'
+  },
+): Promise<void> => {
+  if (context.runContext) {
+    await publishTaskUpdated(context.realtimeTransport, buildScopes(context.runContext), task.id, task.status)
   }
 }
 
@@ -100,6 +132,7 @@ export const runTicketChecklistApplyTool = async (
     agentId: context.agentId,
     organizationId: member.organizationId,
     projectId: ticket.projectId!,
+    taskUserIds: [ticket.assigneeUserId, ticket.ownerUserId],
   })
   const checklist = await applyTaskChecklistTemplate(context.prisma, {
     agentId: context.agentId,
@@ -117,6 +150,7 @@ export const runTicketChecklistApplyTool = async (
   // agent, so retain both sources for the run reply.
   recordProjectRead(context, member, ticket.projectId!)
   context.consumedSources?.add({ scopeId: context.agentId, scopeType: 'agent' })
+  await publishChecklistTask(context, ticket)
   return result('ticket_checklist_apply', `ticketId=${ticketId} templateId=${templateId}`, checklistText(checklist))
 }
 
@@ -146,6 +180,7 @@ export const runTicketChecklistStepUpdateTool = async (
   })
   if (!updated) throw new Error('Checklist step not found.')
   recordProjectRead(context, member, ticket.projectId!)
+  await publishChecklistTask(context, ticket)
   return result(
     'ticket_checklist_step_update',
     `ticketId=${args.ticketId} stepKey=${args.stepKey}`,
