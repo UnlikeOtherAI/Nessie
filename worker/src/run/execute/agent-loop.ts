@@ -95,6 +95,11 @@ export const runExecutionAgentLoop = async (
     windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
+  // Run setup may have admitted memory, checkpoint or transcript material after
+  // the initial plan record was created. Make that complete basis durable before
+  // this loop can write a thought, a tool record, or any model-derived state.
+  await persistCurrentRunBasis(deps.prisma, context)
+
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
   // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
