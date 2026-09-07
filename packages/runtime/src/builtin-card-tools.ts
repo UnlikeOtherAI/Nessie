@@ -28,12 +28,18 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
     + 'credential store and is never shown to you or recorded in the conversation — you learn '
     + 'only that it was provided). Give each action a short label such as Allow, OK, Send or '
     + 'Cancel, and set submits:false on the ones that dismiss without reading the inputs. '
+    + 'An internal href may instead set collectsValues:true with submits:false to claim a '
+    + 'non-secret partial form and continue it in the same app; that never submits the decision. '
     + 'Pressing resolves the card permanently: the answer arrives as a message in the '
     + 'conversation and the card freezes showing what was decided and by whom. '
     + 'Set respondents to choose who may press ("requester" — the person who asked, the '
     + 'default; "thread" — anyone in the conversation; or specific userIds). Set wait:true to '
     + 'pause here until somebody presses, instead of finishing your turn and being brought '
-    + 'back when they do. Set expiresIn (seconds) if the card should stop accepting answers.',
+    + 'back when they do. Set expiresIn (seconds) if the card should stop accepting answers. '
+    + 'When an agent\'s actual work needs a cloud browser but Browserbase is not connected, '
+    + 'it can explain the account setup and ask through the browserbase_connection secret '
+    + 'destination; that connection is separate from the owner-granted browser access for a '
+    + 'named agent.',
   parameters: {
     type: 'object',
     properties: {
@@ -89,7 +95,15 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
               + 'organisation — and a level may lock its key, which refuses every '
               + 'narrower write: a SECRET_LOCKED_ABOVE refusal means that key is '
               + 'already settled above and the person should bind the existing secret '
-              + 'rather than save a copy of their own.',
+              + 'rather than save a copy of their own. To connect a Browserbase account, '
+              + 'use {"type":"secret","key":"api_key","label":"Browserbase API key",'
+              + '"destination":{"kind":"browserbase_connection"}}. It defaults to the '
+              + 'person who presses the card; shared Browserbase accounts need '
+              + '"scope":"team","teamId":"<uuid>" or "scope":"organization" and '
+              + 'can only be connected by an organisation owner. The masked value is '
+              + 'probed before it is stored and never appears in the conversation. A '
+              + 'Browserbase account connection does not grant cloud-browser access to '
+              + 'any agent; an owner must separately grant the named agent.',
             items: { type: 'object' },
           },
           actions: {

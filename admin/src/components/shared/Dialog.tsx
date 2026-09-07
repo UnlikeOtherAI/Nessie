@@ -91,6 +91,8 @@ type DialogProps = {
   description?: ReactNode
   /** Focused on open; without one, focus lands on the first focusable child. */
   initialFocusRef?: RefObject<HTMLElement | null>
+  /** Actions that belong beside the close control, such as expanding a reader. */
+  headerActions?: ReactNode
   onClose: () => void
   open: boolean
   size?: DialogSize
@@ -102,6 +104,7 @@ export const Dialog = ({
   children,
   description,
   dismissDisabled = false,
+  headerActions,
   initialFocusRef,
   onClose,
   open,
@@ -154,23 +157,26 @@ export const Dialog = ({
                 </div>
               ) : null}
             </div>
-            <button
-              aria-label="Close"
-              className={closeButtonClass}
-              onClick={requestClose}
-              type="button"
-            >
-              <svg
-                aria-hidden="true"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
+            <div className="flex items-center gap-1">
+              {headerActions}
+              <button
+                aria-label="Close"
+                className={closeButtonClass}
+                onClick={requestClose}
+                type="button"
               >
-                <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+                <svg
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {children}

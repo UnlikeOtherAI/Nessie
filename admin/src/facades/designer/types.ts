@@ -52,6 +52,7 @@ export type AgentDesignerAction =
   | { enabled: boolean; type: 'set_todos_enabled' }
   | { style: string; type: 'set_speaking_style' }
   | { type: 'set_voice_name'; voiceName: string }
+  | { toolState: Record<string, boolean>; type: 'set_tool_selection' }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
   | { visibility: AgentVisibilityValue; type: 'set_visibility' }
   // A stored draft coming back on mount. The reducer owns the state, so a

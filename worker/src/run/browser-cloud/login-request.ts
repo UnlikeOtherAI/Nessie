@@ -1,6 +1,8 @@
 import {
-  ensureAgentBrowser,
+  createPersonalBrowserAccessGrant,
+  isPrivateBrowserHome,
   isCloudBrowserError,
+  normalizePersonalBrowserOrigins,
   releaseSessionsForRun,
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
@@ -8,7 +10,6 @@ import type { Prisma } from '@prisma/client'
 import { AgentCardMessageMetadataSchema, type AgentCardSpec } from '@nessie/schemas'
 import { renderAgentCardPlainText } from '@nessie/team-admin'
 
-import { resolveBrowserPrincipal } from './browser-principal.js'
 import { createAgentMessage } from '../execute/agent-message.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
 import { publishMessageCreated } from '../execute/realtime.js'
@@ -44,12 +45,17 @@ export type LoginRequestOutcome = {
 const deploymentClampedExpiry = (): Date =>
   new Date(Date.now() + CARD_EXPIRY_SECONDS * 1000)
 
+/** The grant owns the actual limit after the deployment TTL is applied. */
+export const browserLoginCardDeadline = (
+  grant: { expiresAt: Date },
+): Date => grant.expiresAt
+
 export const requestBrowserLogin = async (
   deps: CloudBrowserDeps,
   context: BuiltinToolRuntimeContext & {
     agentIdentity?: { visibility: 'team' | 'private'; ownerUserId: string | null }
   },
-  args: { service: string; reason: string },
+  args: { origins: string[]; reason: string; service: string },
 ): Promise<LoginRequestOutcome> => {
   const runContext = context.runContext
   if (!runContext) {
@@ -67,16 +73,21 @@ export const requestBrowserLogin = async (
     }
   }
 
-  let browserId: string
+  if (!(await isPrivateBrowserHome(deps.prisma, {
+    agentId: context.agentId,
+    organizationId: context.channel.organizationId,
+    threadId: context.run.threadId,
+    userId: requesterId,
+  }))) {
+    return {
+      output: 'Personal sign-in is available only from your private agent chat. Open that chat and ask there; shared rooms never receive personal browser state.',
+      success: false,
+    }
+  }
+
+  let origins: string[]
   try {
-    const browser = await ensureAgentBrowser(deps, {
-      organizationId: context.channel.organizationId,
-      agentId: context.agentId,
-      agentVisibility: context.agentIdentity?.visibility ?? 'team',
-      agentOwnerUserId: context.agentIdentity?.ownerUserId ?? null,
-      principalUserId: await resolveBrowserPrincipal(context),
-    })
-    browserId = browser.id
+    origins = normalizePersonalBrowserOrigins(args.origins)
   } catch (error) {
     if (isCloudBrowserError(error)) return { output: error.message, success: false }
     throw error
@@ -106,18 +117,8 @@ export const requestBrowserLogin = async (
       {
         type: 'text',
         markdown:
-          `Open my browser from the Browser tool beside this conversation, sign in `
-          + `to ${service}, then press Done. You type directly into the browser — `
-          + 'nothing you enter passes through this team, and nobody, including '
-          + 'me, can see it.',
-      },
-      {
-        // The routed doorway to the agent's browser panel — the same one the
-        // tool rail opens. An earlier placeholder pointed at a host that does
-        // not exist, which made the card's only link a dead end.
-        type: 'link',
-        href: `/channels/${context.channel.id}/tools/browser`,
-        label: 'Open the browser',
+          `Open your private browser, sign in to ${service}, then press Done. `
+          + 'Done lets the agent continue this task.',
       },
     ],
     actions: [{ key: 'done', label: 'Done', style: 'primary', submits: true }],
@@ -136,12 +137,24 @@ export const requestBrowserLogin = async (
         ? { rootMessageId: runContext.replyRootMessageId }
         : {}),
     })
+    const grant = await createPersonalBrowserAccessGrant(tx, {
+      agentId: context.agentId,
+      expiresAt,
+      organizationId: context.channel.organizationId,
+      origins,
+      runId: context.run.id,
+      threadId: context.run.threadId,
+      userId: requesterId,
+    })
     const row = await tx.agentCard.create({
       data: {
         agentId: context.agentId,
-        browserLogin: { agentBrowserId: browserId, service } as Prisma.InputJsonValue,
+        browserLogin: { grantId: grant.grantId, mode: 'temporary', origins, service } as Prisma.InputJsonValue,
         channelId: context.channel.id,
-        expiresAt,
+        // The deployment may set a browser TTL below the requested fifteen
+        // minutes. The grant is the authority for that ceiling, so the card
+        // must not invite a person to a login window that can no longer open.
+        expiresAt: browserLoginCardDeadline(grant),
         messageId: message.id,
         organizationId: context.channel.organizationId,
         respondentUserIds: [requesterId],
@@ -159,7 +172,7 @@ export const requestBrowserLogin = async (
       },
       where: { id: message.id },
     })
-    return { cardId: row.id, message }
+    return { cardId: row.id, expiresAt: grant.expiresAt, message }
   })
 
   const reply = runContext.replyRootMessageId
@@ -190,7 +203,9 @@ export const requestBrowserLogin = async (
     cardId: created.cardId,
     output:
       `Asked for a sign-in to ${service}. Waiting for them to finish; your `
-      + 'browser is closed until then, so nothing is being metered.',
+      + 'private browser access is limited to this task and ends at the deadline shown on the card. '
+      + 'A service-issued API key needs a separate vault_secret card; closing this '
+      + 'browser never revokes that key.',
     success: true,
   }
 }

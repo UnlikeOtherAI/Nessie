@@ -91,10 +91,10 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
   const options = useMemo<DesignerToolOption[]>(() => {
     const builtin: DesignerToolOption[] = (builtinQuery.data ?? [])
       .filter(
-        (tool) =>
-          tool.builtin !== false
+        (tool) => tool.builtin !== false
           && tool.enabled !== false
-          && tool.requiresExplicitGrant !== true,
+          && tool.requiresExplicitGrant !== true
+          && tool.personalAssistantOnly !== true,
       )
       .map((tool) => ({
         key: tool.id,
@@ -201,4 +201,19 @@ export const buildToolPolicy = (
     }
   }
   return policy
+}
+
+/** Apply a model's all-or-nothing ordinary-tool selection without touching protected local state. */
+export const completeToolSelection = (
+  toolState: Record<string, boolean>,
+  options: DesignerToolOption[],
+  selectedToolIds: string[],
+): Record<string, boolean> | null => {
+  const optionKeys = new Set(options.map((tool) => tool.key))
+  if (selectedToolIds.some((toolId) => !optionKeys.has(toolId))) return null
+
+  const selected = new Set(selectedToolIds)
+  const next = { ...toolState }
+  for (const key of optionKeys) next[key] = selected.has(key)
+  return next
 }

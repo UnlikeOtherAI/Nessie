@@ -132,9 +132,13 @@ returns a secret value.
 ## Scope
 
 A secret has exactly one home scope: `personal`, `team`, `project`, or
-`organization`. A personal secret is bound to its owner. Team, project and
-organisation mutation is owner-gated and confirms the requested target belongs
-to the caller's organisation.
+`organization`. A personal secret is bound to its owner. Organisation ownership
+has no authority over another person's personal metadata, rotation, revocation,
+or grants: only that person or an unexpired explicit user `manage`/`delegate`
+grant may perform those operations. A `use` or `reveal` grant alone is not a
+metadata listing capability. Team, project and organisation mutation remains
+owner-gated and confirms the requested target belongs to the caller's
+organisation.
 
 ### The cascade, and the lock
 
@@ -165,13 +169,14 @@ the defect, not the pattern.
 
 ### Reads
 
-An owner sees all metadata. Everyone else sees their own personal secrets,
-their explicit user grants, **the organisation's secrets, and those of every
-team and project they belong to** — the levels above them are what the cascade
-on their own page is made of, and a member whose personal secret silently
-stopped applying had nothing on screen to explain why. This exposes no value,
-ciphertext or vault path: a `Secret` row holds none (see "Authority split"), and
-using a secret still runs through `SecretGrant`.
+An owner sees every non-personal scope's metadata, their own personal
+secrets, and personal secrets explicitly delegated to them with `manage` or
+`delegate`. Everyone else sees the same personal subset, **the organisation's
+secrets, and those of every team and project they belong to** — the levels above
+them are what the cascade on their own page is made of, and a member whose
+personal secret silently stopped applying had nothing on screen to explain why.
+This exposes no value, ciphertext or vault path: a `Secret` row holds none (see
+"Authority split"), and using a secret still runs through `SecretGrant`.
 
 ### The three screens
 

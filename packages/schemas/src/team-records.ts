@@ -272,6 +272,8 @@ export const AgentRecordSchema = z.object({
    * typed system prompt and the voice call's system instruction.
    */
   speakingStyle: AgentSpeakingStyleSchema.nullish(),
+  /** Server-decided browser capability; never inferred from a connection. */
+  browserEnabled: z.boolean().optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),

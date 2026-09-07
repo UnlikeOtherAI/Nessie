@@ -171,8 +171,8 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'and you must never ask for a password in chat. This posts a card with '
       + 'a link that opens your browser for them to sign in themselves, and '
       + 'pauses the run until they are done — your current browser is closed '
-      + 'first, so nothing is metered while they take their time. Once they '
-      + 'finish, the login stays in your browser for future runs too.',
+      + 'first, so nothing is metered while they take their time. The resulting '
+      + 'access is private to this task and expires after fifteen minutes.',
     parameters: {
       type: 'object',
       properties: {
@@ -186,8 +186,13 @@ export const BROWSER_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'string',
           description: 'One sentence on why you need it, shown on the card.',
         },
+        origins: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Exact HTTPS origins needed for this task, such as https://accounts.example.com. Never infer these from the service name.',
+        },
       },
-      required: ['service', 'reason'],
+      required: ['service', 'reason', 'origins'],
     },
     requiresExplicitGrant: true,
     safe: false,

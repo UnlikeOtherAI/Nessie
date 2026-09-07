@@ -608,6 +608,53 @@ Nessie's built-in specialists, and explicit-grant tools the owner surfaces
 grant — the Designer names the last two rather than pretending they do not
 exist.
 
+**Suitability is a decision the Designer makes for every togglable entry.** On
+creation it selects the smallest effective set needed by the stated purpose:
+default-on built-ins that do not belong are explicitly denied, and default-off
+connectors are allowed only when needed. On an edit, it repeats that review if
+the purpose changes or the person asks for an access review, while treating
+existing policy overrides as potentially deliberate grants or denials. It
+explains meaningful changes briefly. Neither an account connection nor an
+installed app is a per-agent grant; restricted and explicit-grant entries stay
+under their existing owner-side authorization paths.
+
+For a creation, purpose change, or explicit access review, the Designer sends
+one complete ordinary-tool selection. That selection can be empty and maps
+every eligible ordinary entry to its chosen effective state, so a minimal agent
+does not rely on a long, incomplete list of individual denials. Unknown and
+restricted keys reject the selection rather than applying part of it. Protected
+grant rows remain server-owned and are never returned by the form.
+
+When a cloud browser is suitable, the Designer explains the two decisions
+separately: a Browserbase account connection, entered only through the masked
+`browserbase_connection` card field and probed before storage, and the existing
+explicit browser grant for the named agent. The first never grants the second.
+Personal Browserbase setup binds to the responding person; shared team or
+organisation setup remains owner-authorised.
+The personal doorway is **Settings → Agents**
+(`/settings/account?tab=agents`); an owner configures a shared **organisation**
+account at **Settings → Organization → Agents**
+(`/settings/organization?tab=agents`). The named-agent browser grant is
+separately managed at **Agents → Tools** (`/agents/tools`). Browserbase is not
+an Apps or Integrations setup flow.
+
+Every ordinary agent receives the same server-authored Browserbase facts. The
+model decides whether the task benefits from a cloud browser; it can recommend
+setup even when browser tools are unavailable. Only a run with `card_post` may
+offer the masked `browserbase_connection` form. Otherwise it explains the
+setup path without pretending it can accept the key in chat.
+When secure setup or other ordinary interactive forms belong in the agent's
+work, the Designer includes `card_post` if it is eligible: cards carry the
+masked setup form, while browser actions remain separately granted. A granted
+browser-login request, rather than `card_post`, handles website sign-in.
+
+The sidebar carries a bounded six-turn draft loop: recognised form updates are
+acknowledged so a model can complete sequential name, role and tool changes,
+then finish in prose. An unknown tool call stops the loop, and reaching the
+bound tells the person another message is needed to finish the explanation.
+An absent page context means the normal create/configure controls are present;
+an explicitly empty context remains read-only.
+
 ## Security invariants
 
 1. **Route-mirroring, exactly.** Every Designer tool calls the shared
@@ -917,83 +964,7 @@ pend), and `agent_update` mirroring every `canEditAgent` refusal. Fixtures
 include non-English, slang and misspelled inputs, per the
 intent-is-model-judged rule.
 
-## Cross-model review (2026-09-02)
+## Review record and follow-ups
 
-Kimix (14 findings) and Codex Sol (22 findings) reviewed the same revision
-independently; both verdicts were "not implementation-ready", and every adopted
-claim was re-verified against code before the revision that answered it. Each
-finding below is now built, and the design decision it changed is stated in the
-D-section that owns it — this is the record of *why* those sections say what
-they say.
-
-**Converged:** D3's plumbing was under-specified (surface facts never reached
-`authorizeToolCall`, and the toolset must omit rather than offer-then-deny);
-the sidebar/admin work was understated (`useSidebarDms`, the DM predicates and
-participants, not just the identity directory); `agent_read` cited a
-nonexistent route and contradicted the read-only detail view (resolved as the
-config-only projection); edit authority needed field-sensitive enforcement,
-because the PUT body carries `ownerUserId` and `todosEnabled`; the handoff
-needed a real loop bound (a per-requester cooldown row, withheld from global
-agents and subtask children).
-
-**Kimix:** the channel-surface CHECK violation twin; the five `agentKind`-keyed
-delegation sites re-keyed onto one predicate; delegated reads feeding the
-disclosure sink; the handoff-basis subtraction, without which the Designer is
-silenced in its own DM; the `systemSlug` CHECK requiring `organizationId`; the
-api face's missing registry access (D5, delivered in phase 4).
-
-**Sol:** unattended trigger runs would have wielded identity tools (hence the
-interactive arm and no self-triggers); nothing prevented a second agent binding
-into a system DM, nor rename/archive of one; `wait: true` holds the thread
-slot, so "answer in chat instead" required the no-wait default;
-`updateAgentRecord` did not refuse existing system rows; "promote is the
-existing publish act" was false, visibility being immutable; a PA-presence
-handoff would have opened the PA *owner's* DM rather than the asker's; the
-handoff bypassed `claimThreadRunOrPend` and impersonated the requester with an
-editable `role:'user'` message; the origin "link card" could not be expressed by
-the card contract; `agent_create` never generated avatars; the general
-`agent_update` conflicted with conversational-setup (explicit supersession); and
-the blueprint had no model fields.
-
-**Noted, not blocking:** message edit does not refuse
-`agentCardResponse`-stamped rows (filed as an adjacent defect below).
-
-## Open questions
-
-Two of the original three are answered by the build: `gagent:` DM keys stay
-org-scoped with no UOA team segment (creation acts org-wide), and bootstrap runs
-at **login**, beside the Personal Assistant's, so the sidebar DM row is simply
-there. The one still open is whether entitled members may *claim* a team-owned
-agent — v1 says no (org owners only): an edit helps everyone, a claim locks
-everyone else out. Revisit if release/claim churn shows up in real use. Two
-earlier questions were resolved in the design itself: the `PUT /api/agents/:id`
-owner arm became the "Edit authority" model, and model resolution is D1/D9's
-blueprint pin → `NESSIE_DESIGNER_MODEL` → organisation default.
-
-## Adjacent defects noticed while mapping (filed separately)
-
-**Fixed along the way:** `createExternalAgentData` wrote a tuple
-`agents_system_managed_invariants_chk` forbade and a DM key
-`channels_personal_assistant_surface_chk` rejected — both repaired by migration
-`20260902170000_external_agent_surface_invariants`, with
-`api/test/external-agent-bootstrap-db.test.ts` now driving the real service
-against Postgres, because the cast fake could see neither CHECK. That is the
-`extagent:` lesson D2 cites. Also: `POST /api/designer/chat` dropped
-`pageContext` before the prompt; `PA_PRESENCE_PRIVATE_READ_TOOL_IDS` carried a
-dead `message_post` entry (removed, with a test asserting every id resolves);
-`CreateAgentBodySchema` accepted a `routingProfileId` the route discarded
-(removed rather than wired — it is server/bootstrap-only).
-
-**Still open:**
-
-- The `pa:%` arm of `channels_personal_assistant_surface_chk` carries no
-  `system_channel_type` condition (it predates the type-keyed arms), so a row
-  claiming `system_channel_type = 'system_agent'` with a `pa:` key is still
-  admitted. Nothing can reach that shape today — bootstrap only writes
-  `gagent:` keys and `assertGlobalAgentRunPlacement` requires that prefix — and
-  tightening the legacy arm wants its own migration plus a survey of existing
-  rows.
-- `updateMessage` (`api/src/services/messages.ts`) does not refuse editing a
-  message stamped `agentCardResponse`, though the cards spec says a card
-  response is immutable — a resolved card's decision text can be edited into
-  disagreement with the card's authoritative state.
+The cross-model review, remaining ownership question, and adjacent defects are
+in [the review appendix](2026-09-02-agent-designer-global-agent-reviews.md).

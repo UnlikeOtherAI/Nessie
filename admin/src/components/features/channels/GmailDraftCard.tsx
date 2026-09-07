@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Pill } from '../../primitives/Pill'
 import { useGmailDraft, type GmailDraftView } from '../../../facades/gmail/hooks'
 
@@ -44,8 +44,10 @@ const AddressRow = ({ label, values }: { label: string; values: string[] }) =>
  * discarded — is testable without a query client or a live mailbox.
  */
 export const GmailDraftCardView = ({
+  actions,
   data,
 }: {
+  actions?: ReactNode
   data: GmailDraftView
 }) => {
   const [expanded, setExpanded] = useState(false)
@@ -119,7 +121,7 @@ export const GmailDraftCardView = ({
           ))}
         </div>
       ) : null}
-
+      {actions ? <div className="mt-3 flex flex-wrap gap-2">{actions}</div> : null}
     </div>
   )
 }

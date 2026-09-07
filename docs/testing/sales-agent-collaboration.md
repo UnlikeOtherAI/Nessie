@@ -114,6 +114,11 @@ Windows tests failed because their Docker executable and `chmod` fixtures
 assume POSIX; Linux CI remains the merge gate. These checks do not yet prove
 live agent consensus, generated prospect tasks, or an actual Meet link.
 
+The live Google connection is disabled with **Not set up on this server**.
+The required server OAuth client configuration is absent; connecting a user's
+account cannot complete until that configuration is supplied. No real calendar
+event, client invitation, or Meet link was created during this verification.
+
 Headless component fixtures at `localhost:5455` exercised designer draft
 preservation across tabs, checklist application and result saving, local-draft
 clearing, and the task Details surface. The final fixture also verified the

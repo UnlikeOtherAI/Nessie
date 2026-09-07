@@ -71,8 +71,21 @@ afterwards. Spec:
   message's own metadata rather than borrowing the press machinery — which
   would have meant relaxing "a card with inputs needs an action" for a card
   nobody acts on. The reasoning is in
-  [`web-search.md`](web-search.md) → "The search card"; it is the boundary of
-  this standard, not an exception to it.
+[`web-search.md`](web-search.md) → "The search card"; it is the boundary of
+this standard, not an exception to it.
+- **An action may be a same-app doorway.** An action with `href` is an internal
+  router path. It claims the card before navigation, so a draft cannot remain
+  open for a stale second choice. A normal `submits: true` action validates the
+  complete form. An `href` may instead set `collectsValues: true` with
+  `submits: false`: it stores the present non-secret values without requiring a
+  partial form to be complete, and leaves the destination's normal validation
+  and action authority unchanged. The destination owns its normal authorization
+  check and receives ordinary form values only through in-memory
+  router state. An opaque card id in the route lets the destination re-fetch
+  the resolved, viewer-scoped values after a reload; no copy enters a URL or
+  card metadata. This keeps a mail draft's `Send` response beside `Edit`, which
+  opens the canonical Mail composer with the same copy instead of an
+  email-shaped second editor.
 - **A closed block vocabulary, never a kind per integration.** `AgentCardSpec`
   = `blocks` (`text`, `fields`, `image`, `link`, `input`, `secret`) + up to four
   `actions`. A ticket, an email overview and a form are arrangements of the
@@ -120,7 +133,15 @@ afterwards. Spec:
   exact authorization of its dashboard-source route; a `vault_secret` goes
   through `putSecretInVault` and `canManageSecretScope` — the same seam
   `POST /api/secrets` uses, so `personal` is the presser's own and every wider
-  scope stays owner-only and must resolve inside the organisation.
+  scope stays owner-only and must resolve inside the organisation. A
+  `browserbase_connection` uses the same Browserbase probe-and-persist seam as
+  Settings: its masked API key is never copied to
+  the ordinary vault, chat, audit, card row, presenter, or model. `user`
+  scope always binds to the person who pressed the card; `team` and
+  `organization` scope mirror the Settings route's owner and tenant checks.
+  The connection only supplies Browserbase credentials. It is never an
+  implicit per-agent browser grant; the existing explicit grant remains a
+  separate owner-side decision for each named agent.
 - **A plain `input` block is not a credential field.** Its value is written to
   `resolutionValues`, to the response message, to realtime and into the agent's
   next context, so a credential typed into one is refused at the press with

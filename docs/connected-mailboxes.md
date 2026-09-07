@@ -23,8 +23,10 @@ message metadata. `mail_present` writes a restricted, content-free doorway for
 an account, thread, or compose flow, and the client checks the current viewer's
 entitlement again before opening it. Mail search/read and Gmail draft results
 include canonical review references. `mailbox_compose` can offer an editable
-universal card form; submitting it creates a normal user response, and any
-later agent send still goes through the existing approval rules.
+universal card form with Send and Edit. Edit retains the draft in the canonical
+composer without sending it; a later agent send still goes through the existing
+approval rules. Gmail draft doorways render their owner-authorized live preview
+in chat with the same human Send and Edit choices.
 
 This is agent email **Model A**. The other model gives an agent its own hosted
 address on the deployment's Amazon SES account, with a real mailbox surface

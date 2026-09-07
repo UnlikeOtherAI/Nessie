@@ -28,6 +28,10 @@ const normalizePolicy = (value: unknown): Record<string, boolean> =>
     ),
   )
 
+/** Whether an explicit-grant tool has its required per-agent allow. */
+export const isExplicitToolGranted = (value: unknown, toolId: string): boolean =>
+  normalizePolicy(value)[toolId] === true
+
 export const isExplicitToolPolicyProvenanceKey = (key: string): boolean =>
   key === DEEP_WATER_MANUAL_UPDATER_MARKER
   || key.startsWith(DEEP_WATER_BUNDLE_MARKER_PREFIX)

@@ -23,6 +23,9 @@ import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError } from './errors.js'
  */
 
 const BROWSERBASE_API_ORIGIN = 'https://api.browserbase.com'
+const TERMINAL_SESSION_STATUSES = new Set(['COMPLETED', 'ERROR', 'TIMED_OUT'])
+const RELEASE_CONFIRM_ATTEMPTS = 8
+const RELEASE_CONFIRM_DELAY_MS = 250
 
 /** Hosts a Browserbase-issued URL is allowed to point at. */
 const BROWSERBASE_HOST_SUFFIXES = ['.browserbase.com', 'browserbase.com'] as const
@@ -169,7 +172,13 @@ const failFor = async (response: Response, action: string): Promise<never> => {
 
 export const createBrowserbaseClient = (
   credentials: BrowserbaseCredentials,
-  options: { fetchImpl?: FetchLike; origin?: string } = {},
+  options: {
+    fetchImpl?: FetchLike
+    origin?: string
+    releaseConfirmAttempts?: number
+    releaseConfirmDelayMs?: number
+    sleep?: (milliseconds: number) => Promise<void>
+  } = {},
 ): BrowserbaseClient => {
   const origin = options.origin ?? BROWSERBASE_API_ORIGIN
   const fetchImpl = options.fetchImpl ?? safeFetch
@@ -181,6 +190,11 @@ export const createBrowserbaseClient = (
   // `projectId` field at all rather than `null` — which the API reads as a
   // project named null and refuses.
   const projectScope = credentials.projectId ? { projectId: credentials.projectId } : {}
+  const releaseConfirmAttempts = options.releaseConfirmAttempts ?? RELEASE_CONFIRM_ATTEMPTS
+  const releaseConfirmDelayMs = options.releaseConfirmDelayMs ?? RELEASE_CONFIRM_DELAY_MS
+  const sleep = options.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds)
+  }))
 
   const request = async (
     path: string,
@@ -261,6 +275,22 @@ export const createBrowserbaseClient = (
           body: { status: 'REQUEST_RELEASE' },
         },
         'releasing a browser session',
+      )
+      for (let attempt = 0; attempt < releaseConfirmAttempts; attempt += 1) {
+        const response = await request(
+          `/v1/sessions/${encodeURIComponent(sessionId)}`,
+          { method: 'GET' },
+          'confirming a browser session release',
+        )
+        const body = (await response.json()) as { status?: unknown }
+        if (typeof body.status === 'string' && TERMINAL_SESSION_STATUSES.has(body.status.toUpperCase())) {
+          return
+        }
+        if (attempt + 1 < releaseConfirmAttempts) await sleep(releaseConfirmDelayMs)
+      }
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.UNREACHABLE,
+        'Browserbase did not confirm that the browser session reached a terminal state.',
       )
     },
 

@@ -56,6 +56,7 @@ test('a viewport becomes browserSettings.viewport; without one the key is absent
 })
 
 const CONNECTION = {
+  connectionId: 'conn-1',
   id: 'conn-1',
   scope: 'organization',
   projectId: null,
@@ -74,6 +75,7 @@ const CONNECTION = {
 const fakePrisma = (): PrismaClient => {
   const tx = {
     $executeRaw: async () => 0,
+    $queryRaw: async () => [CONNECTION],
     agentBrowser: { count: async () => 1 },
     cloudBrowserSession: {
       count: async () => 0,

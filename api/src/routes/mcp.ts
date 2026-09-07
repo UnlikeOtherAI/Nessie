@@ -66,6 +66,7 @@ export const registerMcpRoutes = (
 
   const ctx: McpSubRegistrarContext = {
     prisma: helpers.prisma,
+    realtimeHub: helpers.realtimeHub,
     config: helpers.config ?? loadConfig(),
     rateLimiter: helpers.rateLimiter
       ?? createRateLimiter(helpers.prisma, {

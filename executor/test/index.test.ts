@@ -15,7 +15,7 @@ import {
   workspaceForRun,
   writeSandboxFile,
 } from '../src/sandbox-workspace.js'
-import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
+import { loadExecutorState, loadExecutorStatesFromRoot, saveExecutorState } from '../src/state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
 import { canonicalExecutorJson, type ExecutorCommandEnvelope } from '@nessie/schemas'
 
@@ -189,6 +189,24 @@ test('desktop-supervised daemon reads its parent-liveness pipe only when explici
   )
 })
 
+test('the cookie-import native host receives only a pinned caller and owner-only state path', () => {
+  assert.deepEqual(
+    parseCommand([
+      'native-browser-cookie-import',
+      '--state-root', '/private/tmp/nessie-executors',
+      '--extension-origin', 'chrome-extension://release-id/',
+      '--caller-origin', 'chrome-extension://release-id/',
+    ]),
+    {
+      callerOrigin: 'chrome-extension://release-id/',
+      expectedExtensionOrigin: 'chrome-extension://release-id/',
+      kind: 'native-browser-cookie-import',
+      requireDevelopmentLocalApi: false,
+      stateRoot: '/private/tmp/nessie-executors',
+    },
+  )
+})
+
 test('Codex configuration requires only local owner-controlled sources', () => {
   assert.deepEqual(
     parseCommand([
@@ -317,6 +335,39 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
 
     await symlink(safe, linked)
     await assert.rejects(() => saveExecutorState(linked, state), /ordinary directory/)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test('native-host state-root dispatch accepts only protected matching pairing directories', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-pairings-'))
+  const firstId = '00000000-0000-4000-8000-000000000031'
+  const secondId = '00000000-0000-4000-8000-000000000032'
+  const stateFor = (executorId: string) => ({
+    apiBaseUrl: 'https://api.example.test',
+    descriptor: {
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+      operationKeys: ['sandbox.stop'],
+      profiles: ['workspace_sandbox'],
+      revision: 1,
+    },
+    executorId,
+    machinePrivateKey: 'private',
+    machinePublicKey: 'public',
+    workspaceRoot: '/private/tmp/nessie-workspace',
+  })
+  try {
+    await saveExecutorState(join(root, firstId), stateFor(firstId))
+    await saveExecutorState(join(root, secondId), stateFor(secondId))
+    const mismatchedDirectory = join(root, '00000000-0000-4000-8000-000000000033')
+    await saveExecutorState(mismatchedDirectory, stateFor('00000000-0000-4000-8000-000000000034'))
+    await mkdir(join(root, 'not-a-pairing'))
+
+    assert.deepEqual(
+      (await loadExecutorStatesFromRoot(root)).map((state) => state.executorId),
+      [firstId, secondId],
+    )
   } finally {
     await rm(root, { force: true, recursive: true })
   }

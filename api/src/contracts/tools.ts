@@ -24,6 +24,7 @@ export const ToolDescriptorSchema = z.object({
   // A project tool can be granted to a shared agent, but only for a
   // person-started run in a project channel where that agent is bound.
   projectDelegatedOnly: z.boolean().optional(),
+  personalAssistantOnly: z.boolean().optional(),
   // Where the tool belongs in every surface that lists tools, declared by the
   // tool itself. Optional on the wire only because an organization-local
   // registry entry (a custom or executor-projected tool) is not a
