@@ -124,21 +124,25 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
             <p className="mt-1 text-sm text-[color:var(--tx2)]">Loading…</p>
           ) : connection ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
-              {connection.projectId ? (
-                <>Project <span className="font-mono">{connection.projectId}</span></>
-              ) : 'Connected'}
-              {connection.usedMinutes > 0
-                ? ` · ${connection.usedMinutes} browser minute${connection.usedMinutes === 1 ? '' : 's'} used`
-                : ' · no browser time used yet'}
-              {connection.liveSessions > 0
-                ? ` · ${connection.liveSessions} open now`
-                : ''}
+              {disconnected
+                ? 'Reconnect to use the saved browser sign-ins in this Browserbase account.'
+                : <>
+                    {connection.projectId ? (
+                      <>Project <span className="font-mono">{connection.projectId}</span></>
+                    ) : 'Connected'}
+                    {connection.usedMinutes > 0
+                      ? ` · ${connection.usedMinutes} browser minute${connection.usedMinutes === 1 ? '' : 's'} used`
+                      : ' · no browser time used yet'}
+                    {connection.liveSessions > 0
+                      ? ` · ${connection.liveSessions} open now`
+                      : ''}
+                  </>}
             </p>
           ) : (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">{copy.empty}</p>
           )}
           {connection && connection.status !== 'active' ? (
-            <p className="mt-2 text-sm text-[color:var(--danger)]">
+            <p className={`mt-2 text-sm ${disconnected ? 'text-[color:var(--tx2)]' : 'text-[color:var(--danger)]'}`}>
               {HEALTH_COPY[connection.healthReason ?? ''] ?? 'This connection needs attention.'}
             </p>
           ) : null}

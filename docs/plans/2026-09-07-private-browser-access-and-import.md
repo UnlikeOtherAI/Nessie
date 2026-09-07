@@ -264,6 +264,14 @@ cookie. A generic **Done** returned 204 and released that persistent session
 without creating the requested task. This proves the temporary no-context
 session did not copy cookies back into the saved private context.
 
+The personal connection lifecycle passed against the real Browserbase account.
+**Disconnect** refused while one browser was open and retained its encrypted
+key. After its tracked release, disconnect disabled the connection and the
+matching encrypted-secret row count was zero. The masked **Reconnect** form
+accepted the same account key, restored the durable context, and preserved its
+selected-site and saved-context cookies without the temporary session cookie.
+A final disconnect again left no blocking tracked session and no stored key.
+
 The final mobile viewport retest also passed. A durable saved browser moved
 from laptop to phone dimensions through live WebSocket frames, remounted with
 “Your controls are paused”, and accepted touch scrolling at 390×844. On the
