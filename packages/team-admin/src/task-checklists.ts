@@ -46,6 +46,9 @@ export const applyTaskChecklistTemplate = async (
     templateId: string
   },
 ): Promise<TaskChecklistRecord | { error: 'TASK_NOT_FOUND' | 'TEMPLATE_UNAVAILABLE' }> => {
+  if ('$transaction' in prisma) {
+    return prisma.$transaction((tx) => applyTaskChecklistTemplate(tx, input))
+  }
   const existing = await getTaskChecklist(prisma, input)
   if (existing) return existing
   const template = await prisma.agentTodoTemplate.findFirst({
@@ -102,6 +105,9 @@ export const updateTaskChecklistStep = async (
     taskId: string
   },
 ): Promise<TaskChecklistRecord | null> => {
+  if ('$transaction' in prisma) {
+    return prisma.$transaction((tx) => updateTaskChecklistStep(tx, input))
+  }
   const step = await prisma.taskChecklistStep.updateMany({
     data: {
       completedAt: input.completed ? new Date() : null,
