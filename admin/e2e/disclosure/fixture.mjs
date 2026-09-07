@@ -120,10 +120,15 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
         agentKind: 'shared',
         name: 'Disclosure shared agent',
         ownerUserId: agentOwner.id,
+        projectId: scope.projectId,
+        teamId: scope.teamId,
         systemManaged: false,
         toolPolicy: { send_message: true },
         visibility: 'team',
       },
+    }),
+    prisma.agentBinding.create({
+      data: { agentId: scope.agentId, channelId: group.id },
     }),
     prisma.agentBinding.create({
       data: { agentId: scope.agentId, channelId: privateChannel.id },
