@@ -13,15 +13,25 @@ read-only research key; the legacy `KILOTALK_MCP_BEARER_TOKEN` has broader acces
 Both are separate from the portal password. Keep credentials in the configured
 secret store, never in agent instructions, task details, or this document.
 
-Start with `sharpgrid.facets` and one bounded `sharpgrid.outlets.browse` page.
-Use existing prospect records and their source payloads or scan history before
-requesting a new scan. Grant only the research tools needed by the test;
+For an unknown prospect set, start with `sharpgrid.facets` and one bounded
+`sharpgrid.outlets.browse` page. When record IDs are already known, read those
+records directly instead of repeating broad catalogue or customer-list calls.
+Use existing source payloads or scan history before requesting a new scan.
+Grant only the research tools needed by the test;
 KiloTalk's full MCP also contains unrelated write operations. A paid discovery
 job, customer message, or client invitation is outside this initial test.
 
 Keep observed facts, source dates, confidence, identity uncertainty, and the
 agent's proposed approach distinct. A source score or an estimated revenue
 figure is not independent evidence that a prospect should be contacted.
+
+The bounded live test uses Eska (KiloTalk record 28), Nordbeans (25), and
+Můj šálek kávy (40). Manual portal inspection found uncertain entity/location
+links for Eska, limited cached register data for Nordbeans, and no intelligence
+for Můj šálek kávy. These are test inputs, not qualified leads. Agents must
+resolve material gaps with current primary sources or explicitly defer the
+prospect. A successful run records a contact, defer, or reject decision for
+each record; it does not have to recommend contacting all three.
 
 ## User walkthrough
 
@@ -89,6 +99,16 @@ connection check successfully opened and closed a browser session; an agent's
 actual browser research has not yet been verified. The researcher has explicit
 open, observe, act, and close grants, verified through the tool-access UI.
 
+The local Agent Tools screen now exposes eligible project tools and lets
+organization owners grant protected browser and peer tools through the existing
+registry policy route. Generic create/update requests still cannot grant these
+protected tools. Nonowners do not query the owner-only registry, and executor
+tools remain managed from Executors. A real local UI walkthrough verified
+`browser_open` enabling and revocation after Save and reload. Peer and project
+ticket controls still need their final browser walkthrough; no live deployment
+of this correction is claimed here. The reusable driver is documented in
+[`admin/e2e/tool-access-ui-proof`](../../admin/e2e/tool-access-ui-proof/README.md).
+
 The researcher called KiloTalk's catalogue and customer-list tools, then stopped
 at a run token limit before returning research. A checkpoint continuation also
 stopped without a useful answer. Code inspection shows continuation reloads
@@ -107,7 +127,7 @@ remedy is the project/team API and data migration described in
 [the team-model standard](../standards/team-model.md).
 
 Local combined API/worker builds passed. The full admin Turbo suite passed
-1,447 tests after correcting a stale Designer source assertion. Postgres checks verified concurrent checklist application and
+1,451 tests including the tool-catalog regressions. Postgres checks verified concurrent checklist application and
 restricted-source propagation through peer mailbox delivery. Google Calendar
 tests verified the Meet request contract with a provider mock. Earlier broader
 Windows runs failed because their Docker executable and `chmod` fixtures
