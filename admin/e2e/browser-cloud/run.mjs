@@ -127,6 +127,43 @@ const installCanvasSocket = async (context) => context.addInitScript((frame) => 
   window.WebSocket = CanvasSocket
 }, FRAME)
 
+// A policy event only exercises stale mounted UI after the channel has added
+// its scope to the shared activity socket. Wait for the server's exact
+// subscription acknowledgement instead of racing React's initial render.
+const waitForChannelRealtimeSubscription = (page, channelId, timeoutMs = 10_000) => new Promise((resolve, reject) => {
+  let done = false
+  const finish = (error) => {
+    if (done) return
+    done = true
+    clearTimeout(timeout)
+    page.off('websocket', onSocket)
+    if (error) reject(error)
+    else resolve()
+  }
+  const onSocket = (socket) => {
+    if (new URL(socket.url()).pathname !== '/api/activity') return
+    socket.on('framereceived', ({ payload }) => {
+      try {
+        const message = JSON.parse(payload)
+        if (
+          message.type === 'subscribed'
+          && message.scopes?.some((scope) => scope.kind === 'channel' && scope.channelId === channelId)
+        ) {
+          finish()
+        }
+      } catch {
+        // Frames for the shared socket are schema-validated by the app. A
+        // malformed frame cannot establish the test's subscription boundary.
+      }
+    })
+  }
+  const timeout = setTimeout(
+    () => finish(new Error(`activity socket did not subscribe to channel ${channelId}`)),
+    timeoutMs,
+  )
+  page.on('websocket', onSocket)
+})
+
 const main = async () => {
   const api = await startApi()
   await startAdmin()
@@ -146,14 +183,15 @@ const main = async () => {
     // a stale Browser doorway after revoke.
     {
       const page = await context.newPage()
+      const subscription = waitForChannelRealtimeSubscription(page, agent.homeChannelId)
       await page.goto(`${ADMIN_URL}/channels/${agent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
+      await subscription
       const browserDoor = page.getByRole('button', { name: 'Browser', exact: true })
-      await page.waitForTimeout(400)
       assert.equal(await browserDoor.count(), 0, 'an ungranted agent must not expose a browser doorway')
       await grantBrowser(seed.token, agent.id)
       await page.waitForFunction(() =>
         [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-      { timeout: 10_000 })
+      null, { timeout: 10_000 })
       await call('/api/mcp/tools', { token: seed.token }).then(async (tools) => {
         const browserTool = tools.find((tool) => tool.toolId === 'browser_open')
         assert.ok(browserTool)
@@ -163,11 +201,11 @@ const main = async () => {
       })
       await page.waitForFunction(() =>
         ![...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-      { timeout: 10_000 })
+      null, { timeout: 10_000 })
       await grantBrowser(seed.token, agent.id)
       await page.waitForFunction(() =>
         [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-      { timeout: 10_000 })
+      null, { timeout: 10_000 })
       const state = { canControl: false, controller: false }
       const fixture = {
         agentId: agent.id,
@@ -192,11 +230,13 @@ const main = async () => {
       await controllerContext.addInitScript(([key, value]) => window.localStorage.setItem(key, value), ['nessie.admin.token', seed.token])
       const controllerPage = await controllerContext.newPage()
       const controllerAgent = await createPrivateAgent(seed.token, 'Browser preview control E2E')
+      const controllerSubscription = waitForChannelRealtimeSubscription(controllerPage, controllerAgent.homeChannelId)
       await controllerPage.goto(`${ADMIN_URL}/channels/${controllerAgent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
+      await controllerSubscription
       await grantBrowser(seed.token, controllerAgent.id)
       await controllerPage.waitForFunction(() =>
         [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-      { timeout: 10_000 })
+      null, { timeout: 10_000 })
       const controllerState = { controller: false }
       await installMediatedFixture(controllerPage, {
         agentId: controllerAgent.id,
@@ -222,12 +262,14 @@ const main = async () => {
         const page = await phone.newPage()
         const mobileAgent = await createPrivateAgent(seed.token, 'Mobile browser grant E2E')
         assert.ok(mobileAgent.homeChannelId, 'mobile private agent creation did not provision its home DM')
+        const mobileSubscription = waitForChannelRealtimeSubscription(page, mobileAgent.homeChannelId)
         await page.goto(`${ADMIN_URL}/channels/${mobileAgent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
+        await mobileSubscription
         assert.equal(await page.getByRole('button', { name: 'Browser', exact: true }).count(), 0)
         await grantBrowser(seed.token, mobileAgent.id)
         await page.waitForFunction(() =>
           [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-        { timeout: 10_000 })
+        null, { timeout: 10_000 })
         const state = { controller: false, homeFailure: true }
         const fixture = {
           agentId: mobileAgent.id,
