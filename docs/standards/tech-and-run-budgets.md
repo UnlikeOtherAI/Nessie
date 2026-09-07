@@ -55,16 +55,6 @@ summary and points here; **this file is the rule**.
     `max_tokens`/`max_completion_tokens` value without capability metadata is
     an ordinary provider failure, not an adaptive fallback signal.
 
-## Deep.Agent compaction extraction
-
-Nessie consumes only `@deep/agent`'s commit-pinned, pure
-`runContextCompaction` helper. Nessie still owns utility inference and its
-invocation sink, checkpoint persistence, disclosure basis and durable state.
-The helper preserves complete tool groups, fences its rolling note and retains
-source URLs. CI and Docker require the externally managed
-`DEEP_AGENT_READ_TOKEN`: a fine-grained token scoped only to `deep.agent`
-Contents:Read, rotated before expiry. It is supplied only to installation and
-is never committed, persisted in an image layer, or exposed at runtime.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above
@@ -76,6 +66,18 @@ is never committed, persisted in an image layer, or exposed at runtime.
     runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
     toolCount }`, no cost data (`run-timing.ts`), written after the status flip
     so it can never fail a finished run. Owners: `GET /api/ledger/runs/timing`.
+
+## Deep.Agent compaction extraction
+
+Nessie consumes only `@deep/agent`'s commit-pinned, pure
+`runContextCompaction` helper. Nessie still owns utility inference and its
+invocation sink, checkpoint persistence, disclosure basis and durable state.
+The helper preserves complete tool groups, fences its rolling note and retains
+source URLs. CI and Docker require the externally managed
+`DEEP_AGENT_READ_TOKEN`: a fine-grained token scoped only to `deep.agent`
+Contents:Read, rotated before expiry. It is supplied only to installation and
+is never committed, persisted in an image layer, or exposed at runtime.
+
 - **Budget and storage-quota admission are atomic, and say what they promise.**
   A run enters through `admitRunToBudget` (`packages/runtime/src/budget.ts`),
   not `evaluateBudget`: for an `enforce`/`degrade` budget with a limit it takes

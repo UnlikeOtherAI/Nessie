@@ -76,7 +76,8 @@ test('a resumed legacy compaction note is demoted before a below-threshold infer
     runInference: async (messages) => { observed = messages; return { ...toolCallInference('done'), toolCalls: [] } }, tools: [],
   })
   assert.equal(observed[0]?.role, 'user')
-  assert.match(observed[0]?.content ?? '', /<compacted_work_notes>/)
+  assert.match(observed[0]?.content ?? '', /<compacted_work_notes(?:\s|>)/)
+  assert.match(observed[0]?.content ?? '', /https:\/\/restricted\.example\/x/)
   assert.equal(observed.some((message) => message.role === 'system' && message.content.includes('restricted.example')), false)
 })
 
