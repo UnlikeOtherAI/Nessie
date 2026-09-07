@@ -12,6 +12,7 @@ import type {
   DesignerToolGroup,
   DesignerToolOption,
 } from '../src/facades/designer/tool-catalog.js'
+import { buildToolPolicy, isToolEnabled } from '../src/facades/designer/tool-catalog.js'
 
 const tool = (key: string, group: string): DesignerToolOption => ({
   allowMode: false,
@@ -54,6 +55,17 @@ test('every group is closed at rest, so the picker opens as an index', () => {
   // …and none of the switches behind them.
   assert.doesNotMatch(html, /send_message/)
   assert.doesNotMatch(html, /executor_list/)
+})
+
+test('project-delegated tools use an explicit allow rather than a misleading default-on policy', () => {
+  const delegated: DesignerToolOption = {
+    ...tool('ticket_read', 'Projects'),
+    allowMode: true,
+    defaultEnabled: false,
+  }
+
+  assert.equal(isToolEnabled(delegated, {}), false)
+  assert.deepEqual(buildToolPolicy([delegated], { ticket_read: true }), { ticket_read: true })
 })
 
 test('a closed section still says what belongs in it', () => {

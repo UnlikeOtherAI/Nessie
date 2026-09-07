@@ -99,12 +99,14 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
       .map((tool) => ({
         key: tool.id,
         label: tool.label,
-        description: tool.description,
+        description: tool.projectDelegatedOnly
+          ? `${tool.description} Available only for a person-started run in a project channel where this agent is bound.`
+          : tool.description,
         kind: 'builtin' as const,
         // Explicit-grant builtins are off by default and grant via an explicit
         // allow, exactly like connectors.
-        defaultEnabled: !tool.requiresExplicitGrant,
-        allowMode: tool.requiresExplicitGrant === true,
+        defaultEnabled: !tool.requiresExplicitGrant && !tool.projectDelegatedOnly,
+        allowMode: tool.requiresExplicitGrant === true || tool.projectDelegatedOnly === true,
         group: groupForBuiltin(tool.category),
       }))
 
