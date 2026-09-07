@@ -141,7 +141,9 @@ export const exerciseBoardManagement = async ({
 
   await settingsTabs.getByRole('tab', { name: 'Columns' }).click()
   await waitForSettings(page, projectId, board.id, 'columns')
-  assert.equal(await page.getByLabel('Board name').count(), 0, 'Columns does not retain General controls')
+  const generalName = page.getByLabel('Board name')
+  await generalName.waitFor({ state: 'hidden' })
+  assert.equal(await generalName.count(), 0, 'Columns does not retain General controls')
   await page.getByLabel('New column name').fill(columnName)
   await page.getByRole('button', { name: 'Add column' }).click()
   await waitForBoardColumn(call, token, projectId, renamedBoardName, columnName)
@@ -174,6 +176,35 @@ export const exerciseBoardManagement = async ({
   await legacyCreateDialog.waitFor({ state: 'hidden' })
 
   return waitForBoard(call, token, projectId, renamedBoardName)
+}
+
+/** Keeps both board doorways reachable when the tablet shell leaves a narrow content pane. */
+export const exerciseBoardManagementTablet = async ({ adminUrl, board, page, projectId, shot }) => {
+  await gotoBoardList(page, adminUrl, projectId)
+  const row = boardListRow(page, board.name)
+  const tableBox = await page.getByRole('table', { name: 'Project boards' }).boundingBox()
+  assert.ok(tableBox, 'tablet board table is visible')
+  const actions = [
+    ['Open board', row.getByRole('link', { name: 'Open board' })],
+    ['Settings', row.getByRole('link', { name: 'Settings' })],
+  ]
+  const actionBoxes = []
+  for (const [label, locator] of actions) {
+    const box = await locator.boundingBox()
+    assert.ok(box, `${label} is visible on a tablet`)
+    assert.ok(box.height >= 44, `${label} keeps a 44px touch target (was ${box.height}px)`)
+    assert.ok(
+      box.x >= tableBox.x && box.x + box.width <= tableBox.x + tableBox.width,
+      `${label} stays within the tablet table`,
+    )
+    actionBoxes.push(box)
+  }
+  const [openBoard, settings] = actionBoxes
+  assert.ok(
+    openBoard.y + openBoard.height <= settings.y || settings.y + settings.height <= openBoard.y,
+    'tablet board actions do not overlap',
+  )
+  await shot(page, 'tablet-board-management-list')
 }
 
 /** Checks the management surface remains usable without horizontal panning at phone width. */

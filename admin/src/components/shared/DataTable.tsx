@@ -114,7 +114,7 @@ export const DataTable = <T,>({
   const body = (
     <table
       className="admin-table w-full border-collapse"
-      data-layout={layout}
+      data-layout={layout === 'fixed' ? 'fixed' : undefined}
       style={
         layout === 'fixed'
           ? {

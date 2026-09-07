@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { ADMIN_PORT, API_URL, databaseUrl } from '../navigation/lib/config.mjs'
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
 import { seedTeam, call } from '../navigation/lib/seed.mjs'
-import { exerciseBoardManagement, exerciseBoardManagementPhone } from './board-management.mjs'
+import {
+  exerciseBoardManagement,
+  exerciseBoardManagementPhone,
+  exerciseBoardManagementTablet,
+} from './board-management.mjs'
 
 const ADMIN_URL = `http://localhost:${ADMIN_PORT}`
 const SCREENSHOTS = fileURLToPath(new URL('../../../e2e/screenshots/project-usability/', import.meta.url))
@@ -80,9 +84,16 @@ const shot = async (page, name) => {
   await mkdir(SCREENSHOTS, { recursive: true })
   await page.screenshot({ path: `${SCREENSHOTS}/${name}.png`, fullPage: false })
 }
-const captureFailure = async (page, name) => {
-  if (!page) return
+const observeBrowserDiagnostics = (target) => {
+  target.page.on('console', (message) => {
+    if (message.type() === 'error') target.errors.push(`console: ${message.text()} (${message.location().url})`)
+  })
+}
+const captureFailure = async (target, name) => {
+  if (!target) return
+  const { errors, page } = target
   console.error(`project-usability e2e: ${name} failed at ${page.url()}`)
+  if (errors.length > 0) console.error(`project-usability e2e: ${name} browser errors:\n  ${errors.join('\n  ')}`)
   await mkdir(SCREENSHOTS, { recursive: true })
   await page.screenshot({ path: `${SCREENSHOTS}/failure-${name}.png`, fullPage: false }).catch((error) => {
     console.error(`project-usability e2e: could not capture ${name}: ${error.message}`)
@@ -96,7 +107,7 @@ const main = async () => {
   const seed = await seedTeam({ output: () => '' })
   const cleanupFailures = []
   const createdTaskIds = new Set()
-  let browser; let desktop; let phone; let desktopPage; let phonePage
+  let browser; let desktop; let phone; let tablet; let desktopPage; let phonePage; let tabletPage
   let project; let sourceBoard; let boardAId; let boardBId
   try {
     project = await api('/api/projects', { body: { name: `Project usability ${runId}` }, method: 'POST', token: seed.token })
@@ -106,13 +117,18 @@ const main = async () => {
     browser = await launchBrowser()
     desktop = await openViewportContext(browser, { name: 'desktop', token: seed.token })
     phone = await openViewportContext(browser, { name: 'phone', token: seed.token })
-    desktopPage = await desktop.newPage(); phonePage = await phone.newPage()
+    tablet = await openViewportContext(browser, { name: 'tablet', token: seed.token })
+    desktopPage = await desktop.newPage(); phonePage = await phone.newPage(); tabletPage = await tablet.newPage()
+    observeBrowserDiagnostics(desktopPage); observeBrowserDiagnostics(phonePage); observeBrowserDiagnostics(tabletPage)
     const boardA = await exerciseBoardManagement({
       adminUrl: ADMIN_URL, api, call, onBoardCreated: (id) => { boardAId = id }, page: desktopPage.page,
       projectId: project.id, runId, shot, sourceBoard, token: seed.token,
     })
     await exerciseBoardManagementPhone({
       adminUrl: ADMIN_URL, board: boardA, page: phonePage.page, projectId: project.id, shot,
+    })
+    await exerciseBoardManagementTablet({
+      adminUrl: ADMIN_URL, board: boardA, page: tabletPage.page, projectId: project.id, shot,
     })
     const boardB = await api(`/api/projects/${project.id}/boards`, { body: { copyColumnsFromBoardId: boardA.id, name: `Isolation proof ${runId}` }, method: 'POST', token: seed.token })
     boardBId = boardB.id
@@ -178,14 +194,17 @@ const main = async () => {
     assert.equal(await phonePage.page.locator('[data-kanban-card]').filter({ hasText: touchTitle }).count(), 0, 'board B excludes board A phone work')
     await shot(phonePage.page, 'phone-isolated-board')
   } catch (error) {
-    await captureFailure(desktopPage?.page, 'desktop')
-    await captureFailure(phonePage?.page, 'phone')
+    await captureFailure(desktopPage, 'desktop')
+    await captureFailure(phonePage, 'phone')
+    await captureFailure(tabletPage, 'tablet')
     throw error
   } finally {
     await desktopPage?.close().catch(() => {})
     await phonePage?.close().catch(() => {})
+    await tabletPage?.close().catch(() => {})
     await desktop?.close().catch(() => {})
     await phone?.close().catch(() => {})
+    await tablet?.close().catch(() => {})
     await browser?.close().catch(() => {})
     for (const taskId of createdTaskIds) await api(`/api/tasks/${taskId}/transition`, { body: { status: 'cancelled' }, method: 'POST', token: seed.token }).catch((error) => cleanupFailures.push(`cancel task ${taskId}: ${error.message}`))
     if (sourceBoard && boardAId) await api(`/api/projects/${project.id}/boards/${sourceBoard.id}`, { body: { isDefault: true }, method: 'PUT', token: seed.token }).catch((error) => cleanupFailures.push(`restore default board: ${error.message}`))

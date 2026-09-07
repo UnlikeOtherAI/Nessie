@@ -95,37 +95,23 @@ export const ProjectBoardsPage = () => {
                 header: 'Board',
                 key: 'name',
                 render: (board) => (
-                  <span className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                  <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="flex min-w-0 items-center gap-2 font-medium">
                       <BoardIcon iconEmoji={board.iconEmoji} size="md" />
                       <span className="break-words">{board.name}</span>
                     </span>
-                    <span className="text-xs text-[color:var(--tx3)] sm:hidden">
+                    <span className="text-xs text-[color:var(--tx3)]">
                       {styleLabel(board)} · {board.isDefault ? 'Default' : 'Not default'} · {board.columns.length} columns
                     </span>
                   </span>
                 ),
-              },
-              { header: 'Type', key: 'style', render: styleLabel, secondary: true },
-              {
-                header: 'Default',
-                key: 'default',
-                render: (board) => (board.isDefault ? 'Default' : '—'),
-                secondary: true,
-              },
-              {
-                align: 'right',
-                header: 'Columns',
-                key: 'columns',
-                render: (board) => `${board.columns.length} columns`,
-                secondary: true,
               },
               {
                 align: 'right',
                 header: 'Actions',
                 key: 'actions',
                 render: (board) => (
-                  <span className="inline-flex flex-col items-end gap-0 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="inline-flex flex-col items-end gap-0.5">
                     <Link
                       className="admin-link inline-flex min-h-11 items-center"
                       to={boardPath(projectId, board)}
@@ -145,7 +131,7 @@ export const ProjectBoardsPage = () => {
                     </Link>
                   </span>
                 ),
-                width: '5.5rem',
+                width: '7rem',
               },
             ]}
             expandable
