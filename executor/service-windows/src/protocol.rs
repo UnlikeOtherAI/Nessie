@@ -130,14 +130,13 @@ fn approved_api_base_url(value: &str) -> Result<String, String> {
     if value == APPROVED_API_BASE_URL {
         return Ok(value.to_owned());
     }
-    // An unsigned development executable is deliberately usable only against a
-    // local developer API. A release remains pinned to Nessie's public origin;
-    // accepting arbitrary HTTP here would turn a pasted invitation into a
-    // credential-routing decision.
-    if cfg!(debug_assertions) && LOOPBACK_API_BASE_URLS.contains(&value) {
+    // A local owner may deliberately pair to this machine's development API.
+    // This is a closed loopback set, not a general HTTP exception: a pasted
+    // invitation can never route the machine key to a LAN or internet host.
+    if LOOPBACK_API_BASE_URLS.contains(&value) {
         return Ok(value.to_owned());
     }
-    Err("This Nessie Executor build may pair only with Nessie cloud or the local development API.".to_owned())
+    Err("Choose Nessie cloud or one of the approved local development API origins.".to_owned())
 }
 
 fn challenge(value: String) -> Result<String, String> {
@@ -301,18 +300,16 @@ mod tests {
             .replace("127.0.0.1", "10.0.0.1");
         assert_eq!(
             parse_request(&line),
-            Err("This Nessie Executor build may pair only with Nessie cloud or the local development API.".to_owned()),
+            Err("Choose Nessie cloud or one of the approved local development API origins.".to_owned()),
         );
     }
 
     #[test]
-    fn debug_build_accepts_both_spelling_of_the_local_development_api() {
-        if cfg!(debug_assertions) {
-            for api in LOOPBACK_API_BASE_URLS {
-                let line = pair_line("challenge-value", absolute_workspace())
-                    .replace("http://127.0.0.1:5454", api);
-                assert!(parse_request(&line).is_ok(), "{api} must be accepted");
-            }
+    fn every_build_accepts_both_spellings_of_the_local_development_api() {
+        for api in LOOPBACK_API_BASE_URLS {
+            let line = pair_line("challenge-value", absolute_workspace())
+                .replace("http://127.0.0.1:5454", api);
+            assert!(parse_request(&line).is_ok(), "{api} must be accepted");
         }
     }
 

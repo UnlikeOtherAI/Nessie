@@ -258,14 +258,15 @@ approve one Windows administrator prompt → confirm the fingerprint in Nessie.
 The icon turns green. After a reboot the executor is online before anybody logs
 in.
 
-Release builds accept invitations from `https://api.nessie.works` only. A debug
-build also exposes the two explicit local-development choices,
+The tray offers `https://api.nessie.works` and the two explicit
+local-development choices,
 `http://127.0.0.1:5454` and `http://localhost:5454`. The tray compares the
 selected backend with the invitation before it creates a machine key or grants
 the workspace; it never retries a different origin or transfers pairing state
 between origins. This keeps the paired machine key and its enrollment proof
-bound to the backend a person selected. An unsigned release remains refused by
-the service; debug availability is a build-mode fact, not a tray preference.
+bound to the backend a person selected. The HTTP exception is loopback-only;
+the service refuses every other HTTP origin. An unsigned or tampered release
+remains refused by the service.
 
 That administrator prompt is the only one, and it is worth knowing what it is
 for: the daemon runs as a service account with no rights anywhere a person

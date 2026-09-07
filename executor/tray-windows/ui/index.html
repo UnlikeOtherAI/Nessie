@@ -106,9 +106,6 @@
     <form id="pair-form">
       <label class="hint" for="backend">Nessie backend</label>
       <select id="backend">
-        <option value="https://api.nessie.works">Nessie cloud</option>
-        <option value="http://127.0.0.1:5454">Local development API (127.0.0.1:5454)</option>
-        <option value="http://localhost:5454">Local development API (localhost:5454)</option>
       </select>
       <label class="hint" for="invitation">
         Paste the pairing command or link from the selected backend's Agents → Executors page.
@@ -226,7 +223,8 @@
         document.getElementById('invitation').value = ''
         form.dataset.open = 'false'
       }
-      document.getElementById('open-nessie').onclick = () => invoke('executor_open_nessie')
+      document.getElementById('open-nessie').onclick = () =>
+        invoke('executor_open_nessie', { apiBaseUrl: document.getElementById('backend').value })
       document.getElementById('open-logs').onclick = () =>
         invoke('executor_open_logs').catch((reason) => {
           headline.textContent = String(reason)
@@ -234,7 +232,16 @@
       document.getElementById('hide').onclick = () => invoke('executor_hide_status')
 
       window.__TAURI__.event.listen('tray://pair', openPairForm)
-      refresh()
+      const loadBackends = async () => {
+        const backend = document.getElementById('backend')
+        for (const [value, label] of await invoke('executor_pairing_backends')) {
+          const option = document.createElement('option')
+          option.value = value
+          option.textContent = label
+          backend.append(option)
+        }
+      }
+      loadBackends().then(refresh)
       setInterval(refresh, 3000)
     </script>
   </body>

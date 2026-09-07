@@ -20,7 +20,7 @@ use crate::{
     grant::request_workspace_grant,
     invitation::parse_invitation,
     pipe_client::call,
-    service_identity::{service_root, EXECUTORS_URL},
+    service_identity::{executors_url_for_api, service_root},
     state::ServiceView,
 };
 
@@ -130,7 +130,7 @@ pub async fn pair<R: Runtime>(
         "Pair Nessie executor",
         format!(
             "Nessie Executor will create a private machine key and pair this computer with \
-             Nessie. Windows will ask for administrator approval once, to give the {SERVICE_ACCOUNT} \
+             Nessie at {selected_api_base_url}. Windows will ask for administrator approval once, to give the {SERVICE_ACCOUNT} \
              service account read access to the workspace you chose. Selected file contents and \
              command output may be sent to Nessie and its configured model, but only through \
              the executor's reviewed policy.",
@@ -155,9 +155,9 @@ pub async fn pair<R: Runtime>(
     Ok(ServiceView::Reachable { executors })
 }
 
-pub fn open_nessie<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub fn open_nessie<R: Runtime>(app: &AppHandle<R>, api_base_url: &str) -> Result<(), String> {
     app.opener()
-        .open_url(EXECUTORS_URL, None::<&str>)
+        .open_url(executors_url_for_api(api_base_url)?, None::<&str>)
         .map_err(|_| "Nessie Executor could not open your browser.".to_owned())
 }
 
@@ -205,8 +205,17 @@ pub async fn executor_pair(
 }
 
 #[tauri::command]
-pub fn executor_open_nessie(app: AppHandle) -> Result<(), String> {
-    open_nessie(&app)
+pub fn executor_open_nessie(app: AppHandle, api_base_url: String) -> Result<(), String> {
+    open_nessie(&app, &api_base_url)
+}
+
+#[tauri::command]
+pub fn executor_pairing_backends() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("https://api.nessie.works", "Nessie cloud"),
+        ("http://127.0.0.1:5454", "Local development API (127.0.0.1:5454)"),
+        ("http://localhost:5454", "Local development API (localhost:5454)"),
+    ]
 }
 
 #[tauri::command]
