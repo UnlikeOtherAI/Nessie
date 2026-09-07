@@ -142,7 +142,7 @@ export const BoardsSettingsSection = ({
                 <BoardIcon iconEmoji={board.iconEmoji} size="md" />
               )}
               <button
-                className="min-h-11 min-w-0 flex-1 px-2 text-left text-sm text-[color:var(--tx)]"
+                className="min-h-11 min-w-[10rem] flex-1 px-2 text-left text-sm text-[color:var(--tx)]"
                 onClick={() => onSelectBoard(board.id)}
                 type="button"
               >

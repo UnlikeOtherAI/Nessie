@@ -87,8 +87,11 @@ test('every project section is reachable from the Projects sidebar', () => {
     assert.ok(sections.includes(`id: '${id}'`), `project-sections is missing ${id}`)
   }
   // ... and the router has to answer every path the list produces.
-  const routed = /board\|backlog\|insights\|docs\|executors\|settings/
-  assert.match(surfaces, routed)
+  // The board owns a viewport-filling surface because it has two native
+  // scrollers; the remaining project tabs retain the document surface. Both
+  // route entries still have to cover every sidebar doorway.
+  assert.ok(surfaces.includes('(?:\\/board)?$'), 'project board route is missing')
+  assert.match(surfaces, /backlog\|insights\|docs\|executors\|settings/)
   assert.match(projectSectionRows, /projectSections\(\{ assignedWorkCount, isScrum, knowledgeCount, projectId \}\)/)
 })
 

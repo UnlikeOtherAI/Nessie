@@ -148,8 +148,10 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
       ? 'admin-page-action-selected'
       : 'admin-page-action-secondary'
   return [
-    'admin-page-action inline-flex h-8 items-center justify-center text-xs transition-colors',
-    action.compact ? 'w-8 px-0' : 'gap-1.5 px-2.5',
+    // The header has room for a 44px target. The overflow controller measures
+    // these controls, so narrow headers still offer every action through More.
+    'admin-page-action inline-flex h-11 items-center justify-center text-xs transition-colors',
+    action.compact ? 'w-11 px-0' : 'gap-1.5 px-2.5',
     role,
     action.tone === 'danger' ? 'page-header-action-danger' : '',
     open ? 'admin-page-action-open' : '',
