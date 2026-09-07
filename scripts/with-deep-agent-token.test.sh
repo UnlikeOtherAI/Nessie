@@ -7,6 +7,8 @@ askpass_path="$tmp/askpass-path"
 credential="$tmp/credential"
 
 DEEP_AGENT_READ_TOKEN=sentinel scripts/with-deep-agent-token.sh sh -c '
+  set -eu
+  cd /tmp
   printf %s "$GIT_ASKPASS" > "$1"
   printf "protocol=https\\nhost=github.com\\nusername=x-access-token\\n\\n" | git credential fill > "$2"
   "$GIT_ASKPASS" "Username for '\''https://github.com'\'':" > "$3" 2>/dev/null && exit 1
