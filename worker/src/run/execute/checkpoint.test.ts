@@ -27,6 +27,8 @@ const checkpointRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
+const transaction = <T>(work: (tx: unknown) => Promise<T>, tx: unknown): Promise<T> => work(tx)
+
 const prismaWith = (input: {
   row: ReturnType<typeof checkpointRow> | null
   updateCount: number
@@ -35,7 +37,9 @@ const prismaWith = (input: {
   // The writing run's provenance ledger. A checkpoint belongs to one run, so
   // its `RunBasisScope` rows are the checkpoint's basis.
   runBasis?: Array<{ scopeType: string; scopeId: string }>
+  disclosureSources?: Array<{ sourceAuthorUserId: string | null; sourceChannelId: string }>
 }): PrismaClient => ({
+  $transaction: async <T>(work: (tx: unknown) => Promise<T>) => transaction(work, {}),
   runCheckpoint: {
     findFirst: async (arg: unknown) => {
       input.queries?.push(arg)
@@ -47,6 +51,7 @@ const prismaWith = (input: {
     },
   },
   runBasisScope: { findMany: async () => input.runBasis ?? [] },
+  runCheckpointDisclosureSource: { findMany: async () => input.disclosureSources ?? [] },
 } as unknown as PrismaClient)
 
 test('an unconsumed checkpoint is claimed by a single conditional update', async () => {
@@ -60,6 +65,7 @@ test('an unconsumed checkpoint is claimed by a single conditional update', async
   assert.equal(loaded?.id, 'checkpoint-1')
   assert.equal(loaded?.generation, 1)
   assert.deepEqual(loaded?.sources, [{ title: 'A', url: 'https://example.com/a' }])
+  assert.deepEqual(loaded?.disclosureSources, [])
 
   assert.equal(updates.length, 1)
   // The claim is conditional on the row still being unconsumed.
@@ -95,6 +101,7 @@ test('a checkpoint already claimed by THIS run is reused without a second update
 test('the injected block is explicitly untrusted and lists sources verbatim', () => {
   const injection = buildCheckpointInjection({
     basisScopes: [],
+    disclosureSources: [],
     createdAt: new Date(),
     generation: 2,
     id: 'checkpoint-1',
@@ -111,24 +118,31 @@ test('the injected block is explicitly untrusted and lists sources verbatim', ()
 test('persisting a checkpoint upserts on runId and emits run.checkpointed', async () => {
   const events: Array<{ data: Record<string, unknown> }> = []
   const upserts: Array<Record<string, unknown>> = []
-  const prisma = {
+  const tx = {
+    channel: { findMany: async () => [] },
+    runBasisScope: { createMany: async () => ({ count: 0 }) },
     runCheckpoint: {
       upsert: async (arg: Record<string, unknown>) => {
         upserts.push(arg)
         return { id: 'checkpoint-9' }
       },
     },
+    runCheckpointDisclosureSource: { createMany: async () => ({ count: 0 }) },
     taskEvent: {
       create: async (arg: { data: Record<string, unknown> }) => {
         events.push(arg)
         return arg
       },
     },
+  }
+  const prisma = {
+    $transaction: async <T>(work: (inner: typeof tx) => Promise<T>) => work(tx),
   } as unknown as PrismaClient
 
   const id = await persistRunCheckpoint(prisma, {
     agentId: 'agent-1',
     basis: [],
+    disclosureSources: [],
     generation: 3,
     note: 'note',
     organizationId: 'org-1',
@@ -206,4 +220,67 @@ test('an unrestricted checkpoint reports an empty basis, which is the common cas
   )
 
   assert.deepEqual(loaded?.basisScopes, [])
+})
+
+
+test('a modern checkpoint restores its recorded private original author', async () => {
+  const loaded = await loadRunCheckpointForRun(
+    prismaWith({
+      disclosureSources: [{ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' }],
+      row: checkpointRow(),
+      runBasis: [{ scopeId: 'private-room', scopeType: 'channel' }],
+      updateCount: 1,
+    }),
+    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+  )
+
+  assert.deepEqual(loaded?.disclosureSources, [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+  ])
+})
+
+test('persisting a modern checkpoint stores its body and source union in one transaction', async () => {
+  const writes: unknown[] = []
+  let transactions = 0
+  const tx = {
+    channel: { findMany: async () => [{ id: 'private-room' }] },
+    runBasisScope: { createMany: async () => ({ count: 1 }) },
+    runCheckpoint: { upsert: async () => ({ id: 'checkpoint-9' }) },
+    runCheckpointDisclosureSource: {
+      createMany: async (input: unknown) => { writes.push(input); return { count: 1 } },
+    },
+    taskEvent: { create: async () => ({}) },
+  }
+  const prisma = {
+    $transaction: async <T>(work: (inner: typeof tx) => Promise<T>) => {
+      transactions += 1
+      return work(tx)
+    },
+  } as unknown as PrismaClient
+
+  await persistRunCheckpoint(prisma, {
+    agentId: 'agent-1',
+    basis: [{ scopeId: 'private-room', scopeType: 'channel' }],
+    disclosureSources: [{ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' }],
+    generation: 1,
+    note: 'note',
+    organizationId: 'org-1',
+    reason: 'token_limit',
+    rootMessageId: null,
+    runId: 'run-1',
+    sources: [],
+    taskId: 'task-1',
+    threadId: 'thread-1',
+  })
+
+  assert.equal(transactions, 1)
+  assert.deepEqual(writes, [{
+    data: [{
+      checkpointId: 'checkpoint-9',
+      organizationId: 'org-1',
+      sourceAuthorUserId: 'author-b',
+      sourceChannelId: 'private-room',
+    }],
+    skipDuplicates: true,
+  }])
 })

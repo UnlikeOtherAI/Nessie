@@ -112,6 +112,7 @@ export const prepareRunStop = async (
       // The note is built from the run's raw transcript including verbatim tool
       // output, so it inherits what the run consumed.
       basis: runReplyBasis(context),
+      disclosureSources: context.consumedSources.privateConversationSources(),
       generation,
       note,
       organizationId: context.channel.organizationId,
@@ -194,6 +195,7 @@ export const prepareWindDownHandover = async (
     const checkpointId = await persistRunCheckpoint(deps.prisma, {
       agentId: context.agent.id,
       basis: runReplyBasis(context),
+      disclosureSources: context.consumedSources.privateConversationSources(),
       generation: input.priorGeneration + 1,
       note,
       organizationId: context.channel.organizationId,
