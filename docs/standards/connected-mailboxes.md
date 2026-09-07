@@ -2,16 +2,16 @@
 
 Authoritative standard, in the shape [`AGENTS.md`](../../AGENTS.md) points to:
 `AGENTS.md` carries the one-line invariant and links here; **this file is the
-rule**. Its companion is [`agent-email.md`](agent-email.md) — the *hosted*
+rule**. Its companion is [`agent-email.md`](agent-email.md) â€” the *hosted*
 mailbox, where Nessie is the mail store. This one is the opposite case.
 
 - **A connected mailbox is somebody else's store, and reaching it takes two
   decisions, not one.** SMTP/IMAP connections (agent email Model A) let an agent
-  work in a mailbox that already exists — a person's own, or a team's shared
+  work in a mailbox that already exists â€” a person's own, or a team's shared
   `support@`. Nothing is synced and no mail is stored: reads run live, which is
   the whole difference from a hosted mailbox. The properties that carry it:
   **an access row per `(connection, agent)`**, because `Agent.toolPolicy` is
-  keyed by tool id and cannot name a resource — a bare tool grant would silently
+  keyed by tool id and cannot name a resource â€” a bare tool grant would silently
   widen to every mailbox connected afterwards; **the effective user for a
   personal mailbox**, so a shared agent cannot read your inbox by being
   mentioned in a public channel, while a team mailbox is shared by construction
@@ -22,22 +22,22 @@ mailbox, where Nessie is the mail store. This one is the opposite case.
   named on the request. Standing send grants are deliberately absent: a grant is
   the mailbox owner's to give about their own account, and a shared mailbox has
   no such owner. The reads feed the disclosure sink with the connection's scope
-  in the same call that puts mail in the window — user scope for a personal
-  mailbox, team for a shared one — so an agent answering out of your mailbox
+  in the same call that puts mail in the window â€” user scope for a personal
+  mailbox, team for a shared one â€” so an agent answering out of your mailbox
   produces a reply only you can see. On the wire: TLS is mandatory (a server
   that omits STARTTLS is a downgrade, not a fallback), the host is re-resolved
   and re-vetted through the shared `resolveVettedAddresses` on **every** dial and
   the socket opens to that literal address with SNI and certificate checked
-  against the *configured hostname*, and every caller-supplied value — folder
-  name, search term, credential — is a counted IMAP literal, so injection is
+  against the *configured hostname*, and every caller-supplied value â€” folder
+  name, search term, credential â€” is a counted IMAP literal, so injection is
   structurally impossible rather than a validation somebody must remember.
   The as-built detail is below; the plan is
-  `docs/plans/2026-09-02-agent-email.md` §2.2–2.3 and the guide is
+  `docs/plans/2026-09-02-agent-email.md` Â§2.2â€“2.3 and the guide is
   `docs/connected-mailboxes.md`.
 
 Plan and as-built deltas:
 [`docs/plans/2026-09-02-agent-email.md`](../plans/2026-09-02-agent-email.md)
-§2.2–2.3. Operator and user guide:
+Â§2.2â€“2.3. Operator and user guide:
 [`docs/connected-mailboxes.md`](../connected-mailboxes.md).
 
 ## As built
@@ -50,7 +50,7 @@ Plan and as-built deltas:
   three families rather than one with a mode.
 - **One panel, two homes** (`components/features/mailbox-connections/`): personal
   mailboxes on `/settings/connections`, shared ones on `/settings/organization`,
-  scope as a parameter — the `CloudBrowserPanel` shape. Both carry per-agent
+  scope as a parameter â€” the `CloudBrowserPanel` shape. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting tests both
   legs before it stores, and only a provider rejection (`auth`-kind) flips a
   connection to `needs_reauthorization`. The personal Email doorway is
@@ -62,13 +62,22 @@ Plan and as-built deltas:
   connected-account list, structural thread view, bounded conversation reader,
   and human compose/reply flow for Gmail and SMTP/IMAP. The provider remains the
   source of truth and every read is private and no-store. `mail_present` may
-  leave an account, thread, or compose pointer in a disclosure-scoped agent
-  message, but the pointer contains no query, sender, recipient, subject,
-  snippet, or body and the client repeats live viewer authorization before it
-  opens. Search/read and Gmail-draft tools return the same canonical review
-  references. `mailbox_compose` uses the universal AgentCard form; its press is
-  a user response, never send authority, so the later send still crosses the
-  existing approval gate.
+  leave an account, thread, compose, or up-to-ten-thread selection pointer in a
+  disclosure-scoped agent message, but the pointer contains no query, sender,
+  recipient, subject, snippet, or body and the client repeats live viewer
+  authorization before it opens. Search/read and Gmail-draft tools return the
+  same canonical review references. `mailbox_compose` uses the universal
+  AgentCard form: **Send** is
+  a user response, never send authority, while **Edit** claims and preserves
+  the current non-secret draft fields without requiring an incomplete draft to
+  pass send validation. It opens the canonical `/mail` composer through the
+  shared router. Its opaque
+  card reference restores the claimed, viewer-scoped draft after reload; the
+  account is authorized again before it renders. A Gmail draft doorway also
+  renders its owner-authorized live preview in chat with direct **Send** and
+  **Edit** actions; Send uses the same human Gmail draft route, while Edit
+  opens that same composer. The later agent send still crosses the existing
+  approval gate.
 - **Provider input and external side effects are bounded and replay-safe.**
   Gmail response streams stop at the per-request cap before JSON parsing;
   aggregate provider and decoded-body budgets span the whole read, and metadata
@@ -77,7 +86,7 @@ Plan and as-built deltas:
   reuse an earlier Gmail create action, and an ambiguous Gmail or SMTP outcome
   is terminal rather than eligible for an automatic retry. Mail audit entries
   record only structural action ids and the distinct held, undone, sent, or
-  delivery-unknown state—never recipients, subject, or body.
+  delivery-unknown stateâ€”never recipients, subject, or body.
 - **A direct Gmail send retains its provider draft.** Gmail exposes no atomic
   compare-and-delete for drafts, so deleting a captured version after sending
   it could erase a newer owner edit. The durable Nessie action is sent exactly
@@ -127,15 +136,15 @@ Plan and as-built deltas:
   narrow autoconfig parser. MX and uncorroborated external SRV records may
   classify but never produce `trustedImapSmtp`. A reviewed long-tail snapshot
   (`mailbox-ispdb.ts`) joins as one more *candidate*, never a short circuit:
-  candidates are selected by evidence strength — autoconfig 90, mail SRV 85,
-  snapshot 75 — so a document the domain publishes today always beats settings
+  candidates are selected by evidence strength â€” autoconfig 90, mail SRV 85,
+  snapshot 75 â€” so a document the domain publishes today always beats settings
   we verified once. Only the exact-domain reviewed registry stays network-free.
   The selected trusted candidate is then confirmed by an unauthenticated
   capability probe (`mailbox-probe.ts`, its own 2s budget, ports 143/993/25/465/
   587 only) that dials through the same vetting and holds no credential
   parameter at all: `confirmed` raises credential trust to 1, `insecure`
   withholds the configuration entirely and sends the person to manual settings,
-  and an unreachable or skipped probe changes nothing — a transient failure is
+  and an unreachable or skipped probe changes nothing â€” a transient failure is
   the connect step's error to report, not a reason to distrust a reviewed
   configuration. The UI may show the password
   screen only when that server-authored property exists; manual settings remain

@@ -17,7 +17,14 @@ import {
   reviewUrlForMailPresentation,
 } from './mail-presentation-reference.js'
 
-const MailboxComposeSchema = z.object({ connectionId: z.string().uuid().optional() }).strict()
+const MailboxComposeSchema = z.object({
+  bcc: z.array(z.string().trim().min(3).max(320)).max(50).optional(),
+  cc: z.array(z.string().trim().min(3).max(320)).max(50).optional(),
+  connectionId: z.string().uuid().optional(),
+  subject: z.string().max(500).refine((value) => !/[\r\n]/u.test(value), 'Mail headers cannot contain a line break.').optional(),
+  text: z.string().max(100_000).optional(),
+  to: z.array(z.string().trim().min(3).max(320)).max(50).optional(),
+}).strict()
 
 const accessFor = async (
   context: BuiltinToolRuntimeContext,
@@ -110,19 +117,32 @@ export const runMailboxComposeTool = async (
   const card: AgentCardSpec = {
     actions: [
       { key: 'send', label: 'Send', style: 'primary', submits: true },
+      {
+        href: reviewUrlForMailPresentation({
+          accountId: access.accountId,
+          mode: 'compose',
+          source: 'mailbox',
+        }),
+        key: 'edit',
+        label: 'Edit',
+        collectsValues: true,
+        style: 'secondary',
+        submits: false,
+      },
       { key: 'dismiss', label: 'Dismiss', style: 'secondary', submits: false },
     ],
     blocks: [
-      { type: 'input', key: 'to', label: 'To', input: 'text', required: true },
-      { type: 'input', key: 'cc', label: 'Cc', input: 'text' },
-      { type: 'input', key: 'bcc', label: 'Bcc', input: 'text' },
-      { type: 'input', key: 'subject', label: 'Subject', input: 'text', required: true },
+      { type: 'input', key: 'to', label: 'To', input: 'text', default: args.to?.join(', ') ?? '', required: true },
+      { type: 'input', key: 'cc', label: 'Cc', input: 'text', default: args.cc?.join(', ') ?? '' },
+      { type: 'input', key: 'bcc', label: 'Bcc', input: 'text', default: args.bcc?.join(', ') ?? '' },
+      { type: 'input', key: 'subject', label: 'Subject', input: 'text', default: args.subject ?? '', required: true },
       {
         type: 'input',
         key: 'body',
         label: 'Message',
         input: 'textarea',
         maxLength: 100_000,
+        default: args.text ?? '',
         required: true,
       },
     ],
@@ -141,7 +161,7 @@ export const runMailboxComposeTool = async (
         source: 'mailbox',
       }),
       instruction:
-        'Post this with card_post. A Send press is only a response; use mailbox_send afterwards so approval is still required.',
+        'Post this with card_post. Send is only a response; use mailbox_send afterwards so approval is still required. Edit means the person is handling this draft in Mail: do not call mailbox_send from that response.',
     }),
     toolName: 'mailbox_compose',
   }

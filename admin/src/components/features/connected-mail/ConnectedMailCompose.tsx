@@ -100,6 +100,8 @@ type ConnectedMailComposeProps = {
   account: ConnectedMailAccountRecord
   address: MailAddress
   composeId?: string
+  /** A chat route can hand its currently edited fields into this shared composer. */
+  initialDraft?: MailComposeDraft
   newCompose?: boolean
   onNewComposeReady?: () => void
   onSent: () => void
@@ -110,16 +112,17 @@ type ConnectedMailComposeProps = {
 }
 
 export const ConnectedMailCompose = ({
-  account, address, composeId, gmailDraftId, newCompose, onNewComposeReady, onOpenSettings, onSent, onStartNewEmail,
+  account, address, composeId, gmailDraftId, initialDraft, newCompose,
+  onNewComposeReady, onOpenSettings, onSent, onStartNewEmail,
   replyTo,
 }: ConnectedMailComposeProps) => {
   const { me } = useAuthSession()
   const principalScope = me ? `${me.user.id}:${me.context.organizationId}` : 'unresolved-session'
   const [activeGmailDraftId, setActiveGmailDraftId] = useState<string | undefined>(gmailDraftId)
   const identity = activeGmailDraftId ? `gmail-draft:${activeGmailDraftId}` : composeId ? `new:${composeId}` : replyTo ? `reply:${replyTo.id}` : 'new:default'
-  const initial = useMemo<MailComposeDraft>(() => !composeId && replyTo
+  const initial = useMemo<MailComposeDraft>(() => initialDraft ?? (!composeId && replyTo
     ? { ...emptyDraft, subject: replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`, to: replyTo.from ?? '' }
-    : emptyDraft, [composeId, replyTo])
+    : emptyDraft), [composeId, initialDraft, replyTo])
   const providerDraft = useGmailDraft(address.source === 'gmail' && activeGmailDraftId ? activeGmailDraftId : null)
   const draft = useDraft(activeGmailDraftId ? null : draftKey('mail-compose', `${principalScope}:${address.source}:${address.accountId}:${identity}`), {
     initial,

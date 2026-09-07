@@ -321,6 +321,8 @@ when one changes, the same turn updates it, not this section.
   mailbox somebody connected over SMTP/IMAP reaches it only through two
   separate decisions — a per-`(connection, agent)` access row and, for a
   personal mailbox, the effective user — and every send is approved and pinned.
+  Chat review pointers and draft handoffs stay content-free until the same
+  viewer-scoped Mail surface authorizes their live read or edit.
   Read [`docs/standards/connected-mailboxes.md`](docs/standards/connected-mailboxes.md)
   before writing code here.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.

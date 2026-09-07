@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ConnectedMailAccountRecordSchema,
   ConnectedMailConversationSchema,
@@ -79,12 +79,35 @@ export const useConnectedMailConversation = (
   return useQuery<ConnectedMailConversation>({
     enabled: Boolean(address && threadId && enabled),
     queryKey: connectedMailKeys.conversation(address ?? { accountId: '', source: 'gmail' }, threadId),
-    queryFn: async () => {
-      if (!address || !threadId) throw new Error('Choose a conversation first.')
-      return ConnectedMailConversationSchema.parse(await apiClient.get(
-        `/api/mail/accounts/${address.source}/${encodeURIComponent(address.accountId)}/threads/${encodeURIComponent(threadId)}`,
-      ))
-    },
+    queryFn: () => fetchConnectedMailConversation(apiClient, address, threadId),
+  })
+}
+
+export const fetchConnectedMailConversation = async (
+  apiClient: ReturnType<typeof useApiClient>,
+  address: MailAddress | null,
+  threadId: string | undefined,
+): Promise<ConnectedMailConversation> => {
+  if (!address || !threadId) throw new Error('Choose a conversation first.')
+  return ConnectedMailConversationSchema.parse(await apiClient.get(
+    `/api/mail/accounts/${address.source}/${encodeURIComponent(address.accountId)}/threads/${encodeURIComponent(threadId)}`,
+  ))
+}
+
+/** A bounded, agent-selected review list. Each item repeats the ordinary live
+ * conversation read, so a stale chat pointer cannot bypass viewer entitlement. */
+export const useSelectedConnectedMailConversations = (
+  address: MailAddress | null,
+  threadIds: readonly string[],
+) => {
+  const apiClient = useApiClient()
+  const ids = [...new Set(threadIds)].slice(0, 10)
+  return useQueries({
+    queries: ids.map((threadId) => ({
+      enabled: Boolean(address),
+      queryKey: connectedMailKeys.conversation(address ?? { accountId: '', source: 'gmail' }, threadId),
+      queryFn: () => fetchConnectedMailConversation(apiClient, address, threadId),
+    })),
   })
 }
 

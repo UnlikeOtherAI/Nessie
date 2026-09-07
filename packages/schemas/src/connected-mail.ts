@@ -22,23 +22,28 @@ export const MailSurfaceDoorwayMetadataSchema = z
     accountId: z.string().min(1).max(200),
     mode: MailSurfaceDoorwayModeSchema,
     threadId: z.string().min(1).max(500).optional(),
+    /** Bounded structural selection for a person to review in Mail. */
+    threadIds: z.array(z.string().min(1).max(500)).min(1).max(10).optional(),
     draftId: z.string().min(1).max(500).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.threadIds && new Set(value.threadIds).size !== value.threadIds.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A review selection cannot repeat a thread.' })
+    }
     if (value.mode === 'account' && (value.threadId || value.draftId)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'An account doorway cannot carry a thread or draft reference.',
       })
     }
-    if (value.mode === 'thread' && (!value.threadId || value.draftId)) {
+    if (value.mode === 'thread' && (!value.threadId || value.threadIds || value.draftId)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'A thread doorway needs only a thread reference.',
       })
     }
-    if (value.mode === 'compose' && value.threadId && value.draftId) {
+    if (value.mode === 'compose' && (value.threadIds || (value.threadId && value.draftId))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'A compose doorway may name a draft or reply thread, not both.',

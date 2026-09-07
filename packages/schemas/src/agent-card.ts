@@ -1,5 +1,20 @@
 import { z } from 'zod'
 
+import {
+  AgentCardActionSchema,
+  AgentCardKeySchema,
+} from './agent-card-actions.js'
+import { AgentCardServiceSchema } from './agent-card-service.js'
+
+export {
+  AgentCardActionSchema,
+  AgentCardActionStyleSchema,
+  AgentCardKeySchema,
+  type AgentCardActionStyle,
+  type AgentCardKey,
+} from './agent-card-actions.js'
+export { AgentCardServiceSchema, type AgentCardService } from './agent-card-service.js'
+
 /**
  * Agent chat cards — one interactive card system for every agent.
  *
@@ -18,12 +33,6 @@ import { z } from 'zod'
  *
  * Design: docs/plans/2026-09-01-agent-chat-cards.md
  */
-
-/** Machine keys for inputs and actions: stable, lowercase, model-authored. */
-export const AgentCardKeySchema = z
-  .string()
-  .regex(/^[a-z][a-z0-9_]{0,31}$/, 'Keys are lowercase, start with a letter, max 32 characters')
-export type AgentCardKey = z.infer<typeof AgentCardKeySchema>
 
 export const AGENT_CARD_MAX_BLOCKS = 12
 export const AGENT_CARD_MAX_ACTIONS = 4
@@ -274,37 +283,6 @@ export const AgentCardBlockSchema = z.union([
 ])
 export type AgentCardBlock = z.infer<typeof AgentCardBlockSchema>
 
-export const AgentCardActionStyleSchema = z.enum(['primary', 'secondary', 'danger'])
-export type AgentCardActionStyle = z.infer<typeof AgentCardActionStyleSchema>
-
-export const AgentCardActionSchema = z
-  .object({
-    key: AgentCardKeySchema,
-    label: z.string().trim().min(1).max(24),
-    style: AgentCardActionStyleSchema,
-    /**
-     * `true` = the press validates and submits the card's inputs (OK, Allow,
-     * Send). `false` = a dismissal that ignores them (Cancel, Not now), so a
-     * half-filled form can still be declined.
-     */
-    submits: z.boolean(),
-  })
-  .strict()
-export type AgentCardAction = z.infer<typeof AgentCardActionSchema>
-
-/**
- * The service the card is about. `key` is matched server-side against the app
- * catalogue to resolve an icon; the model never supplies an icon URL, and a
- * key with no match simply renders the label's initials.
- */
-export const AgentCardServiceSchema = z
-  .object({
-    key: z.string().trim().min(1).max(64),
-    label: z.string().trim().min(1).max(40),
-  })
-  .strict()
-export type AgentCardService = z.infer<typeof AgentCardServiceSchema>
-
 const collectDuplicates = (keys: string[]): string[] => {
   const seen = new Set<string>()
   const duplicates = new Set<string>()
@@ -342,6 +320,14 @@ export const AgentCardSpecSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `Action keys must be unique; repeated: ${duplicateActions.join(', ')}.`,
+      })
+    }
+
+    if (spec.actions.some((action) => action.collectsValues)
+      && spec.blocks.some((block) => block.type === 'secret')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A card that preserves form values cannot contain secret inputs.',
       })
     }
 

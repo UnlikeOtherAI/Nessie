@@ -112,6 +112,76 @@ test('a card with inputs needs a submitting action', () => {
   assert.match(result.error?.issues[0]?.message ?? '', /submits/)
 })
 
+test('a card action claims before navigating inside the app', () => {
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [
+        { key: 'send', label: 'Send', style: 'primary', submits: true },
+        { collectsValues: true, href: '/mail/mailbox/account/compose', key: 'edit', label: 'Edit', style: 'secondary', submits: false },
+      ],
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: 'https://example.test', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/\\evil.test', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/mail', key: 'send', label: 'Send', style: 'primary', submits: false }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: 'mail', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/mail%2fescape', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/mail\nunsafe', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ collectsValues: true, key: 'edit', label: 'Edit', style: 'secondary', submits: false }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{ key: 'token', label: 'Token', type: 'secret', destination: { kind: 'vault_secret', name: 'TEST_TOKEN', scopeType: 'personal' } }],
+      actions: [{ collectsValues: true, href: '/mail', key: 'edit', label: 'Edit', style: 'secondary', submits: false }],
+    }).success,
+    false,
+  )
+})
+
 test('a select needs options and a non-select refuses them', () => {
   assert.equal(
     AgentCardSpecSchema.safeParse({
