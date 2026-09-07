@@ -369,6 +369,7 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   invocations: [],
   iterations: 1,
   lastAssistantText: '',
+  lengthFinalizationPending: false,
   lengthFinalizationUsed: false,
   messages: [{ content: 'go', role: 'user' }],
   pendingToolCalls: null,
@@ -420,7 +421,36 @@ test('a resumed run does not repeat an output-length finalisation', async () => 
     tools: [],
   })
   assert.equal(calls, 1)
-  assert.equal(result.finalText, 'retained partial')
+  assert.match(result.finalText, /retained partial/)
+  assert.match(result.finalText, /response limit/)
+})
+
+test('a reclaimed output-length recovery never re-enables tools', async () => {
+  const noTools: boolean[] = []
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      throw new Error('must not dispatch a tool during recovery')
+    },
+    initialMessages: initial,
+    resume: resumeStateFrom({
+      lengthFinalizationPending: true,
+      lengthFinalizationUsed: true,
+      messages: [
+        ...initial,
+        { content: 'partial research', role: 'assistant' },
+        { content: OUTPUT_LENGTH_FINALIZATION_INSTRUCTION, role: 'system' },
+      ],
+    }),
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      return finalAnswerInference('recovered concise answer')
+    },
+    tools: [{ description: 'must stay absent', inputSchema: {}, toolName: 'write' }],
+  })
+  assert.equal(result.finalText, 'recovered concise answer')
+  assert.deepEqual(noTools, [true])
 })
 
 test('a resumed run inherits the breaker counts its earlier executions earned', async () => {

@@ -58,6 +58,11 @@ import {
 export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
   'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
 
+const outputLimitPartial = (text: string): string => [
+  text.trim(),
+  'I reached the response limit before completing the answer. Continue this run to finish.',
+].filter(Boolean).join('\n\n')
+
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
 export type LoopCallbacks = ToolBatchCallbacks & {
@@ -238,6 +243,7 @@ export const runAgenticLoop = async (input: {
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
   let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
+  let lengthFinalizationPending = resume?.lengthFinalizationPending ?? false
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
@@ -275,6 +281,7 @@ export const runAgenticLoop = async (input: {
       iterations,
       lastAssistantText,
       lengthFinalizationUsed,
+      lengthFinalizationPending,
       messages,
       pendingToolCalls: inFlightToolCalls,
       retriesUsed: retryBudget.total - retryBudget.remaining,
@@ -432,9 +439,14 @@ export const runAgenticLoop = async (input: {
         ? { toolResults: pendingToolResults }
         : undefined
       pendingToolResults = null
+      const finalizationPending = lengthFinalizationPending
       const result = await drainGate.expiry(callInferenceWithRetry(
         messages,
-        (inferenceMessages) => input.runInference(inferenceMessages, captured),
+        (inferenceMessages) => input.runInference(
+          inferenceMessages,
+          captured,
+          finalizationPending ? { noTools: true } : undefined,
+        ),
         retryBudget,
         contextPlan.targetTokens,
       ))
@@ -448,12 +460,17 @@ export const runAgenticLoop = async (input: {
       const spendStop = stopAfterInference(budget, spend)
       if (spendStop) return stop(spendStop)
 
-      if (!result.toolCalls || result.toolCalls.length === 0) {
-        if (result.finishReason === 'length' && !lengthFinalizationUsed) {
+      if (result.finishReason === 'length') {
+        if (finalizationPending || lengthFinalizationUsed) {
+          lastAssistantText = outputLimitPartial(safeOutputText || lastAssistantText)
+          return stop('tokens')
+        }
+        {
           // Persist the truncated turn before asking for the bounded recovery.
           // A re-claimed worker therefore retains the evidence and never has to
           // re-dispatch the tool batch that produced it.
           lengthFinalizationUsed = true
+          lengthFinalizationPending = true
           messages.push(redactMessageContent({
             content: safeOutputText || null,
             role: 'assistant',
@@ -463,21 +480,20 @@ export const runAgenticLoop = async (input: {
             role: 'system',
           })
           await checkpoint()
-          const finalization = await drainGate.expiry(callInferenceWithRetry(
-            messages,
-            (inferenceMessages) => input.runInference(inferenceMessages, undefined, { noTools: true }),
-            retryBudget,
-            contextPlan.targetTokens,
-          ))
-          allInvocations.push(...finalization.invocations)
-          spend = meterSpend(allInvocations, cacheReadWeight)
-          const finalText = redactDetectedSecrets(finalization.outputText) || safeOutputText
-          if (finalText) lastAssistantText = finalText
-          const finalizationStop = stopAfterInference(budget, spend)
-          if (finalizationStop) return stop(finalizationStop)
-          if (finalText) await callbacks.onTextDelta(finalText)
-          return finish(null, finalText)
+          // Re-enter through the next loop boundary. The pending marker is
+          // durable, so a crash cannot turn this recovery into a tool-enabled
+          // call or replay an incomplete provider tool-call batch.
+          continue
         }
+      }
+
+      if (finalizationPending && result.toolCalls.length > 0) {
+        lastAssistantText = outputLimitPartial(safeOutputText || lastAssistantText)
+        return stop('tokens')
+      }
+
+      if (!result.toolCalls || result.toolCalls.length === 0) {
+        lengthFinalizationPending = false
         if (safeOutputText) {
           await callbacks.onTextDelta(safeOutputText)
         }
