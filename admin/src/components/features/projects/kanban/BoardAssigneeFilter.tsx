@@ -104,11 +104,15 @@ export const BoardAssigneeFilter = ({
 
   useEffect(() => {
     if (!open) return undefined
-    setQuery('')
-    setHighlighted(0)
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
     return () => window.cancelAnimationFrame(frame)
   }, [open])
+
+  const openPicker = () => {
+    setQuery('')
+    setHighlighted(0)
+    setOpen(true)
+  }
 
   const close = (restoreFocus = false) => {
     setOpen(false)
@@ -191,11 +195,14 @@ export const BoardAssigneeFilter = ({
         aria-haspopup="listbox"
         aria-label="Filter board by assignee"
         className="admin-input flex min-h-11 w-full items-center gap-2 text-left"
-        onClick={() => setOpen((wasOpen) => !wasOpen)}
+        onClick={() => {
+          if (open) close()
+          else openPicker()
+        }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault()
-            setOpen(true)
+            openPicker()
           }
         }}
         ref={triggerRef}
