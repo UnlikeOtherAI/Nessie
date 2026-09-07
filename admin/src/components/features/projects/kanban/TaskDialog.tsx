@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { faSignal } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentVisibility } from '@nessie/schemas'
 import { Notice } from '../../../primitives/Notice'
-import { SectionLabel } from '../../../primitives/SectionLabel'
-import { TabBar, type TabBarItem } from '../../../primitives/TabBar'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../../../shared/AssigneePicker'
 import { RemotePersonPill } from './RemotePersonPill'
 import { ConfirmDialog } from '../../../shared/ConfirmDialog'
 import { Dialog } from '../../../shared/Dialog'
 import { FieldLabel } from '../../../primitives/FieldLabel'
-import { FormActions } from '../../../shared/FormActions'
 import { FormField } from '../../../shared/FormField'
 import { PROVIDER_LABEL } from '../../../../facades/board-sources/hooks'
 import { TaskFieldsSection } from './TaskFieldsSection'
@@ -18,7 +13,6 @@ import { useTaskFields } from '../../../../facades/task-fields/hooks'
 import { Input, Select, Textarea } from '../../../shared/FormControls'
 import { useAgents } from '../../../../facades/agents/queries'
 import { useProjects } from '../../../../facades/projects/hooks'
-import { useProjectBoards } from '../../../../facades/boards/hooks'
 import {
   type TaskPriority,
   type TaskRecord,
@@ -30,15 +24,12 @@ import {
   useUpdateTask,
 } from '../../../../facades/tasks/hooks'
 import { draftKey, useDraft } from '../../../../navigation/useDraft'
-import { isArchivedStatus, statusLabel } from './kanban-config'
+import { isArchivedStatus } from './kanban-config'
+import { TaskDialogActions } from './TaskDialogActions'
 import { TaskDocuments } from './TaskDocuments'
-import {
-  PRIORITY_LABEL,
-  PRIORITY_ORDER,
-  PRIORITY_SIGNAL,
-  fromDateInputValue,
-  toDateInputValue,
-} from './task-meta'
+import { TaskPlacementField } from './TaskPlacementField'
+import { TaskPriorityField } from './TaskPriorityField'
+import { fromDateInputValue, toDateInputValue } from './task-meta'
 
 // One unsent task, kept whole: partial field state is what a person loses when
 // a dialog is dismissed, so it is what the draft has to hold.
@@ -92,12 +83,6 @@ const changedFieldValues = (
   after: Record<string, unknown>,
 ): boolean => Object.keys(fieldValuesPatch(before, after)).length > 0
 
-const priorityItems: ReadonlyArray<TabBarItem<TaskPriority>> = PRIORITY_ORDER.map((value) => ({
-  icon: <FontAwesomeIcon className={`text-[11px] ${PRIORITY_SIGNAL[value]}`} icon={faSignal} />,
-  label: PRIORITY_LABEL[value],
-  value,
-}))
-
 export const TaskDialog = ({
   open,
   onClose,
@@ -121,13 +106,6 @@ export const TaskDialog = ({
   // task's own and for a new one the project the dialog was opened in.
   const fieldsProjectId = task?.projectId ?? projectId ?? null
   const { data: fieldDefinitions = [] } = useTaskFields(fieldsProjectId ?? undefined)
-  const { data: projectBoards = [] } = useProjectBoards(fieldsProjectId ?? undefined)
-  // A task with no persisted board belongs to its project's default board.
-  // `boardId` carries that resolved board while this dialog is opened from its
-  // card, so the selector always names the columns the ticket actually lives
-  // on rather than offering a sibling board by accident.
-  const taskBoardId = task?.boardId ?? boardId ?? null
-  const taskBoard = projectBoards.find((candidate) => candidate.id === taskBoardId) ?? null
 
   const titleRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -376,18 +354,7 @@ export const TaskDialog = ({
         </div>
 
           <div className="grid content-start gap-4">
-            <div className="grid gap-1.5">
-              <SectionLabel as="span" size="sm">Priority</SectionLabel>
-              <TabBar
-                ariaLabel="Priority"
-                fullWidth
-                items={priorityItems}
-                onChange={(value) => patchDraft({ priority: value })}
-                role="radiogroup"
-                size="sm"
-                value={priority}
-              />
-            </div>
+          <TaskPriorityField onChange={(value) => patchDraft({ priority: value })} value={priority} />
 
           <div className="grid gap-1.5">
             <FieldLabel htmlFor="task-assignee">Assignee</FieldLabel>
@@ -414,23 +381,16 @@ export const TaskDialog = ({
             <Input onChange={(event) => patchDraft({ due: event.target.value })} type="date" value={due} />
           </FormField>
 
-          {isEdit && task && !archived && taskColumnId && taskBoard ? (
-            <FormField
-              help="Moving a ticket updates its status to match the column."
-              label="Column"
-            >
-              <Select
-                disabled={pending}
-                onChange={(event) => patchDraft({ columnId: event.target.value })}
-                value={columnId ?? ''}
-              >
-                {taskBoard.columns.map((column) => (
-                  <option key={column.id} value={column.id}>
-                    {column.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
+          {isEdit && task && !archived ? (
+            <TaskPlacementField
+              boardId={boardId}
+              columnId={columnId}
+              disabled={pending}
+              onChange={(nextColumnId) => patchDraft({ columnId: nextColumnId })}
+              projectId={fieldsProjectId}
+              task={task}
+              taskColumnId={taskColumnId}
+            />
           ) : null}
 
           <TaskFieldsSection
@@ -477,49 +437,15 @@ export const TaskDialog = ({
           </Notice>
         ) : null}
 
-        <FormActions
-          className="md:col-span-2"
-          destructive={
-            isEdit && task ? (
-              task.archivedAt ? (
-                <button
-                  className="text-xs font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-                  onClick={() => void handleUnarchive()}
-                  type="button"
-                >
-                  Unarchive
-                </button>
-              ) : archived ? (
-                <button
-                  className="text-xs font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-                  onClick={() => void handleStatus('inbox')}
-                  type="button"
-                >
-                  Restore ({statusLabel(task.status)})
-                </button>
-              ) : (
-                <button
-                  className="text-xs font-semibold text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
-                  onClick={() => setCancelConfirmOpen(true)}
-                  type="button"
-                >
-                  Cancel task
-                </button>
-              )
-            ) : null
-          }
-        >
-          <button
-            className="admin-button admin-button-secondary"
-            onClick={handleClose}
-            type="button"
-          >
-            Close
-          </button>
-          <button className="admin-button admin-button-primary" disabled={!canSubmit} type="submit">
-            {isEdit ? 'Save changes' : 'Create task'}
-          </button>
-        </FormActions>
+        <TaskDialogActions
+          archived={archived}
+          canSubmit={canSubmit}
+          onCancel={() => setCancelConfirmOpen(true)}
+          onClose={handleClose}
+          onRestore={() => void handleStatus('inbox')}
+          onUnarchive={() => void handleUnarchive()}
+          task={isEdit ? task : null}
+        />
       </form>
 
       <ConfirmDialog
