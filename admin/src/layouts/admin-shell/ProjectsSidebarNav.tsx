@@ -64,7 +64,10 @@ export const ProjectsSidebarNav = ({
 }: ProjectsSidebarNavProps) => {
   const navigate = useNavigate()
   const { search } = useLocation()
-  const activeBoardParam = new URLSearchParams(search).get('board')
+  const boardSettingsMatch = /^\/projects\/[^/]+\/boards\/([^/]+)\/settings$/.exec(pathname)
+  const boardWorkMatch = /^\/projects\/[^/]+\/board$/.test(pathname)
+  const activeBoardParam = boardSettingsMatch?.[1] ?? new URLSearchParams(search).get('board')
+  const showBoardSelection = Boolean(boardSettingsMatch || boardWorkMatch)
   const nativeTouchShell = isReactNativeWebView()
   const phoneLayout = usePhoneLayout()
   const { data: projects = [] } = useProjects()
@@ -225,6 +228,7 @@ export const ProjectsSidebarNav = ({
         onToggleStar={onToggleStar}
         project={project}
         projectPath={projectPath}
+        showBoardSelection={showBoardSelection}
       />
     )
   }

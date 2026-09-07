@@ -31,6 +31,7 @@ type ProjectRowProps = {
   /** Resolved by the caller from `usePhoneLayout()`: board on phone, overview elsewhere. */
   projectPath: string
   project: ProjectRecord
+  showBoardSelection: boolean
 }
 
 /**
@@ -58,6 +59,7 @@ export const ProjectRow = ({
   onToggleStar,
   projectPath,
   project,
+  showBoardSelection,
 }: ProjectRowProps) => {
   const { token } = useAuthSession()
   const prewarm = usePrewarm()
@@ -215,6 +217,7 @@ export const ProjectRow = ({
             onCreateBoard={onCreateBoard}
             onToggleBoardsExpanded={onToggleBoardsExpanded}
             projectId={project.id}
+            showBoardSelection={showBoardSelection}
           />
         </div>
       ) : null}

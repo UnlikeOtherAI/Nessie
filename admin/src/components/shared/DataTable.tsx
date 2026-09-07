@@ -114,10 +114,15 @@ export const DataTable = <T,>({
   const body = (
     <table
       className="admin-table w-full border-collapse"
-      style={{
-        ...(minWidth ? { minWidth: `max(${minWidth}, 100%)` } : {}),
-        tableLayout: layout,
-      }}
+      data-layout={layout}
+      style={
+        layout === 'fixed'
+          ? {
+              ...(minWidth ? { minWidth: `max(${minWidth}, 100%)` } : {}),
+              tableLayout: 'fixed',
+            }
+          : minWidth ? { minWidth: `max(${minWidth}, 100%)` } : undefined
+      }
     >
       <caption className="sr-only">{label}</caption>
       <thead>

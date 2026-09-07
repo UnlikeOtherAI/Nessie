@@ -48,6 +48,7 @@ export const projectSectionIdFromPathname = (pathname: string): ProjectSectionId
   switch (suffix) {
     case 'board':
     case 'boards':
+      return 'board'
     case 'backlog':
     case 'insights':
     case 'docs':
@@ -84,7 +85,7 @@ export const projectSections = ({
     // Plural: the section holds every board of the project, and it says so even
     // while a project has only one.
     label: withCount('Boards', assignedWorkCount),
-    to: `/projects/${projectId}/board`,
+    to: `/projects/${projectId}/boards`,
   },
   ...(isScrum
     ? ([

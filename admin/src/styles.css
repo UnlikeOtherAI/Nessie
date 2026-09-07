@@ -3220,6 +3220,18 @@ button.reaction-pill-active:focus-visible {
   min-width: 10rem;
 }
 
+/* A responsive directory makes an explicit trade: its action links must stay
+   visible at phone width, so long labels wrap within a fixed table instead of
+   forcing the shared table viewport sideways. Other tables retain the normal
+   readable-column floor above. */
+.admin-expandable-table__viewport > table[data-layout='fixed'] {
+  width: 100%;
+}
+
+.admin-expandable-table__viewport > table[data-layout='fixed'] > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+  min-width: 0;
+}
+
 .admin-table-expand-button {
   position: absolute;
   z-index: 1;
