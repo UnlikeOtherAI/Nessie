@@ -44,6 +44,7 @@ import {
 // a dialog is dismissed, so it is what the draft has to hold.
 type TaskDraft = {
   assignee: AssigneeValue
+  columnId: string | null
   detail: string
   due: string
   fieldValues: Record<string, unknown>
@@ -141,6 +142,7 @@ export const TaskDialog = ({
         : task?.assigneeUserId
           ? { id: task.assigneeUserId, kind: 'user' }
           : null,
+      columnId: taskColumnId ?? null,
       detail: task?.detail ?? '',
       due: toDateInputValue(task?.dueDate ?? null),
       fieldValues: task?.fieldValues ?? {},
@@ -149,7 +151,7 @@ export const TaskDialog = ({
       purpose: task?.purpose ?? '',
       title: task?.title ?? '',
     }),
-    [task],
+    [task, taskColumnId],
   )
 
   // Drafts (docs/navigation/overview.md → "Drafts"): a task draft is keyed by the task,
@@ -159,8 +161,17 @@ export const TaskDialog = ({
     open ? draftKey('task', task?.id ?? 'new') : null,
     { initial: baseline },
   )
-  const { assignee, detail, due, fieldValues, formProjectId, priority, purpose, title } =
-    taskDraft.draft
+  const {
+    assignee,
+    columnId = taskColumnId ?? null,
+    detail,
+    due,
+    fieldValues,
+    formProjectId,
+    priority,
+    purpose,
+    title,
+  } = taskDraft.draft
   const setDraft = taskDraft.setDraft
   const patchDraft = useCallback(
     (patch: Partial<TaskDraft>) => setDraft((current) => ({ ...current, ...patch })),
@@ -244,6 +255,11 @@ export const TaskDialog = ({
         if (changed) {
           await assignTask.mutateAsync({ id: task.id, assigneeUserId, assigneeAgentId })
         }
+        if (columnId && columnId !== taskColumnId) {
+          // A column is part of this edit draft, so an external/source-owned
+          // rejection leaves every unsaved field in place for correction.
+          await moveTask.mutateAsync({ id: task.id, columnId })
+        }
       } else {
         await createTask.mutateAsync({
           title: trimmedTitle,
@@ -275,20 +291,6 @@ export const TaskDialog = ({
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not update status')
-    }
-  }
-
-  const handleMoveToColumn = async (columnId: string) => {
-    if (!task || columnId === taskColumnId) return
-    setError(null)
-    try {
-      // No position: this is a state change, not a claim about where another
-      // person's card belongs in the destination column. The server owns the
-      // resulting order and validates the board/source lifecycle transition.
-      await moveTask.mutateAsync({ id: task.id, columnId })
-      onClose()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not move task')
     }
   }
 
@@ -419,8 +421,8 @@ export const TaskDialog = ({
             >
               <Select
                 disabled={pending}
-                onChange={(event) => void handleMoveToColumn(event.target.value)}
-                value={taskColumnId}
+                onChange={(event) => patchDraft({ columnId: event.target.value })}
+                value={columnId ?? ''}
               >
                 {taskBoard.columns.map((column) => (
                   <option key={column.id} value={column.id}>
@@ -462,7 +464,8 @@ export const TaskDialog = ({
         {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
 
         {/*
-          One banner for three mutations (save, status transition, unarchive),
+          One banner for four mutations (save, column move, status transition,
+          unarchive),
           so it belongs to the form rather than to a field — no `aria-invalid`
           target exists. `role="alert"` is the whole delta: each of the three
           catch blocks clears the message before its await and writes it only

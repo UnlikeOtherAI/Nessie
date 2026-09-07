@@ -73,7 +73,45 @@ const EXCEPTIONS = new Map([
   ['admin/src/providers/AppProvider.tsx', ['layouts', '']],
 ])
 
-const ALLOWLIST = new Map()
+// Every entry is a real offending edge today, with the reason it is not a move.
+const ALLOWLIST = new Map([
+  [
+    'admin/src/navigation/PhoneNavigationButton.tsx -> admin/src/layouts/admin-shell/PhoneNavigationProvider',
+    'The doorway renders the controller\'s decision; the controller itself mounts the shell (NativePhoneNavigationBridge) and stays in layouts.',
+  ],
+  [
+    'admin/src/navigation/PhoneNavigationButton.tsx -> admin/src/layouts/admin-shell/ShellStateContext',
+    'The same doorway opens the shell\'s section menu at a tab root — shell state, read by the one component that renders it.',
+  ],
+  [
+    'admin/src/components/features/channels/useReplyThread.ts -> admin/src/layouts/admin-shell/PhoneNavigationProvider',
+    'The reply panel closes through the phone controller\'s Back; same controller-in-layouts reason as the doorway above.',
+  ],
+  [
+    'admin/src/components/shared/ScreenHeader.tsx -> admin/src/layouts/admin-shell/PhoneNavigationProvider',
+    'The one header publishes the Back it would actually run to the native iOS bar, which is the same controller\'s answer the doorway renders; the controller mounts the shell and stays in layouts.',
+  ],
+  [
+    'admin/src/components/primitives/TabBar.tsx -> admin/src/components/overlays/Popover',
+    'The overflow menu. docs/standards/design-system.md names TabBar at the primitive path, so the popover comes to it rather than the file moving.',
+  ],
+  [
+    'admin/src/providers/IncomingCallProvider.tsx -> admin/src/components/shared/IncomingCallDialog',
+    'A viewport-mount composition: the provider is the ring\'s only host and mounts its one surface, like ToastProvider mounts CardViewport.',
+  ],
+  [
+    'admin/src/bridges/DirectDesktopUpdatePrompt.tsx -> admin/src/components/shared/Dialog',
+    'Same viewport-mount shape: the desktop update bridge mounts one dialog and renders nothing else.',
+  ],
+  [
+    'admin/src/providers/AgentIdentityProvider.tsx -> admin/src/components/shared/agent-identity',
+    'The identity shape the provider publishes is declared beside its consumers; the type, not a component.',
+  ],
+  [
+    'admin/src/components/shared/ResponsivePageHeader.tsx -> admin/src/layouts/admin-shell/ShellStateContext',
+    'The one header renders the shell\'s account menu and mobile nav on the phone; that state is the shell\'s and has no lower home.',
+  ],
+])
 
 const layerOf = (rel) => {
   let best = ''
@@ -95,7 +133,7 @@ function sourceFiles(dir, out = []) {
       if (entry.name === 'node_modules' || entry.name === 'dist') continue
       sourceFiles(full, out)
     } else if (/\.tsx?$/.test(entry.name)) {
-      out.push(path.relative(ROOT, full))
+      out.push(path.relative(ROOT, full).split(path.sep).join('/'))
     }
   }
   return out
@@ -108,7 +146,7 @@ const resolveSpecifier = (fromRel, spec) => {
   for (const extension of EXTENSIONS) {
     const candidate = base + extension
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      return path.relative(ROOT, candidate).replace(/\.tsx?$/, '')
+      return path.relative(ROOT, candidate).split(path.sep).join('/').replace(/\.tsx?$/, '')
     }
   }
   return null
