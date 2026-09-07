@@ -91,6 +91,9 @@ Facts not restated there:
   requester is that recorded source author. Read-time grant evaluation repeats
   that author check, so grants made before lineage existed cannot release a
   private conversation and a valid author can renew the same one-message grant.
+  The acknowledgement submits the exact rendered reply body; a concurrent
+  replacement revokes earlier grants and a stale acknowledgement is refused, so
+  a grant never covers content its author did not inspect.
   Missing lineage fails closed for sharing. Transcript, attachment, checkpoint,
   memory and conversation-search reads carry known lineage forward and mark an
   older/agent-derived source with no durable author as unknown; a known turn in

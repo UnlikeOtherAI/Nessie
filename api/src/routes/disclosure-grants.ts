@@ -11,13 +11,21 @@ import {
 import { publishMessageDisclosureChanged } from '../services/disclosure-grant-realtime.js'
 import type { RouteDeps } from './types.js'
 
-const GrantBodySchema = z.object({
-  /** Share this one reply, or stand a rule up for the whole source scope. */
-  kind: z.enum(['message', 'scope']),
-  audienceKind: z.enum(['user', 'channel']).optional(),
-  audienceId: z.string().uuid().optional(),
-  duration: z.enum(ALLOWED_GRANT_DURATIONS).optional(),
-})
+const GrantBodySchema = z.discriminatedUnion('kind', [
+  z.object({
+    /** Share this one reply, bound to the exact text the person saw. */
+    kind: z.literal('message'),
+    expectedContent: z.string(),
+    audienceKind: z.enum(['user', 'channel']).optional(),
+    audienceId: z.string().uuid().optional(),
+    duration: z.enum(ALLOWED_GRANT_DURATIONS).optional(),
+  }),
+  z.object({
+    /** A standing rule applies to a source scope rather than a message body. */
+    kind: z.literal('scope'),
+    duration: z.enum(ALLOWED_GRANT_DURATIONS).optional(),
+  }),
+])
 
 const sendDisclosureGrantError = (reply: FastifyReply, error: unknown): boolean => {
   if (!(error instanceof DisclosureGrantError)) return false
@@ -67,6 +75,7 @@ export const registerDisclosureGrantRoutes = (
           organizationId: actorContext.tenant.organizationId,
           userId: actorContext.actor.actorId,
           messageId,
+          expectedContent: body.expectedContent,
           ...(body.audienceKind !== undefined ? { audienceKind: body.audienceKind } : {}),
           ...(body.audienceId !== undefined ? { audienceId: body.audienceId } : {}),
           ...(body.duration !== undefined ? { duration: body.duration } : {}),

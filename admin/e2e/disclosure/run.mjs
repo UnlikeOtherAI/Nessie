@@ -18,12 +18,15 @@ import {
 } from '../navigation/lib/servers.mjs'
 import {
   SECRET,
+  REVISED_PRIVATE_BODY,
   SHARED_SUMMARY,
   seedFixture,
   submitMentionedRequest,
   waitForRun,
 } from './fixture.mjs'
 import { saveFailureEvidence } from './failure-evidence.mjs'
+import { createReaderScenario, createReplyRevisionScenario, createSourceScenario } from './mock-scenarios.mjs'
+import { exerciseApprovedReplyRevision } from './approved-reply-revision.mjs'
 import {
   installActivityProbe,
   installEventProbe,
@@ -97,61 +100,14 @@ const main = async () => {
   const { createMockLlmServer, parseScenario } = await import('@nessie/mock-llm')
   const disclosureJudgePrompts = []
   const disclosureJudgeVerdicts = ['{"share":false}', '{"share":true}']
-  const scenario = parseScenario({
-    name: 'disclosure-private-withheld',
-    defaults: { latencyMs: 5, model: 'mock-model' },
-    turns: [
-      {
-        reasoning: 'The person explicitly names one team destination and authorizes this exact update.',
-        stream: { chunkDelayMs: 5, chunkSize: 12 },
-        text: '',
-        toolCalls: [{
-          arguments: { content: SHARED_SUMMARY, channelId: groupId },
-          toolCallId: 'mock-disclosure-send-1',
-          toolName: 'send_message',
-        }],
-        usage: { inputTokens: 101, outputTokens: 21 },
-      },
-      {
-        text: 'Držím ten update omezený, dokud ho výslovně neschválíš.',
-        usage: { inputTokens: 133, outputTokens: 12 },
-      },
-    ],
-    utility: { text: '{}' },
-  })
-  const readerScenario = parseScenario({
-    name: 'disclosure-unauthorized-reader',
-    defaults: { latencyMs: 5, model: 'mock-model' },
-    turns: [
-      {
-        text: '',
-        toolCalls: [{
-          arguments: { query: 'Kestrel' },
-          toolCallId: 'mock-disclosure-search-0',
-          toolName: 'message_search',
-        }],
-        usage: { inputTokens: 101, outputTokens: 18 },
-      },
-      {
-        reasoning: 'Search only the channels visible to the person who made this public request.',
-        text: '',
-        toolCalls: [{
-          arguments: { query: 'Kestrel' },
-          toolCallId: 'mock-disclosure-search-1',
-          toolName: 'message_search',
-        }],
-        usage: { inputTokens: 133, outputTokens: 18 },
-      },
-      {
-        text: 'Nemůžu sdílet obsah soukromého chatu.',
-        usage: { inputTokens: 176, outputTokens: 18 },
-      },
-    ],
-    utility: { text: '{}' },
-  })
+  const scenario = createSourceScenario(parseScenario, groupId, SHARED_SUMMARY)
+  const readerScenario = createReaderScenario(parseScenario)
   let modelPhase = 'source'
+  let revisionScenario
   const model = await createMockLlmServer({
-    mainScenarioResolver: () => modelPhase === 'reader' ? readerScenario : undefined,
+    mainScenarioResolver: () => modelPhase === 'reader'
+      ? readerScenario
+      : modelPhase === 'revision' ? revisionScenario : undefined,
     scenario,
     utilityResponder: (prompt) => {
       // This fixed judgement protocol identifies the mock task, never the person’s wording.
@@ -328,14 +284,14 @@ const main = async () => {
     await audiencePage.page.keyboard.press('Escape')
 
     const denied = await fetch(`${API_URL}/api/messages/${forwarded.id}/disclosure-grants`, {
-      body: JSON.stringify({ kind: 'message', duration: '10m' }),
+      body: JSON.stringify({ expectedContent: SHARED_SUMMARY, kind: 'message', duration: '10m' }),
       headers: { authorization: `Bearer ${audienceToken}`, 'content-type': 'application/json' },
       method: 'POST',
     })
     assert.equal(denied.status, 403, 'a target-group reader cannot approve the source author’s private information')
 
     const ownerDenied = await fetch(`${API_URL}/api/messages/${forwarded.id}/disclosure-grants`, {
-      body: JSON.stringify({ kind: 'message', duration: '10m' }),
+      body: JSON.stringify({ expectedContent: SHARED_SUMMARY, kind: 'message', duration: '10m' }),
       headers: { authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
       method: 'POST',
     })
@@ -414,6 +370,29 @@ const main = async () => {
       false,
       'one-reply grant does not make its basis-bearing reply searchable',
     )
+
+    await exerciseApprovedReplyRevision({
+      activateRevision: () => {
+        revisionScenario = createReplyRevisionScenario(parseScenario, {
+          content: REVISED_PRIVATE_BODY,
+          messageId: forwarded.id,
+        })
+        modelPhase = 'revision'
+      },
+      api,
+      audiencePage: audiencePage.page,
+      audienceToken,
+      currentContent: SHARED_SUMMARY,
+      fixture,
+      forwarded,
+      pipeline,
+      revisedContent: REVISED_PRIVATE_BODY,
+      runIds,
+      screenshots: SCREENSHOTS,
+      sourcePage: sourcePage.page,
+      sourceToken,
+    })
+    modelPhase = 'source'
 
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.explicitChannel.id}`, { waitUntil: 'domcontentloaded' })
     await submitMentionedRequest(
