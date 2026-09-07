@@ -82,7 +82,7 @@ const tokenFor = (issueSessionToken, user, scope) => issueSessionToken({
   sub: user.id,
   team: scope.teamId,
   tv: 0,
-}, process.env.NESSIE_AUTH_SECRET, 3_600).token
+}, process.env.NESSIE_AUTH_SECRET, 3_600, user.sessionId).token
 
 const installEventProbe = (page, token) => page.evaluate(async (bearer) => {
   const controller = new AbortController()
@@ -455,7 +455,9 @@ const main = async () => {
     if (browser) await browser.close().catch(() => {})
     if (adminServer) await stopProcess(adminServer)
     if (apiServer) await stopProcess(apiServer)
-    await pipeline.prisma.user.deleteMany({ where: { email: { startsWith: 'disclosure-' } } }).catch(() => {})
+    await pipeline.prisma.user.deleteMany({
+      where: { id: { in: [fixture.sourceAuthor.id, fixture.audience.id] } },
+    }).catch(() => {})
     await cleanupScope(pipeline.prisma, pipeline.pool, fixture.scope, runIds).catch(() => {})
     await pipeline.stop().catch(() => {})
     await model.close().catch(() => {})
