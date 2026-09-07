@@ -285,8 +285,7 @@ export const AgentDesignerForm = ({
           <div className="grid gap-1.5">
             <SectionLabel>Tools</SectionLabel>
             <p className="text-xs text-[color:var(--tx3)]">
-              Built-in tools are on by default; connector (MCP) tools must be
-              switched on per agent.
+              Project access is granted explicitly. Protected tools are managed on the Tools and Apps pages.
             </p>
             <p className="text-xs text-[color:var(--tx3)]">
               Explicit-grant tools are protected from Agent Designer edits.{' '}

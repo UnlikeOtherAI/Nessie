@@ -122,8 +122,7 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-[color:var(--tx3)]">
-          Built-in tools are on by default; connector (MCP) tools must be switched
-          on per agent.
+          Project access is granted explicitly. Protected tools are managed on the Tools and Apps pages.
         </p>
         <button
           className="admin-button admin-button-primary flex-shrink-0"

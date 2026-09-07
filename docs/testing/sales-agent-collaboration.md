@@ -76,6 +76,19 @@ key was generated in that UI and entered into Nessie's encrypted credential
 dialog. The channel-scoped **KiloTalk Sales Research** app connected, discovered
 exactly ten read-only tools, and was approved and granted to both agents.
 
+The production API-key lifecycle was also exercised with a disposable key:
+create, reopen settings with the secret hidden, and revoke. The research key
+remains active in Nessie's encrypted connection. Browserbase's personal
+connection check successfully opened and closed a browser session; an agent's
+actual browser research has not yet been verified.
+
+The researcher called KiloTalk's catalogue and customer-list tools, then stopped
+at a run token limit before returning research. A checkpoint continuation also
+stopped without a useful answer. Increasing the agent's saved run budget did
+not establish that an existing checkpoint uses the new allowance. These are
+failed research attempts, not evidence of consensus. Further live retries wait
+for the separate output-admission and recovery work.
+
 The walkthrough also reproduced an existing project-creation defect:
 **Sales Agent Verification — KiloMayo** was created, but the form's subsequent
 attempt to create a local team failed. Adding a channel from that project's
@@ -92,3 +105,24 @@ tests verified the Meet request contract with a provider mock. Some broader
 Windows tests failed because their Docker executable and `chmod` fixtures
 assume POSIX; Linux CI remains the merge gate. These checks do not yet prove
 live agent consensus, generated prospect tasks, or an actual Meet link.
+
+Headless component fixtures at `localhost:5455` exercised designer draft
+preservation across tabs, checklist application and result saving, local-draft
+clearing, and the task Details surface. The checklist checkbox sizing was
+corrected after screenshot review. These fixtures use mocked API responses;
+they supplement the production walkthrough rather than replace it.
+
+## Compaction verification
+
+The sibling `UnlikeOtherAI/deep.agent` repository exports a loop library. Its
+current context handling trims conversation history; it does not provide a
+model-authored compaction service consumed by Nessie. Its standalone typecheck
+and 60 tests passed during this verification.
+
+Nessie's worker already has a separate context-compaction path with a utility
+model call, tool-call/result grouping, citation-preservation instructions, and
+durable run checkpoints. A Deep.Agent integration must retain those contracts,
+including source restrictions and author lineage. Replacing this path with
+history trimming would discard capabilities. Verify a versioned shared
+compaction contract and its preservation tests before switching the consumer;
+no Deep.Agent integration is claimed by this sales-collaboration change.

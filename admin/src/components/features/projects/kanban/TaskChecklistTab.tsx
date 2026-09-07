@@ -16,7 +16,7 @@ import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import { Notice } from '../../../primitives/Notice'
 import { EmptyState } from '../../../shared/EmptyState'
 import { FormField } from '../../../shared/FormField'
-import { Input, Select, Textarea } from '../../../shared/FormControls'
+import { Select, Textarea } from '../../../shared/FormControls'
 
 type TemplateChoice = {
   agentId: string
@@ -217,9 +217,10 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
         return (
           <div className="grid gap-2 border-b border-[color:var(--sep)] pb-4" key={step.id}>
             <label className="flex gap-2 text-sm">
-              <Input
+              <input
                 aria-label={`Complete ${step.title}`}
                 checked={Boolean(step.completedAt)}
+                className="mt-0.5 h-4 w-4 flex-none accent-[color:var(--accent)]"
                 disabled={pending}
                 onChange={(event) => save(event.target.checked)}
                 type="checkbox"
