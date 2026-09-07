@@ -10,7 +10,12 @@ import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
-import { startAdmin, startApi, stopProcess } from '../navigation/lib/servers.mjs'
+import {
+  assertFreshServersAvailable,
+  startAdmin,
+  startApi,
+  stopProcess,
+} from '../navigation/lib/servers.mjs'
 
 const ADMIN_URL = 'http://localhost:5455'
 const API_URL = 'http://127.0.0.1:5454'
@@ -156,7 +161,7 @@ const seedFixture = async (pipeline, seedScope, groupId) => {
 
   await prisma.$transaction([
     prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'owner', userId: agentOwner.id },
+      data: { organizationId: scope.organizationId, role: 'member', userId: agentOwner.id },
     }),
     prisma.organizationMember.create({
       data: { organizationId: scope.organizationId, role: 'member', userId: sourceAuthor.id },
@@ -166,25 +171,25 @@ const seedFixture = async (pipeline, seedScope, groupId) => {
     }),
     prisma.projectMember.createMany({
       data: [
-        { projectId: scope.projectId, role: 'owner', userId: agentOwner.id },
+        { projectId: scope.projectId, role: 'member', userId: agentOwner.id },
         { projectId: scope.projectId, role: 'member', userId: sourceAuthor.id },
         { projectId: scope.projectId, role: 'member', userId: audience.id },
       ],
     }),
     prisma.teamMember.createMany({
       data: [
-        { teamId: scope.teamId, role: 'owner', userId: agentOwner.id },
+        { teamId: scope.teamId, role: 'member', userId: agentOwner.id },
         { teamId: scope.teamId, role: 'member', userId: sourceAuthor.id },
         { teamId: scope.teamId, role: 'member', userId: audience.id },
       ],
     }),
     prisma.channelMember.createMany({
       data: [
-        { channelId: group.id, role: 'manager', userId: agentOwner.id },
+        { channelId: group.id, role: 'member', userId: agentOwner.id },
         { channelId: group.id, role: 'member', userId: sourceAuthor.id },
         { channelId: group.id, role: 'member', userId: audience.id },
-        { channelId: privateChannel.id, role: 'manager', userId: sourceAuthor.id },
-        { channelId: explicitChannel.id, role: 'manager', userId: sourceAuthor.id },
+        { channelId: privateChannel.id, role: 'member', userId: sourceAuthor.id },
+        { channelId: explicitChannel.id, role: 'member', userId: sourceAuthor.id },
       ],
     }),
     prisma.agent.update({
@@ -279,6 +284,7 @@ const main = async () => {
 
   await rm(SCREENSHOTS, { force: true, recursive: true })
   await mkdir(SCREENSHOTS, { recursive: true })
+  await assertFreshServersAvailable()
 
   const groupId = randomUUID()
   const { createMockLlmServer, parseScenario } = await import('@nessie/mock-llm')
@@ -325,8 +331,10 @@ const main = async () => {
   let sourceContext = null
   let audienceContext = null
   try {
-    apiServer = await startApi()
-    adminServer = await startAdmin()
+    // This security evaluation must never adopt another worktree's dev loop:
+    // that would exercise different source and leave this fixture unverified.
+    apiServer = await startApi({ reuseExisting: false })
+    adminServer = await startAdmin({ reuseExisting: false })
     browser = await launchBrowser()
     ownerContext = await openViewportContext(browser, { name: 'desktop', token: ownerToken })
     sourceContext = await openViewportContext(browser, { name: 'desktop', token: sourceToken })
@@ -420,9 +428,19 @@ const main = async () => {
       }
     }
 
-    await sourcePage.page.waitForSelector(`[data-testid="restricted-message-${forwarded.id}"]`, { timeout: 60_000 })
-    await sourcePage.page.locator(`#msg-${forwarded.id}`).getByRole('button', { name: 'Share this reply' }).click()
-    await audiencePage.page.waitForFunction((summary) => document.body.innerText.includes(summary), SHARED_SUMMARY, { timeout: 60_000 })
+    await sourcePage.page.waitForSelector(
+      `[data-testid="restricted-message-${forwarded.id}"]`,
+      { timeout: 60_000 },
+    )
+    await sourcePage.page
+      .locator(`#msg-${forwarded.id}`)
+      .getByRole('button', { name: 'Share this reply' })
+      .click()
+    await audiencePage.page.waitForFunction(
+      (summary) => document.body.innerText.includes(summary),
+      SHARED_SUMMARY,
+      { timeout: 60_000 },
+    )
     const afterShare = await audiencePage.page.locator('body').innerText()
     assertNoSecret(afterShare, 'recipient UI after content-scoped share')
     assert.ok(afterShare.includes(SHARED_SUMMARY), 'author’s one-reply share reaches the intended group')
