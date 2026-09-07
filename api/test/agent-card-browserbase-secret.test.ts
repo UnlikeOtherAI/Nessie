@@ -49,6 +49,8 @@ const browserbasePrisma = (input: { teamExists?: boolean } = {}) => {
   const writes: Array<Record<string, unknown>> = []
   return {
     prisma: {
+      $executeRaw: async () => 1,
+      agentBrowser: { count: async () => 0 },
       cloudBrowserConnection: {
         create: async ({ data }: { data: Record<string, unknown> }) => {
           writes.push(data)
@@ -56,6 +58,8 @@ const browserbasePrisma = (input: { teamExists?: boolean } = {}) => {
         },
         findFirst: async () => null,
       },
+      cloudBrowserSession: { count: async () => 0 },
+      mcpOAuthSecret: { deleteMany: async () => ({ count: 0 }) },
       team: {
         findFirst: async () => (input.teamExists === false ? null : { id: TEAM_ID }),
       },

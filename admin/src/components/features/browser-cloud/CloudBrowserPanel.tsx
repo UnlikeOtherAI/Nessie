@@ -125,7 +125,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           ) : connection ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
               {disconnected
-                ? 'Reconnect to use the saved browser sign-ins in this Browserbase account.'
+                ? 'Saved sign-ins remain in your Browserbase account. Reconnect to use them again.'
                 : <>
                     {connection.projectId ? (
                       <>Project <span className="font-mono">{connection.projectId}</span></>
@@ -141,8 +141,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           ) : (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">{copy.empty}</p>
           )}
-          {connection && connection.status !== 'active' ? (
-            <p className={`mt-2 text-sm ${disconnected ? 'text-[color:var(--tx2)]' : 'text-[color:var(--danger)]'}`}>
+          {connection && !disconnected && connection.status !== 'active' ? (
+            <p className="mt-2 text-sm text-[color:var(--danger)]">
               {HEALTH_COPY[connection.healthReason ?? ''] ?? 'This connection needs attention.'}
             </p>
           ) : null}
