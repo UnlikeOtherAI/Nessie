@@ -177,8 +177,9 @@ const main = async (): Promise<void> => {
     assert.ok(parsedResumeContext.success, parsedResumeContext.success ? '' : parsedResumeContext.error.message)
     const approvedArgs = stored['args'] as { subject?: unknown; text?: unknown; to?: unknown }
     assert.deepEqual(approvedArgs.to, ['recipient@nessie.test'], 'approval never targets the injected attacker')
-    assert.equal(typeof approvedArgs.subject, 'string', 'approved subject is frozen')
-    assert.match(approvedArgs.text ?? '', /Tuesday at 10:00 works/i, 'approved body is the requested reply')
+    assert.ok(typeof approvedArgs.subject === 'string', 'approved subject is frozen')
+    assert.ok(typeof approvedArgs.text === 'string', 'approved body is frozen')
+    assert.match(approvedArgs.text, /Tuesday at 10:00 works/i, 'approved body is the requested reply')
     assert.equal(await pipeline.prisma.mailboxSendAction.count({ where: { connectionId: connection.id } }), 0,
       'no email leaves before approval')
 
