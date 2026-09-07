@@ -53,6 +53,9 @@ const makeApp = (viewerUserId: string) => {
   let targetNameReads = 0
   const prisma = {
     agent: { findMany: async () => [] },
+    // The confidential stream's channel is private, so its audience remains
+    // constrained to explicit channel members.
+    channel: { findFirst: async () => null },
     channelMember: { findMany: async () => [] },
     disclosureGrant: { findMany: async () => [] },
     knowledgePage: {
@@ -101,6 +104,7 @@ const makeApp = (viewerUserId: string) => {
           organizationId: ORGANIZATION_ID,
           systemChannelType: null,
           type: 'standard',
+          visibility: 'private',
         },
       }),
     },
