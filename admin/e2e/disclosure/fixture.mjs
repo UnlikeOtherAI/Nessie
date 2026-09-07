@@ -168,7 +168,7 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
 }
 
 export const submitMentionedRequest = async (page, agentName, text) => {
-  const composer = page.locator('[role="textbox"][data-placeholder="Message"]')
+  const composer = page.locator('form.admin-compose [role="textbox"]')
   await composer.fill(`@${agentName}`)
   await page.locator('button').filter({ hasText: agentName }).first().click()
   await composer.press('End')

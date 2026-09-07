@@ -1,7 +1,7 @@
 # Private conversation disclosure browser evaluation
 
-Run the production API, admin UI, Postgres queue, real worker execution path
-and a deterministic OpenAI-compatible mock together:
+Run the production local-mode API and its embedded worker, the admin UI, and a
+deterministic OpenAI-compatible mock together:
 
 ```powershell
 $env:DATABASE_URL = 'postgresql://nessie:nessie@127.0.0.1:55432/nessie_disclosure'
@@ -17,11 +17,17 @@ project-usability and connected-mail browser suites.
 
 It seeds an ordinary team-shared agent owned by A, a private source chat whose
 author is B, and a public Team launch channel containing C. B's Czech,
-informal, misspelled private source is consumed by the real worker, which uses
-the mock model's `send_message` call to post a group update. The mock utility
-lane scripts a declined judgement for B's first informal request and a positive
-judgement for B's separate explicit Czech request. Nessie itself makes no text
-match or language-specific decision.
+informal, misspelled private source enters through the rendered composer and
+API message admission, then the embedded worker uses the mock model's
+`send_message` call to post a group update. The mock utility lane scripts a
+declined judgement for B's first informal request and a positive judgement for
+B's separate explicit Czech request. Nessie itself makes no text match or
+language-specific decision.
+
+The runner also opens the Postgres-backed test-harness pipeline to create and
+clean up its isolated fixture and observe terminal runs. It does not claim that
+this helper executes the UI-submitted jobs: those run through the API's
+local-mode queue and embedded worker.
 
 The current case verifies that A is an API-resolved organization owner (rather
 than relying on its token claim), the restricted group message has B's exact
