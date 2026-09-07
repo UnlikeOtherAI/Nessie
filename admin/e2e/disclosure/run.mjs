@@ -143,7 +143,7 @@ const main = async () => {
         usage: { inputTokens: 133, outputTokens: 18 },
       },
       {
-        text: 'Nemůžu sdílet obsah soukromého chatu. Veřejné schválené shrnutí je ale v Team launch.',
+        text: 'Nemůžu sdílet obsah soukromého chatu.',
         usage: { inputTokens: 176, outputTokens: 18 },
       },
     ],
