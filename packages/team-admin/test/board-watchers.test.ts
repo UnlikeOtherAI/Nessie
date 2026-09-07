@@ -97,7 +97,6 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     agentId: ownPrivate.id,
     label: ownPrivate.name,
     organizationId: organization.id,
-    otherId: other.id,
     ownerUserId: adder.id,
     teamId: team.id,
   })
@@ -105,6 +104,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     adderId: adder.id,
     boardId: board.id,
     organizationId: organization.id,
+    otherId: other.id,
     otherPrivateAgentId: otherPrivate.id,
     ownPrivateAgentId: ownPrivate.id,
     sharedAgentId: shared.id,
