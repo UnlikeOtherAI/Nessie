@@ -55,6 +55,14 @@ const savePublicFailureEvidence = async (page, error) => {
 
   const body = await page.locator('body').innerText().catch(() => '')
   await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), body)
+  const realtime = await page.evaluate(() => ({
+    activity: window.__disclosureActivityProbe?.events ?? [],
+    events: window.__disclosureEventProbe?.events ?? [],
+  })).catch(() => ({}))
+  await writeFile(
+    resolve(SCREENSHOTS, 'failure-public-recipient-realtime.json'),
+    `${JSON.stringify(realtime, null, 2)}\n`,
+  )
   await page.screenshot({
     path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
     fullPage: true,
@@ -187,13 +195,13 @@ const main = async () => {
       const events = window.__disclosureEventProbe?.events ?? []
       return events.some((frame) => frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
-    }, { timeout: 60_000 })
+    }, undefined, { timeout: 60_000 })
     await audiencePage.page.waitForFunction(() => {
       const events = window.__disclosureActivityProbe?.events ?? []
       return events.some((frame) => frame.type === 'event'
         && frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
-    }, { timeout: 60_000 })
+    }, undefined, { timeout: 60_000 })
     // The known-public SSE canary must not consume a mock utility decision before B's disclosure judge.
     await pipeline.prisma.agentBinding.create({
       data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
@@ -217,6 +225,28 @@ const main = async () => {
       1,
       'the first private request invoked exactly its declined disclosure judge',
     )
+    const privateTask = await pipeline.prisma.task.findFirstOrThrow({
+      where: { runId: firstRun.id }, select: { id: true, purpose: true },
+    })
+    assert.ok(
+      privateTask.purpose?.includes(SECRET),
+      'the private run task records the source canary before its read gate is exercised',
+    )
+    for (const [label, token] of [['group reader', audienceToken], ['agent owner', ownerToken]]) {
+      const taskList = await api('/api/tasks', token)
+      assertNoSecret(JSON.stringify(taskList.data), `${label} task list`)
+      assert.equal(
+        taskList.data.some((task) => task.id === privateTask.id),
+        false,
+        `${label} cannot enumerate the private run task`,
+      )
+      const taskResponse = await fetch(`${API_URL}/api/tasks/${privateTask.id}`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      const taskText = await taskResponse.text()
+      assert.equal(taskResponse.status, 404, `${label} cannot read the private run task by id`)
+      assertNoSecret(taskText, `${label} private task response`)
+    }
     const activityFrames = await audiencePage.page.evaluate(() => window.__disclosureActivityProbe?.events ?? [])
     assert.equal(
       activityFrames.some((frame) => frame.type === 'event' && frame.data?.runId === firstRun.id),

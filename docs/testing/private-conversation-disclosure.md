@@ -32,9 +32,9 @@ local-mode queue and embedded worker.
 The current case verifies that A is an API-resolved organization owner (rather
 than relying on its token claim), the restricted group message has B's exact
 basis; C cannot see it in the transcript, search, SSE or subscribed activity
-WebSocket event; unrelated public group content remains visible; agent detail
-and run-tool read routes do not expose the private source; and neither C nor
-owner A can grant B's
+WebSocket event; unrelated public group content remains visible; agent detail,
+run-tool, and private run task routes do not expose the private source; and
+neither C nor owner A can grant B's
 disclosure. B then uses the rendered **Share this reply** control, after which
 only that message is granted to the destination channel. The raw private source
 still does not appear in C's UI, SSE frames, search result, or inspected read
