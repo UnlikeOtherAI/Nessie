@@ -100,9 +100,11 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     },
   },
   {
-    // The seven project section routes are one screen (`surfaces.ts` gives them
-    // one tabHost identity), and every one of them reads the board.
-    pattern: /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
+    // Project sections and the nested board-management flow all read the same
+    // small board directory before rendering their first decision.
+    pattern: new RegExp(
+      '^/projects/([^/]+)(?:/(?:board|backlog|insights|docs|executors|settings|boards(?:/[^/]+/settings)?))?$',
+    ),
     run: (projectId, context) => {
       prefetch(context, projectKeys.boards(projectId), () =>
         fetchProjectBoards(context.apiClient, projectId))

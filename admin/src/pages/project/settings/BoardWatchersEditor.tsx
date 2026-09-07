@@ -8,6 +8,7 @@ import { useUsers } from '../../../facades/users/hooks'
 import { type Recipient } from '../../../lib/channel-compose-recipients'
 import { selectBoardWatcherAgents } from '../../../lib/board-watcher-recipients'
 import { FormError } from '../../../components/shared/FormActions'
+import { QueryState } from '../../../components/shared/QueryState'
 import { useIsOwner } from '../../../facades/auth/hooks'
 import { RecipientBar } from '../../../components/shared/RecipientBar'
 import { Section } from '../../../components/shared/PageBody'
@@ -86,35 +87,43 @@ export const BoardWatchersEditor = ({
       }
       title="Watchers"
     >
-      <div className="grid gap-3">
-        <RecipientBar
-          agents={agents}
-          closeAfterSelection
-          disabled={setWatchers.isPending}
-          label="Tell"
-          onChange={setRecipients}
-          placeholder="Type a name or an agent"
-          recipients={recipients}
-          token={token}
-          users={users}
-        />
-        <FormError>{error ?? undefined}</FormError>
-        {dirty ? (
-          <div className="flex justify-end gap-2">
-            <button className="admin-button" onClick={() => setRecipients(saved)} type="button">
-              Cancel
-            </button>
-            <button
-              className="admin-button admin-button-primary"
+      <QueryState
+        errorLabel="Couldn't load watchers."
+        loadingLabel="Loading watchers…"
+        query={watchersQuery}
+      >
+        {() => (
+          <div className="grid gap-3">
+            <RecipientBar
+              agents={agents}
+              closeAfterSelection
               disabled={setWatchers.isPending}
-              onClick={save}
-              type="button"
-            >
-              {setWatchers.isPending ? 'Saving…' : 'Save watchers'}
-            </button>
+              label="Tell"
+              onChange={setRecipients}
+              placeholder="Type a name or an agent"
+              recipients={recipients}
+              token={token}
+              users={users}
+            />
+            <FormError>{error ?? undefined}</FormError>
+            {dirty ? (
+              <div className="flex justify-end gap-2">
+                <button className="admin-button" onClick={() => setRecipients(saved)} type="button">
+                  Cancel
+                </button>
+                <button
+                  className="admin-button admin-button-primary"
+                  disabled={setWatchers.isPending}
+                  onClick={save}
+                  type="button"
+                >
+                  {setWatchers.isPending ? 'Saving…' : 'Save watchers'}
+                </button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
+        )}
+      </QueryState>
     </Section>
   )
 }

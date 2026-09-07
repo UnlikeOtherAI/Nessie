@@ -48,6 +48,21 @@ export const readIntentValues = <N extends string>(
   return values
 }
 
+/**
+ * The retired project Boards-settings address was an intent host. Redirect it
+ * before it becomes a screen, forwarding its create instruction to the board
+ * directory that owns consuming it. Keeping this parser beside the intent
+ * hooks prevents a second, ad-hoc `?create` reader at the old route.
+ */
+export const legacyProjectBoardSettingsTarget = (projectId: string, search: string): string => {
+  const params = new URLSearchParams(search)
+  const boardId = params.get('board')
+  if (params.get('create') === 'board') return `/projects/${projectId}/boards?create=board`
+  return boardId
+    ? `/projects/${projectId}/boards/${encodeURIComponent(boardId)}/settings`
+    : `/projects/${projectId}/boards`
+}
+
 // The search string with the named params removed: '' when nothing is left,
 // so the redirect target carries no dangling '?'.
 export const stripIntentParams = (search: string, names: readonly string[]): string => {

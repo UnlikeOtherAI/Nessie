@@ -164,7 +164,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             action={
               <Link
                 className="admin-button admin-button-primary"
-                to={`/projects/${projectId}/settings?section=boards&board=${board.id}`}
+                to={`/projects/${projectId}/boards/${board.id}/settings?tab=columns`}
               >
                 Add columns
               </Link>

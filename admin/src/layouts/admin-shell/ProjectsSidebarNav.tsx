@@ -192,18 +192,12 @@ export const ProjectsSidebarNav = ({
 
   const handleBoardCreated = (board: BoardRecord) => {
     if (!boardCreateProjectId) return
-    // A board nobody can see is not a board that was created: open the
-    // list if it was closed, and land on what was just made. The very
-    // first board of a project is its default, and a default board is
-    // spelled without the param — the same link its row carries.
+    // A board nobody can configure is not a board that was created: open the
+    // list if it was closed, then land on the new board's own settings.
     expandBoards(boardCreateProjectId)
-    const boardPath = `/projects/${boardCreateProjectId}/board`
-    void navigate(
-      board.isDefault
-        ? boardPath
-        : `${boardPath}?board=${encodeURIComponent(board.id)}`,
-      { replace: currentProjectId === boardCreateProjectId },
-    )
+    void navigate(`/projects/${boardCreateProjectId}/boards/${board.id}/settings`, {
+      replace: currentProjectId === boardCreateProjectId,
+    })
   }
 
   const renderProjectRow = (project: ProjectRecord, listId: ProjectListId) => {
