@@ -81,6 +81,27 @@ test('ordinary builtins stay allowed by default (no regression)', () => {
   assert.deepEqual(decision, { allowed: true })
 })
 
+test('a shared agent receives a project ticket tool only from the resolved durable project grant', () => {
+  const ticket: BuiltinToolDefinition = {
+    ...plainTool,
+    id: 'ticket_create',
+    personalAssistantOnly: true,
+    projectDelegatedOnly: true,
+  }
+  const ticketDefs = [ticket]
+  const ticketEnabled = new Set([ticket.id])
+  assert.deepEqual(
+    authorizeToolCall(ticket.id, ticketEnabled, ticketDefs, { [ticket.id]: true }, null, 'shared'),
+    { allowed: false, reason: 'personal_assistant_only' },
+  )
+  assert.deepEqual(
+    authorizeToolCall(ticket.id, ticketEnabled, ticketDefs, { [ticket.id]: true }, null, 'shared', {
+      projectDelegatedToolIds: new Set([ticket.id]),
+    }),
+    { allowed: true },
+  )
+})
+
 test('the personal assistant can request an app connection by default, but an owner deny wins', () => {
   const enabledApps = new Set([APP_CONNECT_REQUEST_TOOL_DEFINITION.id])
   assert.deepEqual(

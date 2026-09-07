@@ -1,4 +1,5 @@
 import { canAdministerProject, createBoard } from '@nessie/team-admin'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -11,6 +12,22 @@ const BoardInput = z.object({ name: z.string().trim().min(1).max(120), iconEmoji
 const requesterAndProject = async (context: BuiltinToolRuntimeContext) => {
   const projectId = context.channel.projectId
   if (!projectId) throw new Error('This capability is available only inside a project channel.')
+  if (context.agentKind !== 'shared' || context.actorContext.actor.actorType !== 'user') {
+    throw new Error('Only an ordinary agent on behalf of the requesting person may collaborate here.')
+  }
+  const effectiveUserId = context.actorContext.actionContext.effectiveUserId
+  if (effectiveUserId && effectiveUserId !== context.actorContext.actor.actorId) {
+    throw new Error('The requester identity does not match this durable delegation.')
+  }
+  const binding = await context.prisma.agentBinding.count({
+    where: { agentId: context.agentId, channelId: context.channel.id },
+  })
+  if (binding === 0) throw new Error('This agent is no longer bound to this project channel.')
+  // A peer brief is model-authored content. Until mailbox messages grow the
+  // full basis chain, forwarding a restricted run would fail open, so refuse.
+  if ((context.consumedSources?.size() ?? 0) > 0) {
+    throw new Error('This run has restricted sources and cannot delegate them to a peer.')
+  }
   const member = await resolveActingMember(context)
   if (!(await canAdministerProject(context.prisma, member, projectId))) {
     throw new Error('A current project administrator must authorize this collaboration.')
@@ -24,21 +41,50 @@ export const runAgentPeerDelegateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = DelegateInput.parse(input)
   const depth = context.run.peerDelegationDepth ?? 0
-  if (depth >= MAX_PEER_DELEGATION_DEPTH) throw new Error('This review has reached its bounded peer-delegation limit.')
+  if (depth >= MAX_PEER_DELEGATION_DEPTH) {
+    throw new Error('This review has reached its bounded peer-delegation limit.')
+  }
   const { member, projectId } = await requesterAndProject(context)
   const target = await context.prisma.agent.findFirst({
-    where: { id: args.agentId, organizationId: member.organizationId, systemManaged: false, agentKind: 'shared', agentBindings: { some: { channelId: context.channel.id } } },
+    where: {
+      id: args.agentId,
+      organizationId: member.organizationId,
+      systemManaged: false,
+      agentKind: 'shared',
+      agentBindings: { some: { channelId: context.channel.id } },
+    },
     select: { id: true, name: true },
   })
-  if (!target || target.id === context.agentId) throw new Error('Choose another ordinary agent already bound to this project channel.')
-  const mail = await context.prisma.agentMailboxMessage.create({
-    data: {
-      actorId: member.userId, actorType: 'user', body: args.brief, channelId: context.channel.id,
-      correlationId: `peer:${context.run.id}:${context.toolCallId ?? args.agentId}`,
-      fromAgentId: context.agentId, organizationId: member.organizationId,
-      peerDelegationDepth: depth + 1, subject: `Project review: ${projectId}`, threadId: context.run.threadId, toAgentId: target.id,
-    }, select: { id: true },
-  })
+  if (!target || target.id === context.agentId) {
+    throw new Error('Choose another ordinary agent already bound to this project channel.')
+  }
+  const correlationId = `peer:${context.run.id}:${context.toolCallId ?? args.agentId}`
+  let mail: { id: string }
+  try {
+    mail = await context.prisma.agentMailboxMessage.create({
+      data: {
+        actorId: member.userId,
+        actorType: 'user',
+        body: args.brief,
+        channelId: context.channel.id,
+        correlationId,
+        fromAgentId: context.agentId,
+        organizationId: member.organizationId,
+        peerDelegationDepth: depth + 1,
+        subject: `Project review: ${projectId}`,
+        threadId: context.run.threadId,
+        toAgentId: target.id,
+      },
+      select: { id: true },
+    })
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
+    const existing = await context.prisma.agentMailboxMessage.findFirst({
+      where: { correlationId, organizationId: member.organizationId, toAgentId: target.id }, select: { id: true },
+    })
+    if (!existing) throw error
+    mail = existing
+  }
   return { toolName: 'agent_peer_delegate', inputSummary: `agentId=${target.id}`, outputPreview: `Asked ${target.name} for a bounded project review. mailboxMessageId=${mail.id} depth=${depth + 1}` }
 }
 
@@ -48,7 +94,15 @@ export const runTicketBoardCreateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = BoardInput.parse(input)
   const { member, projectId } = await requesterAndProject(context)
-  const board = await createBoard(context.prisma, { id: projectId, organizationId: member.organizationId }, { ...args, createdByUserId: member.userId })
+  const board = await createBoard(
+    context.prisma,
+    { id: projectId, organizationId: member.organizationId },
+    { ...args, createdByUserId: member.userId },
+  )
   if ('error' in board) throw new Error('Unable to create this board.')
-  return { toolName: 'ticket_board_create', inputSummary: `projectId=${projectId} name=${args.name}`, outputPreview: `Created board \"${board.name}\" | boardId=${board.id}` }
+  return {
+    toolName: 'ticket_board_create',
+    inputSummary: `projectId=${projectId} name=${args.name}`,
+    outputPreview: `Created board \"${board.name}\" | boardId=${board.id}`,
+  }
 }

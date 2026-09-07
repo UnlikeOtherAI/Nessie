@@ -24,6 +24,7 @@ import {
 type Seed = {
   organizationId: string
   projectId: string
+  requesterId: string
   teamId: string
   channelId: string
   threadId: string
@@ -33,6 +34,8 @@ type Seed = {
 
 const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `mbx-ser ${randomUUID()}` } })
+  const requester = await prisma.user.create({ data: { displayName: 'Requester', email: `mbx-${randomUUID()}@example.test` } })
+  await prisma.organizationMember.create({ data: { organizationId: org.id, role: 'owner', userId: requester.id } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
   })
@@ -57,6 +60,7 @@ const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   return {
     organizationId: org.id,
     projectId: project.id,
+    requesterId: requester.id,
     teamId: team.id,
     channelId: channel.id,
     threadId: thread.id,
@@ -80,6 +84,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
   await prisma.team.deleteMany({ where: { id: seed.teamId } })
   await prisma.project.deleteMany({ where: { id: seed.projectId } })
   await prisma.organization.deleteMany({ where: { id: seed.organizationId } })
+  await prisma.user.deleteMany({ where: { id: seed.requesterId } })
 }
 
 const realtime = {
@@ -99,6 +104,7 @@ const queueMail = async (
   prisma: PrismaClient,
   seed: Seed,
   body: string,
+  peerDelegationDepth?: number,
 ): Promise<{ id: string }> => {
   return prisma.agentMailboxMessage.create({
     data: {
@@ -107,10 +113,11 @@ const queueMail = async (
       toAgentId: seed.toAgentId,
       channelId: seed.channelId,
       threadId: seed.threadId,
-      actorId: seed.fromAgentId,
-      actorType: 'agent',
+      actorId: peerDelegationDepth === undefined ? seed.fromAgentId : seed.requesterId,
+      actorType: peerDelegationDepth === undefined ? 'agent' : 'user',
       body,
       correlationId: randomUUID(),
+      peerDelegationDepth,
       visibleAt: new Date(Date.now() - 60_000),
     },
     select: { id: true },
@@ -196,6 +203,31 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
     }),
     0,
   )
+})
+
+runDatabaseTest('peer mailbox delivery persists the requester capability and bounded depth into its one queued run', async (t) => {
+  const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
+  const seed = await seedTeam(prisma)
+  t.after(async () => {
+    await cleanup(prisma, seed)
+    await prisma.$disconnect()
+  })
+
+  const mail = await queueMail(prisma, seed, 'review the prospect evidence', 2)
+  await dispatchSeededMail(prisma, mail)
+
+  const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { correlationId?: string; effectiveUserId?: string; purpose?: string } } } }[]>`
+    SELECT payload FROM queue_jobs WHERE idempotency_key = ${`mailbox:${mail.id}`}
+  `
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]?.payload.actorContext.actionContext.purpose, 'agent.peer_delegation')
+  assert.equal(rows[0]?.payload.actorContext.actionContext.correlationId, '2')
+  assert.equal(rows[0]?.payload.actorContext.actionContext.effectiveUserId, seed.requesterId)
+
+  // The delivery row is terminal; replaying the sweep cannot create a second run.
+  assert.equal(await dispatchNextMailboxMessage(prisma, realtime), false)
+  assert.equal(await prisma.run.count({ where: { agentId: seed.toAgentId, threadId: seed.threadId } }), 1)
 })
 
 runDatabaseTest('mailbox delivery on a free thread claims the slot and enqueues the run', async (t) => {
