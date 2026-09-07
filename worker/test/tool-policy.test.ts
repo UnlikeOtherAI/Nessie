@@ -36,6 +36,7 @@ const definitions = [
     summary: 'Send a message as the current user.',
     label: 'Send message',
     parameters: { properties: {}, type: 'object' },
+    requiresExplicitGrant: true,
     safe: false,
   },
 ] satisfies BuiltinToolDefinition[]
@@ -72,7 +73,7 @@ test('resolveAgentTools exposes a granted message send tool to a shared agent', 
   const resolved = resolveAgentTools(
     new Set(['web_search', 'send_message']),
     definitions,
-    null,
+    { send_message: true },
     null,
     'shared',
   )
@@ -85,7 +86,7 @@ test('resolveAgentTools grants personal-assistant-only tools to the personal ass
   const resolved = resolveAgentTools(
     new Set(['web_search', 'send_message']),
     definitions,
-    null,
+    { send_message: true },
     null,
     'personal_assistant',
   )
@@ -147,11 +148,15 @@ test('authorizeToolCall reports structured denial reasons', () => {
 
 test('authorizeToolCall allows a granted message send tool for a shared agent', () => {
   assert.deepEqual(
-    authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'shared'),
+    authorizeToolCall(
+      'send_message', new Set(['send_message']), definitions, { send_message: true }, null, 'shared',
+    ),
     { allowed: true },
   )
   assert.deepEqual(
-    authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'personal_assistant'),
+    authorizeToolCall(
+      'send_message', new Set(['send_message']), definitions, { send_message: true }, null, 'personal_assistant',
+    ),
     { allowed: true },
   )
 })

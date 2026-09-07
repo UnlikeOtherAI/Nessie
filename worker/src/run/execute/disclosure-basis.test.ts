@@ -90,7 +90,10 @@ test('checkpoint or memory channel provenance cannot be re-attributed by a later
 test('private conversation material cannot enter an unscoped write or MCP call', () => {
   const sink = createConsumedSourceSink()
   sink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' })
-  const context = { consumedSources: sink } as unknown as import('./types.js').RunContext
+  const context = {
+    agent: { agentKind: 'shared' },
+    consumedSources: sink,
+  } as unknown as import('./types.js').RunContext
 
   assert.equal(
     blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'kb_draft_write' }),
