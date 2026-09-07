@@ -233,16 +233,18 @@ export const moveProjectTaskToColumn = async (
       })
     }
 
-    if (input.position !== undefined) {
-      await reindexBoardColumn(
-        tx,
-        column.board,
-        column,
-        existing.id,
-        existing.projectId as string,
-        input.position,
-      )
-    }
+    // The public move contract treats an omitted position as append.  A raw
+    // upsert at position 0 would instead pin it to the top (and tie existing
+    // position-0 cards), so use the same materialised ordering path as a drag.
+    // `reindexBoardColumn` clamps an index past the end to the current length.
+    await reindexBoardColumn(
+      tx,
+      column.board,
+      column,
+      existing.id,
+      existing.projectId as string,
+      input.position ?? Number.MAX_SAFE_INTEGER,
+    )
     return tx.task.findFirst({ where: { id: existing.id }, include: projectTaskInclude })
   })
   if (!task) return { error: 'INVALID_TRANSITION', from: existing.status }
