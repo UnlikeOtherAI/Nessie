@@ -19,7 +19,9 @@ file is the rule**.
   capability instead of retrying until the job dies. Capability checks are
   all-of at the one `loadUserGoogleCommsCredential` chokepoint, which also
   enforces local blocks and refuses two qualifying accounts rather than
-  guessing. A local block is not a revocation — a provider grant can only be
+  guessing. A worker tool carries the typed coordinator failure to the
+  in-chat grant-card path; it does not inspect arbitrary provider errors or
+  expose their detail. A local block is not a revocation — a provider grant can only be
   revoked whole — so it is enforced server-side and the copy says so. OAuth
   state binds the connection being widened and the expected provider account,
   because a callback that trusts whoever finished consent will silently

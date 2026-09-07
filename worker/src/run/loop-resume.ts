@@ -6,7 +6,7 @@
 // pick up where a dead executor stopped; `worker/src/run/execute/crash-checkpoint.ts`
 // is what makes those snapshots durable.
 //
-// See docs/standards/horizontal-scaling.md invariant 4.
+// See docs/standards/horizontal-scaling/overview.md invariant 4.
 
 import type { InvocationRecord, ProviderMessage, ProviderToolCall } from '@nessie/runtime'
 import type { CompactionGovernor } from './context-window.js'

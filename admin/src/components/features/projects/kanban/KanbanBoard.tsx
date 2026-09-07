@@ -273,72 +273,79 @@ export const KanbanBoard = ({
         onDragOver={handleDragOver}
         onDragStart={handleDragStart}
       >
-        {paginated ? (
-          <div aria-label="Board pages" className="mb-2 flex items-center justify-center gap-2">
-            {Array.from({ length: pageCount }, (_, index) => (
-              <button
-                aria-current={index === page ? 'page' : undefined}
-                aria-label={`Show page ${index + 1}`}
-                className="flex h-7 w-7 items-center justify-center rounded-full"
-                key={index}
-                onClick={() => showPage(index)}
-                type="button"
-              >
-                <span
-                  className={[
-                    'h-2.5 rounded-full transition-all',
-                    index === page
-                      ? 'w-6 bg-[color:var(--tx)]'
-                      : 'w-2.5 bg-[color:var(--overlay-strong)]',
-                  ].join(' ')}
-                />
-              </button>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {paginated ? (
+            <div aria-label="Board pages" className="mb-2 flex shrink-0 items-center justify-center gap-2">
+              {Array.from({ length: pageCount }, (_, index) => (
+                <button
+                  aria-current={index === page ? 'page' : undefined}
+                  aria-label={`Show page ${index + 1}`}
+                  className="flex h-11 w-11 items-center justify-center rounded-full"
+                  key={index}
+                  onClick={() => showPage(index)}
+                  type="button"
+                >
+                  <span
+                    className={[
+                      'h-2.5 rounded-full transition-all',
+                      index === page
+                        ? 'w-6 bg-[color:var(--tx)]'
+                        : 'w-2.5 bg-[color:var(--overlay-strong)]',
+                    ].join(' ')}
+                  />
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div
+            ref={viewportRef}
+            className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            data-kanban-board-viewport
+            data-kanban-dragging={isDraggingCard ? 'true' : undefined}
+            onScroll={handleScroll}
+            style={{ scrollSnapType: isDraggingCard ? 'none' : undefined }}
+          >
+            {pageGroups.map((group, groupIndex) => (
+              <div className="flex h-full w-full shrink-0 snap-start gap-3" key={groupIndex}>
+                {group.map((column) => {
+                  const ids = items[column.id] ?? []
+                  return (
+                    <KanbanColumn
+                      key={column.id}
+                      columnId={column.id}
+                      count={ids.length}
+                      dot={CATEGORY_DOT[column.category]}
+                      headerAction={
+                        column.category === 'done' && projectId && boardId ? (
+                          <ArchiveDoneMenu boardId={boardId} projectId={projectId} />
+                        ) : undefined
+                      }
+                      itemIds={ids}
+                      label={column.name}
+                    >
+                      {ids
+                        .map((id) => taskById.get(id))
+                        .filter((task): task is BoardTaskRecord => Boolean(task))
+                        .map((task) => (
+                          <KanbanCard key={task.id} {...cardProps(task)} />
+                        ))}
+                    </KanbanColumn>
+                  )
+                })}
+              </div>
             ))}
           </div>
-        ) : null}
-        <div
-          ref={viewportRef}
-          className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          data-kanban-board-viewport
-          data-kanban-dragging={isDraggingCard ? 'true' : undefined}
-          onScroll={handleScroll}
-          style={{ scrollSnapType: isDraggingCard ? 'none' : undefined }}
-        >
-          {pageGroups.map((group, groupIndex) => (
-            <div className="flex h-full w-full shrink-0 snap-start gap-3" key={groupIndex}>
-              {group.map((column) => {
-                const ids = items[column.id] ?? []
-                return (
-                  <KanbanColumn
-                    key={column.id}
-                    columnId={column.id}
-                    count={ids.length}
-                    dot={CATEGORY_DOT[column.category]}
-                    headerAction={
-                      column.category === 'done' && projectId && boardId ? (
-                        <ArchiveDoneMenu boardId={boardId} projectId={projectId} />
-                      ) : undefined
-                    }
-                    itemIds={ids}
-                    label={column.name}
-                  >
-                    {ids
-                      .map((id) => taskById.get(id))
-                      .filter((task): task is BoardTaskRecord => Boolean(task))
-                      .map((task) => (
-                        <KanbanCard key={task.id} {...cardProps(task)} />
-                      ))}
-                  </KanbanColumn>
-                )
-              })}
-            </div>
-          ))}
         </div>
       </DndContext>
 
-      <div className="mt-3 border-t border-[color:var(--sep)] pt-3">
+      <div
+        className={[
+          'mt-3 border-t border-[color:var(--sep)] pt-3',
+          showArchived ? 'flex min-h-0 basis-2/5 flex-col' : 'shrink-0',
+        ].join(' ')}
+      >
         <button
-          className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+          className="flex h-11 shrink-0 items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
           onClick={() => setShowArchived((value) => !value)}
           type="button"
         >
@@ -346,7 +353,7 @@ export const KanbanBoard = ({
           Archived ({archived.length})
         </button>
         {showArchived ? (
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-2 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {archived.length === 0 ? (
               <div className="text-xs text-[color:var(--tx3)]">No cancelled or failed work.</div>
             ) : (
@@ -364,7 +371,14 @@ export const KanbanBoard = ({
         ) : null}
       </div>
 
-      <TaskDialog open={activeTask !== null} task={activeTask} onClose={() => setActiveTask(null)} />
+      <TaskDialog
+        boardId={boardId}
+        onClose={() => setActiveTask(null)}
+        open={activeTask !== null}
+        projectId={projectId}
+        task={activeTask}
+        taskColumnId={activeTask ? taskById.get(activeTask.id)?.columnId : undefined}
+      />
     </div>
   )
 }

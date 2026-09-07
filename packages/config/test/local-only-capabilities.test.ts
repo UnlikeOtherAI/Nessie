@@ -12,7 +12,7 @@ import {
   SingleInstanceCapabilityError,
 } from '../src/index.js'
 
-// Invariant 7, docs/standards/horizontal-scaling.md: three capabilities only
+// Invariant 7, docs/standards/horizontal-scaling/overview.md: three capabilities only
 // work while one process owns the machine's disk. `filesystem` storage is the
 // one that is configuration, so `loadConfig` is where it is refused; the other
 // two are per-organisation database rows, refused at their worker chokepoints,

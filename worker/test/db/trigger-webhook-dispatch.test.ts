@@ -8,7 +8,7 @@ import { deleteThreadQueueJobs, runDatabaseTest } from './support.js'
 
 /**
  * `trigger.webhook.dispatch` is safe to replay, and it is where the delivery
- * row is now written (audit 9.2, docs/standards/horizontal-scaling.md § 3).
+ * row is now written (audit 9.2, docs/standards/horizontal-scaling/overview.md § 3).
  *
  * The intake route enqueues and acks; the fire lands here. Two things have to
  * hold. The received bytes reach `agent_trigger_deliveries` unchanged — the

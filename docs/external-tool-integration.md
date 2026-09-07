@@ -510,7 +510,7 @@ Signals all reuse the shared `@nessie/mcp-manage` "connect + call one tool" seam
   worker, so a team of fifty is not fifty digest transactions on one HTTP
   request, and an instance recycled part-way through cannot lose the remainder
   of an event DeepSignal has already been told 2xx for
-  (docs/standards/horizontal-scaling.md § 3). An event that routes to no enabled
+  (docs/standards/horizontal-scaling/overview.md § 3). An event that routes to no enabled
   team is still answered synchronously — `200` with
   `{ accepted: false, reason: 'team_not_enabled' }` — which is what the old
   `delivered: 0` said; the count itself is gone, because no count exists at

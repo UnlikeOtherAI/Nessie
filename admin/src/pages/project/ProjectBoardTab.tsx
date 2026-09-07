@@ -30,7 +30,7 @@ type ProjectBoardTabProps = {
 export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
-  const { data: sources = [] } = useProjectSources(projectId)
+  const { data: sources = [] } = useProjectSources(projectId, board?.id)
   const canAdminister = useCanAdministerProject(projectId)
   const { data: assignableUsers = [] } = useTaskAssignees()
   const { me } = useAuthSession()
@@ -108,21 +108,23 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="min-w-0 w-full sm:flex-1">
           <SourceStatusStrip
             canAdminister={canAdminister}
             projectId={projectId}
             sources={sources}
           />
         </div>
-        <BoardAssigneeFilter
-          currentUserId={currentUserId}
-          onChange={setAssignee}
-          people={filterOptions.people}
-          remote={filterOptions.remote}
-          value={assignee}
-        />
+        <div className="self-end sm:self-auto">
+          <BoardAssigneeFilter
+            currentUserId={currentUserId}
+            onChange={setAssignee}
+            people={filterOptions.people}
+            remote={filterOptions.remote}
+            value={assignee}
+          />
+        </div>
       </div>
       {tasksQuery.data?.truncated ? (
         <div className="text-xs text-[color:var(--tx3)]">
@@ -139,21 +141,6 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
             Failed to load tasks. Please refresh.
           </div>
-        ) : tasks.length === 0 && sources.length === 0 ? (
-          <EmptyState
-            action={
-              <Link
-                className="admin-button admin-button-primary"
-                to={`/projects/${projectId}/settings?section=sources&connect=1`}
-              >
-                Connect a source
-              </Link>
-            }
-            title="Nothing on this board yet."
-          >
-            New tasks appear in the first column — or bring in work from Jira, Linear,
-            Trello or GitHub.
-          </EmptyState>
         ) : visibleTasks.length === 0 && tasks.length > 0 ? (
           // Empty columns under a filter would otherwise read as "nobody is
           // working on anything"; the board is not empty, this view is.
@@ -177,7 +164,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             action={
               <Link
                 className="admin-button admin-button-primary"
-                to={`/projects/${projectId}/settings?section=boards&board=${board.id}`}
+                to={`/projects/${projectId}/boards/${board.id}/settings?tab=columns`}
               >
                 Add columns
               </Link>
@@ -190,6 +177,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           <KanbanBoard
             boardId={board.id}
             columns={columns}
+            key={board.id}
             onMoveTask={handleMove}
             projectId={projectId}
             projectNameById={projectNameById}

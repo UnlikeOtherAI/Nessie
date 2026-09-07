@@ -243,7 +243,7 @@ export type DispatchTriggerResult =
  * Whether a trigger would fire right now, without firing it.
  *
  * The webhook intake enqueues rather than dispatching
- * (docs/standards/horizontal-scaling.md § 3), and an enqueue on its own cannot
+ * (docs/standards/horizontal-scaling/overview.md § 3), and an enqueue on its own cannot
  * tell a sender that its trigger is paused or that its agent is bound to no
  * channel — the two things a misconfigured integration has to hear on the
  * delivery it sent, and exactly what `POST /api/triggers/webhook`'s 409s carry.

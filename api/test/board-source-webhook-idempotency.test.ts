@@ -17,7 +17,7 @@ import type { RouteDeps } from '../src/routes/types.js'
  * mean two full re-reads of the provider's API and two chances to interleave,
  * so the enqueue carries the delivery id as its idempotency key — and where a
  * provider gives none, a hash of the body it re-sent (audit 9.1,
- * docs/standards/horizontal-scaling.md § 3).
+ * docs/standards/horizontal-scaling/overview.md § 3).
  *
  * DB-backed because the coalescing lives in `queue_jobs`' unique index on
  * `idempotency_key`: a stub would only prove we passed an argument. Every

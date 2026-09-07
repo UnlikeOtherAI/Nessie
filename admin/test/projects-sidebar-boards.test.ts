@@ -74,14 +74,16 @@ test('the Board section lists the project boards and creates one through a dialo
   assert.match(source('styles.css'), /\.admin-sb-item\.sidebar-grandchild\s*\{\s*padding-left: 44px;/)
   assert.match(source('styles.css'), /\.touch-sidebar \.admin-sb-item\.sidebar-grandchild/)
 
-  // A board is a tab of the board screen, so it is `?board=` — and the default
-  // board drops the param, exactly as `useTabParam` writes it.
-  assert.match(sectionRows, /board\.isDefault\s*\?\s*section\.to/)
-  assert.match(sectionRows, /\$\{section\.to\}\?board=\$\{encodeURIComponent\(board\.id\)\}/)
+  // Board management owns the parent Boards row, while a child board row opens
+  // actual work. The default drops `?board=`, as `useTabParam` does.
+  assert.match(sectionRows, /const workingBoardPath = `\/projects\/\$\{projectId\}\/board`/)
+  assert.match(sectionRows, /board\.isDefault\s*\?\s*workingBoardPath/)
+  assert.match(sectionRows, /\$\{workingBoardPath\}\?board=\$\{encodeURIComponent\(board\.id\)\}/)
 
   // Its own disclosure, remembered separately from the project's sections.
   assert.match(sectionRows, /aria-label=\{`\$\{boardsExpanded \? 'Collapse' : 'Expand'\} boards`\}/)
   assert.match(sectionRows, /onToggleBoardsExpanded\(projectId\)/)
+  assert.match(sectionRows, /showBoardSelection/, 'settings paths do not highlight a working board')
 
   // The "+" is a pop-up, not a trip to Settings, and it is offered only to
   // somebody whose click the server would not refuse.
@@ -91,16 +93,13 @@ test('the Board section lists the project boards and creates one through a dialo
   assert.match(dialogs, /<BoardCreateDialog/)
 })
 
-test('creating a board opens the board list that was closed and lands on the new board', () => {
-  // The navigation decision (expand, then land on the new board) stays in
-  // ProjectsSidebarNav.tsx as `handleBoardCreated`, passed into
-  // ProjectsNavDialogs.tsx as the `onBoardCreated` prop (06-F5).
+test('sidebar creation opens the board list and lands on the new board settings', () => {
+  // The board directory owns management. A creation from the sidebar therefore
+  // opens that directory's selected board settings, rather than a hidden
+  // inline editor or a bare board with no management doorway.
   const created = sidebar.slice(sidebar.indexOf('const handleBoardCreated = (board: BoardRecord)'))
   assert.match(created, /expandBoards\(boardCreateProjectId\)/)
-  // A project's first board is its default, and a default board is spelled
-  // without the param — the same link its row carries.
-  assert.match(created, /board\.isDefault\s*\?\s*boardPath/)
-  assert.match(created, /\$\{boardPath\}\?board=\$\{encodeURIComponent\(board\.id\)\}/)
+  assert.match(created, /\/projects\/\$\{boardCreateProjectId\}\/boards\/\$\{board\.id\}\/settings/)
   assert.ok(
     created.indexOf('expandBoards(') < created.indexOf('navigate('),
     'the list is opened before the navigation that lands in it',
@@ -157,7 +156,7 @@ test('a board wears its own icon everywhere it is listed, and is given one where
     /<BoardIcon[\s\S]{0,120}iconEmoji=\{board\.iconEmoji\}/,
   )
   assert.match(
-    source('pages/project/settings/BoardsSettingsSection.tsx'),
+    source('pages/project/BoardSettingsPage.tsx'),
     /<BoardIconField[\s\S]{0,200}iconEmoji=\{board\.iconEmoji\}/,
   )
   assert.match(
@@ -173,18 +172,18 @@ test('a board wears its own icon everywhere it is listed, and is given one where
   // Setting one is an administrative change to the project's shape, gated the
   // way every other board edit in that section is.
   assert.match(
-    source('pages/project/settings/BoardsSettingsSection.tsx'),
-    /canAdminister \? \(\s*<BoardIconField/,
+    source('pages/project/BoardSettingsPage.tsx'),
+    /canAdminister && tab === 'general'/,
   )
 })
 
-test('one board-create dialog serves both the sidebar and project settings', () => {
+test('one board-create dialog serves the sidebar and board directory', () => {
   assert.match(
     source('layouts/admin-shell/ProjectsNavDialogs.tsx'),
     /from '\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
   )
   assert.match(
-    source('pages/project/settings/BoardsSettingsSection.tsx'),
-    /from '\.\.\/\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
+    source('pages/project/ProjectBoardsPage.tsx'),
+    /from '\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
   )
 })

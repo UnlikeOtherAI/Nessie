@@ -530,7 +530,7 @@ runDatabaseTest(
       assert.ok(terminationContext)
       assert.deepEqual(
         await terminateGcloud(terminationContext),
-        {},
+        { metadata: {}, outcome: 'terminated' },
         'terminating the failed instance must address nothing',
       )
 

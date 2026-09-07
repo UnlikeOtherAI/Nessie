@@ -5,7 +5,7 @@ import type { NessieMode } from './index.js'
  * disk, its Docker daemon, its files.
  *
  * Outside `local` mode Nessie runs N copies of the API and the worker
- * (`docs/standards/horizontal-scaling.md`, invariant 7), and every capability
+ * (`docs/standards/horizontal-scaling/overview.md`, invariant 7), and every capability
  * listed below fails by *appearing* to work: the upload lands, the container is
  * recorded terminated, the file is written — on one instance, and nowhere the
  * next call reaches. Each is therefore refused, loudly, naming the setting and
@@ -86,16 +86,17 @@ export const DOCKER_EXECUTION_PROVIDER: LocalOnlyCapability = {
   because:
     "it shells out to this instance's own Docker daemon, so a container"
     + ' provisioned here cannot be inspected or terminated from another'
-    + ' instance — and terminate swallows "No such container", recording the'
-    + ' environment as terminated while it keeps running and billing.',
+    + ' instance, and a terminate claimed by any other worker gets'
+    + ' "No such container" from a daemon that never held it.',
   instead:
     'Create execution environment templates with provider `gcloud`, which'
     + ' addresses instances through an API every instance can reach. Containers'
     + ' that already exist are not stranded by this refusal — only provisioning'
     + ' a new one is refused, terminating an existing one never is — so'
-    + ' terminate them, then confirm on the host whose daemon started each one'
-    + ' that it is really gone, because a terminate claimed by any other worker'
-    + ' cannot see it.',
+    + ' terminate them, and expect any the claiming worker could not reach to'
+    + ' come back as a failed instance with EXECUTION_TERMINATE_UNVERIFIED'
+    + ' rather than as terminated: remove those on the host whose daemon started'
+    + ' them, by the `nessie.instance-id` label the row names.',
 }
 
 export const FILESYSTEM_BUILTIN_TOOLS: LocalOnlyCapability = {

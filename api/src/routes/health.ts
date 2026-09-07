@@ -7,7 +7,14 @@ import { getOpsHealth, getReadiness } from '../services/ops-health.js'
 import type { RouteDeps } from './types.js'
 
 export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { lifecycle, prisma, rateLimiter, requireActorContext, requireSuperAdmin } = deps
+  const {
+    config,
+    lifecycle,
+    prisma,
+    rateLimiter,
+    requireActorContext,
+    requireSuperAdmin,
+  } = deps
 
   // Liveness: is this process still running? A flat 200 until the process
   // begins draining, at which point it answers 503 so an orchestrator that
@@ -40,7 +47,7 @@ export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   })
 
   // Instance administration, not organisation administration: worker
-  // heartbeats, queue counts, dead jobs, and the rate-limiter snapshot are
+  // heartbeats, queue counts, dead jobs, and the live rate-limit windows are
   // deployment-wide and have no tenant column (`services/ops-health.ts`). Under
   // the old flattened single-organisation model "owner of the shared org" was
   // the only thing resembling an instance administrator; with one Organization
@@ -55,6 +62,7 @@ export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       prisma,
       actorContext.tenant.organizationId,
       rateLimiter,
+      config,
     )
     return createApiResponse(OpsHealthResponseSchema.parse(health))
   })

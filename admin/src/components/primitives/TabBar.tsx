@@ -53,6 +53,8 @@ type TabBarProps<T extends string> = {
    */
   role?: 'tablist' | 'radiogroup'
   size?: 'sm' | 'md'
+  /** Use a 44px target where a compact strip controls a scrollable work surface. */
+  touchTarget?: boolean
   value: T
 }
 
@@ -80,6 +82,7 @@ export const TabBar = <T extends string>({
   onChange,
   role = 'tablist',
   size = 'md',
+  touchTarget = false,
   value,
 }: TabBarProps<T>) => {
   const shellRef = useRef<HTMLDivElement | null>(null)
@@ -239,7 +242,7 @@ export const TabBar = <T extends string>({
             aria-expanded={menuOpen}
             aria-haspopup="listbox"
             aria-label={ariaLabel}
-            className={`tabbar-trigger tabbar-trigger-${size}`}
+            className={`tabbar-trigger tabbar-trigger-${size}${touchTarget ? ' tabbar-trigger-touch' : ''}`}
             onClick={() => setMenuOpen((open) => !open)}
             ref={triggerRef}
             type="button"
@@ -292,7 +295,7 @@ export const TabBar = <T extends string>({
       ) : (
         <div
           aria-label={ariaLabel}
-          className={`tabbar tabbar-${size}${fullWidth ? ' tabbar-full' : ''}`}
+          className={`tabbar tabbar-${size}${fullWidth ? ' tabbar-full' : ''}${touchTarget ? ' tabbar-touch' : ''}`}
           onKeyDown={onKeyDown}
           ref={trackRef}
           role={role}

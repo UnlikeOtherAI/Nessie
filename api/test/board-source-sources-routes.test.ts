@@ -16,8 +16,10 @@ import type { RouteDeps } from '../src/routes/types.js'
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const projectId = '00000000-0000-4000-8000-000000000002'
 const sourceId = '00000000-0000-4000-8000-000000000003'
+const otherSourceId = '00000000-0000-4000-8000-000000000005'
 const userId = '00000000-0000-4000-8000-000000000004'
 const connectionId = '00000000-0000-4000-8000-000000000009'
+const boardId = '00000000-0000-4000-8000-000000000010'
 const ENCRYPTION_SECRET = 'test-encryption-secret'
 
 const sourceRow = (over: Record<string, unknown> = {}) => ({
@@ -49,6 +51,19 @@ const sourceRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
+const boardRow = (over: Record<string, unknown> = {}) => ({
+  id: boardId,
+  projectId,
+  name: 'Connected work',
+  iconEmoji: null,
+  style: 'kanban',
+  isDefault: true,
+  position: 0,
+  filter: { sources: 'all' },
+  columns: [],
+  ...over,
+})
+
 /** Enough of an adapter to declare a poll and record a webhook removal. */
 const stubAdapter = (removals: string[]): BoardSourceAdapter =>
   ({
@@ -72,15 +87,29 @@ const buildApp = async (input: {
   removals: string[]
   rows: ReturnType<typeof sourceRow>[]
   deleted?: number
+  board?: ReturnType<typeof boardRow> | null
+  taskRows?: { externalLink: { sourceId: string } | null }[]
+  onTaskQuery?: (query: unknown) => void
 }) => {
   const app = Fastify()
   const prisma = {
     project: { findFirst: async () => ({ id: projectId, organizationId }) },
     boardSource: {
-      findMany: async () => input.rows,
+      findMany: async (query: { where?: { id?: { in?: string[] } } }) => {
+        const sourceIds = query.where?.id?.in
+        return sourceIds ? input.rows.filter((row) => sourceIds.includes(row.id)) : input.rows
+      },
       findFirst: async () => input.rows[0] ?? null,
       deleteMany: async () => ({ count: input.deleted ?? 1 }),
     },
+    board: { findFirst: async () => input.board ?? null },
+    task: {
+      findMany: async (query: unknown) => {
+        input.onTaskQuery?.(query)
+        return input.taskRows ?? []
+      },
+    },
+    iteration: { findFirst: async () => null },
     boardSourceConnection: {
       findUnique: async () => ({
         id: connectionId,
@@ -159,6 +188,66 @@ test('a source with no registration says so rather than claiming to be live', as
   const response = await app.inject({ method: 'GET', url: `/api/projects/${projectId}/sources` })
   const [record] = JSON.parse(response.body).data
   assert.equal(record.webhookActive, false)
+  clearBoardSourceAdapters()
+})
+
+test('the default board keeps connected sources visible before they have cards', async () => {
+  const app = await buildApp({
+    removals: [],
+    rows: [sourceRow()],
+    board: boardRow(),
+    taskRows: [],
+  })
+  const response = await app.inject({
+    method: 'GET',
+    url: `/api/projects/${projectId}/sources?boardId=${boardId}`,
+  })
+  assert.equal(response.statusCode, 200, response.body)
+  assert.deepEqual(JSON.parse(response.body).data.map((source: { id: string }) => source.id), [sourceId])
+  clearBoardSourceAdapters()
+})
+
+test('a native-only board shows no connected sources', async () => {
+  let taskQuery: unknown = null
+  const app = await buildApp({
+    removals: [],
+    rows: [sourceRow()],
+    board: boardRow({ filter: { sources: 'native' } }),
+    onTaskQuery: (query) => {
+      taskQuery = query
+    },
+  })
+  const response = await app.inject({
+    method: 'GET',
+    url: `/api/projects/${projectId}/sources?boardId=${boardId}`,
+  })
+  assert.equal(response.statusCode, 200, response.body)
+  assert.deepEqual(JSON.parse(response.body).data, [])
+  assert.equal(taskQuery, null)
+  clearBoardSourceAdapters()
+})
+
+test('a non-default board finds a connected source beyond the card render cap', async () => {
+  let taskQuery: { take?: number } | null = null
+  const app = await buildApp({
+    removals: [],
+    rows: [sourceRow(), sourceRow({ id: otherSourceId, name: 'Second source' })],
+    board: boardRow({ isDefault: false }),
+    taskRows: [
+      ...Array.from({ length: 500 }, () => ({ externalLink: null })),
+      { externalLink: { sourceId: otherSourceId } },
+    ],
+    onTaskQuery: (query) => {
+      taskQuery = query as { take?: number }
+    },
+  })
+  const response = await app.inject({
+    method: 'GET',
+    url: `/api/projects/${projectId}/sources?boardId=${boardId}`,
+  })
+  assert.equal(response.statusCode, 200, response.body)
+  assert.deepEqual(JSON.parse(response.body).data.map((source: { id: string }) => source.id), [otherSourceId])
+  assert.equal(taskQuery?.take, undefined)
   clearBoardSourceAdapters()
 })
 

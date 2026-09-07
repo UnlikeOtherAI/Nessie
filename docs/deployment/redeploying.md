@@ -110,7 +110,7 @@ Consequences worth knowing:
   tool grants and Personal Assistant default grants, and sweeps expired refresh
   credentials — work every API replica used to do at boot, before it started
   serving. Boot now connects and listens
-  ([standards/horizontal-scaling.md](../standards/horizontal-scaling.md) §5), so
+  ([standards/horizontal-scaling/overview.md](../standards/horizontal-scaling/overview.md) §5), so
   **skipping this step leaves a new organisation with no policy rules and
   deny-by-default answers.** Every step is idempotent and the job prints the
   rows it created; a redeploy that changes none of them reports zero. It exits

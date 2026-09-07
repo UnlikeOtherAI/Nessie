@@ -38,6 +38,10 @@ sentence changes only if the invariant itself did.
   Every UI change is screenshotted and confirmed rendering before the work is
   considered done — see [`AGENTS.md`](AGENTS.md) → "Verification". Do not ask a
   person to check a screen you can open yourself.
+- **Project usability browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
+  CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
+  between the navigation and independent connected-mail suites.
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is

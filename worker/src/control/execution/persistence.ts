@@ -1,11 +1,18 @@
 import { type PrismaClient } from '@prisma/client'
 import { finalizeLease } from './leases.js'
 import { mergeMetadata } from './metadata.js'
+import { INSTANCE_ID_LABEL } from './naming.js'
 import { deriveProviderInstanceRef } from './providers.js'
 import { enqueueAbandonedMachineTermination } from './reclaim.js'
+import { asObject, parseString } from './stored-json.js'
 import { recordExecutionUsage } from './usage-ledger.js'
 import { buildWorkflowInstanceOutput, maybeContinueWorkflowForInstance } from './workflow-continuation.js'
-import type { ProviderProvisionResult, ProvisioningContext, TerminationContext } from './types.js'
+import type {
+  ProviderProvisionResult,
+  ProviderTerminationResult,
+  ProvisioningContext,
+  TerminationContext,
+} from './types.js'
 
 // Record the intent before the side effect.
 //
@@ -139,6 +146,27 @@ export const markProvisionFailure = async (
   return updated
 }
 
+// Rolls the transaction back and never leaves this module. A Prisma interactive
+// transaction commits unless the callback throws, so returning `false` from
+// inside one — which is what this path used to do when either conditional write
+// matched no rows — committed whatever the other write had already done and then
+// reported failure. The worst shape of that: the lease was already revoked by a
+// concurrent terminate, the instance write still matched, and the row was
+// committed `ready`, pointing at the machine the caller was about to destroy in
+// `cleanupProvisionedInstance` — with no allocation usage recorded and nothing
+// left to move it off `ready`.
+//
+// Throwing is the only way to roll back, and this class is what keeps that throw
+// from changing the function's contract: it is caught at the transaction
+// boundary below and turned back into `false`, so the caller keeps distinguishing
+// "nothing was persisted, clean up the machine" (false) from "something went
+// wrong" (a real error, which still propagates to `markProvisionFailure`). If
+// this escaped instead, `allocateExecutionEnvironmentInstance`'s catch would run
+// `markProvisionFailure` and skip the cleanup, leaking the machine.
+class ProvisionPersistConflict extends Error {
+  override readonly name = 'ProvisionPersistConflict'
+}
+
 export const persistProvisionSuccess = async (
   prisma: PrismaClient,
   context: ProvisioningContext,
@@ -146,77 +174,128 @@ export const persistProvisionSuccess = async (
 ): Promise<boolean> => {
   const now = new Date()
 
-  return prisma.$transaction(async (tx) => {
-    const finalizedLease = await tx.executionLease.updateMany({
-      where: {
-        id: context.leaseId,
-        status: 'acknowledged',
-      },
-      data: {
-        completedAt: now,
-        status: 'completed',
-      },
-    })
-
-    const updatedInstance = await tx.executionEnvironmentInstance.updateMany({
-      where: {
-        id: context.instance.id,
-        status: {
-          in: ['pending', 'provisioning'],
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const finalizedLease = await tx.executionLease.updateMany({
+        where: {
+          id: context.leaseId,
+          status: 'acknowledged',
         },
-      },
-      data: {
-        errorMessage: null,
-        lastHeartbeatAt: now,
-        metadata: mergeMetadata(context.instance.metadata, {
-          leaseId: context.leaseId,
+        data: {
+          completedAt: now,
+          status: 'completed',
+        },
+      })
+
+      const updatedInstance = await tx.executionEnvironmentInstance.updateMany({
+        where: {
+          id: context.instance.id,
+          status: {
+            in: ['pending', 'provisioning'],
+          },
+        },
+        data: {
+          errorMessage: null,
+          lastHeartbeatAt: now,
+          metadata: mergeMetadata(context.instance.metadata, {
+            leaseId: context.leaseId,
+            runnerId: context.runnerId,
+            ...(provisioned.metadata ?? {}),
+          }),
+          providerInstanceRef: provisioned.providerInstanceRef,
+          readyAt: provisioned.status === 'ready' ? now : null,
+          status: provisioned.status,
+          terminatedAt: provisioned.status === 'terminated' ? now : null,
+        },
+      })
+
+      // Not a return: the two writes above are already in this transaction, and
+      // returning here would commit them. Throwing rolls both back, so a
+      // provision that could not be recorded leaves the row exactly as the
+      // concurrent writer left it.
+      if (finalizedLease.count !== 1 || updatedInstance.count !== 1) {
+        throw new ProvisionPersistConflict(
+          `EXECUTION_PROVISION_PERSIST_CONFLICT:${context.instance.id}`,
+        )
+      }
+
+      await recordExecutionUsage(tx, {
+        actorId: context.instance.launchedByActorId,
+        actorType: context.instance.launchedByActorType,
+        agentId: context.instance.agentId,
+        channelId: context.instance.channelId,
+        instanceId: context.instance.id,
+        metadata: {
+          provider: context.instance.template.provider,
           runnerId: context.runnerId,
           ...(provisioned.metadata ?? {}),
-        }),
-        providerInstanceRef: provisioned.providerInstanceRef,
-        readyAt: provisioned.status === 'ready' ? now : null,
-        status: provisioned.status,
-        terminatedAt: provisioned.status === 'terminated' ? now : null,
-      },
-    })
+        },
+        meterType: 'allocation',
+        organizationId: context.instance.organizationId,
+        projectId: context.instance.projectId,
+        quantity: 1,
+        runId: context.instance.runId,
+        teamId: context.instance.teamId,
+        templateId: context.instance.template.id,
+        templatePricingConfig: context.instance.template.pricingConfig,
+        workflowRunId: context.instance.workflowRunId,
+        workflowStepRunId: context.instance.workflowStepRunId,
+      })
 
-    if (finalizedLease.count !== 1 || updatedInstance.count !== 1) {
+      return true
+    })
+  } catch (error) {
+    // The rollback signal, converted back into the contract the caller reads:
+    // `false` means nothing was persisted and the machine just provisioned is the
+    // caller's to clean up. Every other error still propagates, so a genuine
+    // database failure reaches `markProvisionFailure` as it always did.
+    if (error instanceof ProvisionPersistConflict) {
       return false
     }
+    throw error
+  }
+}
 
-    await recordExecutionUsage(tx, {
-      actorId: context.instance.launchedByActorId,
-      actorType: context.instance.launchedByActorType,
-      agentId: context.instance.agentId,
-      channelId: context.instance.channelId,
-      instanceId: context.instance.id,
-      metadata: {
-        provider: context.instance.template.provider,
-        runnerId: context.runnerId,
-        ...(provisioned.metadata ?? {}),
-      },
-      meterType: 'allocation',
-      organizationId: context.instance.organizationId,
-      projectId: context.instance.projectId,
-      quantity: 1,
-      runId: context.instance.runId,
-      teamId: context.instance.teamId,
-      templateId: context.instance.template.id,
-      templatePricingConfig: context.instance.template.pricingConfig,
-      workflowRunId: context.instance.workflowRunId,
-      workflowStepRunId: context.instance.workflowStepRunId,
-    })
+// The error code an operator queries for. A terminate that could not prove the
+// container is gone leaves the instance `failed` carrying this — a state on the
+// row, reachable through `GET /api/execution-environment-instances` like any
+// other failure — rather than a `terminated` row and a sentence in a log nobody
+// reads. `provider_instance_ref` stays on the row, because the container id and
+// the `nessie.instance-id` label built from it are how the machine is found on
+// the host that provisioned it.
+export const TERMINATION_UNVERIFIED_ERROR = 'EXECUTION_TERMINATE_UNVERIFIED'
 
-    return true
-  })
+export const buildUnverifiedTerminationMessage = (context: TerminationContext): string => {
+  const runnerLabel = parseString(asObject(context.instance.metadata)['runnerLabel'])
+
+  return `${TERMINATION_UNVERIFIED_ERROR}:${context.instance.providerInstanceRef ?? 'unknown'}`
+    + ` — this worker's ${context.instance.template.provider} daemon does not have that`
+    + ' container, so it was not removed and may still be running on'
+    + ` ${runnerLabel ? `runner ${runnerLabel}` : 'the runner that provisioned it'}.`
+    + ` Find it there by its \`${INSTANCE_ID_LABEL}=${context.instance.id}\` label and`
+    + ' remove it on that host.'
 }
 
 export const persistTermination = async (
   prisma: PrismaClient,
   context: TerminationContext,
-  terminationMetadata: Record<string, unknown>,
+  termination: ProviderTerminationResult,
 ): Promise<Date> => {
   const now = new Date()
+  // Only a provider that reached the resource may move the row to `terminated`.
+  // `unverified` keeps a terminal row an operator can act on — `failed` with the
+  // reason — instead of recording a removal nobody performed (plan row 5.12).
+  const verified = termination.outcome === 'terminated'
+  const terminationMetadata = termination.metadata
+  // An unverified terminate leaves the row non-terminal, so it can be asked to
+  // terminate again. The uptime meter is recorded by the pass that ends this
+  // instance's tracking, never by every pass that tries: `billableMinutes` runs
+  // from `startedAt` to now, so a second attempt would bill the whole uptime a
+  // second time. It also keeps the original failure reason from being replaced
+  // by an earlier unverified message.
+  const alreadyUnverified = Boolean(
+    asObject(context.instance.metadata)['terminationUnverifiedAt'],
+  )
 
   await prisma.$transaction(async (tx) => {
     await tx.executionLease.updateMany({
@@ -240,15 +319,26 @@ export const persistTermination = async (
         // `failed` with why, then enqueue this terminate; clearing the message
         // here would leave an operator with a `terminated` row and no record of
         // what went wrong. A normal termination of a healthy instance has no
-        // message to keep.
-        errorMessage: context.instance.status === 'failed' ? context.instance.errorMessage : null,
+        // message to keep. An unverified terminate writes its own reason, and
+        // keeps whatever the row said before it under `errorBeforeTermination`.
+        errorMessage: verified
+          ? (context.instance.status === 'failed' ? context.instance.errorMessage : null)
+          : buildUnverifiedTerminationMessage(context),
         lastHeartbeatAt: now,
         metadata: mergeMetadata(context.instance.metadata, {
           terminationRequestedAt: null,
+          ...(verified
+            ? {}
+            : {
+              terminationUnverifiedAt: now.toISOString(),
+              ...(context.instance.errorMessage && !alreadyUnverified
+                ? { errorBeforeTermination: context.instance.errorMessage }
+                : {}),
+            }),
           ...(terminationMetadata ?? {}),
         }),
-        status: 'terminated',
-        terminatedAt: now,
+        status: verified ? 'terminated' : 'failed',
+        terminatedAt: verified ? now : context.instance.terminatedAt,
       },
     })
 
@@ -257,7 +347,7 @@ export const persistTermination = async (
         ? Math.max(1, Math.ceil((now.getTime() - context.instance.startedAt.getTime()) / 60_000))
         : 0
 
-    if (billableMinutes > 0) {
+    if (billableMinutes > 0 && !alreadyUnverified) {
       await recordExecutionUsage(tx, {
         actorId: context.instance.launchedByActorId,
         actorType: context.instance.launchedByActorType,

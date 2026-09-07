@@ -90,6 +90,7 @@ must not be committed.
 | `shutdown_timeout_ms` | `9000` | Cloud Run **services** SIGKILL 10 s after SIGTERM and that grace is not configurable, so the application default of 25000 would be cut off mid-drain |
 | `trusted_proxy_hops` | `1` | Errs low deliberately — see below |
 | `storage_versioning` | `true` | An agent deleting the wrong key is recoverable; versioned attachment storage is cheap next to the database |
+| `storage_public_endpoint` | `https://storage.googleapis.com` | Turns on signed-URL downloads and opens bucket CORS for `cors_origins`. Empty proxies every download through the API, which is what pins a multi-GiB transfer to one instance |
 | `api_min_instances` | `1` | Never 0. The `LISTEN` client and the sweeps live in the API process |
 
 ### Measuring the trusted proxy hop count
@@ -133,6 +134,8 @@ all four are here.
 | `NESSIE_STORAGE_REGION` | plain | The bucket's region |
 | `NESSIE_STORAGE_FORCE_PATH_STYLE` | plain | `true`; the XML API is path-style |
 | `NESSIE_STORAGE_BUCKET` | plain | From the storage module |
+| `NESSIE_STORAGE_PUBLIC_ENDPOINT` | plain | The store's address **as a browser sees it**, and the switch for signed-URL downloads. On GCS interop it is the same string as `NESSIE_STORAGE_ENDPOINT`, and still stated rather than inferred: on a deployment where the store is private (Hetzner's MinIO) the two differ and a signed URL would name an unreachable host |
+| `NESSIE_STORAGE_SIGNED_DOWNLOAD_MIN_BYTES` | plain | Above this, `GET /api/attachments/:id` answers `302` to a signed URL instead of proxying. 8 MiB by default; the budget is the drain, not the request timeout |
 | `NESSIE_MAX_UPLOAD_BYTES` | plain | Also pins the API multipart limit |
 | `NESSIE_MODEL_PROVIDER` / `_BASE_URL` / `_SERVICE_ID` / `_NAME` | plain | Ledger routing; `_BASE_URL` is derived as `<ledger_public_url>/v1/openai` |
 | `NESSIE_EMBEDDING_PROVIDER` / `_SERVICE_ID` / `_MODEL` | plain | Embeddings do not follow chat. Without these, memory recall and `kb_search` degrade to lexical-only |
@@ -247,6 +250,13 @@ references a Secret Manager secret with **no version** never becomes ready.
 
 8. **Smoke-test storage before trusting it.** Upload a multi-GiB file through
    the API and download it again. This is the untested part of the whole path.
+   Two distinct things fail here, so check both: the multipart upload, and the
+   redirect. A download past `NESSIE_STORAGE_SIGNED_DOWNLOAD_MIN_BYTES` must
+   answer `302` and the signed URL must return the bytes — **from the admin in a
+   browser, not only from `curl`**, because the admin follows the redirect from
+   `fetch()` and a bucket whose CORS does not cover the admin origin fails there
+   and nowhere else. If the redirect is wrong, clearing
+   `storage_public_endpoint` restores proxied downloads without a code change.
 
 The database extensions (`vector`, `pg_trgm`, `pgcrypto`) are created by the
 migrations themselves, so the migrating role must be able to create them; the
@@ -261,7 +271,7 @@ image as a command override and does, in order: the parked-migration repair,
 `pnpm --filter @nessie/api reconcile`.
 
 The reconcile step is not optional. Boot connects and listens and nothing else
-([standards/horizontal-scaling.md](../standards/horizontal-scaling.md)
+([standards/horizontal-scaling/overview.md](../standards/horizontal-scaling/overview.md)
 invariant 5), so default policy rules, the protected-MCP grant backfill,
 Personal Assistant default grants and the expired-credential sweep happen here
 or nowhere. An upgrade applied by hand must run it too.

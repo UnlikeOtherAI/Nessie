@@ -18,6 +18,7 @@ type TaskFixture = {
   id: string
   organizationId: string
   projectId: string | null
+  boardId: string | null
   iterationId: string | null
   storyPoints: number | null
   agentId: string | null
@@ -56,6 +57,7 @@ const makeTask = (overrides: Partial<TaskFixture> = {}): TaskFixture => ({
   id: taskId,
   organizationId,
   projectId,
+  boardId,
   iterationId: null,
   storyPoints: null,
   agentId: null,
@@ -91,9 +93,14 @@ const hydrateTask = (task: TaskFixture) => ({
  * so the fake models the board, its columns and the placement table — the
  * queries the code makes, not the ones it used to make.
  */
-const makePrisma = (task: TaskFixture, columns: ColumnFixture[]) => {
+const makePrisma = (
+  task: TaskFixture,
+  columns: ColumnFixture[],
+  siblings: TaskFixture[] = [],
+) => {
   const events: TaskEventFixture[] = []
   const placements: PlacementFixture[] = []
+  const tasks = [task, ...siblings]
 
   const updateTask = (data: Partial<TaskFixture>) => {
     if (data.status !== undefined) task.status = data.status
@@ -110,7 +117,7 @@ const makePrisma = (task: TaskFixture, columns: ColumnFixture[]) => {
           : null,
       findUnique: async ({ where }: { where: { id: string } }) =>
         where.id === task.id ? hydrateTask(task) : null,
-      findMany: async () => [hydrateTask(task)],
+      findMany: async () => tasks.map(hydrateTask),
       update: async ({ data }: { data: Partial<TaskFixture> }) => {
         updateTask(data)
         return hydrateTask(task)
@@ -163,6 +170,32 @@ const makePrisma = (task: TaskFixture, columns: ColumnFixture[]) => {
         return data
       },
     },
+    $executeRaw: async (
+      _strings: TemplateStringsArray,
+      values: { values?: unknown[] },
+    ) => {
+      const parameters = values.values ?? []
+      // `now()` is expressed in SQL, so each VALUES row contributes four
+      // bound parameters, not five.
+      for (let index = 0; index < parameters.length; index += 4) {
+        const [taskId, placementBoardId, columnId, position] = parameters.slice(index, index + 4)
+        const existing = placements.find(
+          (placement) => placement.taskId === taskId && placement.boardId === placementBoardId,
+        )
+        if (existing) {
+          existing.columnId = columnId as string
+          existing.position = position as number
+        } else {
+          placements.push({
+            taskId: taskId as string,
+            boardId: placementBoardId as string,
+            columnId: columnId as string,
+            position: position as number,
+          })
+        }
+      }
+      return 1
+    },
   }
 
   const prisma = {
@@ -206,6 +239,7 @@ test('moveTaskToColumn auto-assigns an unassigned task moved into In Progress', 
     actorId,
     columnId: inProgressColumnId,
     organizationId,
+    position: 0,
     taskId,
   })
 
@@ -238,6 +272,7 @@ test('moveTaskToColumn keeps an existing assignee when moved into In Progress', 
     actorId,
     columnId: inProgressColumnId,
     organizationId,
+    position: 0,
     taskId,
   })
 
@@ -268,4 +303,28 @@ test('an unknown column id is refused and writes no placement', async () => {
 
   assert.deepEqual(result, { error: 'COLUMN_NOT_FOUND' })
   assert.deepEqual(placements, [])
+})
+
+test('an omitted position appends after cards already in the destination column', async () => {
+  const task = makeTask({ boardId, status: 'inbox' })
+  const existingCard = makeTask({
+    boardId,
+    id: '00000000-0000-4000-8000-000000000006',
+    status: 'inbox',
+  })
+  const { placements, prisma } = makePrisma(task, inProgressBoard, [existingCard])
+  placements.push({ taskId: existingCard.id, boardId, columnId: todoColumnId, position: 0 })
+
+  const result = await moveTaskToColumn(prisma, {
+    actorId,
+    columnId: todoColumnId,
+    organizationId,
+    taskId,
+  })
+
+  assert.equal('error' in result, false)
+  assert.deepEqual(placements, [
+    { taskId: existingCard.id, boardId, columnId: todoColumnId, position: 0 },
+    { taskId, boardId, columnId: todoColumnId, position: 1 },
+  ])
 })

@@ -84,7 +84,7 @@ type RuntimeCapabilities = {
 Rules:
 
 - there is deliberately no `hasRedis` and no `hasPubSub`: Postgres is the queue
-  and the realtime bus (docs/standards/horizontal-scaling.md), so no service has
+  and the realtime bus (docs/standards/horizontal-scaling/overview.md), so no service has
   a Redis or Pub/Sub branch to take, and `queue.provider` has one legal value
 - `hasObjectStorage = false` means filesystem adapter is active
 - `hasExternalAuth = false` means bootstrap/local auth flow is active

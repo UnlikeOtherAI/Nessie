@@ -1,0 +1,25 @@
+-- The document session's own claim (horizontal scaling, row 5.14; audit 2.5).
+--
+-- `runs.executor_token` fences the RUN. `run_document_sessions` had no claim of
+-- its own, so all four terminalisers — the recorder's `terminalize`, the failure
+-- path's `finalizeOutstanding`, and the two save paths in
+-- `worker/src/run/pa-tools/knowledge-compose.ts` and `knowledge-edit.ts` — wrote
+-- the table by id alone. An executor fenced out of its run could still write the
+-- session, and the two saves ended with an unconditional UPDATE that would turn
+-- a reaped `failed` back into `saved`.
+--
+-- This column records WHICH run execution opened the session: the value of
+-- `runs.executor_token` at session creation. Every session write then asks for
+-- both halves in one statement — "this session is mine" AND "the run still
+-- carries my token" — so a superseded executor matches no row.
+--
+-- NULL is a real and permanent value here, not a backfill gap: a session opened
+-- outside an executor claim (the unfenced paths that
+-- `worker/src/run/execute/lifecycle.ts` documents) has no claim to record, and
+-- its writes stay unfenced exactly as they were.
+--
+-- Expand now, contract later. The column is nullable, has no default and gets no
+-- backfill, and NO deployed build reads it — migrations run before the
+-- blue-green swap, so the previous image goes on writing sessions with a NULL
+-- claim through this migration and past it. Nothing here can fail its writes.
+ALTER TABLE "run_document_sessions" ADD COLUMN IF NOT EXISTS "claim_token" UUID;

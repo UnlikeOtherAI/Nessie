@@ -6,6 +6,7 @@ import { GcsStorage } from './gcs.js'
 import { S3Storage } from './s3.js'
 
 export {
+  type SignedDownloadRequest,
   type Storage,
   type StorageConfig,
   byteCounter,

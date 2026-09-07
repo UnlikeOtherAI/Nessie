@@ -110,10 +110,15 @@ const createStreamingSession = async (
   fixture: Seed,
   runId: string,
   updatedAgo: string,
+  // The claim the session was opened under. Omitted means a session opened
+  // outside an executor claim — and, for as long as the deploy that adds the
+  // column is rolling, a row written by the previous build.
+  claimToken?: string,
 ): Promise<string> => {
   const session = await prisma.runDocumentSession.create({
     data: {
       agentId: fixture.agentId,
+      ...(claimToken ? { claimToken } : {}),
       invocationId: randomUUID(),
       organizationId: fixture.organizationId,
       runId,
@@ -161,6 +166,63 @@ runDatabaseTest('a session whose run still has a live executor is left alone', a
     await prisma.$disconnect()
   }
 })
+
+runDatabaseTest('a session whose claim the run still carries is left alone', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  try {
+    // The same long generation as above, with the claim column populated: the
+    // session names the execution that opened it, and the run still names the
+    // same one. Both halves of the claim hold, so it is live.
+    const runId = await createRunningRun(prisma, fixture, '5 seconds')
+    const token = await prisma.run
+      .findUniqueOrThrow({ select: { executorToken: true }, where: { id: runId } })
+      .then((row) => row.executorToken!)
+    const sessionId = await createStreamingSession(prisma, fixture, runId, '1 hour', token)
+
+    await reapAbandonedDocumentSessions(prisma)
+
+    assert.equal((await readSession(prisma, sessionId)).status, 'streaming')
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest(
+  'a session whose claim was superseded is reaped while its run is still beating',
+  async () => {
+    const prisma = new PrismaClient()
+    const fixture = await seed(prisma)
+    try {
+      // A takeover: the successor claimed the run seconds ago and is
+      // heartbeating happily, so every run-derived signal says "alive". The
+      // session, though, was opened by the executor that lost the run — its
+      // claimant is fenced out of every write it could still make
+      // (`run/execute/document-session-claim.ts`), so there is nothing left to
+      // wait for. Before the claim column this row waited out the whole resumed
+      // run, with the popup counting it as active the entire time.
+      const runId = await createRunningRun(prisma, fixture, '5 seconds')
+      const sessionId = await createStreamingSession(
+        prisma,
+        fixture,
+        runId,
+        PAST_THE_WINDOW,
+        randomUUID(),
+      )
+
+      await reapAbandonedDocumentSessions(prisma)
+
+      const row = await readSession(prisma, sessionId)
+      assert.equal(row.status, 'failed')
+      assert.equal(row.errorReason, 'executor_lost')
+      assert.notEqual(row.finishedAt, null)
+    } finally {
+      await cleanup(prisma, fixture)
+      await prisma.$disconnect()
+    }
+  },
+)
 
 runDatabaseTest('a session whose executor is gone is reaped, with a reason', async () => {
   const prisma = new PrismaClient()

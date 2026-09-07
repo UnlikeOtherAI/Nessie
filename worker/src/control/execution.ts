@@ -3,6 +3,7 @@ import { loadProvisioningContext, loadTerminationContext } from './execution/cla
 import { cleanupProvisionedInstance } from './execution/environment-cleanup.js'
 import { acknowledgeLease } from './execution/leases.js'
 import {
+  buildUnverifiedTerminationMessage,
   markProvisionFailure,
   persistDerivedProviderInstanceRef,
   persistProvisionSuccess,
@@ -144,24 +145,32 @@ export const terminateExecutionEnvironmentInstance = async (
     return true
   }
 
-  const terminationMetadata = await terminateProviderInstance(context)
-  await persistTermination(prisma, context, terminationMetadata)
+  const termination = await terminateProviderInstance(context)
+  await persistTermination(prisma, context, termination)
+
+  // A workflow step waiting on this environment is told what the row says, not
+  // what was asked for: an `unverified` terminate leaves the instance `failed`
+  // with the container still possibly running, and a step told `terminated`
+  // would be the same lie one layer up.
+  const verified = termination.outcome === 'terminated'
+  const unverifiedMessage = verified ? null : buildUnverifiedTerminationMessage(context)
 
   await maybeContinueWorkflowForInstance(prisma, {
     instance: context.instance,
     output: buildWorkflowInstanceOutput({
+      errorMessage: unverifiedMessage,
       instanceId: context.instance.id,
       metadata: {
         ...asObject(context.instance.metadata),
         terminationRequestedAt: null,
-        ...(terminationMetadata ?? {}),
+        ...termination.metadata,
       },
       providerInstanceRef: context.instance.providerInstanceRef,
-      status: 'terminated',
+      status: verified ? 'terminated' : 'failed',
     }),
     success: false,
-    summary: 'Execution environment was terminated.',
+    summary: unverifiedMessage ?? 'Execution environment was terminated.',
   })
 
-  return true
+  return verified
 }

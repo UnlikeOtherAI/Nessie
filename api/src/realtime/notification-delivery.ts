@@ -148,6 +148,29 @@ export const formatUserSseEvent = (event: RealtimeReplayEvent) =>
 export const formatLiveUserSseEvent = (message: WsEventMessage) =>
   `event: ${message.event}\ndata: ${JSON.stringify(message)}\n\n`
 
+/**
+ * The event name a truncated replay is announced under, and the frame itself.
+ *
+ * `MAX_REPLAY_EVENTS` used to cut a long replay off in silence (horizontal-
+ * scaling audit 2.9), which is the worst version of a cap: the client's
+ * `Last-Event-ID` advances to the last row it was sent and it believes it is
+ * caught up, while the events the cap withheld are carried past by every live
+ * event that follows and can never be replayed again (`id > watermark`). The
+ * only recovery is for the client to re-read its state over REST, and it can
+ * only decide to do that if it is told.
+ *
+ * No `id:`, deliberately: this is a signal about the stream, not an event in
+ * it, and writing one would move the very watermark the signal is about. The
+ * name is shared with the admin's handler through
+ * `admin/src/facades/realtime/realtime-gap.ts`, which turns it into that
+ * re-read; an older client that has never heard of it ignores an unknown event
+ * name and is no worse off than it is today.
+ */
+export const REALTIME_GAP_EVENT = 'realtime.gap'
+
+export const formatRealtimeGapEvent = () =>
+  `event: ${REALTIME_GAP_EVENT}\ndata: {"reason":"replay_truncated"}\n\n`
+
 // The last frame a draining replica writes to an SSE stream. `retry:` resets
 // the EventSource reconnection time to 2 s for any native-EventSource client;
 // the admin runs its own fetch-based loop (`admin/src/lib/sse.ts` drops the
@@ -306,18 +329,60 @@ export const createWsNotificationDelivery = (input: {
 
   // One gate per connection: the cache is keyed inside the closure, so it dies
   // with the connection and can never outlive the entitlement it caches.
+  //
+  // Every scope question now goes through here. Channel and dashboard did not:
+  // they ran a query *per event* on the user-SSE and WS lanes, while the same
+  // channel question on the thread lane was already gated. That is per-message
+  // work on the path a re-hydration burst hits hardest — a drained replica's
+  // clients land on the survivors and each one then paid a membership lookup
+  // per event it caught up on.
+  //
+  // Why caching a scope decision is safe, when the point of asking it at
+  // delivery time is that a revoked grant must stop a live stream:
+  //
+  // - It is the connection's own cache and it is TTL-bounded, not
+  //   life-of-connection. Keyed by the connection object in a WeakMap so it
+  //   dies with the socket; every entry expires after
+  //   `REALTIME_ENTITLEMENT_TTL_MS` (5 s). Caching for a connection's life is
+  //   the regression this file exists to prevent — a stream outliving a
+  //   revocation for hours — and is not what happens here: the window is what
+  //   is bought, never the re-check. Five seconds was already the agreed
+  //   exposure for the organization, agent and thread-channel questions, so
+  //   these two lanes stop being the odd ones out rather than gaining a risk.
+  // - Which scopes a connection *declared* is never cached: the subscription
+  //   match reads `connection.scopes` / `connection.channelIds` live on every
+  //   event, so an `unsubscribe` or `set_subscriptions` narrowing a WS
+  //   connection (`api/src/routes/activity.ts`) bites on the next event. The
+  //   gate answers the orthogonal "may this person still read channel X", and
+  //   `setWsScopes` cannot widen that — `filterAuthorizedScopes` authorizes a
+  //   subscription before it is stored.
+  // - A negative is cached too, so a grant *added* mid-connection can take a
+  //   window to be seen. That direction fails closed, and is the same bargain
+  //   the other gates already strike.
   const connectionGates = new WeakMap<
     object,
     {
       agent: (agentId: string) => Promise<boolean>
       channel: (channelId: string) => Promise<boolean>
+      dashboard: (dashboardId: string) => Promise<boolean>
       organization: (organizationId: string) => Promise<boolean>
     }
   >()
 
+  /**
+   * `fallback` is what the lane answers when the hub was built without the
+   * production predicate — the thread lane has none to fall back to and says
+   * yes, the user/ws lanes fall back to the connection's own subscription set.
+   * It is read only when the gate is created, which is safe because a
+   * connection lives on exactly one lane for its whole life.
+   */
   const gatesFor = (
     connection: object,
     identity: { organizationId: string; userId: string },
+    fallback: {
+      channel: (channelId: string) => boolean
+      dashboard: (dashboardId: string) => boolean
+    } = { channel: () => true, dashboard: () => false },
   ) => {
     const existing = connectionGates.get(connection)
     if (existing) return existing
@@ -334,7 +399,14 @@ export const createWsNotificationDelivery = (input: {
         async (channelId: string) =>
           input.canAccessChannelEvent
             ? input.canAccessChannelEvent({ channelId, ...identity })
-            : true,
+            : fallback.channel(channelId),
+        clock,
+      ),
+      dashboard: createEntitlementGate(
+        async (dashboardId: string) =>
+          input.canAccessDashboardEvent
+            ? input.canAccessDashboardEvent({ dashboardId, ...identity })
+            : fallback.dashboard(dashboardId),
         clock,
       ),
       organization: createEntitlementGate(
@@ -494,31 +566,21 @@ export const createWsNotificationDelivery = (input: {
         continue
       }
 
-      const gates = gatesFor(connection, {
-        organizationId: connection.organizationId,
-        userId: connection.userId,
-      })
+      const gates = gatesFor(
+        connection,
+        { organizationId: connection.organizationId, userId: connection.userId },
+        {
+          channel: (channelId) => connection.channelIds.has(channelId),
+          dashboard: () => false,
+        },
+      )
       const shouldDeliver = await shouldDeliverWsNotification({
         connectionScopes: connection.scopes,
         notificationScopes: notification.scopes,
         canAccessAgent: gates.agent,
+        canAccessChannel: gates.channel,
+        canAccessDashboard: gates.dashboard,
         canAccessOrganization: gates.organization,
-        canAccessChannel: async (channelId) =>
-          input.canAccessChannelEvent
-            ? input.canAccessChannelEvent({
-                channelId,
-                organizationId: connection.organizationId,
-                userId: connection.userId,
-              })
-            : connection.channelIds.has(channelId),
-        canAccessDashboard: async (dashboardId) =>
-          input.canAccessDashboardEvent
-            ? input.canAccessDashboardEvent({
-                dashboardId,
-                organizationId: connection.organizationId,
-                userId: connection.userId,
-              })
-            : false,
       })
 
       if (!shouldDeliver) {
@@ -547,33 +609,27 @@ export const createWsNotificationDelivery = (input: {
     }
 
     for (const connection of wsConnections) {
-      const gates = gatesFor(connection, {
-        organizationId: connection.organizationId,
-        userId: connection.userId,
-      })
+      const gates = gatesFor(
+        connection,
+        { organizationId: connection.organizationId, userId: connection.userId },
+        {
+          // The declared-scope match in `shouldDeliverWsNotification` already
+          // reads `connection.scopes` live, so this fallback only answers the
+          // entitlement question for a hub built without the predicate.
+          channel: (channelId) =>
+            connection.scopes.some(
+              (scope) => scope.kind === 'channel' && scope.channelId === channelId,
+            ),
+          dashboard: () => false,
+        },
+      )
       const shouldDeliver = await shouldDeliverWsNotification({
         connectionScopes: connection.scopes,
         notificationScopes: notification.scopes,
         canAccessAgent: gates.agent,
+        canAccessChannel: gates.channel,
+        canAccessDashboard: gates.dashboard,
         canAccessOrganization: gates.organization,
-        canAccessChannel: async (channelId) =>
-          input.canAccessChannelEvent
-            ? input.canAccessChannelEvent({
-                channelId,
-                organizationId: connection.organizationId,
-                userId: connection.userId,
-              })
-            : connection.scopes.some(
-                (scope) => scope.kind === 'channel' && scope.channelId === channelId,
-              ),
-        canAccessDashboard: async (dashboardId) =>
-          input.canAccessDashboardEvent
-            ? input.canAccessDashboardEvent({
-                dashboardId,
-                organizationId: connection.organizationId,
-                userId: connection.userId,
-              })
-            : false,
       })
 
       if (!shouldDeliver) {

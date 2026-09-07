@@ -29,6 +29,8 @@ type RecipientBarProps = {
   placeholder: string
   /** Focused on mount. The compose screen wants it; a settings section does not. */
   autoFocus?: boolean
+  /** A settings form needs its Save action reachable after choosing a recipient. */
+  closeAfterSelection?: boolean
   disabled?: boolean
   /**
    * The caller's handle on the text field. Passed rather than owned because the
@@ -66,6 +68,7 @@ export const RecipientBar = ({
   label,
   placeholder,
   autoFocus = false,
+  closeAfterSelection = false,
   disabled = false,
   inputRef: callerRef,
 }: RecipientBarProps) => {
@@ -97,9 +100,13 @@ export const RecipientBar = ({
       onChange([...recipients, { id: option.id, kind: option.kind }])
       setQuery('')
       setHighlightedIndex(0)
-      window.setTimeout(() => inputRef.current?.focus(), 0)
+      if (closeAfterSelection) {
+        setFocused(false)
+      } else {
+        window.setTimeout(() => inputRef.current?.focus(), 0)
+      }
     },
-    [inputRef, onChange, recipients],
+    [closeAfterSelection, inputRef, onChange, recipients],
   )
 
   const remove = useCallback(
@@ -109,7 +116,10 @@ export const RecipientBar = ({
     [onChange, recipients],
   )
 
+  const showOptions = focused && options.length > 0 && !disabled
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!showOptions) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       setHighlightedIndex((index) => Math.min(index + 1, options.length - 1))
@@ -134,8 +144,6 @@ export const RecipientBar = ({
       if (last) remove(last)
     }
   }
-
-  const showOptions = focused && options.length > 0 && !disabled
 
   return (
     <div className="relative rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
@@ -180,9 +188,10 @@ export const RecipientBar = ({
             )
           })}
           <input
+            aria-label={label}
             ref={inputRef}
             autoFocus={autoFocus}
-            className="min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+            className="min-h-11 min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
             disabled={disabled}
             onBlur={() => window.setTimeout(() => {
               if (document.activeElement !== inputRef.current) setFocused(false)
@@ -190,6 +199,7 @@ export const RecipientBar = ({
             onChange={(event) => {
               setQuery(event.target.value)
               setHighlightedIndex(0)
+              setFocused(true)
             }}
             onFocus={() => setFocused(true)}
             onKeyDown={onKeyDown}

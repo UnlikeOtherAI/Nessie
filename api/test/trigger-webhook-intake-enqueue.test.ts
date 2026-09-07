@@ -11,7 +11,7 @@ import type { RouteDeps } from '../src/routes/types.js'
 
 /**
  * `POST /api/triggers/webhook` enqueues and acks (audit 9.2,
- * docs/standards/horizontal-scaling.md § 3).
+ * docs/standards/horizontal-scaling/overview.md § 3).
  *
  * It used to dispatch inline: the sender waited out a launch-origin preflight,
  * a UOA identity check and a six-write transaction, and an instance recycled

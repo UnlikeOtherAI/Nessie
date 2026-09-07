@@ -11,6 +11,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const SCAN_ROOT = 'admin/src'
 
@@ -123,7 +124,7 @@ const allowedFrom = (layer) => LAYERS.find(([name]) => name === layer)?.[1] ?? [
 
 const QUOTED = /(['"])(\.\.?\/[^'"\n]*)\1/g
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function sourceFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -132,7 +133,7 @@ function sourceFiles(dir, out = []) {
       if (entry.name === 'node_modules' || entry.name === 'dist') continue
       sourceFiles(full, out)
     } else if (/\.tsx?$/.test(entry.name)) {
-      out.push(path.relative(ROOT, full))
+      out.push(path.relative(ROOT, full).split(path.sep).join('/'))
     }
   }
   return out
@@ -145,7 +146,7 @@ const resolveSpecifier = (fromRel, spec) => {
   for (const extension of EXTENSIONS) {
     const candidate = base + extension
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      return path.relative(ROOT, candidate).replace(/\.tsx?$/, '')
+      return path.relative(ROOT, candidate).split(path.sep).join('/').replace(/\.tsx?$/, '')
     }
   }
   return null

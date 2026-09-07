@@ -137,6 +137,16 @@ of them is selected. Every open/closed state of that tree is remembered:
 the two section headers, which projects have their sections open, and which
 projects have their boards open.
 
+**Board administration is a nested project flow.** `/projects/:id/boards` is
+the board directory, reached from the working board's Configure menu and from
+the sidebar's creation doorway; its Back parent is `/projects/:id/board`.
+`/projects/:id/boards/:boardId/settings` is one board's settings, with
+`?tab=general|columns|watchers` selected through `useTabParam`; its Back parent
+is the board directory. The settings strip's former
+`?section=boards[&board=…|&create=board]` forms remain redirects so bookmarks
+and existing doors reach the same flow without making the old all-in-one
+surface another home.
+
 **Transient radio strips are not tab hosts.** A compact form choice may render
 the shared `TabBar` in `radiogroup` mode so it gets the same sliding selection
 pill and keyboard behaviour without becoming a URL-backed page section.
@@ -166,8 +176,9 @@ the bounce. The page scroller itself stays `overflow-x: hidden; overflow-y:
 auto` (a `clip` axis computes to `hidden` beside a scrolling axis).
 
 A **full-height surface** — a screen with a fixed header and bottom-anchored
-composer and a scrolling region between them, i.e. the chat conversation — is
-the exception: it owns its own inner scroller, so the page scroller must be a
+composer and a scrolling region between them, i.e. the chat conversation, or
+a project board with its horizontal viewport and vertically scrolling columns —
+is the exception: it owns its own inner scroller, so the page scroller must be a
 non-scrolling flex column it can fill rather than a block scroller its
 `flex-1`/`h-full` column collapses inside (which floats the composer up under
 the last message with a gap below). A row declares this with

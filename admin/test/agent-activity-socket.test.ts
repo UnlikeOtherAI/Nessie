@@ -243,3 +243,70 @@ test('a rotated token reopens the connection', async () => {
     assert.equal(sockets[1]!.closed, true)
   })
 })
+
+test('every tab draws its own first reconnect delay, instead of sharing a constant', () => {
+  // The ladder used to be a fixed `[1s, 2s, 4s, …]` array, so every tab a
+  // drained replica dropped came back on the same millisecond as every other.
+  // It now goes through the one policy in `facades/threads/stream-retry.ts`,
+  // which draws the delay. Forty tabs, each dropped at the same point in its
+  // life, must not agree on when to knock.
+  //
+  // The timer globals are swapped only for a body that never awaits, so no
+  // other test in this shared process can observe them.
+  const scheduled: { delay: number; run: () => void }[] = []
+  const restoreSetTimeout = install('setTimeout', (run: () => void, delay: number) => {
+    scheduled.push({ delay, run })
+    return scheduled.length
+  })
+  const restoreClearTimeout = install('clearTimeout', () => undefined)
+  const restoreSetInterval = install('setInterval', () => 0)
+  const restoreClearInterval = install('clearInterval', () => undefined)
+  const restoreWindow = install('window', { location: { host: 'admin.test', protocol: 'http:' } })
+  const restoreWebSocket = install('WebSocket', FakeSocket)
+
+  const firstDelays: number[] = []
+  try {
+    for (let tab = 0; tab < 40; tab += 1) {
+      scheduled.length = 0
+      sockets.length = 0
+
+      const subscription = subscribeAgentActivity(`token-backoff-${tab}`, {
+        onMessage: () => undefined,
+        onState: () => undefined,
+        scope: { channelIds: [channelId], dashboardIds: [], organizationId },
+      })
+      const socket = sockets.at(-1)
+      assert.ok(socket, `tab ${tab} opened no socket`)
+      socket.accept()
+      socket.close()
+
+      // The close handler schedules exactly one reconnect, and it is the last
+      // timer this round put on the queue. It is never fired: a reconnect here
+      // would open another socket, and this test is about the draw.
+      const reconnect = scheduled.at(-1)
+      assert.ok(reconnect, `tab ${tab} scheduled no reconnect`)
+      firstDelays.push(reconnect.delay)
+
+      subscription.unsubscribe()
+    }
+  } finally {
+    restoreWebSocket()
+    restoreWindow()
+    restoreClearInterval()
+    restoreSetInterval()
+    restoreClearTimeout()
+    restoreSetTimeout()
+  }
+
+  assert.equal(firstDelays.length, 40)
+  // A fixed schedule collapses this to one value repeated forty times. Forty
+  // uniform draws over the 501 ms window average ~38 distinct, so 20 is far
+  // below the noise floor and far above a constant.
+  assert.ok(
+    new Set(firstDelays).size >= 20,
+    `only ${new Set(firstDelays).size} distinct first delays across 40 tabs`,
+  )
+  for (const delay of firstDelays) {
+    assert.ok(delay >= 500 && delay <= 1_000, `${delay} outside the first window`)
+  }
+})

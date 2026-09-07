@@ -73,7 +73,7 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
   // thread claim, the run and its task — used to run inline, holding the sender's
   // request open across all of it; an instance recycled mid-transaction then lost
   // a delivery the sender had already been answered for, and would never send
-  // again (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+  // again (docs/standards/horizontal-scaling/overview.md § 3; audit 9.2).
   //
   // What did NOT move is the sender's answer to "is this trigger usable at all":
   // a paused trigger and an agent bound to no channel are still 409s, resolved

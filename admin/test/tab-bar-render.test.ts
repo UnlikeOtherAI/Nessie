@@ -82,7 +82,7 @@ test('every compact form selector reaches the shared sliding strip', () => {
   const hosts: ReadonlyArray<readonly [string, string]> = [
     ['../src/components/shared/ChoiceGroup.tsx', '<TabBar'],
     ['../src/components/features/dashboards/AddWidgetPanel.tsx', '<ChoiceGroup'],
-    ['../src/components/features/projects/kanban/TaskDialog.tsx', '<TabBar'],
+    ['../src/components/features/projects/kanban/TaskPriorityField.tsx', '<TabBar'],
     ['../src/layouts/admin-shell/user-menu/PresenceControl.tsx', '<TabBar'],
     ['../src/components/features/integrations/BuildMeProjectPanel.tsx', '<ChoiceGroup'],
     ['../src/components/features/integrations/DeepTestSecurityPanel.tsx', '<ChoiceGroup'],

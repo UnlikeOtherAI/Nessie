@@ -46,7 +46,7 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 // One value on purpose. The Pub/Sub adapter (`packages/runtime/src/pubsub-queue.ts`)
 // and the worker branch that fell back from it are deleted, and so is the
 // Pub/Sub terraform module; Postgres is the queue by decision
-// (docs/standards/horizontal-scaling.md). Keeping `'pubsub'` in the enum let a
+// (docs/standards/horizontal-scaling/overview.md). Keeping `'pubsub'` in the enum let a
 // deployment be configured for a provider that no longer exists and then boot
 // silently on Postgres anyway.
 //
@@ -66,7 +66,7 @@ export const QueueProviderSchema = z.enum(['local'], {
       message:
         `Unsupported queue provider '${String(issue.received)}'. Postgres is the queue; `
         + "the 'pubsub' provider was retired and its adapter deleted "
-        + '(docs/standards/horizontal-scaling.md). Set NESSIE_QUEUE_PROVIDER=local or remove it.',
+        + '(docs/standards/horizontal-scaling/overview.md). Set NESSIE_QUEUE_PROVIDER=local or remove it.',
     }
   },
 })
@@ -178,9 +178,29 @@ export const NessieConfigSchema = z.object({
     forcePathStyle: z.boolean().optional(),
     accessKeyId: z.string().min(1).optional(),
     secretAccessKey: z.string().min(1).optional(),
+    // The address of the object store **as a client sees it**, and the single
+    // switch that turns signed-URL downloads on (horizontal-scaling invariant 7;
+    // plan row 5.7 / audit 6.4). Unset — the default everywhere — means the API
+    // proxies every download, exactly as it always has.
+    //
+    // It is deliberately separate from `endpoint`, which is the address the API
+    // and the worker reach the store on, and deliberately not derived from it:
+    // production MinIO sits on a private Docker network as `nessie-minio:9000`,
+    // and a signed URL naming that host is useless to a browser. Setting this
+    // asserts two things about the address that nothing here can check —
+    // that clients can reach it, and that it answers with an
+    // `Access-Control-Allow-Origin` covering the admin origin, because the admin
+    // follows the redirect from `fetch()`. SigV4 signs the Host header, so the
+    // signature is minted against this address, not `endpoint`.
+    publicEndpoint: z.string().min(1).optional(),
     // Upload ceiling shared by API multipart limits and the FileService quota
     // pre-check. Defaults to 5 GiB.
     maxUploadBytes: z.number().int().positive().default(5 * 1024 * 1024 * 1024),
+    // The size at which a download stops being proxied and becomes a redirect
+    // to a signed URL, when `publicEndpoint` makes that possible at all.
+    // Defaults to 8 MiB — see SIGNED_DOWNLOAD_MIN_BYTES in @nessie/runtime for
+    // why that number and not another.
+    signedDownloadMinBytes: z.number().int().positive().default(8 * 1024 * 1024),
   }),
   queue: z.object({
     provider: QueueProviderSchema,
@@ -321,7 +341,7 @@ export type NessieConfig = z.infer<typeof NessieConfigSchema>
 // No `hasRedis`, and no `hasPubSub`: `redis.enabled` had no environment mapping
 // and nothing ever read `config.redis`, and `hasPubSub` could only ever be true
 // for a queue provider that no longer exists. Postgres is the queue and the
-// realtime bus by decision (docs/standards/horizontal-scaling.md), so there is
+// realtime bus by decision (docs/standards/horizontal-scaling/overview.md), so there is
 // nothing for either of them to describe.
 export const RuntimeCapabilitiesSchema = z.object({
   hasObjectStorage: z.boolean(),
@@ -354,7 +374,9 @@ export const ConfigEnvMap = {
   NESSIE_STORAGE_FORCE_PATH_STYLE: 'storage.forcePathStyle',
   NESSIE_STORAGE_ACCESS_KEY_ID: 'storage.accessKeyId',
   NESSIE_STORAGE_SECRET_ACCESS_KEY: 'storage.secretAccessKey',
+  NESSIE_STORAGE_PUBLIC_ENDPOINT: 'storage.publicEndpoint',
   NESSIE_MAX_UPLOAD_BYTES: 'storage.maxUploadBytes',
+  NESSIE_STORAGE_SIGNED_DOWNLOAD_MIN_BYTES: 'storage.signedDownloadMinBytes',
   NESSIE_QUEUE_PROVIDER: 'queue.provider',
   NESSIE_MODEL_PROVIDER: 'model.provider',
   NESSIE_MODEL_API_KEY: 'model.apiKey',
@@ -485,6 +507,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     provider: 'filesystem',
     localPath: '.nessie/storage',
     maxUploadBytes: 5 * 1024 * 1024 * 1024,
+    signedDownloadMinBytes: 8 * 1024 * 1024,
   },
   queue: {
     provider: 'local',
@@ -744,7 +767,7 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
 
   const config = NessieConfigSchema.parse(merged)
 
-  // Invariant 7 (docs/standards/horizontal-scaling.md). This is the one
+  // Invariant 7 (docs/standards/horizontal-scaling/overview.md). This is the one
   // single-host capability that is configuration, and both the API and the
   // worker load config before they do anything else, so this is the earliest
   // point at which either can refuse it.

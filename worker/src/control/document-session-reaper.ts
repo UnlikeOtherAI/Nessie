@@ -22,17 +22,42 @@ import {
  * ## What "abandoned" means here
  *
  * Not age. A legitimately long generation is indistinguishable from a dead one
- * by the clock alone, and reaping on age kills real documents. The signal is
- * the run's executor liveness, which the run-fencing work already made durable:
+ * by the clock alone, and reaping on age kills real documents. The question this
+ * sweep asks is about the session's own claim
+ * (`run/execute/document-session-claim.ts`): **is the claim this session was
+ * opened under still live?** A live claim is refused; only a session no writer
+ * can still be holding is reaped.
+ *
+ * A claim is live when both halves of it are:
+ *
+ * - `run_document_sessions.claim_token` still equals `runs.executor_token`, so
+ *   the execution that opened the session still holds the run, **and**
+ * - that execution is still beating — `runs.status = 'running'` with an
+ *   `executor_heartbeat_at` inside the window below.
+ *
+ * The first half is what the claim column bought. Without it a session stranded
+ * by an executor that was *superseded* — the run taken over, the successor
+ * heartbeating happily — looked alive, and waited for the whole resumed run to
+ * finish before anything collected it. Its claimant is fenced out of every write
+ * it could still make (`document-session-claim.ts`), so there is nothing to wait
+ * for. Nothing else fills that gap: the run row says "running, beating", and
+ * only the session's own claim says which execution that is.
+ *
+ * The second half is the run-fencing work's own liveness signal:
  * `claimRunForExecution` stamps `runs.executor_token` and
  * `runs.executor_heartbeat_at` in the claiming statement, and
- * `startExecutorHeartbeat` refreshes the heartbeat every 30 s for as long as
- * the execution lives (`run/execute/lifecycle.ts`).
+ * `startExecutorHeartbeat` refreshes the heartbeat every 30 s for as long as the
+ * execution lives (`run/execute/lifecycle.ts`).
  *
- * A stale heartbeat alone is NOT that signal, because the heartbeat is not a
- * liveness probe of the process — it is a liveness probe of a *claim*. The
- * interval body returns early on `fence.token === null` (`lifecycle.ts`), and
- * two ordinary, healthy events null that token:
+ * ## A dead claim is still not enough: two states where an executor is coming
+ *
+ * A claim being dead does not by itself mean nobody will write the session,
+ * because the heartbeat is not a liveness probe of a *process* — it is a
+ * liveness probe of a claim. The interval body returns early on
+ * `fence.token === null` (`lifecycle.ts`), and two ordinary, healthy events null
+ * that token: in both, the claim reads dead while a writer is on its way. So
+ * they are excluded explicitly, and the exclusions are the reason this predicate
+ * is not simply `NOT live`.
  *
  * - **A run parks for a person.** `updateRunStatus` clears the token in the
  *   statement that writes `waiting_approval`/`waiting_input`, so the heartbeat
@@ -44,19 +69,23 @@ import {
  *   on the queue; under a scale-in, with every other worker busy, it can sit
  *   there for minutes before a successor picks it up.
  *
- * So the predicate is a claim about the RUN, and the heartbeat only dates it:
+ * So a session is reaped when its claim is not live **and** neither of those two
+ * states holds. Written out, that is:
  *
- * - `running` **and** a heartbeat that exists and has been silent longer than
- *   the window — an executor started, stamped its claim, and stopped. NULL is
- *   deliberately not silence (`NULL < x` is not true, so the drained run above
- *   matches nothing): a null heartbeat means an orderly hand-back or a run not
- *   yet claimed, and in both cases an executor is *coming*, not gone.
- * - or terminal (`completed`/`failed`/`cancelled`) — `claimRunForExecution`
- *   admits only `pending` and stale `running` runs, so a terminal run will
- *   never be held again by anybody and an open session on it is stranded
- *   whatever its heartbeat says. This is the arm that collects what the first
- *   one waits out: the drained run's successor finishes, the run goes terminal,
- *   and any session its predecessor stranded is reaped then.
+ * - the claim was superseded — the run is held by a different execution than
+ *   the one that opened this session. No heartbeat rescues it: its claimant
+ *   cannot write the session again whatever it does next.
+ * - or the claimant still holds the run but has been silent longer than the
+ *   window — an executor started, stamped its claim, and stopped. A NULL
+ *   heartbeat is deliberately not silence (`NULL < x` is not true, so the
+ *   drained run above matches nothing): it means an orderly hand-back or a run
+ *   not yet claimed, and in both cases an executor is *coming*, not gone.
+ * - or the run is terminal (`completed`/`failed`/`cancelled`) —
+ *   `claimRunForExecution` admits only `pending` and stale `running` runs, so a
+ *   terminal run will never be held again by anybody and an open session on it
+ *   is stranded whatever its heartbeat says. This is the arm that collects what
+ *   the second one waits out: the drained run's successor finishes, the run
+ *   goes terminal, and any session its predecessor stranded is reaped then.
  *
  * A session is never reaped out of `pending`, `waiting_approval` or
  * `waiting_input`. A parked run's executor did not die — `executor_lost` would
@@ -88,25 +117,26 @@ import {
  * the run over. Shorter than the takeover window would mean guessing ahead of
  * the run claim; much longer would just make the reader wait.
  *
- * A run that *was* taken over gets a fresh heartbeat, so the previous
- * executor's stranded session waits for the new execution to end before it is
- * reaped. That is bounded (the resumed run terminates) and deliberately
- * conservative: the resumed run writes its own session rows, and nothing is
- * gained by racing it.
+ * A run that *was* taken over used to make the window meaningless from the other
+ * direction: the successor's fresh heartbeat made the predecessor's stranded
+ * session look alive, so it waited out the whole resumed run. The claim is what
+ * ended that wait — a superseded session is reaped on the first pass past its
+ * `updated_at` window, because being superseded is not a timing question.
  *
- * ## What this still cannot promise
+ * ## The reap is a report, not a fence, and that is on purpose
  *
- * The reap is not a fence. `runs.executor_token` fences the RUN, and the four
- * session terminalisers write `run_document_sessions` directly — a table with
- * no claim column — so an executor that is merely stalled rather than dead (ten
- * lost heartbeats against a database blip, say) can wake after a reap and
- * write the session anyway: `knowledge-compose.ts` and `knowledge-edit.ts`
- * finish with an unconditional `update` by id and would turn `failed` back into
- * `saved`. Reaping later would not close that window, only move it. Closing it
- * means giving the session its own claim and making every terminaliser ride it,
- * which is a separate change with a design question of its own (what a
- * superseded executor should do about the page it has already written).
- * Recorded in the horizontal-scaling plan rather than pretended away here.
+ * An executor that is merely stalled rather than dead — ten lost heartbeats
+ * against a database blip — still holds its run, so its claim is still live and
+ * every write it makes is still admitted. It can therefore wake up after a reap
+ * and write `saved` over the `failed` this sweep wrote, and it should: by then
+ * the document is in the knowledge base with a pageId the agent reports in chat,
+ * so the stale statement is the reap, not the save. That is why the reap does
+ * NOT take the claim, and why the two save paths are fenced on the claim alone
+ * and never on the status — the full argument is in
+ * `run/execute/document-session-claim.ts`.
+ *
+ * What the reap does promise is that a session no live claim covers stops being
+ * counted as active, and says why.
  */
 export const DOCUMENT_SESSION_EXECUTOR_SILENCE_MS = 5 * 60_000
 
@@ -180,26 +210,41 @@ export const reapAbandonedDocumentSessions = async (
     JOIN runs r ON r.id = s.run_id
     WHERE s.status IN ('streaming', 'saving')
       AND s.updated_at < now() - make_interval(secs => ${silenceSeconds}::double precision)
-      AND (
-        -- An executor claimed this run, stamped a heartbeat, and stopped. A
-        -- NULL heartbeat is not silence and must not match here: it is what a
-        -- draining worker leaves behind for its successor to claim, and what a
-        -- run carries before it is claimed at all. Written as a comparison
-        -- rather than a COALESCE precisely so NULL yields unknown, not true.
-        (
-          r.status = 'running'
-          AND r.executor_heartbeat_at
-                < now() - make_interval(secs => ${silenceSeconds}::double precision)
-        )
-        -- Or the run is over. claimRunForExecution admits only pending and
-        -- stale running runs, so nothing will ever hold this one again and an
-        -- open session on it is stranded by definition. This arm is what
-        -- collects a session the arm above deliberately waited out.
-        OR r.status IN ('completed', 'failed', 'cancelled')
+      -- The session's claim is not live. Live is both halves at once: the
+      -- execution that opened this session still holds the run, AND that
+      -- execution is still beating. A NULL claim_token is a session opened
+      -- outside an executor claim — or written by a build older than the column
+      -- — so it has no identity half to fail and is judged on the heartbeat
+      -- alone, exactly as it was before the claim existed.
+      --
+      -- The identity half is what the claim bought: a session stranded by a
+      -- SUPERSEDED executor sits on a run that is 'running' and beating (its
+      -- successor's beat), so nothing in the run row alone could tell it apart
+      -- from a document being written right now.
+      AND NOT (
+        (s.claim_token IS NULL OR s.claim_token = r.executor_token)
+        AND r.status = 'running'
+        AND r.executor_heartbeat_at
+              > now() - make_interval(secs => ${silenceSeconds}::double precision)
       )
-      -- pending, waiting_approval and waiting_input are absent on purpose: an
-      -- executor is coming, or a person is deciding. See the header comment --
-      -- neither is an executor that died.
+      -- ...and no executor is on its way. A dead claim is not by itself an
+      -- abandoned session: the two states below null the run's token as part of
+      -- being healthy, so the claim reads dead while a writer is still coming.
+      -- They are named rather than derived for exactly that reason.
+      --
+      -- pending / waiting_approval / waiting_input: an executor is coming, or a
+      -- person is deciding. executor_lost would be a lie in both, and every
+      -- one of these statuses is left eventually — the terminal case below
+      -- collects whatever they stranded.
+      AND r.status NOT IN ('pending', 'waiting_approval', 'waiting_input')
+      -- A 'running' run with a NULL heartbeat is what releaseRunForDrain leaves
+      -- for its successor to claim on its very next poll. Written as an explicit
+      -- exclusion because NULL is not silence and must never read as it.
+      AND NOT (r.status = 'running' AND r.executor_heartbeat_at IS NULL)
+      -- Everything else reaches here: a claimant that stopped beating, a claim
+      -- superseded by a takeover, and any open session on a terminal run —
+      -- claimRunForExecution admits only pending and stale running runs, so
+      -- nothing will ever hold that one again.
     ORDER BY s.updated_at ASC
     LIMIT ${limit}
   `)

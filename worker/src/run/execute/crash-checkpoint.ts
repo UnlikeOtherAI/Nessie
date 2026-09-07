@@ -20,7 +20,7 @@ import type { LoopResumeState } from '../loop-resume.js'
 // so a crash checkpoint is never injected into another run as "working notes".
 //
 // See docs/standards/tech-and-run-budgets.md and
-// docs/standards/horizontal-scaling.md invariant 4.
+// docs/standards/horizontal-scaling/overview.md invariant 4.
 
 export const CRASH_CHECKPOINT_REASON = 'crash'
 

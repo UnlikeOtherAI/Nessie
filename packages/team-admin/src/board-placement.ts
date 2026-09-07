@@ -193,6 +193,28 @@ export const listBoardTasks = async (
 }
 
 /**
+ * The connected sources represented by a non-default board's complete task
+ * pool. This deliberately has no render limit: the source strip must not lose
+ * a source only because its first linked card falls after the board's 500-card
+ * rendering cap.
+ */
+export const listBoardSourceIds = async (
+  prisma: PrismaClient,
+  board: BoardRecord,
+  options: { iterationId?: string | null },
+): Promise<string[]> => {
+  const tasks = await prisma.task.findMany({
+    where: {
+      projectId: board.projectId,
+      ...(options.iterationId !== undefined ? { iterationId: options.iterationId } : {}),
+      AND: [boardTaskPoolWhere(board), boardFilterWhere(board.filter)],
+    },
+    select: { externalLink: { select: { sourceId: true } } },
+  })
+  return [...new Set(tasks.flatMap((task) => (task.externalLink ? [task.externalLink.sourceId] : [])))]
+}
+
+/**
  * Within each column: explicitly placed rows first, by their position, then
  * the rest in the `updatedAt desc` order they arrived in. Grouping keeps the
  * comparison a total order — sorting one flat array by a key that only exists

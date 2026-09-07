@@ -281,7 +281,7 @@ impl Supervisor {
     fn run_pair(&self, command: &PairCommand, staging: &Path) -> Result<(), String> {
         let mut spawned = self
             .command()
-            .args(pair_arguments(command.api_base_url, &command.enrollment_id, staging))
+            .args(pair_arguments(&command.api_base_url, &command.enrollment_id, staging))
             .stdin(Stdio::piped())
             .spawn()
             .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;

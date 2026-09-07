@@ -20,7 +20,7 @@ import type { RouteDeps } from '../types.js'
  * The one thing it does read is the delivery id, because the queue is where a
  * provider retry has to collapse: `applyInboundItem` serialises two appliers of
  * one item, but two jobs still cost two full re-reads of the provider's API
- * (audit 9.1, docs/standards/horizontal-scaling.md § 3).
+ * (audit 9.1, docs/standards/horizontal-scaling/overview.md § 3).
  */
 
 /**

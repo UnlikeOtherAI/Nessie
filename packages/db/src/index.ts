@@ -45,11 +45,13 @@ export {
   pruneRateLimitWindows,
   rateLimitKeyHash,
   rateLimitWindowStart,
+  summarizeRateLimitWindows,
   takeRateLimitSlot,
   type FixedWindowRule,
   type RateLimitSlot,
   type RateLimitWindowHit,
   type RateLimitWindowStore,
+  type RateLimitWindowSummary,
 } from './rate-limit-window.js'
 
 export {

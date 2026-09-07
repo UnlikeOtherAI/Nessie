@@ -10,7 +10,7 @@ import { runDatabaseTest } from './support.js'
 
 /**
  * `deepsignal.insight.fanout` is safe to replay (audit 9.2,
- * docs/standards/horizontal-scaling.md § 3).
+ * docs/standards/horizontal-scaling/overview.md § 3).
  *
  * The queue is at-least-once: a drain that drops an ack, a lease expiry or a
  * nack hands the same job to a second worker, and the fan-out's effect — a

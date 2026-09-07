@@ -1,0 +1,16 @@
+name: nessie-mail-e2e
+
+services:
+  greenmail:
+    image: greenmail/standalone:2.1.3
+    # GreenMail must bind the container interface for Docker port publishing.
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.users=agent:mail-e2e-only@nessie.test,recipient:mail-e2e-only@nessie.test
+    ports:
+      - "127.0.0.1:3025:3025" # SMTP
+      - "127.0.0.1:3143:3143" # IMAP
+      - "127.0.0.1:3465:3465" # SMTPS
+      - "127.0.0.1:3993:3993" # IMAPS
