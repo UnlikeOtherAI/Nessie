@@ -54,6 +54,7 @@ try {
     NESSIE_MODEL_BASE_URL: 'http://127.0.0.1:11434/v1',
     NESSIE_MODEL_NAME: 'gemma4:latest',
     NESSIE_MODEL_PROVIDER: 'openai',
+    NESSIE_MAIL_E2E_MODE: process.env.NESSIE_MAIL_E2E_MODE ?? 'mock',
     NODE_EXTRA_CA_CERTS: certificatePem,
     OPENAI_API_KEY: 'local-mail-e2e',
   },

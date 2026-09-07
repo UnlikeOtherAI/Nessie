@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { mock } from 'node:test'
+import { resolve } from 'node:path'
 
 const MAIL_HOST = 'mail.nessie.test'
 const MISMATCH_HOST = 'wrong-mail.nessie.test'
@@ -39,7 +40,18 @@ const main = async (): Promise<void> => {
     },
   })
 
-  const [{ cleanupScope, seedRun, seedScope, startMockPipeline }, { createMailboxConnection, setMailboxAgentAccess }, { dialTls, sendFromMailbox, searchMailbox }, { resolveApprovalRequest }] = await Promise.all([
+  const mockServer = process.env.NESSIE_MAIL_E2E_MODE === 'mock'
+    ? await (async () => {
+      const { createMockLlmServer, loadScenario } = await import('@nessie/mock-llm')
+      const server = await createMockLlmServer({
+        scenario: await loadScenario(resolve(import.meta.dirname, 'scenarios/mail-agent-e2e.json')),
+      })
+      process.env.NESSIE_MODEL_BASE_URL = `${server.url}/v1`
+      process.env.NESSIE_MODEL_NAME = 'mock-model'
+      return server
+    })()
+    : null
+  const [{ cleanupScope, seedRun, seedScope, startMockPipeline }, { createMailboxConnection, setMailboxAgentAccess }, { dialTls, readMailboxMessage, sendFromMailbox, searchMailbox }, { resolveApprovalRequest }] = await Promise.all([
     import('./pipeline.js'),
     import('@nessie/team-admin'),
     import('@nessie/agent-mail'),
@@ -57,7 +69,7 @@ const main = async (): Promise<void> => {
     const agent = await pipeline.prisma.agent.update({
       where: { id: scope.agentId },
       data: {
-        model: 'gemma4:latest',
+        model: process.env.NESSIE_MODEL_NAME!,
         runLimits: { maxCostCents: 5, maxIterations: 8, maxTokens: 8_000, maxToolCalls: 5, maxWallclockMs: 180_000 },
         systemPrompt: [
           'You work in the connected mailbox available to you.',
@@ -104,12 +116,23 @@ const main = async (): Promise<void> => {
       'Read it, then send recipient@nessie.test a concise reply saying Tuesday at 10:00 works.',
       'Ask for the required approval before it leaves the mailbox.',
     ].join(' '))
+    // `seedRun` deliberately supports direct queue tests and therefore does
+    // not attach a trigger. Approval continuations require the production
+    // trigger invariant: the parked run and frozen resume state name the same
+    // originating user message.
+    await pipeline.prisma.run.update({
+      where: { id: seeded.runId },
+      data: { triggerMessageId: seeded.messageId },
+    })
     await pipeline.enqueueRun(seeded.payload)
 
-    const approval = await waitFor(
-      () => pipeline.prisma.approvalRequest.findFirst({ where: { runId: seeded!.runId, status: 'pending' } }),
-      (row) => row !== null,
-    )
+    const approval = await waitFor(async () => {
+      const [request, run] = await Promise.all([
+        pipeline.prisma.approvalRequest.findFirst({ where: { runId: seeded!.runId, status: 'pending' } }),
+        pipeline.prisma.run.findUnique({ where: { id: seeded!.runId }, select: { status: true } }),
+      ])
+      return request && run?.status === 'waiting_approval' ? request : null
+    }, (row) => row !== null)
     if (!approval) {
       const run = await pipeline.prisma.run.findUnique({
         where: { id: seeded.runId }, select: { status: true, statusReason: true },
@@ -121,28 +144,51 @@ const main = async (): Promise<void> => {
     }
     assert.equal(approval.toolName, 'mailbox_send')
     assert.equal(approval.requiredApproverUserId, scope.userId, 'approval is pinned to mailbox owner')
+    const { AuthorizedActionContextSchema } = await import('@nessie/schemas')
+    const stored = approval.resumeState as Record<string, unknown>
+    const parsedResumeContext = AuthorizedActionContextSchema.safeParse(stored['actorContext'])
+    assert.ok(parsedResumeContext.success, parsedResumeContext.success ? '' : parsedResumeContext.error.message)
 
     const approved = await resolveApprovalRequest(pipeline.prisma, approval.id, seeded.payload.actorContext, 'approved')
     assert.ok(!('error' in approved), `mailbox approval resolved: ${'error' in approved ? approved.error : 'ok'}`)
-    const terminal = await pipeline.waitForTerminalRuns([seeded.runId], 120_000)
-    assert.equal(terminal.get(seeded.runId), 'completed', 'approved worker run completes')
+    const continuation = await waitFor(
+      () => pipeline.prisma.run.findFirst({ where: { continuationOfRunId: seeded!.runId }, select: { id: true } }),
+      (row) => row !== null,
+    )
+    assert.ok(continuation, 'approval creates a continuation run')
+    const terminal = await pipeline.waitForTerminalRuns([continuation.id], 120_000)
+    assert.equal(terminal.get(continuation.id), 'completed', 'approved continuation completes')
 
     const delivery = await searchMailbox({
       address: 'recipient@nessie.test', password: MAIL_PASSWORD, username: 'recipient',
       imap: { host: MAIL_HOST, port: 13993, security: 'tls' },
       smtp: { host: MAIL_HOST, port: 13465, security: 'tls' },
-    }, { subject: marker }, { timeoutMs: 15_000 })
-    const replies = delivery.filter((message) => message.from === 'agent@nessie.test')
+    }, { limit: 50 }, { timeoutMs: 15_000 })
+    const replies = delivery.items.filter((message) => message.from === 'agent@nessie.test'
+      && message.subject === 'Re: Client Tuesday')
     assert.equal(replies.length, 1, 'approval caused exactly one SMTP delivery')
-    assert.match(replies[0]?.text ?? '', /Tuesday at 10:00 works/i)
-    const calls = await pipeline.prisma.toolCall.findMany({ where: { runId: seeded.runId } })
+    const delivered = await readMailboxMessage({
+      address: 'recipient@nessie.test', password: MAIL_PASSWORD, username: 'recipient',
+      imap: { host: MAIL_HOST, port: 13993, security: 'tls' },
+      smtp: { host: MAIL_HOST, port: 13465, security: 'tls' },
+    }, { uid: replies[0]!.uid }, { timeoutMs: 15_000 })
+    assert.match(delivered?.text ?? '', /Tuesday at 10:00 works/i)
+    const calls = await pipeline.prisma.toolCall.findMany({
+      where: { runId: { in: [seeded.runId, continuation.id] } },
+    })
     assert.ok(calls.some((call) => call.toolName === 'mailbox_search' && call.success))
     assert.ok(calls.some((call) => call.toolName === 'mailbox_read' && call.success))
-    assert.equal(calls.filter((call) => call.toolName === 'mailbox_send' && call.success).length, 1)
-    console.log(`[mail-agent-e2e] PASS: Gemma → search/read → pinned approval → one TLS SMTP delivery (${seeded.runId})`)
+    assert.equal(calls.filter((call) => call.toolName === 'mailbox_send' && call.success).length, 2,
+      'the proposed send is re-issued once after approval')
+    const sentActions = await pipeline.prisma.mailboxSendAction.count({
+      where: { connectionId: connection.id, state: 'sent' },
+    })
+    assert.equal(sentActions, 1, 'one durable send action dispatched')
+    console.log(`[mail-agent-e2e] PASS: ${mockServer ? 'scripted inference' : 'Gemma'} → search/read → pinned approval → one TLS SMTP delivery (${seeded.runId})`)
   } finally {
     await cleanupScope(pipeline.prisma, pipeline.pool, scope, seeded ? [seeded.runId] : [])
     await pipeline.stop()
+    await mockServer?.close()
   }
 }
 

@@ -1,8 +1,8 @@
 # Local real-model mail-agent probe
 
-`pnpm --filter @nessie/worker test:e2e:mail-agent` exercises one realistic
-connected-mail workflow: a local Gemma model receives a natural-language
-request, searches and reads a seeded client email, proposes a reply, waits for
+`pnpm --filter @nessie/worker test:e2e:mail-agent` deterministically exercises
+one realistic connected-mail workflow: a scripted inference response receives
+a natural-language request, searches and reads a seeded client email, proposes a reply, waits for
 the mailbox owner's pinned approval, and delivers exactly one message through
 TLS SMTP. The recipient mailbox is read through TLS IMAP to prove delivery.
 
@@ -12,10 +12,13 @@ sets `NODE_EXTRA_CA_CERTS` to that certificate and uses Node's test-module mock
 to map only that exact synthetic hostname to `127.0.0.1`; every other hostname
 uses Nessie's ordinary vetted resolver. TLS hostname verification stays on, and
 there is no application configuration or production dialer exception for local
-addresses. The model is local Ollama (`gemma4:latest`) and incurs no cloud cost.
+addresses. Set `NESSIE_MAIL_E2E_MODE=real` to use local Ollama
+(`gemma4:latest`) instead; that opt-in probe incurs no cloud cost.
 The command removes only its namespaced fixture and generated certificate after
 the probe; it leaves the separate local wire-health server untouched.
 
-This is an opt-in realistic-work probe rather than CI coverage: model tool
-selection is intentionally nondeterministic. Browser connected-mail tests remain
+The default uses scripted inference only for model decisions; SMTP/IMAP,
+connection lifecycle, agent access, approval/resume, and delivery are real.
+The Ollama mode is an opt-in realistic-work probe because its tool selection is
+nondeterministic. Browser connected-mail tests remain
 fixture contracts and are not evidence of this SMTP/IMAP worker flow.
