@@ -48,8 +48,10 @@ export const useApplyTaskChecklist = () => {
   return useMutation({
     mutationFn: (input: { taskId: string; agentId: string; templateId: string }) =>
       apiClient.post<TaskChecklistRecord>(`/api/tasks/${input.taskId}/checklist`, input),
-    onSuccess: (_result, input) =>
-      void queryClient.invalidateQueries({ queryKey: taskKeys.checklist(input.taskId) }),
+    onSuccess: (result, input) => {
+      queryClient.setQueryData(taskKeys.checklist(input.taskId), result)
+      void queryClient.invalidateQueries({ queryKey: taskKeys.checklist(input.taskId) })
+    },
   })
 }
 
@@ -61,8 +63,10 @@ export const useUpdateTaskChecklistStep = () => {
       const { taskId, stepKey, ...body } = input
       return apiClient.patch<TaskChecklistRecord>(`/api/tasks/${taskId}/checklist/steps/${stepKey}`, body)
     },
-    onSuccess: (_result, input) =>
-      void queryClient.invalidateQueries({ queryKey: taskKeys.checklist(input.taskId) }),
+    onSuccess: (result, input) => {
+      queryClient.setQueryData(taskKeys.checklist(input.taskId), result)
+      void queryClient.invalidateQueries({ queryKey: taskKeys.checklist(input.taskId) })
+    },
   })
 }
 
