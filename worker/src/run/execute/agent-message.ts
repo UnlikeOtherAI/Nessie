@@ -1,5 +1,6 @@
 import type { MessageRole, Prisma, PrismaClient } from '@prisma/client'
 import { computeReplyBasis, type BasisScope } from './disclosure-basis.js'
+import { persistablePrivateConversationSources } from './private-conversation-source-storage.js'
 import type { RunContext } from './types.js'
 
 /**
@@ -131,6 +132,28 @@ const insertBasisScopes = async (
   })
 }
 
+/** Preserve who authored private conversation material independently of scope. */
+const insertPrivateConversationSources = async (
+  tx: Tx,
+  input: {
+    messageId: string
+    organizationId: string
+    sources: ReturnType<RunContext['consumedSources']['privateConversationSources']>
+  },
+): Promise<void> => {
+  const sources = await persistablePrivateConversationSources(tx, input.sources)
+  if (sources.length === 0) return
+  await tx.messageDisclosureSource.createMany({
+    data: sources.map((source) => ({
+      messageId: input.messageId,
+      organizationId: input.organizationId,
+      sourceAuthorUserId: source.sourceAuthorUserId,
+      sourceChannelId: source.sourceChannelId,
+    })),
+    skipDuplicates: true,
+  })
+}
+
 /**
  * Persist the run's own basis ledger. Idempotent: a run that stamps twice (a
  * reply plus a later notice) writes the same rows, and `skipDuplicates` plus the
@@ -151,6 +174,22 @@ export const persistRunBasis = async (
       scopeType: scope.scopeType,
     })),
     skipDuplicates: true,
+  })
+}
+
+/**
+ * Make the run's live disclosure state durable before another record stores
+ * content derived from it. The sink only grows, and `persistRunBasis` only
+ * inserts, so this is monotone across planning, tool records and checkpoints.
+ */
+export const persistCurrentRunBasis = async (
+  tx: Tx,
+  context: RunContext,
+): Promise<void> => {
+  await persistRunBasis(tx, {
+    basis: runReplyBasis(context),
+    organizationId: context.channel.organizationId,
+    runId: context.run.id,
   })
 }
 
@@ -191,6 +230,11 @@ export const createAgentMessage = async (
       basis,
       messageId: message.id,
       organizationId: context.channel.organizationId,
+    })
+    await insertPrivateConversationSources(inner, {
+      messageId: message.id,
+      organizationId: context.channel.organizationId,
+      sources: context.consumedSources.privateConversationSources(),
     })
     await persistRunBasis(inner, {
       basis,
@@ -239,6 +283,11 @@ export const replaceAgentMessageContent = async (
       basis,
       messageId: input.messageId,
       organizationId: context.channel.organizationId,
+    })
+    await insertPrivateConversationSources(inner, {
+      messageId: input.messageId,
+      organizationId: context.channel.organizationId,
+      sources: context.consumedSources.privateConversationSources(),
     })
     await persistRunBasis(inner, {
       basis,

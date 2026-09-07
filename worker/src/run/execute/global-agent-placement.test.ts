@@ -33,6 +33,7 @@ const designerContext = (): RunContext => ({
     organizationId: id('4'),
     projectId: id('5'),
     systemChannelType: 'system_agent',
+    visibility: 'public',
     teamId: id('6'),
   },
   consumedSources: createConsumedSourceSink(),

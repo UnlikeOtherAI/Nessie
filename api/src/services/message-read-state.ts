@@ -34,6 +34,7 @@ export const findThreadForUser = async (
       id: string
       organizationId: string
       type: 'dm' | 'standard'
+      visibility: string
       systemChannelType: ChannelSystemType | null
     }
   }) | null
@@ -55,6 +56,7 @@ export const findThreadForUser = async (
           id: true,
           organizationId: true,
           type: true,
+          visibility: true,
           systemChannelType: true,
         },
       },
@@ -95,6 +97,7 @@ export const markThreadRead = async (
       select: {
         agentId: true,
         basisScopes: { select: { scopeId: true, scopeType: true } },
+        disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
         createdAt: true,
         id: true,
       },
@@ -116,6 +119,7 @@ export const markThreadRead = async (
         select: {
           agentId: true,
           basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
           createdAt: true,
           id: true,
         },
@@ -138,6 +142,7 @@ export const markThreadRead = async (
         select: {
           agentId: true,
           basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
           createdAt: true,
           id: true,
         },
@@ -169,6 +174,7 @@ export const markThreadRead = async (
         messages: withheld.map((message) => ({
           agentId: message.agentId,
           basis: message.basisScopes,
+          disclosureSources: message.disclosureSources,
           messageId: message.id,
         })),
         organizationId: input.organizationId,

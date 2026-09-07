@@ -1,12 +1,18 @@
 import { Prisma } from '@prisma/client'
+import { canUserReadDisclosureBasis } from '@nessie/runtime'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveAccessibleChannelIds } from './access.js'
+import { resolveAccessibleChannelIds, resolveEffectiveUserId } from './access.js'
 import {
   recordMessageChannelRead,
+  recordPrivateConversationMessageRead,
   UNRESTRICTED_MESSAGES_ONLY,
 } from './message-search-basis.js'
-import { insertMessageBasis, resolveToolPostBasis } from './tool-message-basis.js'
+import {
+  insertMessageBasis,
+  insertPrivateConversationSources,
+  resolveToolPostBasis,
+} from './tool-message-basis.js'
 import {
   buildSnippet,
   clampLimit,
@@ -27,6 +33,11 @@ type MessageSearchRow = {
   project_name: string
   team_name: string
   root_message_id: string | null
+  role: string
+  agent_id: string | null
+  metadata: unknown
+  on_behalf_of_user_id: string | null
+  user_id: string | null
 }
 
 export const runMessageSearchTool = async (
@@ -64,6 +75,11 @@ export const runMessageSearchTool = async (
       p."name" AS project_name,
       tm."name" AS team_name,
       m."content",
+      m."role",
+      m."agent_id",
+      m."metadata",
+      m."on_behalf_of_user_id",
+      m."user_id",
       m."created_at",
       COALESCE(u."display_name", a."name") AS author_name
     FROM "messages" m
@@ -93,6 +109,26 @@ export const runMessageSearchTool = async (
     context,
     rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
   )
+  const sources = await context.prisma.messageDisclosureSource.findMany({
+    where: { messageId: { in: rows.map((row) => row.id) } },
+    select: { messageId: true, sourceAuthorUserId: true, sourceChannelId: true },
+  })
+  const sourcesByMessage = new Map<string, typeof sources>()
+  for (const source of sources) {
+    const current = sourcesByMessage.get(source.messageId) ?? []
+    current.push(source)
+    sourcesByMessage.set(source.messageId, current)
+  }
+  recordPrivateConversationMessageRead(context, rows.map((row) => ({
+    agentId: row.agent_id,
+    channelId: row.channel_id,
+    channelVisibility: row.channel_visibility,
+    disclosureSources: sourcesByMessage.get(row.id) ?? [],
+    metadata: row.metadata,
+    onBehalfOfUserId: row.on_behalf_of_user_id,
+    role: row.role,
+    userId: row.user_id,
+  })))
 
   const lines = rows.map((row, index) =>
     formatMessageLine({
@@ -164,6 +200,10 @@ export const runMessageEditTool = async (
       messageId: input.messageId,
       organizationId: String(context.channel.organizationId),
     })
+    await insertPrivateConversationSources(tx, context, {
+      messageId: input.messageId,
+      organizationId: String(context.channel.organizationId),
+    })
   })
 
   return {
@@ -215,8 +255,8 @@ export const runMessageDeleteTool = async (
  * 👍 is still a paragraph.
  *
  * Scoped to messages the run can already reach — the same accessible-channel
- * set that governs conversation search — so an agent cannot annotate a
- * conversation it could not read.
+ * set that governs conversation search — and to the message's disclosure
+ * basis, so an agent cannot annotate a conversation it could not read.
  */
 export const runReactTool = async (
   context: BuiltinToolRuntimeContext,
@@ -236,7 +276,14 @@ export const runReactTool = async (
   const channelIds = await resolveAccessibleChannelIds(context)
   const message = channelIds.length
     ? await context.prisma.message.findFirst({
-        select: { id: true, threadId: true },
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+          id: true,
+          thread: { select: { channelId: true } },
+          threadId: true,
+        },
         where: {
           deletedAt: null,
           id: input.messageId,
@@ -245,6 +292,26 @@ export const runReactTool = async (
       })
     : null
   if (!message) {
+    throw new Error('Message not found in a conversation this agent can see.')
+  }
+
+  // Channel reach is necessary but not sufficient: a reply in a shared channel
+  // may be derived from a private source. Resolve the acting human's *current*
+  // disclosure reach (including grants) through the same predicate used by the
+  // API feed. An autonomous agent has no human entitlement and therefore may
+  // only react to unrestricted messages.
+  const effectiveUserId = resolveEffectiveUserId(context)
+  const readable = message.basisScopes.length === 0
+    || (effectiveUserId !== null && await canUserReadDisclosureBasis(context.prisma, {
+      agentId: message.agentId,
+      basis: message.basisScopes,
+      channelId: message.thread.channelId,
+      disclosureSources: message.disclosureSources,
+      messageId: message.id,
+      organizationId: context.channel.organizationId,
+      userId: effectiveUserId,
+    }))
+  if (!readable) {
     throw new Error('Message not found in a conversation this agent can see.')
   }
 

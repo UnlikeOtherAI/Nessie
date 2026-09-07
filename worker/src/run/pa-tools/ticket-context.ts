@@ -1,5 +1,6 @@
 import type { ProjectTaskRecord } from '@nessie/team-admin'
 import { getProjectTask, isAgentAccessibleToActor, isProjectAccessibleToUser } from '@nessie/team-admin'
+import { canUserReadRunDerivedRecord } from '@nessie/runtime'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -56,7 +57,11 @@ export const projectTicketFor = async (
   ticketId: string,
 ): Promise<ProjectTaskRecord> => {
   const ticket = await getProjectTask(context.prisma, ticketId, member.organizationId)
-  if (!ticket?.projectId) {
+  if (!ticket?.projectId || !(await canUserReadRunDerivedRecord(context.prisma, {
+    organizationId: member.organizationId,
+    runId: ticket.runId ?? null,
+    userId: member.userId,
+  }))) {
     throw new Error('Ticket not found. Resolve it with ticket_list first.')
   }
   await projectFor(context, member, ticket.projectId)

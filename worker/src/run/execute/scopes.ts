@@ -6,15 +6,10 @@ import type { RunContext } from './types.js'
 /**
  * Realtime scopes a run publishes on.
  *
- * A delegate's own single-member home DM — the Personal Assistant's, or a
- * DM-homed global agent's — publishes on the channel lane ALONE. The
- * organisation and agent lanes are team-wide broadcast: an organisation
- * lane would put one person's private conversation in front of everybody, and
- * the agent lane would do the same across every member's home DM, since a
- * global agent is one org-wide row shared by all of them. The api side already
- * narrows these surfaces (`isDelegatedSystemDmChannelType` in
- * `request-helpers.ts`); this is the worker's half of the same rule, now
- * expressed through the one delegation predicate so the two cannot disagree.
+ * Non-public rooms publish on their channel lane ALONE. Organisation and agent
+ * lanes are broad broadcasts, so either would expose private run progress,
+ * tool inputs, and completion previews to people outside the room. Delegated
+ * system DMs have the same containment even if their visibility is malformed.
  */
 export const buildScopesForAgent = (
   channel: RunContext['channel'],
@@ -24,7 +19,7 @@ export const buildScopesForAgent = (
     kind: 'channel',
     channelId: parseChannelId(channel.id),
   },
-  ...(runDelegatesToRequestingPerson({
+  ...(channel.visibility !== 'public' || runDelegatesToRequestingPerson({
     agentKind: agent.agentKind,
     dmKey: channel.dmKey,
     organizationId: channel.organizationId,

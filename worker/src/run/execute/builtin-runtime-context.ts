@@ -9,6 +9,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
  * are never derived from a model-provided tool payload.
  */
 export type GmailSendAuthorization = {
+  disclosureShareAuthorized?: true
   gmailDraftSendApproved?: true
   gmailDraftSendStandingAuthorized?: true
 }
@@ -123,6 +124,7 @@ export const createBuiltinToolExecutor = ({
       execute(toolName, args, authorization.toolActorContext, toolCallId, {
         gmailDraftSendApproved: authorization.gmailDraftSendApproved,
         gmailDraftSendStandingAuthorized: authorization.gmailDraftSendStandingAuthorized,
+        disclosureShareAuthorized: authorization.disclosureShareAuthorized,
       }),
   }
 }

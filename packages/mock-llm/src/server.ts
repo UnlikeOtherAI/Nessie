@@ -32,6 +32,7 @@ type OpenAiRequestMessage = {
 type ChatCompletionBody = {
   messages?: OpenAiRequestMessage[]
   stream?: boolean
+  tools?: unknown[]
 }
 
 const sendJson = (response: ServerResponse, status: number, body: unknown): void => {
@@ -249,7 +250,13 @@ export const createMockLlmServer = async (input: {
       return
     }
 
-    const outcome = await engine.next(toProviderMessages(body.messages))
+    const messages = toProviderMessages(body.messages)
+    // Main inference always receives its offered schemas. Utility judgements
+    // intentionally receive none, so this selects a scenario lane without
+    // inspecting natural-language prompt content.
+    const outcome = Array.isArray(body.tools) && body.tools.length > 0
+      ? await engine.next(messages)
+      : await engine.nextUtility(messages)
     if (outcome.kind === 'error') {
       sendProviderError(response, outcome.error)
       return

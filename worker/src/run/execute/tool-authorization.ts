@@ -8,6 +8,8 @@ import {
   resolveStandingConsentForToolCall,
 } from '@nessie/team-admin'
 import { judgeSendBoundary } from './send-boundary-judge.js'
+import { maybeAuthorizeDisclosureShare } from './disclosure-share-authorization.js'
+import { blocksPrivateConversationWrite } from './private-conversation-write-gate.js'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -37,15 +39,14 @@ import {
   resolveFrozenGmailSendApproval,
 } from './gmail-send-approval.js'
 import type { RunContext } from './types.js'
-
 export type ToolActorContext = AuthorizedActionContext
-
 export type ToolAuthorizationDecision =
   | {
       decision: 'allow'
       executionArgs?: Record<string, unknown>
       gmailDraftSendApproved?: true
       gmailDraftSendStandingAuthorized?: true
+      disclosureShareAuthorized?: true
       toolActorContext: ToolActorContext
     }
   | {
@@ -64,10 +65,7 @@ export type ToolAuthorizationDecision =
 export type ToolAuthorizationContext = {
   agentKind: RunContext['agent']['agentKind']
   allowedToolIds: Set<string>
-  /**
-   * Registry membership is the organisational ceiling; this per-run set is
-   * the resolved offer after agent capability gates such as todosEnabled.
-   */
+  /** Registry membership is the organisational ceiling for this resolved offer. */
   resolvedBuiltinToolIds?: Set<string>
   /**
    * Names dispatched outside the builtin registry (MCP views, the executor
@@ -93,11 +91,7 @@ export type ToolAuthorizationContext = {
   parentAgentId: string | null
   /** Only a top-level, non-handoff run has a durable identity to suspend. */
   maySuspendForApproval: boolean
-  /**
-   * The run's utility-model call, used for the send-boundary judgement. Absent
-   * where no utility model resolves, which fails the judgement closed to
-   * asking rather than proceeding unjudged.
-   */
+  /** Optional utility-model call; absent disclosure judgement fails closed. */
   runUtility?: (prompt: string) => Promise<string | null>
   consumeApprovalProof?: boolean
   skipAutoReview?: boolean
@@ -106,17 +100,7 @@ export type ToolAuthorizationContext = {
     interactive: boolean
     messageId: string
   }
-  /**
-   * A structurally gated tool family whose escalation decision is its own.
-   *
-   * Standing consent below is the *send-as-you* answer: a person granting an
-   * agent leave to mail from their account. A hosted agent mailbox is not that
-   * — nobody's account is being borrowed — and its reasons to stop are
-   * different (an unattended run opening new correspondence, the hourly cap, or
-   * a privileged source the run read that its recipient cannot reach). A family
-   * that returns a decision here is authoritative for its own tools; everything
-   * else falls through to standing consent unchanged.
-   */
+  /** A tool family may supply its own structurally gated escalation decision. */
   structuralGate?: (input: {
     toolName: string
     args: Record<string, unknown>
@@ -125,10 +109,7 @@ export type ToolAuthorizationContext = {
     /** Shown on the approval card: why the person was asked. */
     reason?: string
     requiredApproverUserId?: string | null
-    /**
-     * Address-free server-authored facts for the approval row, which an org
-     * owner can read through the approvals surface.
-     */
+    /** Address-free server-authored facts for the approval row. */
     contextExtra?: Record<string, unknown>
   } | null>
   toolPolicy: Record<string, boolean> | null
@@ -203,6 +184,30 @@ export const authorizeToolExecution = async (
   const emitAudit: ToolAuthorizationAuditEmitter =
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
 
+  const isExternalName = auth.externalToolNames?.has(toolName) ?? false
+  if (blocksPrivateConversationWrite({ context, isExternal: isExternalName, toolName })) {
+    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+      source: 'private_conversation_write_gate',
+    }, 'private_conversation_disclosure_required')
+    return {
+      decision: 'deny',
+      result: toolDeniedResult(toolName, args, {
+        message: 'This run used a private conversation, so it cannot write to that destination.',
+        reason: 'private_conversation_disclosure_required',
+      }),
+    }
+  }
+
+  const disclosureShareAuthorized = await maybeAuthorizeDisclosureShare({
+    args,
+    actorContext: toolActorContext,
+    context,
+    prisma,
+    runUtility: auth.runUtility,
+    toolName,
+    triggerMessageId: auth.resumeState?.messageId,
+  })
+
   if (await hooks.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
     return {
       decision: 'deny',
@@ -214,7 +219,6 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const isExternalName = auth.externalToolNames?.has(toolName) ?? false
   const resolvedBuiltinToolIds = auth.resolvedBuiltinToolIds ?? auth.allowedToolIds
   const registryDecision = isExternalName
     ? ({ allowed: true } as const)
@@ -490,6 +494,7 @@ export const authorizeToolExecution = async (
 
   return {
     decision: 'allow',
+    ...(disclosureShareAuthorized ? { disclosureShareAuthorized: true as const } : {}),
     executionArgs,
     ...(gmailDraftSendStandingAuthorized ? { gmailDraftSendStandingAuthorized: true as const } : {}),
     toolActorContext,

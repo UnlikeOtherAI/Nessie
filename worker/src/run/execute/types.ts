@@ -96,6 +96,7 @@ export type RunContext = {
     // Non-nullable on `Channel`, so always populated for a real destination.
     projectId: string
     teamId: string
+    visibility: string
     systemChannelType: ChannelSystemType | null
     dmKey?: string | null
   }

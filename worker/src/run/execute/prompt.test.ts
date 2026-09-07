@@ -32,6 +32,7 @@ const makeContext = (name: string, id: string = ACTING_AGENT_ID): RunContext => 
     projectId: 'p',
     teamId: 't',
     systemChannelType: null,
+    visibility: 'public',
   },
   consumedSources: createConsumedSourceSink(),
   run: {

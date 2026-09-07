@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { EMAIL_SEND_TOOL_ID } from '@nessie/runtime'
 
 import {
   computeReplyBasis,
   createConsumedSourceSink,
   type BasisScope,
 } from './disclosure-basis.js'
+import { persistCurrentRunBasis } from './agent-message.js'
+import {
+  admitTriggerMessageLineage,
+  markUnknownPrivateConversationChannels,
+  markUnknownPrivateConversationScopes,
+} from './private-conversation-lineage.js'
+import { blocksPrivateConversationWrite } from './private-conversation-write-gate.js'
 
 const DESTINATION = {
   channelId: 'channel-1',
@@ -43,6 +51,190 @@ test('sink keeps same-id sources under different audience types apart', () => {
   sink.add(scope('team', 'shared-id'))
 
   assert.equal(sink.size(), 2)
+})
+
+test('a run persists its source basis before any derived metadata is written', async () => {
+  const sink = createConsumedSourceSink()
+  sink.add(scope('user', 'author-b'))
+  const writes: Array<{ data: { runId: string; scopeId: string; scopeType: string }[] }> = []
+
+  await persistCurrentRunBasis({
+    runBasisScope: {
+      createMany: async (input: { data: { runId: string; scopeId: string; scopeType: string }[] }) => {
+        writes.push(input)
+        return { count: input.data.length }
+      },
+    },
+  } as never, {
+    boundAgentIds: [],
+    channel: DESTINATION,
+    consumedSources: sink,
+    run: { id: 'run-1' },
+  } as never)
+
+  assert.deepEqual(writes[0]?.data, [{
+    organizationId: DESTINATION.organizationId,
+    runId: 'run-1',
+    scopeId: 'author-b',
+    scopeType: 'user',
+  }])
+})
+
+test('private source lineage retains an unknown-author denial marker', () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: 'author-b',
+    sourceChannelId: 'private-room',
+  })
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: null,
+    sourceChannelId: 'private-room',
+  })
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
+  assert.deepEqual(sink.list(), [scope('channel', 'private-room')])
+})
+
+test('checkpoint or memory channel provenance cannot be re-attributed by a later author', async () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: 'author-b',
+    sourceChannelId: 'private-room',
+  })
+
+  await markUnknownPrivateConversationScopes(
+    { channel: { findMany: async () => [{ id: 'private-room' }] } } as never,
+    sink,
+    [scope('channel', 'private-room')],
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
+})
+
+test('a deleted private source channel remains an unknown denial marker', async () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: 'author-b',
+    sourceChannelId: 'still-present-private-room',
+  })
+
+  await markUnknownPrivateConversationScopes(
+    { channel: { findMany: async () => [] } } as never,
+    sink,
+    [scope('channel', 'deleted-private-room')],
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'still-present-private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'deleted-private-room' },
+  ])
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { agent: { agentKind: 'shared' }, consumedSources: sink } as never,
+      isExternal: true,
+      toolName: 'mcp_publish',
+    }),
+    true,
+  )
+})
+
+test('a delegated trigger keeps its original private author without adding an unknown marker', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage(
+    { channel: { findMany: async () => [] } } as never,
+    sink,
+    {
+      basisScopes: [scope('channel', 'private-room')],
+      disclosureSources: [{ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' }],
+    },
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+  ])
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: {
+        agent: { agentKind: 'shared' },
+        consumedSources: sink,
+      } as unknown as import('./types.js').RunContext,
+      isExternal: true,
+      toolName: 'mcp_publish',
+    }),
+    true,
+  )
+})
+
+test('a legacy delegated trigger becomes an unknown private source', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage(
+    { channel: { findMany: async () => [{ id: 'private-room', visibility: 'private' }] } } as never,
+    sink,
+    { basisScopes: [scope('channel', 'private-room')], disclosureSources: [] },
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
+})
+
+test('private conversation material cannot enter an unscoped write or MCP call', () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' })
+  const context = {
+    agent: { agentKind: 'shared' },
+    consumedSources: sink,
+  } as unknown as import('./types.js').RunContext
+
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'kb_draft_write' }),
+    true,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: true, toolName: 'mcp_publish' }),
+    true,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'send_message' }),
+    false,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: EMAIL_SEND_TOOL_ID }),
+    true,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { ...context, agent: { ...context.agent, agentKind: 'personal_assistant' } },
+      isExternal: false,
+      toolName: 'kb_draft_write',
+    }),
+    false,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { ...context, agent: { ...context.agent, agentKind: 'personal_assistant' } },
+      isExternal: true,
+      toolName: 'mcp_publish',
+    }),
+    false,
+  )
+})
+
+test('a private attachment source remains unknown beside a current human turn', () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' })
+  markUnknownPrivateConversationChannels(sink, [{ id: 'private-room', visibility: 'private' }])
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
 })
 
 test('a run consuming only destination-implied sources has an empty basis', () => {

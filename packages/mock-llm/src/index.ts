@@ -24,6 +24,7 @@ export {
   type MockStream,
   type MockToolCall,
   type MockTurn,
+  type MockUtilityTurn,
   type MockUsage,
 } from './scenario.js'
 export {
