@@ -202,6 +202,7 @@ export const authorizeToolExecution = async (
 
   const disclosureShareAuthorized = await maybeAuthorizeDisclosureShare({
     args,
+    actorContext: toolActorContext,
     context,
     prisma,
     runUtility: auth.runUtility,
