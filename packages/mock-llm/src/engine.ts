@@ -130,11 +130,14 @@ export class MockLlmEngine {
    * which is a transport fact rather than an interpretation of prompt text.
    * Scenarios that do not opt in retain the regular transcript-derived turns.
    */
-  async nextUtility(messages: ProviderMessage[]): Promise<MockTurnOutcome> {
+  async nextUtility(
+    messages: ProviderMessage[],
+    override?: MockScenario['utility'],
+  ): Promise<MockTurnOutcome> {
     const scriptedUtilities = this.scenario.utilityTurns
-    const utility = scriptedUtilities
+    const utility = override ?? (scriptedUtilities
       ? scriptedUtilities[Math.min(this.utilityTurnIndex, scriptedUtilities.length - 1)]
-      : this.scenario.utility
+      : this.scenario.utility)
     if (!utility) return this.next(messages)
 
     this.utilityTurnIndex += 1
