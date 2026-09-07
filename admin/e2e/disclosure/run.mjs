@@ -26,6 +26,7 @@ import {
 import {
   installActivityProbe,
   installEventProbe,
+  reloadWithRealtimeProbes,
   setActivitySubscriptions,
   stopActivityProbe,
   stopEventProbe,
@@ -245,14 +246,15 @@ const main = async () => {
         && frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
     }, undefined, { timeout: 60_000 })
-    // The known-public SSE canary must not consume a mock utility decision before B's disclosure judge.
     await pipeline.prisma.agentBinding.create({
       data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
     })
-    await setActivitySubscriptions(audiencePage.page, [
+    const publicAgentScopes = [
       { channelId: fixture.group.id, kind: 'channel' },
       { agentId: fixture.scope.agentId, kind: 'agent' },
-    ])
+    ]
+    await setActivitySubscriptions(audiencePage.page, publicAgentScopes)
+    await reloadWithRealtimeProbes(audiencePage.page, audienceToken, publicAgentScopes)
 
     await submitMentionedRequest(
       sourcePage.page,
