@@ -10,6 +10,24 @@ export const getBaseUrl = (): string => {
   return configuredBaseUrl ? configuredBaseUrl.replace(/\/$/, '') : ''
 }
 
+/** The executor connects directly, so it cannot use the browser's Vite proxy. */
+export const resolveExecutorApiOrigin = (configuredOrigin?: string): string => {
+  const origin = configuredOrigin?.trim()
+  if (!origin) {
+    throw new Error('VITE_API_PUBLIC_URL must name the executor API origin.')
+  }
+  try {
+    const parsed = new URL(origin)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('protocol')
+    return parsed.origin
+  } catch {
+    throw new Error('VITE_API_PUBLIC_URL must be an absolute http(s) API origin.')
+  }
+}
+
+export const getExecutorApiOrigin = (invitationApiBaseUrl: string): string =>
+  resolveExecutorApiOrigin(import.meta.env?.VITE_API_PUBLIC_URL || invitationApiBaseUrl)
+
 export const createApiClient = (
   token: string | null,
   onUnauthorized?: () => Promise<string | null>,

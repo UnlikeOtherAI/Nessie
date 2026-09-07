@@ -45,14 +45,32 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 - The first package build found an out-of-date generated Prisma client. The
   documented single `pnpm prisma:generate` step fixed that; `@nessie/runtime`
   and `@nessie/executor-manage` now build successfully.
-- A focused coding-session test fails on this Windows source setup and leaves
-  the manager's twenty-minute stop timer live after the assertion, so the test
-  process must be interrupted. Treat it as a fixture/lifecycle test issue until
-  rerun with a clean failure report; it does not establish a pairing failure.
+- `node --test --test-force-exit --import tsx --test-reporter spec
+  test/coding-session-manager.test.ts` ran zero subtests because
+  `executor/src/egress-gateway.ts` could not import the missing
+  `@nessie/runtime/dist/url-safety.js` artifact. This is a worktree build
+  prerequisite failure, not pairing or coding-session behavior; the old
+  unregistered tree no longer contains the original assertion source.
 - The real worker smoke harness supports the shared local development database.
   It uses a deterministic mock LLM and cleans its own seeded scope. The
   multi-instance smoke requires a separate freshly migrated database and must
   not use the active development database.
+
+## Discovered versus executed coverage
+
+| Capability | Status |
+| --- | --- |
+| Folder canonical root and COW drafts | Exists; not live-tested. |
+| Codex guest session | Exists; not live-proven. |
+| Claude guest session | Unsupported. |
+| Browser guest session | Exists; an existing-user `connected_browser` is intentionally withheld and has no bridge. |
+| Per-agent persistent allow/deny | Exists. |
+| Local deny, allow once, and always allow consent | Not fully proven. |
+| Board assignment to executor and green-PR orchestration | Absent. |
+
+The current [executor protocol](../../executor/src/index.ts) and
+[Windows desktop guide](../running-the-apps/windows-desktop.md) remain the
+authoritative implementation and operator references.
 
 ## Real-path verification sequence
 
@@ -60,7 +78,7 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
    normal authenticated product flow.
 2. Pair a Windows executor with that exact agent and a private or project scope.
 3. Approve the descriptor and grant only `coding.launch`, `coding.observe`,
-   `workspace.review`, and `workspace.promote` after fresh verification.
+   `workspace.review`, and `sandbox.stop` after fresh verification.
 4. Start the daemon and prove online liveness through the API before launching a
    run.
 5. Launch a coding run that requests the pre-granted bundle; verify its
@@ -77,3 +95,6 @@ task-to-executor policy that creates the exact run-scoped coding binding in the
 same transaction as the assignment wake. It must retain the existing opaque
 candidate resolution, descriptor/local-policy checks, operation grants, and
 review-before-promotion boundary.
+
+A coding run is also blocked until Ledger has a catalog entry for the executor
+coding profile.
