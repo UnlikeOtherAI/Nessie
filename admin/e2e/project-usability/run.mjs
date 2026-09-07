@@ -87,32 +87,10 @@ const moveTaskThroughUi = async (page, title, column) => {
   await card.click()
   const dialog = page.getByRole('dialog', { name: 'Task details' })
   const columnField = dialog.getByLabel('Column')
-  if (await columnField.count()) {
-    await columnField.selectOption(column.id)
-    await dialog.getByRole('button', { name: 'Save changes' }).click()
-    await dialog.waitFor({ state: 'hidden' })
-    return
-  }
-  // Keep the evaluation useful against the pre-Column UI while the product
-  // branch is being integrated: the existing move affordance is drag-only.
-  await dialog.getByRole('button', { name: 'Close' }).click()
+  assert.equal(await columnField.count(), 1, 'task details exposes the labelled Column control')
+  await columnField.selectOption(column.id)
+  await dialog.getByRole('button', { name: 'Save changes' }).click()
   await dialog.waitFor({ state: 'hidden' })
-  await dragCardToColumn(page, title, column.id)
-}
-
-const dragCardToColumn = async (page, title, columnId) => {
-  const card = page.locator('[data-kanban-card]').filter({ hasText: title }).first()
-  const handle = card.locator('[data-kanban-drag-handle]')
-  const source = await handle.count() ? handle : card
-  const start = await source.boundingBox()
-  const target = await page.locator(`[data-kanban-dropzone="${columnId}"]`).boundingBox()
-  assert.ok(start, `ticket card "${title}" has a measurable drag source`)
-  assert.ok(target, `target column "${columnId}" has a measurable dropzone`)
-  const mouse = page.mouse
-  await mouse.move(start.x + start.width / 2, start.y + start.height / 2)
-  await mouse.down()
-  await mouse.move(target.x + target.width / 2, target.y + Math.min(80, target.height / 2), { steps: 12 })
-  await mouse.up()
 }
 
 const waitForBoardTask = async (token, projectId, boardId, title, expectedColumnId) => {
@@ -188,15 +166,32 @@ const main = async () => {
   const createdTitle = `QA flow ${runId}`
   const editedTitle = `QA edited ${runId}`
   const touchTitle = `QA touch ${runId}`
+  const touchTitles = [touchTitle, ...Array.from({ length: 7 }, (_, index) => `${touchTitle}-${index + 2}`)]
+  const createdTaskIds = new Set()
 
   try {
     // Core lifecycle: browser owns creation and editing; the drop gesture owns
     // placement, then the real board read proves the persisted result.
     await goto(desktopPage.page, `/projects/${seed.project.id}/board?board=${boardA.id}`)
     await createTaskThroughUi(desktopPage.page, createdTitle, 'A durable browser flow')
+    const createdTask = await waitForBoardTask(
+      seed.token,
+      seed.project.id,
+      boardA.id,
+      createdTitle,
+      firstColumn.id,
+    )
+    createdTaskIds.add(createdTask.id)
     await editTaskThroughUi(desktopPage.page, createdTitle, editedTitle)
     await moveTaskThroughUi(desktopPage.page, editedTitle, secondColumn)
-    await waitForBoardTask(seed.token, seed.project.id, boardA.id, editedTitle, secondColumn.id)
+    const editedTask = await waitForBoardTask(
+      seed.token,
+      seed.project.id,
+      boardA.id,
+      editedTitle,
+      secondColumn.id,
+    )
+    createdTaskIds.add(editedTask.id)
     await shot(desktopPage.page, 'desktop-lifecycle')
 
     // Board isolation: a sibling board has its own columns and ticket pool.
@@ -212,7 +207,11 @@ const main = async () => {
     // Phone doorway plus touch-sized board scrolling. This also checks the
     // production drag-handle contract without requiring a long-press drag.
     await goto(phonePage.page, `/projects/${seed.project.id}/board?board=${boardA.id}`)
-    await createTaskThroughUi(phonePage.page, touchTitle)
+    for (const title of touchTitles) {
+      await createTaskThroughUi(phonePage.page, title)
+      const task = await waitForBoardTask(seed.token, seed.project.id, boardA.id, title, firstColumn.id)
+      createdTaskIds.add(task.id)
+    }
     const viewport = phonePage.page.locator('[data-kanban-board-viewport]')
     const metrics = await viewport.evaluate((node) => ({
       clientWidth: node.clientWidth,
@@ -224,6 +223,18 @@ const main = async () => {
     assert.equal(await handle.count(), 1, 'a ticket card has one labelled drag handle')
     const handleBox = await handle.boundingBox()
     assert.ok(handleBox && handleBox.width >= 44 && handleBox.height >= 44, 'drag handle meets 44px touch target')
+    const dropzone = phonePage.page.locator(`[data-kanban-dropzone="${firstColumn.id}"]`)
+    const vertical = await dropzone.evaluate((node) => ({
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+    }))
+    assert.ok(vertical.scrollHeight > vertical.clientHeight, 'a populated column exposes vertical overflow')
+    const beforeVertical = await dropzone.evaluate((node) => node.scrollTop)
+    await dropzone.hover()
+    await phonePage.page.mouse.wheel(0, 600)
+    await phonePage.page.waitForTimeout(250)
+    const afterVertical = await dropzone.evaluate((node) => node.scrollTop)
+    assert.ok(afterVertical > beforeVertical, `column scrolls vertically (${beforeVertical} → ${afterVertical})`)
     await shot(phonePage.page, 'phone-before-board-scroll')
     const before = await viewport.evaluate((node) => node.scrollLeft)
     const viewportBox = await viewport.boundingBox()
@@ -271,6 +282,21 @@ const main = async () => {
     await desktop.close()
     await phone.close()
     await browser.close()
+    for (const taskId of createdTaskIds) {
+      await api(`/api/tasks/${taskId}/transition`, {
+        body: { status: 'cancelled' },
+        method: 'POST',
+        token: seed.token,
+      }).catch(() => undefined)
+    }
+    await api(`/api/projects/${seed.project.id}/boards/${boardB.id}`, {
+      method: 'DELETE',
+      token: seed.token,
+    }).catch(() => undefined)
+    await api(`/api/projects/${seed.project.id}/boards/${boardA.id}`, {
+      method: 'DELETE',
+      token: seed.token,
+    }).catch(() => undefined)
   }
 
   console.log('project-usability e2e: passed (lifecycle, isolation, phone touch scroll)')
