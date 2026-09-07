@@ -69,6 +69,9 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- A task, plan, or child-agent activity row linked to a run is a retained run
+  output: its reader must satisfy both the run channel entitlement and that
+  run's disclosure basis. A task without a run keeps ordinary task visibility.
 - **A private conversation's author, rather than its agent's owner or another
   reader, decides export.** `MessageDisclosureSource` carries the source
   channel and each human author whose private turn entered a derived message.
