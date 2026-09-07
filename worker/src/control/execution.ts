@@ -1,4 +1,5 @@
 import { type PrismaClient } from '@prisma/client'
+import type { CommandRunner } from './execution/command-runner.js'
 import { loadProvisioningContext, loadTerminationContext } from './execution/claims.js'
 import { cleanupProvisionedInstance } from './execution/environment-cleanup.js'
 import { acknowledgeLease } from './execution/leases.js'
@@ -28,6 +29,7 @@ export { registerExecutionRunners } from './execution/runners.js'
 export const allocateExecutionEnvironmentInstance = async (
   prisma: PrismaClient,
   input: {
+    commandRunner?: CommandRunner
     instanceId: string
     runnerLabelPrefix?: string
   },
@@ -70,11 +72,15 @@ export const allocateExecutionEnvironmentInstance = async (
     // only knowable after the fact (docker) derive nothing and this is a no-op.
     await persistDerivedProviderInstanceRef(prisma, context)
 
-    const provisioned = await provisionProviderInstance(context)
+    const provisioned = await provisionProviderInstance(context, {
+      commandRunner: input.commandRunner,
+    })
     const persisted = await persistProvisionSuccess(prisma, context, provisioned)
 
     if (!persisted) {
-      await cleanupProvisionedInstance(context, provisioned)
+      await cleanupProvisionedInstance(context, provisioned, {
+        commandRunner: input.commandRunner,
+      })
       const terminalInstance = await loadWorkflowInstanceState(prisma, context.instance.id)
       if (terminalInstance && ['failed', 'terminated'].includes(terminalInstance.status)) {
         await maybeContinueWorkflowForInstance(prisma, {
@@ -125,6 +131,7 @@ export const allocateExecutionEnvironmentInstance = async (
 export const terminateExecutionEnvironmentInstance = async (
   prisma: PrismaClient,
   instanceId: string,
+  dependencies: { commandRunner?: CommandRunner } = {},
 ): Promise<boolean> => {
   const context = await loadTerminationContext(prisma, instanceId)
   if (!context) {
@@ -145,7 +152,7 @@ export const terminateExecutionEnvironmentInstance = async (
     return true
   }
 
-  const termination = await terminateProviderInstance(context)
+  const termination = await terminateProviderInstance(context, dependencies)
   await persistTermination(prisma, context, termination)
 
   // A workflow step waiting on this environment is told what the row says, not

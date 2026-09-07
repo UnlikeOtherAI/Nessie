@@ -107,11 +107,13 @@ remedy is the project/team API and data migration described in
 [the team-model standard](../standards/team-model.md).
 
 Local combined API/worker builds passed. The full admin Turbo suite passed
-1,439 tests. Postgres checks verified concurrent checklist application and
+1,447 tests after correcting a stale Designer source assertion. Postgres checks verified concurrent checklist application and
 restricted-source propagation through peer mailbox delivery. Google Calendar
-tests verified the Meet request contract with a provider mock. Some broader
-Windows tests failed because their Docker executable and `chmod` fixtures
-assume POSIX; Linux CI remains the merge gate. These checks do not yet prove
+tests verified the Meet request contract with a provider mock. Earlier broader
+Windows runs failed because their Docker executable and `chmod` fixtures
+assumed POSIX. Those Docker fixtures now inject a command runner per invocation,
+including cleanup, so they cannot resolve an installed Docker executable.
+Linux CI remains the merge gate. These checks do not yet prove
 live agent consensus, generated prospect tasks, or an actual Meet link.
 
 The live Google connection is disabled with **Not set up on this server**.

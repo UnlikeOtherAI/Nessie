@@ -36,6 +36,8 @@ export const runCommand = async (
   }
 }
 
+export type CommandRunner = typeof runCommand
+
 export const runJsonCommand = async <T>(
   command: string,
   args: string[],

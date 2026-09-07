@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { PrismaClient } from '@prisma/client'
 
+import type { CommandRunner } from '../../src/control/execution/command-runner.js'
 import { runDatabaseTest } from './support.js'
 
 // A launch config may pin `containerName`, and that pin lives on the TEMPLATE,
@@ -25,79 +26,41 @@ process.env['NESSIE_MODE'] = 'local'
 // A `docker` on PATH with a one-container-per-name daemon: `run` refuses a name
 // it already holds the way the real daemon does, and `inspect` answers about the
 // container behind a name — including the `nessie.instance-id` label, which is
-// the only evidence of which instance row created it.
-const shimDirectory = mkdtempSync(`${tmpdir()}/nessie-docker-collision-`)
+// the only evidence of which instance row created it. The test fakes the typed
+// command boundary, so it cannot fall through to a real Docker executable.
 const stateDirectory = mkdtempSync(`${tmpdir()}/nessie-docker-collision-state-`)
-writeFileSync(
-  join(shimDirectory, 'docker'),
-  [
-    '#!/bin/sh',
-    `STATE=${JSON.stringify(stateDirectory)}`,
-    'cmd="$1"',
-    'case "$cmd" in',
-    '  run)',
-    '    name=""',
-    '    label=""',
-    '    shift',
-    '    while [ $# -gt 0 ]; do',
-    '      case "$1" in',
-    '        --name) shift; name="$1" ;;',
-    '        --label)',
-    '          shift',
-    '          case "$1" in',
-    '            nessie.instance-id=*) label="${1#nessie.instance-id=}" ;;',
-    '          esac',
-    '          ;;',
-    '      esac',
-    '      shift',
-    '    done',
-    '    if [ -f "$STATE/$name" ]; then',
-    '      existing=$(sed -n 1p "$STATE/$name")',
-    '      echo "docker: Error response from daemon: Conflict. The container name'
-    + ' \\"/$name\\" is already in use by container \\"$existing\\"." >&2',
-    '      exit 125',
-    '    fi',
-    '    count=$(cat "$STATE/.count" 2>/dev/null || echo 0)',
-    '    count=$((count + 1))',
-    '    echo "$count" > "$STATE/.count"',
-    '    id="container-id-$count"',
-    '    printf \'%s\\n%s\\n\' "$id" "$label" > "$STATE/$name"',
-    '    printf \'%s\\n\' "$id"',
-    '    ;;',
-    '  inspect)',
-    '    target="$2"',
-    '    format="$4"',
-    '    case "$format" in',
-    '      *State*)',
-    '        printf \'{"Running":true,"Status":"running"}\\n\'',
-    '        ;;',
-    '      *Labels*)',
-    '        if [ -f "$STATE/$target" ]; then',
-    '          printf \'%s\\t%s\\n\' "$(sed -n 1p "$STATE/$target")" "$(sed -n 2p "$STATE/$target")"',
-    '        else',
-    '          echo "Error: No such object: $target" >&2',
-    '          exit 1',
-    '        fi',
-    '        ;;',
-    '      *)',
-    '        if [ -f "$STATE/$target" ]; then',
-    '          sed -n 1p "$STATE/$target"',
-    '        else',
-    '          echo "Error: No such object: $target" >&2',
-    '          exit 1',
-    '        fi',
-    '        ;;',
-    '    esac',
-    '    ;;',
-    '  *)',
-    '    exit 0',
-    '    ;;',
-    'esac',
-    '',
-  ].join('\n'),
-)
-chmodSync(join(shimDirectory, 'docker'), 0o755)
-process.env['PATH'] = `${shimDirectory}:${process.env['PATH'] ?? ''}`
+const commandRunner: CommandRunner = async (command, args) => {
+  assert.equal(command, 'docker')
+  const statePath = (name: string): string => join(stateDirectory, name)
+  if (args[0] === 'run') {
+    const nameIndex = args.indexOf('--name')
+    const name = nameIndex < 0 ? '' : args[nameIndex + 1] ?? ''
+    const label = args.find((arg) => arg.startsWith('nessie.instance-id='))?.slice('nessie.instance-id='.length) ?? ''
+    const record = statePath(name)
+    if (existsSync(record)) {
+      const [existing] = readFileSync(record, 'utf8').split('\n')
+      throw new Error(
+        `docker: Error response from daemon: Conflict. The container name "/${name}" is already in use by container "${existing}".`,
+      )
+    }
+    const countFile = statePath('.count')
+    const count = Number(existsSync(countFile) ? readFileSync(countFile, 'utf8') : '0') + 1
+    writeFileSync(countFile, String(count))
+    const id = `container-id-${count}`
+    writeFileSync(record, `${id}\n${label}\n`)
+    return { stderr: '', stdout: `${id}\n` }
+  }
+  if (args[0] === 'inspect') {
+    const target = args[1] ?? ''
+    const format = args[args.indexOf('--format') + 1] ?? ''
+    if (format.includes('State')) return { stderr: '', stdout: '{"Running":true,"Status":"running"}\n' }
+    const record = statePath(target)
+    if (!existsSync(record)) throw new Error(`Error: No such object: ${target}`)
+    const [id, label] = readFileSync(record, 'utf8').trimEnd().split('\n')
+    return { stderr: '', stdout: format.includes('Labels') ? `${id}\t${label}\n` : `${id}\n` }
+  }
+  return { stderr: '', stdout: '' }
+}
 
 const { allocateExecutionEnvironmentInstance } = await import('../../src/control/execution.js')
 const { buildDockerContainerName } = await import('../../src/control/execution/naming.js')
@@ -172,10 +135,12 @@ runDatabaseTest(
       const secondId = await launchInstance(prisma, seed)
 
       const first = await allocateExecutionEnvironmentInstance(prisma, {
+        commandRunner,
         instanceId: firstId,
         runnerLabelPrefix: seed.runnerLabelPrefix,
       })
       const second = await allocateExecutionEnvironmentInstance(prisma, {
+        commandRunner,
         instanceId: secondId,
         runnerLabelPrefix: seed.runnerLabelPrefix,
       })
@@ -228,6 +193,7 @@ runDatabaseTest('a retry adopts the container this instance itself created', asy
     )
 
     const allocated = await allocateExecutionEnvironmentInstance(prisma, {
+      commandRunner,
       instanceId,
       runnerLabelPrefix: seed.runnerLabelPrefix,
     })
