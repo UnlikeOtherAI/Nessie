@@ -21,7 +21,16 @@ export const markUnknownPrivateConversationScopes = async (
     where: { id: { in: channelIds }, visibility: { not: 'public' } },
     select: { id: true },
   })
+  markUnknownPrivateConversationChannels(sink, channels)
+}
+
+/** Mark known non-public channels when their source author is unavailable. */
+export const markUnknownPrivateConversationChannels = (
+  sink: ConsumedSourceSink,
+  channels: readonly { id: string; visibility: string }[],
+): void => {
   for (const channel of channels) {
+    if (channel.visibility === 'public') continue
     sink.addPrivateConversationSource({
       sourceAuthorUserId: null,
       sourceChannelId: channel.id,

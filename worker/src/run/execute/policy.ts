@@ -66,6 +66,7 @@ type ToolDeniedOutputReason =
   | 'auto_review_denied'
   | 'approval_required'
   | 'explicit_policy_deny'
+  | 'private_conversation_disclosure_required'
 
 export const buildToolActorContext = (
   actorContext: AuthorizedActionContext,

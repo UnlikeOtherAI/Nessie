@@ -6,7 +6,10 @@ import {
   createConsumedSourceSink,
   type BasisScope,
 } from './disclosure-basis.js'
-import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
+import {
+  markUnknownPrivateConversationChannels,
+  markUnknownPrivateConversationScopes,
+} from './private-conversation-lineage.js'
 import { blocksPrivateConversationWrite } from './private-conversation-write-gate.js'
 
 const DESTINATION = {
@@ -103,12 +106,23 @@ test('private conversation material cannot enter an unscoped write or MCP call',
   )
   assert.equal(
     blocksPrivateConversationWrite({
-      context: { ...context, agent: { agentKind: 'personal_assistant' } },
+      context: { ...context, agent: { ...context.agent, agentKind: 'personal_assistant' } },
       isExternal: false,
       toolName: 'kb_draft_write',
     }),
     false,
   )
+})
+
+test('a private attachment source remains unknown beside a current human turn', () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' })
+  markUnknownPrivateConversationChannels(sink, [{ id: 'private-room', visibility: 'private' }])
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
 })
 
 test('a run consuming only destination-implied sources has an empty basis', () => {
