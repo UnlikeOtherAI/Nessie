@@ -214,8 +214,8 @@ test('the card press announces through the API scope rule, not a hand-built pair
 })
 
 test('no message announcement is hand-assembled in the worker either', () => {
-  // The worker announces messages too — the orchestration notice, the PA's
-  // cards, the mailbox hand-off, the missed-call record — and used to retype
+  // The worker announces visible messages too — the orchestration notice, the PA's
+  // cards, the missed-call record — and used to retype
   // the envelope at each one. `publishMessageEnvelope` lives in
   // `@nessie/runtime` so both processes reach the same builder.
   for (const path of [
@@ -223,7 +223,6 @@ test('no message announcement is hand-assembled in the worker either', () => {
     '../worker/src/run/orchestration-notice.ts',
     '../worker/src/run/pa-tools/google-access.ts',
     '../worker/src/run/pa-tools/comms-card.ts',
-    '../worker/src/control/mailbox.ts',
     '../worker/src/control/call-lifecycle.ts',
     // The DeepSignal digest, which announces here since the fan-out left the
     // receiver's request path (audit 9.2).
@@ -239,4 +238,13 @@ test('no message announcement is hand-assembled in the worker either', () => {
       `${path} must not build a message announcement payload of its own`,
     )
   }
+})
+
+test('mailbox delivery does not announce its hidden prompt brief', () => {
+  // Peer-delegation briefs can carry a disclosure basis. Mailbox delivery stores
+  // them as hidden system prompts for the target run, so publishing a
+  // `message.new` envelope would expose a preview to channel-wide WS scopes.
+  const source = readFileSync(new URL('../../worker/src/control/mailbox.ts', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /publishMessageEnvelope/)
+  assert.doesNotMatch(source, /event: 'message\.(new|reply)'/)
 })
