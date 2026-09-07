@@ -17,6 +17,7 @@ import { z } from 'zod'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
 import {
+  assertProjectWriteDestination,
   IdSchema,
   PrioritySchema,
   TicketStatusSchema,
@@ -149,6 +150,11 @@ export const runTicketCreateTool = async (
   const args = CreateInput.parse(input)
   const member = await resolveActingMember(context)
   await projectFor(context, member, args.projectId)
+  await assertProjectWriteDestination(context, {
+    organizationId: member.organizationId,
+    projectId: args.projectId,
+    taskUserIds: [args.assigneeUserId ?? null],
+  })
   const created = await createProjectTask(context.prisma, {
     ...args,
     actorContext: member.actorContext,
@@ -192,7 +198,12 @@ export const runTicketUpdateTool = async (
     throw new Error('Provide at least one ticket field to update.')
   }
   const member = await resolveActingMember(context)
-  await projectTicketFor(context, member, ticketId)
+  const ticket = await projectTicketFor(context, member, ticketId)
+  await assertProjectWriteDestination(context, {
+    organizationId: member.organizationId,
+    projectId: ticket.projectId!,
+    taskUserIds: [ticket.assigneeUserId, ticket.ownerUserId],
+  })
   const updated = await updateProjectTask(
     context.prisma,
     { taskId: ticketId, organizationId: member.organizationId, fields },

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { BasisScopeSchema } from '../execute/disclosure-basis.js'
 import { resolveActingMember } from './access.js'
+import { assertProjectWriteDestination } from './ticket-context.js'
 
 const MAX_PEER_DELEGATION_DEPTH = 4
 const DelegateInput = z.object({ agentId: z.string().uuid(), brief: z.string().trim().min(1).max(8_000) })
@@ -92,6 +93,10 @@ export const runTicketBoardCreateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = BoardInput.parse(input)
   const { member, projectId } = await requesterAndProject(context)
+  await assertProjectWriteDestination(context, {
+    organizationId: member.organizationId,
+    projectId,
+  })
   const board = await createBoard(
     context.prisma,
     { id: projectId, organizationId: member.organizationId },

@@ -4,8 +4,7 @@ import { parseOrganizationId, parseUserId } from '@nessie/schemas'
 
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
-import { assertProjectChecklistDestination } from './ticket-checklists.js'
-import { projectFor } from './ticket-context.js'
+import { assertProjectWriteDestination, projectFor } from './ticket-context.js'
 
 const member = {
   actorContext: {
@@ -59,10 +58,10 @@ const checklistContext = (visibleAgents: Set<string>) => {
   }
 }
 
-test('checklist writes permit a source every project reader can see and reject a private one', async () => {
+test('project writes permit a source every project reader can see and reject a private one', async () => {
   const shared = checklistContext(new Set(['public-agent']))
   shared.consumedSources.add({ scopeId: 'public-agent', scopeType: 'agent' })
-  await assertProjectChecklistDestination(shared.context, {
+  await assertProjectWriteDestination(shared.context, {
     organizationId: member.organizationId,
     projectId: '55555555-5555-4555-8555-555555555555',
   })
@@ -70,10 +69,10 @@ test('checklist writes permit a source every project reader can see and reject a
   const privateSource = checklistContext(new Set())
   privateSource.consumedSources.add({ scopeId: 'private-agent', scopeType: 'agent' })
   await assert.rejects(
-    assertProjectChecklistDestination(privateSource.context, {
+    assertProjectWriteDestination(privateSource.context, {
       organizationId: member.organizationId,
       projectId: '55555555-5555-4555-8555-555555555555',
     }),
-    /restricted research/,
+    /restricted research into this shared project/,
   )
 })

@@ -1,5 +1,5 @@
 import type { ProjectTaskRecord } from '@nessie/team-admin'
-import { getProjectTask, isProjectAccessibleToUser } from '@nessie/team-admin'
+import { getProjectTask, isAgentAccessibleToActor, isProjectAccessibleToUser } from '@nessie/team-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -72,6 +72,53 @@ export const recordProjectRead = (
   // membership-only project basis would withhold this PA reply from its owner.
   if (!member.isOwner) {
     context.consumedSources?.add({ scopeId: projectId, scopeType: 'project' })
+  }
+}
+
+/**
+ * A project write makes model-held material readable to every project reader.
+ * Keep this at the shared ticket-write chokepoint so private sources cannot be
+ * copied into a task, checklist, or board.
+ */
+export const assertProjectWriteDestination = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    agentId?: string
+    organizationId: string
+    projectId: string
+    taskUserIds?: Array<string | null>
+  },
+): Promise<void> => {
+  const members = await context.prisma.projectMember.findMany({
+    where: { projectId: input.projectId },
+    select: { userId: true },
+  })
+  const projectMemberIds = new Set(members.map(({ userId }) => userId))
+  const taskUserIds = new Set(input.taskUserIds?.filter((id): id is string => id !== null) ?? [])
+  const organizationMembers = await context.prisma.organizationMember.findMany({
+    where: { deactivatedAt: null, organizationId: input.organizationId },
+    select: { role: true, userId: true },
+  })
+  const readers = organizationMembers.filter(({ role, userId }) => (
+    role === 'owner' || projectMemberIds.has(userId) || taskUserIds.has(userId)
+  ))
+  const audienceCanSeeAgent = async (agentId: string): Promise<boolean> => {
+    const visible = await Promise.all(readers.map(async ({ role, userId }) => (
+      isAgentAccessibleToActor(context.prisma, {
+        ...context.actorContext,
+        actor: { ...context.actorContext.actor, actorId: userId, roles: [role] },
+      }, agentId)
+    )))
+    return !visible.includes(false)
+  }
+  for (const scope of context.consumedSources?.list() ?? []) {
+    const implied = (scope.scopeType === 'organization' && scope.scopeId === input.organizationId)
+      || (scope.scopeType === 'project' && scope.scopeId === input.projectId)
+      || (scope.scopeType === 'agent' && await audienceCanSeeAgent(scope.scopeId))
+    if (!implied) throw new Error('I cannot copy restricted research into this shared project.')
+  }
+  if (input.agentId && !(await audienceCanSeeAgent(input.agentId))) {
+    throw new Error('This content is private to an agent some project collaborators cannot access.')
   }
 }
 
