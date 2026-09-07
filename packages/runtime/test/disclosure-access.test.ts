@@ -304,6 +304,7 @@ test('unattributed legacy non-public channel bases fail closed while public base
     }],
     channels: [
       { id: 'private-channel', visibility: 'private' },
+      { id: 'private-channel-2', visibility: 'private' },
       { id: 'public-channel', visibility: 'public' },
     ],
   }
@@ -361,4 +362,29 @@ test('private-lineage policy agrees for batched and single grant reads', async (
   })
 
   assert.deepEqual([...single], [...(batched.get('message-1') ?? [])])
+})
+
+
+test('a partial private-lineage backfill cannot authorize an uncovered private basis', async () => {
+  const granted = await resolveGrantedDisclosureScopeKeys(buildGrantPrisma({
+    channels: [
+      { id: 'private-channel', visibility: 'private' },
+      { id: 'private-channel-2', visibility: 'private' },
+    ],
+    messageGrants: [{ grantedByUserId: 'author-1', messageId: 'message-1' }],
+  }).prisma, {
+    agentId: 'agent-1',
+    basis: [
+      { scopeId: 'private-channel', scopeType: 'channel' },
+      { scopeId: 'private-channel-2', scopeType: 'channel' },
+    ],
+    channelId: 'destination-channel',
+    disclosureSources: privateLineage,
+    messageId: 'message-1',
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  })
+
+  assert.deepEqual([...granted], [])
 })

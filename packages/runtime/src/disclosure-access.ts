@@ -195,21 +195,25 @@ const resolveGrantPolicies = async (
   const policies = new Map<string, GrantPolicy>()
   for (const subject of subjects) {
     const sources = subject.disclosureSources ?? []
+    const sourceChannelIds = new Set(sources.map((source) => source.sourceChannelId))
+    // A source record must account for every non-public channel scope. A
+    // partial legacy backfill is not consent for the private source it missed.
+    const hasUnattributedNonPublicChannel = subject.basis.some((scope) =>
+      scope.scopeType === 'channel'
+      && !sourceChannelIds.has(scope.scopeId)
+      && !publicChannelIds.has(scope.scopeId))
     if (sources.length > 0) {
       const authorIds = new Set(sources.map((source) => source.sourceAuthorUserId))
+      const soleAuthor = authorIds.size === 1 && !authorIds.has(null)
       policies.set(subject.messageId, {
-        ...(authorIds.size === 1 && !authorIds.has(null)
-          ? { messageGrantAuthorId: [...authorIds][0] ?? undefined }
-          : {}),
-        messageGrantsAllowed: authorIds.size === 1 && !authorIds.has(null),
+        ...(soleAuthor ? { messageGrantAuthorId: [...authorIds][0] ?? undefined } : {}),
+        messageGrantsAllowed: soleAuthor && !hasUnattributedNonPublicChannel,
         scopeGrantsAllowed: false,
       })
       continue
     }
     // A legacy basis with no source author is safe to grant only when every
     // channel it names is demonstrably public. Missing/renamed rows fail closed.
-    const hasUnattributedNonPublicChannel = subject.basis.some((scope) =>
-      scope.scopeType === 'channel' && !publicChannelIds.has(scope.scopeId))
     policies.set(subject.messageId, hasUnattributedNonPublicChannel
       ? { messageGrantsAllowed: false, scopeGrantsAllowed: false }
       : { messageGrantsAllowed: true, scopeGrantsAllowed: true })
