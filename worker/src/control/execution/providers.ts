@@ -15,6 +15,7 @@ import type {
   ExecutionProvider,
   ProviderProbe,
   ProviderProvisionResult,
+  ProviderTerminationResult,
   ProvisioningContext,
   TerminationContext,
 } from './types.js'
@@ -105,12 +106,19 @@ export const provisionProviderInstance = async (
  * meant to stop. The probe still reports the provider offline and provision
  * still throws, so nothing new is placed; draining what already exists is all
  * that is left for `docker` on such a deployment.
+ *
+ * Ungated is not the same as unconditional, and the mode still decides what the
+ * terminate may CLAIM. `local` mode is one process and one Docker daemon, so a
+ * `No such container` from it is proof the container is gone; on a deployment
+ * running N workers the daemon this replica reached is not necessarily the
+ * container's host, so the same answer proves nothing and the result comes back
+ * `unverified` for `persistTermination` to record honestly (plan row 5.12).
  */
 export const terminateProviderInstance = async (
   context: TerminationContext,
-): Promise<Record<string, unknown>> => {
+): Promise<ProviderTerminationResult> => {
   if (context.instance.template.provider === 'docker') {
-    return terminateDocker(context)
+    return terminateDocker(context, { soleDaemon: localOnlyGateMode() === 'local' })
   }
 
   return terminateGcloud(context)

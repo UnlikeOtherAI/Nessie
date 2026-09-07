@@ -1,10 +1,11 @@
 import { runCommand, runJsonCommand } from './command-runner.js'
 import { mergeLaunchConfig } from './launch-config.js'
-import { buildDockerContainerName, buildSystemLabels } from './naming.js'
+import { INSTANCE_ID_LABEL, buildDockerContainerName, buildSystemLabels } from './naming.js'
 import { parseString, parseStringArray, parseStringRecord } from './stored-json.js'
 import type {
   ProviderProbe,
   ProviderProvisionResult,
+  ProviderTerminationResult,
   ProvisioningContext,
   TerminationContext,
 } from './types.js'
@@ -33,12 +34,16 @@ const buildDockerProvisionArgs = (context: ProvisioningContext): string[] => {
   const name = parseString(config['containerName']) ?? buildDockerContainerName(context.instance.id)
   const args = ['run', '-d', '--name', name]
 
+  // System labels last, so a template's `labels` cannot overwrite them.
+  // `nessie.instance-id` is what `adoptOwnContainer` below trusts to decide
+  // whether a container under a wanted name belongs to this instance row; a
+  // template that could set it could make one row adopt another's container.
   const labels = {
+    ...parseStringRecord(config['labels']),
     ...buildSystemLabels({
       instanceId: context.instance.id,
       organizationId: context.instance.organizationId,
     }),
-    ...parseStringRecord(config['labels']),
   }
   for (const [key, value] of Object.entries(labels)) {
     args.push('--label', `${key}=${value}`)
@@ -102,6 +107,50 @@ export const probeDocker = async (): Promise<ProviderProbe> => {
   }
 }
 
+// A row may only ever name a machine no other row can name — the rule
+// `deriveGcloudProviderInstanceRef` already follows for a pinned
+// `instanceName`/`jobName` (`docs/standards/horizontal-scaling/storage-and-realtime.md`, invariant 7).
+// `containerName` is pinnable on a template too, so every instance launched from
+// such a template runs `docker run --name <the same name>` and every one after
+// the first is told the name is already in use.
+//
+// Adopting whatever holds the name is how that used to be answered, and it is
+// worse than the collision it hides: two instance rows end up carrying one
+// container id, so terminating either — a person clicking terminate, a lease
+// sweep, `cleanupProvisionedInstance` after a lost race — destroys the other's
+// live environment, and the surviving row still says `ready`. The collision must
+// fail instead, loudly, on the instance that lost.
+//
+// The one container this instance may adopt is its own: `docker run` succeeded
+// and the worker died before the row was written, so the retry meets a container
+// it created itself. The `nessie.instance-id` label is the proof, and
+// `buildDockerProvisionArgs` stamps it after a template's own labels so nothing
+// but a real Nessie provision can claim it.
+const adoptOwnContainer = async (input: {
+  containerName: string
+  instanceId: string
+}): Promise<string> => {
+  const { stdout } = await runCommand('docker', [
+    'inspect',
+    input.containerName,
+    '--format',
+    `{{.Id}}\t{{index .Config.Labels "${INSTANCE_ID_LABEL}"}}`,
+  ])
+  const [containerId, label] = stdout.trim().split('\t')
+  // Docker prints `<no value>` for a label the container does not carry, which
+  // is what a container Nessie never launched looks like from here.
+  const ownerInstanceId = !label || label === '<no value>' ? null : label
+
+  if (ownerInstanceId !== input.instanceId) {
+    throw new Error(
+      `DOCKER_CONTAINER_NAME_IN_USE:${input.containerName}`
+      + `:owned-by:${ownerInstanceId ?? 'a container Nessie did not launch'}`,
+    )
+  }
+
+  return containerId ?? ''
+}
+
 export const provisionDocker = async (
   context: ProvisioningContext,
 ): Promise<ProviderProvisionResult> => {
@@ -120,13 +169,10 @@ export const provisionDocker = async (
     if (!(error instanceof Error) || !error.message.includes('already in use')) {
       throw error
     }
-    const { stdout } = await runCommand('docker', [
-      'inspect',
+    containerId = await adoptOwnContainer({
       containerName,
-      '--format',
-      '{{.Id}}',
-    ])
-    containerId = stdout.trim()
+      instanceId: context.instance.id,
+    })
   }
 
   if (!containerId) {
@@ -155,11 +201,22 @@ export const provisionDocker = async (
   }
 }
 
+// `soleDaemon` is the whole difference between "already gone" and "not here".
+// In `local` mode there is one process and one Docker daemon, so a
+// `No such container` comes from the only daemon that could ever have held the
+// container and proves it is gone. Anywhere else the daemon this replica reached
+// is not necessarily the container's host — queue jobs are not host-routed — so
+// the same answer proves nothing, and the terminate says `unverified` rather
+// than letting the row claim a container is gone while it runs on and bills.
 export const terminateDocker = async (
   context: TerminationContext,
-): Promise<Record<string, unknown>> => {
+  input: { soleDaemon: boolean },
+): Promise<ProviderTerminationResult> => {
   if (!context.instance.providerInstanceRef) {
-    return {}
+    // This row never named a container, so nothing it records can be a claim
+    // about one. Docker derives no reference before provisioning, so a row
+    // without one is an instance whose provision never got a container id back.
+    return { metadata: {}, outcome: 'terminated' }
   }
 
   try {
@@ -168,10 +225,24 @@ export const terminateDocker = async (
     if (!(error instanceof Error) || !error.message.includes('No such container')) {
       throw error
     }
+
+    if (!input.soleDaemon) {
+      return {
+        metadata: {
+          containerId: context.instance.providerInstanceRef,
+          terminateUnverifiedBy: 'docker',
+          terminateUnverifiedReason: 'DOCKER_NO_SUCH_CONTAINER',
+        },
+        outcome: 'unverified',
+      }
+    }
   }
 
   return {
-    containerId: context.instance.providerInstanceRef,
-    terminatedBy: 'docker',
+    metadata: {
+      containerId: context.instance.providerInstanceRef,
+      terminatedBy: 'docker',
+    },
+    outcome: 'terminated',
   }
 }

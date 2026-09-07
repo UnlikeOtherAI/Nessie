@@ -44,17 +44,23 @@ and the difference is not stylistic — only one of the three is configuration:
   boot failure.
 
   **Terminate is not gated, and the asymmetry is deliberate: refuse to create
-  new single-host resources, never refuse to clean up existing ones.** Nothing
-  stops a self-hosted operator from mounting the Docker socket into the worker,
-  and for them a gated terminate would be an upgrade that strands every live
-  container — the job is claimed, the assertion fires, the container keeps
-  running and the row never leaves `terminating`. With the probe reporting the
-  provider offline and provision throwing, nothing new is placed, so draining
-  what exists is all `docker` is still for. What terminate does **not** fix is
-  the original defect (6.3): it swallows "No such container", so a terminate
-  claimed by a worker other than the one holding the container records
-  `terminated` while the container runs on. The refusal wording tells the
-  operator to confirm on the host whose daemon started it.
+  new single-host resources, never refuse to clean up existing ones.** For a
+  self-hosted operator who mounted the Docker socket into the worker, a gated
+  terminate would be an upgrade that strands every live container — job claimed,
+  assertion fired, container running, row never leaving `terminating` — and
+  nothing new is placed anyway, so draining what exists is all `docker` is still
+  for. **Ungated is not unconditional, though: the mode decides what a terminate
+  may CLAIM** (6.3, row 5.12). `docker rm -f` reaches this replica's daemon,
+  which outside `local` need not be the container's host, so `No such container`
+  proves nothing — swallowing it is what wrote `terminated` for a container still
+  running. A terminate returns an **outcome** (`ProviderTerminationResult`) and
+  only `terminated` may move the row there: `docker` answers `unverified` for a
+  missing container in every mode but `local`, the one deployment with a single
+  daemon; `gcloud` always answers `terminated`, its reference being a global
+  address. Unverified leaves the instance `failed` with
+  `EXECUTION_TERMINATE_UNVERIFIED`, `terminated_at` null and the container id and
+  runner kept — a row `GET /api/execution-environment-instances` returns, so the
+  honesty is in the database, not only in the refusal prose.
 - **The `file_read`/`file_write`/`file_glob` builtins** take their
   `allowedRoots` from a column on `tool_registry_entries`, also
   per-organisation data, so they are refused in
@@ -80,15 +86,13 @@ machine has stopped renewing and nothing else points at it. It enqueues only for
 `gcloud:<kind>:<project>:<zone|region>:<name>` — a global address, so whichever
 replica claims the job deletes the real VM or Cloud Run job. A `docker` ref is a
 container id on one host's daemon, and queue jobs are not host-routed: a
-terminate claimed elsewhere runs `docker rm -f` against the wrong daemon, gets
-`No such container`, has `terminateDocker` swallow it as already-gone, and lets
-`persistTermination` write `terminated`. That row would then say the container
-is gone while it is still running on the dead host. So the sweep enqueues
-nothing for `docker`; the instance keeps the honest terminal state it already
-has, `failed` with `EXECUTION_LEASE_EXPIRED`, and **nothing automatic reclaims
-the container** — a person finds it on the runner's own host by the
+terminate claimed elsewhere hits the wrong daemon and ends at
+`EXECUTION_TERMINATE_UNVERIFIED`, which is honest but is not a reclaim, and
+would replace the expiry reason with one that says less. So the sweep enqueues
+nothing for `docker`; the instance keeps the honest terminal state it already has, `failed`
+with `EXECUTION_LEASE_EXPIRED`, and **nothing automatic reclaims the container** — a person finds it on the runner's own host by the
 `nessie.instance-id` label the provision put on it, with the host named by
-`runnerLabel` in the instance metadata. This is the same refusal
+`runnerLabel` in the instance metadata — the same refusal
 `loadProvisioningContext` makes on the way in (`EXECUTION_RUNNER_NOT_LOCAL`).
 The general rule: when a sweep cannot reach the resource, it records that it
 could not, never a state it did not achieve.
@@ -138,7 +142,14 @@ a reclaim path — deletes A's machine. So `deriveGcloudProviderInstanceRef`
 derives **only** when the name is `buildGcloudInstanceName(instance.id)`, and a
 pinned-name template keeps exactly its pre-existing behaviour: the reference
 appears only after a provision that succeeded. Pre-naming a resource is safe
-only in proportion to how exclusively the row owns the name.
+only in proportion to how exclusively the row owns the name. **And a provision
+may not ADOPT one another row can name either**: `containerName` is pinnable
+too, and `provisionDocker` taking whatever held a name already in use made the
+collision *succeed* — two rows, one container id, either terminate destroying
+the other's live environment. Adoption now needs a `nessie.instance-id` label
+naming **this** instance, which is the crash-retry case it exists for; anything
+else fails `DOCKER_CONTAINER_NAME_IN_USE`, and `buildDockerProvisionArgs` stamps
+the system labels *after* a template's own so that proof cannot be forged.
 
 **Corollary — the failure path reclaims what it may have created.** A provider
 that throws has not necessarily created nothing: `provisionGcloud` runs `deploy`
@@ -165,7 +176,20 @@ Reclaiming is for rows this pass abandoned, never for rows someone else owns.
 `persistTermination` keeps a `failed` instance's `error_message` when it writes
 `terminated`, because both reclaim paths mark the row with *why* and then
 enqueue the terminate; clearing it would leave a `terminated` row and no record
-of the failure.
+of the failure. An unverified terminate writes its own message and keeps the
+previous one under `errorBeforeTermination` in the metadata.
+
+**Corollary — a conditional write that matched nothing rolls its transaction
+back; it does not return.** A Prisma transaction commits unless its callback
+throws, so `persistProvisionSuccess` returning `false` from inside one (row
+5.13) committed the writes that had matched — worst of all an instance left
+`ready` when a concurrent terminate had revoked the lease, naming the container
+the caller then destroys in `cleanupProvisionedInstance`. It throws a private
+`ProvisionPersistConflict` caught at the transaction boundary, so the rollback
+does not change the contract: `false` still means "nothing persisted, clean up
+what you created", and a real error still reaches `markProvisionFailure` — had
+the sentinel escaped, that catch would have skipped the cleanup and leaked the
+machine. Convert a rollback signal back where it was raised.
 
 **Corollary — a sweep every replica runs on an interval reads a bounded batch.**
 `expireExecutionLeases` takes the 50 oldest expired leases per pass and lets the

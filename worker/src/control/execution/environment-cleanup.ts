@@ -6,7 +6,7 @@ export const cleanupProvisionedInstance = async (
   provisioned: ProviderProvisionResult,
 ): Promise<void> => {
   try {
-    await terminateProviderInstance({
+    const termination = await terminateProviderInstance({
       instance: {
         ...context.instance,
         // Inert here: this path calls the provider's terminate directly and
@@ -17,6 +17,19 @@ export const cleanupProvisionedInstance = async (
         terminatedAt: provisioned.status === 'terminated' ? new Date() : null,
       },
     })
+
+    // This path writes no row, so an unverified cleanup has nowhere to be
+    // honest except the log: the machine this worker just provisioned could not
+    // be reached to be destroyed, and the row belongs to whoever won the race.
+    if (termination.outcome !== 'terminated') {
+      console.error(
+        '[worker.execution] stale provision cleanup could not confirm removal',
+        {
+          instanceId: context.instance.id,
+          providerInstanceRef: provisioned.providerInstanceRef,
+        },
+      )
+    }
   } catch (error) {
     console.error('[worker.execution] stale provision cleanup failed', error)
   }

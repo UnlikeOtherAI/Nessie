@@ -8,6 +8,7 @@ import { parseString, parseStringArray, parseStringRecord } from './stored-json.
 import type {
   ProviderProbe,
   ProviderProvisionResult,
+  ProviderTerminationResult,
   ProvisioningContext,
   TerminationContext,
 } from './types.js'
@@ -432,17 +433,23 @@ export const provisionGcloud = async (
   }
 }
 
+// Always `terminated`, and that is a statement about the reference rather than
+// about optimism: `gcloud:<kind>:<project>:<zone|region>:<name>` is a global
+// address, so whichever replica claims the terminate is talking to the one API
+// that owns the resource. A `not found` from it means the machine is gone
+// everywhere, not merely absent from the daemon this instance happens to run —
+// which is exactly the distinction `terminateDocker` cannot make.
 export const terminateGcloud = async (
   context: TerminationContext,
-): Promise<Record<string, unknown>> => {
+): Promise<ProviderTerminationResult> => {
   const ref = context.instance.providerInstanceRef
   if (!ref) {
-    return {}
+    return { metadata: {}, outcome: 'terminated' }
   }
 
   const parts = ref.split(':')
   if (parts.length < 5 || parts[0] !== 'gcloud') {
-    return {}
+    return { metadata: {}, outcome: 'terminated' }
   }
 
   if (parts[1] === 'vm') {
@@ -466,10 +473,13 @@ export const terminateGcloud = async (
     }
 
     return {
-      instanceName: name,
-      projectId,
-      terminatedBy: 'gcloud',
-      zone,
+      metadata: {
+        instanceName: name,
+        projectId,
+        terminatedBy: 'gcloud',
+        zone,
+      },
+      outcome: 'terminated',
     }
   }
 
@@ -493,9 +503,12 @@ export const terminateGcloud = async (
   }
 
   return {
-    jobName,
-    projectId,
-    region,
-    terminatedBy: 'gcloud',
+    metadata: {
+      jobName,
+      projectId,
+      region,
+      terminatedBy: 'gcloud',
+    },
+    outcome: 'terminated',
   }
 }
