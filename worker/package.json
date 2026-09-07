@@ -19,6 +19,7 @@
     "test:load": "tsx test-harness/load.ts",
     "test:smoke": "tsx test-harness/smoke.ts",
     "test:smoke:multi": "tsx test-harness/smoke-multi.ts",
+    "test:e2e:mail-agent": "node test-harness/mail-agent-e2e.mjs",
     "test:triggers": "tsx test-harness/trigger-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
