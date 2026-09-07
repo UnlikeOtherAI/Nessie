@@ -103,6 +103,17 @@ test('a delegated trigger keeps its original private author without adding an un
   assert.deepEqual(sink.privateConversationSources(), [
     { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
   ])
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: {
+        agent: { agentKind: 'shared' },
+        consumedSources: sink,
+      } as unknown as import('./types.js').RunContext,
+      isExternal: true,
+      toolName: 'mcp_publish',
+    }),
+    true,
+  )
 })
 
 test('a legacy delegated trigger becomes an unknown private source', async () => {

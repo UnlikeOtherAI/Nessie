@@ -113,7 +113,7 @@ test('spawned child strips every explicit grant while preserving ordinary policy
 
   await runSpawnSubtaskTool(context, {
     role: 'researcher',
-    task: 'Investigate safely',
+    task: 'Private B canary: investigate safely',
   })
 
   assert.deepEqual(createdToolPolicy, {
@@ -121,7 +121,7 @@ test('spawned child strips every explicit grant while preserving ordinary policy
     ordinary_deny: false,
   })
   assert.deepEqual(taskPrompt, {
-    content: 'Investigate safely',
+    content: 'Private B canary: investigate safely',
     role: 'system',
     threadId,
   })
