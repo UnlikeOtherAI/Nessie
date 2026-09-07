@@ -31,6 +31,7 @@ import { publishMessageCreated } from '../execute/realtime.js'
 import {
   insertMessageBasis,
   insertPrivateConversationSources,
+  requireConsumedSources,
 } from './tool-message-basis.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 
@@ -131,6 +132,7 @@ export const runAgentHandoffTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
+  const consumedSources = requireConsumedSources(context)
   const args = AgentHandoffToolInputSchema.parse(input)
   const blueprint = resolveTargetBlueprint(args.target)
   const requesterUserId = requireRequestingHuman(context)
@@ -174,7 +176,7 @@ export const runAgentHandoffTool = async (
     requesterUserId,
   )
   const briefBasis = computeHandoffBriefBasis({
-    consumed: runContext.consumedSources.list(),
+    consumed: consumedSources.list(),
     destination: {
       channelId: destination.id,
       organizationId: destination.organizationId,
