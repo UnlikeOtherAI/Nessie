@@ -146,13 +146,13 @@ test('a canvas gesture queued behind a lock is dropped when access changes', asy
   let dispatched = 0
   const lockEntered = deferred<void>()
   const unlock = deferred<void>()
+  const phoneSession = { ...activeSession, viewport: { height: 844, width: 390 } }
   const cdp = {
     activatePage: async () => undefined,
     attachToPage: async () => 'page',
     call: async (method: string) => {
       if (method === 'Page.captureScreenshot') return { data: 'frame' }
       if (method === 'Runtime.evaluate') return { result: { value: 'https://example.test' } }
-      if (method === 'Page.getLayoutMetrics') return { cssVisualViewport: { clientHeight: 800, clientWidth: 1280 } }
       return {}
     },
     close: () => undefined,
@@ -173,7 +173,7 @@ test('a canvas gesture queued behind a lock is dropped when access changes', asy
       connectCdp: async () => cdp,
       dispatchHumanBrowserInput: async () => { dispatched += 1 },
       loadSessionCapability: async () => ({ connectUrl: 'wss://example.test/cdp' }),
-      loadViewableSession: async () => access ? activeSession : null,
+      loadViewableSession: async () => access ? phoneSession : null,
       touchResumedSession: async () => undefined,
       withCloudBrowserSessionControlLock: async (_prisma, _input, drive) => {
         lockEntered.release()
@@ -188,7 +188,8 @@ test('a canvas gesture queued behind a lock is dropped when access changes', asy
   const socket = new WebSocket(`ws://127.0.0.1:${port}/api/browser-sessions/${sessionId}/canvas`)
   try {
     await once(socket, 'open')
-    await once(socket, 'message')
+    const [frame] = await once(socket, 'message') as [{ data: string }]
+    assert.deepEqual(JSON.parse(frame.data).viewport, { height: 844, width: 390 })
     socket.send(JSON.stringify({ type: 'input', input: { type: 'reload' } }))
     await lockEntered.promise
     access = false

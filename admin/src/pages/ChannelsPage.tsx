@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useRedirect } from '../navigation/redirect'
 import { useChannelPlaceableAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
@@ -53,6 +53,7 @@ import { useChannelParticipants } from './channels/useChannelParticipants'
 
 export const ChannelsPage = () => {
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
@@ -228,6 +229,15 @@ export const ChannelsPage = () => {
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
   // and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
+  // A temporary browser card may originate in a reply thread. Its routed
+  // browser surface retires that incompatible pane, while this structural
+  // thread id keeps polling the exact session rather than the channel default.
+  const routedBrowserThreadId = routeTool === 'browser'
+    ? searchParams.get('threadId')
+    : null
+  const browserThreadId = routedBrowserThreadId
+    ?? replyThread.activeThreadId
+    ?? activeChannel?.defaultThreadId
   const visibleConversationMessages = useMemo(() => {
     if (!replyThread.openRootMessageId) return threadMessages
     const root = replyThread.rootQuery.data?.message
@@ -636,7 +646,7 @@ export const ChannelsPage = () => {
           openTool={openTool}
           otherPanelOpen={Boolean(replyThread.openRootMessageId) || Boolean(dashboardId)}
           routed={routeTool !== null}
-          threadId={activeChannel?.defaultThreadId ?? null}
+          threadId={browserThreadId ?? null}
         />
       ) : null}
       {activeChannel ? (

@@ -239,24 +239,44 @@ app.post('/api/threads/:threadId/agents/:agentId/browser/viewport', async (reque
     return reply
   }
 
-  await prisma.agentBrowser.update({
-    data: { viewportHeight: viewport.height, viewportWidth: viewport.width },
-    where: { id: browser.id },
+  // The session's viewport is the current browser's truth; the durable
+  // browser pair is only its next-open default. Keep them together when this
+  // person holds a fresh lease, otherwise a canvas frame would correctly
+  // overwrite the picker with its stale session dimensions.
+  const live = await prisma.$transaction(async (tx) => {
+    await tx.agentBrowser.update({
+      data: { viewportHeight: viewport.height, viewportWidth: viewport.width },
+      where: { id: browser.id },
+    })
+    const now = new Date()
+    const liveSession = await tx.cloudBrowserSession.findFirst({
+      where: {
+        agentBrowserId: browser.id,
+        controlClaimedAt: { gt: new Date(now.getTime() - CONTROL_CLAIM_TTL_MS) },
+        controlledByUserId: actorContext.actor.actorId,
+        expiresAt: { gt: now },
+        organizationId,
+        status: 'active',
+      },
+      select: { id: true },
+    })
+    if (!liveSession) return null
+    const changed = await tx.cloudBrowserSession.updateMany({
+      data: { viewportHeight: viewport.height, viewportWidth: viewport.width },
+      where: {
+        controlClaimedAt: { gt: new Date(now.getTime() - CONTROL_CLAIM_TTL_MS) },
+        controlledByUserId: actorContext.actor.actorId,
+        expiresAt: { gt: now },
+        id: liveSession.id,
+        status: 'active',
+      },
+    })
+    return changed.count === 1 ? liveSession : null
   })
 
-  // Only a session this person is driving is resized under them. Reflowing
-  // a page an agent is working on mid-run would move every element it had
-  // just located, which is a far worse thing to do than let the new size
-  // wait for the next open — and the row is already written either way.
-  const live = await prisma.cloudBrowserSession.findFirst({
-    where: {
-      organizationId,
-      agentBrowserId: browser.id,
-      status: 'active',
-      controlledByUserId: actorContext.actor.actorId,
-    },
-    select: { id: true },
-  })
+  // Reflow only the current private controller's page. A worker can never
+  // receive a surprise resize while it is acting; the saved default still
+  // applies at the next open.
   const appliedToLiveSession = live
     ? await operations.resize({ sessionId: live.id, viewport })
     : false

@@ -160,12 +160,11 @@ export const registerBrowserCloudCanvasRoutes = (
         const session = await current()
         if (!session || closed) return close(4003, 'Browser access changed')
         await applyViewport(session)
-        const [screenshot, location, layout, targets] = await Promise.all([
+        const [screenshot, location, targets] = await Promise.all([
           cdp.call('Page.captureScreenshot', { format: 'jpeg', optimizeForSpeed: true, quality: 55 }),
           cdp.call('Runtime.evaluate', {
             expression: 'location.href', returnByValue: true, silent: true,
           }),
-          cdp.call('Page.getLayoutMetrics'),
           cdp.targets(),
         ])
         if (closed || typeof screenshot.data !== 'string') return
@@ -173,9 +172,6 @@ export const registerBrowserCloudCanvasRoutes = (
         // never crosses that new audience boundary.
         if (!(await current()) || closed) return close(4003, 'Browser access changed')
         const value = (location.result as { value?: unknown } | undefined)?.value
-        const visual = layout.cssVisualViewport as { clientHeight?: unknown; clientWidth?: unknown } | undefined
-        const width = typeof visual?.clientWidth === 'number' ? visual.clientWidth : session.viewport.width
-        const height = typeof visual?.clientHeight === 'number' ? visual.clientHeight : session.viewport.height
         send({
           type: 'frame',
           imageDataUrl: `data:image/jpeg;base64,${screenshot.data}`,
@@ -185,7 +181,7 @@ export const registerBrowserCloudCanvasRoutes = (
             title: target.title,
             url: target.url,
           })),
-          viewport: { height, width },
+          viewport: session.viewport,
         })
       } catch {
         close(1011, 'Browser connection lost')

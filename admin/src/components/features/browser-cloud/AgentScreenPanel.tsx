@@ -119,6 +119,10 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
     onClose: exitFullscreen,
     open: fullscreen,
   })
+  const finishHandover = () => {
+    setClaimForPerson(false)
+    overlay.requestClose()
+  }
 
   // One instance, two shapes: the modal full-screen layer and the side panel.
   // Each publishes its own Back and its own action, and the store updates the
@@ -195,7 +199,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
               agent={agent}
               claimOnLive={claimForPerson}
               control={control}
-              onDone={overlay.requestClose}
+              onDone={finishHandover}
               sessionId={sessionId}
               threadId={threadId}
               variant="fullscreen"
@@ -258,6 +262,7 @@ export const AgentScreenPanel = ({ agent, sessionId, onClose, threadId }: AgentS
           sessionId={sessionId}
           threadId={threadId}
           variant="panel"
+          onDone={() => setClaimForPerson(false)}
         />
       )}
     </SidePanelShell>

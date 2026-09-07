@@ -195,7 +195,8 @@ export const AgentScreenViewer = ({
   const { take } = control
   useEffect(() => {
     const shouldClaim = session.data?.canControl === true
-      && (claimOnLive || Boolean(session.data?.privateAccess))
+      && session.data?.runId === null
+      && claimOnLive
     if (!shouldClaim || claimed.current || session.data?.status !== 'active'
       || session.data.controlledByUserId) return
     claimed.current = true
@@ -242,6 +243,9 @@ export const AgentScreenViewer = ({
   }
   const onCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (!viewport || event.pointerType !== 'touch') return
+    // A drag may not synthesize a click at all. Its suppression belongs only
+    // to that gesture, so a later deliberate tap must never be consumed.
+    suppressTouchClick.current = false
     touchGesture.current = {
       last: remotePoint(event.currentTarget, event.clientX, event.clientY, viewport),
       moved: false,
@@ -308,6 +312,8 @@ export const AgentScreenViewer = ({
         ? 'Reconnecting controls…'
       : canDrive
       ? 'You are driving.'
+      : session.data?.viewerMode === 'controller'
+        ? 'Your controls are paused. Take control to continue.'
       : session.data?.controlledByUserId
         ? 'Someone is driving.'
         : 'Take control to use this browser.'

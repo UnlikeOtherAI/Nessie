@@ -69,6 +69,54 @@ const installMediatedFixture = async (page, fixture, state) => {
   })
 }
 
+// The canvas uses a WebSocket for human gestures. This browser-native fake
+// leaves every other realtime socket alone and lets the mobile case prove the
+// client emits the closed grammar in the order a person used it.
+const installCanvasSocket = async (context) => context.addInitScript((frame) => {
+  const NativeWebSocket = window.WebSocket
+  class CanvasSocket {
+    static CLOSED = 3
+    static OPEN = 1
+
+    constructor(url) {
+      if (!String(url).includes('/canvas')) return new NativeWebSocket(url)
+      this.readyState = CanvasSocket.OPEN
+      this.listeners = new Map()
+      window.setTimeout(() => this.emit('message', {
+        data: JSON.stringify({
+          imageDataUrl: frame,
+          pageUrl: 'https://example.test/',
+          tabs: [],
+          type: 'frame',
+          viewport: { height: 844, width: 390 },
+        }),
+      }), 0)
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) ?? []
+      listeners.push(listener)
+      this.listeners.set(type, listeners)
+    }
+
+    close() {
+      this.readyState = CanvasSocket.CLOSED
+      this.emit('close', { code: 1000 })
+    }
+
+    emit(type, event) {
+      for (const listener of this.listeners.get(type) ?? []) listener(event)
+    }
+
+    send(payload) {
+      const inputs = window.__browserCanvasInputs ?? []
+      inputs.push(JSON.parse(payload))
+      window.__browserCanvasInputs = inputs
+    }
+  }
+  window.WebSocket = CanvasSocket
+}, FRAME)
+
 const main = async () => {
   const api = await startApi()
   await startAdmin()
@@ -178,14 +226,40 @@ const main = async () => {
           userId: '00000000-0000-4000-8000-000000000001',
         }
         await installMediatedFixture(page, fixture, state)
-        await page.getByRole('button', { name: 'Browser', exact: true }).click()
+        // The temporary-login card leaves its reply/dashboard context for the
+        // existing Browser route, carrying the card's exact thread. A phone
+        // must reach the same full-width panel after that navigation without
+        // needing a second rail press.
+        const cardThreadId = '00000000-0000-4000-8000-000000000003'
+        await installCanvasSocket(phone)
+        await page.goto(
+          `${ADMIN_URL}/channels/${mobileAgent.homeChannelId}/tools/browser?threadId=${cardThreadId}`,
+          { waitUntil: 'domcontentloaded' },
+        )
+        assert.match(page.url(), new RegExp(`/tools/browser\\?threadId=${cardThreadId}$`))
         await page.getByLabel(`${fixture.agentName} browser`).waitFor()
         await page.getByRole('button', { name: 'Take control' }).click()
-        await page.getByRole('button', { name: 'Reconnect' }).waitFor()
+        const canvas = page.getByRole('application')
+        await canvas.waitFor()
+        await canvas.dispatchEvent('pointerdown', { clientX: 150, clientY: 280, pointerType: 'touch' })
+        await canvas.dispatchEvent('pointermove', { clientX: 150, clientY: 180, pointerType: 'touch' })
+        await canvas.dispatchEvent('pointerup', { clientX: 150, clientY: 180, pointerType: 'touch' })
+        // A new touch begins a new gesture. It must not be consumed by the
+        // previous drag's suppressed synthetic click.
+        await canvas.dispatchEvent('pointerdown', { clientX: 195, clientY: 210, pointerType: 'touch' })
+        await canvas.dispatchEvent('pointerup', { clientX: 195, clientY: 210, pointerType: 'touch' })
+        await canvas.dispatchEvent('click', { clientX: 195, clientY: 210 })
+        await page.getByLabel('Browser keyboard').fill('Nessie browser QA', { force: true })
+        await page.waitForFunction(() => {
+          const inputs = window.__browserCanvasInputs ?? []
+          return inputs.some(({ input }) => input?.type === 'scroll')
+            && inputs.some(({ input }) => input?.type === 'click')
+            && inputs.some(({ input }) => input?.type === 'text' && input.text === 'Nessie browser QA')
+        })
         const panel = page.locator('aside[aria-label="Browser"]')
         const box = await panel.boundingBox()
         assert.ok(box && Math.abs(box.width - 390) < 1, `phone browser should fill 390px, got ${box?.width ?? 'none'}`)
-        assert.equal(await page.getByRole('application').count(), 0, 'mobile HTTP preview must remain read-only')
+        assert.equal(await page.getByRole('application').count(), 1, 'the current controller can use the live canvas')
         await page.screenshot({ fullPage: true, path: resolve(screenshots, 'mobile-390-mediated.png') })
         await page.close()
       } finally {

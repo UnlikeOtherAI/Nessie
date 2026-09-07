@@ -129,7 +129,7 @@ export const AgentCardMessage = ({
       onError: (error: Error) => setSubmissionError(error.message),
       onSuccess: (result) => {
         setTemporarySessionId(result.sessionId)
-        if (channelId) navigate(`/channels/${channelId}/tools/browser`)
+        if (channelId) navigate(`/channels/${channelId}/tools/browser?threadId=${encodeURIComponent(card.threadId)}`)
       },
     })
   }
