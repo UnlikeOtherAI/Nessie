@@ -10,6 +10,7 @@ import {
   loadAgentStatus,
   loadRunToolCalls,
 } from '../src/services/agent-read-model.js'
+import { buildSnapshotForScopes } from '../src/services/agent-read-snapshot.js'
 import {
   mapMessageRecordWithAttachments,
   messageInclude,
@@ -338,6 +339,14 @@ runDatabaseTest('agent history and tool activity use the same live disclosure ga
   assert.equal(
     (await loadAgentStatus(prisma, s.agentId, { visibility: outsiderVisibility }))
       ?.currentRunId,
+    undefined,
+  )
+  assert.equal(
+    (await buildSnapshotForScopes(
+      prisma,
+      [{ agentId: s.agentId, kind: 'agent' }],
+      { visibility: outsiderVisibility },
+    )).agents[0]?.currentRunId,
     undefined,
   )
   assert.deepEqual(

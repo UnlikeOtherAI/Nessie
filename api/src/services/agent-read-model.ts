@@ -78,6 +78,10 @@ export const loadAgentStatus = async (
         },
       },
       messages: {
+        include: {
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          thread: { select: { channelId: true } },
+        },
         where: messageVisibilityWhere,
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -107,7 +111,11 @@ export const loadAgentStatus = async (
   const readableRuns = await filterReadableAgentRuns(prisma, agent.runs, options?.visibility)
   const latestRun = readableRuns[0]
   const latestToolCall = latestRun?.toolCalls[0]
-  const latestMessage = agent.messages[0]
+  const readableMessages = (await Promise.all(agent.messages.map(async (message) => ({
+    message,
+    readable: await canReadAgentMessage(prisma, message, options?.visibility),
+  })))).filter(({ readable }) => readable).map(({ message }) => message)
+  const latestMessage = readableMessages[0]
   const isActiveRun =
     latestRun !== undefined
     && latestRun.status !== 'completed'
