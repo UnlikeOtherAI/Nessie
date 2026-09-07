@@ -18,6 +18,7 @@ import {
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
+import { resolveOutputAdmission } from './output-admission.js'
 import {
   DEFAULT_CACHE_READ_WEIGHT,
   meterSpend,
@@ -95,6 +96,8 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // way back into the transcript that does not re-bill the inference that
   // produced it.
   let resumedToolCalls: ProviderToolCall[] | null = resume?.pendingToolCalls ?? null
+  // Mirror the governor state into checkpoints so a reclaimed run keeps both
+  // the attempt ceiling and the two-iteration cooldown.
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
   let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
@@ -290,31 +293,14 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
 
       const finalizationPending = lengthFinalizationPending
       const activeToolSchemaTokens = finalizationPending ? 0 : toolSchemaTokens
-      const admission = (): {
-        projectedInputTokens: number
-        requestedOutputTokens: number | undefined
-        requiresCompaction: boolean
-      } => {
-        const projectedInputTokens = estimateMessagesTokens(messages) + activeToolSchemaTokens
-        const remainingRunTokens = typeof budget.maxTokens === 'number'
-          ? Math.max(0, budget.maxTokens - spend.effectiveTokensUsed - projectedInputTokens)
-          : undefined
-        const desiredOutputTokens = input.maxOutputTokens === undefined
-          ? undefined
-          : Math.min(input.maxOutputTokens, remainingRunTokens ?? input.maxOutputTokens)
-        const contextOutputTokens = Math.max(
-          0,
-          contextPlan.availableTokens - estimateMessagesTokens(messages),
-        )
-        return {
-          projectedInputTokens,
-          requiresCompaction: desiredOutputTokens !== undefined
-            && desiredOutputTokens > contextOutputTokens,
-          requestedOutputTokens: desiredOutputTokens === undefined
-            ? undefined
-            : Math.min(desiredOutputTokens, contextOutputTokens),
-        }
-      }
+      const admission = () => resolveOutputAdmission({
+        contextPlan,
+        effectiveTokensUsed: spend.effectiveTokensUsed,
+        maxOutputTokens: input.maxOutputTokens,
+        maxRunTokens: budget.maxTokens,
+        messages,
+        toolSchemaTokens: activeToolSchemaTokens,
+      })
       let currentAdmission = admission()
       // Context compaction normally starts at 80%; an answer reserve can make
       // a smaller retained transcript unsafe before that threshold, so compact

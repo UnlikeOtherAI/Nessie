@@ -383,6 +383,29 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   ...over,
 })
 
+test('a length result at the budget cap keeps its partial answer and never dispatches calls', async () => {
+  let dispatched = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      dispatched += 1
+      return { inputSummary: 'write', output: 'must not run', success: true }
+    },
+    initialMessages: initial,
+    runInference: async () => ({
+      ...toolCallInference('research findings retained'),
+      finishReason: 'length',
+      invocations: [{ usage: { totalTokens: 100 } } as InferenceResult['invocations'][number]],
+    }),
+    tools: [],
+  })
+  assert.equal(result.exhaustedBudget, 'tokens')
+  assert.equal(result.finalText, 'research findings retained')
+  assert.equal(dispatched, 0)
+  assert.equal(result.messages.some((message) => message.role === 'assistant'), false)
+})
+
 test('answer reserve triggers compaction before the ordinary context threshold', async () => {
   let compactions = 0
   await runAgenticLoop({

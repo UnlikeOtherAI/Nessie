@@ -56,6 +56,7 @@ export type AgenticLoopInput = {
     messages: ProviderMessage[]
     targetTokens: number
   }) => Promise<ProviderMessage[] | null>
+  /** Model-window plan; the loop compacts before retained context crowds out output. */
   contextPlan?: ContextPlan
   executeTool: ExecuteToolFn
   prepareTool?: PrepareToolFn
@@ -71,6 +72,7 @@ export type AgenticLoopInput = {
   windDownInstruction?: string
   onWindDown?: () => void
   drainSignal?: AbortSignal
+  /** Machine checkpoint from the same run; restored calls are never re-dispatched. */
   resume?: LoopResumeState
   maxOutputTokens?: number
 }
