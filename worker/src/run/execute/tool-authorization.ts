@@ -39,9 +39,7 @@ import {
   resolveFrozenGmailSendApproval,
 } from './gmail-send-approval.js'
 import type { RunContext } from './types.js'
-
 export type ToolActorContext = AuthorizedActionContext
-
 export type ToolAuthorizationDecision =
   | {
       decision: 'allow'
