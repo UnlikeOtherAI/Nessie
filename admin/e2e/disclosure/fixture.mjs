@@ -181,6 +181,7 @@ export const submitMentionedRequest = async (page, agentId, agentName, text) => 
   const form = page.locator('form.admin-compose:visible')
   const composer = form.locator('[role="textbox"]')
   await composer.fill(`@${agentName}`)
+  await composer.locator('..').getByRole('button', { name: agentName }).waitFor()
   await composer.press('Enter')
   const mention = composer.locator('span.mention-tag[data-mention-type="agent"]')
   await mention.waitFor()

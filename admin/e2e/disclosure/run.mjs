@@ -6,7 +6,7 @@
 // Czech request correctly; that requires a live-provider evaluation.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
@@ -23,6 +23,7 @@ import {
   submitMentionedRequest,
   waitForRun,
 } from './fixture.mjs'
+import { saveFailureEvidence } from './failure-evidence.mjs'
 import {
   installActivityProbe,
   installEventProbe,
@@ -48,27 +49,6 @@ const assertNoSecret = (value, boundary) => {
 const assertWithheld = (value, boundary) => {
   assertNoSecret(value, boundary)
   assert.equal(String(value).includes(SHARED_SUMMARY), false, `${boundary} exposed the restricted reply`)
-}
-
-const savePublicFailureEvidence = async (page, error) => {
-  const detail = error instanceof Error ? error.stack ?? error.message : String(error)
-  await writeFile(resolve(SCREENSHOTS, 'failure.txt'), `${detail}\n`)
-  if (!page) return
-
-  const body = await page.locator('body').innerText().catch(() => '')
-  await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), body)
-  const realtime = await page.evaluate(() => ({
-    activity: window.__disclosureActivityProbe?.events ?? [],
-    events: window.__disclosureEventProbe?.events ?? [],
-  })).catch(() => ({}))
-  await writeFile(
-    resolve(SCREENSHOTS, 'failure-public-recipient-realtime.json'),
-    `${JSON.stringify(realtime, null, 2)}\n`,
-  )
-  await page.screenshot({
-    path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
-    fullPage: true,
-  }).catch(() => {})
 }
 
 const responseData = async (response, label) => {
@@ -480,7 +460,12 @@ const main = async () => {
     await audiencePage.close()
     console.log('[disclosure e2e] PASS: private transcript → shared worker → UI and explicit scoped disclosure')
   } catch (error) {
-    await savePublicFailureEvidence(audiencePage?.page, error)
+    await saveFailureEvidence({
+      audiencePage: audiencePage?.page,
+      error,
+      screenshots: SCREENSHOTS,
+      sourcePage: sourcePage?.page,
+    })
     throw error
   } finally {
     if (audienceContext) await audienceContext.close().catch(() => {})
