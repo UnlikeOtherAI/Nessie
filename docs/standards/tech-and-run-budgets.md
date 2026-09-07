@@ -49,7 +49,11 @@ summary and points here; **this file is the rule**.
     and reserves that output together with the projected input before dispatch.
     If retained context plus that reserve cannot fit, the existing compaction
     hook runs before dispatch; no advertised capability means the fallback is
-    retained rather than guessing a model limit.
+    retained rather than guessing a model limit. This recovery covers
+    normalized `finish_reason: length` results and advertised capability
+    ceilings. A provider request-validation refusal for an oversized
+    `max_tokens`/`max_completion_tokens` value without capability metadata is
+    an ordinary provider failure, not an adaptive fallback signal.
 
 ## Deep.Agent compaction extraction
 
