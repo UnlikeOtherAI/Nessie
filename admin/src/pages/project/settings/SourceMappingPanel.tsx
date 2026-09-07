@@ -73,6 +73,18 @@ export const SourceMappingPanel = ({
     source.identityLinks.map((link) => [link.externalUserId, link]),
   )
 
+  const restoreMappings = () => {
+    setStateMapping(source.stateMapping)
+    setFieldMappings(source.fieldMappings)
+    setIdentity(
+      Object.fromEntries(
+        source.identityLinks
+          .filter((link) => link.userId)
+          .map((link) => [link.externalUserId, link.userId as string]),
+      ),
+    )
+  }
+
   const save = (
     next: BoardSourceStateMapping[],
     people: Record<string, string>,
@@ -83,15 +95,25 @@ export const SourceMappingPanel = ({
         id: sourceId,
         stateMapping: next,
         fieldMappings: fields,
-        identityLinks: source.members.map((member) => ({
-          externalUserId: member.externalUserId,
-          externalDisplayName: member.displayName,
-          userId: people[member.externalUserId] ?? null,
-        })),
+        identityLinks: source.members.map((member) => {
+          const userId = people[member.externalUserId] ?? null
+          const existing = linkByExternalUserId.get(member.externalUserId)
+          return {
+            externalUserId: member.externalUserId,
+            externalDisplayName: member.displayName,
+            // This table currently offers people, not agents. Preserve an
+            // existing agent binding until that explicit picker exists; saving
+            // an unrelated row must never silently sever an agent's work.
+            agentId: userId ? null : existing?.agentId ?? null,
+            userId,
+          }
+        }),
       },
       {
-        onError: (cause) =>
-          onSaveError(cause instanceof Error ? cause.message : 'Could not save the mapping'),
+        onError: (cause) => {
+          restoreMappings()
+          onSaveError(cause instanceof Error ? cause.message : 'Could not save the mapping')
+        },
         onSuccess: onSaved,
       },
     )

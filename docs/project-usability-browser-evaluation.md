@@ -5,6 +5,13 @@ at `http://localhost:5455` and the real API on `5454`. The suite adopts the
 servers already running in the local development loop; it does not start or
 stop them. It skips when `DATABASE_URL`, the API, or the admin is unavailable.
 
+`pnpm --filter @nessie/admin test:e2e:connected-board-sources` drives the same
+admin with HTTP fixtures named **UnlikeOtherAI QA**. It checks source settings,
+mapping failure rollback and the board health/sync doorways without a provider
+credential. CI runs it after the project-usability lifecycle in the same fixed
+server session; provider sync and webhook delivery stay covered at the API and
+worker boundary.
+
 Authentication uses the existing navigation seed: `/api/auth/dev-login` on a
 database with an owner, with bootstrap as the fallback for a fresh database.
 The seed reuses an entitled project, creates board A through the project's

@@ -156,9 +156,9 @@ export const ConnectSourceDialog = ({
               values={values}
             />
             <FormError>{error ?? undefined}</FormError>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
-                className="admin-button"
+                className="admin-button h-11"
                 onClick={() => {
                   setKeyProvider(null)
                   setValues({})
@@ -169,7 +169,7 @@ export const ConnectSourceDialog = ({
                 Back
               </button>
               <button
-                className="admin-button admin-button-primary"
+                className="admin-button admin-button-primary h-11"
                 disabled={connectWithApiKey.isPending}
                 onClick={submitKey}
                 type="button"
@@ -188,6 +188,7 @@ export const ConnectSourceDialog = ({
             >
               {ownConnections.length > 0 ? (
                 <Select
+                  className="h-11"
                   onChange={(event) => {
                     setConnectionId(event.target.value)
                     setContainerKey('')
@@ -212,7 +213,7 @@ export const ConnectSourceDialog = ({
                 <span className="flex gap-2" key={entry.provider}>
                   {entry.apiKeyForm ? (
                     <button
-                      className="admin-button admin-button-compact"
+                      className="admin-button h-11 max-w-full"
                       onClick={() => {
                         setKeyProvider(entry.provider)
                         setValues({})
@@ -225,7 +226,7 @@ export const ConnectSourceDialog = ({
                   ) : null}
                   {entry.methods.includes('oauth') ? (
                     <button
-                      className="admin-button admin-button-compact"
+                      className="admin-button h-11 max-w-full"
                       onClick={() => connect(entry.provider)}
                       type="button"
                     >
@@ -239,6 +240,7 @@ export const ConnectSourceDialog = ({
             {connectionId ? (
               <FormField label="What to bring in">
                 <Select
+                  className="h-11"
                   disabled={containersQuery.isPending}
                   onChange={(event) => setContainerKey(event.target.value)}
                   value={containerKey}
@@ -258,12 +260,12 @@ export const ConnectSourceDialog = ({
 
             <FormError>{error ?? undefined}</FormError>
 
-            <div className="flex justify-end gap-2">
-              <button className="admin-button" onClick={onClose} type="button">
+            <div className="flex flex-wrap justify-end gap-2">
+              <button className="admin-button h-11" onClick={onClose} type="button">
                 Cancel
               </button>
               <button
-                className="admin-button admin-button-primary"
+                className="admin-button admin-button-primary h-11"
                 disabled={!containerKey || createSource.isPending}
                 onClick={attach}
                 type="button"
