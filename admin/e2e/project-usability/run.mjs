@@ -52,6 +52,24 @@ const goto = async (page, path) => {
   await page.waitForSelector('[data-kanban-board-viewport]', { timeout: 60_000 })
 }
 
+const createBoardThroughUi = async (page, projectId, name, sourceBoardId) => {
+  await goto(page, `/projects/${projectId}/board`)
+  const configure = page.locator('[data-page-header-action="board-admin"]:visible')
+  if (await configure.count()) {
+    await configure.first().click()
+  } else {
+    await page.getByRole('button', { name: 'More page actions' }).click()
+  }
+  await page.getByRole('menuitem', { name: 'New board…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'New board' })
+  await dialog.getByRole('textbox', { name: 'Name' }).fill(name)
+  await dialog.getByLabel('Starting columns').selectOption(sourceBoardId)
+  const create = dialog.getByRole('button', { name: 'Create board' })
+  assert.ok(await create.isVisible(), 'New board keeps its primary Create board action visible')
+  await create.click()
+  await dialog.waitFor({ state: 'hidden' })
+}
+
 const openNewTask = async (page) => {
   const action = page.locator('[data-page-header-action="new-task"]:visible')
   if (await action.count()) {
@@ -67,7 +85,9 @@ const createTaskThroughUi = async (page, title, detail) => {
   const dialog = await openNewTask(page)
   await dialog.getByRole('textbox', { name: 'Title' }).fill(title)
   if (detail) await dialog.getByRole('textbox', { name: 'Detail' }).fill(detail)
-  await dialog.getByRole('button', { name: 'Create task' }).click()
+  const create = dialog.getByRole('button', { name: 'Create task' })
+  assert.ok(await create.isVisible(), 'New task keeps its primary Create task action visible')
+  await create.click()
   await dialog.waitFor({ state: 'hidden' })
   await page.locator('[data-kanban-card]').filter({ hasText: title }).waitFor()
 }
@@ -104,7 +124,7 @@ const waitForBoardTask = async (token, projectId, boardId, title, expectedColumn
   throw new Error(`board ${boardId} did not expose "${title}" in column ${expectedColumnId ?? 'any'}`)
 }
 
-const touchSwipe = async (page, { fromX, toX, y }) => {
+const touchSwipe = async (page, { fromX, fromY, toX, toY = fromY }) => {
   const client = await page.context().newCDPSession(page)
   try {
     await client.send('Input.dispatchTouchEvent', {
@@ -114,7 +134,10 @@ const touchSwipe = async (page, { fromX, toX, y }) => {
     for (let step = 1; step <= 8; step += 1) {
       await client.send('Input.dispatchTouchEvent', {
         type: 'touchMove',
-        touchPoints: [{ x: fromX + ((toX - fromX) * step) / 8, y }],
+        touchPoints: [{
+          x: fromX + ((toX - fromX) * step) / 8,
+          y: fromY + ((toY - fromY) * step) / 8,
+        }],
       })
     }
     await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
@@ -138,36 +161,37 @@ const main = async () => {
   const boards = await call(`/api/projects/${seed.project.id}/boards`, { token: seed.token })
   const sourceBoard = boards.find((board) => board.isDefault) ?? boards[0]
   assert.ok(sourceBoard, 'the seeded project has a default board')
-  const boardA = await api(`/api/projects/${seed.project.id}/boards`, {
-    body: {
-      copyColumnsFromBoardId: sourceBoard.id,
-      name: `Usability flow ${runId}`,
-    },
-    method: 'POST',
-    token: seed.token,
-  })
-  const boardB = await api(`/api/projects/${seed.project.id}/boards`, {
-    body: {
-      copyColumnsFromBoardId: sourceBoard.id,
-      name: `Isolation proof ${runId}`,
-    },
-    method: 'POST',
-    token: seed.token,
-  })
-  const firstColumn = boardA.columns[0]
-  const secondColumn = boardA.columns[1]
-  assert.ok(firstColumn && secondColumn, 'the seeded board has at least two lifecycle columns')
 
   const browser = await launchBrowser()
   const desktop = await openViewportContext(browser, { name: 'desktop', token: seed.token })
   const phone = await openViewportContext(browser, { name: 'phone', token: seed.token })
   const desktopPage = await desktop.newPage()
   const phonePage = await phone.newPage()
+  const boardAName = `Usability flow ${runId}`
+  const boardBName = `Isolation proof ${runId}`
+  await createBoardThroughUi(phonePage.page, seed.project.id, boardAName, sourceBoard.id)
+  const boardA = (await call(`/api/projects/${seed.project.id}/boards`, { token: seed.token }))
+    .find((board) => board.name === boardAName)
+  assert.ok(boardA, 'the Configure → New board doorway created board A')
+  const boardB = await api(`/api/projects/${seed.project.id}/boards`, {
+    body: {
+      copyColumnsFromBoardId: boardA.id,
+      name: boardBName,
+    },
+    method: 'POST',
+    token: seed.token,
+  })
+  const firstColumn = boardA.columns[0]
+  const secondColumn = boardA.columns[1]
+  const boardBFirstColumn = boardB.columns[0]
+  assert.ok(firstColumn && secondColumn && boardBFirstColumn, 'the boards have lifecycle columns')
   const createdTitle = `QA flow ${runId}`
   const editedTitle = `QA edited ${runId}`
   const touchTitle = `QA touch ${runId}`
+  const boardBTitle = `QA board B ${runId}`
   const touchTitles = [touchTitle, ...Array.from({ length: 7 }, (_, index) => `${touchTitle}-${index + 2}`)]
   const createdTaskIds = new Set()
+  const cleanupFailures = []
 
   try {
     // Core lifecycle: browser owns creation and editing; the drop gesture owns
@@ -202,6 +226,15 @@ const main = async () => {
       0,
       'a ticket created on board A is absent from board B',
     )
+    await createTaskThroughUi(desktopPage.page, boardBTitle)
+    const boardBTask = await waitForBoardTask(
+      seed.token,
+      seed.project.id,
+      boardB.id,
+      boardBTitle,
+      boardBFirstColumn.id,
+    )
+    createdTaskIds.add(boardBTask.id)
     await shot(desktopPage.page, 'desktop-isolated-board')
 
     // Phone doorway plus touch-sized board scrolling. This also checks the
@@ -230,21 +263,28 @@ const main = async () => {
     }))
     assert.ok(vertical.scrollHeight > vertical.clientHeight, 'a populated column exposes vertical overflow')
     const beforeVertical = await dropzone.evaluate((node) => node.scrollTop)
-    await dropzone.hover()
-    await phonePage.page.mouse.wheel(0, 600)
-    await phonePage.page.waitForTimeout(250)
+    const cardBoxBeforeVertical = await card.boundingBox()
+    assert.ok(cardBoxBeforeVertical, 'the touch test card body is visible before vertical paging')
+    await touchSwipe(phonePage.page, {
+      fromX: cardBoxBeforeVertical.x + cardBoxBeforeVertical.width / 3,
+      fromY: cardBoxBeforeVertical.y + cardBoxBeforeVertical.height * 0.75,
+      toX: cardBoxBeforeVertical.x + cardBoxBeforeVertical.width / 3,
+      toY: cardBoxBeforeVertical.y + 12,
+    })
+    await phonePage.page.waitForTimeout(350)
     const afterVertical = await dropzone.evaluate((node) => node.scrollTop)
     assert.ok(afterVertical > beforeVertical, `column scrolls vertically (${beforeVertical} → ${afterVertical})`)
     await shot(phonePage.page, 'phone-before-board-scroll')
     const before = await viewport.evaluate((node) => node.scrollLeft)
     const viewportBox = await viewport.boundingBox()
     assert.ok(viewportBox, 'the phone board viewport has a measurable touch surface')
+    const horizontalCard = phonePage.page.locator('[data-kanban-card]:visible').first()
+    const horizontalCardBox = await horizontalCard.boundingBox()
+    assert.ok(horizontalCardBox, 'a visible card body remains available for horizontal paging')
     await touchSwipe(phonePage.page, {
-      fromX: viewportBox.x + viewportBox.width - 20,
+      fromX: horizontalCardBox.x + horizontalCardBox.width - 70,
+      fromY: horizontalCardBox.y + horizontalCardBox.height / 2,
       toX: viewportBox.x + 20,
-      // Start below the card so the dnd sensor never interprets this paging
-      // gesture as a long-press drag.
-      y: viewportBox.y + viewportBox.height - 12,
     })
     await phonePage.page.waitForTimeout(700)
     const after = await viewport.evaluate((node) => node.scrollLeft)
@@ -275,6 +315,19 @@ const main = async () => {
       0,
       'switching to board B keeps board A tickets out of the phone view',
     )
+    const destinationViewport = phonePage.page.locator('[data-kanban-board-viewport]')
+    await destinationViewport.evaluate((node) => { node.scrollLeft = 0 })
+    const destinationDropzone = phonePage.page.locator(`[data-kanban-dropzone="${boardBFirstColumn.id}"]`)
+    await destinationDropzone.waitFor()
+    const destinationCard = phonePage.page.locator('[data-kanban-card]').filter({ hasText: boardBTitle }).first()
+    await destinationCard.waitFor()
+    assert.ok(await destinationDropzone.isVisible(), 'board B first column is visible after switching')
+    assert.ok(await destinationCard.isVisible(), 'board B own ticket is visible after switching')
+    assert.equal(
+      await phonePage.page.locator('[data-kanban-card]').filter({ hasText: boardBTitle }).count(),
+      1,
+      'switching to board B shows its own first-column ticket',
+    )
     await shot(phonePage.page, 'phone-isolated-board')
   } finally {
     await desktopPage.close()
@@ -287,18 +340,21 @@ const main = async () => {
         body: { status: 'cancelled' },
         method: 'POST',
         token: seed.token,
-      }).catch(() => undefined)
+      }).catch((error) => cleanupFailures.push(`cancel task ${taskId}: ${error.message}`))
     }
     await api(`/api/projects/${seed.project.id}/boards/${boardB.id}`, {
       method: 'DELETE',
       token: seed.token,
-    }).catch(() => undefined)
+    }).catch((error) => cleanupFailures.push(`delete board ${boardB.id}: ${error.message}`))
     await api(`/api/projects/${seed.project.id}/boards/${boardA.id}`, {
       method: 'DELETE',
       token: seed.token,
-    }).catch(() => undefined)
+    }).catch((error) => cleanupFailures.push(`delete board ${boardA.id}: ${error.message}`))
   }
 
+  if (cleanupFailures.length > 0) {
+    throw new Error(`project-usability cleanup failed:\n  ${cleanupFailures.join('\n  ')}`)
+  }
   console.log('project-usability e2e: passed (lifecycle, isolation, phone touch scroll)')
 }
 
