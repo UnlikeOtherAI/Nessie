@@ -14,6 +14,8 @@ export const ids = {
   project: '66666666-6666-4666-8666-866666666666',
   source: '77777777-7777-4777-8777-877777777777',
   user: '88888888-8888-4888-8888-888888888888',
+  watcher: 'abababab-abab-4bab-8bab-abababababab',
+  watcherOther: 'cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd',
 }
 
 export const sourceName = 'UnlikeOtherAI QA Linear product delivery'
@@ -76,9 +78,19 @@ export const createConnectedBoardSourceFixtures = () => {
     session: { issuedAt: now, sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
     user: { displayName: 'Alex Example', email: 'alex@example.test', id: ids.user, roleIds: ['owner'] },
   }
+  const watcherAgents = [
+    {
+      agentKind: 'shared', id: ids.watcher, name: 'UnlikeOtherAI QA watcher',
+      role: 'quality', systemManaged: false, visibility: 'team',
+    },
+    {
+      agentKind: 'shared', id: ids.watcherOther, name: 'UnlikeOtherAI QA backup',
+      role: 'quality', systemManaged: false, visibility: 'team',
+    },
+  ]
 
   const shell = (pathname) => {
-    if (pathname === '/api/agents' || pathname === '/api/agents/all') return []
+    if (pathname === '/api/agents' || pathname === '/api/agents/all') return watcherAgents
     if (pathname === '/api/channels' || pathname === '/api/teams' || pathname === '/api/users' || pathname === '/api/favorites') return []
     if (pathname === '/api/integrations/products') return []
     if (pathname === '/api/alerts/summary') return { assignedWork: { projects: {}, total: 0 }, knowledge: { projects: {}, total: 0 }, unreadCount: 0 }
@@ -112,6 +124,17 @@ export const createConnectedBoardSourceFixtures = () => {
     if (pathname === `/api/projects/${ids.project}/members`) return json([])
     if (pathname === `/api/projects/${ids.project}/boards`) return json([board, localBoard])
     if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/tasks` || pathname === `/api/projects/${ids.project}/boards/${ids.localBoard}/tasks`) return json({ tasks: [], truncated: false })
+    if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/watchers` && method === 'GET') return json([])
+    if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/watchers` && method === 'PUT') {
+      const body = request.postDataJSON()
+      calls.at(-1).body = body
+      return json(body.watchers.map((watcher, index) => ({
+        addedByUserId: ids.user, boardId: ids.board, createdAt: now,
+        displayName: watcher.id === ids.watcher ? 'UnlikeOtherAI QA watcher' : 'UnlikeOtherAI QA backup',
+        id: `dddddddd-dddd-4ddd-8ddd-${String(index).padStart(12, '0')}`,
+        kind: watcher.kind, recipientId: watcher.id,
+      })))
+    }
     if (pathname === `/api/projects/${ids.project}/sources`) return json(
       url.searchParams.get('boardId') === ids.localBoard ? [] : [source],
     )

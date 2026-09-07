@@ -141,12 +141,39 @@ const exercisePhone = async (browser, fixtures) => {
   }
 }
 
+const exerciseWatcherSave = async (browser, fixtures) => {
+  const { close, context, errors, page } = await open(browser, 'desktop', fixtures)
+  try {
+    await page.goto(`${adminUrl}/projects/${ids.project}/settings?section=boards&board=${ids.board}`)
+    const recipient = page.getByLabel('Tell')
+    await recipient.waitFor()
+    await recipient.fill('watcher')
+    await page.getByRole('button', { name: 'UnlikeOtherAI QA watcher' }).click()
+    assert.equal(
+      await page.getByRole('button', { name: 'UnlikeOtherAI QA backup' }).count(),
+      0,
+      'watcher suggestions close after a choice while another option remains',
+    )
+    await page.keyboard.press('Enter')
+    const save = page.getByRole('button', { name: 'Save watchers' })
+    await save.click()
+    await page.waitForTimeout(50)
+    const call = fixtures.calls.filter((entry) => entry.pathname.endsWith('/watchers') && entry.method === 'PUT').at(-1)
+    assert.deepEqual(call.body.watchers, [{ id: ids.watcher, kind: 'agent' }], 'Save remains reachable and submits only the chosen watcher')
+    assert.deepEqual(errors, [], `watcher page errors: ${errors.join('; ')}`)
+  } finally {
+    await close()
+    await context.close()
+  }
+}
+
 const main = async () => {
   const fixtures = createConnectedBoardSourceFixtures()
   const browser = await launchBrowser()
   try {
     await exerciseDesktop(browser, fixtures)
     await exercisePhone(browser, fixtures)
+    await exerciseWatcherSave(browser, fixtures)
     assert.deepEqual(fixtures.unhandled, [], `unhandled fixture requests: ${JSON.stringify(fixtures.unhandled)}`)
     console.log('Connected board source UI evaluation passed.')
   } finally {

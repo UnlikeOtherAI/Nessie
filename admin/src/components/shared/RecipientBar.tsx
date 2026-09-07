@@ -116,7 +116,10 @@ export const RecipientBar = ({
     [onChange, recipients],
   )
 
+  const showOptions = focused && options.length > 0 && !disabled
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!showOptions) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       setHighlightedIndex((index) => Math.min(index + 1, options.length - 1))
@@ -141,8 +144,6 @@ export const RecipientBar = ({
       if (last) remove(last)
     }
   }
-
-  const showOptions = focused && options.length > 0 && !disabled
 
   return (
     <div className="relative rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
