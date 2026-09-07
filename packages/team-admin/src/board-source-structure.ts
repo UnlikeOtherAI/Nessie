@@ -90,9 +90,10 @@ export const mapBoardSource = (source: SourceRow): BoardSourceRecord => ({
 export const listBoardSources = async (
   prisma: PrismaClient,
   projectId: string,
+  sourceIds?: readonly string[],
 ): Promise<BoardSourceRecord[]> => {
   const sources = await prisma.boardSource.findMany({
-    where: { projectId },
+    where: { projectId, ...(sourceIds ? { id: { in: [...sourceIds] } } : {}) },
     include: sourceInclude,
     orderBy: { createdAt: 'asc' },
   })

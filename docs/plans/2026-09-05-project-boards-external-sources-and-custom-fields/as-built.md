@@ -80,7 +80,9 @@ fact. Read this before treating any section above as a description of the code.
   chip, and says whether the provider is pushing (*Live*) or the board is
   waiting for the next poll (*every 5 min*). The sync action already existed;
   the only door to it was Settings, which is not where "is this current?" is
-  asked.
+  asked. Its board-scoped source read uses the complete server-side task pool,
+  not the 500 rendered cards; the default board still keeps connected sources
+  visible before they have a card, while an explicit native/source filter wins.
 - **Source controls now stay usable on touch screens.** Source rows, the board
   strip and Connect source dialog actions expose 44px settings, sync and
   connection targets. State, field and people mappings stack their name above
