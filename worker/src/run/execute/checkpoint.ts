@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { CRASH_CHECKPOINT_REASON } from './crash-checkpoint.js'
 import { persistRunBasis } from './agent-message.js'
-import type { BasisScope } from './disclosure-basis.js'
+import type { BasisScope, PrivateConversationSource } from './disclosure-basis.js'
+import { persistablePrivateConversationSources } from './private-conversation-source-storage.js'
 import type { RunEndReason } from './budget-stop.js'
 
 // Durable work state for a run that stopped at a policy ceiling.
@@ -35,6 +36,8 @@ export type LoadedRunCheckpoint = {
    * unrestricted one.
    */
   basisScopes: BasisScope[]
+  /** Original authors for private material in this checkpoint; absent on legacy rows. */
+  disclosureSources: PrivateConversationSource[]
 }
 
 const CHECKPOINT_INJECTION_HEADER = [
@@ -109,13 +112,20 @@ export const loadRunCheckpointForRun = async (
   // `RunBasisScope` is already the per-run provenance ledger and a checkpoint
   // belongs to exactly one run, so the writing run's own rows are the
   // checkpoint's basis — no second table, and no way for the two to disagree.
-  const basisScopes = await prisma.runBasisScope.findMany({
-    where: { runId: row.runId },
-    select: { scopeId: true, scopeType: true },
-  })
+  const [basisScopes, disclosureSources] = await Promise.all([
+    prisma.runBasisScope.findMany({
+      where: { runId: row.runId },
+      select: { scopeId: true, scopeType: true },
+    }),
+    prisma.runCheckpointDisclosureSource.findMany({
+      where: { checkpointId: row.id },
+      select: { sourceAuthorUserId: true, sourceChannelId: true },
+    }),
+  ])
 
   return {
     basisScopes,
+    disclosureSources,
     createdAt: row.createdAt,
     generation: row.generation,
     id: row.id,
@@ -176,6 +186,8 @@ export const persistRunCheckpoint = async (
      * record; the checkpoint has to carry it or it is lost with the run.
      */
     basis: readonly BasisScope[]
+    /** The sink's structurally admitted private original authors. */
+    disclosureSources: readonly PrivateConversationSource[]
   },
 ): Promise<string> => {
   const sources = input.sources as unknown as Prisma.InputJsonValue
@@ -206,6 +218,25 @@ export const persistRunCheckpoint = async (
     },
     select: { id: true },
   })
+
+  // Older checkpoints have no rows and restore as unknown. New rows preserve
+  // the exact authors that entered this run; source-channel deletion omits only
+  // the FK row while the surviving basis still restores as unknown.
+  const disclosureSources = await persistablePrivateConversationSources(
+    prisma,
+    input.disclosureSources,
+  )
+  if (disclosureSources.length > 0) {
+    await prisma.runCheckpointDisclosureSource.createMany({
+      data: disclosureSources.map((source) => ({
+        checkpointId: checkpoint.id,
+        organizationId: input.organizationId,
+        sourceAuthorUserId: source.sourceAuthorUserId,
+        sourceChannelId: source.sourceChannelId,
+      })),
+      skipDuplicates: true,
+    })
+  }
 
   await prisma.taskEvent.create({
     data: {

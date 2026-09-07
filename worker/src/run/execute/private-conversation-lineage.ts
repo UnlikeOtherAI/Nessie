@@ -10,7 +10,7 @@ type MessageAuthorship = {
   userId: string | null
 }
 
-type TriggerMessageLineage = {
+export type PrivateConversationLineage = {
   basisScopes: readonly BasisScope[]
   disclosureSources: readonly {
     sourceAuthorUserId: string | null
@@ -83,26 +83,33 @@ export const markUnknownPrivateConversationScopes = async (
  * represented, so a complete modern source stays eligible for its author's
  * deliberate one-message consent.
  */
-export const admitTriggerMessageLineage = async (
+export const admitPrivateConversationLineage = async (
   prisma: PrismaClient,
   sink: ConsumedSourceSink,
-  message: TriggerMessageLineage,
+  lineage: PrivateConversationLineage,
 ): Promise<void> => {
-  sink.addAll(message.basisScopes)
-  for (const source of message.disclosureSources) {
+  sink.addAll(lineage.basisScopes)
+  for (const source of lineage.disclosureSources) {
     sink.addPrivateConversationSource(source)
   }
-  const representedChannels = new Set(message.disclosureSources.map(
+  const representedChannels = new Set(lineage.disclosureSources.map(
     (source) => source.sourceChannelId,
   ))
   await markUnknownPrivateConversationScopes(
     prisma,
     sink,
-    message.basisScopes.filter(
+    lineage.basisScopes.filter(
       (scope) => scope.scopeType !== 'channel' || !representedChannels.has(scope.scopeId),
     ),
   )
 }
+
+/** Admit server-authored hidden trigger content before it becomes a run prompt. */
+export const admitTriggerMessageLineage = async (
+  prisma: PrismaClient,
+  sink: ConsumedSourceSink,
+  message: PrivateConversationLineage,
+): Promise<void> => admitPrivateConversationLineage(prisma, sink, message)
 
 /** Mark known non-public channels when their source author is unavailable. */
 export const markUnknownPrivateConversationChannels = (
