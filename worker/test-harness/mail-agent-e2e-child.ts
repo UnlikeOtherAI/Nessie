@@ -70,6 +70,7 @@ const main = async (): Promise<void> => {
       where: { id: scope.agentId },
       data: {
         model: process.env.NESSIE_MODEL_NAME!,
+        effort: 'low',
         runLimits: { maxCostCents: 5, maxIterations: 8, maxTokens: 8_000, maxToolCalls: 5, maxWallclockMs: 180_000 },
         systemPrompt: [
           'You work in the connected mailbox available to you.',

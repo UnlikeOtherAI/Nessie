@@ -1,4 +1,4 @@
-# Local real-model mail-agent probe
+# Local deterministic mail-agent workflow
 
 `pnpm --filter @nessie/worker test:e2e:mail-agent` deterministically exercises
 one realistic connected-mail workflow: a scripted inference response receives
@@ -16,6 +16,16 @@ addresses. Set `NESSIE_MAIL_E2E_MODE=real` to use local Ollama
 (`gemma4:latest`) instead; that opt-in probe incurs no cloud cost.
 The command removes only its namespaced fixture and generated certificate after
 the probe; it leaves the separate local wire-health server untouched.
+
+Before running it, install workspace dependencies and create a dedicated,
+migrated Postgres database. Export its URL as `DATABASE_URL`; the harness passes
+that exact value to both database configuration variables. Docker must be
+available for GreenMail. For example, run the repository's normal Prisma
+migration command against the dedicated database, then:
+
+```sh
+DATABASE_URL=postgresql://... pnpm --filter @nessie/worker test:e2e:mail-agent
+```
 
 The default uses scripted inference only for model decisions; SMTP/IMAP,
 connection lifecycle, agent access, approval/resume, and delivery are real.

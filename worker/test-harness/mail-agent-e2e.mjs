@@ -1,8 +1,6 @@
-// Starts the isolated TLS GreenMail fixture and runs the real-model worker probe.
-// This is deliberately outside CI: a local Ollama model makes tool selection a
-// useful realistic-work check, but not a deterministic assertion.
+// Starts the isolated TLS GreenMail fixture for the deterministic mail workflow.
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -12,6 +10,8 @@ const certificatePem = resolve(fixtureDirectory, 'greenmail.pem')
 const compose = resolve(root, 'infrastructure/compose/docker-compose.mail-agent-e2e.yml')
 const container = 'nessie-mail-agent-e2e-greenmail-1'
 const certificatePassword = 'mail-e2e-cert'
+const databaseUrl = process.env.DATABASE_URL
+if (!databaseUrl) throw new Error('DATABASE_URL must name a dedicated migrated database.')
 
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', stdio: 'pipe', ...options })
@@ -47,13 +47,15 @@ try {
   cwd: root,
   env: {
     ...process.env,
-    DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://nessie:project-usability-local@127.0.0.1:54329/nessie_mail_e2e',
+    DATABASE_URL: databaseUrl,
     NESSIE_AUTH_SECRET: process.env.NESSIE_AUTH_SECRET ?? 'mail-agent-e2e-secret-only',
-    NESSIE_DB_URL: process.env.NESSIE_DB_URL ?? process.env.DATABASE_URL ?? 'postgresql://nessie:project-usability-local@127.0.0.1:54329/nessie_mail_e2e',
+    NESSIE_DB_URL: databaseUrl,
     NESSIE_MODEL_API_KEY: 'local-mail-e2e',
     NESSIE_MODEL_BASE_URL: 'http://127.0.0.1:11434/v1',
     NESSIE_MODEL_NAME: 'gemma4:latest',
     NESSIE_MODEL_PROVIDER: 'openai',
+    NESSIE_MODEL_MAX_TOKENS: '512',
+    NESSIE_MODEL_TEMPERATURE: '0',
     NESSIE_MAIL_E2E_MODE: process.env.NESSIE_MAIL_E2E_MODE ?? 'mock',
     NODE_EXTRA_CA_CERTS: certificatePem,
     OPENAI_API_KEY: 'local-mail-e2e',
