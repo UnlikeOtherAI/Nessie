@@ -373,19 +373,19 @@ const main = async () => {
     })
     modelPhase = 'source'
 
-    await sourcePage.page.waitForSelector(
-      `[data-testid="restricted-message-${forwarded.id}"]`,
-      { timeout: 60_000 },
+    const sourceCard = sourcePage.page.locator(`#msg-${forwarded.id}`)
+    await sourceCard.getByRole('button', { name: 'Share this reply' }).waitFor({ timeout: 60_000 })
+    assert.equal(
+      await sourceCard.getByRole('button', { name: 'Always allow here' }).count(),
+      0,
+      'a private source offers only one-reply sharing',
     )
     await sourcePage.page.screenshot({ path: resolve(SCREENSHOTS, 'source-author-share-control.png'), fullPage: true })
     const shareResponse = sourcePage.page.waitForResponse((response) =>
       response.request().method() === 'POST'
       && response.url().endsWith(`/api/messages/${forwarded.id}/disclosure-grants`),
     )
-    await sourcePage.page
-      .locator(`#msg-${forwarded.id}`)
-      .getByRole('button', { name: 'Share this reply' })
-      .click()
+    await sourceCard.getByRole('button', { name: 'Share this reply' }).click()
     assert.equal((await shareResponse).status(), 201, 'author share control creates the scoped grant')
     const grants = await pipeline.prisma.disclosureGrant.findMany({
       where: { messageId: forwarded.id },
