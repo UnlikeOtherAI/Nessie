@@ -65,6 +65,7 @@ const emit = (member: unknown): readonly unknown[] | null => {
 
 const SOURCE_ROOT = fileURLToPath(new URL('../src/', import.meta.url))
 const FACADES_ROOT = join(SOURCE_ROOT, 'facades')
+const sourceRelative = (path: string): string => relative(SOURCE_ROOT, path).replaceAll('\\', '/')
 
 /** Where the literals live; every other file must import from one of these. */
 const CENTRAL_KEY_MODULE = 'lib/query-keys.ts'
@@ -89,7 +90,7 @@ const keyModules = (): string[] => {
 }
 
 const KEY_MODULE_PATHS = keyModules()
-const KEY_MODULE_FILES = new Set(KEY_MODULE_PATHS.map((path) => relative(SOURCE_ROOT, path)))
+const KEY_MODULE_FILES = new Set(KEY_MODULE_PATHS.map(sourceRelative))
 
 /** `[module, familyName, family]` for every `*Keys` object in every key module. */
 const families: [string, string, Record<string, unknown>][] = (
@@ -102,7 +103,7 @@ const families: [string, string, Record<string, unknown>][] = (
             entry[0].endsWith('Keys') && typeof entry[1] === 'object' && entry[1] !== null,
         )
         .map(([name, family]): [string, string, Record<string, unknown>] => [
-          relative(SOURCE_ROOT, path),
+          sourceRelative(path),
           name,
           family,
         ])
@@ -271,7 +272,7 @@ test('a facade declares its key family in keys.ts and nowhere else', () => {
       if (entry.name === 'keys.ts' || !isSourceFile(entry.name)) continue
       readFileSync(full, 'utf8').split('\n').forEach((line, index) => {
         if (/^export const [A-Za-z]*Keys\b/.test(line)) {
-          strays.push(`${relative(SOURCE_ROOT, full)}:${index + 1}  ${line.trim()}`)
+          strays.push(`${sourceRelative(full)}:${index + 1}  ${line.trim()}`)
         }
       })
     }

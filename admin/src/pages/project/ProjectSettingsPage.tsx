@@ -121,6 +121,7 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
                 onSelectBoard={selectBoard}
                 projectId={projectId}
                 selectedBoardId={selectedBoardId}
+                newBoardIntentSerial={intents.serial}
                 startWithNewBoard={startWithNewBoard}
               />
             )}

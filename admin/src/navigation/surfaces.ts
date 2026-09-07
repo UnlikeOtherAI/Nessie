@@ -240,15 +240,30 @@ export const SURFACES: Surface[] = [
     type: 'root',
   },
   {
-    // The project's seven section paths are one tab host on one identity:
-    // switching sections swaps content in place and never animates, even
-    // though each section is its own route.
+    // The board owns its viewport and its own two-axis scrolling. Keep the
+    // project identity stable while making the phone shell a bounded flex
+    // surface, so dense columns scroll inside the board instead of extending
+    // the document below the visible viewport.
+    depth: 1,
+    fillsViewport: true,
+    identityOf: (match) => `project:${match[1]}`,
+    keyScope: () => 'project',
+    intent: PROJECT_INTENT,
+    parentOf: toProjects,
+    pattern: /^\/projects\/([^/]+)(?:\/board)?$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'tabHost',
+  },
+  {
+    // The remaining project sections share that identity but use the normal
+    // document scroller for their form and detail content.
     depth: 1,
     identityOf: (match) => `project:${match[1]}`,
     keyScope: () => 'project',
     intent: PROJECT_INTENT,
     parentOf: toProjects,
-    pattern: /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
+    pattern: /^\/projects\/([^/]+)\/(?:backlog|insights|docs|executors|settings)$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'tabHost',

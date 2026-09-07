@@ -12,7 +12,7 @@
 // (plan §E) pending the named `--breakpoint-panel` conversion, and it is the
 // only surviving viewport literal family.
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -41,7 +41,7 @@ function fail(message) {
 }
 
 function trackedFiles() {
-  const output = execSync(`git ls-files '${SCAN_ROOT}/*.ts' '${SCAN_ROOT}/*.tsx'`, {
+  const output = execFileSync('git', ['ls-files', `${SCAN_ROOT}/*.ts`, `${SCAN_ROOT}/*.tsx`], {
     encoding: 'utf8',
   })
   // Uncommitted deletions stay in the index until staged; only files that
