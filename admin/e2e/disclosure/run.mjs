@@ -77,7 +77,7 @@ const tokenFor = (issueSessionToken, user, scope) => issueSessionToken({
   org: scope.organizationId,
   proj: scope.projectId,
   providerId: 'local',
-  providerType: 'local',
+  providerType: 'local-bootstrap',
   roles: [user.role],
   sub: user.id,
   team: scope.teamId,
