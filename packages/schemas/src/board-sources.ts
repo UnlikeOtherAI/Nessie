@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ColumnCategorySchema } from './board-lifecycle.js'
+import { ColumnCategorySchema, type ColumnCategory } from './board-lifecycle.js'
 import { AgentIdSchema, ProjectIdSchema, UserIdSchema } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
