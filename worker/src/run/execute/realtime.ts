@@ -10,6 +10,7 @@ import {
   type WsScope,
 } from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
+import { publishTaskUpdated as publishSharedTaskUpdated } from '@nessie/team-admin'
 import type { ReplyPlacement, RunContext } from './types.js'
 export { publishAgentTodoUpdated } from '@nessie/team-admin'
 
@@ -120,15 +121,7 @@ export const publishTaskUpdated = async (
   scopes: WsScope[],
   taskId: string,
   status: TaskStatus,
-): Promise<void> => {
-  await realtimeTransport.publishWs(scopes, {
-    data: {
-      taskId: parseTaskId(taskId),
-      status,
-    },
-    event: 'task.updated',
-  })
-}
+): Promise<void> => publishSharedTaskUpdated(realtimeTransport, scopes, taskId, status)
 
 /**
  * A message changed in place (the rolling watch status). Distinct from
