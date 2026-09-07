@@ -166,8 +166,9 @@ the bounce. The page scroller itself stays `overflow-x: hidden; overflow-y:
 auto` (a `clip` axis computes to `hidden` beside a scrolling axis).
 
 A **full-height surface** — a screen with a fixed header and bottom-anchored
-composer and a scrolling region between them, i.e. the chat conversation — is
-the exception: it owns its own inner scroller, so the page scroller must be a
+composer and a scrolling region between them, i.e. the chat conversation, or
+a project board with its horizontal viewport and vertically scrolling columns —
+is the exception: it owns its own inner scroller, so the page scroller must be a
 non-scrolling flex column it can fill rather than a block scroller its
 `flex-1`/`h-full` column collapses inside (which floats the composer up under
 the last message with a gap below). A row declares this with
