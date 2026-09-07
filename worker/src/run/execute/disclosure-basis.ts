@@ -11,6 +11,13 @@ export type BasisScope = {
   scopeId: string
 }
 
+/** A private conversation's channel scope and the human whose words were read. */
+export type PrivateConversationSource = {
+  /** Absent means a legacy or otherwise untraceable private source: deny export. */
+  sourceAuthorUserId: string | null
+  sourceChannelId: string
+}
+
 /**
  * Per-run accumulator of scoped sources the run actually consumed.
  *
@@ -30,12 +37,17 @@ export type ConsumedSourceSink = {
   /** Every source consumed so far, de-duplicated. Order is insertion order. */
   list: () => BasisScope[]
   size: () => number
+  /** Human authors whose private conversation material entered this run. */
+  privateConversationSources: () => PrivateConversationSource[]
+  /** Records one human turn from a non-public conversation. */
+  addPrivateConversationSource: (source: PrivateConversationSource) => void
 }
 
 const scopeKey = (scope: BasisScope): string => `${scope.scopeType}:${scope.scopeId}`
 
 export const createConsumedSourceSink = (): ConsumedSourceSink => {
   const seen = new Map<string, BasisScope>()
+  const privateConversationSources = new Map<string, PrivateConversationSource>()
 
   const add = (scope: BasisScope): void => {
     if (!scope.scopeType || !scope.scopeId) {
@@ -56,6 +68,15 @@ export const createConsumedSourceSink = (): ConsumedSourceSink => {
     },
     list: () => [...seen.values()],
     size: () => seen.size,
+    privateConversationSources: () => [...privateConversationSources.values()],
+    addPrivateConversationSource: (source) => {
+      if (!source.sourceChannelId) return
+      add({ scopeId: source.sourceChannelId, scopeType: 'channel' })
+      const key = `${source.sourceChannelId}:${source.sourceAuthorUserId ?? 'unknown'}`
+      if (!privateConversationSources.has(key)) {
+        privateConversationSources.set(key, source)
+      }
+    },
   }
 }
 

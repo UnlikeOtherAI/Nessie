@@ -1038,6 +1038,7 @@ model User {
   userAlerts                          UserAlert[]
   disclosureGrants                    DisclosureGrant[]
   scopeDisclosureGrants               ScopeDisclosureGrant[]
+  messageDisclosureSources            MessageDisclosureSource[]
   userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
   messageThreadFollows                MessageThreadFollow[]
   favorites                           Favorite[]
@@ -1286,6 +1287,7 @@ model Organization {
   runCheckpoints                   RunCheckpoint[]
   runBasisScopes                   RunBasisScope[]
   messageBasisScopes               MessageBasisScope[]
+  messageDisclosureSources         MessageDisclosureSource[]
   disclosureGrants                 DisclosureGrant[]
   scopeDisclosureGrants            ScopeDisclosureGrant[]
   agentMailboxMessages             AgentMailboxMessage[]
@@ -2481,6 +2483,8 @@ model Message {
   workflowRunReplyRoots       WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
   runThreadPendingMessages    RunThreadPendingMessage[]
   basisScopes                 MessageBasisScope[]
+  disclosureSourceMessages    MessageDisclosureSource[]
+  disclosureSources           MessageDisclosureSource[]
   disclosureGrants            DisclosureGrant[]
   pushSurfacePresences        UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
   conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
@@ -2510,6 +2514,32 @@ model MessageBasisScope {
   @@unique([messageId, scopeType, scopeId], map: "message_basis_scopes_message_scope_key")
   @@index([organizationId], map: "message_basis_scopes_org_idx")
   @@map("message_basis_scopes")
+}
+
+/// The people whose words from a private conversation entered an agent reply.
+///
+/// A channel scope answers who may read the reply; it cannot answer who may
+/// consent to carry that conversation into a different audience. Keep that
+/// second fact with the derived message so a later transcript, checkpoint, or
+/// tool post preserves the original author's authority instead of substituting
+/// the agent owner or another channel member.
+model MessageDisclosureSource {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId          String       @map("message_id") @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  sourceChannelId    String       @map("source_channel_id") @db.Uuid
+    // Null marks private material whose original human author was not
+    // durably recorded. It is a denial marker, never an anonymous consent.
+    sourceAuthorUserId String?      @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at")
+  message            Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel      Channel      @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+    sourceAuthor       User?        @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, sourceChannelId, sourceAuthorUserId], map: "message_disclosure_sources_message_channel_author_key")
+  @@index([organizationId], map: "message_disclosure_sources_org_idx")
+  @@map("message_disclosure_sources")
 }
 
 /// The acknowledgement card's "share this reply": one message, one audience,

@@ -63,6 +63,18 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- **A private conversation's author, rather than its agent's owner or another
+  reader, decides export.** `MessageDisclosureSource` carries the source
+  channel and each human author whose private turn entered a derived message.
+  A one-message grant needs that exact single author; a multi-author private
+  conversation therefore stays withheld until each author has a deliberately
+  scoped route. Standing grants never cover private conversation lineage. An
+  explicit request can create the existing one-message grant automatically,
+  but only after the utility model judges the current author-authored request
+  against the exact proposed content and destination and the server proves the
+  requester is that recorded source author. Missing lineage fails closed for
+  sharing. Transcript reads, derived replies, edits and `send_message` carry
+  the lineage forward; public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
   `canManageChannel` (`api/src/services/channel-members.ts`), the same gate

@@ -74,11 +74,13 @@ const mapThreadMessageRecord = (
   // control was an affordance that could only fail. Defaults true for callers
   // that cannot distinguish, which is the pre-existing behaviour.
   readableWithoutGrant = true,
+  // A private-conversation reply is shareable only by its original author.
+  originalAuthorMayShare = true,
 ): ThreadMessageRecord => ({
   attachmentCount: withheld ? 0 : attachmentCount,
   ...(withheld
     ? { restricted: true as const }
-    : message.basisScopes.length > 0 && readableWithoutGrant
+    : message.basisScopes.length > 0 && readableWithoutGrant && originalAuthorMayShare
       // Readable on their own entitlement, and drew on restricted sources — so
       // this reader is the one who can share it. Private material offers no
       // standing rule.
@@ -174,7 +176,18 @@ export const mapMessageRecordWithAttachments = async (
   )
   const direct = viewerSatisfiesBasis(message.basisScopes, messageViewer)
   if (direct) {
-    return mapThreadMessageRecord(message, count, false, true)
+    const authors = new Set(message.disclosureSources.map((source) => source.sourceAuthorUserId))
+    const hasUnattributedChannelSource = message.basisScopes.some((scope) =>
+      scope.scopeType === 'channel')
+      && (authors.size === 0 || authors.has(null))
+    return mapThreadMessageRecord(
+      message,
+      count,
+      false,
+      true,
+      !hasUnattributedChannelSource
+      && (authors.size === 0 || (authors.size === 1 && authors.has(viewer.userId))),
+    )
   }
   const readable = await canUserReadDisclosureBasis(prisma, {
     agentId: message.agentId,
@@ -347,6 +360,16 @@ export const listThreadMessages = async (
           attachmentCounts.get(row.id) ?? 0,
           withheldIds.has(row.id),
           !grantOnlyIds.has(row.id),
+          viewer.kind !== 'user'
+            ? false
+            : (() => {
+              const authors = new Set(row.disclosureSources.map((source) => source.sourceAuthorUserId))
+              const hasUnattributedChannelSource = row.basisScopes.some((scope) =>
+                scope.scopeType === 'channel')
+                && (authors.size === 0 || authors.has(null))
+              return !hasUnattributedChannelSource
+                && (authors.size === 0 || (authors.size === 1 && authors.has(viewer.userId)))
+            })(),
         )),
     meta: {
       hasMore,

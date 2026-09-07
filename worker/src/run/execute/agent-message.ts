@@ -131,6 +131,27 @@ const insertBasisScopes = async (
   })
 }
 
+/** Preserve who authored private conversation material independently of scope. */
+const insertPrivateConversationSources = async (
+  tx: Tx,
+  input: {
+    messageId: string
+    organizationId: string
+    sources: ReturnType<RunContext['consumedSources']['privateConversationSources']>
+  },
+): Promise<void> => {
+  if (input.sources.length === 0) return
+  await tx.messageDisclosureSource.createMany({
+    data: input.sources.map((source) => ({
+      messageId: input.messageId,
+      organizationId: input.organizationId,
+      sourceAuthorUserId: source.sourceAuthorUserId,
+      sourceChannelId: source.sourceChannelId,
+    })),
+    skipDuplicates: true,
+  })
+}
+
 /**
  * Persist the run's own basis ledger. Idempotent: a run that stamps twice (a
  * reply plus a later notice) writes the same rows, and `skipDuplicates` plus the
@@ -192,6 +213,11 @@ export const createAgentMessage = async (
       messageId: message.id,
       organizationId: context.channel.organizationId,
     })
+    await insertPrivateConversationSources(inner, {
+      messageId: message.id,
+      organizationId: context.channel.organizationId,
+      sources: context.consumedSources.privateConversationSources(),
+    })
     await persistRunBasis(inner, {
       basis,
       organizationId: context.channel.organizationId,
@@ -239,6 +265,11 @@ export const replaceAgentMessageContent = async (
       basis,
       messageId: input.messageId,
       organizationId: context.channel.organizationId,
+    })
+    await insertPrivateConversationSources(inner, {
+      messageId: input.messageId,
+      organizationId: context.channel.organizationId,
+      sources: context.consumedSources.privateConversationSources(),
     })
     await persistRunBasis(inner, {
       basis,

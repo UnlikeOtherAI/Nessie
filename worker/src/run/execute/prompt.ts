@@ -330,11 +330,15 @@ export const loadConversation = async (
       content: true,
       role: true,
       agentId: true,
+      onBehalfOfUserId: true,
+      userId: true,
       // Live agent name — resolved via the FK join at run time, so an agent
       // rename is always reflected and no stale name is ever baked into the
       // prompt path.
       agent: { select: { name: true } },
       basisScopes: { select: { scopeType: true, scopeId: true } },
+      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
     },
     take: 20,
   })
@@ -354,6 +358,29 @@ export const loadConversation = async (
   // writes inherits it.
   for (const message of readable) {
     input.consumedSources.addAll(message.basisScopes)
+    for (const source of message.disclosureSources) {
+      input.consumedSources.addPrivateConversationSource(source)
+    }
+    // Human text in a non-public room has no MessageBasisScope — it is the
+    // source, rather than a derived reply. Record its channel and author here
+    // so a later post into another audience cannot erase that provenance.
+    if (message.thread.channel.visibility !== 'public') {
+      const authorUserId = message.userId ?? message.onBehalfOfUserId
+      if (authorUserId) {
+        input.consumedSources.addPrivateConversationSource({
+          sourceAuthorUserId: authorUserId,
+          sourceChannelId: message.thread.channel.id,
+        })
+      } else if (message.disclosureSources.length === 0) {
+        // A legacy private agent/tool row can carry another person's words but
+        // predates source lineage. Preserve that uncertainty through every
+        // later reply; a known author from another turn cannot cover it.
+        input.consumedSources.addPrivateConversationSource({
+          sourceAuthorUserId: null,
+          sourceChannelId: message.thread.channel.id,
+        })
+      }
+    }
   }
 
   // Attachments and inlined images are loaded only for admitted turns — a

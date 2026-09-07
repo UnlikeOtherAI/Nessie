@@ -8,6 +8,7 @@ import {
   resolveStandingConsentForToolCall,
 } from '@nessie/team-admin'
 import { judgeSendBoundary } from './send-boundary-judge.js'
+import { maybeAuthorizeDisclosureShare } from './disclosure-share-authorization.js'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -46,6 +47,7 @@ export type ToolAuthorizationDecision =
       executionArgs?: Record<string, unknown>
       gmailDraftSendApproved?: true
       gmailDraftSendStandingAuthorized?: true
+      disclosureShareAuthorized?: true
       toolActorContext: ToolActorContext
     }
   | {
@@ -92,11 +94,7 @@ export type ToolAuthorizationContext = {
   parentAgentId: string | null
   /** Only a top-level, non-handoff run has a durable identity to suspend. */
   maySuspendForApproval: boolean
-  /**
-   * The run's utility-model call, used for the send-boundary judgement. Absent
-   * where no utility model resolves, which fails the judgement closed to
-   * asking rather than proceeding unjudged.
-   */
+  /** Optional utility-model call; absent disclosure judgement fails closed. */
   runUtility?: (prompt: string) => Promise<string | null>
   consumeApprovalProof?: boolean
   skipAutoReview?: boolean
@@ -201,6 +199,15 @@ export const authorizeToolExecution = async (
   const toolActorContext = buildToolActorContext(baseActorContext, context, toolName)
   const emitAudit: ToolAuthorizationAuditEmitter =
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
+
+  const disclosureShareAuthorized = await maybeAuthorizeDisclosureShare({
+    args,
+    context,
+    prisma,
+    runUtility: auth.runUtility,
+    toolName,
+    triggerMessageId: auth.resumeState?.messageId,
+  })
 
   if (await hooks.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
     return {
@@ -488,6 +495,7 @@ export const authorizeToolExecution = async (
 
   return {
     decision: 'allow',
+    ...(disclosureShareAuthorized ? { disclosureShareAuthorized: true as const } : {}),
     executionArgs,
     ...(gmailDraftSendStandingAuthorized ? { gmailDraftSendStandingAuthorized: true as const } : {}),
     toolActorContext,

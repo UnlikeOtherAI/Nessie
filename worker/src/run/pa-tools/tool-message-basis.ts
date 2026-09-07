@@ -84,3 +84,22 @@ export const insertMessageBasis = async (
     skipDuplicates: true,
   })
 }
+
+/** Preserve private-conversation authors when a tool posts into another room. */
+export const insertPrivateConversationSources = async (
+  tx: Tx,
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  input: { messageId: string; organizationId: string },
+): Promise<void> => {
+  const sources = context.consumedSources?.privateConversationSources() ?? []
+  if (sources.length === 0) return
+  await tx.messageDisclosureSource.createMany({
+    data: sources.map((source) => ({
+      messageId: input.messageId,
+      organizationId: input.organizationId,
+      sourceAuthorUserId: source.sourceAuthorUserId,
+      sourceChannelId: source.sourceChannelId,
+    })),
+    skipDuplicates: true,
+  })
+}

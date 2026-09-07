@@ -4,9 +4,14 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-typ
 import { resolveAccessibleChannelIds } from './access.js'
 import {
   recordMessageChannelRead,
+  recordPrivateConversationMessageRead,
   UNRESTRICTED_MESSAGES_ONLY,
 } from './message-search-basis.js'
-import { insertMessageBasis, resolveToolPostBasis } from './tool-message-basis.js'
+import {
+  insertMessageBasis,
+  insertPrivateConversationSources,
+  resolveToolPostBasis,
+} from './tool-message-basis.js'
 import {
   buildSnippet,
   clampLimit,
@@ -27,6 +32,7 @@ type MessageSearchRow = {
   project_name: string
   team_name: string
   root_message_id: string | null
+  user_id: string | null
 }
 
 export const runMessageSearchTool = async (
@@ -64,6 +70,7 @@ export const runMessageSearchTool = async (
       p."name" AS project_name,
       tm."name" AS team_name,
       m."content",
+      m."user_id",
       m."created_at",
       COALESCE(u."display_name", a."name") AS author_name
     FROM "messages" m
@@ -93,6 +100,11 @@ export const runMessageSearchTool = async (
     context,
     rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
   )
+  recordPrivateConversationMessageRead(context, rows.map((row) => ({
+    authorUserId: row.user_id,
+    channelId: row.channel_id,
+    channelVisibility: row.channel_visibility,
+  })))
 
   const lines = rows.map((row, index) =>
     formatMessageLine({
@@ -161,6 +173,10 @@ export const runMessageEditTool = async (
     })
     await insertMessageBasis(tx, {
       basis,
+      messageId: input.messageId,
+      organizationId: String(context.channel.organizationId),
+    })
+    await insertPrivateConversationSources(tx, context, {
       messageId: input.messageId,
       organizationId: String(context.channel.organizationId),
     })

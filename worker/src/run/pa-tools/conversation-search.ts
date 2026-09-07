@@ -17,6 +17,7 @@ import {
 } from './tool-output.js'
 import {
   recordMessageChannelRead,
+  recordPrivateConversationMessageRead,
   UNRESTRICTED_MESSAGES_ONLY,
 } from './message-search-basis.js'
 
@@ -216,6 +217,11 @@ export const runTeamSearchTool = async (
       visibility: message.thread.channel.visibility,
     })),
   ])
+  recordPrivateConversationMessageRead(context, messages.map((message) => ({
+    authorUserId: message.user?.id ?? null,
+    channelId: message.thread.channel.id,
+    channelVisibility: message.thread.channel.visibility,
+  })))
 
   const lines: string[] = []
 
