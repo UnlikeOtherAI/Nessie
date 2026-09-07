@@ -29,7 +29,7 @@ import {
 } from '../facades/executors/hooks'
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
-import { getBaseUrl } from '../lib/api-client'
+import { getExecutorApiOrigin } from '../lib/api-client'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
@@ -201,7 +201,7 @@ export const ExecutorsPage = () => {
   }
 
   const pairingCommand = useMemo(() => created
-    ? `nessie-executor pair --api ${getBaseUrl() || 'https://api.nessie.works'} --state-dir "$HOME/.nessie-executor" --workspace "/absolute/read-only/workspace" --enrollment ${created.invitation.enrollmentId} --challenge ${created.invitation.challenge}`
+    ? `nessie-executor pair --api ${getExecutorApiOrigin(created.invitation.apiBaseUrl)} --state-dir "$HOME/.nessie-executor" --workspace "/absolute/read-only/workspace" --enrollment ${created.invitation.enrollmentId} --challenge ${created.invitation.challenge}`
     : null, [created])
 
   return (

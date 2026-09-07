@@ -132,6 +132,24 @@ test('mail_present stamps disclosure and publishes only the restricted message s
   assert.match(result.outputPreview, /\/mail\/mailbox\//)
 })
 
+test('mail_present keeps a selected review list structural and bounded', async () => {
+  const { context, messageCreates } = makeContext()
+  await runMailPresentTool(context, {
+    accountId: IDS.account,
+    mode: 'account',
+    source: 'mailbox',
+    threadIds: ['provider-thread-1', 'provider-thread-2'],
+  })
+  assert.deepEqual(messageCreates[0]?.data.metadata, {
+    mailSurfaceDoorway: {
+      accountId: IDS.account,
+      mode: 'account',
+      source: 'mailbox',
+      threadIds: ['provider-thread-1', 'provider-thread-2'],
+    },
+  })
+})
+
 test('mail_present refuses a missing access row without revealing why it is unavailable', async () => {
   const { context, events, messageCreates } = makeContext({ access: false })
   await assert.rejects(
@@ -155,16 +173,50 @@ test('mail_present refuses when no effective user can receive the private doorwa
   assert.equal(events.length, 0)
 })
 
-test('mailbox_compose returns the universal card template and does not send', async () => {
+type MailboxComposeCard = {
+  actions: Array<{
+    collectsValues?: boolean
+    href?: string
+    key: string
+    label?: string
+    style?: string
+    submits: boolean
+  }>
+  blocks: Array<{ default?: string; key: string; maxLength?: number }>
+}
+
+test('mailbox_compose returns a proposed universal card draft and does not send', async () => {
   const { context, events, messageCreates } = makeContext()
-  const result = await runMailboxComposeTool(context, { connectionId: IDS.account })
+  const result = await runMailboxComposeTool(context, {
+    bcc: ['legal@example.test'],
+    cc: ['accounting@example.test'],
+    connectionId: IDS.account,
+    subject: 'Tuesday delivery plan',
+    text: 'Thanks — Tuesday works for us.',
+    to: ['client@example.test'],
+  })
   const output = JSON.parse(result.outputPreview) as {
-    card: { blocks: Array<{ key: string; maxLength?: number }>; actions: Array<{ key: string }> }
+    card: MailboxComposeCard
     mailPresentation: { reviewUrl: string }
   }
-  assert.deepEqual(output.card.blocks.map((block) => block.key), ['to', 'cc', 'bcc', 'subject', 'body'])
-  assert.deepEqual(output.card.actions.map((action) => action.key), ['send', 'dismiss'])
+  assert.deepEqual(
+    output.card.blocks.map((block) => block.key),
+    ['to', 'cc', 'bcc', 'subject', 'body'],
+  )
+  assert.deepEqual(output.card.actions.map((action) => action.key), ['send', 'edit', 'dismiss'])
+  assert.deepEqual(output.card.actions.find((action) => action.key === 'edit'), {
+    collectsValues: true,
+    href: `/mail/mailbox/${IDS.account}/compose`,
+    key: 'edit',
+    label: 'Edit',
+    style: 'secondary',
+    submits: false,
+  })
   assert.equal(output.card.blocks.find((block) => block.key === 'body')?.maxLength, 100_000)
+  assert.deepEqual(Object.fromEntries(output.card.blocks.map((block) => [block.key, block.default])), {
+    bcc: 'legal@example.test', body: 'Thanks — Tuesday works for us.', cc: 'accounting@example.test',
+    subject: 'Tuesday delivery plan', to: 'client@example.test',
+  })
   assert.equal(output.mailPresentation.reviewUrl, `/mail/mailbox/${IDS.account}/compose`)
   assert.equal(messageCreates.length, 0)
   assert.equal(events.length, 0)

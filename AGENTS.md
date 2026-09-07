@@ -325,6 +325,8 @@ when one changes, the same turn updates it, not this section.
   mailbox somebody connected over SMTP/IMAP reaches it only through two
   separate decisions — a per-`(connection, agent)` access row and, for a
   personal mailbox, the effective user — and every send is approved and pinned.
+  Chat review pointers and draft handoffs stay content-free until the same
+  viewer-scoped Mail surface authorizes their live read or edit.
   Read [`docs/standards/connected-mailboxes.md`](docs/standards/connected-mailboxes.md)
   before writing code here.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
@@ -424,6 +426,11 @@ before writing code here.
 ## Cloud browsers — a second transport, not a second browser surface
 
 Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
+
+Private browser access, human control, selected-site Chrome import, and their
+explicit grants are a separate contract: read
+[docs/plans/2026-09-07-private-browser-access-and-import.md](docs/plans/2026-09-07-private-browser-access-and-import.md)
+before touching those surfaces.
 
 ## Settings — one cascade, and a lock a person can see
 

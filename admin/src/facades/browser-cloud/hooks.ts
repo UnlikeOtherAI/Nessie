@@ -95,6 +95,34 @@ export const useCloudBrowserSession = (sessionId: string | null) => {
   })
 }
 
+/** A no-store screenshot, fetched through the authenticated Nessie API. */
+export const useCloudBrowserScreenshot = (sessionId: string | null, enabled: boolean) => {
+  const apiClient = useApiClient()
+  return useQuery<{ imageDataUrl: string | null }>({
+    queryKey: browserCloudKeys.screenshot(sessionId ?? undefined),
+    queryFn: () => apiClient.get(`/api/browser-sessions/${sessionId}/screenshot`),
+    enabled: sessionId !== null && enabled,
+    refetchInterval: 2_000,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export type HumanBrowserKey =
+  'Alt' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'Backspace' | 'Delete'
+  | 'End' | 'Enter' | 'Escape' | 'Home' | 'PageDown' | 'PageUp' | 'Space' | 'Tab'
+
+export type HumanBrowserInput =
+  | { type: 'navigate'; url: string }
+  | { type: 'back' }
+  | { type: 'forward' }
+  | { type: 'reload' }
+  | { type: 'switch_tab'; targetId: string }
+  | { type: 'click'; x: number; y: number }
+  | { type: 'scroll'; x: number; y: number; deltaX: number; deltaY: number }
+  | { type: 'key'; key: HumanBrowserKey }
+  | { type: 'text'; text: string }
+
 export const useAgentBrowser = (agentId: string | null) => {
   const apiClient = useApiClient()
   return useQuery<{ browser: AgentBrowserRecord | null }>({
@@ -197,17 +225,15 @@ export const useKeepBrowserAlive = (sessionId: string | null) => {
 /**
  * Resize the agent's browser.
  *
- * Stored on the browser, so it is the size the *agent's* next session opens
- * at too, not only this person's. The session detail carries the size the
- * running session is actually at, so invalidating it is what makes the
- * control agree with the window after a resize the provider would not apply.
+ * Stored on the browser and the current controlled session. The canvas applies
+ * that session value on its current guarded CDP target.
  */
 export const useSetAgentBrowserViewport = (threadId: string | null, agentId: string | null) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (viewport: { width: number; height: number }) =>
-      apiClient.post<{ appliedToLiveSession: boolean; viewport: { width: number; height: number } }>(
+      apiClient.post<{ viewport: { width: number; height: number } }>(
         `/api/threads/${threadId}/agents/${agentId}/browser/viewport`,
         viewport,
       ),
@@ -216,6 +242,22 @@ export const useSetAgentBrowserViewport = (threadId: string | null, agentId: str
         queryKey: browserCloudKeys.threadSessions(threadId ?? undefined),
       })
       void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
+    },
+  })
+}
+
+/** Size only the active one-time private session. Canvas applies it on its current CDP target. */
+export const useSetCloudBrowserSessionViewport = (sessionId: string | null) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (viewport: { width: number; height: number }) =>
+      apiClient.post<{ viewport: { width: number; height: number } }>(
+        `/api/browser-sessions/${sessionId}/viewport`,
+        viewport,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.session(sessionId ?? undefined) })
     },
   })
 }
@@ -257,13 +299,6 @@ export const useMyBrowserLogins = () => {
   })
 }
 
-/**
- * Take the controls, and keep them.
- *
- * The claim expires without a heartbeat so a closed laptop cannot hold a
- * team's browser hostage; this renews it while the viewer is mounted and
- * hands back on unmount.
- */
 /**
  * The claim, as its holder sees it. Named because the browser panel owns the
  * claim and hands it to whichever face is on screen: the viewer must not call
@@ -313,13 +348,14 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
   const claimedAt = useRef(0)
   const session = useCloudBrowserSession(controlling ? sessionId : null)
   const serverHolder = session.data?.controlledByUserId ?? null
+  const serverStillControls = session.data?.viewerMode === 'controller'
   const serverAnsweredAt = session.dataUpdatedAt
   useEffect(() => {
-    if (!controlling || serverHolder !== null) return
+    if (!controlling || (serverHolder !== null && serverStillControls)) return
     if (serverAnsweredAt <= claimedAt.current) return
     claimedSessionId.current = null
     setControlling(false)
-  }, [controlling, serverAnsweredAt, serverHolder])
+  }, [controlling, serverAnsweredAt, serverHolder, serverStillControls])
 
 
   const invalidate = () => {
@@ -348,28 +384,6 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
     },
   })
 
-  useEffect(() => {
-    if (!controlling || !sessionId) return undefined
-    const timer = window.setInterval(() => {
-      void apiClient.post(`/api/browser-sessions/${sessionId}/control`, {}).catch(() => {
-        // A lost renewal simply lets the claim lapse, which is the safe end.
-        setControlling(false)
-      })
-    }, 30_000)
-    return () => window.clearInterval(timer)
-  }, [apiClient, controlling, sessionId])
-
-  // Handing back on unmount matters more than it looks: a person who closes
-  // the panel mid-claim would otherwise block the agent until the TTL. Read
-  // through a ref so this runs once, at unmount — with `controlling` in the
-  // dependencies it also ran on every hand-back, sending the release twice.
-  const controllingRef = useRef(controlling)
-  controllingRef.current = controlling
-  useEffect(() => () => {
-    if (!controllingRef.current || !sessionId) return
-    void apiClient.delete(`/api/browser-sessions/${sessionId}/control`).catch(() => undefined)
-  }, [apiClient, sessionId])
-
   return {
     controlling,
     error: take.error,
@@ -377,4 +391,36 @@ export const useBrowserControl = (sessionId: string | null): BrowserControl => {
     pending: take.isPending || handBack.isPending,
     take: () => take.mutate(),
   }
+}
+
+/** Starts the one-time private browser named by a waiting login card. */
+export const useActivatePersonalBrowserAccessGrant = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ grantId, viewport }: {
+      grantId: string
+      viewport: { width: number; height: number }
+    }) => apiClient.post<{ expiresAt: string; sessionId: string }>(
+      `/api/browser-personal-access-grants/${grantId}/activate`, { viewport }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.session(result.sessionId) })
+    },
+  })
+}
+
+/** Cancels a waiting private-login grant and closes its browser if it started. */
+export const useRevokePersonalBrowserAccessGrant = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (grantId: string) => apiClient.delete<void>(
+      `/api/browser-personal-access-grants/${grantId}`,
+    ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.threadSessionsRoot })
+    },
+  })
 }

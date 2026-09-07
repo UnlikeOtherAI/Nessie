@@ -204,34 +204,28 @@ export const createServerContext = () => {
 
   const authenticateRequest = async (
     request: FastifyRequest,
-    reply: FastifyReply,
+    reply: FastifyReply | null,
   ): Promise<AuthenticatedRequestState | null> => {
-    const token = getAuthorizationToken(request)
-    if (!token) {
-      sendApiError(reply, 401, 'AUTH_REQUIRED', 'Missing or invalid authorization header')
+    const reject = (status: number, code: string, message: string): null => {
+      if (reply) sendApiError(reply, status, code, message)
       return null
     }
+    const token = getAuthorizationToken(request)
+    if (!token) return reject(401, 'AUTH_REQUIRED', 'Missing or invalid authorization header')
 
     const verification = verifySessionToken(token, authSecret)
-    if (!verification.ok) {
-      sendApiError(reply, 401, verification.code, verification.message)
-      return null
-    }
+    if (!verification.ok) return reject(401, verification.code, verification.message)
 
     const user = await prisma.user.findUnique({
       where: { id: verification.claims.sub },
     })
 
-    if (!user) {
-      sendApiError(reply, 401, 'USER_NOT_FOUND', 'User no longer exists')
-      return null
-    }
+    if (!user) return reject(401, 'USER_NOT_FOUND', 'User no longer exists')
 
     // Revocation: a forced sign-out bumps User.tokenVersion, which
     // invalidates every access token minted at an older generation.
     if (isSessionTokenRevoked(verification.claims, user.tokenVersion)) {
-      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
-      return null
+      return reject(401, 'TOKEN_REVOKED', 'Session has been revoked')
     }
 
     // Session-row revocation (workstream 1e, S9/SB-04): DELETE /sessions and
@@ -245,8 +239,7 @@ export const createServerContext = () => {
     // the revoked boolean per process for ~30s, so across replicas a revoked
     // sid can keep authenticating on one replica for up to the TTL.
     if (await isSessionRevokedById(verification.claims.sid)) {
-      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
-      return null
+      return reject(401, 'TOKEN_REVOKED', 'Session has been revoked')
     }
 
     // Exact-session revocation: logout revokes only the bearer's `sid`, never
@@ -260,8 +253,7 @@ export const createServerContext = () => {
         verification.claims.sid,
       ))
     ) {
-      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
-      return null
+      return reject(401, 'TOKEN_REVOKED', 'Session has been revoked')
     }
 
     // Deactivated members keep their row + history but lose access immediately
@@ -289,8 +281,7 @@ export const createServerContext = () => {
       select: { role: true, deactivatedAt: true },
     })
     if (membership?.deactivatedAt) {
-      sendApiError(reply, 403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
-      return null
+      return reject(403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
     }
     if (!membership) {
       const organization = await prisma.organization.findUnique({
@@ -298,13 +289,11 @@ export const createServerContext = () => {
         select: { externalOrgId: true },
       })
       if (organization?.externalOrgId) {
-        sendApiError(
-          reply,
+        return reject(
           403,
           'ORGANIZATION_MEMBERSHIP_REQUIRED',
           'Your membership of this organisation is no longer held by UnlikeOtherAI',
         )
-        return null
       }
     }
 

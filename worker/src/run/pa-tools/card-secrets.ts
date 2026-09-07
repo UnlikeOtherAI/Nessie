@@ -65,6 +65,24 @@ export const assertCardSecretDestinations = async (
       continue
     }
 
+    if (block.destination.kind === 'browserbase_connection') {
+      // The connection is authorized against the person who presses, not the
+      // agent posting the card. The API mirrors the Settings route at press
+      // time; this post-time check only gives the form a truthful destination
+      // label and preserves the closed secret-block vocabulary.
+      const scope = block.destination.scope
+      validated.push({
+        destination: block.destination,
+        key: block.key,
+        label: scope === 'user'
+          ? 'your Browserbase account'
+          : scope === 'team'
+            ? 'the team Browserbase account'
+            : 'the organisation Browserbase account',
+      })
+      continue
+    }
+
     const instance = await context.prisma.mcpServerInstance.findFirst({
       select: {
         catalogEntry: { select: { displayName: true } },

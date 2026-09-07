@@ -16,6 +16,7 @@ checksums; iOS remains an App Store delivery.
 - [mobile.md](mobile.md) — the mobile WebView shell, device builds, push, iOS TestFlight, Android.
 - [windows-desktop.md](windows-desktop.md) — the Windows desktop app, signed release, the Nessie Executor service and tray.
 - [linux-desktop.md](linux-desktop.md) — the Linux desktop app and the standalone `nessie-executor` daemon.
+- [chrome-cookie-import-macos.md](chrome-cookie-import-macos.md) — the prepared macOS Chrome selected-site import package and its release prerequisites.
 
 ## Default physical-device delivery
 

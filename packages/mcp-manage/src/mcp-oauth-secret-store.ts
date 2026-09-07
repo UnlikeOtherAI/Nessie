@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 import {
   decryptWithKey,
@@ -56,7 +56,7 @@ type StoredBundle = {
  * `oauthSecretStore` into `registerMcpRoutes`.
  */
 export const createPgSecretStore = (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   encryptionSecret: string,
   options: {
     /**

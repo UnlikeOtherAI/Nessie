@@ -183,6 +183,7 @@ export const registerGmailDraftRoutes = (
       )
       reply.header('Cache-Control', 'private, no-store')
       return createApiResponse({
+        connectionId: draft.action.connectionId,
         id: draft.action.id,
         state: draft.action.state,
         sendAfter: draft.action.sendAfter?.toISOString() ?? null,

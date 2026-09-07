@@ -66,6 +66,43 @@ test('a dismissing press ignores inputs entirely, so a half-filled form can be c
   assert.deepEqual(result.secrets, {})
 })
 
+
+test('a same-app edit keeps a partial non-secret draft without submitting it', () => {
+  const draftSpec: AgentCardSpec = {
+    actions: [
+      { key: 'send', label: 'Send', style: 'primary', submits: true },
+      {
+        collectsValues: true,
+        href: '/mail/mailbox/11111111-1111-4111-8111-111111111111/compose',
+        key: 'edit',
+        label: 'Edit',
+        style: 'secondary',
+        submits: false,
+      },
+    ],
+    blocks: [
+      { input: 'text', key: 'to', label: 'To', required: true, type: 'input' },
+      { input: 'text', key: 'subject', label: 'Subject', required: true, type: 'input' },
+      { input: 'textarea', key: 'body', label: 'Message', required: true, type: 'input' },
+    ],
+    schemaVersion: 1,
+    title: 'Draft email',
+  }
+
+  const result = validateAgentCardSubmission({
+    actionKey: 'edit',
+    secrets: {},
+    spec: draftSpec,
+    values: { body: 'Please send the revised schedule.', subject: 'Tuesday' },
+  })
+
+  assert.deepEqual(result.values, {
+    body: 'Please send the revised schedule.',
+    subject: 'Tuesday',
+  })
+  assert.deepEqual(result.secrets, {})
+})
+
 test('a required field and a declared secret must both be supplied', () => {
   assert.throws(
     () =>

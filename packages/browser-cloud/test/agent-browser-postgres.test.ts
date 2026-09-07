@@ -7,13 +7,14 @@ import { Prisma, PrismaClient } from '@prisma/client'
 import type { BrowserbaseClient } from '../src/browserbase-client.js'
 import {
   ensureAgentBrowser,
-  recordAgentBrowserLogin,
   reconcileTombstonedAgentBrowsers,
   resetAgentBrowser,
   resolveDurableBrowserConnection,
 } from '../src/agent-browser.js'
+import { recordAgentBrowserLogin } from '../src/agent-browser-access.js'
 import {
   claimSessionControl,
+  expireStaleControlClaims,
   openCloudBrowserSession,
   reapExpiredCloudBrowserSessions,
   releaseCloudBrowserSession,
@@ -196,6 +197,7 @@ runDatabaseTest('a team agent’s browser refuses to live on a personal account'
 runDatabaseTest('a private agent prefers its owner’s account over the company one', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma, 'durable private')
+  const calls: string[] = []
   try {
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
     await connect(prisma, {
@@ -214,6 +216,14 @@ runDatabaseTest('a private agent prefers its owner’s account over the company 
     // On the company account, the company's Browserbase admin could replay a
     // private agent's browsing — not the privacy the label implies.
     assert.equal(chosen.scope, 'user')
+    const browser = await ensureAgentBrowser(depsFor(prisma, calls), {
+      organizationId: s.organizationId,
+      agentId: s.privateAgentId,
+      agentVisibility: 'private',
+      agentOwnerUserId: s.ownerUserId,
+      principalUserId: null,
+    })
+    assert.equal(browser.principalUserId, s.ownerUserId)
   } finally {
     await s.cleanup()
     await prisma.$disconnect()
@@ -320,18 +330,22 @@ runDatabaseTest('one agent cannot open its own browser in two runs at once', asy
   }
 })
 
-runDatabaseTest('a session on a browser with logins is authenticated from the first frame', async () => {
+runDatabaseTest('a session on a private browser with logins is authenticated from the first frame', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma, 'durable authenticated')
   const calls: string[] = []
   const deps = depsFor(prisma, calls)
   try {
-    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    await connect(prisma, {
+      organizationId: s.organizationId,
+      scope: 'user',
+      userId: s.ownerUserId,
+    })
     const browser = await ensureAgentBrowser(deps, {
       organizationId: s.organizationId,
-      agentId: s.teamAgentId,
-      agentVisibility: 'team',
-      agentOwnerUserId: null,
+      agentId: s.privateAgentId,
+      agentVisibility: 'private',
+      agentOwnerUserId: s.ownerUserId,
       principalUserId: null,
     })
     await recordAgentBrowserLogin(prisma, {
@@ -345,7 +359,7 @@ runDatabaseTest('a session on a browser with logins is authenticated from the fi
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
-      agentId: s.teamAgentId,
+      agentId: s.privateAgentId,
       requestedByUserId: s.ownerUserId,
       agentBrowser: {
         id: browser.id,
@@ -369,6 +383,36 @@ runDatabaseTest('a session on a browser with logins is authenticated from the fi
   }
 })
 
+runDatabaseTest('a shared team browser rejects new human login provenance', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'team login quarantine')
+  const calls: string[] = []
+  try {
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const browser = await ensureAgentBrowser(depsFor(prisma, calls), {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: null,
+    })
+
+    await assert.rejects(
+      recordAgentBrowserLogin(prisma, {
+        organizationId: s.organizationId,
+        agentBrowserId: browser.id,
+        serviceHint: 'Mail',
+        userId: s.ownerUserId,
+      }),
+      (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_NO_SESSION',
+    )
+    assert.equal(await prisma.agentBrowserLogin.count({ where: { agentBrowserId: browser.id } }), 0)
+  } finally {
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
 runDatabaseTest('reset stops pointing at the context before anything deletes it', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma, 'durable reset')
@@ -383,11 +427,13 @@ runDatabaseTest('reset stops pointing at the context before anything deletes it'
       agentOwnerUserId: null,
       principalUserId: null,
     })
-    await recordAgentBrowserLogin(prisma, {
-      organizationId: s.organizationId,
-      agentBrowserId: browser.id,
-      userId: s.ownerUserId,
-      serviceHint: 'Google',
+    await prisma.agentBrowserLogin.create({
+      data: {
+        organizationId: s.organizationId,
+        agentBrowserId: browser.id,
+        userId: s.ownerUserId,
+        serviceHint: 'Google',
+      },
     })
 
     const result = await resetAgentBrowser(prisma, {
@@ -432,7 +478,7 @@ runDatabaseTest('reset stops pointing at the context before anything deletes it'
   }
 })
 
-runDatabaseTest('reset refuses while the browser is open', async () => {
+runDatabaseTest('reset refuses while a browser stop remains unknown', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma, 'durable reset busy')
   const calls: string[] = []
@@ -446,7 +492,7 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
       agentOwnerUserId: null,
       principalUserId: null,
     })
-    await openSession(deps, {
+    const opened = await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
@@ -458,6 +504,10 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
         browserbaseContextId: browser.browserbaseContextId,
         hasLogins: false,
       },
+    })
+    await prisma.cloudBrowserSession.update({
+      where: { id: opened.sessionId },
+      data: { status: 'unknown' },
     })
 
     await assert.rejects(
@@ -474,21 +524,34 @@ runDatabaseTest('reset refuses while the browser is open', async () => {
   }
 })
 
-runDatabaseTest('handing back the controls marks the session authenticated', async () => {
+runDatabaseTest('a team browser remains observable but refuses human control', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma, 'control handback')
   const calls: string[] = []
   const deps = depsFor(prisma, calls)
   try {
     await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
-    // An ephemeral session with no logins: nothing marks it authenticated at
-    // open, which is exactly the case that used to lose the basis.
+    const browser = await ensureAgentBrowser(deps, {
+      organizationId: s.organizationId,
+      agentId: s.teamAgentId,
+      agentVisibility: 'team',
+      agentOwnerUserId: null,
+      principalUserId: null,
+    })
+    // This context has no login rows at open. A claim is still sensitive:
+    // somebody can complete SSO and close their laptop before pressing Done.
     const opened = await openSession(deps, {
       organizationId: s.organizationId,
       runId: s.runId,
       threadId: s.threadId,
       agentId: s.teamAgentId,
       requestedByUserId: s.ownerUserId,
+      agentBrowser: {
+        id: browser.id,
+        connectionId: browser.connectionId,
+        browserbaseContextId: browser.browserbaseContextId,
+        hasLogins: false,
+      },
     })
     const before = await prisma.cloudBrowserSession.findUnique({
       where: { id: opened.sessionId },
@@ -501,23 +564,21 @@ runDatabaseTest('handing back the controls marks the session authenticated', asy
         sessionId: opened.sessionId,
         userId: s.ownerUserId,
       }),
-      true,
+      false,
     )
     assert.equal(
-      await releaseSessionControl(prisma, {
-        sessionId: opened.sessionId,
-        userId: s.ownerUserId,
+      await prisma.agentBrowserLogin.count({
+        where: { agentBrowserId: browser.id, userId: s.ownerUserId },
       }),
-      true,
+      0,
+      'a denied team control claim cannot create login provenance',
     )
 
-    // A person at the controls may have signed in, and the agent resumes into
-    // whatever they left behind.
     const after = await prisma.cloudBrowserSession.findUnique({
       where: { id: opened.sessionId },
       select: { authenticated: true },
     })
-    assert.equal(after?.authenticated, true)
+    assert.equal(after?.authenticated, false)
   } finally {
     await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })
     await s.cleanup()
@@ -562,6 +623,65 @@ runDatabaseTest('only the holder can hand the controls back', async () => {
     )
   } finally {
     await releaseSessionsForRun(deps, { runId: s.runId, releasedBy: 'test' })
+    await s.cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('an expired control claim remains private until explicit hand-back', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma, 'expired control privacy')
+  const calls: string[] = []
+  const deps = depsFor(prisma, calls)
+  let privateRunId: string | null = null
+  try {
+    const thread = await prisma.thread.findUniqueOrThrow({
+      where: { id: s.threadId },
+      select: { channelId: true },
+    })
+    await prisma.channel.update({
+      where: { id: thread.channelId },
+      data: {
+        dmKey: `agent:${s.organizationId}:${s.ownerUserId}:${s.privateAgentId}`,
+        type: 'dm',
+        visibility: 'private',
+      },
+    })
+    await prisma.channelMember.create({
+      data: { channelId: thread.channelId, userId: s.ownerUserId },
+    })
+    await prisma.agentBinding.create({
+      data: { agentId: s.privateAgentId, channelId: thread.channelId, principalUserId: null },
+    })
+    const privateRun = await prisma.run.create({
+      data: { agentId: s.privateAgentId, threadId: s.threadId },
+    })
+    privateRunId = privateRun.id
+    await connect(prisma, { organizationId: s.organizationId, scope: 'organization' })
+    const opened = await openSession(deps, {
+      organizationId: s.organizationId,
+      runId: privateRun.id,
+      threadId: s.threadId,
+      agentId: s.privateAgentId,
+      requestedByUserId: s.ownerUserId,
+    })
+    assert.equal(await claimSessionControl(prisma, {
+      sessionId: opened.sessionId,
+      userId: s.ownerUserId,
+    }), true)
+    await prisma.cloudBrowserSession.update({
+      where: { id: opened.sessionId },
+      data: { controlClaimedAt: new Date(Date.now() - 91_000) },
+    })
+
+    assert.equal(await expireStaleControlClaims(prisma), 1)
+    const expired = await prisma.cloudBrowserSession.findUnique({
+      where: { id: opened.sessionId },
+      select: { authenticated: true, controlledByUserId: true },
+    })
+    assert.deepEqual(expired, { authenticated: true, controlledByUserId: s.ownerUserId })
+  } finally {
+    await releaseSessionsForRun(deps, { runId: privateRunId ?? s.runId, releasedBy: 'test' })
     await s.cleanup()
     await prisma.$disconnect()
   }
@@ -696,6 +816,18 @@ runDatabaseTest('a session whose remote stop failed is retried, not abandoned', 
         expiresAt: new Date(Date.now() - 60_000),
       },
     })
+
+    await assert.rejects(
+      openSession(deps, {
+        organizationId: s.organizationId,
+        runId: s.runId,
+        threadId: s.threadId,
+        agentId: s.teamAgentId,
+        requestedByUserId: s.ownerUserId,
+      }),
+      (error: Error & { code?: string }) => error.code === 'CLOUD_BROWSER_SESSION_ALREADY_OPEN',
+      'an unknown remote session still exclusively owns its run',
+    )
 
     await reapExpiredCloudBrowserSessions(deps, { limit: 10 })
 

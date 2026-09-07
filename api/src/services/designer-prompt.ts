@@ -94,6 +94,24 @@ export const DESIGNER_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'set_tool_selection',
+      description: 'Set the complete suitable ordinary tool selection for this agent',
+      parameters: {
+        type: 'object',
+        properties: {
+          toolIds: {
+            type: 'array',
+            description: 'Every selected key from the design catalogue; an empty array selects no tools.',
+            items: { type: 'string' },
+          },
+        },
+        required: ['toolIds'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'toggle_tool',
       description: 'Enable or disable a tool for this agent',
       parameters: {
@@ -172,9 +190,13 @@ export const buildDesignerSystemPrompt = (
   input: DesignerPromptInput,
 ): string => {
   const { formState } = input
-  const enabledTools = Object.entries(formState.tools)
-    .filter(([, value]) => value)
-    .map(([key]) => key)
+  // The form holds a sparse policy overlay, not a list of enabled tools. In
+  // particular, an absent ordinary builtin is enabled by default while an
+  // absent connector is not. Showing only `true` entries makes an edit look
+  // as though the default-enabled capabilities do not exist, so the Designer
+  // cannot make a considered least-privilege recommendation.
+  const toolPolicyOverrides = Object.entries(formState.tools)
+    .map(([key, enabled]) => `${key}: ${enabled ? 'enabled' : 'disabled'}`)
 
   const currentModel = formState.model
     ? `${formState.model} (provider ${formState.provider || 'unset'})`
@@ -203,16 +225,19 @@ export const buildDesignerSystemPrompt = (
     `- Role: ${formState.role || '(empty)'}`,
     `- System prompt: ${summarizedSystemPrompt}`,
     `- Model: ${currentModel}`,
-    `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
+    '- Tool policy overrides: '
+      + `${toolPolicyOverrides.length > 0 ? toolPolicyOverrides.join(', ') : 'none'}`,
     '',
     'Current page:',
     `- ${input.pageContext?.title ?? 'Agent configuration'}: ${
       input.pageContext?.description ?? 'Edit this agent’s configuration.'}`,
-    `- Controls available on this page: ${input.pageContext?.actions.join(', ') || 'none'}`,
+    `- Controls available on this page: ${input.pageContext
+      ? input.pageContext.actions.join(', ') || 'none'
+      : 'set name, role, instructions, model, and tool access'}`,
     '',
     'How you work here:',
     '- You fill the form in: set_name, set_role, set_system_prompt, set_model,',
-    '  toggle_tool and batch_toggle_tools each change one control the person is',
+    '  set_tool_selection, toggle_tool and batch_toggle_tools each change controls the person is',
     '  looking at. Use several in one response when you are setting several',
     '  fields.',
     '- A model is part of a working agent: if none is selected, call set_model',
@@ -224,6 +249,30 @@ export const buildDesignerSystemPrompt = (
     '  control as available; otherwise discuss the page directly.',
     '- A system prompt is direct instruction to the agent. No preamble, no',
     '  meta-commentary — write as if you ARE the system.',
+    '- Treat tool selection as part of the design, not as a generic role preset.',
+    '  For every tool in “Tools you can give an agent”, judge whether the',
+    '  agent\'s stated purpose and standing instructions need that capability.',
+    '  When you intentionally do a complete suitability review (creation, a changed',
+    '  purpose, or an access review), call set_tool_selection once with EVERY',
+    '  selected ordinary catalogue key. An empty array is valid. It is the only',
+    '  reliable way to select no tools or a smallest set without enumerating',
+    '  dozens of disabled tools. Never include a restricted key.',
+    '- If the stated job needs secure Browserbase setup or other ordinary',
+    '  interactive forms, select card_post when it is in the ordinary catalogue.',
+    '  It posts the masked setup form but grants no browser actions. A separately',
+    '  granted browser-login request handles website sign-in.',
+    '- When editing, repeat that suitability review whenever the purpose or',
+    '  instructions change, and when the person asks for an access review.',
+    '  Existing policy overrides may be deliberate human grants or denials:',
+    '  preserve them unless the changed purpose makes them clearly unsuitable or',
+    '  the person asks to reduce or revise access. State the reason before',
+    '  removing or adding a meaningful capability.',
+    '- Explain the meaningful tool choices concisely in your reply. A connected',
+    '  account, installed app, or available catalogue entry does not by itself',
+    '  make that capability suitable for this agent.',
+    '- Restricted and explicit-grant tools remain outside this form: do not try',
+    '  to enable them, and point the person to the stated owner surface when one',
+    '  is genuinely required.',
     input.webSearchAvailable
       ? '- web_search is available for grounding a domain you do not know well.'
         + ' Do not search for generic topics you already know.'

@@ -75,6 +75,10 @@ Facts not restated there:
 - A task, plan, or child-agent activity row linked to a run is a retained run
   output: its reader must satisfy both the run channel entitlement and that
   run's disclosure basis. A task without a run keeps ordinary task visibility.
+- A shared agent with private-conversation material cannot place that material
+  into an external browser URL or page (`browser_open` and `browser_act`). Those
+  browser verbs have no original-author-bound, exact-content disclosure grant;
+  personal-assistant and public-context browser work keep their ordinary flow.
 - **A private conversation's author, rather than its agent's owner or another
   reader, decides export.** `MessageDisclosureSource` carries the source
   channel and each human author whose private turn entered a derived message.

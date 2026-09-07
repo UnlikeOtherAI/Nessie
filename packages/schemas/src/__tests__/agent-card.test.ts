@@ -49,6 +49,28 @@ test('a dashboard-source secret is a closed credential destination', () => {
   )
 })
 
+test('a Browserbase secret destination defaults to the responding person and scopes shared keys', () => {
+  const card = (destination: Record<string, unknown>) => AgentCardSpecSchema.safeParse({
+    ...baseSpec,
+    blocks: [{ destination, key: 'browserbase_api_key', label: 'Browserbase API key', type: 'secret' }],
+  })
+  const personal = card({ kind: 'browserbase_connection' })
+  assert.equal(personal.success, true)
+  const destination = personal.success && personal.data.blocks[0]?.type === 'secret'
+    ? personal.data.blocks[0].destination
+    : null
+  assert.equal(destination?.kind, 'browserbase_connection')
+  assert.equal(destination?.kind === 'browserbase_connection' && destination.scope, 'user')
+
+  assert.equal(card({ kind: 'browserbase_connection', scope: 'team' }).success, false)
+  assert.equal(card({ kind: 'browserbase_connection', scope: 'organization', teamId: '11111111-1111-4111-8111-111111111111' }).success, false)
+  assert.equal(card({
+    kind: 'browserbase_connection',
+    scope: 'team',
+    teamId: '11111111-1111-4111-8111-111111111111',
+  }).success, true)
+})
+
 test('a dashboard presentation message contains only its stable pointer', () => {
   assert.equal(
     DashboardPresentationMessageMetadataSchema.safeParse({
@@ -110,6 +132,76 @@ test('a card with inputs needs a submitting action', () => {
   })
   assert.equal(result.success, false)
   assert.match(result.error?.issues[0]?.message ?? '', /submits/)
+})
+
+test('a card action claims before navigating inside the app', () => {
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [
+        { key: 'send', label: 'Send', style: 'primary', submits: true },
+        { collectsValues: true, href: '/mail/mailbox/account/compose', key: 'edit', label: 'Edit', style: 'secondary', submits: false },
+      ],
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: 'https://example.test', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/\\evil.test', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/mail', key: 'send', label: 'Send', style: 'primary', submits: false }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: 'mail', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/mail%2fescape', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ href: '/mail\nunsafe', key: 'edit', label: 'Edit', style: 'secondary', submits: true }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      actions: [{ collectsValues: true, key: 'edit', label: 'Edit', style: 'secondary', submits: false }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{ key: 'token', label: 'Token', type: 'secret', destination: { kind: 'vault_secret', name: 'TEST_TOKEN', scopeType: 'personal' } }],
+      actions: [{ collectsValues: true, href: '/mail', key: 'edit', label: 'Edit', style: 'secondary', submits: false }],
+    }).success,
+    false,
+  )
 })
 
 test('a select needs options and a non-select refuses them', () => {

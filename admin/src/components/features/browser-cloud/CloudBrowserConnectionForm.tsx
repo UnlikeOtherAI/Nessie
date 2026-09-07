@@ -12,6 +12,7 @@ type CloudBrowserConnectionFormProps = {
   /** Shown above the fields; each scope explains itself differently. */
   blurb: string
   connected: boolean
+  reconnect?: boolean
   onDone?: () => void
 }
 
@@ -28,6 +29,7 @@ export const CloudBrowserConnectionForm = ({
   teamId = null,
   blurb,
   connected,
+  reconnect = false,
   onDone,
 }: CloudBrowserConnectionFormProps) => {
   const connect = useConnectCloudBrowser()
@@ -55,7 +57,7 @@ export const CloudBrowserConnectionForm = ({
         },
         onSuccess: () => {
           setApiKey('')
-          setNotice(connected ? 'Key replaced.' : 'Connected.')
+          setNotice(connected ? 'Key replaced.' : reconnect ? 'Reconnected.' : 'Connected.')
           onDone?.()
         },
       },
@@ -71,7 +73,7 @@ export const CloudBrowserConnectionForm = ({
           autoComplete="off"
           className="admin-input"
           onChange={(event) => setApiKey(event.target.value)}
-          placeholder={connected ? 'Enter a new key to replace the stored one' : 'bb_…'}
+          placeholder={connected ? 'Enter a new key to replace the stored one' : reconnect ? 'Enter the account key to reconnect' : 'bb_…'}
           required
           type="password"
           value={apiKey}
@@ -90,7 +92,7 @@ export const CloudBrowserConnectionForm = ({
         >
           {connect.isPending
             ? 'Verifying…'
-            : connected ? 'Replace key' : 'Connect'}
+            : connected ? 'Replace key' : reconnect ? 'Reconnect' : 'Connect'}
         </button>
         <span className="text-xs text-[color:var(--tx3)]">
           We open and close one browser to check the key before saving it.

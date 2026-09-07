@@ -1,5 +1,19 @@
 const highlightDurationMs = 1_600
 
+const FORM_MUTATING_TOOL_NAMES = new Set([
+  'batch_toggle_tools',
+  'set_model',
+  'set_name',
+  'set_role',
+  'set_system_prompt',
+  'set_tool_selection',
+  'toggle_tool',
+])
+
+/** The active designer panel must own or refuse every form-writing tool call. */
+export const isFormMutatingDesignerTool = (name: string): boolean =>
+  FORM_MUTATING_TOOL_NAMES.has(name)
+
 /**
  * Every assistant-driven change first reveals the same control a person would
  * use. The animation is feedback, not a second state: callers still invoke
