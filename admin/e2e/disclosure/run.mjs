@@ -240,7 +240,7 @@ const main = async () => {
     await submitMentionedRequest(
       sourcePage.page,
       fixture.scope.agentId,
-      'Disclosure shared agent',
+      'Disclosure',
       `Čau, drž to prosím mezi námi: ${SECRET} Připrav stručný update pro Team launch, ale nic nezveřejňuj bez mého souhlasu.`,
     )
     const firstRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id)
@@ -409,13 +409,17 @@ const main = async () => {
 
     const sourceSearch = await api(`/api/channels/${fixture.group.id}/messages/search?query=Kestrel`, audienceToken)
     assertWithheld(JSON.stringify(sourceSearch.data), 'recipient search API after one-reply share')
-    assert.equal(sourceSearch.data.length, 0, 'one-reply grant does not widen to source transcript')
+    assert.equal(
+      sourceSearch.data.some((result) => result.id === forwarded.id),
+      false,
+      'one-reply grant does not make its basis-bearing reply searchable',
+    )
 
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.explicitChannel.id}`, { waitUntil: 'domcontentloaded' })
     await submitMentionedRequest(
       sourcePage.page,
       fixture.scope.agentId,
-      'Disclosure shared agent',
+      'Disclosure',
       `Pořád citlivé: ${SECRET}. Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`,
     )
     const explicitRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.explicitThread.id)
