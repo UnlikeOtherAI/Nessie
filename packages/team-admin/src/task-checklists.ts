@@ -76,6 +76,9 @@ export const applyTaskChecklistTemplate = async (
       },
       include,
     })
+    await prisma.taskEvent.create({
+      data: { taskId: task.id, eventType: 'checklist_applied', payload: { checklistId: created.id } },
+    })
     return present(created)
   } catch (error) {
     // The unique task binding is the concurrency fence. A second click observes
@@ -112,5 +115,10 @@ export const updateTaskChecklistStep = async (
   })
   if (step.count === 0) return null
   const checklist = await prisma.taskChecklist.findUnique({ where: { id: input.checklistId }, include })
+  if (checklist) {
+    await prisma.taskEvent.create({
+      data: { taskId: checklist.taskId, eventType: 'checklist_step_updated', payload: { stepKey: input.stepKey } },
+    })
+  }
   return checklist ? present(checklist) : null
 }
