@@ -86,7 +86,8 @@ const mapThreadMessageRecord = (
       // standing rule.
       ? {
           restrictedSources: true as const,
-          canShareStanding: !message.basisScopes.some((s) => s.scopeType === 'user'),
+          canShareStanding: message.disclosureSources.length === 0
+            && !message.basisScopes.some((s) => s.scopeType === 'user'),
         }
       : {}),
   id: message.id,

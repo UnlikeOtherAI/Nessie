@@ -149,7 +149,7 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   const publicPlan = await prisma.plan.create({ data: { agentId: s.agentId, channelId: s.channelId, createdByActorId: s.insiderId, createdByActorType: 'user', goal: 'public plan', organizationId: s.organizationId, runId: publicRun.id } })
 
   const ownerTasks = await listTasks(prisma, s.organizationId, {}, undefined, ownerId)
-  assert.deepEqual(ownerTasks.map((task) => task.id).sort(), [humanTask.id, publicTask.id].sort())
+  assert.deepEqual(ownerTasks.map((task) => task.id).sort(), [humanTask.id, publicChildTask.id, publicTask.id].sort())
   assert.equal(await getTask(prisma, privateTask.id, s.organizationId, undefined, ownerId), null)
   assert.equal(await getTask(prisma, restrictedPublicTask.id, s.organizationId, undefined, ownerId), null)
   assert.equal(await getTask(prisma, activeRestrictedTask.id, s.organizationId, undefined, ownerId), null)

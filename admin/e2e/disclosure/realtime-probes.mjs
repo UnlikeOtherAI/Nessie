@@ -118,6 +118,12 @@ export const setActivitySubscriptions = (page, scopes) => page.evaluate(
   scopes,
 )
 
+export const reloadWithRealtimeProbes = async (page, token, scopes) => {
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await installEventProbe(page, token)
+  await installActivityProbe(page, token, scopes)
+}
+
 export const stopActivityProbe = (page) => page.evaluate(() => {
   window.__disclosureActivityProbe?.socket.close()
 })

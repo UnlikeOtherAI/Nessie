@@ -177,10 +177,17 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
   }
 }
 
-export const submitMentionedRequest = async (page, agentName, text) => {
-  const composer = page.locator('form.admin-compose [role="textbox"]')
+export const submitMentionedRequest = async (page, agentId, agentName, text) => {
+  const form = page.locator('form.admin-compose:visible')
+  const composer = form.locator('[role="textbox"]')
   await composer.fill(`@${agentName}`)
-  await page.locator('button').filter({ hasText: agentName }).first().click()
+  await composer.locator('..').getByRole('button', { name: agentName }).waitFor()
+  await composer.press('Enter')
+  const mention = composer.locator('span.mention-tag[data-mention-type="agent"]')
+  await mention.waitFor()
+  if (await mention.getAttribute('data-mention-id') !== agentId) {
+    throw new Error('The composer selected a different agent mention')
+  }
   await composer.press('End')
   await composer.pressSequentially(` ${text}`)
   await composer.press('Enter')
