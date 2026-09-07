@@ -360,18 +360,15 @@ const main = async () => {
       { timeout: 60_000 },
     )
     await sourcePage.page.screenshot({ path: resolve(SCREENSHOTS, 'source-author-share-control.png'), fullPage: true })
+    const shareResponse = sourcePage.page.waitForResponse((response) =>
+      response.request().method() === 'POST'
+      && response.url().endsWith(`/api/messages/${forwarded.id}/disclosure-grants`),
+    )
     await sourcePage.page
       .locator(`#msg-${forwarded.id}`)
       .getByRole('button', { name: 'Share this reply' })
       .click()
-    await audiencePage.page.waitForFunction(
-      (summary) => document.body.innerText.includes(summary),
-      SHARED_SUMMARY,
-      { timeout: 60_000 },
-    )
-    const afterShare = await audiencePage.page.locator('body').innerText()
-    assertNoSecret(afterShare, 'recipient UI after content-scoped share')
-    assert.ok(afterShare.includes(SHARED_SUMMARY), 'author’s one-reply share reaches the intended group')
+    assert.equal((await shareResponse).status(), 200, 'author share control creates the scoped grant')
     const grants = await pipeline.prisma.disclosureGrant.findMany({
       where: { messageId: forwarded.id },
       select: { audienceId: true, audienceKind: true, grantedByUserId: true },
@@ -381,6 +378,15 @@ const main = async () => {
       audienceKind: 'channel',
       grantedByUserId: fixture.sourceAuthor.id,
     }], 'the UI control grants only this reply to its current channel')
+    await audiencePage.page.waitForFunction(
+      (summary) => document.body.innerText.includes(summary),
+      SHARED_SUMMARY,
+      undefined,
+      { timeout: 60_000 },
+    )
+    const afterShare = await audiencePage.page.locator('body').innerText()
+    assertNoSecret(afterShare, 'recipient UI after content-scoped share')
+    assert.ok(afterShare.includes(SHARED_SUMMARY), 'author’s one-reply share reaches the intended group')
     await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-source-author-share.png'), fullPage: true })
 
     const sourceSearch = await api(`/api/channels/${fixture.group.id}/messages/search?query=Kestrel`, audienceToken)
