@@ -3,7 +3,11 @@ import test from 'node:test'
 
 import { AGENT_DESIGNER_SLUG, globalAgentHomeDmKey } from '@nessie/team-admin'
 
-import { requiresMemoryDestinationContainment } from './memory.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
+import {
+  admitRememberedThoughtLineage,
+  requiresMemoryDestinationContainment,
+} from './memory.js'
 
 const ORG = '11111111-1111-4111-8111-111111111111'
 const USER = '22222222-2222-4222-8222-222222222222'
@@ -76,4 +80,35 @@ test('an ordinary shared agent is contained even in a system_agent DM', () => {
     }, true),
     true,
   )
+})
+
+test('remembered private thoughts retain B and preserve a legacy unknown source', async () => {
+  const sink = createConsumedSourceSink()
+  await admitRememberedThoughtLineage(
+    {
+      channel: {
+        findMany: async () => [{ id: 'private-channel', visibility: 'private' }],
+      },
+    } as never,
+    sink,
+    [
+      {
+        audienceId: 'private-channel',
+        audienceType: 'channel',
+        sources: [{ sourceAuthorUserId: USER, sourceChannelId: 'private-channel' }],
+        thoughtId: 'remembered-with-author',
+      },
+      {
+        audienceId: 'private-channel',
+        audienceType: 'channel',
+        sources: [],
+        thoughtId: 'legacy-without-author',
+      },
+    ],
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: USER, sourceChannelId: 'private-channel' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-channel' },
+  ])
 })

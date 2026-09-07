@@ -85,6 +85,7 @@ const source = MemoryConsolidationSourceSchema.parse({
 const runContext: ConsolidationRunContext = {
   agent_id: PA_AGENT_ID,
   channel_id: CHANNEL_ID,
+  channel_visibility: 'public',
   finished_at: '2026-05-31T10:00:00.000Z',
   organization_id: ORGANIZATION_ID,
   project_id: PA_SYSTEM_PROJECT_ID,

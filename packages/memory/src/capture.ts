@@ -2,6 +2,10 @@ import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import type { ThoughtAudienceType, ThoughtVisibility } from '@nessie/schemas'
 import type { Pool } from 'pg'
+import {
+  insertThoughtDisclosureSources,
+  type PrivateConversationSource,
+} from './disclosure-sources.js'
 import { computeFingerprint } from './fingerprint.js'
 import { getEmbedding } from './embed.js'
 import { extractMetadata, type ThoughtMetadata } from './extract-metadata.js'
@@ -38,6 +42,8 @@ export type CaptureThoughtInput = {
   memoryCategory?: ThoughtMemoryCategory
   importance?: number
   metadata?: Record<string, unknown>
+  /** Trusted private-conversation sources consumed to create this memory. */
+  privateConversationSources?: readonly PrivateConversationSource[]
   // When set, only this agent may recall the memory. The audience still
   // governs user-level access; this only narrows recall to the owning agent.
   privateToAgentId?: string
@@ -182,6 +188,81 @@ const resolveAudience = (
   }
 }
 
+const preserveLegacyPrivateAudienceSource = async (
+  pool: Pool,
+  input: CaptureThoughtInput,
+  sources: readonly PrivateConversationSource[],
+  thoughtId: string,
+): Promise<void> => {
+  if (sources.length === 0) return
+
+  await withTransaction(pool, async (client) => {
+    const thoughtResult = await client.query(
+      `SELECT
+         t.audience_type AS "audienceType",
+         t.audience_id AS "audienceId",
+         c.visibility AS "channelVisibility"
+       FROM thoughts t
+       LEFT JOIN channels c ON c.id = t.audience_id
+       WHERE t.id = $1::uuid
+       FOR UPDATE`,
+      [thoughtId],
+    )
+    const thought = thoughtResult.rows[0] as {
+      audienceId: string | null
+      audienceType: string | null
+      channelVisibility: string | null
+    } | undefined
+    const privateAudienceId =
+      thought?.audienceType === 'channel'
+      && thought.audienceId
+      && thought.channelVisibility !== 'public'
+        ? thought.audienceId
+        : null
+    const sourceRows = privateAudienceId
+      ? await client.query(
+        `SELECT source_channel_id AS "sourceChannelId"
+         FROM thought_disclosure_sources
+         WHERE thought_id = $1::uuid`,
+        [thoughtId],
+      )
+      : { rows: [] }
+    const hasAudienceSource = sourceRows.rows.some((row) =>
+      (row as { sourceChannelId: string }).sourceChannelId === privateAudienceId,
+    )
+    const legacyUnknown = privateAudienceId
+      && !hasAudienceSource
+      && sources.some((source) => source.sourceChannelId === privateAudienceId)
+        ? [{ sourceAuthorUserId: null, sourceChannelId: privateAudienceId }]
+        : []
+
+    await insertThoughtDisclosureSources(client, {
+      organizationId: input.organizationId,
+      sources: [...legacyUnknown, ...sources],
+      thoughtId,
+    })
+  })
+}
+
+const sourcesForCapture = async (
+  pool: Pool,
+  input: CaptureThoughtInput,
+): Promise<PrivateConversationSource[]> => {
+  const sources = input.privateConversationSources
+  if (sources === undefined || !input.channelId) return [...(sources ?? [])]
+  const channel = await pool.query(
+    `SELECT visibility::text AS "visibility"
+     FROM channels
+     WHERE id = $1::uuid`,
+    [input.channelId],
+  )
+  const visibility = (channel.rows[0] as { visibility: string } | undefined)?.visibility
+  if (!visibility || visibility === 'public' || sources.some(
+    (source) => source.sourceChannelId === input.channelId,
+  )) return [...sources]
+  return [...sources, { sourceAuthorUserId: null, sourceChannelId: input.channelId }]
+}
+
 // Attribution for the embedding/extraction model calls. Ordinary captures
 // derive it from the memory owner/scope; durable background jobs provide an
 // immutable inferenceAttribution so storage scope cannot replace billing scope.
@@ -218,6 +299,7 @@ export const captureThought = async (
   const contentHash = computeFingerprint(input.content)
   const resolvedAudience = resolveAudience(input)
   const visibility = VISIBILITY_BY_AUDIENCE_TYPE[resolvedAudience.audienceType]
+  const sources = await sourcesForCapture(config.pool, input)
 
   // Check for duplicate
   const dupCheck = await config.pool.query(
@@ -270,6 +352,7 @@ export const captureThought = async (
 
   const dupRow = dupCheck.rows[0] as { id: string; metadata: unknown } | undefined
   if (dupRow) {
+    await preserveLegacyPrivateAudienceSource(config.pool, input, sources, dupRow.id)
     const existingMetadata = dupRow.metadata as ThoughtMetadata | null
     const memoryType = input.memoryType ?? 'semantic'
     const memoryCategory = resolveMemoryCategory(input, existingMetadata)
@@ -357,6 +440,12 @@ export const captureThought = async (
     const row = insertResult.rows[0] as { id: string; created_at: string }
     const thoughtId = row.id
     const createdAt = row.created_at
+
+    await insertThoughtDisclosureSources(client, {
+      organizationId: input.organizationId,
+      sources,
+      thoughtId,
+    })
 
     // If reasoning was extracted, insert a ThoughtReasoning record
     if (reasoning?.hasReasoning) {
