@@ -182,6 +182,7 @@ const main = async () => {
   let sourceContext = null
   let audienceContext = null
   let audiencePage = null
+  let sourcePage = null
   try {
     // This security evaluation must never adopt another worktree's dev loop:
     // that would exercise different source and leave this fixture unverified.
@@ -198,7 +199,7 @@ const main = async () => {
     sourceContext = await openViewportContext(browser, { name: 'desktop', token: sourceToken })
     audienceContext = await openViewportContext(browser, { name: 'desktop', token: audienceToken })
     const ownerPage = await ownerContext.newPage()
-    const sourcePage = await sourceContext.newPage()
+    sourcePage = await sourceContext.newPage()
     audiencePage = await audienceContext.newPage()
     await Promise.all([
       ownerPage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
