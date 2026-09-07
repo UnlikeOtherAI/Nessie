@@ -144,6 +144,7 @@ runDatabaseTest('grantMessageDisclosure refuses a user audience the granter cann
       audienceId: randomUUID(),
       audienceKind: 'user',
       messageId: message.id,
+      expectedContent: 'restricted',
       organizationId: s.organizationId,
       userId: s.granterId,
     }),
@@ -171,6 +172,7 @@ runDatabaseTest('grantMessageDisclosure refuses a channel the granter is not in'
       audienceId: s.privateChannelId,
       audienceKind: 'channel',
       messageId: message.id,
+      expectedContent: 'restricted',
       organizationId: s.organizationId,
       userId: s.granterId,
     }),
@@ -194,6 +196,7 @@ runDatabaseTest('grantMessageDisclosure accepts an audience the granter can actu
     audienceId: s.memberId,
     audienceKind: 'user',
     messageId: message.id,
+    expectedContent: 'restricted',
     organizationId: s.organizationId,
     userId: s.granterId,
   })
@@ -237,6 +240,7 @@ runDatabaseTest('a public channel grant reaches a nonmember only until it expire
     audienceId: s.channelId,
     audienceKind: 'channel',
     messageId: message.id,
+    expectedContent: 'restricted',
     organizationId: s.organizationId,
     userId: s.granterId,
   })
@@ -252,6 +256,7 @@ runDatabaseTest('a public channel grant reaches a nonmember only until it expire
     audienceId: s.privateChannelId,
     audienceKind: 'channel',
     messageId: message.id,
+    expectedContent: 'restricted',
     organizationId: s.organizationId,
     userId: s.granterId,
   })
@@ -288,6 +293,7 @@ runDatabaseTest('only the recorded private-conversation author can share a deriv
       audienceId: s.channelId,
       audienceKind: 'channel',
       messageId: message.id,
+      expectedContent: 'restricted',
       organizationId: s.organizationId,
       userId: s.memberId,
     }),
@@ -299,6 +305,7 @@ runDatabaseTest('only the recorded private-conversation author can share a deriv
     audienceId: s.channelId,
     audienceKind: 'channel',
     messageId: message.id,
+    expectedContent: 'restricted',
     organizationId: s.organizationId,
     userId: s.granterId,
   })
@@ -338,6 +345,7 @@ runDatabaseTest('unknown private lineage never grants a known author export auth
       audienceId: s.channelId,
       audienceKind: 'channel',
       messageId: message.id,
+      expectedContent: 'restricted',
       organizationId: s.organizationId,
       userId: s.granterId,
     }),

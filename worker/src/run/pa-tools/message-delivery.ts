@@ -151,6 +151,10 @@ export const runSendMessageTool = async (
         audienceId: destination.channelId,
         audienceKind: 'channel',
         duration: '10m',
+        // This row was created from `content` moments above. Binding the
+        // automatic share to that exact persisted text keeps it on the same
+        // stale-content boundary as the acknowledgement card.
+        expectedContent: content,
         messageId: message.id,
         organizationId: String(context.channel.organizationId),
         userId: grantedByUserId,

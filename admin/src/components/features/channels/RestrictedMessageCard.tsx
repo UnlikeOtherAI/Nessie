@@ -23,6 +23,8 @@ const DURATION_LABELS: Record<DisclosureDuration, string> = {
 }
 
 type Props = {
+  /** The exact reply body the person is approving for the one-message share. */
+  expectedContent: string
   messageId: string
   /**
    * `withheld` — the viewer cannot reach this reply's sources, so they see a
@@ -36,10 +38,15 @@ type Props = {
   mode: 'withheld' | 'shareable'
   /** Whether a standing rule is offered at all — private material gets none. */
   allowStanding: boolean
-  onShare: (input: { kind: 'message' | 'scope'; duration: DisclosureDuration }) => Promise<void>
+  onShare: (input: {
+    expectedContent: string
+    kind: 'message' | 'scope'
+    duration: DisclosureDuration
+  }) => Promise<void>
 }
 
 export const RestrictedMessageCard = ({
+  expectedContent,
   messageId,
   mode,
   allowStanding,
@@ -53,7 +60,7 @@ export const RestrictedMessageCard = ({
     setBusy(true)
     setError(null)
     try {
-      await onShare({ duration, kind })
+      await onShare({ duration, expectedContent, kind })
     } catch (shareError) {
       setError(shareError instanceof Error ? shareError.message : 'Could not share this reply.')
     } finally {
