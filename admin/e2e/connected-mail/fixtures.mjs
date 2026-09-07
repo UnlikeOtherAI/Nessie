@@ -63,6 +63,15 @@ export const createMailFixtures = () => {
     ],
   }
 
+  const conversationTwo = {
+    ...conversation,
+    id: 'thread-2',
+    messages: [{
+      ...conversation.messages[0], body: '<p>Budget confirmed.</p>', from: 'Morgan <morgan@example.com>',
+      id: 'message-2', subject: 'Budget', threadId: 'thread-2',
+    }],
+  }
+
   const threads = {
     estimate: 2,
     items: [
@@ -201,7 +210,7 @@ export const createMailFixtures = () => {
     if (pathname === '/api/mail/accounts') return json(accounts())
     if (pathname.endsWith('/threads') && pathname.startsWith('/api/mail/accounts/')) return json(threads)
     if (pathname.endsWith('/threads/thread-1') && pathname.startsWith('/api/mail/accounts/')) return json(conversation)
-    if (pathname.endsWith('/threads/thread-2') && pathname.startsWith('/api/mail/accounts/')) return json({ ...conversation, id: 'thread-2' })
+    if (pathname.endsWith('/threads/thread-2') && pathname.startsWith('/api/mail/accounts/')) return json(conversationTwo)
     if (pathname === `/api/gmail/drafts/${gmailDraftId}/status` && method === 'GET') return json({
       id: gmailDraftId, sendAfter: gmailSendAfter, state: gmailDraftState,
     })
