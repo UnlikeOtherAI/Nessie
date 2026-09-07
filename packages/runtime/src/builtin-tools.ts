@@ -228,6 +228,9 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       },
       required: ['content'],
     },
+    // A team-shared agent may send only after its owner has deliberately
+    // enabled this capability in that agent's tool policy.
+    requiresExplicitGrant: true,
     safe: false,
   },
   {

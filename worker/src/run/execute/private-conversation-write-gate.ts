@@ -28,11 +28,11 @@ export const blocksPrivateConversationWrite = (input: {
   isExternal: boolean
   toolName: string
 }): boolean =>
-  input.context.consumedSources.privateConversationSources().length > 0
+  (input.context.consumedSources?.privateConversationSources().length ?? 0) > 0
   && (
     input.isExternal
     || (
-      input.context.agent.agentKind === 'shared'
+      input.context.agent?.agentKind === 'shared'
       && UNSCOPED_CONTENT_SINKS.has(input.toolName)
     )
   )
