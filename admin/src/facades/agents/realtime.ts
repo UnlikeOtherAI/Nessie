@@ -165,6 +165,17 @@ export const useAgentRealtime = (input: {
       return
     }
 
+    if (message.event === 'task.updated') {
+      // The socket names no checklist content. Refetching the task and its
+      // checklist preserves the REST entitlement check and lets an open
+      // Checklist tab stay open while another writer changes a step.
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      void queryClient.invalidateQueries({
+        queryKey: taskKeys.checklist(message.data.taskId),
+      })
+      return
+    }
+
     if (message.event === 'agent.todo.updated') {
       // The event carries no title, step, or note. A to-do card can therefore
       // only repaint after its regular entitled API read succeeds.

@@ -191,7 +191,7 @@ export const TaskDialog = ({
     if (!open) return
     setError(null)
     setDialogTab('details')
-  }, [open, task])
+  }, [open, task?.id])
 
   const pending =
     createTask.isPending
