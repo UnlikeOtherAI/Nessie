@@ -228,6 +228,7 @@ const mount = async (element: React.ReactElement) => {
   })
 
   return {
+    container,
     button: (label: string): HTMLElement => {
       const button = [...container.querySelectorAll('button')].find(
         (candidate) => candidate.textContent?.trim() === label,
@@ -254,6 +255,42 @@ const mount = async (element: React.ReactElement) => {
     },
   }
 }
+
+test('typing a new step title keeps that step input mounted and focused', async () => {
+  const editor = await mount(
+    createElement(TodoTemplateEditor, {
+      onCancel: () => undefined,
+      onSave: async () => undefined,
+      saving: false,
+    }),
+  )
+
+  try {
+    const title = editor.container.querySelector('input[maxlength="200"]')
+    assert.ok(title instanceof dom.window.HTMLInputElement, 'expected the first step title input')
+    // React's legacy input-event fallback probes this IE-only method in JSDOM.
+    const legacyInput = title as HTMLInputElement & { attachEvent?: () => void }
+    legacyInput.attachEvent = () => undefined
+    title.focus()
+
+    const setValue = Object.getOwnPropertyDescriptor(
+      dom.window.HTMLInputElement.prototype,
+      'value',
+    )?.set
+    assert.ok(setValue, 'expected the native input value setter')
+    await React.act(async () => {
+      setValue.call(title, 'Verify the business and venue')
+      title.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    })
+
+    const titleAfterTyping = editor.container.querySelector('input[maxlength="200"]')
+    assert.equal(titleAfterTyping, title, 'title edits must not replace the step row')
+    assert.equal(dom.window.document.activeElement, title, 'typing must retain focus in the title input')
+    assert.equal(title.value, 'Verify the business and venue')
+  } finally {
+    await editor.unmount()
+  }
+})
 
 test('template cards let owners edit and archive but refuse the same buttons to members', async () => {
   const ownerActions: string[] = []
