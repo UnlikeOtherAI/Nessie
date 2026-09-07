@@ -28,7 +28,7 @@ export const exerciseApprovedReplyRevision = async ({
     'Disclosure',
     'Prosím uprav už zveřejněný update na aktuální citlivé znění.',
   )
-  const revisionRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id)
+  const revisionRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id, runIds)
   runIds.push(revisionRun.id)
   const terminal = await pipeline.waitForTerminalRuns([revisionRun.id], 60_000)
   assert.equal(terminal.get(revisionRun.id), 'completed', 'B’s private message edit completes')
@@ -64,6 +64,7 @@ export const exerciseApprovedReplyRevision = async ({
   const restricted = refreshed.data.find((message) => message.id === forwarded.id)
   assert.equal(restricted?.restrictedSources, true, 'C refetch receives the edited reply as restricted')
   assertNoRevision(JSON.stringify(restricted), 'C thread API response after edit')
+  await audiencePage.screenshot({ path: resolve(screenshots, 'before-edited-source-author-share.png'), fullPage: true })
 
   const stale = await fetch(`http://127.0.0.1:5454/api/messages/${forwarded.id}/disclosure-grants`, {
     body: JSON.stringify({ expectedContent: currentContent, kind: 'message', duration: '10m' }),
