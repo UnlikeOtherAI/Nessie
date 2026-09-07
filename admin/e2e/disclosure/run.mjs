@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// A browser-visible disclosure proof. It runs an ordinary shared-agent
-// through the real worker with scripted inference, then observes the cross-room
-// post as the other member before the author uses the production share control.
-//
 //   DATABASE_URL=postgresql://… pnpm --filter @nessie/admin test:e2e:disclosure
 //
 // Scripted inference proves Nessie's routing, provenance, authorization and UI
@@ -106,7 +102,7 @@ const stopEventProbe = (page) => page.evaluate(() => {
   window.__disclosureEventProbe?.controller.abort()
 })
 
-const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
+const seedFixture = async (pipeline, seedScope, groupId) => {
   const scope = await seedScope(pipeline.prisma, 'disclosure-browser')
   const prisma = pipeline.prisma
   const agentOwner = { id: scope.userId, role: 'owner' }
@@ -145,9 +141,17 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
       visibility: 'private',
     },
   })
-  const [groupThread, privateThread] = await Promise.all([
+  const explicitChannel = await prisma.channel.create({
+    data: {
+      label: 'Explicit private source chat', organizationId: scope.organizationId,
+      projectId: scope.projectId, slug: `explicit-source-${groupId.slice(0, 8)}`,
+      teamId: scope.teamId, visibility: 'private',
+    },
+  })
+  const [groupThread, privateThread, explicitThread] = await Promise.all([
     prisma.thread.create({ data: { channelId: group.id, title: 'Team launch' } }),
     prisma.thread.create({ data: { channelId: privateChannel.id, title: 'Private source chat' } }),
+    prisma.thread.create({ data: { channelId: explicitChannel.id, title: 'Explicit private source chat' } }),
   ])
 
   await prisma.$transaction([
@@ -180,6 +184,7 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
         { channelId: group.id, role: 'member', userId: sourceAuthor.id },
         { channelId: group.id, role: 'member', userId: audience.id },
         { channelId: privateChannel.id, role: 'manager', userId: sourceAuthor.id },
+        { channelId: explicitChannel.id, role: 'manager', userId: sourceAuthor.id },
       ],
     }),
     prisma.agent.update({
@@ -194,6 +199,9 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
     }),
     prisma.agentBinding.create({
       data: { agentId: scope.agentId, channelId: privateChannel.id },
+    }),
+    prisma.agentBinding.create({
+      data: { agentId: scope.agentId, channelId: explicitChannel.id },
     }),
     prisma.toolRegistryEntry.upsert({
       where: { organizationId_scopeKey_toolId: { organizationId: scope.organizationId, scopeKey: 'builtin', toolId: 'send_message' } },
@@ -215,6 +223,9 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
     },
   })
   await prisma.message.create({
+    data: { content: `Hele, pořád je to citlivý: ${SECRET}`, role: 'user', threadId: explicitThread.id, userId: sourceAuthor.id },
+  })
+  await prisma.message.create({
     data: {
       content: '¿Alguien puede confirmar el plan del lanzamiento? thx!',
       role: 'user',
@@ -223,43 +234,39 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
     },
   })
 
-  const run = await seedRun(
-    prisma,
-    { ...scope, channelId: privateChannel.id },
-    'Můžeš poslat stručný update do Team launch?',
-    { actorUserId: sourceAuthor.id, replyPlacement: 'channel', threadId: privateThread.id },
-  )
   return {
     agentOwner,
+    explicitChannel,
+    explicitThread,
     group,
     groupThread,
     privateChannel,
     privateThread,
     audience: { id: audience.id, role: 'member' },
-    run,
     scope,
     sourceAuthor: { id: sourceAuthor.id, role: 'member' },
   }
 }
 
-const seedExplicitDisclosureRun = async (pipeline, fixture, seedRun) => {
-  const thread = await pipeline.prisma.thread.create({
-    data: { channelId: fixture.privateChannel.id, title: 'Explicit source chat' },
-  })
-  await pipeline.prisma.message.create({
-    data: {
-      content: `Hele, pořád je to citlivý: ${SECRET}`,
-      role: 'user',
-      threadId: thread.id,
-      userId: fixture.sourceAuthor.id,
-    },
-  })
-  return seedRun(
-    pipeline.prisma,
-    { ...fixture.scope, channelId: fixture.privateChannel.id },
-    `Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`,
-    { actorUserId: fixture.sourceAuthor.id, replyPlacement: 'channel', threadId: thread.id },
-  )
+const submitMentionedRequest = async (page, agentName, text) => {
+  const composer = page.locator('[role="textbox"][data-placeholder="Message"]')
+  await composer.fill(`@${agentName}`)
+  await page.locator('button').filter({ hasText: agentName }).first().click()
+  await composer.press('End')
+  await composer.pressSequentially(` ${text}`)
+  await composer.press('Enter')
+}
+
+const waitForRun = async (pipeline, agentId, threadId) => {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    const run = await pipeline.prisma.run.findFirst({
+      where: { agentId, threadId, triggerMessageId: { not: null } }, orderBy: { createdAt: 'desc' },
+    })
+    if (run) return run
+    await new Promise((done) => setTimeout(done, 100))
+  }
+  throw new Error(`No run was admitted for thread ${threadId}`)
 }
 
 const main = async () => {
@@ -303,13 +310,13 @@ const main = async () => {
   process.env.NESSIE_MODEL_BASE_URL = `${model.url}/v1`
 
   const { issueSessionToken } = await import('../../../api/src/auth/session.ts')
-  const { cleanupScope, seedRun, seedScope, startMockPipeline } = await import('../../../worker/test-harness/pipeline.ts')
+  const { cleanupScope, seedScope, startMockPipeline } = await import('../../../worker/test-harness/pipeline.ts')
   const pipeline = await startMockPipeline({ workers: 1 })
-  const fixture = await seedFixture(pipeline, seedScope, seedRun, groupId)
+  const fixture = await seedFixture(pipeline, seedScope, groupId)
   const ownerToken = tokenFor(issueSessionToken, fixture.agentOwner, fixture.scope)
   const sourceToken = tokenFor(issueSessionToken, fixture.sourceAuthor, fixture.scope)
   const audienceToken = tokenFor(issueSessionToken, fixture.audience, fixture.scope)
-  const runIds = [fixture.run.runId]
+  const runIds = []
 
   let apiServer = null
   let adminServer = null
@@ -329,7 +336,7 @@ const main = async () => {
     const audiencePage = await audienceContext.newPage()
     await Promise.all([
       ownerPage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
-      sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
+      sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.privateChannel.id}`, { waitUntil: 'domcontentloaded' }),
       audiencePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
     ])
     await audiencePage.page.waitForSelector('text=¿Alguien puede confirmar el plan', { timeout: 60_000 })
@@ -344,12 +351,15 @@ const main = async () => {
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
     }, { timeout: 60_000 })
 
-    await pipeline.enqueueRun(fixture.run.payload)
-    const terminal = await pipeline.waitForTerminalRuns([fixture.run.runId], 60_000)
-    assert.equal(terminal.get(fixture.run.runId), 'completed', 'private-chat worker run completes')
+    await submitMentionedRequest(sourcePage.page, 'Disclosure shared agent', 'Můžeš poslat stručný update do Team launch?')
+    const firstRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id)
+    runIds.push(firstRun.id)
+    const terminal = await pipeline.waitForTerminalRuns([firstRun.id], 60_000)
+    assert.equal(terminal.get(firstRun.id), 'completed', 'private-chat worker run completes')
+    await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' })
 
     const forwarded = await pipeline.prisma.message.findFirstOrThrow({
-      where: { metadata: { path: ['delegatedFromRunId'], equals: fixture.run.runId }, threadId: fixture.groupThread.id },
+      where: { metadata: { path: ['delegatedFromRunId'], equals: firstRun.id }, threadId: fixture.groupThread.id },
       select: { id: true },
     })
     const basis = await pipeline.prisma.messageBasisScope.findMany({
@@ -402,7 +412,7 @@ const main = async () => {
       for (const path of [
         `/api/agents/${fixture.scope.agentId}/messages`,
         `/api/agents/${fixture.scope.agentId}/activity`,
-        `/api/agents/${fixture.scope.agentId}/runs/${fixture.run.runId}/tools`,
+        `/api/agents/${fixture.scope.agentId}/runs/${firstRun.id}/tools`,
       ]) {
         const response = await fetch(`${API_URL}${path}`, { headers: { authorization: `Bearer ${token}` } })
         assert.ok(response.status < 500, `${label} read route responds safely: ${path}`)
@@ -431,13 +441,14 @@ const main = async () => {
     assertWithheld(JSON.stringify(sourceSearch.data), 'recipient search API after one-reply share')
     assert.equal(sourceSearch.data.length, 0, 'one-reply grant does not widen to source transcript')
 
-    const explicitRun = await seedExplicitDisclosureRun(pipeline, fixture, seedRun)
-    runIds.push(explicitRun.runId)
-    await pipeline.enqueueRun(explicitRun.payload)
-    const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.runId], 60_000)
-    assert.equal(explicitTerminal.get(explicitRun.runId), 'completed', 'author’s explicit private request completes')
+    await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.explicitChannel.id}`, { waitUntil: 'domcontentloaded' })
+    await submitMentionedRequest(sourcePage.page, 'Disclosure shared agent', `Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`)
+    const explicitRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.explicitThread.id)
+    runIds.push(explicitRun.id)
+    const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.id], 60_000)
+    assert.equal(explicitTerminal.get(explicitRun.id), 'completed', 'author’s explicit private request completes')
     const automaticallyShared = await pipeline.prisma.message.findFirstOrThrow({
-      where: { metadata: { path: ['delegatedFromRunId'], equals: explicitRun.runId }, threadId: fixture.groupThread.id },
+      where: { metadata: { path: ['delegatedFromRunId'], equals: explicitRun.id }, threadId: fixture.groupThread.id },
       select: { id: true },
     })
     const automaticGrant = await pipeline.prisma.disclosureGrant.findMany({
@@ -459,7 +470,7 @@ const main = async () => {
       const row = document.querySelector(`#msg-${messageId}`)
       return row?.textContent?.includes(summary) ?? false
     }, { messageId: automaticallyShared.id, summary: SHARED_SUMMARY }, { timeout: 60_000 })
-    await sourcePage.page.reload({ waitUntil: 'domcontentloaded' })
+    await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' })
     assert.equal(
       await sourcePage.page.locator(`#msg-${automaticallyShared.id}`).getByRole('button', { name: 'Share this reply' }).count(),
       0,
