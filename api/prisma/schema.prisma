@@ -2483,7 +2483,6 @@ model Message {
   workflowRunReplyRoots       WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
   runThreadPendingMessages    RunThreadPendingMessage[]
   basisScopes                 MessageBasisScope[]
-  disclosureSourceMessages    MessageDisclosureSource[]
   disclosureSources           MessageDisclosureSource[]
   disclosureGrants            DisclosureGrant[]
   pushSurfacePresences        UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
