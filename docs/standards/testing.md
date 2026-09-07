@@ -40,10 +40,12 @@ file is the rule.**
 Deterministic scripted inference for tests lives in `@nessie/mock-llm` (`packages/mock-llm`, scenario JSON + in-process `runInference` adapter + OpenAI-compatible HTTP server). `pnpm --filter @nessie/worker test:smoke` runs the full-pipeline CI smoke (seeded Postgres → enqueue → loop → tool call → completion); `pnpm --filter @nessie/worker test:load --runs N --workers W` runs the load mode. See [docs/mock-llm-harness.md](../mock-llm-harness.md).
 
 [`private-conversation-disclosure.md`](../testing/private-conversation-disclosure.md)
-uses that HTTP transport with the production queue, worker, API and headless
-admin UI. It runs first in the **Navigation Transitions** job, so it reuses
-that job's migrated Postgres service, built artifacts, fixed ports, and
-Chromium installation before another suite can start a different lifecycle.
+uses that HTTP transport with the production local-mode API, its embedded
+worker, and headless admin UI. Its Postgres harness owns the isolated fixture
+and terminal observation. It runs first in the **Navigation Transitions** job,
+so it reuses that job's migrated Postgres service, built artifacts, fixed
+ports, and Chromium installation before another suite can start a different
+lifecycle.
 It proves the worker and UI
 enforce scripted model decisions; it does not claim live-model language
 understanding.

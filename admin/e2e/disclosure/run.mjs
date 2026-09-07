@@ -134,6 +134,8 @@ const main = async () => {
 
   const { issueSessionToken } = await import('../../../api/src/auth/session.ts')
   const { cleanupScope, seedScope, startMockPipeline } = await import('../../../worker/test-harness/pipeline.ts')
+  // UI submissions run through the API's local-mode embedded worker. This
+  // harness supplies the isolated fixture and terminal-state observation.
   const pipeline = await startMockPipeline({ workers: 1 })
   const fixture = await seedFixture(pipeline, seedScope, groupId)
   const ownerToken = tokenFor(issueSessionToken, fixture.agentOwner, fixture.scope)
@@ -177,10 +179,10 @@ const main = async () => {
       channelId: fixture.group.id,
       kind: 'channel',
     }])
-    await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').fill(
+    await ownerPage.page.locator('form.admin-compose [role="textbox"]').fill(
       'Můžu prosím zveřejnit Bertin soukromý update?',
     )
-    await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').press('Enter')
+    await ownerPage.page.locator('form.admin-compose [role="textbox"]').press('Enter')
     await audiencePage.page.waitForFunction(() => {
       const events = window.__disclosureEventProbe?.events ?? []
       return events.some((frame) => frame.event === 'message.new'
