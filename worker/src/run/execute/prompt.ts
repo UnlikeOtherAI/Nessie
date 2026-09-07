@@ -365,7 +365,10 @@ export const loadConversation = async (
     // source, rather than a derived reply. Record its channel and author here
     // so a later post into another audience cannot erase that provenance.
     if (message.thread.channel.visibility !== 'public') {
-      const authorUserId = message.userId ?? message.onBehalfOfUserId
+      // `onBehalfOfUserId` attributes an agent action to its effective actor;
+      // it does not prove the human authored these words. Only a persisted
+      // human `userId` may establish original-author consent.
+      const authorUserId = message.userId
       if (authorUserId) {
         input.consumedSources.addPrivateConversationSource({
           sourceAuthorUserId: authorUserId,
