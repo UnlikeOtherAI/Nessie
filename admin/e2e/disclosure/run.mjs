@@ -251,7 +251,6 @@ const main = async () => {
     ])
     await audiencePage.page.waitForSelector('text=¿Alguien puede confirmar el plan', { timeout: 60_000 })
     await installEventProbe(audiencePage.page, audienceToken)
-    await installActivityProbe(audiencePage.page, audienceToken, fixture.scope.agentId)
     await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').fill(
       'Můžu prosím zveřejnit Bertin soukromý update?',
     )
@@ -261,6 +260,11 @@ const main = async () => {
       return events.some((frame) => frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
     }, { timeout: 60_000 })
+    // The known-public SSE canary must not consume a mock utility decision before B's disclosure judge.
+    await pipeline.prisma.agentBinding.create({
+      data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
+    })
+    await installActivityProbe(audiencePage.page, audienceToken, fixture.scope.agentId)
 
     await submitMentionedRequest(sourcePage.page, 'Disclosure shared agent', 'Můžeš poslat stručný update do Team launch?')
     const firstRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id)

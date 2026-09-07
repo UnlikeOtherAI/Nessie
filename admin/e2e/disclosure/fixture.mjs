@@ -128,9 +128,6 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
       },
     }),
     prisma.agentBinding.create({
-      data: { agentId: scope.agentId, channelId: group.id },
-    }),
-    prisma.agentBinding.create({
       data: { agentId: scope.agentId, channelId: privateChannel.id },
     }),
     prisma.agentBinding.create({
