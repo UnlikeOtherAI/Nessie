@@ -5,6 +5,7 @@ import type { ProviderMessage } from '@nessie/runtime'
 import {
   buildCompactionPrompt,
   COMPACTION_NOTE_MARKER,
+  normalizeLegacyCompactionNotes,
   runContextCompaction,
   selectCompactionSlice,
 } from './context-compaction.js'
@@ -107,6 +108,15 @@ test('a failed note call leaves the caller to fall back', async () => {
     targetTokens: 1_200,
   })
   assert.equal(result, null)
+})
+
+test('a legacy system checkpoint note is lowered before any compaction pass', () => {
+  const normalized = normalizeLegacyCompactionNotes([{
+    content: `${COMPACTION_NOTE_MARKER} prior restricted source`,
+    role: 'system',
+  }])
+  assert.equal(normalized[0]?.role, 'user')
+  assert.match(normalized[0]?.content ?? '', /compacted_work_notes/)
 })
 
 test('the shared helper leaves checkpoint input intact and retains image-bearing tail turns', async () => {
