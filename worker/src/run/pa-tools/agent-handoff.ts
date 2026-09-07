@@ -28,6 +28,10 @@ import {
 } from '../execute/disclosure-basis.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
 import { publishMessageCreated } from '../execute/realtime.js'
+import {
+  insertMessageBasis,
+  insertPrivateConversationSources,
+} from './tool-message-basis.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 
 /**
@@ -254,17 +258,18 @@ export const runAgentHandoffTool = async (
       requesterActorContext: destinationActorContext,
       threadId: home.threadId,
     })
-    if (briefBasis.length > 0) {
-      await tx.messageBasisScope.createMany({
-        data: briefBasis.map((scope) => ({
-          messageId: brief.briefMessageId,
-          organizationId,
-          scopeId: scope.scopeId,
-          scopeType: scope.scopeType,
-        })),
-        skipDuplicates: true,
-      })
-    }
+    await insertMessageBasis(tx, {
+      basis: briefBasis,
+      messageId: brief.briefMessageId,
+      organizationId,
+    })
+    // The destination DM can imply some scopes for the requester, but it never
+    // changes who authored a private source. The target run must inherit that
+    // author so it cannot turn the brief into an unscoped export.
+    await insertPrivateConversationSources(tx, context, {
+      messageId: brief.briefMessageId,
+      organizationId,
+    })
 
     await tx.agentHandoffRequest.create({
       data: {

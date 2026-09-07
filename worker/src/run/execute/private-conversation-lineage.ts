@@ -10,6 +10,14 @@ type MessageAuthorship = {
   userId: string | null
 }
 
+type TriggerMessageLineage = {
+  basisScopes: readonly BasisScope[]
+  disclosureSources: readonly {
+    sourceAuthorUserId: string | null
+    sourceChannelId: string
+  }[]
+}
+
 const hasDelegatedAgentMetadata = (metadata: unknown): boolean =>
   typeof metadata === 'object'
   && metadata !== null
@@ -54,6 +62,35 @@ export const markUnknownPrivateConversationScopes = async (
     select: { id: true, visibility: true },
   })
   markUnknownPrivateConversationChannels(sink, channels)
+}
+
+/**
+ * A server-authored trigger (handoff or delegated subtask) is outside the
+ * normal transcript window. Admit both forms of provenance before its content
+ * becomes the run prompt. Older trigger rows may have channel basis without an
+ * author row; record that absence only for source channels not otherwise
+ * represented, so a complete modern source stays eligible for its author's
+ * deliberate one-message consent.
+ */
+export const admitTriggerMessageLineage = async (
+  prisma: PrismaClient,
+  sink: ConsumedSourceSink,
+  message: TriggerMessageLineage,
+): Promise<void> => {
+  sink.addAll(message.basisScopes)
+  for (const source of message.disclosureSources) {
+    sink.addPrivateConversationSource(source)
+  }
+  const representedChannels = new Set(message.disclosureSources.map(
+    (source) => source.sourceChannelId,
+  ))
+  await markUnknownPrivateConversationScopes(
+    prisma,
+    sink,
+    message.basisScopes.filter(
+      (scope) => scope.scopeType !== 'channel' || !representedChannels.has(scope.scopeId),
+    ),
+  )
 }
 
 /** Mark known non-public channels when their source author is unavailable. */

@@ -8,6 +8,7 @@ import {
   type BasisScope,
 } from './disclosure-basis.js'
 import {
+  admitTriggerMessageLineage,
   markUnknownPrivateConversationChannels,
   markUnknownPrivateConversationScopes,
 } from './private-conversation-lineage.js'
@@ -84,6 +85,35 @@ test('checkpoint or memory channel provenance cannot be re-attributed by a later
 
   assert.deepEqual(sink.privateConversationSources(), [
     { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
+})
+
+test('a delegated trigger keeps its original private author without adding an unknown marker', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage(
+    { channel: { findMany: async () => [] } } as never,
+    sink,
+    {
+      basisScopes: [scope('channel', 'private-room')],
+      disclosureSources: [{ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' }],
+    },
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+  ])
+})
+
+test('a legacy delegated trigger becomes an unknown private source', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage(
+    { channel: { findMany: async () => [{ id: 'private-room', visibility: 'private' }] } } as never,
+    sink,
+    { basisScopes: [scope('channel', 'private-room')], disclosureSources: [] },
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
     { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
   ])
 })
