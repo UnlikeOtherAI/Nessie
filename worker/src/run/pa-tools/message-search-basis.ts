@@ -76,6 +76,7 @@ export const recordPrivateConversationMessageRead = (
     agentId: string | null
     channelId: string
     channelVisibility: string
+    disclosureSources: readonly { sourceAuthorUserId: string | null; sourceChannelId: string }[]
     metadata: unknown
     onBehalfOfUserId: string | null
     role: string
@@ -86,6 +87,12 @@ export const recordPrivateConversationMessageRead = (
   if (!sink) return
   for (const message of messages) {
     if (message.channelVisibility === 'public') continue
+    if (message.disclosureSources.length > 0) {
+      for (const source of message.disclosureSources) {
+        sink.addPrivateConversationSource(source)
+      }
+      continue
+    }
     sink.addPrivateConversationSource({
       sourceAuthorUserId: originalHumanAuthorId(message),
       sourceChannelId: message.channelId,

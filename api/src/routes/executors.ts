@@ -187,11 +187,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         sendApiError(reply, 409, 'RUN_THREAD_BUSY', 'That agent already has active work in this thread')
         return reply
       }
-      // The channel's system type decides whether this announcement is
-      // channel-only or organization-wide, so it is read rather than omitted:
-      // a launch inside a delegated system DM must not be published org-wide.
+      // The channel's visibility decides whether this announcement can use
+      // broad activity lanes, so it is read rather than inferred from the run.
       const launchChannel = await prisma.channel.findUnique({
-        select: { systemChannelType: true },
+        select: { systemChannelType: true, visibility: true },
         where: { id: launched.channelId },
       })
       await publishMessageNew({ buildChannelRealtimeScopes, realtimeHub }, {
@@ -199,6 +198,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
           id: launched.channelId,
           organizationId: actorContext.tenant.organizationId,
           systemChannelType: launchChannel?.systemChannelType,
+          visibility: launchChannel?.visibility,
         },
         message: {
           content: launched.message.content,

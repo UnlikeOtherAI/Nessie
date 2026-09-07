@@ -118,6 +118,7 @@ const publishCallRecord = async (
         id: input.channelId,
         organizationId: input.organizationId,
         systemChannelType: 'personal_assistant',
+        visibility: 'private',
       },
       message: {
         agentId: input.agentId,

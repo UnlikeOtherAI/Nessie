@@ -27,10 +27,13 @@ file is the rule**.
   list has nowhere to render a placeholder. On the read side every path asks the
   one predicate — list, single message, and the durable thought log alike, since
   reasoning inherits the provenance of what the reply was built from. The live
-  SSE lanes cannot filter per viewer, so they are cut structurally by
-  `runReplyIsRestricted` the moment a run consumes a privileged source; that
-  predicate is monotone by construction, which is what makes it safe to call per
-  delta. Containment (`constrainScopesToDestination`) is a floor under all of
+  SSE lanes cannot filter per viewer, so `runReplyIsRestricted` cuts them the
+  moment a run consumes a source beyond its destination; that predicate is
+  monotone by construction, which is what makes it safe to call per delta.
+  Separately, all content-bearing realtime activity for a non-public channel
+  uses its channel scope alone: a destination's own channel basis must never
+  reopen organisation or agent broadcast lanes. Containment
+  (`constrainScopesToDestination`) is a floor under all of
   this, but it constrains **memory recall only** — never treat it as "nothing
   crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
   `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
@@ -72,9 +75,13 @@ Facts not restated there:
   explicit request can create the existing one-message grant automatically,
   but only after the utility model judges the current author-authored request
   against the exact proposed content and destination and the server proves the
-  requester is that recorded source author. Missing lineage fails closed for
-  sharing. Transcript reads, derived replies, edits and `send_message` carry
-  the lineage forward; public conversations create none.
+  requester is that recorded source author. Read-time grant evaluation repeats
+  that author check, so grants made before lineage existed cannot release a
+  private conversation and a valid author can renew the same one-message grant.
+  Missing lineage fails closed for sharing. Transcript, attachment, checkpoint,
+  memory and conversation-search reads carry known lineage forward and mark an
+  older/agent-derived source with no durable author as unknown; a known turn in
+  the same channel cannot re-attribute it. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
   `canManageChannel` (`api/src/services/channel-members.ts`), the same gate

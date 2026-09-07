@@ -18,6 +18,7 @@ const channel = (
   projectId: 'p',
   systemChannelType: null,
   teamId: 't',
+  visibility: 'public',
   ...overrides,
 })
 
@@ -28,6 +29,13 @@ test('an ordinary channel keeps the organization and agent lanes', () => {
   assert.deepEqual(
     kinds(buildScopesForAgent(channel(), { agentKind: 'shared', id: AGENT })),
     ['agent', 'channel', 'organization'],
+  )
+})
+
+test('a private ordinary room never broadcasts run activity outside its channel', () => {
+  assert.deepEqual(
+    kinds(buildScopesForAgent(channel({ visibility: 'private' }), { agentKind: 'shared', id: AGENT })),
+    ['channel'],
   )
 })
 

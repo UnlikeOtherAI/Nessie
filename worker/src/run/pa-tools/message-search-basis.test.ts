@@ -67,11 +67,11 @@ test('a legacy private search result remains unknown beside a known author in th
   recordPrivateConversationMessageRead({ consumedSources: sink }, [
     {
       agentId: null, channelId: 'channel-private', channelVisibility: 'private', metadata: null,
-      onBehalfOfUserId: null, role: 'user', userId: 'author-b',
+      disclosureSources: [], onBehalfOfUserId: null, role: 'user', userId: 'author-b',
     },
     {
       agentId: null, channelId: 'channel-private', channelVisibility: 'private', metadata: null,
-      onBehalfOfUserId: null, role: 'assistant', userId: null,
+      disclosureSources: [], onBehalfOfUserId: null, role: 'assistant', userId: null,
     },
   ])
 
@@ -87,6 +87,7 @@ test('a delegated legacy user-shaped result remains unknown', () => {
     agentId: null,
     channelId: 'channel-private',
     channelVisibility: 'private',
+    disclosureSources: [],
     metadata: { delegatedByAgentId: 'agent-1' },
     onBehalfOfUserId: null,
     role: 'user',
@@ -95,5 +96,23 @@ test('a delegated legacy user-shaped result remains unknown', () => {
 
   assert.deepEqual(sink.privateConversationSources(), [
     { sourceAuthorUserId: null, sourceChannelId: 'channel-private' },
+  ])
+})
+
+test('a derived private search result retains its persisted original author', () => {
+  const sink = createConsumedSourceSink()
+  recordPrivateConversationMessageRead({ consumedSources: sink }, [{
+    agentId: 'agent-1',
+    channelId: 'channel-private',
+    channelVisibility: 'private',
+    disclosureSources: [{ sourceAuthorUserId: 'author-b', sourceChannelId: 'channel-private' }],
+    metadata: null,
+    onBehalfOfUserId: 'author-b',
+    role: 'assistant',
+    userId: null,
+  }])
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'channel-private' },
   ])
 })
