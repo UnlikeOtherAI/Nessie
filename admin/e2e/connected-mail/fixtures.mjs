@@ -234,10 +234,15 @@ export const createMailFixtures = () => {
     }
     if (pathname === `/api/gmail/drafts/${gmailDraftId}` && method === 'GET') return json({
       attachments: [], bcc: [], body: 'Thanks — I will take this from here.', cc: [],
-      connectionId: 'gmail-1', contentFingerprint: 'fingerprint-1', id: gmailDraftId, revision: 1, state: gmailDraftState,
+      connectionId: 'gmail-1', contentFingerprint: 'fingerprint-1', editable: gmailDraftState === 'draft', id: gmailDraftId, revision: 1, state: gmailDraftState,
       sendAfter: gmailSendAfter,
       subject: 'Re: Launch checklist', to: ['casey@acme.example'],
     })
+    if (pathname === `/api/gmail/drafts/${gmailDraftId}/send` && method === 'POST') {
+      gmailDraftState = 'sending'
+      gmailSendAfter = new Date(Date.now() + 15_000).toISOString()
+      return json({ sendAfter: gmailSendAfter, status: 'sending' })
+    }
     if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') {
       gmailDraftState = 'draft'
       gmailSendAfter = null
@@ -290,7 +295,7 @@ export const createMailFixtures = () => {
 
   return {
     calls,
-    ids: { ...ids, mailboxComposeCard: mailboxComposeCardId },
+    ids: { ...ids, gmailDraft: gmailDraftId, mailboxComposeCard: mailboxComposeCardId },
     unhandled,
     respond,
     showDoorway: () => { doorway = threadDoorway; doorwayVisible = true; mailboxComposeCardVisible = false },

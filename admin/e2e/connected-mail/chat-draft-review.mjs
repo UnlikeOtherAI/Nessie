@@ -153,6 +153,32 @@ const chatDoorway = async ({ adminUrl, assert, browser, expectNoErrors, fixture,
   }
 }
 
+const gmailPreviewDirectSend = async ({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    fixture.showDoorway()
+    fixture.showComposeDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const preview = page.getByTestId('gmail-chat-draft-preview')
+    const sendButton = preview.getByRole('button', { name: 'Send' })
+    await sendButton.waitFor()
+    assert(await sendButton.isEnabled(), 'an editable Gmail draft preview did not enable Send')
+    const sent = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/gmail/drafts/${fixture.ids.gmailDraft}/send`)
+    await sendButton.click()
+    await sent
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Send' && button.disabled))
+    const sends = fixture.calls.filter((call) => call.method === 'POST' && call.pathname === `/api/gmail/drafts/${fixture.ids.gmailDraft}/send`)
+    assert(sends.length === 1, `Gmail preview dispatched ${sends.length} sends`)
+    assert(JSON.parse(sends[0].postData ?? '{}').expectedFingerprint === 'fingerprint-1', 'Gmail preview did not bind Send to the displayed draft fingerprint')
+    assert(await sendButton.isDisabled(), 'Gmail preview remained editable after Send')
+    await shot(page, 'gmail-chat-draft-direct-send')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
 const gmailPreviewRevocation = async ({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot }) => {
   const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
   const { page } = target
@@ -300,4 +326,4 @@ const agentCardMailSend = async ({ adminUrl, assert, browser, expectNoErrors, fi
   }
 }
 
-export { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewRevocation, narrowComposeDoorway }
+export { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewDirectSend, gmailPreviewRevocation, narrowComposeDoorway }
