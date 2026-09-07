@@ -70,6 +70,12 @@ passing required CI, a merged PR, and removal of the merged task branches.
 The live browser walkthrough created **Sales Researcher — Test** and
 **Sales Coordinator — Test**, with bounded runs, an eight-step research template
 and a six-step planning template. Both were bound to `sales-planning-test`.
+Their current saved test ceilings are 40,000 tokens, 50 tool calls, 20 cycles,
+and ten minutes, with Low effort. The researcher keeps a 25-cent ceiling and
+the coordinator a 30-cent ceiling. These values and their handoff instructions
+were verified after reload. The coordinator creates one planning ticket and
+supplies prospect ticket IDs; the researcher applies its own research template
+to those tickets. This configuration has not yet completed a live backlog run.
 KiloTalk's Settings API-key page was deployed through
 [KiloTalk PR 20](https://github.com/UnlikeOtherAI/KiloTalk/pull/20). A new research
 key was generated in that UI and entered into Nessie's encrypted credential
@@ -85,8 +91,9 @@ open, observe, act, and close grants, verified through the tool-access UI.
 
 The researcher called KiloTalk's catalogue and customer-list tools, then stopped
 at a run token limit before returning research. A checkpoint continuation also
-stopped without a useful answer. Increasing the agent's saved run budget did
-not establish that an existing checkpoint uses the new allowance. These are
+stopped without a useful answer. Code inspection shows continuation reloads
+the current agent run limits, but the UI evidence does not establish the
+provider finish reason or the precise cause of either stop. These are
 failed research attempts, not evidence of consensus. Further live retries wait
 for the separate output-admission and recovery work.
 
@@ -121,8 +128,7 @@ they supplement the production walkthrough rather than replace it.
 The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
 compaction. Its loop invokes it when the host supplies `generateNote`, falling
 back to trimming when no compaction hook is supplied. Its private packages
-support commit-pinned Git installation with prepare/prepack hooks; Nessie does
-not yet consume them.
+support commit-pinned Git installation with prepare/prepack hooks.
 
 Nessie's worker consumes the pinned `@deep/agent` compaction helper only. Its
 caller still owns the utility model call and invocation sink, tool-call/result

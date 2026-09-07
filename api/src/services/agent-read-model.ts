@@ -120,6 +120,15 @@ export const loadAgentStatus = async (
     message,
     readable: await canReadAgentMessage(prisma, message, options?.visibility),
   })))).filter(({ readable }) => readable).map(({ message }) => message)
+  const readableActiveSubAgents = await Promise.all(agent.childAgents.map(async (childAgent) => {
+    const childTask = childAgent.tasks[0]
+    if (!childTask || !options?.visibility || !(await canUserReadRunDerivedRecord(prisma, {
+      organizationId: options.visibility.organizationId,
+      runId: childTask.runId,
+      userId: options.visibility.userId,
+    }))) return null
+    return { childAgent, childTask }
+  }))
   const latestMessage = readableMessages[0]
   const isActiveRun =
     latestRun !== undefined
@@ -145,10 +154,10 @@ export const loadAgentStatus = async (
       isActiveRun && latestToolCall?.endedAt === null
         ? toTimestamp(latestToolCall.startedAt)
         : undefined,
-    activeSubAgents: agent.childAgents
-      .map((childAgent) => {
-        const childTask = childAgent.tasks[0]
-        if (!childTask) return null
+    activeSubAgents: readableActiveSubAgents
+      .map((entry) => {
+        if (!entry) return null
+        const { childAgent, childTask } = entry
         return {
           agentId: parseAgentId(childAgent.id),
           status: childAgent.status,
