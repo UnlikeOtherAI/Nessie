@@ -30,7 +30,7 @@ test('mainOutputTokens uses the selected Ledger catalog cap and keeps static cap
     { actorContext: { actor: { actorId: 'u', actorType: 'user' }, actionContext: { requestId: 'r' }, tenant: { organizationId: 'o', teamId: 't', projectId: 'p' } } } as never,
     { agent: { id: 'a', name: 'A', model: 'gemini-test', provider: 'gemini', effort: 'low', agentKind: 'shared', executionMode: 'inference', parentAgentId: null, systemPrompt: null }, channel: { organizationId: 'o' }, run: { id: 'run', threadId: 'thread', createdAt: new Date(), replyPlacement: null }, task: { id: 'task' } } as never,
     { budgetModelOverride: null, subscription: null, utilityModel: null, thinkingRecorder: {} as never,
-      stageProviderResolver: async () => ({ apiKey: 'key', baseUrl: 'https://ledger.example/v1/gemini', connectorKind: 'openai-compatible', model: 'gemini-test', providerKey: 'gemini' }),
+      stageProviderResolver: async () => ({ apiKey: 'key', baseUrl: 'https://ledger.unlikeotherai.com/v1/gemini', connectorKind: 'openai-compatible', model: 'gemini-test', providerKey: 'gemini' }),
       inferenceServiceFactory: () => ({ getCapabilities: async () => ({ effectiveSnapshot: { maxOutputTokens: 9000 } }) }) as never,
       ledgerCatalogFetch: fetchImpl,
     },
@@ -38,7 +38,8 @@ test('mainOutputTokens uses the selected Ledger catalog cap and keeps static cap
   let url = ''
   const capped = make(async (input, init) => { url = input.toString(); assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer key'); return new Response(JSON.stringify({ data: [{ id: 'gemini-test', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: 1024 }] })) })
   assert.equal(await capped.mainOutputTokens?.(), 1024)
-  assert.equal(url, 'https://ledger.example/v1/models')
+  assert.equal(url, 'https://ledger.unlikeotherai.com/v1/models')
   const failed = make(async () => { throw new Error('offline') })
   assert.equal(await failed.mainOutputTokens?.(), 2048)
 })
+
