@@ -89,6 +89,7 @@ export const BoardWatchersEditor = ({
       <div className="grid gap-3">
         <RecipientBar
           agents={agents}
+          closeAfterSelection
           disabled={setWatchers.isPending}
           label="Tell"
           onChange={setRecipients}

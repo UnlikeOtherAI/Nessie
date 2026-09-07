@@ -29,6 +29,8 @@ type RecipientBarProps = {
   placeholder: string
   /** Focused on mount. The compose screen wants it; a settings section does not. */
   autoFocus?: boolean
+  /** A settings form needs its Save action reachable after choosing a recipient. */
+  closeAfterSelection?: boolean
   disabled?: boolean
   /**
    * The caller's handle on the text field. Passed rather than owned because the
@@ -66,6 +68,7 @@ export const RecipientBar = ({
   label,
   placeholder,
   autoFocus = false,
+  closeAfterSelection = false,
   disabled = false,
   inputRef: callerRef,
 }: RecipientBarProps) => {
@@ -97,9 +100,13 @@ export const RecipientBar = ({
       onChange([...recipients, { id: option.id, kind: option.kind }])
       setQuery('')
       setHighlightedIndex(0)
-      window.setTimeout(() => inputRef.current?.focus(), 0)
+      if (closeAfterSelection) {
+        setFocused(false)
+      } else {
+        window.setTimeout(() => inputRef.current?.focus(), 0)
+      }
     },
-    [inputRef, onChange, recipients],
+    [closeAfterSelection, inputRef, onChange, recipients],
   )
 
   const remove = useCallback(
@@ -191,6 +198,7 @@ export const RecipientBar = ({
             onChange={(event) => {
               setQuery(event.target.value)
               setHighlightedIndex(0)
+              setFocused(true)
             }}
             onFocus={() => setFocused(true)}
             onKeyDown={onKeyDown}
