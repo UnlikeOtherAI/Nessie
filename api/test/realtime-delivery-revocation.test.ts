@@ -7,6 +7,7 @@ import type { WsScope } from '@nessie/schemas'
 import {
   createWsNotificationDelivery,
   type ThreadSseConnection,
+  type UserSseConnection,
 } from '../src/realtime/notification-delivery.js'
 import { REALTIME_ENTITLEMENT_TTL_MS } from '../src/realtime/delivery-entitlements.js'
 
@@ -208,4 +209,139 @@ test('an organization scope from another tenant never delivers', async () => {
   })
 
   assert.equal(sent.length, 0)
+})
+
+/**
+ * The same gate, on the two lanes that were not using it.
+ *
+ * Channel and dashboard entitlements were re-asked with a query *per event* on
+ * the user-SSE and WS lanes, while the thread lane's identical question already
+ * went through the per-connection gate. That is per-message work on the path a
+ * replica drain hits hardest: every client the drained replica held reconnects
+ * to a survivor and replays at once. These tests pin both halves of the
+ * bargain — the burst collapses to one query, and a revocation still lands one
+ * window later rather than at reconnect.
+ */
+
+const channelScopes: WsScope[] = [{ kind: 'channel', channelId: CHANNEL_ID } as WsScope]
+
+const createUserConnection = (written: string[]): UserSseConnection => ({
+  kind: 'user',
+  channelIds: new Set([CHANNEL_ID]),
+  hydrating: false,
+  lastEventId: 0n,
+  organizationId: ORGANIZATION_ID,
+  pending: [],
+  response: {
+    once: () => undefined,
+    write: (chunk: string) => {
+      written.push(chunk)
+      return true
+    },
+  },
+  scopes: channelScopes,
+  userId: USER_ID,
+})
+
+test('a user stream burst costs one channel query, and still stops on revocation', async () => {
+  const clock = createClock()
+  let channelAccess = true
+  let channelChecks = 0
+  const { deliverNotification, userSseConnections } = createWsNotificationDelivery({
+    canAccessChannelEvent: async (request) => {
+      channelChecks += 1
+      assert.equal(request.channelId, CHANNEL_ID)
+      assert.equal(request.userId, USER_ID)
+      assert.equal(request.organizationId, ORGANIZATION_ID)
+      return channelAccess
+    },
+    now: clock.now,
+  })
+
+  const written: string[] = []
+  userSseConnections.add(createUserConnection(written))
+
+  for (let event = 0; event < 6; event += 1) {
+    await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  }
+
+  assert.equal(written.length, 6, 'a member receives the whole re-hydration burst')
+  assert.equal(channelChecks, 1, 'the burst collapses into one entitlement query')
+
+  // Removed from the private channel mid-stream.
+  channelAccess = false
+  clock.advancePastTtl()
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(written.length, 6, 'delivery stops one window later, not at reconnect')
+  assert.equal(channelChecks, 2)
+})
+
+test('a ws burst costs one channel query, and still stops on revocation', async () => {
+  const clock = createClock()
+  let channelAccess = true
+  let channelChecks = 0
+  const { deliverNotification, wsConnections } = createWsNotificationDelivery({
+    canAccessChannelEvent: async () => {
+      channelChecks += 1
+      return channelAccess
+    },
+    now: clock.now,
+  })
+
+  const sent: WsEventMessage[] = []
+  wsConnections.add({
+    organizationId: ORGANIZATION_ID,
+    scopes: channelScopes,
+    send: (message) => sent.push(message),
+    userId: USER_ID,
+  })
+
+  for (let event = 0; event < 6; event += 1) {
+    await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  }
+
+  assert.equal(sent.length, 6)
+  assert.equal(channelChecks, 1, 'the burst collapses into one entitlement query')
+
+  channelAccess = false
+  clock.advancePastTtl()
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(sent.length, 6, 'a revoked member stops within one window')
+  assert.equal(channelChecks, 2)
+})
+
+test('caching the entitlement does not cache the subscription', async () => {
+  const clock = createClock()
+  let channelChecks = 0
+  const { deliverNotification, wsConnections } = createWsNotificationDelivery({
+    canAccessChannelEvent: async () => {
+      channelChecks += 1
+      return true
+    },
+    now: clock.now,
+  })
+
+  const sent: WsEventMessage[] = []
+  const connection = {
+    organizationId: ORGANIZATION_ID,
+    scopes: channelScopes,
+    send: (message: WsEventMessage) => sent.push(message),
+    userId: USER_ID,
+  }
+  wsConnections.add(connection)
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(sent.length, 1)
+  assert.equal(channelChecks, 1)
+
+  // What `setWsScopes` changes (api/src/routes/activity.ts) is the connection's
+  // declared subscription, never the entitlement. The clock deliberately does
+  // not move: the gate is still warm, and the event must be dropped anyway.
+  connection.scopes = []
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(sent.length, 1, 'an unsubscribed scope stops delivering on the next event')
+  assert.equal(channelChecks, 1, 'and the declared-scope match answered without a query')
 })

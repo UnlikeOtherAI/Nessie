@@ -12,6 +12,7 @@
 // answerable with a stub socket, no React and no query client.
 
 import { WsServerMessageSchema } from '@nessie/schemas'
+import { streamRetryDelayMs } from '../threads/stream-retry'
 import {
   resolveWebSocketUrl,
   type RealtimeConnectionState,
@@ -41,7 +42,6 @@ export type ActivitySubscription = {
   unsubscribe: () => void
 }
 
-const BACKOFF_SCHEDULE = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
 const HANDSHAKE_TIMEOUT_MS = 10_000
 const PING_INTERVAL_MS = 30_000
 // A scope change is a re-subscription, and mounting a screen moves several
@@ -135,7 +135,12 @@ const teardown = (): void => {
 
 const scheduleReconnect = (): void => {
   if (subscribers.size === 0 || reconnectTimer !== undefined) return
-  const delay = BACKOFF_SCHEDULE[Math.min(reconnectAttempts, BACKOFF_SCHEDULE.length - 1)]
+  // The same ladder the SSE lanes climb, from the one place that owns it. This
+  // used to be a fixed schedule — 1s, 2s, 4s … — which is the same progression
+  // but with no draw, so every tab a replica drained reconnected on the same
+  // millisecond as every other. A constant every waiter agrees on is a
+  // synchronised discharge, not a backoff.
+  const delay = streamRetryDelayMs(reconnectAttempts)
   reconnectAttempts += 1
   reconnectTimer = setTimeout(() => {
     reconnectTimer = undefined
