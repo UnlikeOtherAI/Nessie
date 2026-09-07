@@ -128,6 +128,18 @@ an effect that reset the selected tab were corrected after browser review.
 These fixtures use mocked API responses;
 they supplement the production walkthrough rather than replace it.
 
+A later headless walkthrough used the real local UI, API, and isolated database,
+with only the upstream Ledger model catalog replaced by a local fixture. It
+created an agent, enabled to-dos, authored a reusable template, and created a
+board and task under the setup-provided default project. Applying the template,
+toggling completion, saving a result, reloading, clearing only the result, and
+reloading again all passed. Completion remained set after the result was cleared.
+The walkthrough exposed stale checklist state after a successful mutation;
+the client now installs the returned checklist in its cache before invalidation.
+The reusable driver and PowerShell instructions are in
+[`admin/e2e/sales-real-ui-catalog`](../../admin/e2e/sales-real-ui-catalog/README.md).
+This establishes checklist persistence, not live model research or consensus.
+
 ## Compaction verification
 
 The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
