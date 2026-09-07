@@ -19,7 +19,7 @@ export const markUnknownPrivateConversationScopes = async (
 
   const channels = await prisma.channel.findMany({
     where: { id: { in: channelIds }, visibility: { not: 'public' } },
-    select: { id: true },
+    select: { id: true, visibility: true },
   })
   markUnknownPrivateConversationChannels(sink, channels)
 }
