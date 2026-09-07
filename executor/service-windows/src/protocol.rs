@@ -31,10 +31,8 @@ const MAX_IDENTIFIER_BYTES: usize = 128;
 /// a caller that has lost the protocol, not a command.
 pub const MAX_REQUEST_BYTES: usize = 65_536;
 
-#[cfg(debug_assertions)]
-const APPROVED_API_BASE_URL: &str = "http://127.0.0.1:5454";
-#[cfg(not(debug_assertions))]
 const APPROVED_API_BASE_URL: &str = "https://api.nessie.works";
+const LOOPBACK_API_BASE_URLS: [&str; 2] = ["http://127.0.0.1:5454", "http://localhost:5454"];
 
 /// A validated command. Construction is the validation: nothing downstream
 /// re-checks these, and nothing downstream may skip them.
@@ -52,7 +50,7 @@ pub enum Command {
 /// the pairing reply, so the service stages the pairing under the enrollment id
 /// and names the state directory only once the state file names an executor.
 pub struct PairCommand {
-    pub api_base_url: &'static str,
+    pub api_base_url: String,
     pub challenge: String,
     pub enrollment_id: String,
     pub workspace_root: String,
@@ -128,12 +126,17 @@ fn identifier(value: String, field: &str) -> Result<String, String> {
     }
 }
 
-fn approved_api_base_url(value: &str) -> Result<&'static str, String> {
+fn approved_api_base_url(value: &str) -> Result<String, String> {
     if value == APPROVED_API_BASE_URL {
-        Ok(APPROVED_API_BASE_URL)
-    } else {
-        Err("This Nessie Executor release may pair only with its approved API origin.".to_owned())
+        return Ok(value.to_owned());
     }
+    // A local owner may deliberately pair to this machine's development API.
+    // This is a closed loopback set, not a general HTTP exception: a pasted
+    // invitation can never route the machine key to a LAN or internet host.
+    if LOOPBACK_API_BASE_URLS.contains(&value) {
+        return Ok(value.to_owned());
+    }
+    Err("Choose Nessie cloud or one of the approved local development API origins.".to_owned())
 }
 
 fn challenge(value: String) -> Result<String, String> {
@@ -214,17 +217,13 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
 mod tests {
     use super::{
         parse_request, valid_identifier, workspace_operation_keys, Command, ExecutorStatus,
-        Response, MAX_REQUEST_BYTES,
+        Response, APPROVED_API_BASE_URL, LOOPBACK_API_BASE_URLS, MAX_REQUEST_BYTES,
     };
 
     const EXECUTOR: &str = "00000000-0000-4000-8000-000000000001";
 
     fn pair_line(challenge: &str, workspace: &str) -> String {
-        let api = if cfg!(debug_assertions) {
-            "http://127.0.0.1:5454"
-        } else {
-            "https://api.nessie.works"
-        };
+        let api = if cfg!(debug_assertions) { "http://127.0.0.1:5454" } else { APPROVED_API_BASE_URL };
         format!(
             r#"{{"command":"pair","apiBaseUrl":"{api}","challenge":"{challenge}","enrollmentId":"{EXECUTOR}","workspaceRoot":"{workspace}"}}"#,
         )
@@ -301,8 +300,17 @@ mod tests {
             .replace("127.0.0.1", "10.0.0.1");
         assert_eq!(
             parse_request(&line),
-            Err("This Nessie Executor release may pair only with its approved API origin.".to_owned()),
+            Err("Choose Nessie cloud or one of the approved local development API origins.".to_owned()),
         );
+    }
+
+    #[test]
+    fn every_build_accepts_both_spellings_of_the_local_development_api() {
+        for api in LOOPBACK_API_BASE_URLS {
+            let line = pair_line("challenge-value", absolute_workspace())
+                .replace("http://127.0.0.1:5454", api);
+            assert!(parse_request(&line).is_ok(), "{api} must be accepted");
+        }
     }
 
     #[test]
