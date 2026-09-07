@@ -6,6 +6,7 @@ import {
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
+import { settleDocumentSession } from '../execute/document-session-claim.js'
 import { fileServiceFor } from '../file-service.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { sourcesOutsideAgentDocumentAudience } from './knowledge-basis.js'
@@ -46,6 +47,11 @@ type ComposeDependencies = {
  * Both are settled here rather than hoped for: the streamed text is compared
  * byte-for-byte with the parsed argument, and the session is claimed with a
  * conditional update that a cancellation can lose or win but never tie.
+ *
+ * A third thing it must not do is write the session at all once another worker
+ * has taken the run over. Both session writes below therefore ride the
+ * session's claim (`../execute/document-session-claim.ts`) — and the save rides
+ * the claim ALONE, never the status, because by then the document is filed.
  */
 export const runKbDocumentComposeTool = async (
   context: BuiltinToolRuntimeContext,
@@ -152,13 +158,23 @@ export const runKbDocumentComposeTool = async (
 
   // Claim the session before writing anything. A Stop that already flipped the
   // run loses the claim and nothing is saved; a Stop arriving after it only
-  // cancels the rest of the run.
+  // cancels the rest of the run. Fenced on the session's claim too, so an
+  // executor whose run was taken over stops here rather than at the save,
+  // before it stores an attachment or creates a page.
   if (session) {
-    const claimed = await context.prisma.runDocumentSession.updateMany({
+    const claimed = await settleDocumentSession(context.prisma, {
+      claimToken: session.claimToken,
       data: { status: 'saving' },
-      where: { id: session.sessionId, status: 'streaming' },
+      from: ['streaming'],
+      sessionId: session.sessionId,
+      settle: 'claim for saving',
     })
-    if (claimed.count === 0) {
+    if (claimed === 'superseded') {
+      throw new Error(
+        'Another executor has taken this run over, so this document was not saved here.',
+      )
+    }
+    if (claimed !== 'applied') {
       throw new Error('This document was stopped before it could be saved.')
     }
   }
@@ -206,8 +222,13 @@ export const runKbDocumentComposeTool = async (
     }
 
     const versionNumber = page.latestVersion?.versionNumber ?? 1
-    if (session) {
-      await context.prisma.runDocumentSession.update({
+    // Deliberately NOT conditional on the session still being `saving`. The
+    // document exists by now, so a status this executor lost a race over is the
+    // stale fact, not this write — the fence is the claim alone. What a refusal
+    // leaves behind, and why the page stays, is in `document-session-claim.ts`.
+    const settled = session
+      ? await settleDocumentSession(context.prisma, {
+        claimToken: session.claimToken,
         data: {
           attachmentId: attachment.id,
           chars: markdown.length,
@@ -217,9 +238,10 @@ export const runKbDocumentComposeTool = async (
           status: 'saved',
           versionNumber,
         },
-        where: { id: session.sessionId },
+        sessionId: session.sessionId,
+        settle: 'save',
       })
-    }
+      : 'applied'
 
     return {
       inputSummary: `spaceId=${spaceId} title=${filename}`,
@@ -229,7 +251,11 @@ export const runKbDocumentComposeTool = async (
         + `. pageId=${page.id}, version ${versionNumber}. `
         + (published
           ? 'It is published in that private space.'
-          : 'It is a draft; call kb_publish_request when it is ready for review.'),
+          : 'It is a draft; call kb_publish_request when it is ready for review.')
+        + (settled === 'superseded'
+          ? ' Another executor took this run over while the document was being filed, so the '
+            + 'document window may still show it as interrupted; the document itself is saved.'
+          : ''),
       toolName: 'kb_document_compose',
     }
   } catch (error) {

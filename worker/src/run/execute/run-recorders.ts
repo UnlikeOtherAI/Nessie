@@ -2,6 +2,7 @@ import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
 import { createDocumentStreamRecorder, type DocumentStreamRecorder } from './document-stream.js'
+import { currentExecutorToken } from './lifecycle.js'
 import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
@@ -45,6 +46,9 @@ export const createRunRecorders = (
 
   // Live document composition (`kb_document_compose`).
   const documentStream = createDocumentStreamRecorder({
+    // Lazy on purpose: the recorders are built before `claimRunForExecution`
+    // stamps this execution's token, and every session is opened after it.
+    claimToken: () => currentExecutorToken(context.run.id),
     getRestrictionBasis: () => runReplyBasis(context),
     isRestricted: () => runReplyIsRestricted(context),
     loadDocument: async (pageId) => readMarkdownDocument(

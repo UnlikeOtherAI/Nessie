@@ -390,29 +390,51 @@ matches no row. Beside it:
   for ever, and under autoscaling that kill is routine. `run_document_sessions`
   is the worked example (2.5): all four terminalisers — the recorder's own, both
   save paths and the failure path — run inside the worker writing the document,
-  so a killed worker left a `streaming` row the API kept counting as active and
-  a reader watching a stream nobody was producing.
+  so a killed worker left a `streaming` row the API counted as active for ever.
   `worker/src/control/document-session-reaper.ts` closes it, and the shape is
-  the reusable part. **Liveness, not age:** it reaps only a session whose run's
-  `executor_heartbeat_at` has been silent longer than
-  `claimRunForExecution`'s own takeover window, so the reaper never decides an
-  executor is dead before the run claim would — reaping on age alone would kill
-  a legitimately long generation. **A heartbeat is a claim's liveness, not a
-  process's:** the heartbeat stops whenever the executor token is nulled, which
-  `updateRunStatus` does on every suspension and `releaseRunForDrain` does on
-  every orderly hand-back — so a stale or null heartbeat on its own says
-  "parked" or "draining" as readily as "dead". The predicate is a claim about
-  the run: `running` with a heartbeat that *exists* and has gone silent, or a
-  terminal run (which `claimRunForExecution` can never hand to anybody again).
-  `pending`, `waiting_approval` and `waiting_input` are never reaped out of;
-  they always leave that status eventually, and the terminal arm collects
-  whatever they stranded. **A terminal state that says what happened:**
-  `failed` with `errorReason: 'executor_lost'`, a reason the API's summary and
-  the popup both render, because a document that silently vanishes is the same
-  failure as one that never finishes. **Bounded and per-row isolated:** an
-  ordered bounded batch with no per-row `try`/`catch` means a deterministically
-  failing row is first again on every pass and the sweep makes zero progress for
-  ever.
+  the reusable part. **Liveness, not age:** it waits out
+  `claimRunForExecution`'s own takeover window, so it never calls an executor
+  dead before the run claim would — reaping on age alone kills a legitimately
+  long generation. **A heartbeat is a claim's liveness, not a process's:** it
+  stops whenever the executor token is nulled, which `updateRunStatus` does on
+  every suspension and `releaseRunForDrain` on every orderly hand-back, so a
+  stale or null heartbeat says "parked" or "draining" as readily as "dead".
+  Hence `pending`, `waiting_approval`, `waiting_input` and a `running` run with a
+  NULL heartbeat are never reaped out of; each leaves that state eventually, and
+  the terminal arm collects what they stranded. **A terminal state that says what
+  happened:** `failed` with `errorReason: 'executor_lost'`, which the API's
+  summary and the popup both render, because a document that silently vanishes is
+  the same failure as one that never finishes. **Bounded and per-row isolated:**
+  an ordered bounded batch with no per-row `try`/`catch` means a deterministically
+  failing row is first again on every pass and the sweep never progresses.
+
+- **A reaper is not a fence, so the row it reaps needs a claim of its own** —
+  the same table, as the worked example twice (5.14). The four terminalisers
+  wrote `run_document_sessions` by id, so an executor fenced out of its run could
+  still write the session, and the two saves ended with an unconditional `update`
+  that would turn a reaped `failed` back into `saved`. **The claim names the
+  execution; the run says whether it still holds it:** `claim_token` stores
+  `runs.executor_token` as it stood when the session opened, and every write asks
+  for both halves in one statement (`run/execute/document-session-claim.ts`) —
+  the two-sided fence `crash-checkpoint.ts` writes, buying what the queue buys
+  with `(id, attempt)`. Identity alone would never notice a takeover, so the
+  reaper stops inferring abandonment from the run and reaps only a session whose
+  claim is not live, with the two executor-is-coming states named explicitly:
+  before this, a session stranded by a takeover sat on a `running`, heartbeating
+  run and waited out the whole resumed run. **The fence is the claim, never the status:** conditioning
+  the saves on `status = 'saving'` looks like the same fix and is the wrong one,
+  because by then the bytes are verified, the attachment stored and the page
+  created, so a save that completes IS a document in the knowledge base under a
+  pageId the agent reports in chat. A merely stalled executor still holds its run
+  and its save must beat the reap — there, the reap is the stale statement. Only
+  a superseded writer is refused, and a refusal is logged with both tokens. **Its completed side effects are kept:** the page
+  and attachment stay, because the document is real, a fenced-out executor is the
+  worst process in the deployment to issue deletes, and `run_tool_effects` already
+  carries the outcome across the takeover so the successor answers from
+  the record instead of writing a second page. Nothing is orphaned — the page is
+  a `.md` document in its space, reachable like any other; what is left wrong is
+  the popup's row, and repairing *that* is a product decision about what the
+  document window should say, not an engineering one.
 
 What this finding still owes, proved by the two-instance chaos smoke:
 

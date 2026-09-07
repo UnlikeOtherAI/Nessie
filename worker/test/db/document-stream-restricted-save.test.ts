@@ -124,6 +124,7 @@ runDatabaseTest(
 
     const makeRecorder = (invocationId: string, toolCallId: string, markdown: string) => {
       const recorder = createDocumentStreamRecorder({
+        claimToken: () => null,
         getRestrictionBasis: () => [{ scopeId: user.id, scopeType: 'user' }],
         isRestricted: () => true,
         persistRestrictionBasis: async (basis) => {

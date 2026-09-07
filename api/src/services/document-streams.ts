@@ -26,6 +26,13 @@ import { canUserReadRunBasis } from './run-disclosure.js'
 // terminalizes a session whose executor died, which is what stops an abandoned
 // row counting as active here for ever (audit 2.5). Its rows arrive here as
 // `failed` with `errorReason: 'executor_lost'`.
+//
+// Every worker-side write to that table rides the session's claim
+// (`run_document_sessions.claim_token`,
+// `worker/src/run/execute/document-session-claim.ts`). The retarget write below
+// deliberately does not: it is a PERSON acting through the popup's address bar,
+// not an executor competing for the row, and fencing it on an executor's claim
+// would refuse a click that is always legitimate.
 
 // A thread rarely holds more than one composing document; the cap only bounds a
 // pathological history read.
