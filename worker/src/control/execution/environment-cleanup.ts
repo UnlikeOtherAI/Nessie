@@ -1,9 +1,11 @@
 import { terminateProviderInstance } from './providers.js'
+import type { CommandRunner } from './command-runner.js'
 import type { ProviderProvisionResult, ProvisioningContext } from './types.js'
 
 export const cleanupProvisionedInstance = async (
   context: ProvisioningContext,
   provisioned: ProviderProvisionResult,
+  dependencies: { commandRunner?: CommandRunner } = {},
 ): Promise<void> => {
   try {
     const termination = await terminateProviderInstance({
@@ -16,7 +18,7 @@ export const cleanupProvisionedInstance = async (
         providerInstanceRef: provisioned.providerInstanceRef,
         terminatedAt: provisioned.status === 'terminated' ? new Date() : null,
       },
-    })
+    }, dependencies)
 
     // This path writes no row, so an unverified cleanup has nowhere to be
     // honest except the log: the machine this worker just provisioned could not

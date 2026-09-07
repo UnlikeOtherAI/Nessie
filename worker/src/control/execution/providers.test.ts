@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict'
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 // The provider chokepoint resolves the mode from configuration, and
@@ -13,29 +10,9 @@ process.env['NESSIE_MODE'] = 'selfHosted'
 process.env['NESSIE_STORAGE_PROVIDER'] = 's3'
 process.env['NESSIE_STORAGE_BUCKET'] = 'nessie'
 
-// A `docker` on PATH that records its arguments and does nothing else, except
-// for one container id it answers the way a daemon answers about a container it
-// has never held. The terminate cases below have to prove the call reaches the
-// daemon rather than being turned away at the gate, and must prove it on a
-// machine with no Docker installed as readily as on one with containers running.
 const ABSENT_CONTAINER = 'container-on-another-host'
-const shimDirectory = mkdtempSync(`${tmpdir()}/nessie-docker-shim-`)
-const invocations = join(shimDirectory, 'invocations')
-writeFileSync(
-  join(shimDirectory, 'docker'),
-  `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(invocations)}\n`
-  + `case "$*" in\n`
-  + `  *${ABSENT_CONTAINER}*)\n`
-  + `    echo "Error response from daemon: No such container: ${ABSENT_CONTAINER}" >&2\n`
-  + `    exit 1\n`
-  + `    ;;\n`
-  + `esac\n`,
-)
-chmodSync(join(shimDirectory, 'docker'), 0o755)
-process.env['PATH'] = `${shimDirectory}:${process.env['PATH'] ?? ''}`
 
-const { probeProvider, provisionProviderInstance, terminateProviderInstance } =
-  await import('./providers.js')
+const { probeProvider, provisionProviderInstance, terminateProviderInstance } = await import('./providers.js')
 
 const dockerTemplate = {
   id: 'template-1',
@@ -80,6 +57,18 @@ const refusalFrom = async (fn: () => Promise<unknown>): Promise<Error> => {
   throw new Error('expected a refusal; the call succeeded')
 }
 
+const dockerRunner = (absentContainer?: string) => {
+  const calls: Array<{ args: string[]; command: string }> = []
+  const run = async (command: string, args: string[]) => {
+    calls.push({ args, command })
+    if (args.includes(absentContainer ?? '')) {
+      throw new Error(`No such container: ${absentContainer}`)
+    }
+    return { stderr: '', stdout: '' }
+  }
+  return { calls, run }
+}
+
 test('probing docker outside local reports offline with the reason, without shelling out', async () => {
   const probe = await probeProvider('docker')
 
@@ -108,13 +97,14 @@ test('terminating an existing docker environment outside local still runs', asyn
   // live containers; if this threw, the terminate job would be claimed, the
   // assertion would fire, and every one of those containers would keep running
   // with its row stuck in `terminating` forever.
-  const termination = await terminateProviderInstance({ instance })
+  const runner = dockerRunner()
+  const termination = await terminateProviderInstance({ instance }, { commandRunner: runner.run })
 
   assert.deepEqual(termination, {
     metadata: { containerId: 'container-1', terminatedBy: 'docker' },
     outcome: 'terminated',
   })
-  assert.equal(readFileSync(invocations, 'utf8').trim(), 'rm -f container-1')
+  assert.deepEqual(runner.calls, [{ args: ['rm', '-f', 'container-1'], command: 'docker' }])
 })
 
 // Plan row 5.12. `docker rm -f` reaches THIS worker's daemon, and outside
@@ -124,11 +114,13 @@ test('terminating an existing docker environment outside local still runs', asyn
 // persisted as `terminated`: a row saying a container is gone while it runs on
 // and bills. The provider now reports what it actually knows, which is nothing.
 test('a docker terminate outside local that cannot find the container is unverified', async () => {
+  const runner = dockerRunner(ABSENT_CONTAINER)
   const termination = await terminateProviderInstance({
     instance: { ...instance, providerInstanceRef: ABSENT_CONTAINER },
-  })
+  }, { commandRunner: runner.run })
 
   assert.equal(termination.outcome, 'unverified')
   assert.equal(termination.metadata['containerId'], ABSENT_CONTAINER)
   assert.equal(termination.metadata['terminateUnverifiedReason'], 'DOCKER_NO_SUCH_CONTAINER')
+  assert.deepEqual(runner.calls, [{ args: ['rm', '-f', ABSENT_CONTAINER], command: 'docker' }])
 })
