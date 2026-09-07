@@ -9,6 +9,7 @@ import type { SecretStore } from '@nessie/mcp-manage'
 
 import {
   PublicOriginConfigError,
+  resolveOptionalPublicOrigin,
   resolvePublicOrigin,
   toPublicOrigin,
 } from '../src/lib/public-origin.js'
@@ -221,6 +222,57 @@ test('resolvePublicOrigin in local mode falls back to trust-scoped request value
     { mode: 'local', api: {} },
   )
   assert.equal(origin, 'https://nessie.test')
+})
+
+/**
+ * The executor pairing invitation advertises this origin so the daemon — which
+ * runs outside the browser and so cannot use the admin's `/api` dev proxy — is
+ * told where to pair. Advertising nothing is a survivable outcome there, unlike
+ * a redirect URI, so an undeclared origin degrades instead of failing the
+ * create. A declared-but-invalid one is still an operator error.
+ */
+test('resolveOptionalPublicOrigin advertises the configured origin', () => {
+  assert.equal(
+    resolveOptionalPublicOrigin(
+      { protocol: 'https', hostname: 'nessie.internal' },
+      { mode: 'hosted', api: { publicUrl: 'https://api.example.com/ignored' } },
+    ),
+    'https://api.example.com',
+  )
+})
+
+test('resolveOptionalPublicOrigin advertises nothing when a deployment declares none', () => {
+  for (const mode of ['hosted', 'selfHosted'] as const) {
+    assert.equal(
+      resolveOptionalPublicOrigin(
+        { protocol: 'https', hostname: 'nessie.internal' },
+        { mode, api: {} },
+      ),
+      null,
+      `${mode} without api.publicUrl must not fall back to request values`,
+    )
+  }
+})
+
+test('resolveOptionalPublicOrigin still uses trust-scoped request values locally', () => {
+  assert.equal(
+    resolveOptionalPublicOrigin(
+      { protocol: 'http', hostname: '127.0.0.1:5454' },
+      { mode: 'local', api: {} },
+    ),
+    'http://127.0.0.1:5454',
+  )
+})
+
+test('resolveOptionalPublicOrigin still rejects a misconfigured publicUrl', () => {
+  assert.throws(
+    () =>
+      resolveOptionalPublicOrigin(
+        { protocol: 'http', hostname: 'localhost:5454' },
+        { mode: 'hosted', api: { publicUrl: 'not-a-url' } },
+      ),
+    PublicOriginConfigError,
+  )
 })
 
 test('toPublicOrigin strips path, query, credentials, and default ports', () => {

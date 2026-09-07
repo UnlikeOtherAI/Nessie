@@ -56,6 +56,7 @@ import {
   SubmitExecutorEnrollmentBodySchema,
 } from '../contracts/executors.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { resolveOptionalPublicOrigin } from '../lib/public-origin.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { publishMessageNew } from '../services/message-delivery.js'
@@ -101,7 +102,16 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!body) return reply
     try {
       const created = await createExecutor(prisma, actorContext, body)
-      return reply.code(201).send(createApiResponse(CreateExecutorResponseSchema.parse(created)))
+      // The daemon pairs from outside the browser, so the invitation carries the
+      // API origin rather than leaving the operator to retype one. It comes from
+      // the same operator-declared source as every other server-minted URL; when
+      // a deployment has declared none this stays absent and the client falls
+      // back to its own configuration instead of advertising a guess.
+      const apiBaseUrl = resolveOptionalPublicOrigin(request, config)
+      return reply.code(201).send(createApiResponse(CreateExecutorResponseSchema.parse({
+        ...created,
+        invitation: { ...created.invitation, ...(apiBaseUrl ? { apiBaseUrl } : {}) },
+      })))
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error
