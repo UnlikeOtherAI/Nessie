@@ -4,6 +4,9 @@
 // settings and board doorways, plus failure recovery at the HTTP boundary.
 
 import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { ADMIN_PORT } from '../navigation/lib/config.mjs'
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
@@ -11,6 +14,16 @@ import { createConnectedBoardSourceFixtures, ids } from './fixtures.mjs'
 
 const adminUrl = `http://localhost:${ADMIN_PORT}`
 const sourceSettingsPath = `/projects/${ids.project}/settings?section=sources&source=${ids.source}`
+const screenshotRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..', '..', '..', 'e2e', 'screenshots', 'connected-board-sources',
+)
+
+const screenshot = async (page, name) => {
+  if (process.env.CONNECTED_BOARD_SOURCES_SCREENSHOTS !== '1') return
+  await mkdir(screenshotRoot, { recursive: true })
+  await page.screenshot({ path: resolve(screenshotRoot, `${name}.png`), fullPage: true })
+}
 
 const assertTouchTarget = async (locator, label) => {
   const box = await locator.boundingBox()
@@ -46,6 +59,7 @@ const exerciseDesktop = async (browser, fixtures) => {
     await assertTouchTarget(page.getByLabel('Category for Triage'), 'state selector')
     await assertTouchTarget(page.getByLabel('Target for Priority'), 'field selector')
     await assertTouchTarget(page.getByLabel('Nessie identity for Alex Linear'), 'person selector')
+    await screenshot(page, 'desktop-source-settings')
 
     fixtures.holdNextMapping()
     const category = page.getByLabel('Category for Triage')
@@ -100,6 +114,7 @@ const exercisePhone = async (browser, fixtures) => {
     await assertTouchTarget(category, 'phone state selector')
     await assertTouchTarget(page.getByLabel('Target for Priority'), 'phone field selector')
     await assertTouchTarget(page.getByLabel('Nessie identity for Alex Linear'), 'phone person selector')
+    await screenshot(page, 'phone-source-settings')
     assert.deepEqual(errors, [], `phone page errors: ${errors.join('; ')}`)
   } finally {
     await close()

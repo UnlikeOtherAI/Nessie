@@ -68,7 +68,7 @@ export const createConnectedBoardSourceFixtures = () => {
 
   const shell = (pathname) => {
     if (pathname === '/api/agents' || pathname === '/api/agents/all') return []
-    if (pathname === '/api/channels' || pathname === '/api/teams' || pathname === '/api/favorites') return []
+    if (pathname === '/api/channels' || pathname === '/api/teams' || pathname === '/api/users' || pathname === '/api/favorites') return []
     if (pathname === '/api/integrations/products') return []
     if (pathname === '/api/alerts/summary') return { assignedWork: { projects: {}, total: 0 }, knowledge: { projects: {}, total: 0 }, unreadCount: 0 }
     if (pathname === '/api/threads/activity') return { hasMore: false, items: [], unreadTotal: 0 }
@@ -103,6 +103,8 @@ export const createConnectedBoardSourceFixtures = () => {
     if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/tasks`) return json({ tasks: [], truncated: false })
     if (pathname === `/api/projects/${ids.project}/sources`) return json([source])
     if (pathname === `/api/projects/${ids.project}/sources/${ids.source}`) return json(detail)
+    if (pathname === '/api/board-sources/providers') return json([])
+    if (pathname === '/api/board-sources/connections') return json([])
     if (pathname === `/api/projects/${ids.project}/fields`) return json([])
     if (pathname === '/api/tasks/assignees') return json([{ displayName: 'Alex Example', id: ids.user }])
     if (pathname === `/api/projects/${ids.project}/sources/${ids.source}/sync` && method === 'POST') return json({ ok: true })

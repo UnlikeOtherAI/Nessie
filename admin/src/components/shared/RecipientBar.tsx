@@ -180,6 +180,7 @@ export const RecipientBar = ({
             )
           })}
           <input
+            aria-label={label}
             ref={inputRef}
             autoFocus={autoFocus}
             className="min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
