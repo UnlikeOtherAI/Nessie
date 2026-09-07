@@ -159,7 +159,7 @@ export const SourceMappingPanel = ({
   return (
     <>
       <Section
-        description={`How ${PROVIDER_LABEL[source.provider]}'s states land on this project's boards. Review starts empty everywhere — a state's name is not evidence of what it means, so somebody promotes it deliberately.`}
+        description={`Choose the Nessie lifecycle column for each ${PROVIDER_LABEL[source.provider]} status. Set one default per column so moving a connected ticket in Nessie knows which ${PROVIDER_LABEL[source.provider]} status to use.`}
         title="States"
       >
         <div className="grid gap-2">
@@ -209,7 +209,7 @@ export const SourceMappingPanel = ({
       </Section>
 
       <Section
-        description={`Where each ${PROVIDER_LABEL[source.provider]} field lands. Seeded on connect from what the container actually has; a field set to "Not imported" is left alone on both sides.`}
+        description={`Choose where each ${PROVIDER_LABEL[source.provider]} field imports into Nessie. Each source sync updates mapped values from ${PROVIDER_LABEL[source.provider]}; fields not imported stay unchanged in Nessie.`}
         title="Fields"
       >
         <div className="grid gap-2">
