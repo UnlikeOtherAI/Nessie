@@ -54,6 +54,7 @@ export const createBuiltinToolExecutor = ({
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
       teamId: context.channel.teamId ?? null,
+      projectId: context.channel.projectId ?? null,
     },
     agentIdentity: {
       ownerUserId: context.agent.ownerUserId ?? null,
@@ -88,6 +89,9 @@ export const createBuiltinToolExecutor = ({
             ? toolActorContext.actor.actorId
             : null
         ),
+      peerDelegationDepth: payload.actorContext.actionContext.purpose === 'agent.peer_delegation'
+        ? Number(payload.actorContext.actionContext.correlationId ?? 0)
+        : null,
       threadId: context.run.threadId,
     },
     runContext: context,

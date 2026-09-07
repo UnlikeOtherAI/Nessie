@@ -78,6 +78,8 @@ export type ToolAuthorizationDecision =
   | { allowed: false; reason: ToolDenialReason }
 
 export type ToolAuthorizationOptions = {
+  /** Project tools granted to an ordinary agent for this proven requester run. */
+  projectDelegatedToolIds?: ReadonlySet<string>
   /**
    * `personalAssistantOnly` tool ids this run may exercise even though its
    * agent is not the Personal Assistant (D3).
@@ -145,6 +147,7 @@ export const authorizeToolCall = (
     definition.personalAssistantOnly
     && !(agentKind === 'personal_assistant' && definition.identityDelegatedOnly !== true)
     && !options.identityToolIds?.has(toolId)
+    && !(definition.projectDelegatedOnly && options.projectDelegatedToolIds?.has(toolId))
   ) {
     return { allowed: false, reason: 'personal_assistant_only' }
   }
@@ -202,6 +205,7 @@ export const resolveAgentTools = (
         agentKind,
         {
           ...(options.identityToolIds ? { identityToolIds: options.identityToolIds } : {}),
+          ...(options.projectDelegatedToolIds ? { projectDelegatedToolIds: options.projectDelegatedToolIds } : {}),
           ...(options.agentSystemSlug ? { agentSystemSlug: options.agentSystemSlug } : {}),
         },
       ).allowed

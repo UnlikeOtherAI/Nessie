@@ -46,6 +46,13 @@ export type BuiltinToolDefinition = {
    */
   identityDelegatedOnly?: boolean
   /**
+   * Allows an explicitly granted shared agent to use this user-authorized
+   * project tool only from a live project conversation or its bounded durable
+   * peer delegation. The worker re-reads the requester and project entitlement
+   * before every call; a model argument never supplies this authority.
+   */
+  projectDelegatedOnly?: boolean
+  /**
    * When true, the tool is OFF for every agent by default and is exposed ONLY
    * to an agent whose per-agent `toolPolicy` carries an explicit allow
    * (`toolPolicy[id] === true`). Unlike the ordinary builtin default (enabled

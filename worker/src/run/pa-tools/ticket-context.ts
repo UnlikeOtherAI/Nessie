@@ -34,6 +34,9 @@ export const projectFor = async (
   member: ActingMember,
   projectId: string,
 ): Promise<void> => {
+  if (context.agentKind === 'shared' && context.channel.projectId !== projectId) {
+    throw new Error('This agent may work only on the project that owns this channel.')
+  }
   if (!(await isProjectAccessibleToUser(context.prisma, member, projectId))) {
     throw new Error('Project not found. Resolve it with project_list first.')
   }

@@ -81,6 +81,7 @@ export {
   runKbPublishRequestTool,
 } from './pa-tools/knowledge-write.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
+export { runAgentPeerDelegateTool, runTicketBoardCreateTool } from './pa-tools/peer-delegation.js'
 export {
   runAgentBindChannelTool,
   runAgentCreateTool,

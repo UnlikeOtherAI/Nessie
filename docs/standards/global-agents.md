@@ -101,6 +101,20 @@ file is the rule**.
 
 ## Detail
 
+## Bounded ordinary-agent project collaboration
+
+Ordinary shared agents do not wake one another by posting a chat message: the
+channel orchestrator accepts human turns only. A project administrator may
+explicitly grant an ordinary agent `agent_peer_delegate` and the selected
+project ticket tools. On a live project-channel turn, or a bounded durable peer
+delivery from one, the worker re-reads the original requester and requires
+`canAdministerProject` before it creates a board or task. The target must be a
+non-system shared agent already bound to that exact channel. The durable mailbox
+row carries the requester capability and a maximum depth of four; ordinary
+mailbox traffic has neither. This permits a researcher/coordinator review cycle
+without turning agent-authored messages into unbounded orchestration or letting
+ambient session scope decide what project an agent can change.
+
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 
 
