@@ -80,7 +80,8 @@ The production API-key lifecycle was also exercised with a disposable key:
 create, reopen settings with the secret hidden, and revoke. The research key
 remains active in Nessie's encrypted connection. Browserbase's personal
 connection check successfully opened and closed a browser session; an agent's
-actual browser research has not yet been verified.
+actual browser research has not yet been verified. The researcher has explicit
+open, observe, act, and close grants, verified through the tool-access UI.
 
 The researcher called KiloTalk's catalogue and customer-list tools, then stopped
 at a run token limit before returning research. A checkpoint continuation also
@@ -108,16 +109,20 @@ live agent consensus, generated prospect tasks, or an actual Meet link.
 
 Headless component fixtures at `localhost:5455` exercised designer draft
 preservation across tabs, checklist application and result saving, local-draft
-clearing, and the task Details surface. The checklist checkbox sizing was
-corrected after screenshot review. These fixtures use mocked API responses;
+clearing, and the task Details surface. The final fixture also verified the
+Calendar/Meet capability picker and the actual Details-to-Checklist switch,
+including retaining Checklist after reload. The checklist checkbox sizing and
+an effect that reset the selected tab were corrected after browser review.
+These fixtures use mocked API responses;
 they supplement the production walkthrough rather than replace it.
 
 ## Compaction verification
 
-The sibling `UnlikeOtherAI/deep.agent` repository exports a loop library. Its
-current context handling trims conversation history; it does not provide a
-model-authored compaction service consumed by Nessie. Its standalone typecheck
-and 60 tests passed during this verification.
+The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
+compaction. Its loop invokes it when the host supplies `generateNote`, falling
+back to trimming when no compaction hook is supplied. The earlier inspection
+missed this existing capability. Its private packages support commit-pinned
+Git installation with prepare/prepack hooks; Nessie does not yet consume them.
 
 Nessie's worker already has a separate context-compaction path with a utility
 model call, tool-call/result grouping, citation-preservation instructions, and
