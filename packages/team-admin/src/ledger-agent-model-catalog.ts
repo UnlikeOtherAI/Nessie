@@ -11,6 +11,7 @@ import { compareAgentModelOptions } from './agent-model-order.js'
 const DEFAULT_LEDGER_URL = 'https://ledger.unlikeotherai.com'
 const LEDGER_MODELS_PATH = '/v1/models'
 const LEDGER_MODELS_TIMEOUT_MS = 10_000
+const MAX_OUTPUT_TOKENS = 2_147_483_647
 
 const LedgerModelListSchema = z.object({
   data: z.array(z.object({
@@ -23,7 +24,9 @@ const LedgerModelListSchema = z.object({
       name: z.string(),
     }).optional(),
     endpoints: z.array(z.string()).optional(),
-    max_output_tokens: z.number().int().positive().nullable().optional(),
+    // Capability metadata is advisory. Keep a malformed provider value from
+    // invalidating otherwise usable model selection; the cap reader validates it.
+    max_output_tokens: z.unknown().optional(),
   })),
 })
 
@@ -223,11 +226,17 @@ export const findLedgerModelOutputTokenCap = async (
   input: ListLedgerAgentModelsOptions & { model: string; provider: string },
 ): Promise<number | undefined> => {
   const catalog = await loadLedgerModelCatalog(input)
-  return catalog.data.find((entry) => (
+  const value = catalog.data.find((entry) => (
     entry.kind === 'service'
     && entry.id === input.model
     && entry.service?.id === input.provider
-  ))?.max_output_tokens ?? undefined
+  ))?.max_output_tokens
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value > 0
+    && value <= MAX_OUTPUT_TOKENS
+    ? value
+    : undefined
 }
 
 /**

@@ -192,6 +192,8 @@ test('returns an advertised output ceiling only for the selected direct model', 
     fetchImpl: async () => response({ data: [
       { id: 'gemini-3.5-flash', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: 8192 },
       { id: 'gemini-3.5-flash', kind: 'service', service: { id: 'other', name: 'Other' }, max_output_tokens: 1234 },
+      { id: 'malformed', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: '8192' },
+      { id: 'oversized', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: 2_147_483_648 },
     ] }),
   })
   assert.equal(cap, 8192)
@@ -203,6 +205,12 @@ test('returns an advertised output ceiling only for the selected direct model', 
     fetchImpl: async () => response({ data: [] }),
   })
   assert.equal(absent, undefined)
+  for (const model of ['malformed', 'oversized']) {
+    assert.equal(await findLedgerModelOutputTokenCap({
+      config: catalogConfig, ledgerPublicUrl, model, provider: 'gemini',
+      fetchImpl: async () => response({ data: [{ id: model, kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: model === 'malformed' ? '8192' : 2_147_483_648 }] }),
+    }), undefined)
+  }
 })
 
 test('rejects a selected model that is not currently granted to the Ledger key', async () => {
