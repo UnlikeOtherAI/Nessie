@@ -446,6 +446,9 @@ export type ToolDescriptor = {
   // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
   // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
   requiresExplicitGrant?: boolean
+  // A project tool can be granted to a shared agent, but it runs only for a
+  // person-started run in a project channel where that agent is bound.
+  projectDelegatedOnly?: boolean
   safe: boolean
 }
 
