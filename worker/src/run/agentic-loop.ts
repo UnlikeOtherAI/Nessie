@@ -50,6 +50,14 @@ import {
   type ToolBatchCallbacks,
 } from './tool-batch.js'
 
+// A provider can stop a turn at its own output ceiling after the run has
+// already completed useful tool work. Keep that work in the transcript, then
+// give it one short, structurally no-tools turn to answer from the retained
+// evidence. This is deliberately a loop invariant, not a retry: it cannot
+// issue another effectful tool call and it never repeats indefinitely.
+export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
+  'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
+
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
 export type LoopCallbacks = ToolBatchCallbacks & {
@@ -153,6 +161,7 @@ export const runAgenticLoop = async (input: {
   runInference: (
     messages: ProviderMessage[],
     captured?: { toolResults: ExecutedToolResult[] },
+    options?: { noTools?: boolean },
   ) => Promise<InferenceResult>
   toolTimeoutError?: (toolName: string) => Error | null
   tools: ToolSchemaDescriptor[]
@@ -228,6 +237,7 @@ export const runAgenticLoop = async (input: {
   // second full allowance of compaction calls.
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
+  let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
@@ -264,6 +274,7 @@ export const runAgenticLoop = async (input: {
       invocations: allInvocations,
       iterations,
       lastAssistantText,
+      lengthFinalizationUsed,
       messages,
       pendingToolCalls: inFlightToolCalls,
       retriesUsed: retryBudget.total - retryBudget.remaining,
@@ -438,6 +449,35 @@ export const runAgenticLoop = async (input: {
       if (spendStop) return stop(spendStop)
 
       if (!result.toolCalls || result.toolCalls.length === 0) {
+        if (result.finishReason === 'length' && !lengthFinalizationUsed) {
+          // Persist the truncated turn before asking for the bounded recovery.
+          // A re-claimed worker therefore retains the evidence and never has to
+          // re-dispatch the tool batch that produced it.
+          lengthFinalizationUsed = true
+          messages.push(redactMessageContent({
+            content: safeOutputText || null,
+            role: 'assistant',
+          }))
+          messages.push({
+            content: OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+            role: 'system',
+          })
+          await checkpoint()
+          const finalization = await drainGate.expiry(callInferenceWithRetry(
+            messages,
+            (inferenceMessages) => input.runInference(inferenceMessages, undefined, { noTools: true }),
+            retryBudget,
+            contextPlan.targetTokens,
+          ))
+          allInvocations.push(...finalization.invocations)
+          spend = meterSpend(allInvocations, cacheReadWeight)
+          const finalText = redactDetectedSecrets(finalization.outputText) || safeOutputText
+          if (finalText) lastAssistantText = finalText
+          const finalizationStop = stopAfterInference(budget, spend)
+          if (finalizationStop) return stop(finalizationStop)
+          if (finalText) await callbacks.onTextDelta(finalText)
+          return finish(null, finalText)
+        }
         if (safeOutputText) {
           await callbacks.onTextDelta(safeOutputText)
         }

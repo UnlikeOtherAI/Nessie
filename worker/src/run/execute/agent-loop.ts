@@ -526,8 +526,11 @@ export const runExecutionAgentLoop = async (
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
     ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
-    runInference: (messages) =>
-      input.inference.runMain(messages, [...input.toolDefs, ...mcpView.descriptors]),
+    runInference: (messages, _captured, options) =>
+      input.inference.runMain(
+        messages,
+        options?.noTools ? [] : [...input.toolDefs, ...mcpView.descriptors],
+      ),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,
   })

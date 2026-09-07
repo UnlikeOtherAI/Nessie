@@ -62,6 +62,8 @@ export type RecordedToolResult = {
 export type LoopResumeState = {
   compactionAttempts: number
   compactionLastIteration: number | null
+  /** A provider output-length response gets one no-tools finalisation turn per run. */
+  lengthFinalizationUsed: boolean
   /** Wall-clock already spent by earlier executions of this run. */
   elapsedMs: number
   invocations: InvocationRecord[]

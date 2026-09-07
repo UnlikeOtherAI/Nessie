@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { InferenceResult, ProviderMessage } from '@nessie/runtime'
-import { runAgenticLoop, type BudgetLimits } from './agentic-loop.js'
+import {
+  OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+  runAgenticLoop,
+  type BudgetLimits,
+} from './agentic-loop.js'
 import { classifyBudgetStop } from './execute/budget-stop.js'
 import type { LoopResumeState } from './loop-resume.js'
 
@@ -365,6 +369,7 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   invocations: [],
   iterations: 1,
   lastAssistantText: '',
+  lengthFinalizationUsed: false,
   messages: [{ content: 'go', role: 'user' }],
   pendingToolCalls: null,
   retriesUsed: 0,
@@ -375,6 +380,47 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   toolResults: {},
   woundDown: false,
   ...over,
+})
+
+test('a length-limited turn gets one no-tools finalisation without replaying work', async () => {
+  const noTools: boolean[] = []
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      calls += 1
+      return calls === 1
+        ? { ...finalAnswerInference('partial research'), finishReason: 'length' }
+        : finalAnswerInference('concise answer from retained research')
+    },
+    tools: [{ description: 'would be dangerous if replayed', inputSchema: {}, toolName: 'write' }],
+  })
+  assert.equal(result.finalText, 'concise answer from retained research')
+  assert.deepEqual(noTools, [false, true])
+  assert.ok(result.messages.some((message) => message.role === 'system'
+    && message.content === OUTPUT_LENGTH_FINALIZATION_INSTRUCTION))
+})
+
+test('a resumed run does not repeat an output-length finalisation', async () => {
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    resume: resumeStateFrom({ lengthFinalizationUsed: true }),
+    runInference: async () => {
+      calls += 1
+      return { ...finalAnswerInference('retained partial'), finishReason: 'length' }
+    },
+    tools: [],
+  })
+  assert.equal(calls, 1)
+  assert.equal(result.finalText, 'retained partial')
 })
 
 test('a resumed run inherits the breaker counts its earlier executions earned', async () => {

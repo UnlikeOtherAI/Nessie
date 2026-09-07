@@ -39,6 +39,11 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
+  - A provider `finish_reason: length` after a no-tool turn checkpoints the
+    retained transcript and gets one no-tools finalisation turn from completed
+    evidence. That attempt is carried in crash state, so a resumed run neither
+    repeats it nor replays a completed tool effect; a second length result
+    surfaces the retained partial answer.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above
