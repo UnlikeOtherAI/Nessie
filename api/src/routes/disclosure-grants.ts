@@ -8,6 +8,7 @@ import {
   grantMessageDisclosure,
   grantScopeDisclosure,
 } from '../services/disclosure-grants.js'
+import { publishMessageDisclosureChanged } from '../services/disclosure-grant-realtime.js'
 import type { RouteDeps } from './types.js'
 
 const GrantBodySchema = z.object({
@@ -28,7 +29,7 @@ export const registerDisclosureGrantRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext } = deps
+  const { buildChannelRealtimeScopes, prisma, realtimeHub, requireActorContext } = deps
 
   /**
    * Answer the acknowledgement card.
@@ -70,6 +71,16 @@ export const registerDisclosureGrantRoutes = (
           ...(body.audienceId !== undefined ? { audienceId: body.audienceId } : {}),
           ...(body.duration !== undefined ? { duration: body.duration } : {}),
         })
+        try {
+          await publishMessageDisclosureChanged({
+            buildChannelRealtimeScopes,
+            messageId,
+            prisma,
+            realtimeHub,
+          })
+        } catch (error) {
+          request.log.warn(error, 'Disclosure grant committed but realtime notification failed')
+        }
         return reply.code(201).send(createApiResponse({ id: grant.id, kind: 'message' }))
       }
 
@@ -79,6 +90,16 @@ export const registerDisclosureGrantRoutes = (
         messageId,
         ...(body.duration !== undefined ? { duration: body.duration } : {}),
       })
+      try {
+        await publishMessageDisclosureChanged({
+          buildChannelRealtimeScopes,
+          messageId,
+          prisma,
+          realtimeHub,
+        })
+      } catch (error) {
+        request.log.warn(error, 'Disclosure grant committed but realtime notification failed')
+      }
       return reply.code(201).send(createApiResponse({ ids: grant.ids, kind: 'scope' }))
     } catch (error) {
       if (sendDisclosureGrantError(reply, error)) return reply

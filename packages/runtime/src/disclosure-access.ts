@@ -115,10 +115,13 @@ const fetchGrantRows = async (
         where: {
           messageId: { in: [...input.messageIds] },
           organizationId: input.organizationId,
-          ...liveGrantFilter(now),
-          OR: [
-            { audienceKind: 'user', audienceId: input.viewerUserId },
-            { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
+          revokedAt: null,
+          AND: [
+            { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+            { OR: [
+              { audienceKind: 'user', audienceId: input.viewerUserId },
+              { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
+            ] },
           ],
         },
         select: { grantedByUserId: true, messageId: true },
@@ -142,6 +145,31 @@ const fetchGrantRows = async (
       : Promise.resolve([]),
   ])
   return { messageGrants, scopeGrants }
+}
+
+/**
+ * A public destination does not require a ChannelMember row. A grant to that
+ * exact channel therefore reaches every active reader of its thread, while a
+ * private destination remains limited to its explicit member scopes.
+ */
+const readableGrantAudienceChannelIds = async (
+  prisma: DisclosureAccessPrisma,
+  input: {
+    channelId: string
+    organizationId: string
+    viewerChannelIds: readonly string[]
+  },
+): Promise<readonly string[]> => {
+  if (input.viewerChannelIds.includes(input.channelId)) return input.viewerChannelIds
+  const destination = await prisma.channel.findFirst({
+    where: {
+      id: input.channelId,
+      organizationId: input.organizationId,
+      visibility: 'public',
+    },
+    select: { id: true },
+  })
+  return destination ? [...input.viewerChannelIds, destination.id] : input.viewerChannelIds
 }
 
 /**
@@ -297,6 +325,7 @@ export const resolveGrantedScopeKeysForMessages = async (
   if (restricted.length === 0 || !input.viewerUserId) return resolved
 
   const policies = await resolveGrantPolicies(prisma, input.organizationId, restricted)
+  const audienceChannelIds = await readableGrantAudienceChannelIds(prisma, input)
   const { messageGrants, scopeGrants } = await fetchGrantRows(prisma, {
     agentIds: [...new Set(restricted.flatMap((message) =>
       message.agentId && policies.get(message.messageId)?.scopeGrantsAllowed
@@ -305,7 +334,7 @@ export const resolveGrantedScopeKeysForMessages = async (
     channelId: input.channelId,
     messageIds: restricted.map((message) => message.messageId),
     organizationId: input.organizationId,
-    viewerChannelIds: input.viewerChannelIds,
+    viewerChannelIds: audienceChannelIds,
     viewerUserId: input.viewerUserId,
   })
   const granterViewers = await resolveGranterViewers(
@@ -366,12 +395,13 @@ export const resolveGrantedDisclosureScopeKeys = async (
   }
   const policy = (await resolveGrantPolicies(prisma, input.organizationId, [subject])).get(subject.messageId)
     ?? { messageGrantsAllowed: false, scopeGrantsAllowed: false }
+  const audienceChannelIds = await readableGrantAudienceChannelIds(prisma, input)
   const { messageGrants, scopeGrants } = await fetchGrantRows(prisma, {
     agentIds: input.agentId && policy.scopeGrantsAllowed ? [input.agentId] : [],
     channelId: input.channelId,
     messageIds: input.messageId ? [input.messageId] : [],
     organizationId: input.organizationId,
-    viewerChannelIds: input.viewerChannelIds,
+    viewerChannelIds: audienceChannelIds,
     viewerUserId: input.viewerUserId,
   })
   const granterViewers = await resolveGranterViewers(
