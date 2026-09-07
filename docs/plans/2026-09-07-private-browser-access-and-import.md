@@ -58,7 +58,12 @@ a general Chrome-reading capability.
 - A fresh private session stores its own selected viewport. The launch card
   chooses the current phone, tablet, or laptop preset, and a current private
   controller may resize only that session; its canvas applies the change on
-  the existing CDP target so screenshots and pointer coordinates agree.
+  the existing CDP target so screenshots and pointer coordinates agree. Frame
+  metadata reports that emulation size, not a scrollbar-reduced page layout.
+- Start leaves an incompatible reply or dashboard route for the existing
+  Browser screen while retaining the card's exact thread as a structural query
+  parameter. The owner then presses the visible Take control control. Nessie
+  never auto-claims after Done: the adopted successor remains with the agent.
 - The model may request this lane only through the real
   `browser_login_request` tool. It supplies selected HTTPS origins as structured
   arguments. A generic `card_post` card or chat text cannot grant access or
@@ -211,11 +216,26 @@ it is not declared impossible.
 
 ## Verification map
 
-The implementation needs durable tests for: a new personal connection can
-activate without a durable jar; activation/cancellation races have one winner;
-two users cannot read or import into each other's jar; source origins are exact
-and a parent/sibling domain cannot widen them; cancellation, expiration,
-revocation, reconnect, and provider ambiguity stop or avoid imports; no cookie
-field reaches audit/command/result storage; controller leases preserve private
-mobile input; and a private Browserbase connection is required with no
-organisation fallback.
+The final database-backed Turbo run passed all 37 selected tasks: Browser
+Cloud (87), Executor (169; two environment skips), Worker (1,191), Admin
+(1,434), and API (1,621; four pristine-database skips). It covers a new
+personal connection with no durable jar; activation/cancellation races; exact
+origin and verb checks; owner-only view and control; successor adoption; no
+fallback after revocation; session release/unknown handling; import ownership;
+and no cookie value in durable outputs.
+
+A real Browserbase handoff also passed on the corrected UI. From the reply,
+**Start private** opened the existing Browser screen with the exact thread
+parameter, the owner explicitly took control, and the throwaway session was
+empty despite existing durable cookies. Real touch scrolling and typing with
+spaces completed the sign-in. **Done** returned 204 without an automatic
+control request; the agent then read the public heading “Herman Melville -
+Moby-Dick”, closed its browser, and its exact successor completed. The tracked
+session released without an error.
+
+This is not a Chrome import release claim. ChromeOS native-host registration
+and release packaging remain unverified, as do the Chrome Web Store identity
+and signed launcher prerequisites described above. One mobile touch regression
+is also pending its final automated check: the first tap after a drag can move
+the page slightly. It does not invalidate the completed handoff, but it must
+remain covered before calling touch input fully verified.
