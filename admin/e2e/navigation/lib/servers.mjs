@@ -120,9 +120,9 @@ export const startApi = async () => {
       NESSIE_DB_URL: database,
       NESSIE_MODE: 'local',
       NESSIE_MODEL_API_KEY: 'navigation-e2e',
-      // Deliberately unreachable: no case in this suite runs inference, and
-      // the one best-effort model call at bootstrap must fail fast, not hang.
-      NESSIE_MODEL_BASE_URL: 'http://127.0.0.1:1/v1',
+      // Navigation cases normally leave inference unreachable. Full-pipeline
+      // browser evaluations may supply their own deterministic mock endpoint.
+      NESSIE_MODEL_BASE_URL: process.env.NESSIE_MODEL_BASE_URL ?? 'http://127.0.0.1:1/v1',
       NESSIE_MODEL_PROVIDER: 'openai',
       NESSIE_STORAGE_BACKEND: 'filesystem',
     },

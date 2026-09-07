@@ -89,10 +89,22 @@ export const seedRun = async (
   prisma: PrismaClient,
   scope: SeedScope,
   messageContent: string,
+  options: {
+    actorUserId?: string
+    replyPlacement?: 'channel' | 'thread'
+    threadId?: string
+  } = {},
 ): Promise<SeededRun> => {
-  const thread = await prisma.thread.create({ data: { channelId: scope.channelId } })
+  const actorUserId = options.actorUserId ?? scope.userId
+  const thread = options.threadId
+    ? { id: options.threadId }
+    : await prisma.thread.create({ data: { channelId: scope.channelId } })
   const run = await prisma.run.create({
-    data: { agentId: scope.agentId, threadId: thread.id },
+    data: {
+      agentId: scope.agentId,
+      ...(options.replyPlacement ? { replyPlacement: options.replyPlacement } : {}),
+      threadId: thread.id,
+    },
   })
   const task = await prisma.task.create({
     data: {
@@ -108,18 +120,18 @@ export const seedRun = async (
       content: messageContent,
       role: 'user',
       threadId: thread.id,
-      userId: scope.userId,
+      userId: actorUserId,
     },
   })
 
   const payload = RunExecuteJobPayloadSchema.parse({
     actorContext: {
-      actor: { actorId: scope.userId, actorType: 'user', roles: ['owner'] },
+      actor: { actorId: actorUserId, actorType: 'user', roles: ['owner'] },
       actionContext: {
         agentId: scope.agentId,
         channelId: scope.channelId,
         correlationId: randomUUID(),
-        effectiveUserId: scope.userId,
+        effectiveUserId: actorUserId,
         requestId: randomUUID(),
         taskId: task.id,
         teamId: scope.teamId,
