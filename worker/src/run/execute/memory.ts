@@ -168,6 +168,23 @@ export const admitRememberedThoughtLineage = async (
   await markUnknownPrivateConversationScopes(prisma, sink, unrepresentedAudiences)
 }
 
+/**
+ * A thought that vanished after search has no durable provenance to admit.
+ * Exclude it before it reaches model context rather than treating the missing
+ * row as an unrestricted memory.
+ */
+export const retainThoughtsWithLineage = <T extends { id: string }>(
+  results: readonly T[],
+  lineages: readonly ThoughtDisclosureLineage[],
+): T[] => {
+  const lineageIds = new Set(
+    lineages
+      .filter((lineage) => lineage.audienceId !== null && lineage.audienceType !== null)
+      .map((lineage) => lineage.thoughtId),
+  )
+  return results.filter((result) => lineageIds.has(result.id))
+}
+
 export const retrieveRelevantMemories = async (
   deps: ExecutionDependencies,
   context: RunContext,
@@ -281,11 +298,14 @@ export const retrieveRelevantMemories = async (
         deps.searchConfig.pool,
         retained.map((result) => result.id),
       )
+      const retainedWithLineage = retainThoughtsWithLineage(retained, lineages)
+      const returnedThoughtIds = new Set(retainedWithLineage.map((result) => result.id))
       await admitRememberedThoughtLineage(
         deps.prisma,
         context.consumedSources,
-        lineages,
+        lineages.filter((lineage) => returnedThoughtIds.has(lineage.thoughtId)),
       )
+      return retainedWithLineage
     }
 
     return retained
