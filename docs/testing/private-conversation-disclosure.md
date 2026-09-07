@@ -50,7 +50,7 @@ The mock proves the full pipeline's routing, provenance, authorization and UI
 effects. It does not demonstrate that a live model understands Czech or slang;
 a live-provider eval is required for that claim.
 
-On a failed browser assertion the runner writes the recipient page text, a
-recipient screenshot and the error detail for CI diagnosis. They contain only
-the synthetic test fixture, including a canary when a containment assertion
-fails.
+On a failed browser assertion the runner writes recipient and source-author
+page text and screenshots, their composer state, and the error detail for CI
+diagnosis. They contain only the synthetic test fixture, including a canary
+when a containment assertion fails.
