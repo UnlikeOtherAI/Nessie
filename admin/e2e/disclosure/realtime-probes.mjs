@@ -25,7 +25,14 @@ export const installEventProbe = (page, token) => page.evaluate(async (bearer) =
         const event = /^event: (.+)$/mu.exec(frame)?.[1]
         const data = /^data: (.+)$/mu.exec(frame)?.[1]
         if (event && data) {
-          window.__disclosureEventProbe.events.push({ event, data: JSON.parse(data) })
+          const payload = JSON.parse(data)
+          // User SSE relays the normal `{ event, data }` realtime envelope,
+          // while durable replay payloads are the event data itself. Normalize
+          // both before assertions inspect a message's public preview.
+          window.__disclosureEventProbe.events.push({
+            data: payload?.event === event && 'data' in payload ? payload.data : payload,
+            event,
+          })
         }
         boundary = pending.indexOf('\n\n')
       }
