@@ -19,7 +19,10 @@ export const projectKeys = {
   fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
   // Nested for the same reason: attaching or removing a source changes what
   // the project's boards show.
-  sources: (projectId: string) => ['projects', projectId, 'sources'] as const,
+  sources: (projectId: string, boardId?: string) =>
+    boardId
+      ? (['projects', projectId, 'sources', boardId] as const)
+      : (['projects', projectId, 'sources'] as const),
   // One attached source, with its mapping. Nested under the project's source
   // list so attaching or removing one reaches the detail too.
   source: (projectId: string, sourceId?: string) =>

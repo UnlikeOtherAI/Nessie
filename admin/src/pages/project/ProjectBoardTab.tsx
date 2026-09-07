@@ -30,7 +30,7 @@ type ProjectBoardTabProps = {
 export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
-  const { data: sources = [] } = useProjectSources(projectId)
+  const { data: sources = [] } = useProjectSources(projectId, board?.id)
   const canAdminister = useCanAdministerProject(projectId)
   const { data: assignableUsers = [] } = useTaskAssignees()
   const { me } = useAuthSession()

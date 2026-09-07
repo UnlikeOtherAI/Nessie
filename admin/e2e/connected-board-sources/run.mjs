@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 import { ADMIN_PORT } from '../navigation/lib/config.mjs'
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
-import { createConnectedBoardSourceFixtures, ids } from './fixtures.mjs'
+import { createConnectedBoardSourceFixtures, ids, sourceName } from './fixtures.mjs'
 
 const adminUrl = `http://localhost:${ADMIN_PORT}`
 const sourceSettingsPath = `/projects/${ids.project}/settings?section=sources&source=${ids.source}`
@@ -54,8 +54,9 @@ const exerciseDesktop = async (browser, fixtures) => {
   const { close, context, errors, page } = await open(browser, 'desktop', fixtures)
   try {
     await page.goto(`${adminUrl}${sourceSettingsPath}`)
-    await page.getByRole('button', { name: 'Linear · UnlikeOtherAI QA' }).waitFor()
-    await assertTouchTarget(page.getByRole('button', { name: 'Linear · UnlikeOtherAI QA' }), 'source chooser')
+    const sourceChooser = page.getByRole('button', { name: `Linear · ${sourceName}` })
+    await sourceChooser.waitFor()
+    await assertTouchTarget(sourceChooser, 'source chooser')
     await assertTouchTarget(page.getByLabel('Category for Triage'), 'state selector')
     await assertTouchTarget(page.getByLabel('Target for Priority'), 'field selector')
     await assertTouchTarget(page.getByLabel('Nessie identity for Alex Linear'), 'person selector')
@@ -89,11 +90,22 @@ const exerciseDesktop = async (browser, fixtures) => {
     const sourceLink = page.locator(`a[href="${sourceSettingsPath}"]`)
     await sourceLink.waitFor()
     await assertTouchTarget(sourceLink, 'source health doorway')
-    const sync = page.getByRole('button', { name: 'Sync UnlikeOtherAI QA from Linear now' })
+    const sync = page.getByRole('button', { name: `Sync ${sourceName} from Linear now` })
     await assertTouchTarget(sync, 'sync source')
     await sync.click()
     await page.waitForTimeout(50)
     assert.ok(fixtures.calls.some((call) => call.pathname.endsWith('/sync') && call.method === 'POST'), 'sync uses the source action endpoint')
+
+    await page.goto(`${adminUrl}/projects/${ids.project}/board?board=${ids.localBoard}`)
+    await page.getByText('To do', { exact: true }).waitFor()
+    await page.waitForTimeout(50)
+    assert.equal(await page.getByRole('button', { name: `Sync ${sourceName} from Linear now` }).count(), 0, 'a local-only board does not inherit another board’s source strip')
+    assert.ok(
+      fixtures.calls.some(
+        (call) => call.pathname === `/api/projects/${ids.project}/sources` && call.search === `?boardId=${ids.localBoard}`,
+      ),
+      'the strip asks the server for the selected board’s sources',
+    )
     assert.deepEqual(errors, [], `desktop page errors: ${errors.join('; ')}`)
   } finally {
     await close()
@@ -115,6 +127,13 @@ const exercisePhone = async (browser, fixtures) => {
     await assertTouchTarget(page.getByLabel('Target for Priority'), 'phone field selector')
     await assertTouchTarget(page.getByLabel('Nessie identity for Alex Linear'), 'phone person selector')
     await screenshot(page, 'phone-source-settings')
+    await page.goto(`${adminUrl}/projects/${ids.project}/board?board=${ids.board}`)
+    const sourceLink = page.locator(`a[href="${sourceSettingsPath}"]`)
+    await sourceLink.waitFor()
+    const sourceBox = await sourceLink.boundingBox()
+    assert.ok(sourceBox && sourceBox.x >= 0 && sourceBox.x + sourceBox.width <= 390, 'phone source strip stays within the viewport')
+    await assertTouchTarget(sourceLink, 'phone source health doorway')
+    await screenshot(page, 'phone-source-strip')
     assert.deepEqual(errors, [], `phone page errors: ${errors.join('; ')}`)
   } finally {
     await close()

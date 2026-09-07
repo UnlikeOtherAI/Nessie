@@ -68,18 +68,23 @@ export const SourceStatusStrip = ({
   const { pushToast } = useToasts()
   if (sources.length === 0) return null
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex w-full flex-wrap items-center gap-1.5">
       {sources.map((source) => {
         const health = HEALTH[source.healthState]
         const syncing = isSourceSyncing(source)
         const mode = delivery(source)
         return (
-          <span className="flex items-center gap-1" key={source.id}>
+          <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1" key={source.id}>
             <Link
-              className="inline-flex min-h-11 items-center"
+              className="inline-flex min-h-11 min-w-0 max-w-full items-center"
               to={`/projects/${projectId}/settings?section=sources&source=${source.id}`}
             >
-              <Pill size="sm" tone={health.tone} uppercase={false}>
+              <Pill
+                className="max-w-full min-w-0 whitespace-normal break-words"
+                size="sm"
+                tone={health.tone}
+                uppercase={false}
+              >
                 {/* Freshness even mid-sync: the pill answers "is what I am
                     looking at current?", which a running sync has not changed
                     yet. The button is where a press reports back. */}

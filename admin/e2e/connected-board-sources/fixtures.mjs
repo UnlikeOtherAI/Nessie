@@ -7,6 +7,7 @@ const now = '2026-09-07T09:30:00.000Z'
 export const ids = {
   agent: '11111111-1111-4111-8111-111111111111',
   board: '22222222-2222-4222-8222-222222222222',
+  localBoard: '12121212-1212-4212-8212-121212121212',
   column: '33333333-3333-4333-8333-333333333333',
   connection: '44444444-4444-4444-8444-444444444444',
   organization: '55555555-5555-4555-8555-855555555555',
@@ -14,6 +15,8 @@ export const ids = {
   source: '77777777-7777-4777-8777-877777777777',
   user: '88888888-8888-4888-8888-888888888888',
 }
+
+export const sourceName = 'UnlikeOtherAI QA Linear product delivery'
 
 const envelope = (data) => ({ data })
 
@@ -33,11 +36,16 @@ export const createConnectedBoardSourceFixtures = () => {
     filter: { sources: 'all' }, iconEmoji: null, id: ids.board, isDefault: true,
     name: 'UnlikeOtherAI QA board', position: 0, projectId: ids.project, style: 'kanban',
   }
+  const localBoard = {
+    columns: [{ boardId: ids.localBoard, category: 'todo', id: ids.column, name: 'To do', position: 0, stateBindings: [] }],
+    filter: { sources: 'all' }, iconEmoji: null, id: ids.localBoard, isDefault: false,
+    name: 'UnlikeOtherAI QA local work', position: 1, projectId: ids.project, style: 'kanban',
+  }
   const source = {
     connectionId: ids.connection, connectionOwnerDisplayName: 'Alex Example', connectionOwnerUserId: ids.user,
     container: { id: 'linear-unlikeotherai-qa', name: 'UnlikeOtherAI QA' }, containerKey: 'linear-unlikeotherai-qa',
     healthDetail: null, healthReason: null, healthState: 'active', id: ids.source, itemCount: 4,
-    lastErrorCode: null, lastSyncCompletedAt: now, lastSyncStartedAt: null, name: 'UnlikeOtherAI QA',
+    lastErrorCode: null, lastSyncCompletedAt: now, lastSyncStartedAt: null, name: sourceName,
     pollingIntervalMinutes: 5, projectId: ids.project, provider: 'linear', syncWindowDays: 30,
     webhookActive: false, writeMode: 'read_write',
     stateMapping: [
@@ -102,9 +110,11 @@ export const createConnectedBoardSourceFixtures = () => {
     if (shellResponse !== undefined) return json(shellResponse)
     if (pathname === '/api/projects') return json([project])
     if (pathname === `/api/projects/${ids.project}/members`) return json([])
-    if (pathname === `/api/projects/${ids.project}/boards`) return json([board])
-    if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/tasks`) return json({ tasks: [], truncated: false })
-    if (pathname === `/api/projects/${ids.project}/sources`) return json([source])
+    if (pathname === `/api/projects/${ids.project}/boards`) return json([board, localBoard])
+    if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/tasks` || pathname === `/api/projects/${ids.project}/boards/${ids.localBoard}/tasks`) return json({ tasks: [], truncated: false })
+    if (pathname === `/api/projects/${ids.project}/sources`) return json(
+      url.searchParams.get('boardId') === ids.localBoard ? [] : [source],
+    )
     if (pathname === `/api/projects/${ids.project}/sources/${ids.source}`) return json(detail)
     if (pathname === '/api/board-sources/providers') return json([])
     if (pathname === '/api/board-sources/connections') return json([])
