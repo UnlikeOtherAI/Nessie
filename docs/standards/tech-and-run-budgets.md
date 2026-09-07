@@ -67,17 +67,6 @@ summary and points here; **this file is the rule**.
     toolCount }`, no cost data (`run-timing.ts`), written after the status flip
     so it can never fail a finished run. Owners: `GET /api/ledger/runs/timing`.
 
-## Deep.Agent compaction extraction
-
-Nessie consumes only `@deep/agent`'s commit-pinned, pure
-`runContextCompaction` helper. Nessie still owns utility inference and its
-invocation sink, checkpoint persistence, disclosure basis and durable state.
-The helper preserves complete tool groups, fences its rolling note and retains
-source URLs. CI and Docker require the externally managed
-`DEEP_AGENT_READ_TOKEN`: a fine-grained token scoped only to `deep.agent`
-Contents:Read, rotated before expiry. It is supplied only to installation and
-is never committed, persisted in an image layer, or exposed at runtime.
-
 - **Budget and storage-quota admission are atomic, and say what they promise.**
   A run enters through `admitRunToBudget` (`packages/runtime/src/budget.ts`),
   not `evaluateBudget`: for an `enforce`/`degrade` budget with a limit it takes
@@ -203,3 +192,22 @@ is never committed, persisted in an image layer, or exposed at runtime.
   API-only).
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
+
+## Deep.Agent compaction
+
+Nessie consumes only `@deep/agent`'s commit-pinned, pure
+`runContextCompaction` helper. Nessie still owns utility inference and its
+invocation sink, checkpoint persistence, disclosure basis and durable state.
+The helper preserves complete tool groups, fences its rolling note and retains
+source URLs.
+
+Compaction runs automatically at the context threshold and when output admission
+requires more space. It uses the run's utility model when configured, otherwise
+the run model. This is deliberately machine-only: no separate page, user action,
+or HTTP service is required. People receive the normal answer or saved checkpoint;
+the internal summary is context for the next inference.
+
+CI and Docker require the externally managed `DEEP_AGENT_READ_TOKEN`: a
+fine-grained token scoped only to `deep.agent` Contents:Read, rotated before
+expiry. It is supplied only to installation and is never committed, persisted
+in an image layer, or exposed at runtime.
