@@ -114,10 +114,12 @@ they supplement the production walkthrough rather than replace it.
 
 ## Compaction verification
 
-The sibling `UnlikeOtherAI/deep.agent` repository exports a loop library. Its
-current context handling trims conversation history; it does not provide a
-model-authored compaction service consumed by Nessie. Its standalone typecheck
-and 60 tests passed during this verification.
+The sibling `UnlikeOtherAI/deep.agent` repository exports a loop library with
+a model-authored compaction helper. Its loop uses that helper automatically
+when a host supplies `generateNote`; otherwise it falls back to conversation
+trimming. The package is private at `0.0.0`, is not published, and Nessie does
+not consume it. Its standalone typecheck and 60 tests passed during this
+verification.
 
 Nessie's worker already has a separate context-compaction path with a utility
 model call, tool-call/result grouping, citation-preservation instructions, and
