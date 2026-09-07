@@ -16,10 +16,9 @@ It seeds an ordinary team-shared agent owned by A, a private source chat whose
 author is B, and a public Team launch channel containing C. B's Czech,
 informal, misspelled private source is consumed by the real worker, which uses
 the mock model's `send_message` call to post a group update. The mock utility
-lane returns a scripted positive judgement. The first run is still withheld
-because A, the trigger author, did not author B's private source; the second
-run is triggered by B and uses a separate explicit Czech request. Nessie itself
-makes no text match or language-specific decision.
+lane scripts a declined judgement for B's first informal request and a positive
+judgement for B's separate explicit Czech request. Nessie itself makes no text
+match or language-specific decision.
 
 The current case verifies that the restricted group message has B's exact
 basis; C cannot see it in the transcript, search, or realtime event; unrelated

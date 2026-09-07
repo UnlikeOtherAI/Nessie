@@ -72,6 +72,10 @@ const installEventProbe = (page, token) => page.evaluate(async (bearer) => {
     headers: { authorization: `Bearer ${bearer}` },
     signal: controller.signal,
   })
+  if (!response.ok) throw new Error(`event stream failed with ${response.status}`)
+  if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+    throw new Error('event stream did not return text/event-stream')
+  }
   if (!response.body) throw new Error('event stream has no body')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -175,7 +179,6 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
         { channelId: group.id, role: 'manager', userId: agentOwner.id },
         { channelId: group.id, role: 'member', userId: sourceAuthor.id },
         { channelId: group.id, role: 'member', userId: audience.id },
-        { channelId: privateChannel.id, role: 'member', userId: agentOwner.id },
         { channelId: privateChannel.id, role: 'manager', userId: sourceAuthor.id },
       ],
     }),
@@ -224,7 +227,7 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
     prisma,
     { ...scope, channelId: privateChannel.id },
     'Můžeš poslat stručný update do Team launch?',
-    { actorUserId: agentOwner.id, replyPlacement: 'channel', threadId: privateThread.id },
+    { actorUserId: sourceAuthor.id, replyPlacement: 'channel', threadId: privateThread.id },
   )
   return {
     agentOwner,
@@ -292,7 +295,7 @@ const main = async () => {
         usage: { inputTokens: 133, outputTokens: 12 },
       },
     ],
-    utility: { text: '{"share":true}' },
+    utilityTurns: [{ text: '{"share":false}' }, { text: '{"share":true}' }],
   })
   const model = await createMockLlmServer({ scenario })
   // `worker/src/run/agent-loop.ts` reads model configuration at import time.
@@ -311,22 +314,35 @@ const main = async () => {
   let apiServer = null
   let adminServer = null
   let browser = null
+  let ownerContext = null
   let sourceContext = null
   let audienceContext = null
   try {
     apiServer = await startApi()
     adminServer = await startAdmin()
     browser = await launchBrowser()
+    ownerContext = await openViewportContext(browser, { name: 'desktop', token: ownerToken })
     sourceContext = await openViewportContext(browser, { name: 'desktop', token: sourceToken })
     audienceContext = await openViewportContext(browser, { name: 'desktop', token: audienceToken })
+    const ownerPage = await ownerContext.newPage()
     const sourcePage = await sourceContext.newPage()
     const audiencePage = await audienceContext.newPage()
     await Promise.all([
+      ownerPage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
       sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
       audiencePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
     ])
     await audiencePage.page.waitForSelector('text=¿Alguien puede confirmar el plan', { timeout: 60_000 })
     await installEventProbe(audiencePage.page, audienceToken)
+    await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').fill(
+      'Můžu prosím zveřejnit Bertin soukromý update?',
+    )
+    await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').press('Enter')
+    await audiencePage.page.waitForFunction(() => {
+      const events = window.__disclosureEventProbe?.events ?? []
+      return events.some((frame) => frame.event === 'message.new'
+        && frame.data?.contentPreview?.includes('Bertin soukromý update'))
+    }, { timeout: 60_000 })
 
     await pipeline.enqueueRun(fixture.run.payload)
     const terminal = await pipeline.waitForTerminalRuns([fixture.run.runId], 60_000)
@@ -343,7 +359,7 @@ const main = async () => {
     assert.equal(
       await pipeline.prisma.disclosureGrant.count({ where: { messageId: forwarded.id } }),
       0,
-      'an agent owner cannot auto-share a different author’s private source',
+      'the model’s declined judgement creates no disclosure grant',
     )
 
     await audiencePage.page.waitForFunction((messageId) => {
@@ -358,8 +374,8 @@ const main = async () => {
     await audiencePage.page.waitForFunction((messageId) => {
       const events = window.__disclosureEventProbe?.events ?? []
       return events.some((frame) => frame.event === 'message.new'
-        && frame.data?.message?.id === messageId
-        && frame.data?.message?.restricted === true)
+        && frame.data?.messageId === messageId
+        && frame.data?.restricted === true)
     }, forwarded.id, { timeout: 60_000 })
     const realtime = await audiencePage.page.evaluate(() => window.__disclosureEventProbe?.events ?? [])
     assertWithheld(JSON.stringify(realtime), 'recipient realtime frame')
@@ -452,12 +468,14 @@ const main = async () => {
     await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-explicit-author-share.png'), fullPage: true })
 
     await stopEventProbe(audiencePage.page)
+    await ownerPage.close()
     await sourcePage.close()
     await audiencePage.close()
     console.log('[disclosure e2e] PASS: private transcript → shared worker → UI and explicit scoped disclosure')
   } finally {
     if (audienceContext) await audienceContext.close().catch(() => {})
     if (sourceContext) await sourceContext.close().catch(() => {})
+    if (ownerContext) await ownerContext.close().catch(() => {})
     if (browser) await browser.close().catch(() => {})
     if (adminServer) await stopProcess(adminServer)
     if (apiServer) await stopProcess(apiServer)

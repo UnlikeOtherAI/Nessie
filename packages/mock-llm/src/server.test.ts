@@ -138,6 +138,26 @@ test('a utility lane uses its scripted response when the request offers no tools
   }
 })
 
+test('utility turns are consumed in their declared order', async () => {
+  const server = await createMockLlmServer({
+    scenario: parseScenario({
+      name: 'utility-turns',
+      turns: [{ text: 'main response' }],
+      utilityTurns: [{ text: '{"share":false}' }, { text: '{"share":true}' }],
+    }),
+  })
+  try {
+    const first = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ tools: [] }))
+    const second = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ tools: [] }))
+    const firstBody = await first.json() as { choices: Array<{ message: { content: string } }> }
+    const secondBody = await second.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(firstBody.choices[0]?.message.content, '{"share":false}')
+    assert.equal(secondBody.choices[0]?.message.content, '{"share":true}')
+  } finally {
+    await server.close()
+  }
+})
+
 test('scripted failure turns return the scripted HTTP error shape', async () => {
   const server = await createMockLlmServer({ scenario: await loadScenario('rate-limited') })
   try {
