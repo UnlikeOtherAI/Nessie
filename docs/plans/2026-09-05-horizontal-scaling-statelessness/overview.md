@@ -53,7 +53,7 @@ Two decisions are settled here rather than left open:
   Drain is solved by checkpointing inside sixty seconds, not by asking the
   platform for a 45-minute grace period.
 
-## The invariants (become `docs/standards/horizontal-scaling.md` in Phase 0)
+## The invariants (become `docs/standards/horizontal-scaling/overview.md` in Phase 0)
 
 1. No module-scope mutable state that a second instance would need. A cache
    is allowed only if it is read-through, bounded, has a TTL, and is never an
@@ -86,7 +86,7 @@ Do this first so every later phase lands with proof.
 
 | # | Item | Size |
 |---|---|---|
-| 0.1 | `docs/standards/horizontal-scaling.md` with the nine invariants, routed from `AGENTS.md` → Architecture. Fix `docs/the-agents.md:1297, 1687` to describe the lease-based scheduler that actually exists. | S |
+| 0.1 | `docs/standards/horizontal-scaling/overview.md` with the nine invariants, routed from `AGENTS.md` → Architecture. Fix `docs/the-agents.md:1297, 1687` to describe the lease-based scheduler that actually exists. | S |
 | 0.2 | ESLint ratchet in the root config, same shape as the egress block: module-scope `new Map`/`new Set`/`let` in `api/src` and `worker/src` fail lint unless the file is on an allowlist that shrinks as phases land. | S |
 | 0.3 | `infrastructure/compose/docker-compose.multi.yml` override: `api` × 2 and `worker` × 2 against one Postgres and MinIO, with Caddy round-robining the API. `pnpm dev:multi` runs it locally. | S |
 | 0.4 | CI job `multi-instance-smoke`: the existing mock-LLM smoke through the two-instance stack, plus a chaos step that sends `SIGTERM` to one worker mid-run and one API mid-stream and asserts no duplicate messages, no run left in `running`/`waiting_approval` without a live lease, and SSE resumes with no sequence gap. Required check once Phase 3 lands; advisory before. | M |
@@ -166,7 +166,7 @@ are configuration and documentation only and nothing has been applied.
 | 5.2 | 5.8, 8.2 | Lease expiry enqueues `execution.environment.terminate` for instances with a provider ref. | S |
 | 5.3 | 5.6 | Automatic-membership rate limits move to a Postgres token-bucket row with a conditional UPDATE. | M |
 | 5.4 | 2.7, 2.9 | NOTIFY payloads over the cap notify by id and the listener re-reads the row; replay returns a truncation marker the client turns into a REST bootstrap. `thread_stream_events` gets the same retention as `realtime_events`. | M |
-| 5.5 | 2.8 | Client backoff treats a connection that lived under five seconds as a failure; scope resolution is cached per connection. | S |
+| 5.5 | 2.8 | Client backoff treats a connection that lived under five seconds as a failure; scope resolution is cached per connection. Delivered on `claude/hs-client-reconnect-backoff`: `runStreamConnectionLoop` times the whole connect-and-drain cycle and resets the ladder only past `STREAM_HEALTHY_CONNECTION_MS`, so repeated short-lived connections escalate; the equal-jitter draw is unchanged but now stated and tested as the anti-herd guarantee (the cap is a window, not a shared instant). The scope half is server-side: the user-SSE and WS lanes' channel and dashboard entitlements were the only ones still running a query *per event* while the thread lane's identical question went through the per-connection gate, and they now share it — TTL-bounded at `REALTIME_ENTITLEMENT_TTL_MS`, never for the connection's life, and the *declared* scope set is still matched live so an `unsubscribe` bites on the next event. The phone and desktop shells are WebViews over the admin bundle, so there is no second client to fix — but the activity WebSocket (`admin/src/facades/agents/activity-socket.ts`) was a second *ladder* the audit never named, with a fixed `[1s, 2s, 4s …]` schedule and no draw at all, so it now takes its delay from the same `streamRetryDelayMs`. Its reset rule is still its own (it resets on the server-acknowledged handshake, which a draining replica completes), so the healthy-window half of this row does not yet cover that lane: open work. | S |
 | 5.6 | 1.8 | Logout invalidates the local revocation cache like session-delete does; revocations publish on the realtime channel so other replicas drop the sid immediately. | S |
 | 5.7 | 6.4 | Signed-URL redirect for downloads above a size threshold. | M |
 | 5.8 | 9.2 | Trigger intake and DeepSignal insight events enqueue and ack like every other receiver. Delivered on `claude/hs-p5-receiver-enqueue`: `trigger.webhook.dispatch` and `deepsignal.insight.fanout`, with validation and the "did this reach anything" answer kept synchronous — a paused trigger and an unbound agent are still 409s, an insight naming no enabled team is still refused. | M |

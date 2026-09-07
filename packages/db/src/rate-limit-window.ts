@@ -4,7 +4,7 @@ import type { PrismaClient } from '@prisma/client'
 
 /**
  * The one fixed-window counter store, shared by every rate limit in the
- * deployment (docs/rate-limiting.md; docs/standards/horizontal-scaling.md
+ * deployment (docs/rate-limiting.md; docs/standards/horizontal-scaling/overview.md
  * invariant 1).
  *
  * One `rate_limit_buckets` row per `(bucket, key_hash, window_start)`, moved by

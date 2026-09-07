@@ -28,7 +28,7 @@ import { externalAgentDmKey } from './external-agent-dm-key.js'
  * the fan-out that must not sit on the request path: a team of fifty is fifty
  * digest transactions, and an instance recycled part-way through used to lose
  * the remainder after the sender had already been answered 2xx
- * (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+ * (docs/standards/horizontal-scaling/overview.md § 3; audit 9.2).
  */
 
 export const DEEPSIGNAL_SLUG = 'deepsignal'

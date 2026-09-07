@@ -400,8 +400,10 @@ export const useThreadStream = (threadId?: string): StreamState => {
         try {
           await readSseStream(response.body, handleFrame)
         } catch {
-          // Dropped mid-stream. The connection itself worked, so this still
-          // counts as connected and the next attempt starts at the base delay.
+          // Dropped mid-stream. The response itself was a readable stream, so
+          // this is still 'connected'; whether it earns a backoff reset
+          // depends on how long the cycle lasted, which the loop times
+          // (STREAM_HEALTHY_CONNECTION_MS).
         }
         return 'connected'
       } finally {

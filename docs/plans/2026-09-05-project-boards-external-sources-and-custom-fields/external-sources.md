@@ -427,7 +427,9 @@ first sync is right without configuration.
   Linear `state.type`, GitHub `state` + `state_reason`) and from list order
   where it does not (Trello, Projects v2 `Status`). `review` starts empty
   everywhere — nothing guesses a state's meaning from its name; a person
-  promotes it.
+  promotes it. The shared mapping contract permits one default per active
+  category and rejects defaults for Archived or Not mapped, so write-back never
+  depends on provider-state list order.
 - **Column state bindings** (`BoardColumn.stateBindings`): in the Boards
   section, a column's row offers "Shows external states…" listing the states
   of every source in the project whose mapped category equals the column's.

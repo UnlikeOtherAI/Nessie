@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
+import { ensurePrivateAgentHome } from '@nessie/team-admin'
 
 import { wakeBoardWatcherAgent } from '../../src/control/board-watch-wake.js'
 import { runDatabaseTest } from './support.js'
@@ -63,7 +64,7 @@ const seed = async (prisma: PrismaClient) => {
       status: 'in_progress',
     },
   })
-  return { organization, project, board, agent, task, user, channel, thread }
+  return { organization, project, team, board, agent, task, user, channel, thread }
 }
 
 runDatabaseTest('waking a watcher agent starts a run from a hidden kickoff', async (t) => {
@@ -198,4 +199,65 @@ runDatabaseTest('an agent no longer bound to its channel is unreachable', async 
     }),
     'unreachable',
   )
+})
+
+runDatabaseTest('a direct wake cannot enter another person’s private agent home', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  let otherId: string | undefined
+  try {
+    const other = await prisma.user.create({
+      data: { displayName: 'Private owner', email: `private-${randomUUID()}@example.test` },
+    })
+    otherId = other.id
+    await prisma.organizationMember.create({
+      data: { organizationId: seeded.organization.id, userId: other.id, role: 'member' },
+    })
+    const privateAgent = await prisma.agent.create({
+      data: {
+        name: 'Private watcher',
+        organizationId: seeded.organization.id,
+        ownerUserId: other.id,
+        projectId: seeded.project.id,
+        role: 'assistant',
+        visibility: 'private',
+      },
+    })
+    const privateChannelId = await ensurePrivateAgentHome(prisma, {
+      agentId: privateAgent.id,
+      label: privateAgent.name,
+      organizationId: seeded.organization.id,
+      ownerUserId: other.id,
+      teamId: seeded.team.id,
+    })
+    const privateThread = await prisma.thread.findFirst({
+      where: { channelId: privateChannelId },
+      select: { id: true },
+    })
+    assert.ok(privateThread)
+    const messagesBefore = await prisma.message.count({ where: { threadId: privateThread.id } })
+    assert.equal(
+      await wakeBoardWatcherAgent(prisma, {
+        addedByUserId: seeded.user.id,
+        agentId: privateAgent.id,
+        boardId: seeded.board.id,
+        boardName: seeded.board.name,
+        channelId: privateChannelId,
+        launchOrigin: null,
+        organizationId: seeded.organization.id,
+        projectId: seeded.project.id,
+        taskIds: [seeded.task.id],
+        threadId: privateThread.id,
+      }),
+      'unreachable',
+    )
+    assert.equal(await prisma.run.count({ where: { agentId: privateAgent.id } }), 0)
+    assert.equal(await prisma.message.count({ where: { threadId: privateThread.id } }), messagesBefore)
+  } finally {
+    await prisma.organization.deleteMany({ where: { id: seeded.organization.id } })
+    await prisma.user.deleteMany({
+      where: { id: { in: [seeded.user.id, ...(otherId ? [otherId] : [])] } },
+    })
+    await prisma.$disconnect()
+  }
 })

@@ -5,7 +5,7 @@ import test from 'node:test'
 
 /**
  * Boot connects and listens — nothing else
- * (docs/standards/horizontal-scaling.md §5). `buildApp` used to seed every
+ * (docs/standards/horizontal-scaling/overview.md §5). `buildApp` used to seed every
  * organisation's default policy rules, backfill protected-MCP tool grants and
  * provision Personal Assistant default grants before `listen()`, on every
  * replica; `startApiServer` then ran the credential sweep (horizontal-scaling

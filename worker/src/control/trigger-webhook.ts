@@ -21,7 +21,7 @@ import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
  * and event dispatch already use. It used to run inline in the request, so a
  * sender waited out a launch-origin preflight, a UOA identity check and a
  * six-write transaction, and an instance recycled part-way through lost a
- * delivery it had already accepted (docs/standards/horizontal-scaling.md § 3;
+ * delivery it had already accepted (docs/standards/horizontal-scaling/overview.md § 3;
  * audit 9.2).
  *
  * **Everything is re-checked here**, not trusted from the ack: the queue is

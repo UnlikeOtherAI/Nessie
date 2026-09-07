@@ -38,7 +38,7 @@ import type { RouteDeps } from './types.js'
  *     receiver for `insight.surfaced`. It verifies, decides whether the event
  *     routes anywhere at all, and enqueues `deepsignal.insight.fanout`; the
  *     per-recipient digest work runs in the worker
- *     (docs/standards/horizontal-scaling.md § 3).
+ *     (docs/standards/horizontal-scaling/overview.md § 3).
  */
 
 const ChannelIdParamsSchema = z.object({ channelId: z.string().min(1) })
@@ -230,7 +230,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
       // transaction per linked recipient — is the fan-out, and it runs in the
       // worker. Keyed on the insight so a redelivery collapses into the job
       // already queued rather than walking the team a second time
-      // (docs/standards/horizontal-scaling.md § 3).
+      // (docs/standards/horizontal-scaling/overview.md § 3).
       const enqueued = await enqueueQueueJob(prisma, {
         idempotencyKey: `deepsignal-insight:${organizationId}:${insightId}`,
         payload: {

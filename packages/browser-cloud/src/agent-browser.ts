@@ -393,7 +393,7 @@ export const resetAgentBrowser = async (
  * delete before another tick may take it over.
  *
  * `deleting` is a claim, and every claim taken before a side effect needs a
- * horizon or it is a permanent drop (docs/standards/horizontal-scaling.md §3):
+ * horizon or it is a permanent drop (docs/standards/horizontal-scaling/overview.md §3):
  * a process killed between the claim and the provider's answer used to leave
  * the row in `deleting` forever, and the sweep only selected `tombstoned` — so
  * a Browserbase context holding somebody's encrypted login state leaked with

@@ -63,7 +63,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 - Run package tests through Turbo (`pnpm test`, or `pnpm exec turbo run test --filter=<pkg>`) **with `DATABASE_URL` exported for that run** — unset, every Postgres-backed suite silently skips and the run is green with zero database coverage.
-- **The full testing standard** — why only the Turbo path is valid, the deliberate worker-before-api ordering, process/memory limits, the shared-database discipline (no global mutations, counts, or poller assumptions), Prisma-fake obligations, and the mock-LLM harness: read [docs/standards/testing.md](docs/standards/testing.md) before writing or debugging any test.
+- **The full testing standard** — why only the Turbo path is valid, the deliberate worker-before-api ordering, process/memory limits, the shared-database discipline (no global mutations, counts, or poller assumptions), Prisma-fake obligations, the mock-LLM harness, and the local SMTP/IMAP wire smoke: read [docs/standards/testing.md](docs/standards/testing.md) before writing or debugging any test.
 
 ## Ports — NON-NEGOTIABLE
 
@@ -336,7 +336,7 @@ when one changes, the same turn updates it, not this section.
   inside sixty seconds, and realtime publishes under a per-scope advisory lock
   held across insert and commit, so id order is commit order;
   the horizontal-scaling block in the root `eslint.config.js` is the ratchet.
-  Read [`docs/standards/horizontal-scaling.md`](docs/standards/horizontal-scaling.md)
+  Read [`docs/standards/horizontal-scaling/overview.md`](docs/standards/horizontal-scaling/overview.md)
   before writing code here.
 - **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
   reads a decision rather than re-deriving one, and connect orchestrates the

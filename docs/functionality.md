@@ -1495,7 +1495,7 @@ and answers `202` with `{ accepted, dedupeKey, existing, triggerId }`. The fire
 itself — the launch-origin preflight, the delivery row, the kickoff message, the
 thread claim, the run and its task — happens in the worker, so a sender never
 waits on it and an instance recycled mid-fire cannot lose a delivery it has
-already accepted (docs/standards/horizontal-scaling.md § 3). The delivery record
+already accepted (docs/standards/horizontal-scaling/overview.md § 3). The delivery record
 and `runId` the response used to carry are gone with it: neither row exists at
 acknowledgement time. `dedupeKey` is the handle instead — it is the key
 `GET /api/triggers/{id}/deliveries` reports for this fire.

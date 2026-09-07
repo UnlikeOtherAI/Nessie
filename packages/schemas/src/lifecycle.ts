@@ -96,7 +96,7 @@ export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
  * written onto the `agent_trigger_deliveries` row as its `errorMessage`, so the
  * `dedupeKey` the ack handed the sender resolves to a terminal record of the
  * recheck instead of to nothing at all
- * (docs/standards/horizontal-scaling.md § 3).
+ * (docs/standards/horizontal-scaling/overview.md § 3).
  *
  * The literals are the same on both sides deliberately: an operator reading
  * `trigger_paused` off a delivery row is reading the sentence the 409 would

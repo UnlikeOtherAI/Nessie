@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { BoardWatcherRecord } from '@nessie/schemas'
 
 import { resolveAgentConversation } from './agent-conversation.js'
@@ -8,10 +8,10 @@ import { resolveAgentConversation } from './agent-conversation.js'
  *
  * A watcher costs somebody else's attention, so adding one is board
  * administration and every recipient is checked against what the *board's*
- * organisation can actually reach: a user must be an active member, and an
- * agent must exist in the same organisation. A row naming a recipient the
- * server would not accept is refused here rather than discovered later by a
- * fan-out with nowhere to deliver.
+ * organisation can actually reach: a user must be an active member; an agent
+ * must be an ordinary team agent, or the adder's own live private agent. A row
+ * naming a recipient the server would not accept is refused here rather than
+ * discovered later by a fan-out with nowhere to deliver.
  *
  * Removal is deliberately not symmetrical with addition — see
  * `removeSelfAsWatcher`.
@@ -47,6 +47,45 @@ export const isBoardWatcherError = <T>(
   value: T | BoardWatcherError,
 ): value is BoardWatcherError =>
   typeof value === 'object' && value !== null && 'error' in value
+
+/**
+ * The only agents a board watcher can wake. Kept at the service boundary so a
+ * legacy row, a route caller, and delivery cannot disagree about who owns a
+ * private home conversation.
+ */
+export const boardWatcherAgentWhere = (input: {
+  addedByUserId: string
+  agentIds?: readonly string[]
+  organizationId: string
+}): Prisma.AgentWhereInput => ({
+  ...(input.agentIds ? { id: { in: [...input.agentIds] } } : {}),
+  organizationId: input.organizationId,
+  systemManaged: false,
+  systemSlug: null,
+  agentKind: { not: 'personal_assistant' },
+  OR: [
+    { visibility: 'team' },
+    {
+      visibility: 'private',
+      ownerUserId: input.addedByUserId,
+      // The ownership FK proves this row exists, not that the person is still
+      // active. A retained, deactivated owner cannot receive unattended work.
+      ownerMembership: { deactivatedAt: null },
+    },
+  ],
+})
+
+export const isBoardWatcherAgentEligible = async (
+  prisma: Pick<PrismaClient, 'agent'>,
+  input: { addedByUserId: string; agentId: string; organizationId: string },
+): Promise<boolean> =>
+  (await prisma.agent.count({
+    where: boardWatcherAgentWhere({
+      addedByUserId: input.addedByUserId,
+      agentIds: [input.agentId],
+      organizationId: input.organizationId,
+    }),
+  })) > 0
 
 const toRecord = (row: {
   id: string
@@ -124,7 +163,11 @@ export const setBoardWatchers = async (
 
   if (agentIds.length > 0) {
     const reachable = await prisma.agent.findMany({
-      where: { id: { in: agentIds }, organizationId: input.organizationId },
+      where: boardWatcherAgentWhere({
+        addedByUserId: input.addedByUserId,
+        agentIds,
+        organizationId: input.organizationId,
+      }),
       select: { id: true },
     })
     const found = new Set(reachable.map((row) => row.id))

@@ -16,7 +16,7 @@ import type { ExecutionProvider } from './types.js'
 // address. `gcloud` refs are `gcloud:<kind>:<project>:<zone|region>:<name>`, so
 // whichever replica claims `execution.environment.terminate` deletes the real
 // VM or Cloud Run job. A `docker` ref is a container on ONE host's daemon
-// (horizontal-scaling audit 8.2; `docs/standards/horizontal-scaling.md`
+// (horizontal-scaling audit 8.2; `docs/standards/horizontal-scaling/overview.md`
 // invariant 7), and queue jobs are not host-routed: a terminate claimed by
 // another replica would run `docker rm -f` against the wrong daemon, get
 // `No such container`, have `terminateDocker` swallow it as already-gone, and

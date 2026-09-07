@@ -5,7 +5,8 @@ import {
 } from '../../../facades/boards/hooks'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useUsers } from '../../../facades/users/hooks'
-import { selectAddressableAgents, type Recipient } from '../../../lib/channel-compose-recipients'
+import { type Recipient } from '../../../lib/channel-compose-recipients'
+import { selectBoardWatcherAgents } from '../../../lib/board-watcher-recipients'
 import { FormError } from '../../../components/shared/FormActions'
 import { useIsOwner } from '../../../facades/auth/hooks'
 import { RecipientBar } from '../../../components/shared/RecipientBar'
@@ -19,7 +20,7 @@ type BoardWatchersEditorProps = {
 }
 
 /**
- * Who hears that a ticket on this board moved.
+ * Who hears that a connected ticket changed remotely.
  *
  * The same address bar as New message, on purpose: choosing a person or an
  * agent is one act in this product, even though what happens next differs.
@@ -31,7 +32,7 @@ export const BoardWatchersEditor = ({
   boardId,
   boardName,
 }: BoardWatchersEditorProps) => {
-  const { token } = useAuthSession()
+  const { me, token } = useAuthSession()
   const isOwner = useIsOwner()
   const { data: users = [] } = useUsers(isOwner)
   const { data: allAgents = [] } = useAgents({ scope: 'all' })
@@ -40,8 +41,8 @@ export const BoardWatchersEditor = ({
   const [error, setError] = useState<string | null>(null)
 
   const agents = useMemo(
-    () => selectAddressableAgents(allAgents, { isOwner }),
-    [allAgents, isOwner],
+    () => selectBoardWatcherAgents(allAgents, me?.user.id),
+    [allAgents, me?.user.id],
   )
 
   const saved = useMemo<Recipient[]>(
@@ -78,12 +79,17 @@ export const BoardWatchersEditor = ({
 
   return (
     <Section
-      description={`They hear about every ticket that moves or changes on ${boardName}. Nobody is told about a first import.`}
+      description={
+        `Alert people or run your agent when a connected ticket moves or is ` +
+        `reassigned remotely after its first import on ${boardName}. Native ` +
+        'tickets and local moves do not notify watchers.'
+      }
       title="Watchers"
     >
       <div className="grid gap-3">
         <RecipientBar
           agents={agents}
+          closeAfterSelection
           disabled={setWatchers.isPending}
           label="Tell"
           onChange={setRecipients}

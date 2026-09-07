@@ -45,7 +45,7 @@ const HEALTH_TONE: Record<
 }
 
 const HEALTH_SENTENCE: Record<BoardSourceRecord['healthState'], string> = {
-  active: 'Syncing',
+  active: 'Ready',
   paused: 'Paused',
   needs_reauthorization: 'The provider stopped accepting this connection',
   owner_inactive: 'Its account owner is no longer an active member',
@@ -104,7 +104,7 @@ export const SourcesSettingsSection = ({
                   key={source.id}
                 >
                   <button
-                    className="min-w-0 flex-1 text-left text-sm text-[color:var(--tx)]"
+                    className="min-h-11 min-w-[10rem] flex-1 px-2 text-left text-sm text-[color:var(--tx)]"
                     onClick={() => onSelectSource(source.id)}
                     type="button"
                   >
@@ -134,7 +134,7 @@ export const SourcesSettingsSection = ({
                   ) : null}
                   {canAdminister && remedy.action && remedy.action !== 'reconnect' ? (
                     <button
-                      className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                      className="inline-flex min-h-11 items-center px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
                       onClick={() =>
                         action.mutate(
                           { id: source.id, action: remedy.action as 'sync' | 'pause' | 'resume' | 'retry' },
@@ -153,7 +153,7 @@ export const SourcesSettingsSection = ({
                   {canAdminister ? (
                     <>
                       <button
-                        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]
+                        className="inline-flex min-h-11 items-center px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]
                           disabled:opacity-50"
                         disabled={isSourceSyncing(source)}
                         onClick={() =>
@@ -171,7 +171,7 @@ export const SourcesSettingsSection = ({
                         {isSourceSyncing(source) ? 'Syncing…' : 'Sync now'}
                       </button>
                       <button
-                        className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+                        className="inline-flex min-h-11 items-center px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
                         onClick={() => setRemoveTarget(source)}
                         type="button"
                       >
@@ -188,7 +188,7 @@ export const SourcesSettingsSection = ({
         {canAdminister ? (
           <div className="border-t border-[color:var(--sep)] pt-3">
             <button
-              className="admin-button admin-button-primary admin-button-compact"
+              className="admin-button admin-button-primary h-11"
               onClick={() => setConnectOpen(true)}
               type="button"
             >

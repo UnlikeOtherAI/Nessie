@@ -23,7 +23,7 @@ export const launchBrowser = async () => {
   }
 }
 
-export const openViewportContext = async (browser, { name, token }) => {
+export const openViewportContext = async (browser, { name, route, token }) => {
   const viewport = VIEWPORTS[name]
   if (!viewport) throw new Error(`unknown viewport "${name}"`)
   const context = await browser.newContext({
@@ -35,6 +35,7 @@ export const openViewportContext = async (browser, { name, token }) => {
     ([key, value]) => { window.localStorage.setItem(key, value) },
     ['nessie.admin.token', token],
   )
+  if (route) await context.route('**/api/**', route)
   return {
     close: () => context.close(),
     name,

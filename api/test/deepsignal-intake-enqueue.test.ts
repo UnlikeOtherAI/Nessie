@@ -12,7 +12,7 @@ import { setProductWebhookSecret } from '../src/services/product-webhook-secret.
 
 /**
  * `POST /api/integrations/deepsignal/events` enqueues and acks (audit 9.2,
- * docs/standards/horizontal-scaling.md § 3).
+ * docs/standards/horizontal-scaling/overview.md § 3).
  *
  * The recipient fan-out — a channel, a thread, a binding and a digest
  * transaction per linked team member — used to run inline, so one insight for a

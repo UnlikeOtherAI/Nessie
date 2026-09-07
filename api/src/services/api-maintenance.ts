@@ -7,7 +7,7 @@ import { sweepStalePushSurfacePresence } from './push-surface-presence.js'
 import { sweepExpiredUoaSessionCredentials } from './refresh-session-management.js'
 
 /**
- * Horizontal-scaling invariant 2 (docs/standards/horizontal-scaling.md, audit
+ * Horizontal-scaling invariant 2 (docs/standards/horizontal-scaling/overview.md, audit
  * 2.6): these four sweeps had no leader, so every API replica ran all four on
  * its own timer — N redundant DELETEs contending on the same rows every
  * minute. Each body is one indivisible pass rather than a batch of

@@ -121,12 +121,17 @@ export const useDeleteConnection = () => {
   })
 }
 
-export const useProjectSources = (projectId?: string) => {
+export const useProjectSources = (projectId?: string, boardId?: string) => {
   const apiClient = useApiClient()
   return useQuery<BoardSourceRecord[]>({
-    placeholderData: keepPreviousData,
-    queryKey: projectKeys.sources(projectId ?? ''),
-    queryFn: () => apiClient.get(`/api/projects/${projectId}/sources`),
+    // Settings keeps the project list in place while it refreshes. A board
+    // switch must not paint the previous board's source health in its header.
+    ...(boardId ? {} : { placeholderData: keepPreviousData }),
+    queryKey: projectKeys.sources(projectId ?? '', boardId),
+    queryFn: () =>
+      apiClient.get(
+        `/api/projects/${projectId}/sources${boardId ? `?boardId=${boardId}` : ''}`,
+      ),
     enabled: Boolean(projectId),
     // A sync is claimed by a sweep up to half a minute after the press and then
     // runs for as long as the provider takes, so "Sync now" has nothing to

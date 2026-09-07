@@ -25,7 +25,7 @@ const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
  * run lands on, so the three are refused here — the single dispatch chokepoint
  * for exactly these tools. It cannot be `loadConfig`: `allowedRoots` is a
  * column on `tool_registry_entries`, per-organisation data that configuration
- * never sees. See docs/standards/horizontal-scaling.md, invariant 7.
+ * never sees. See docs/standards/horizontal-scaling/overview.md, invariant 7.
  *
  * The refusal is a failed tool result, not a thrown error: the model asked for
  * the tool, and the answer it needs is the sentence saying why the tool does

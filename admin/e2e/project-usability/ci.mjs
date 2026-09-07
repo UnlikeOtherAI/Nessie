@@ -30,6 +30,23 @@ const runProjectUsability = async () => {
   )
 }
 
+const runConnectedBoardSources = async () => {
+  const child = spawn(process.execPath, [resolve(here, '../connected-board-sources/run.mjs')], {
+    env: process.env,
+    stdio: 'inherit',
+  })
+  const result = await new Promise((done, reject) => {
+    child.once('error', reject)
+    child.once('exit', (code, signal) => done({ code, signal }))
+  })
+  if (result.code === 0) return
+  throw new Error(
+    result.signal
+      ? `connected-board-sources runner stopped by ${result.signal}`
+      : `connected-board-sources runner exited ${result.code ?? 'without a status'}`,
+  )
+}
+
 const main = async () => {
   if (!databaseUrl()) throw new Error('project-usability CI requires DATABASE_URL')
 
@@ -39,6 +56,7 @@ const main = async () => {
     api = await startApi()
     admin = await startAdmin()
     await runProjectUsability()
+    await runConnectedBoardSources()
   } finally {
     await stopProcess(admin)
     await stopProcess(api)
