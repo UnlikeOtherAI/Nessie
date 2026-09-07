@@ -81,9 +81,9 @@ export const loadIdentityLinks = async (
  * an **active** member of the organisation. Never fuzzy, never a display-name
  * comparison: a wrong match assigns somebody else's work to a real person.
  *
- * Returns the links it wrote, already re-projected onto the tasks that were
- * mirrored before the match existed — a mapping that only applied to future
- * items would leave the board showing the same unknown name it did yesterday.
+ * Returns the durable links that resolved the candidates, already re-projected
+ * onto tasks mirrored before the match existed. A concurrent manual decision
+ * wins over the candidate this invocation calculated.
  */
 export const autoMatchIdentitiesByEmail = async (
   prisma: PrismaClient,
@@ -148,12 +148,54 @@ export const autoMatchIdentitiesByEmail = async (
       userId: link.userId,
       matchedBy: 'email',
     })),
-    // A concurrent sync may have matched the same person a moment ago; the
-    // unique key decides and both runs project the same result.
+    // The unique key decides if another sync or a person's manual choice wins
+    // this race. Reload below before projecting: `skipDuplicates` does not say
+    // which row was retained.
     skipDuplicates: true,
   })
-  await reprojectIdentityLinks(prisma, tenant, matched)
-  return matched
+  const durable = await prisma.boardSourceIdentityLink.findMany({
+    where: {
+      organizationId: tenant.organizationId,
+      provider: tenant.provider,
+      externalTenantKey: tenant.externalTenantKey,
+      externalUserId: { in: matched.map((link) => link.externalUserId) },
+    },
+    select: {
+      externalUserId: true,
+      externalDisplayName: true,
+      userId: true,
+      agentId: true,
+      matchedBy: true,
+    },
+  })
+  const candidateByExternalUserId = new Map(matched.map((link) => [link.externalUserId, link]))
+  const emailMatchedExternalUserIds = new Set(
+    durable
+      .filter((link) => link.matchedBy === 'email')
+      .map((link) => link.externalUserId),
+  )
+  const resolved = durable.flatMap((link): IdentityLinkProjection[] => {
+    const candidate = candidateByExternalUserId.get(link.externalUserId)
+    if (!candidate) return []
+    return [
+      {
+        externalUserId: link.externalUserId,
+        displayName: link.externalDisplayName,
+        email: candidate.email,
+        userId: link.userId,
+        agentId: link.agentId,
+      },
+    ]
+  })
+  // The manual write owns its own reprojection. Reproject only email links
+  // from this auto-match path, while returning every durable result so the
+  // current sync applies the winning mapping to the incoming item.
+  await reprojectIdentityLinks(
+    prisma,
+    tenant,
+    resolved.filter((link) => emailMatchedExternalUserIds.has(link.externalUserId)),
+  )
+  return resolved
 }
 
 /**

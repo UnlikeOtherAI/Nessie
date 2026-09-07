@@ -268,6 +268,64 @@ runDatabaseTest('a link a person chose is never re-decided by an email match', a
   }
 })
 
+runDatabaseTest('a manual choice that wins an email-match race remains the mapping applied', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const identityLinks = prisma.boardSourceIdentityLink
+    // Make the decision after auto-match reads existing links but before its
+    // duplicate-tolerant insert. This is the exact window a concurrent save of
+    // the People table occupies.
+    const racingPrisma = new Proxy(prisma, {
+      get(target, property, receiver) {
+        if (property !== 'boardSourceIdentityLink') return Reflect.get(target, property, receiver)
+        return {
+          ...identityLinks,
+          createMany: async (...args: Parameters<typeof identityLinks.createMany>) => {
+            await identityLinks.create({
+              data: {
+                organizationId: seeded.organizationId,
+                provider: 'linear',
+                externalTenantKey: seeded.tenantKey,
+                externalUserId: 'linear-user-race',
+                externalDisplayName: 'Pavel Fuchs',
+                matchedBy: 'manual',
+                createdByUserId: seeded.ownerUserId,
+              },
+            })
+            return identityLinks.createMany(...args)
+          },
+        }
+      },
+    }) as PrismaClient
+
+    const matched = await autoMatchIdentitiesByEmail(racingPrisma, tenantOf(seeded), [
+      {
+        externalUserId: 'linear-user-race',
+        displayName: 'Pavel Fuchs',
+        email: seeded.colleagueEmail,
+      },
+    ])
+    assert.deepEqual(matched, [
+      {
+        externalUserId: 'linear-user-race',
+        displayName: 'Pavel Fuchs',
+        email: seeded.colleagueEmail,
+        userId: null,
+        agentId: null,
+      },
+    ])
+    const link = await identityLinks.findFirstOrThrow({
+      where: { organizationId: seeded.organizationId, externalUserId: 'linear-user-race' },
+    })
+    assert.equal(link.userId, null)
+    assert.equal(link.matchedBy, 'manual')
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
 runDatabaseTest('mapping somebody by hand reaches the cards already mirrored', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
