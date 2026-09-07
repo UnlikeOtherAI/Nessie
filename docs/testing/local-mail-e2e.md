@@ -12,10 +12,11 @@ It publishes only to loopback: SMTP on `3025`, IMAP on `3143`, SMTPS on
 `agent@nessie.test` and `recipient@nessie.test`; their protocol usernames are
 `agent` and `recipient`, both with password `mail-e2e-only`.
 
-The smoke test authenticates over SMTP, delivers one message, then authenticates
-over IMAP and proves the recipient inbox contains it. It is a wire-transport
-test, not a Nessie production-client test: the daemon's local test certificate
-is not a production trust anchor, and connected-mail production code
+The smoke test authenticates over SMTP, delivers a UUID-tagged message, then
+uses IMAP to search for that exact Message-ID and fetch its exact body. It is a
+plaintext wire-transport test, not a Nessie production-client test: the
+daemon's local test certificate is not a production trust anchor, and
+connected-mail production code
 deliberately rejects loopback endpoints through its egress guard. App tests that
 need this daemon must inject their test transport at the protocol boundary; no
 environment switch weakens the production guard.

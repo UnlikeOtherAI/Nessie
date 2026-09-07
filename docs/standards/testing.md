@@ -38,3 +38,14 @@ file is the rule.**
 ## Mock-LLM harness
 
 Deterministic scripted inference for tests lives in `@nessie/mock-llm` (`packages/mock-llm`, scenario JSON + in-process `runInference` adapter + OpenAI-compatible HTTP server). `pnpm --filter @nessie/worker test:smoke` runs the full-pipeline CI smoke (seeded Postgres → enqueue → loop → tool call → completion); `pnpm --filter @nessie/worker test:load --runs N --workers W` runs the load mode. See [docs/mock-llm-harness.md](../mock-llm-harness.md).
+
+## Local SMTP/IMAP wire smoke
+
+[`docs/testing/local-mail-e2e.md`](../testing/local-mail-e2e.md) documents the
+loopback-only GreenMail daemon and its `node scripts/local-mail-e2e.mjs` smoke.
+The smoke proves one newly generated Message-ID and body through SMTP delivery,
+IMAP search, and IMAP fetch; an inbox count is not enough because old mail can
+make it pass. It intentionally exercises plaintext local wire transport only.
+Nessie's production connected-mail dialer must continue to reject loopback and
+requires a trusted TLS certificate, so this daemon is never a production-client
+or egress-guard test.
