@@ -80,6 +80,18 @@ Mechanics beyond those invariants:
   while a session is open, so ordinary runs pay nothing. The save claims its
   session with a conditional `streaming → saving` update, so cancel and save
   always have one winner.
+- **Every worker-side session write rides the session's own claim.**
+  `run_document_sessions.claim_token` is `runs.executor_token` as it stood when
+  the session was opened, and `settleDocumentSession`
+  (`worker/src/run/execute/document-session-claim.ts`) asks in one statement for
+  the session to still carry that claim AND the run to still carry the same
+  token — so a worker whose run was taken over writes nothing, and says so.
+  The two saves are fenced on the claim **alone**, never on the status: by then
+  the document is filed, so a status somebody else wrote in the meantime is the
+  stale fact. A superseded save keeps its page and attachment (they are real);
+  only the popup's row for that session is left wrong, and the refusal is logged.
+  The API's retarget write is a *person's* write, not an executor's, and stays
+  unfenced by design.
 - A document landing in a **private space is created published** — the person
   who asked for it is its only reader and just watched it being written; shared
   spaces keep the `kb_publish_request` review gate.

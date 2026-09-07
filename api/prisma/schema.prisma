@@ -3303,6 +3303,15 @@ model RunDocumentSession {
   status      RunDocumentSessionStatus @default(streaming)
   errorReason String?                  @map("error_reason")
 
+  /// The run execution that owns this session's status: `runs.executor_token`
+  /// as it stood when the session was opened. Every session write asks for this
+  /// AND for the run still carrying the same token, so a superseded executor's
+  /// terminaliser matches nothing
+  /// (`worker/src/run/execute/document-session-claim.ts`). NULL means the
+  /// session was opened outside an executor claim, and its writes are unfenced
+  /// exactly as they were.
+  claimToken String? @map("claim_token") @db.Uuid
+
   // Target parsed from the model's arguments.
   title        String?
   spaceId      String? @map("space_id") @db.Uuid

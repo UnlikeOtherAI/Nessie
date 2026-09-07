@@ -11,7 +11,9 @@ import {
   type PartialJsonScanner,
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from '@nessie/runtime'
+import { settleDocumentSession } from './document-session-claim.js'
 import { createDurableLane, createLiveLane } from './document-stream-lanes.js'
+import { createDocumentTargetAnnouncer } from './document-stream-target.js'
 import { createDocumentEditTracker, type DocumentEditTracker } from './document-stream-edit.js'
 import { createDocumentStreamDisclosureGate } from './document-stream-disclosure.js'
 import type { BasisScope } from './disclosure-basis.js'
@@ -27,6 +29,12 @@ type RunContext = {
 }
 
 export type DocumentSessionHandle = {
+  /**
+   * The claim the session was opened under, carried out to the save paths so
+   * their writes ride the same fence the recorder's do
+   * (`document-session-claim.ts`).
+   */
+  claimToken: string | null
   markdown: string
   parentPageId: string | null
   sessionId: string
@@ -63,6 +71,8 @@ export type DocumentStreamRecorder = {
 
 type TrackedCall = {
   mode: 'compose' | 'edit'
+  /** Read once, when the session is opened; every write on it uses this value. */
+  claimToken: string | null
   pageId: string | null
   editScanner: PartialJsonEditScanner | null
   tracker: DocumentEditTracker | null
@@ -78,6 +88,15 @@ type TrackedCall = {
 }
 
 type RecorderInput = {
+  /**
+   * The run-execution claim to open each session under —
+   * `runs.executor_token` as this execution holds it. Read lazily, per session,
+   * because the recorders are built before the run is claimed; a run executing
+   * without a claim (an unfenced path, a test) returns null and its sessions
+   * are written unfenced, exactly as they were. See
+   * `document-session-claim.ts`.
+   */
+  claimToken: () => string | null
   getRestrictionBasis: () => readonly BasisScope[]
   isRestricted: () => boolean
   persistRestrictionBasis: (basis: readonly BasisScope[]) => Promise<void>
@@ -120,6 +139,16 @@ export const createDocumentStreamRecorder = (
     }
   }
 
+  // Where the document is going — the session's target columns, the names the
+  // address bar shows, and the `stream.document.meta` event that carries them.
+  const target = createDocumentTargetAnnouncer({
+    disclosure,
+    organizationId: input.run.organizationId,
+    prisma: input.prisma,
+    publish,
+    runId: input.run.id,
+  })
+
   const appendDurable = (
     call: TrackedCall,
     fragment: { content: string; offset: number },
@@ -133,16 +162,24 @@ export const createDocumentStreamRecorder = (
       if (call.terminal || !call.sessionId) return
       call.terminal = true
       const sessionId = call.sessionId
-      const updated = await input.prisma.runDocumentSession.updateMany({
+      // Two terminalisers ride this one write: the recorder's own (a replaced
+      // invocation, unreadable arguments) and `finalizeOutstanding`'s, which is
+      // the failure path. Fenced on the claim, so a superseded executor cannot
+      // report a document lost that its successor is still writing; and still
+      // scoped to the open statuses, because a save that has already won is the
+      // completed document and this is only a report about one.
+      const settled = await settleDocumentSession(input.prisma, {
+        claimToken: call.claimToken,
         data: {
           errorReason: reason,
           finishedAt: new Date(),
           status: reason === 'cancelled' ? 'cancelled' : 'failed',
         },
-        // Only a session that is still open: a saved one has already won.
-        where: { id: sessionId, status: { in: ['streaming', 'saving'] } },
+        from: ['saving', 'streaming'],
+        sessionId,
+        settle: `terminalize (${reason})`,
       })
-      if (updated.count === 0) return
+      if (settled !== 'applied') return
       const restricted = disclosure.isRestricted()
       if (restricted) await disclosure.beforeRestrictedReadable()
       await publish('stream.document.error', {
@@ -162,11 +199,18 @@ export const createDocumentStreamRecorder = (
     base: { content: string; parentPageId: string | null; spaceId: string; title: string } | null,
   ): Promise<void> => {
     const baseDocument = base?.content ?? null
+    // Read here rather than at construction, and stored on the call: from this
+    // point every write about this session names the execution that opened it.
+    // The insert itself is not fenced — there is no row yet to fence on — and it
+    // does not need to be: a session a superseded executor opens carries a claim
+    // the run no longer holds, which is the reaper's first arm.
+    call.claimToken = input.claimToken()
     try {
       if (disclosure.isRestricted()) await disclosure.beforeRestrictedReadable()
       const session = await input.prisma.runDocumentSession.create({
         data: {
           agentId: input.run.agentId,
+          claimToken: call.claimToken,
           invocationId: currentInvocation,
           organizationId: input.run.organizationId,
           pageId: call.mode === 'edit' ? call.pageId : null,
@@ -212,13 +256,7 @@ export const createDocumentStreamRecorder = (
           )
         },
       })
-      if (call.mode === 'edit' && base) {
-        call.metaPublished = true
-        await input.prisma.runDocumentSession.update({
-          data: { parentPageId: base.parentPageId, spaceId: base.spaceId, title: base.title },
-          where: { id: session.id },
-        })
-      }
+      if (call.mode === 'edit' && base) await target.edit(call, session.id, base)
       const restricted = disclosure.isRestricted()
       await publish('stream.document.start', {
         agentId: parseAgentId(input.run.agentId),
@@ -229,80 +267,10 @@ export const createDocumentStreamRecorder = (
         toolCallId: call.toolCallId,
         ...(restricted ? { restricted: true } : {}),
       })
-      if (call.mode === 'edit' && base) {
-        // Names are presentation-only; the session keeps the authorized target.
-        if (!disclosure.isRestricted()) {
-          const space = await input.prisma.knowledgeSpace.findFirst({
-            select: { name: true },
-            where: { id: base.spaceId, organizationId: input.run.organizationId },
-          })
-          // Re-check after the awaited name lookup.
-          if (!disclosure.isRestricted()) {
-            await publish('stream.document.meta', {
-              parentPageId: base.parentPageId ?? undefined,
-              runId: parseRunId(input.run.id),
-              sessionId: session.id,
-              spaceId: base.spaceId,
-              spaceName: space?.name,
-              title: base.title,
-            })
-          }
-        }
-      }
+      if (call.mode === 'edit' && base) await target.publishEdit(session.id, base)
     } catch (error) {
       console.warn('[worker] document stream session create failed', error)
     }
-  }
-
-  const publishMeta = async (call: TrackedCall): Promise<void> => {
-    if (!call.sessionId || call.metaPublished) return
-    const fields = call.scanner.fields()
-    const title = fields.title
-    const spaceId = fields.spaceId
-    if (!title && !spaceId) return
-    call.metaPublished = true
-
-    const restricted = disclosure.isRestricted()
-    let spaceName: string | undefined
-    let parentTitle: string | undefined
-    try {
-      if (restricted) await disclosure.beforeRestrictedReadable()
-      if (spaceId && !restricted) {
-        const space = await input.prisma.knowledgeSpace.findFirst({
-          select: { name: true },
-          where: { id: spaceId, organizationId: input.run.organizationId },
-        })
-        spaceName = space?.name
-      }
-      if (fields.parentPageId && !restricted) {
-        const parent = await input.prisma.knowledgePage.findFirst({
-          select: { title: true },
-          where: { id: fields.parentPageId, organizationId: input.run.organizationId },
-        })
-        parentTitle = parent?.title
-      }
-      await input.prisma.runDocumentSession.update({
-        data: {
-          parentPageId: fields.parentPageId ?? null,
-          spaceId: spaceId ?? null,
-          title: title ?? null,
-        },
-        where: { id: call.sessionId },
-      })
-    } catch (error) {
-      console.warn('[worker] document stream meta resolve failed', error)
-    }
-
-    if (disclosure.isRestricted()) return
-    await publish('stream.document.meta', {
-      parentPageId: fields.parentPageId,
-      parentTitle,
-      runId: parseRunId(input.run.id),
-      sessionId: call.sessionId,
-      spaceId,
-      spaceName,
-      title,
-    })
   }
 
   const pumpEdit = (call: TrackedCall): void => {
@@ -352,7 +320,7 @@ export const createDocumentStreamRecorder = (
       void created.then(() => {
         call.live?.enqueue(fragment)
         appendDurable(call, fragment)
-        void publishMeta(call)
+        void target.compose(call)
       })
     }
   }
@@ -385,6 +353,7 @@ export const createDocumentStreamRecorder = (
       let call = byIndex.get(event.index)
       if (!call) {
         call = {
+          claimToken: null,
           created: null,
           durable: null,
           editScanner: mode === 'edit' ? createPartialJsonEditScanner() : null,
@@ -452,6 +421,7 @@ export const createDocumentStreamRecorder = (
       if (!call.sessionId) return null
       if (call.mode === 'edit') {
         return {
+          claimToken: call.claimToken,
           markdown: call.tracker?.composed() ?? '',
           parentPageId: null,
           sessionId: call.sessionId,
@@ -461,6 +431,7 @@ export const createDocumentStreamRecorder = (
       }
       const fields = call.scanner.fields()
       return {
+        claimToken: call.claimToken,
         markdown: call.scanner.committed(),
         parentPageId: fields.parentPageId ?? null,
         sessionId: call.sessionId,

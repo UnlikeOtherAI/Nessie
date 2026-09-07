@@ -30,6 +30,15 @@ file is the rule**.
   deliberately independent implementations and the save asserts they agree —
   never collapse them into one, or the check becomes a restatement. An
   ambiguous anchor is skipped in the preview and refused in words at save.
+  **Every worker-side session write rides the session's own claim**
+  (`run_document_sessions.claim_token`, `execute/document-session-claim.ts`):
+  it must still name this execution AND the run must still carry the same
+  `executor_token`, checked in one statement, so a worker whose run was taken
+  over writes nothing and reports the refusal. The two saves are fenced on that
+  claim **alone and never on the status** — by the time a save runs the document
+  is filed, so a status written meanwhile is the stale fact — and a superseded
+  save keeps the page and attachment it created. The rule and the reasoning:
+  [horizontal-scaling/work-durability.md](horizontal-scaling/work-durability.md) → invariant 4.
   Spec: `docs/plans/2026-08-13-live-document-streaming/overview.md`.
 
 ## Detail

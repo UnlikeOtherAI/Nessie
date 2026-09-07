@@ -89,13 +89,18 @@ const makeHarness = (
         options.onSessionCreate?.()
         return { id: SESSION_ID }
       },
-      update: async (args: { data: Record<string, unknown> }) => {
-        sessionUpdates.push(args.data)
-        if (typeof args.data.status === 'string') status = args.data.status
-        return { id: SESSION_ID }
-      },
-      updateMany: async (args: { data: Record<string, unknown> }) => {
-        if (status !== 'streaming' && status !== 'saving') return { count: 0 }
+      // What a refused write reads back to tell a lost claim from a closed
+      // session (`document-session-claim.ts`). This harness never supersedes
+      // anyone, so the claim always reads as intact.
+      findUnique: async () => ({ claimToken: null, run: { executorToken: null }, status }),
+      updateMany: async (args: {
+        data: Record<string, unknown>
+        where?: { status?: { in?: readonly string[] } }
+      }) => {
+        // Only the writes that ask for a status refuse on one: a terminaliser
+        // names the open statuses, a meta write names none.
+        const from = args.where?.status?.in
+        if (from && !from.includes(status)) return { count: 0 }
         sessionUpdates.push(args.data)
         if (typeof args.data.status === 'string') status = args.data.status
         return { count: 1 }
@@ -124,6 +129,10 @@ const makeHarness = (
   } as unknown as Pick<PgRealtimeTransport, 'publishSse' | 'publishSseEphemeral'>
 
   const recorderInput = {
+    // This harness drives the recorder outside any run execution, so its
+    // sessions carry no claim — the unfenced shape `document-session-claim.ts`
+    // preserves deliberately.
+    claimToken: () => null,
     isRestricted,
     ...(options.baseDocument !== undefined
       ? {

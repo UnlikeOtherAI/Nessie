@@ -7,6 +7,7 @@ import {
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { fileServiceFor } from '../file-service.js'
+import { settleDocumentSession } from '../execute/document-session-claim.js'
 import { applyDocumentEdits } from '../execute/document-stream-edit.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
@@ -137,12 +138,23 @@ export const runKbDocumentEditTool = async (
     )
   }
 
+  // Claimed before anything is written, and fenced on the session's claim as
+  // well as its status, so an executor whose run was taken over stops here
+  // rather than after it has stored an attachment and added a version.
   if (session) {
-    const claimed = await context.prisma.runDocumentSession.updateMany({
+    const claimed = await settleDocumentSession(context.prisma, {
+      claimToken: session.claimToken,
       data: { status: 'saving' },
-      where: { id: session.sessionId, status: 'streaming' },
+      from: ['streaming'],
+      sessionId: session.sessionId,
+      settle: 'claim for saving',
     })
-    if (claimed.count === 0) {
+    if (claimed === 'superseded') {
+      throw new Error(
+        'Another executor has taken this run over, so this edit was not saved here.',
+      )
+    }
+    if (claimed !== 'applied') {
       throw new Error('This edit was stopped before it could be saved.')
     }
   }
@@ -180,8 +192,12 @@ export const runKbDocumentEditTool = async (
       })
     }
 
-    if (session) {
-      await context.prisma.runDocumentSession.update({
+    // Fenced on the claim alone, never on the status: the new version exists by
+    // the time this runs, so a status written by somebody else in the meantime
+    // is the stale fact. See `execute/document-session-claim.ts`.
+    const settled = session
+      ? await settleDocumentSession(context.prisma, {
+        claimToken: session.claimToken,
         data: {
           attachmentId: attachment.id,
           chars: applied.length,
@@ -191,9 +207,10 @@ export const runKbDocumentEditTool = async (
           status: 'saved',
           versionNumber,
         },
-        where: { id: session.sessionId },
+        sessionId: session.sessionId,
+        settle: 'save',
       })
-    }
+      : 'applied'
 
     const delta = applied.length - document.content.length
     return {
@@ -207,7 +224,11 @@ export const runKbDocumentEditTool = async (
           : published
               ? ' The new version is published in that agent-owned space.'
               : ' The page was already a draft, so the new version remains a draft; '
-                + 'call kb_publish_request when it is ready for review.'),
+                + 'call kb_publish_request when it is ready for review.')
+        + (settled === 'superseded'
+          ? ' Another executor took this run over while the version was being filed, so the '
+            + 'document window may still show it as interrupted; the version itself is saved.'
+          : ''),
       toolName: 'kb_document_edit',
     }
   } catch (error) {
