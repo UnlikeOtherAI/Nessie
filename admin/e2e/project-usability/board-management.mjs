@@ -150,7 +150,9 @@ export const exerciseBoardManagement = async ({
 
   await settingsTabs.getByRole('tab', { name: 'Watchers' }).click()
   await waitForSettings(page, projectId, board.id, 'watchers')
-  assert.equal(await page.getByLabel('New column name').count(), 0, 'Watchers does not retain Columns controls')
+  const newColumnName = page.getByLabel('New column name')
+  await newColumnName.waitFor({ state: 'hidden' })
+  assert.equal(await newColumnName.count(), 0, 'Watchers does not retain Columns controls')
   const recipients = page.getByLabel('Tell')
   await recipients.fill(watcherName)
   await page.getByRole('button', { name: watcherName, exact: true }).click()

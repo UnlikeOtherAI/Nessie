@@ -107,11 +107,10 @@ export const ProjectBoardsPage = () => {
                 ),
               },
               {
-                align: 'right',
                 header: 'Actions',
                 key: 'actions',
                 render: (board) => (
-                  <span className="inline-flex flex-col items-end gap-0.5">
+                  <span className="inline-flex flex-col items-start gap-0.5">
                     <Link
                       className="admin-link inline-flex min-h-11 items-center"
                       to={boardPath(projectId, board)}
