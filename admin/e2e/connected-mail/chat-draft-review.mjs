@@ -268,9 +268,12 @@ const narrowComposeDoorway = async ({ adminUrl, assert, browser, expectNoErrors,
       await page.getByTestId('mail-compose-dialog-restore').waitFor()
       assert(await dialog.getAttribute('data-fullscreen') === 'true', 'narrow compose did not enter full viewport mode')
     }
-    const bounds = await dialog.boundingBox()
-    assert((bounds?.width ?? 0) >= 680, `narrow composer did not occupy its usable viewport (${bounds?.width ?? 0}px)`)
     await shot(page, 'chat-doorway-compose-maximized-narrow')
+    const shell = page.getByRole('dialog', { name: 'Compose email' })
+    const bounds = await shell.boundingBox()
+    assert((bounds?.width ?? 0) >= 736, `narrow dialog did not occupy the viewport minus its 2rem gutter (${bounds?.width ?? 0}px)`)
+    await page.getByRole('button', { name: 'Send email' }).scrollIntoViewIfNeeded()
+    assert(await page.getByRole('button', { name: 'Send email' }).isVisible(), 'narrow composer did not keep Send reachable')
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()
