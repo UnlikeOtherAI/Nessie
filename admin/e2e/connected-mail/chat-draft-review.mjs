@@ -82,6 +82,11 @@ const chatDoorway = async ({ adminUrl, assert, browser, expectNoErrors, fixture,
     assert(await doorwayContent.getAttribute('data-fullscreen') === 'false', 'restore did not return the doorway to its normal state')
     assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'The doorway draft is ready to send.', 'restore discarded the body')
     await shot(page, 'chat-doorway-compose-form')
+    await page.getByTestId('mail-compose-dialog-maximize').click()
+    await page.getByTestId('mail-compose-dialog-restore').waitFor()
+    await shot(page, 'chat-doorway-compose-maximized')
+    await page.getByTestId('mail-compose-dialog-restore').click()
+    await page.getByTestId('mail-compose-dialog-maximize').waitFor()
     // This doorway fetched the existing draft's `draft` status before Send.
     // The held result must atomically replace it rather than letting that
     // stale read erase the newly persisted Undo identity.
@@ -101,6 +106,27 @@ const chatDoorway = async ({ adminUrl, assert, browser, expectNoErrors, fixture,
     await page.getByText('Your email is being delivered. It will not be sent again.').waitFor()
     assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a reloaded doorway dispatch offered Undo')
     await page.getByRole('button', { name: 'Close' }).click()
+
+    // A selected review list stays in chat as live rows. It contains only the
+    // structural ids the agent picked, and opens the canonical reader only
+    // after the person selects one.
+    fixture.showSelectedAccountDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const selectedReview = page.getByTestId('mail-surface-selected-threads')
+    await selectedReview.waitFor()
+    assert(await page.getByRole('dialog').count() === 0, 'selected review opened a dialog before a person chose an email')
+    const selectedList = selectedReview.getByRole('listbox', { name: 'Selected mail conversations' })
+    assert(await selectedList.getByRole('option').count() === 2, 'selected review rendered emails outside the requested ids')
+    await selectedList.getByText('Launch checklist', { exact: true }).waitFor()
+    await selectedList.getByText('Budget', { exact: true }).waitFor()
+    await shot(page, 'chat-doorway-selected-emails')
+    await selectedReview.locator('#mailbox-thread-thread-2').click()
+    await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-2$/)
+    await page.getByTestId('connected-mail-conversation').waitFor()
+    fixture.denyDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    assert(await page.getByTestId('mail-surface-selected-threads').count() === 0, 'revoked access left selected email details visible')
+    fixture.allowDoorway()
 
     // Account doorways carry the real, entitlement-scoped mailbox list into
     // chat. Selecting its row must enter the normal reader route, not an
@@ -173,10 +199,11 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     // Edit is a same-app route with an opaque card id. No mail content enters
     // the URL; the destination repeats the viewer-scoped card lookup before
     // it hydrates the production composer.
+    await card.getByRole('textbox', { name: 'To', exact: true }).fill('')
     await card.getByTestId('agent-card-action-edit').click()
     await page.waitForURL(new RegExp(`/mail/mailbox/mailbox-1/compose\\?agentCard=${fixture.ids.mailboxComposeCard}`))
     await page.getByRole('heading', { name: 'Compose email' }).waitFor()
-    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'casey@acme.example', 'Edit did not preserve To')
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === '', 'Edit did not preserve an intentionally blank required field')
     assert(await page.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'Edit did not preserve Cc')
     assert(await page.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'Edit did not preserve Bcc')
     assert(await page.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan', 'Edit did not preserve Subject')
@@ -188,7 +215,7 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     assert(await composeSurface.getAttribute('data-fullscreen') === 'true', 'SMTP edit did not enter full viewport mode')
     const fullscreenBounds = await composeSurface.boundingBox()
     assert((fullscreenBounds?.width ?? 0) >= 1_200, `SMTP edit did not occupy the desktop viewport (${fullscreenBounds?.width ?? 0}px)`)
-    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'casey@acme.example', 'SMTP maximize discarded To')
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === '', 'SMTP maximize discarded an intentionally blank To')
     assert(await page.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'SMTP maximize discarded Cc')
     assert(await page.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'SMTP maximize discarded Bcc')
     assert(await page.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan', 'SMTP maximize discarded Subject')
@@ -199,6 +226,7 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'SMTP restore discarded Message')
     await page.reload()
     await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === '', 'an Edit reload lost the intentionally blank recipient')
     assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'an Edit reload lost the viewer-scoped draft')
     await shot(page, 'agent-card-mail-draft-edit')
 
@@ -208,16 +236,51 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     await page.getByText('This email draft is no longer available to you.').waitFor()
     assert(await page.getByRole('textbox', { name: 'Message', exact: true }).count() === 0, 'a card draft hydrated under a different mailbox account')
 
-    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
-    await card.waitFor()
-    await card.getByTestId('agent-card-action-send').click()
-    await page.waitForTimeout(0)
-    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/respond') && call.postData?.includes('"actionKey":"send"')), 'Send did not record the card response')
-    assert(!fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/send')), 'card Send bypassed the mail approval and send flow')
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()
   }
 }
 
-export { agentCardMailDraft, chatDoorway, gmailPreviewRevocation }
+
+const narrowComposeDoorway = async ({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot }) => {
+  const target = await newPage(browser, fixture, { height: 1024, name: 'tablet', width: 768 })
+  const { page } = target
+  try {
+    fixture.showComposeDoorway()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    await page.getByTestId('gmail-chat-draft-preview').getByRole('button', { name: 'Edit' }).click()
+    const dialog = page.getByTestId('connected-mail-compose-dialog')
+    await dialog.waitFor()
+    await page.getByTestId('mail-compose-dialog-maximize').click()
+    await page.getByTestId('mail-compose-dialog-restore').waitFor()
+    assert(await dialog.getAttribute('data-fullscreen') === 'true', 'narrow compose did not enter full viewport mode')
+    const bounds = await dialog.boundingBox()
+    assert((bounds?.width ?? 0) >= 700, `narrow maximized composer did not occupy the viewport (${bounds?.width ?? 0}px)`)
+    await shot(page, 'chat-doorway-compose-maximized-narrow')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+const agentCardMailSend = async ({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    fixture.showMailboxComposeCard()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const card = page.getByTestId('agent-card')
+    await card.waitFor()
+    await card.getByTestId('agent-card-action-send').click()
+    await page.getByText('Send by Alex Example').waitFor()
+    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/respond') && call.postData?.includes('"actionKey":"send"')), 'Send did not record the fresh card response')
+    assert(!fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/send')), 'card Send bypassed the mail approval and send flow')
+    await shot(page, 'agent-card-mail-draft-send')
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+export { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewRevocation, narrowComposeDoorway }
