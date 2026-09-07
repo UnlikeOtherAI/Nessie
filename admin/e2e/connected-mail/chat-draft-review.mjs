@@ -192,16 +192,16 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
     const card = page.getByTestId('agent-card')
     await card.waitFor()
-    assert(await card.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'casey@acme.example', 'mail card did not show the selected recipient')
+    assert(await card.getByRole('textbox', { name: /^To/ }).inputValue() === 'casey@acme.example', 'mail card did not show the selected recipient')
     assert(await card.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'mail card did not show Cc')
     assert(await card.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'mail card did not show Bcc')
-    assert(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan', 'mail card did not show the selected subject')
-    assert(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'mail card did not show the selected body')
+    assert(await card.getByRole('textbox', { name: /^Subject/ }).inputValue() === 'Launch plan', 'mail card did not show the selected subject')
+    assert(await card.getByRole('textbox', { name: /^Message/ }).inputValue() === 'Please review the attached launch plan.', 'mail card did not show the selected body')
 
     // Edit is a same-app route with an opaque card id. No mail content enters
     // the URL; the destination repeats the viewer-scoped card lookup before
     // it hydrates the production composer.
-    await card.getByRole('textbox', { name: 'To', exact: true }).fill('')
+    await card.getByRole('textbox', { name: /^To/ }).fill('')
     await card.getByTestId('agent-card-action-edit').click()
     await page.waitForURL(new RegExp(`/mail/mailbox/mailbox-1/compose\\?agentCard=${fixture.ids.mailboxComposeCard}`))
     await page.getByRole('heading', { name: 'Compose email' }).waitFor()
@@ -215,7 +215,7 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     await page.getByTestId('mail-compose-dialog-maximize').click()
     await page.getByTestId('mail-compose-dialog-restore').waitFor()
     assert(await composeSurface.getAttribute('data-fullscreen') === 'true', 'SMTP edit did not enter full viewport mode')
-    const fullscreenBounds = await composeSurface.boundingBox()
+    const fullscreenBounds = await page.getByRole('dialog', { name: 'Compose email' }).boundingBox()
     assert((fullscreenBounds?.width ?? 0) >= 1_200, `SMTP edit did not occupy the desktop viewport (${fullscreenBounds?.width ?? 0}px)`)
     assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === '', 'SMTP maximize discarded an intentionally blank To')
     assert(await page.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'SMTP maximize discarded Cc')
