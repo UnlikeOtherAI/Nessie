@@ -61,7 +61,10 @@ export const createConnectedBoardSourceFixtures = () => {
   }
   const me = {
     auth: { autoRedirectToSso: false, providerId: 'local', providerType: 'local' },
-    context: { bootstrapMode: false, channelId: null, organizationId: ids.organization, projectId: ids.project, teamId: null },
+    context: {
+      bootstrapMode: false, channelId: null, organizationId: ids.organization,
+      projectId: ids.project, teamId: null,
+    },
     session: { issuedAt: now, sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
     user: { displayName: 'Alex Example', email: 'alex@example.test', id: ids.user, roleIds: ['owner'] },
   }
