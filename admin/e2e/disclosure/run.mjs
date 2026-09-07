@@ -289,12 +289,18 @@ const main = async () => {
       for (const path of [
         `/api/agents/${fixture.scope.agentId}/messages`,
         `/api/agents/${fixture.scope.agentId}/activity`,
-        `/api/agents/${fixture.scope.agentId}/runs/${firstRun.id}/tools`,
       ]) {
         const response = await fetch(`${API_URL}${path}`, { headers: { authorization: `Bearer ${token}` } })
-        assert.ok(response.status < 500, `${label} read route responds safely: ${path}`)
+        assert.equal(response.status, 200, `${label} can reach the visible shared agent: ${path}`)
         assertWithheld(await response.text(), `${label} ${path}`)
       }
+      const toolsResponse = await fetch(
+        `${API_URL}/api/agents/${fixture.scope.agentId}/runs/${firstRun.id}/tools`,
+        { headers: { authorization: `Bearer ${token}` } },
+      )
+      assert.equal(toolsResponse.status, 200, `${label} receives a filtered private run-tool response`)
+      const toolsPayload = JSON.parse(await toolsResponse.text())
+      assert.deepEqual(toolsPayload.data, [], `${label} cannot enumerate private run tools`)
     }
 
     await sourcePage.page.waitForSelector(
