@@ -225,17 +225,15 @@ export const useKeepBrowserAlive = (sessionId: string | null) => {
 /**
  * Resize the agent's browser.
  *
- * Stored on the browser, so it is the size the *agent's* next session opens
- * at too, not only this person's. The session detail carries the size the
- * running session is actually at, so invalidating it is what makes the
- * control agree with the window after a resize the provider would not apply.
+ * Stored on the browser and the current controlled session. The canvas applies
+ * that session value on its current guarded CDP target.
  */
 export const useSetAgentBrowserViewport = (threadId: string | null, agentId: string | null) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (viewport: { width: number; height: number }) =>
-      apiClient.post<{ appliedToLiveSession: boolean; viewport: { width: number; height: number } }>(
+      apiClient.post<{ viewport: { width: number; height: number } }>(
         `/api/threads/${threadId}/agents/${agentId}/browser/viewport`,
         viewport,
       ),

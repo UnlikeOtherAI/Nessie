@@ -226,11 +226,7 @@ export type AgentBrowserTabsResponse = z.infer<typeof AgentBrowserTabsResponseSc
 export type BrowserLoginList = z.infer<typeof BrowserLoginListSchema>
 
 
-/**
- * Resizing an agent's browser. The pair is remembered on the browser, so the
- * next session it opens — the agent's own, not only this person's — comes back
- * the same size.
- */
+/** The durable default and the current guarded canvas both use this size. */
 export const SetAgentBrowserViewportBodySchema = BrowserViewportSchema
 
 /** A one-time private session has no durable browser whose preference it can change. */
@@ -242,12 +238,6 @@ export const ActivatePersonalBrowserAccessGrantBodySchema = z.object({
 
 export const AgentBrowserViewportResponseSchema = z.object({
   viewport: BrowserViewportSchema,
-  /**
-   * Whether the session on screen was resized too. False is ordinary rather
-   * than a failure: nothing was open, or the provider would not resize a live
-   * window, and either way the size is stored and the next session honours it.
-   */
-  appliedToLiveSession: z.boolean(),
 })
 
 export const CloudBrowserSessionViewportResponseSchema = z.object({
@@ -255,7 +245,7 @@ export const CloudBrowserSessionViewportResponseSchema = z.object({
 })
 
 export const BrowserHomeResponseSchema = z.object({
-  /** Where it was sent, so the caller can say so without resolving it again. */
+  /** Server-resolved address; only the current guarded canvas may navigate to it. */
   url: z.string().url(),
 })
 

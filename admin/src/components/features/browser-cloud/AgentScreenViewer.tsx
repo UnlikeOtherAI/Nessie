@@ -15,6 +15,7 @@ import {
 } from '../../../facades/browser-cloud/hooks'
 import { browserCountdown } from './session-countdown'
 import { BrowserPreviewStatus } from './browser-preview-status'
+import { BrowserNavigationControls } from './BrowserNavigationControls'
 import { Pill } from '../../primitives/Pill'
 import { getBaseUrl } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -103,7 +104,6 @@ export const AgentScreenViewer = ({
   const revokePrivateAccess = useRevokePersonalBrowserAccessGrant()
   const setViewport = useSetAgentBrowserViewport(threadId, agent?.id ?? null)
   const setSessionViewport = useSetCloudBrowserSessionViewport(sessionId)
-  const remoteCanvas = useRef<HTMLDivElement | null>(null)
   const keyboard = useRef<HTMLTextAreaElement | null>(null)
   const touchGesture = useRef<{ last: { x: number; y: number }; moved: boolean } | null>(null)
   const suppressTouchClick = useRef(false)
@@ -243,8 +243,7 @@ export const AgentScreenViewer = ({
   }
   const onCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (!viewport || event.pointerType !== 'touch') return
-    // A drag may not synthesize a click at all. Its suppression belongs only
-    // to that gesture, so a later deliberate tap must never be consumed.
+    // A drag may not synthesize a click, so it cannot suppress a later tap.
     suppressTouchClick.current = false
     touchGesture.current = {
       last: remotePoint(event.currentTarget, event.clientX, event.clientY, viewport),
@@ -349,56 +348,32 @@ export const AgentScreenViewer = ({
         {live ? (
           <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {variant === 'fullscreen' ? (
-              <>
-                <button className="admin-button admin-button-secondary admin-button-compact" disabled={!canDrive} onClick={() => submit({ type: 'back' })} type="button">Back</button>
-                <button className="admin-button admin-button-secondary admin-button-compact" disabled={!canDrive} onClick={() => submit({ type: 'forward' })} type="button">Forward</button>
-                <button className="admin-button admin-button-secondary admin-button-compact" disabled={!canDrive} onClick={() => submit({ type: 'reload' })} type="button">Reload</button>
-                {canvasTabs.length > 1 ? (
-                  <label className="sr-only" htmlFor="browser-tab">Browser tab</label>
-                ) : null}
-                {canvasTabs.length > 1 ? (
-                  <select
-                    className="admin-input admin-input-sm max-w-40"
-                    disabled={!canDrive}
-                    id="browser-tab"
-                    onChange={(event) => submit({ type: 'switch_tab', targetId: event.target.value })}
-                    value={canvasTabs.find((tab) => tab.url === address)?.id ?? ''}
-                  >
-                    {canvasTabs.map((tab) => (
-                      <option key={tab.id} value={tab.id}>{tab.title || tab.url || 'New tab'}</option>
-                    ))}
-                  </select>
-                ) : null}
-                <form className="min-w-[12rem] flex-1" onSubmit={(event) => { event.preventDefault(); navigate() }}>
-                  <label className="sr-only" htmlFor="browser-address">Address</label>
-                  <input className="admin-input admin-input-sm w-full" disabled={!canDrive} id="browser-address" inputMode="url" onBlur={() => { editingAddress.current = false }} onChange={(event) => setAddress(event.target.value)} onFocus={() => { editingAddress.current = true }} placeholder="https://" type="url" value={address} />
-                </form>
-                <label className="sr-only" htmlFor="browser-viewport">Window size</label>
-                <select
-                  className="admin-input admin-input-sm w-auto"
-                  disabled={session.data?.privateAccess
-                    ? !canDrive || setSessionViewport.isPending
-                    : setViewport.isPending}
-                  id="browser-viewport"
-                  onChange={(event) => {
-                    const preset = BROWSER_VIEWPORT_PRESETS.find((option) => option.id === event.target.value)
-                    if (!preset) return
-                    if (session.data?.privateAccess) setSessionViewport.mutate(preset.viewport)
-                    else setViewport.mutate(preset.viewport)
-                  }}
-                  value={presetId ?? ''}
-                >
-                  {presetId === null && viewport ? <option value="">{viewport.width}×{viewport.height}</option> : null}
-                  {BROWSER_VIEWPORT_PRESETS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label} · {option.viewport.width}×{option.viewport.height}
-                    </option>
-                  ))}
-                </select>
-                <button className="admin-button admin-button-secondary admin-button-compact" disabled={!canDrive || sendHome.isPending} onClick={() => sendHome.mutate(sessionId)} type="button">
-                  {sendHome.isPending ? 'Going…' : 'Home'}
-                </button>
-              </>
+              <BrowserNavigationControls
+                address={address}
+                canDrive={canDrive}
+                homePending={sendHome.isPending}
+                onAddressBlur={() => { editingAddress.current = false }}
+                onAddressChange={setAddress}
+                onAddressFocus={() => { editingAddress.current = true }}
+                onBack={() => submit({ type: 'back' })}
+                onForward={() => submit({ type: 'forward' })}
+                onHome={() => sendHome.mutate(sessionId, {
+                  onSuccess: ({ url }) => submit({ type: 'navigate', url }),
+                })}
+                onNavigate={navigate}
+                onReload={() => submit({ type: 'reload' })}
+                onSwitchTab={(targetId) => submit({ type: 'switch_tab', targetId })}
+                onViewport={(nextViewport) => {
+                  if (session.data?.privateAccess) setSessionViewport.mutate(nextViewport)
+                  else setViewport.mutate(nextViewport)
+                }}
+                presetId={presetId}
+                tabs={canvasTabs}
+                viewport={viewport}
+                viewportDisabled={session.data?.privateAccess
+                  ? !canDrive || setSessionViewport.isPending
+                  : setViewport.isPending}
+              />
             ) : null}
             {session.data?.privateAccess ? (
               <button
@@ -454,7 +429,6 @@ export const AgentScreenViewer = ({
             onPointerMove={canDrive ? onCanvasPointerMove : undefined}
             onPointerUp={canDrive ? onCanvasPointerEnd : undefined}
             onWheel={canDrive ? onCanvasWheel : undefined}
-            ref={remoteCanvas}
             role={canDrive ? 'application' : 'img'}
             tabIndex={canDrive ? 0 : undefined}
           >

@@ -67,6 +67,16 @@ const installMediatedFixture = async (page, fixture, state) => {
     if (route.request().method() === 'POST') state.controller = true
     return route.fulfill({ status: 204 })
   })
+  await page.route(`**/api/browser-sessions/${SESSION_ID}/home`, (route) => {
+    state.homeRequests = (state.homeRequests ?? 0) + 1
+    if (state.homeFailure) {
+      return route.fulfill({
+        body: JSON.stringify({ error: { message: 'Home is unavailable' } }),
+        contentType: 'application/json', status: 502,
+      })
+    }
+    return json(route, { url: 'https://example.test/home' })
+  })
 }
 
 // The canvas uses a WebSocket for human gestures. This browser-native fake
@@ -218,7 +228,7 @@ const main = async () => {
         await page.waitForFunction(() =>
           [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
         { timeout: 10_000 })
-        const state = { controller: false }
+        const state = { controller: false, homeFailure: true }
         const fixture = {
           agentId: mobileAgent.id,
           agentName: mobileAgent.name,
@@ -238,9 +248,30 @@ const main = async () => {
         )
         assert.match(page.url(), new RegExp(`/tools/browser\\?threadId=${cardThreadId}$`))
         await page.getByLabel(`${fixture.agentName} browser`).waitFor()
+        await page.getByRole('button', { name: 'Full screen', exact: true }).click()
+        await page.getByRole('button', { name: 'Home' }).waitFor()
+        assert.equal(await page.getByRole('button', { name: 'Home' }).isDisabled(), true,
+          'an observer preview must not request or navigate Home')
+        await page.getByRole('button', { name: 'Exit full screen' }).click()
         await page.getByRole('button', { name: 'Take control' }).click()
+        await page.getByRole('button', { name: 'Full screen', exact: true }).click()
         const canvas = page.getByRole('application')
         await canvas.waitFor()
+        await page.getByRole('button', { name: 'Home' }).click()
+        await page.waitForFunction(() => {
+          const home = [...document.querySelectorAll('button')]
+            .find((button) => button.textContent?.trim() === 'Home')
+          return home instanceof HTMLButtonElement && !home.disabled
+        })
+        assert.equal(await page.evaluate(() =>
+          (window.__browserCanvasInputs ?? []).some(({ input }) => input?.type === 'navigate'),
+        ), false, 'a failed home lookup must not send navigation to the canvas')
+        state.homeFailure = false
+        await page.getByRole('button', { name: 'Home' }).click()
+        await page.waitForFunction(() =>
+          (window.__browserCanvasInputs ?? []).some(({ input }) =>
+            input?.type === 'navigate' && input.url === 'https://example.test/home'),
+        )
         await canvas.dispatchEvent('pointerdown', { clientX: 150, clientY: 280, pointerType: 'touch' })
         await canvas.dispatchEvent('pointermove', { clientX: 150, clientY: 180, pointerType: 'touch' })
         await canvas.dispatchEvent('pointerup', { clientX: 150, clientY: 180, pointerType: 'touch' })
@@ -256,6 +287,7 @@ const main = async () => {
             && inputs.some(({ input }) => input?.type === 'click')
             && inputs.some(({ input }) => input?.type === 'text' && input.text === 'Nessie browser QA')
         })
+        await page.getByRole('button', { name: 'Exit full screen' }).click()
         const panel = page.locator('aside[aria-label="Browser"]')
         const box = await panel.boundingBox()
         assert.ok(box && Math.abs(box.width - 390) < 1, `phone browser should fill 390px, got ${box?.width ?? 'none'}`)

@@ -60,6 +60,10 @@ a general Chrome-reading capability.
   controller may resize only that session; its canvas applies the change on
   the existing CDP target so screenshots and pointer coordinates agree. Frame
   metadata reports that emulation size, not a scrollbar-reduced page layout.
+- Browser Home resolves the configured HTTPS address on the server, but only
+  the current authenticated canvas sends the resulting navigation. The same
+  canvas lease and target checks therefore govern Home, address entry, and
+  every other human navigation; HTTP routes never attach CDP to steer a page.
 - Start leaves an incompatible reply or dashboard route for the existing
   Browser screen while retaining the card's exact thread as a structural query
   parameter. The owner then presses the visible Take control control. Nessie

@@ -139,7 +139,7 @@ test('the removed HTTP input endpoint is not an alternate control path', async (
 
 import { registerBrowserCloudCanvasRoutes } from '../src/routes/browser-cloud-canvas.js'
 
-test('a canvas gesture queued behind a lock is dropped when access changes', async () => {
+test('a Home navigation queued behind a lock is dropped when access changes', async () => {
   const app = Fastify()
   await app.register(websocket)
   let access = true
@@ -190,7 +190,9 @@ test('a canvas gesture queued behind a lock is dropped when access changes', asy
     await once(socket, 'open')
     const [frame] = await once(socket, 'message') as [{ data: string }]
     assert.deepEqual(JSON.parse(frame.data).viewport, { height: 844, width: 390 })
-    socket.send(JSON.stringify({ type: 'input', input: { type: 'reload' } }))
+    socket.send(JSON.stringify({
+      type: 'input', input: { type: 'navigate', url: 'https://example.test/home' },
+    }))
     await lockEntered.promise
     access = false
     unlock.release()

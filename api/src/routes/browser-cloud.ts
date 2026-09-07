@@ -65,7 +65,7 @@ export const registerBrowserCloudRoutes = (
 
   registerBrowserCloudViewerRoutes(app, deps)
 
-  const operations = createBrowserSessionOperations(prisma, authSecret ?? '')
+  const operations = createBrowserSessionOperations(prisma)
 
   registerBrowserCloudAgentSessionRoutes(app, {
     deps,

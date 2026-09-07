@@ -243,7 +243,7 @@ app.post('/api/threads/:threadId/agents/:agentId/browser/viewport', async (reque
   // browser pair is only its next-open default. Keep them together when this
   // person holds a fresh lease, otherwise a canvas frame would correctly
   // overwrite the picker with its stale session dimensions.
-  const live = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     await tx.agentBrowser.update({
       data: { viewportHeight: viewport.height, viewportWidth: viewport.width },
       where: { id: browser.id },
@@ -274,16 +274,7 @@ app.post('/api/threads/:threadId/agents/:agentId/browser/viewport', async (reque
     return changed.count === 1 ? liveSession : null
   })
 
-  // Reflow only the current private controller's page. A worker can never
-  // receive a surprise resize while it is acting; the saved default still
-  // applies at the next open.
-  const appliedToLiveSession = live
-    ? await operations.resize({ sessionId: live.id, viewport })
-    : false
-
-  return createApiResponse(
-    AgentBrowserViewportResponseSchema.parse({ appliedToLiveSession, viewport }),
-  )
+  return createApiResponse(AgentBrowserViewportResponseSchema.parse({ viewport }))
 })
 
 /**
@@ -338,7 +329,7 @@ app.post('/api/browser-sessions/:sessionId/continue', async (request, reply) => 
 })
 
 /**
- * Send a browser home.
+ * Resolve a browser home address.
  *
  * The address is resolved through the ordinary settings cascade — the
  * organisation's, then the team's, then the person's — so an install that
@@ -347,9 +338,10 @@ app.post('/api/browser-sessions/:sessionId/continue', async (request, reply) => 
  * a home button that reports a configuration error is a home button nobody
  * presses again.
  *
- * Only the driver may steer. Navigating a browser somebody else is typing
- * into is the same interruption as taking the keyboard off them, and the
- * claim is what that decision already lives in.
+ * The response is only a server-resolved setting. The live canvas is the
+ * sole navigation transport, so it refreshes control and page authority at
+ * its dispatch lock rather than this request driving an asynchronously
+ * attached CDP target.
  */
 app.post('/api/browser-sessions/:sessionId/home', async (request, reply) => {
   const actorContext = requireActorContext(request, reply)
@@ -384,19 +376,6 @@ app.post('/api/browser-sessions/:sessionId/home', async (request, reply) => {
     threadId: session.threadId,
     userId: actorContext.actor.actorId,
   })
-  const sent = await operations.navigate({ sessionId: session.id, url })
-  if (!sent) {
-    sendApiError(
-      reply,
-      502,
-      'CLOUD_BROWSER_UNREACHABLE',
-      'The browser did not answer. Try again in a moment.',
-    )
-    return reply
-  }
-  if (session.runId === null && !session.personalAccess) {
-    await touchResumedSession(prisma, { sessionId: session.id })
-  }
   return createApiResponse(BrowserHomeResponseSchema.parse({ url }))
 })
 }
