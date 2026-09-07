@@ -7,6 +7,7 @@ import {
 import {
   applyTaskChecklistTemplate,
   getTaskChecklist,
+  publishTaskUpdated,
   updateTaskChecklistStep,
 } from '@nessie/team-admin'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -49,6 +50,10 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
       sendApiError(reply, 404, checklist.error, 'Template not found')
       return reply
     }
+    const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId)
+    if (task) {
+      await publishTaskUpdated(deps.realtimeHub, [{ kind: 'organization', organizationId: actor.tenant.organizationId }], taskId, task.status)
+    }
     return reply.code(201).send(createApiResponse(TaskChecklistRecordSchema.parse(checklist)))
   })
   app.patch('/api/tasks/:taskId/checklist/steps/:stepKey', async (request, reply) => {
@@ -68,6 +73,10 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
     if (!updated) {
       sendApiError(reply, 404, 'CHECKLIST_STEP_NOT_FOUND', 'Checklist step not found')
       return reply
+    }
+    const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId)
+    if (task) {
+      await publishTaskUpdated(deps.realtimeHub, [{ kind: 'organization', organizationId: actor.tenant.organizationId }], taskId, task.status)
     }
     return createApiResponse(TaskChecklistRecordSchema.parse(updated))
   })
