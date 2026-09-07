@@ -7,11 +7,20 @@ stop them. It skips when `DATABASE_URL`, the API, or the admin is unavailable.
 
 Authentication uses the existing navigation seed: `/api/auth/dev-login` on a
 database with an owner, with bootstrap as the fallback for a fresh database.
-The seed reuses an entitled project, creates two uniquely named boards through
-the public board route, then creates the tickets through the visible New task
-dialog. The test verifies persisted board placement through the board read
-after the Column control is saved, which keeps the durable check tied to the
-same API the person uses.
+The seed reuses an entitled project, creates board A through the project's
+Configure → New board doorway, creates board B through the public board route,
+then creates the tickets through the visible New task dialog. A board owns its
+columns and the tickets put on it; switching boards must therefore show the
+destination board's own first-column ticket while leaving board A's tickets
+out. The test verifies persisted placement through the board read after the
+Column control is saved, which keeps the durable check tied to the same API the
+person uses.
+
+The board's Column choice is a draft until Save changes, and the card's
+labelled drag handle is the touch affordance while the card body remains a
+scrollable surface. Task labels and custom fields remain project-scoped across
+boards pending the product approval that changes that contract; this
+evaluation does not infer board-local field definitions.
 
 The evaluation covers:
 
