@@ -16,12 +16,17 @@ import {
   startApi,
   stopProcess,
 } from '../navigation/lib/servers.mjs'
+import {
+  SECRET,
+  SHARED_SUMMARY,
+  seedFixture,
+  submitMentionedRequest,
+  waitForRun,
+} from './fixture.mjs'
 
 const ADMIN_URL = 'http://localhost:5455'
 const API_URL = 'http://127.0.0.1:5454'
 const SCREENSHOTS = resolve(import.meta.dirname, '..', '..', '..', 'e2e', 'screenshots', 'disclosure')
-const SECRET = 'Kestrel closes on Friday.'
-const SHARED_SUMMARY = 'Project Kestrel will close this Friday.'
 
 const assertNoSecret = (value, boundary) => {
   assert.equal(
@@ -42,19 +47,11 @@ const savePublicFailureEvidence = async (page, error) => {
   if (!page) return
 
   const body = await page.locator('body').innerText().catch(() => '')
-  const sanitized = body
-    .replaceAll(SECRET, '[REDACTED PRIVATE SOURCE]')
-    .replaceAll(SHARED_SUMMARY, '[REDACTED RESTRICTED SUMMARY]')
-  await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), sanitized)
-  // CI artifacts must not turn a failing confidentiality assertion into a
-  // second leak. Preserve a recipient screenshot only when it contains none
-  // of the private source or restricted derived reply canaries.
-  if (!body.includes(SECRET) && !body.includes(SHARED_SUMMARY)) {
-    await page.screenshot({
-      path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
-      fullPage: true,
-    }).catch(() => {})
-  }
+  await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), body)
+  await page.screenshot({
+    path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
+    fullPage: true,
+  }).catch(() => {})
 }
 
 const responseData = async (response, label) => {
@@ -128,172 +125,49 @@ const stopEventProbe = (page) => page.evaluate(() => {
   window.__disclosureEventProbe?.controller.abort()
 })
 
-const seedFixture = async (pipeline, seedScope, groupId) => {
-  const scope = await seedScope(pipeline.prisma, 'disclosure-browser')
-  const prisma = pipeline.prisma
-  const agentOwner = { id: scope.userId, role: 'owner' }
-  const sourceAuthor = await prisma.user.create({
-    data: {
-      displayName: 'Berta Source Author',
-      email: `disclosure-source-${Date.now()}@example.test`,
-    },
-  })
-  const audience = await prisma.user.create({
-    data: {
-      displayName: 'Cyril Team Reader',
-      email: `disclosure-audience-${Date.now()}@example.test`,
-    },
-  })
-  const group = await prisma.channel.create({
-    data: {
-      id: groupId,
-      label: 'Team launch',
-      organizationId: scope.organizationId,
-      projectId: scope.projectId,
-      slug: `team-launch-${groupId.slice(0, 8)}`,
-      teamId: scope.teamId,
-      visibility: 'public',
-    },
-  })
-  const privateChannel = await prisma.channel.create({
-    data: {
-      dmKey: `disclosure-private:${scope.agentId}:${sourceAuthor.id}`,
-      label: 'Private source chat',
-      organizationId: scope.organizationId,
-      projectId: scope.projectId,
-      slug: `private-source-${groupId.slice(0, 8)}`,
-      teamId: scope.teamId,
-      type: 'dm',
-      visibility: 'private',
-    },
-  })
-  const explicitChannel = await prisma.channel.create({
-    data: {
-      label: 'Explicit private source chat', organizationId: scope.organizationId,
-      projectId: scope.projectId, slug: `explicit-source-${groupId.slice(0, 8)}`,
-      teamId: scope.teamId, visibility: 'private',
-    },
-  })
-  const [groupThread, privateThread, explicitThread] = await Promise.all([
-    prisma.thread.create({ data: { channelId: group.id, title: 'Team launch' } }),
-    prisma.thread.create({ data: { channelId: privateChannel.id, title: 'Private source chat' } }),
-    prisma.thread.create({ data: { channelId: explicitChannel.id, title: 'Explicit private source chat' } }),
-  ])
-
-  await prisma.$transaction([
-    prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'owner', userId: agentOwner.id },
-    }),
-    prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'member', userId: sourceAuthor.id },
-    }),
-    prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'member', userId: audience.id },
-    }),
-    prisma.projectMember.createMany({
-      data: [
-        { projectId: scope.projectId, role: 'member', userId: agentOwner.id },
-        { projectId: scope.projectId, role: 'member', userId: sourceAuthor.id },
-        { projectId: scope.projectId, role: 'member', userId: audience.id },
-      ],
-    }),
-    prisma.teamMember.createMany({
-      data: [
-        { teamId: scope.teamId, role: 'member', userId: agentOwner.id },
-        { teamId: scope.teamId, role: 'member', userId: sourceAuthor.id },
-        { teamId: scope.teamId, role: 'member', userId: audience.id },
-      ],
-    }),
-    prisma.channelMember.createMany({
-      data: [
-        { channelId: group.id, role: 'member', userId: agentOwner.id },
-        { channelId: group.id, role: 'member', userId: sourceAuthor.id },
-        { channelId: group.id, role: 'member', userId: audience.id },
-        { channelId: privateChannel.id, role: 'member', userId: sourceAuthor.id },
-        { channelId: explicitChannel.id, role: 'member', userId: sourceAuthor.id },
-      ],
-    }),
-    prisma.agent.update({
-      where: { id: scope.agentId },
-      data: {
-        agentKind: 'shared',
-        name: 'Disclosure shared agent',
-        ownerUserId: agentOwner.id,
-        systemManaged: false,
-        toolPolicy: { send_message: true },
-      },
-    }),
-    prisma.agentBinding.create({
-      data: { agentId: scope.agentId, channelId: privateChannel.id },
-    }),
-    prisma.agentBinding.create({
-      data: { agentId: scope.agentId, channelId: explicitChannel.id },
-    }),
-    prisma.toolRegistryEntry.upsert({
-      where: { organizationId_scopeKey_toolId: { organizationId: scope.organizationId, scopeKey: 'builtin', toolId: 'send_message' } },
-      create: {
-        builtin: true, description: 'Send a message to a channel.', enabled: true,
-        handlerKind: 'builtin', label: 'Send message', organizationId: scope.organizationId,
-        overview: 'Send a message to a channel.', safe: false, scopeKey: 'builtin', toolId: 'send_message',
-      },
-      update: { builtin: true, enabled: true },
-    }),
-  ])
-
-  await prisma.message.create({
-    data: {
-      content: `Čau, prosím drž to mezi námi: ${SECRET} Neházej to do týmu, díky.`,
-      role: 'user',
-      threadId: privateThread.id,
-      userId: sourceAuthor.id,
-    },
-  })
-  await prisma.message.create({
-    data: { content: `Hele, pořád je to citlivý: ${SECRET}`, role: 'user', threadId: explicitThread.id, userId: sourceAuthor.id },
-  })
-  await prisma.message.create({
-    data: {
-      content: '¿Alguien puede confirmar el plan del lanzamiento? thx!',
-      role: 'user',
-      threadId: groupThread.id,
-      userId: audience.id,
-    },
-  })
-
-  return {
-    agentOwner,
-    explicitChannel,
-    explicitThread,
-    group,
-    groupThread,
-    privateChannel,
-    privateThread,
-    audience: { id: audience.id, role: 'member' },
-    scope,
-    sourceAuthor: { id: sourceAuthor.id, role: 'member' },
-  }
-}
-
-const submitMentionedRequest = async (page, agentName, text) => {
-  const composer = page.locator('[role="textbox"][data-placeholder="Message"]')
-  await composer.fill(`@${agentName}`)
-  await page.locator('button').filter({ hasText: agentName }).first().click()
-  await composer.press('End')
-  await composer.pressSequentially(` ${text}`)
-  await composer.press('Enter')
-}
-
-const waitForRun = async (pipeline, agentId, threadId) => {
-  const deadline = Date.now() + 60_000
-  while (Date.now() < deadline) {
-    const run = await pipeline.prisma.run.findFirst({
-      where: { agentId, threadId, triggerMessageId: { not: null } }, orderBy: { createdAt: 'desc' },
+const installActivityProbe = (page, token, agentId) => page.evaluate(
+  ({ bearer, subscribedAgentId }) => new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error('activity socket did not confirm its agent subscription'))
+    }, 15_000)
+    const events = []
+    const socket = new WebSocket(
+      `ws://localhost:5454/api/activity?token=${encodeURIComponent(bearer)}`,
+    )
+    window.__disclosureActivityProbe = { events, socket }
+    socket.addEventListener('error', () => {
+      window.clearTimeout(timeout)
+      reject(new Error('activity socket failed to connect'))
     })
-    if (run) return run
-    await new Promise((done) => setTimeout(done, 100))
-  }
-  throw new Error(`No run was admitted for thread ${threadId}`)
-}
+    socket.addEventListener('open', () => {
+      socket.send(JSON.stringify({
+        scopes: [{ agentId: subscribedAgentId, kind: 'agent' }],
+        type: 'set_subscriptions',
+      }))
+    })
+    socket.addEventListener('message', (message) => {
+      const frame = JSON.parse(message.data)
+      events.push(frame)
+      if (frame.type === 'subscribed') {
+        const granted = frame.scopes.some(
+          (scope) => scope.kind === 'agent' && scope.agentId === subscribedAgentId,
+        )
+        window.clearTimeout(timeout)
+        if (!granted) {
+          reject(new Error('activity socket denied the shared-agent subscription'))
+          return
+        }
+        resolve()
+      }
+    })
+  }),
+  { bearer: token, subscribedAgentId: agentId },
+)
+
+const stopActivityProbe = (page) => page.evaluate(() => {
+  window.__disclosureActivityProbe?.socket.close()
+})
+
 
 const main = async () => {
   process.env.DATABASE_URL ??= 'postgresql://nessie:nessie@127.0.0.1:55432/nessie_disclosure'
@@ -377,6 +251,7 @@ const main = async () => {
     ])
     await audiencePage.page.waitForSelector('text=¿Alguien puede confirmar el plan', { timeout: 60_000 })
     await installEventProbe(audiencePage.page, audienceToken)
+    await installActivityProbe(audiencePage.page, audienceToken, fixture.scope.agentId)
     await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').fill(
       'Můžu prosím zveřejnit Bertin soukromý update?',
     )
@@ -397,6 +272,25 @@ const main = async () => {
       1,
       'the first private request invoked exactly its declined disclosure judge',
     )
+    await audiencePage.page.waitForFunction(({ agentId, runId }) => {
+      const events = window.__disclosureActivityProbe?.events ?? []
+      return events.some((frame) => frame.type === 'event'
+        && frame.event === 'agent.tool.start'
+        && frame.data?.agentId === agentId
+        && frame.data?.runId === runId)
+    }, { agentId: fixture.scope.agentId, runId: firstRun.id }, { timeout: 60_000 })
+    const activityFrame = await audiencePage.page.evaluate(({ agentId, runId }) =>
+      (window.__disclosureActivityProbe?.events ?? []).find((frame) => frame.type === 'event'
+        && frame.event === 'agent.tool.start'
+        && frame.data?.agentId === agentId
+        && frame.data?.runId === runId),
+    { agentId: fixture.scope.agentId, runId: firstRun.id })
+    assert.deepEqual(activityFrame?.data, {
+      agentId: fixture.scope.agentId,
+      restricted: true,
+      runId: firstRun.id,
+    }, 'restricted tool activity has no tool name or input summary')
+    assertWithheld(JSON.stringify(activityFrame), 'recipient activity websocket frame')
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' })
 
     const forwarded = await pipeline.prisma.message.findFirstOrThrow({
@@ -535,6 +429,7 @@ const main = async () => {
     await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-explicit-author-share.png'), fullPage: true })
 
     await stopEventProbe(audiencePage.page)
+    await stopActivityProbe(audiencePage.page)
     await ownerPage.close()
     await sourcePage.close()
     await audiencePage.close()
