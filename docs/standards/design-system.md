@@ -104,6 +104,7 @@ summary and points here; **this file is the rule**.
   guarded with `:not(:disabled)`: the rules are unlayered, so a bare `:hover`
   beats the `opacity-50` utility marking a disabled action and repaints the
   one cue that it cannot be pressed, exactly as the pointer arrives.
+  Every header action has a 44px target; compact icon actions are 44px squares.
   `admin/test/page-header-actions.test.ts` holds all of this, and
   `pnpm --filter @nessie/admin test:e2e:page-header` screenshots every theme's
   header into `e2e/screenshots/page-header/`.
