@@ -2,9 +2,8 @@ import type { PrismaClient } from '@prisma/client'
 import {
   resolveGrantedDisclosureScopeKeys,
   resolveDisclosureViewer,
-  viewerSatisfiesBasis,
 } from './disclosure-access.js'
-import type { DisclosureViewer } from './disclosure-predicate.js'
+import { viewerSatisfiesBasis, type DisclosureViewer } from './disclosure-predicate.js'
 
 /**
  * Grants lift a restriction. Two kinds, both evaluated at read time:
