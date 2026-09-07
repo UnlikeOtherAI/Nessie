@@ -427,6 +427,7 @@ runDatabaseTest('an org-owner agent creator cannot read a private human source c
   const privateChannel = await prisma.channel.create({
     data: {
       label: `private-${suffix}`,
+      slug: `private-${suffix.slice(0, 8)}`,
       organizationId: organization.id,
       projectId: project.id,
       teamId: team.id,
