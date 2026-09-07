@@ -124,10 +124,10 @@ back to trimming when no compaction hook is supplied. Its private packages
 support commit-pinned Git installation with prepare/prepack hooks; Nessie does
 not yet consume them.
 
-Nessie's worker already has a separate context-compaction path with a utility
-model call, tool-call/result grouping, citation-preservation instructions, and
-durable run checkpoints. A Deep.Agent integration must retain those contracts,
-including source restrictions and author lineage. Replacing this path with
-history trimming would discard capabilities. Verify a versioned shared
-compaction contract and its preservation tests before switching the consumer;
-no Deep.Agent integration is claimed by this sales-collaboration change.
+Nessie's worker consumes the pinned `@deep/agent` compaction helper only. Its
+caller still owns the utility model call and invocation sink, tool-call/result
+grouping, durable checkpoints, and the source and author basis attached to the
+run. The shared helper receives no Nessie identity or persistence state. Its
+preservation test keeps checkpoint input unchanged and retains an image-bearing
+recent turn; run-level tests continue to cover checkpoint recovery and tool
+pair integrity.

@@ -1043,6 +1043,9 @@ importers:
 
   worker:
     dependencies:
+      '@deep/agent':
+        specifier: github:UnlikeOtherAI/deep.agent#9a746c62674ebd429658f7d5873fab714634e098&path:packages/agent
+        version: git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/agent
       '@nessie/agent-mail':
         specifier: workspace:*
         version: link:../packages/agent-mail
@@ -1934,6 +1937,18 @@ packages:
   '@csstools/css-tokenizer@4.0.0':
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
+
+  '@deep/agent@git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/agent':
+    resolution: {commit: 9a746c62674ebd429658f7d5873fab714634e098, path: packages/agent, repo: git@github.com:UnlikeOtherAI/deep.agent.git, type: git}
+    version: 0.0.0
+
+  '@deep/identity@git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/identity':
+    resolution: {commit: 9a746c62674ebd429658f7d5873fab714634e098, path: packages/identity, repo: git@github.com:UnlikeOtherAI/deep.agent.git, type: git}
+    version: 0.0.0
+
+  '@deep/memory@git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/memory':
+    resolution: {commit: 9a746c62674ebd429658f7d5873fab714634e098, path: packages/memory, repo: git@github.com:UnlikeOtherAI/deep.agent.git, type: git}
+    version: 0.0.0
 
   '@dnd-kit/accessibility@3.1.1':
     resolution: {integrity: sha512-2P+YgaXF+gRsIihwwY1gCsQSYnu9Zyj2py8kY5fFvUM1qm2WA2u639R6YNVfU4GWr+ZM5mqEsfHZZLoRONbemw==}
@@ -9019,6 +9034,20 @@ snapshots:
       css-tree: 3.2.1
 
   '@csstools/css-tokenizer@4.0.0': {}
+
+  '@deep/agent@git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/agent':
+    dependencies:
+      '@deep/identity': git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/identity
+      '@deep/memory': git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/memory
+      zod: 3.25.76
+
+  '@deep/identity@git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/identity':
+    dependencies:
+      zod: 3.25.76
+
+  '@deep/memory@git+https://git@github.com:UnlikeOtherAI/deep.agent.git#9a746c62674ebd429658f7d5873fab714634e098&path:packages/memory':
+    dependencies:
+      zod: 3.25.76
 
   '@dnd-kit/accessibility@3.1.1(react@19.2.4)':
     dependencies:

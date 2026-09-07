@@ -109,6 +109,34 @@ test('a failed note call leaves the caller to fall back', async () => {
   assert.equal(result, null)
 })
 
+test('the shared helper leaves checkpoint input intact and retains image-bearing tail turns', async () => {
+  const messages: ProviderMessage[] = [
+    { content: 'You are an agent.', role: 'system' },
+    ...toolGroup('call-1', 8_000),
+    {
+      content: 'Use this photo in the final answer.',
+      images: [{ dataBase64: 'aW1hZ2U=', mime: 'image/png' }],
+      role: 'user',
+    },
+  ]
+  const checkpointInput = structuredClone(messages)
+  let utilityCalls = 0
+
+  const result = await runContextCompaction({
+    generateNote: async () => {
+      utilityCalls += 1
+      return '## State\n- Tool work is complete.\n\n## Sources\n- none'
+    },
+    messages,
+    targetTokens: 1_200,
+  })
+
+  assert.equal(utilityCalls, 1, 'the caller owns utility invocation metering')
+  assert.deepEqual(messages, checkpointInput, 'the caller retains checkpoint state')
+  assert.ok(result)
+  assert.deepEqual(result.at(-1), checkpointInput.at(-1), 'the recent user turn stays complete')
+})
+
 test('context windows are per model with a conservative default', () => {
   assert.equal(contextWindowForModel('gpt-5-mini'), 400_000)
   assert.equal(contextWindowForModel('gpt-4o-mini'), 128_000)
