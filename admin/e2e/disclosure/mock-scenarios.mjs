@@ -25,6 +25,9 @@ export const createReaderScenario = (parseScenario) => parseScenario({
   name: 'disclosure-unauthorized-reader',
   defaults: { latencyMs: 5, model: 'mock-model' },
   turns: [
+    // The revision is a second run in B's private thread, whose first run
+    // already contributed one assistant reply to the model transcript.
+    { text: '', usage: { inputTokens: 101, outputTokens: 0 } },
     {
       text: '',
       toolCalls: [{
@@ -67,7 +70,7 @@ export const createReplyRevisionScenario = (parseScenario, { content, messageId 
     },
     {
       text: 'Upravil jsem citlivý update; zůstává omezený, dokud ho znovu neschválíš.',
-      usage: { inputTokens: 133, outputTokens: 12 },
+      usage: { inputTokens: 176, outputTokens: 12 },
     },
   ],
   utility: { text: '{}' },
