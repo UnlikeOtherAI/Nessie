@@ -17,6 +17,7 @@ try {
   assert.deepEqual(errors, [], errors.join(' | '))
   const title = page.getByLabel('Title')
   await title.evaluate((input) => { input.dataset.fixtureIdentity = 'step-title'; return null })
+  await title.click()
   await title.pressSequentially('Verify the business and venue')
   assert.equal(await title.evaluate((input) => document.activeElement === input && input.dataset.fixtureIdentity === 'step-title'), true, 'step title keeps focus and its DOM node')
   assert.equal(await title.inputValue(), 'Verify the business and venue')
