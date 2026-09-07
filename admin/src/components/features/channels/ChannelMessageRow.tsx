@@ -44,7 +44,11 @@ interface ChannelMessageRowProps {
   editingContent: string
   updatePending: boolean
   onStartEdit: (messageId: string, content: string) => void
-  shareRestrictedMessage?: (messageId: string, input: { kind: 'message' | 'scope'; duration: DisclosureDuration }) => Promise<void>
+  shareRestrictedMessage?: (messageId: string, input: {
+    expectedContent: string
+    kind: 'message' | 'scope'
+    duration: DisclosureDuration
+  }) => Promise<void>
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void

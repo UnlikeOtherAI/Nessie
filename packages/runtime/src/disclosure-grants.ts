@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   resolveGrantedDisclosureScopeKeys,
   resolveDisclosureViewer,
@@ -36,7 +36,7 @@ export const resolveGrantedScopeKeys = resolveGrantedDisclosureScopeKeys
  * path: the route requires a user session.
  */
 export const canGrantDisclosure = async (
-  prisma: PrismaClient,
+  prisma: DisclosureGrantPrisma,
   input: { organizationId: string; userId: string; basis: readonly { scopeType: string; scopeId: string }[] },
 ): Promise<boolean> => {
   if (input.basis.length === 0) {
@@ -105,7 +105,10 @@ export class DisclosureGrantError extends Error {
   }
 }
 
+type DisclosureGrantPrisma = PrismaClient | Prisma.TransactionClient
+
 type GrantableMessage = {
+  content: string
   id: string
   agentId: string | null
   thread: { channelId: string }
@@ -120,7 +123,7 @@ type GrantableMessage = {
  * satisfies its full basis themselves.
  */
 const loadGrantableMessage = async (
-  prisma: PrismaClient,
+  prisma: DisclosureGrantPrisma,
   input: { organizationId: string; userId: string; messageId: string },
 ): Promise<GrantableMessage> => {
   // Organisation scope alone is not enough to be *in the room*. Satisfying a
@@ -142,6 +145,7 @@ const loadGrantableMessage = async (
       },
     },
     select: {
+      content: true,
       id: true,
       agentId: true,
       thread: { select: { channelId: true } },
@@ -216,6 +220,8 @@ const assertOriginalPrivateConversationAuthor = (
 }
 
 export type GrantMessageDisclosureInput = {
+  /** Exact body the human reviewed before granting this one-message disclosure. */
+  expectedContent: string
   organizationId: string
   userId: string
   messageId: string
@@ -237,77 +243,93 @@ export const grantMessageDisclosure = async (
   prisma: PrismaClient,
   input: GrantMessageDisclosureInput,
 ): Promise<{ id: string }> => {
-  const message = await loadGrantableMessage(prisma, input)
-  assertOriginalPrivateConversationAuthor(message, input.userId)
+  return prisma.$transaction(async (tx) => {
+    // The content-change trigger takes this exact lock before it revokes
+    // grants. Take it before reading, validating or upserting, so a grant can
+    // never land for a body the granter did not review.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(
+      hashtextextended(${`disclosure-message:${input.messageId}`}::text, 0)
+    )`
 
-  // Default to the shortest option: a share should expire unless the granter
-  // deliberately chose otherwise.
-  const duration = input.duration ?? '10m'
-  const audienceKind = input.audienceKind ?? 'channel'
-  const expiresAt = expiryForDuration(duration, new Date())
-  const audienceId = input.audienceId ?? message.thread.channelId
+    const message = await loadGrantableMessage(tx, input)
+    if (message.content !== input.expectedContent) {
+      throw new DisclosureGrantError(
+        'DISCLOSURE_CONTENT_CHANGED',
+        'This reply changed before it could be shared. Review the current reply and try again.',
+        409,
+      )
+    }
+    assertOriginalPrivateConversationAuthor(message, input.userId)
 
-  // The audience was accepted as any uuid. A share is only as bounded as the
-  // audience it names, so an unchecked one lets a granter widen a
-  // restriction to a room they are not in, or to a stranger. Both are
-  // resolved against the granter's own reach, never merely the organisation.
-  const audienceExists = audienceKind === 'user'
-    ? await prisma.organizationMember.findFirst({
+    // Default to the shortest option: a share should expire unless the granter
+    // deliberately chose otherwise.
+    const duration = input.duration ?? '10m'
+    const audienceKind = input.audienceKind ?? 'channel'
+    const expiresAt = expiryForDuration(duration, new Date())
+    const audienceId = input.audienceId ?? message.thread.channelId
+
+    // The audience was accepted as any uuid. A share is only as bounded as the
+    // audience it names, so an unchecked one lets a granter widen a
+    // restriction to a room they are not in, or to a stranger. Both are
+    // resolved against the granter's own reach, never merely the organisation.
+    const audienceExists = audienceKind === 'user'
+      ? await tx.organizationMember.findFirst({
+        where: {
+          deactivatedAt: null,
+          organizationId: input.organizationId,
+          userId: audienceId,
+        },
+        select: { id: true },
+      })
+      : await tx.channel.findFirst({
+        where: {
+          id: audienceId,
+          organizationId: input.organizationId,
+          OR: [
+            { visibility: 'public' },
+            { members: { some: { userId: input.userId } } },
+          ],
+        },
+        select: { id: true },
+      })
+    if (!audienceExists) {
+      throw new DisclosureGrantError(
+        'DISCLOSURE_AUDIENCE_NOT_FOUND',
+        audienceKind === 'user'
+          ? 'That person is not an active member of this organisation.'
+          : 'That channel does not exist, or you are not in it.',
+        422,
+      )
+    }
+
+    const grant = await tx.disclosureGrant.upsert({
       where: {
-        deactivatedAt: null,
-        organizationId: input.organizationId,
-        userId: audienceId,
+        messageId_audienceKind_audienceId: {
+          messageId: message.id,
+          audienceKind,
+          audienceId,
+        },
       },
-      select: { id: true },
-    })
-    : await prisma.channel.findFirst({
-      where: {
-        id: audienceId,
-        organizationId: input.organizationId,
-        OR: [
-          { visibility: 'public' },
-          { members: { some: { userId: input.userId } } },
-        ],
-      },
-      select: { id: true },
-    })
-  if (!audienceExists) {
-    throw new DisclosureGrantError(
-      'DISCLOSURE_AUDIENCE_NOT_FOUND',
-      audienceKind === 'user'
-        ? 'That person is not an active member of this organisation.'
-        : 'That channel does not exist, or you are not in it.',
-      422,
-    )
-  }
-
-  const grant = await prisma.disclosureGrant.upsert({
-    where: {
-      messageId_audienceKind_audienceId: {
-        messageId: message.id,
-        audienceKind,
+      create: {
         audienceId,
+        audienceKind,
+        // A one-off share expires like a standing rule does.
+        ...(expiresAt ? { expiresAt } : {}),
+        grantedByUserId: input.userId,
+        messageId: message.id,
+        organizationId: input.organizationId,
       },
-    },
-    create: {
-      audienceId,
-      audienceKind,
-      // A one-off share expires like a standing rule does.
-      ...(expiresAt ? { expiresAt } : {}),
-      grantedByUserId: input.userId,
-      messageId: message.id,
-      organizationId: input.organizationId,
-    },
-    update: {
-      ...(expiresAt ? { expiresAt } : { expiresAt: null }),
-      // Re-approval replaces a legacy reader-approved grant with the current
-      // original author's authority, which the read predicate verifies.
-      grantedByUserId: input.userId,
-      revokedAt: null,
-    },
-    select: { id: true },
+      update: {
+        ...(expiresAt ? { expiresAt } : { expiresAt: null }),
+        // Re-approval replaces a legacy reader-approved grant with the current
+        // original author's authority, which the read predicate verifies.
+        grantedByUserId: input.userId,
+        revokedAt: null,
+      },
+      select: { id: true },
+    })
+    return { id: grant.id }
   })
-  return { id: grant.id }
 }
 
 export type GrantScopeDisclosureInput = {
