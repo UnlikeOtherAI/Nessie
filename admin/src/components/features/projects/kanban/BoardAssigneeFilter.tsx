@@ -115,10 +115,12 @@ export const BoardAssigneeFilter = ({
   }
 
   const close = (restoreFocus = false) => {
-    setOpen(false)
     if (restoreFocus) {
-      window.requestAnimationFrame(() => triggerRef.current?.focus())
+      // The trigger remains mounted while this popover closes. Restore focus
+      // now: queueing it can steal focus from a fast re-opened search field.
+      triggerRef.current?.focus()
     }
+    setOpen(false)
   }
 
   const choose = (next: AssigneeFilter) => {
