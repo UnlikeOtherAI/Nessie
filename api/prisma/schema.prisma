@@ -2050,6 +2050,7 @@ model Channel {
   demonstrations         Demonstration[]
   agentMailbox           AgentMailbox?
   agentHandoffRequests   AgentHandoffRequest[]
+  disclosureSources      MessageDisclosureSource[]
 
   agentCards AgentCard[]
 

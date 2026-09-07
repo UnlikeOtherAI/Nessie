@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { effectiveUserIdOfActor } from '../pa-tools/access.js'
 import { resolveMessageDestination } from '../pa-tools/message-destination.js'
 import { judgeExplicitDisclosureShare } from './disclosure-share-judge.js'
 import type { RunContext } from './types.js'
@@ -28,11 +29,12 @@ export const maybeAuthorizeDisclosureShare = async (input: {
   const channelScopes = input.context.consumedSources.list()
     .filter((scope) => scope.scopeType === 'channel')
   if (channelScopes.some((scope) => !sourceChannels.has(scope.scopeId))) return false
-  const request = await input.prisma.message.findUnique({
-    where: { id: input.triggerMessageId ?? '' },
+  const request = await input.prisma.message.findFirst({
+    where: { id: input.triggerMessageId ?? '', threadId: input.context.run.threadId },
     select: { content: true, userId: true },
   })
   if (!request?.userId) return false
+  if (effectiveUserIdOfActor(input.actorContext) !== request.userId) return false
   const authors = new Set(sources.flatMap((source) =>
     source.sourceAuthorUserId ? [source.sourceAuthorUserId] : []))
   if (authors.size !== 1 || !authors.has(request.userId)) return false
