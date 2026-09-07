@@ -51,6 +51,11 @@ const newPage = async (browser, fixture, { height, name, width }) => {
   }))
   const page = await context.newPage()
   page.setDefaultTimeout(20_000)
+  // A fresh Vite graph in the isolated Linux browser environment can take
+  // longer than an element interaction, while still serving the real HMR app.
+  // Keep selector failures fast but give the initial navigation enough time to
+  // compile the workspace packages it imports.
+  page.setDefaultNavigationTimeout(60_000)
   const errors = []
   page.on('pageerror', (error) => errors.push(`page: ${String(error)}`))
   page.on('console', (message) => {
@@ -426,14 +431,36 @@ const chatDoorway = async ({ browser, fixture }) => {
     // same production composer used by Mail; it is not an email-shaped card.
     fixture.showComposeDoorway()
     await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
-    const composeOpener = page.getByRole('button', { name: 'Open mail' })
+    const composeOpener = page.getByRole('button', { name: 'Edit' })
     await composeOpener.waitFor()
     await composeOpener.click()
-    await page.getByRole('dialog', { name: 'Email draft ready' }).waitFor()
+    await page.getByRole('dialog', { name: 'Compose email' }).waitFor()
     assert(await page.getByRole('textbox', { name: 'From', exact: true }).isDisabled(), 'chat draft form exposed a mutable From field')
     await page.getByRole('textbox', { name: 'Subject', exact: true }).waitFor()
-    await shot(page, 'chat-doorway-compose-form')
+    // The doorway remains the one composer while its shell expands and
+    // restores. Values must survive both layout changes; recreating a composer
+    // here would silently discard a person’s edit.
+    const doorwayContent = page.getByTestId('connected-mail-compose-dialog')
+    assert(await doorwayContent.getAttribute('data-fullscreen') === 'false', 'draft doorway started maximized')
+    await page.getByRole('textbox', { name: 'Cc', exact: true }).fill('team@acme.example')
+    await page.getByRole('textbox', { name: 'Bcc', exact: true }).fill('audit@acme.example')
+    await page.getByRole('textbox', { name: 'Subject', exact: true }).fill('Launch plan review')
     await page.getByRole('textbox', { name: 'Message', exact: true }).fill('The doorway draft is ready to send.')
+    const restoredWidth = (await page.getByRole('dialog', { name: 'Compose email' }).boundingBox())?.width ?? 0
+    await page.getByTestId('mail-compose-dialog-maximize').click()
+    await page.getByTestId('mail-compose-dialog-restore').waitFor()
+    assert(await doorwayContent.getAttribute('data-fullscreen') === 'true', 'maximize did not mark the expanded doorway')
+    const maximizedWidth = (await page.getByRole('dialog', { name: 'Compose email' }).boundingBox())?.width ?? 0
+    assert(maximizedWidth > restoredWidth, `maximize did not expand the email doorway (${restoredWidth}px -> ${maximizedWidth}px)`)
+    assert(await page.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'maximize discarded Cc')
+    assert(await page.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'maximize discarded Bcc')
+    assert(await page.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan review', 'maximize discarded the subject')
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'The doorway draft is ready to send.', 'maximize discarded the body')
+    await page.getByTestId('mail-compose-dialog-restore').click()
+    await page.getByTestId('mail-compose-dialog-maximize').waitFor()
+    assert(await doorwayContent.getAttribute('data-fullscreen') === 'false', 'restore did not return the doorway to its normal state')
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'The doorway draft is ready to send.', 'restore discarded the body')
+    await shot(page, 'chat-doorway-compose-form')
     // This doorway fetched the existing draft's `draft` status before Send.
     // The held result must atomically replace it rather than letting that
     // stale read erase the newly persisted Undo identity.
@@ -471,6 +498,70 @@ const chatDoorway = async ({ browser, fixture }) => {
     await accountDialog.locator('#mailbox-thread-thread-1').click()
     await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-1$/)
     await page.getByTestId('connected-mail-conversation').waitFor()
+  } finally {
+    expectNoErrors(target.errors, fixture)
+    await target.close()
+  }
+}
+
+const agentCardMailDraft = async ({ browser, fixture }) => {
+  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
+  const { page } = target
+  try {
+    fixture.showMailboxComposeCard()
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const card = page.getByTestId('agent-card')
+    await card.waitFor()
+    assert(await card.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'casey@acme.example', 'mail card did not show the selected recipient')
+    assert(await card.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'mail card did not show Cc')
+    assert(await card.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'mail card did not show Bcc')
+    assert(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan', 'mail card did not show the selected subject')
+    assert(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'mail card did not show the selected body')
+
+    // Edit is a same-app route with an opaque card id. No mail content enters
+    // the URL; the destination repeats the viewer-scoped card lookup before
+    // it hydrates the production composer.
+    await card.getByTestId('agent-card-action-edit').click()
+    await page.waitForURL(new RegExp(`/mail/mailbox/mailbox-1/compose\\?agentCard=${fixture.ids.mailboxComposeCard}`))
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'casey@acme.example', 'Edit did not preserve To')
+    assert(await page.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'Edit did not preserve Cc')
+    assert(await page.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'Edit did not preserve Bcc')
+    assert(await page.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan', 'Edit did not preserve Subject')
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'Edit did not preserve Message')
+    const composeSurface = page.getByTestId('connected-mail-compose-dialog')
+    assert(await composeSurface.getAttribute('data-fullscreen') === 'false', 'SMTP edit unexpectedly started maximized')
+    await page.getByTestId('mail-compose-dialog-maximize').click()
+    await page.getByTestId('mail-compose-dialog-restore').waitFor()
+    assert(await composeSurface.getAttribute('data-fullscreen') === 'true', 'SMTP edit did not enter full viewport mode')
+    const fullscreenBounds = await composeSurface.boundingBox()
+    assert((fullscreenBounds?.width ?? 0) >= 1_200, `SMTP edit did not occupy the desktop viewport (${fullscreenBounds?.width ?? 0}px)`)
+    assert(await page.getByRole('textbox', { name: 'To', exact: true }).inputValue() === 'casey@acme.example', 'SMTP maximize discarded To')
+    assert(await page.getByRole('textbox', { name: 'Cc', exact: true }).inputValue() === 'team@acme.example', 'SMTP maximize discarded Cc')
+    assert(await page.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'SMTP maximize discarded Bcc')
+    assert(await page.getByRole('textbox', { name: 'Subject', exact: true }).inputValue() === 'Launch plan', 'SMTP maximize discarded Subject')
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'SMTP maximize discarded Message')
+    await page.getByTestId('mail-compose-dialog-restore').click()
+    await page.getByTestId('mail-compose-dialog-maximize').waitFor()
+    assert(await composeSurface.getAttribute('data-fullscreen') === 'false', 'SMTP restore did not leave full viewport mode')
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'SMTP restore discarded Message')
+    await page.reload()
+    await page.getByRole('heading', { name: 'Compose email' }).waitFor()
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).inputValue() === 'Please review the attached launch plan.', 'an Edit reload lost the viewer-scoped draft')
+    await shot(page, 'agent-card-mail-draft-edit')
+
+    // A card carries one selected mailbox. Even an otherwise-authorized
+    // viewer may not substitute another mailbox id into its edit URL.
+    await page.goto(`${adminUrl}/mail/mailbox/mailbox-2/compose?agentCard=${fixture.ids.mailboxComposeCard}`)
+    await page.getByText('This email draft is no longer available to you.').waitFor()
+    assert(await page.getByRole('textbox', { name: 'Message', exact: true }).count() === 0, 'a card draft hydrated under a different mailbox account')
+
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    await card.waitFor()
+    await card.getByTestId('agent-card-action-send').click()
+    await page.waitForTimeout(0)
+    assert(fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/respond') && call.postData?.includes('"actionKey":"send"')), 'Send did not record the card response')
+    assert(!fixture.calls.some((call) => call.method === 'POST' && call.pathname.endsWith('/send')), 'card Send bypassed the mail approval and send flow')
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()
@@ -516,6 +607,7 @@ const main = async () => {
     await approvalsMailSendPreview({ browser, fixture })
     await responsiveMail({ browser, fixture })
     await chatDoorway({ browser, fixture })
+    await agentCardMailDraft({ browser, fixture })
     await phoneDoorway({ browser, fixture })
   } finally {
     await browser.close()
