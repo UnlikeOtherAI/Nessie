@@ -182,6 +182,6 @@ test('one board-create dialog serves the sidebar and board directory', () => {
   )
   assert.match(
     source('pages/project/ProjectBoardsPage.tsx'),
-    /from '\.\.\/\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
+    /from '\.\.\/\.\.\/components\/features\/projects\/kanban\/BoardCreateDialog'/,
   )
 })

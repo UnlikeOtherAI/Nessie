@@ -43,7 +43,7 @@ const waitForWatcher = async (api, token, projectId, boardId, recipientId) => {
 
 const createBoardThroughUi = async ({ adminUrl, onCreated, page, projectId, sourceBoardId, name }) => {
   await gotoBoardList(page, adminUrl, projectId)
-  await page.getByRole('button', { name: 'New board', exact: true }).click()
+  await page.locator('[data-page-header-action="new-board"]:visible').click()
   const dialog = page.getByRole('dialog', { name: 'New board' })
   await dialog.getByRole('textbox', { name: 'Name' }).fill(name)
   await dialog.getByLabel('Starting columns').selectOption(sourceBoardId)
@@ -166,7 +166,7 @@ export const exerciseBoardManagement = async ({
 /** Checks the management surface remains usable without horizontal panning at phone width. */
 export const exerciseBoardManagementPhone = async ({ adminUrl, board, page, projectId, shot }) => {
   await gotoBoardList(page, adminUrl, projectId)
-  const newBoard = page.getByRole('button', { name: 'New board', exact: true })
+  const newBoard = page.locator('[data-page-header-action="new-board"]:visible')
   const row = boardListRow(page, board.name)
   const openBoard = row.getByRole('link', { name: 'Open board' })
   const settings = row.getByRole('link', { name: 'Settings' })
