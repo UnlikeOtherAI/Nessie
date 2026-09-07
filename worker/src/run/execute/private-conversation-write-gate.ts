@@ -20,8 +20,9 @@ const UNSCOPED_CONTENT_SINKS = new Set([
  * An MCP or executor call has arbitrary third-party side effects, and these
  * builtin writes do not carry a disclosure basis. A private transcript source
  * therefore closes them for a shared agent until that surface gains a scoped
- * author-consent flow. External MCP/executor writes remain unbounded for every
- * agent, so they always close.
+ * author-consent flow. This boundary is deliberately for shared agents: a
+ * person's PA continues using that person's private integrations in its own
+ * conversation, whose ordinary reply stays destination-contained.
  */
 export const blocksPrivateConversationWrite = (input: {
   context: RunContext
@@ -29,10 +30,8 @@ export const blocksPrivateConversationWrite = (input: {
   toolName: string
 }): boolean =>
   input.context.consumedSources.privateConversationSources().length > 0
+  && input.context.agent.agentKind === 'shared'
   && (
     input.isExternal
-    || (
-      input.context.agent.agentKind === 'shared'
-      && UNSCOPED_CONTENT_SINKS.has(input.toolName)
-    )
+    || UNSCOPED_CONTENT_SINKS.has(input.toolName)
   )
