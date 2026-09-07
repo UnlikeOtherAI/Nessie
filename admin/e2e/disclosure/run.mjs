@@ -23,6 +23,13 @@ import {
   submitMentionedRequest,
   waitForRun,
 } from './fixture.mjs'
+import {
+  installActivityProbe,
+  installEventProbe,
+  setActivitySubscriptions,
+  stopActivityProbe,
+  stopEventProbe,
+} from './realtime-probes.mjs'
 
 const ADMIN_URL = 'http://localhost:5455'
 const API_URL = 'http://127.0.0.1:5454'
@@ -83,91 +90,6 @@ const tokenFor = (issueSessionToken, user, scope) => issueSessionToken({
   team: scope.teamId,
   tv: 0,
 }, process.env.NESSIE_AUTH_SECRET, 3_600, user.sessionId).token
-
-const installEventProbe = (page, token) => page.evaluate(async (bearer) => {
-  const controller = new AbortController()
-  window.__disclosureEventProbe = { controller, events: [] }
-  const response = await fetch('/api/events/stream', {
-    headers: { authorization: `Bearer ${bearer}` },
-    signal: controller.signal,
-  })
-  if (!response.ok) throw new Error(`event stream failed with ${response.status}`)
-  if (!response.headers.get('content-type')?.includes('text/event-stream')) {
-    throw new Error('event stream did not return text/event-stream')
-  }
-  if (!response.body) throw new Error('event stream has no body')
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let pending = ''
-  void (async () => {
-    for (;;) {
-      const next = await reader.read()
-      if (next.done) return
-      pending += decoder.decode(next.value, { stream: true })
-      let boundary = pending.indexOf('\n\n')
-      while (boundary >= 0) {
-        const frame = pending.slice(0, boundary)
-        pending = pending.slice(boundary + 2)
-        const event = /^event: (.+)$/mu.exec(frame)?.[1]
-        const data = /^data: (.+)$/mu.exec(frame)?.[1]
-        if (event && data) {
-          window.__disclosureEventProbe.events.push({ event, data: JSON.parse(data) })
-        }
-        boundary = pending.indexOf('\n\n')
-      }
-    }
-  })().catch((error) => {
-    if (error.name !== 'AbortError') window.__disclosureEventProbe.error = String(error)
-  })
-}, token)
-
-const stopEventProbe = (page) => page.evaluate(() => {
-  window.__disclosureEventProbe?.controller.abort()
-})
-
-const installActivityProbe = (page, token, agentId) => page.evaluate(
-  ({ bearer, subscribedAgentId }) => new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      reject(new Error('activity socket did not confirm its agent subscription'))
-    }, 15_000)
-    const events = []
-    const socket = new WebSocket(
-      `ws://localhost:5454/api/activity?token=${encodeURIComponent(bearer)}`,
-    )
-    window.__disclosureActivityProbe = { events, socket }
-    socket.addEventListener('error', () => {
-      window.clearTimeout(timeout)
-      reject(new Error('activity socket failed to connect'))
-    })
-    socket.addEventListener('open', () => {
-      socket.send(JSON.stringify({
-        scopes: [{ agentId: subscribedAgentId, kind: 'agent' }],
-        type: 'set_subscriptions',
-      }))
-    })
-    socket.addEventListener('message', (message) => {
-      const frame = JSON.parse(message.data)
-      events.push(frame)
-      if (frame.type === 'subscribed') {
-        const granted = frame.scopes.some(
-          (scope) => scope.kind === 'agent' && scope.agentId === subscribedAgentId,
-        )
-        window.clearTimeout(timeout)
-        if (!granted) {
-          reject(new Error('activity socket denied the shared-agent subscription'))
-          return
-        }
-        resolve()
-      }
-    })
-  }),
-  { bearer: token, subscribedAgentId: agentId },
-)
-
-const stopActivityProbe = (page) => page.evaluate(() => {
-  window.__disclosureActivityProbe?.socket.close()
-})
-
 
 const main = async () => {
   process.env.DATABASE_URL ??= 'postgresql://nessie:nessie@127.0.0.1:55432/nessie_disclosure'
@@ -251,6 +173,10 @@ const main = async () => {
     ])
     await audiencePage.page.waitForSelector('text=¿Alguien puede confirmar el plan', { timeout: 60_000 })
     await installEventProbe(audiencePage.page, audienceToken)
+    await installActivityProbe(audiencePage.page, audienceToken, [{
+      channelId: fixture.group.id,
+      kind: 'channel',
+    }])
     await ownerPage.page.locator('[role="textbox"][data-placeholder="Message"]').fill(
       'Můžu prosím zveřejnit Bertin soukromý update?',
     )
@@ -260,13 +186,26 @@ const main = async () => {
       return events.some((frame) => frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
     }, { timeout: 60_000 })
+    await audiencePage.page.waitForFunction(() => {
+      const events = window.__disclosureActivityProbe?.events ?? []
+      return events.some((frame) => frame.type === 'event'
+        && frame.event === 'message.new'
+        && frame.data?.contentPreview?.includes('Bertin soukromý update'))
+    }, { timeout: 60_000 })
     // The known-public SSE canary must not consume a mock utility decision before B's disclosure judge.
     await pipeline.prisma.agentBinding.create({
       data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
     })
-    await installActivityProbe(audiencePage.page, audienceToken, fixture.scope.agentId)
+    await setActivitySubscriptions(audiencePage.page, [
+      { channelId: fixture.group.id, kind: 'channel' },
+      { agentId: fixture.scope.agentId, kind: 'agent' },
+    ])
 
-    await submitMentionedRequest(sourcePage.page, 'Disclosure shared agent', 'Můžeš poslat stručný update do Team launch?')
+    await submitMentionedRequest(
+      sourcePage.page,
+      'Disclosure shared agent',
+      `Čau, drž to prosím mezi námi: ${SECRET} Připrav stručný update pro Team launch, ale nic nezveřejňuj bez mého souhlasu.`,
+    )
     const firstRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id)
     runIds.push(firstRun.id)
     const terminal = await pipeline.waitForTerminalRuns([firstRun.id], 60_000)
@@ -276,25 +215,13 @@ const main = async () => {
       1,
       'the first private request invoked exactly its declined disclosure judge',
     )
-    await audiencePage.page.waitForFunction(({ agentId, runId }) => {
-      const events = window.__disclosureActivityProbe?.events ?? []
-      return events.some((frame) => frame.type === 'event'
-        && frame.event === 'agent.tool.start'
-        && frame.data?.agentId === agentId
-        && frame.data?.runId === runId)
-    }, { agentId: fixture.scope.agentId, runId: firstRun.id }, { timeout: 60_000 })
-    const activityFrame = await audiencePage.page.evaluate(({ agentId, runId }) =>
-      (window.__disclosureActivityProbe?.events ?? []).find((frame) => frame.type === 'event'
-        && frame.event === 'agent.tool.start'
-        && frame.data?.agentId === agentId
-        && frame.data?.runId === runId),
-    { agentId: fixture.scope.agentId, runId: firstRun.id })
-    assert.deepEqual(activityFrame?.data, {
-      agentId: fixture.scope.agentId,
-      restricted: true,
-      runId: firstRun.id,
-    }, 'restricted tool activity has no tool name or input summary')
-    assertWithheld(JSON.stringify(activityFrame), 'recipient activity websocket frame')
+    const activityFrames = await audiencePage.page.evaluate(() => window.__disclosureActivityProbe?.events ?? [])
+    assert.equal(
+      activityFrames.some((frame) => frame.type === 'event' && frame.data?.runId === firstRun.id),
+      false,
+      'a group reader receives no private-agent run event on public channel and agent scopes',
+    )
+    assertWithheld(JSON.stringify(activityFrames), 'recipient activity websocket frames')
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' })
 
     const forwarded = await pipeline.prisma.message.findFirstOrThrow({
@@ -374,6 +301,7 @@ const main = async () => {
       `[data-testid="restricted-message-${forwarded.id}"]`,
       { timeout: 60_000 },
     )
+    await sourcePage.page.screenshot({ path: resolve(SCREENSHOTS, 'source-author-share-control.png'), fullPage: true })
     await sourcePage.page
       .locator(`#msg-${forwarded.id}`)
       .getByRole('button', { name: 'Share this reply' })
@@ -402,7 +330,11 @@ const main = async () => {
     assert.equal(sourceSearch.data.length, 0, 'one-reply grant does not widen to source transcript')
 
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.explicitChannel.id}`, { waitUntil: 'domcontentloaded' })
-    await submitMentionedRequest(sourcePage.page, 'Disclosure shared agent', `Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`)
+    await submitMentionedRequest(
+      sourcePage.page,
+      'Disclosure shared agent',
+      `Pořád citlivé: ${SECRET}. Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`,
+    )
     const explicitRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.explicitThread.id)
     runIds.push(explicitRun.id)
     const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.id], 60_000)

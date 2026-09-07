@@ -146,17 +146,6 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
 
   await prisma.message.create({
     data: {
-      content: `Čau, prosím drž to mezi námi: ${SECRET} Neházej to do týmu, díky.`,
-      role: 'user',
-      threadId: privateThread.id,
-      userId: sourceAuthor.id,
-    },
-  })
-  await prisma.message.create({
-    data: { content: `Hele, pořád je to citlivý: ${SECRET}`, role: 'user', threadId: explicitThread.id, userId: sourceAuthor.id },
-  })
-  await prisma.message.create({
-    data: {
       content: '¿Alguien puede confirmar el plan del lanzamiento? thx!',
       role: 'user',
       threadId: groupThread.id,
