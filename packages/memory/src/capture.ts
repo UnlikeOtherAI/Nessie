@@ -205,7 +205,7 @@ const preserveLegacyPrivateAudienceSource = async (
        FROM thoughts t
        LEFT JOIN channels c ON c.id = t.audience_id
        WHERE t.id = $1::uuid
-       FOR UPDATE`,
+       FOR UPDATE OF t`,
       [thoughtId],
     )
     const thought = thoughtResult.rows[0] as {

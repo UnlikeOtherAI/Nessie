@@ -6,6 +6,7 @@ import { AGENT_DESIGNER_SLUG, globalAgentHomeDmKey } from '@nessie/team-admin'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import {
   admitRememberedThoughtLineage,
+  retainThoughtsWithLineage,
   requiresMemoryDestinationContainment,
 } from './memory.js'
 
@@ -111,4 +112,25 @@ test('remembered private thoughts retain B and preserve a legacy unknown source'
     { sourceAuthorUserId: USER, sourceChannelId: 'private-channel' },
     { sourceAuthorUserId: null, sourceChannelId: 'private-channel' },
   ])
+})
+
+test('a recalled thought without complete durable lineage is excluded from model context', () => {
+  const recalled = [
+    { id: 'retained' },
+    { id: 'deleted-after-search' },
+    { id: 'legacy-without-audience' },
+  ]
+  const retained = retainThoughtsWithLineage(recalled, [{
+    audienceId: 'private-channel',
+    audienceType: 'channel',
+    sources: [],
+    thoughtId: 'retained',
+  }, {
+    audienceId: null,
+    audienceType: null,
+    sources: [],
+    thoughtId: 'legacy-without-audience',
+  }])
+
+  assert.deepEqual(retained, [{ id: 'retained' }])
 })
