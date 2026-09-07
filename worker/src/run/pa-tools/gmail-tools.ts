@@ -125,12 +125,7 @@ const credentialFor = async (
       encryptionSecret: encryptionSecret(),
     })
   } catch (error) {
-    // The coordinator's codes match GmailDraftError's, so one explainer serves
-    // both and a missing scope raises the same in-chat grant card either way.
-    return explainGoogleFailure(context, capabilityId, userId, {
-      code: (error as { code?: string }).code,
-      ...(error as object),
-    } as never)
+    return explainGoogleFailure(context, capabilityId, userId, error)
   }
 }
 

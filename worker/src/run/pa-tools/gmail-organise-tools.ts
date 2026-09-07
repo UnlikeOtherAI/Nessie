@@ -59,11 +59,24 @@ const credentialFor = async (
       encryptionSecret: encryptionSecret(),
     })
   } catch (error) {
-    return explainGoogleFailure(context, capabilityId, userId, {
-      code: (error as { code?: string }).code,
-      ...(error as object),
-    } as never)
+    return explainGoogleFailure(context, capabilityId, userId, error)
   }
+}
+
+/**
+ * The production path always uses the credential coordinator and IP-pinned
+ * transport above. Keeping these dependencies injectable lets the unit test
+ * assert the exact Gmail mutation without weakening either boundary.
+ */
+type GmailOrganiseDependencies = {
+  credentialFor?: typeof credentialFor
+  modifyGmailThread?: typeof modifyGmailThread
+  trashGmailThread?: typeof trashGmailThread
+}
+
+type GmailLabelsListDependencies = {
+  credentialFor?: typeof credentialFor
+  listGmailLabels?: typeof listGmailLabels
 }
 
 const OrganiseSchema = z.object({
@@ -92,11 +105,16 @@ const RespondSchema = z.object({
 export const runGmailLabelsListTool = async (
   context: BuiltinToolRuntimeContext,
   _input: Record<string, unknown>,
+  dependencies: GmailLabelsListDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const userId = resolveGoogleActingUserId(context)
-  const credential = await credentialFor(context, 'gmail.read', userId)
+  const credential = await (dependencies.credentialFor ?? credentialFor)(
+    context,
+    'gmail.read',
+    userId,
+  )
   recordGoogleRead(context, credential.ownerUserId)
-  const labels = await listGmailLabels(
+  const labels = await (dependencies.listGmailLabels ?? listGmailLabels)(
     googleFetch,
     credential.credential.accessToken,
   )
@@ -120,10 +138,15 @@ export const runGmailLabelsListTool = async (
 export const runGmailOrganiseTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
+  dependencies: GmailOrganiseDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const args = OrganiseSchema.parse(input)
   const userId = resolveGoogleActingUserId(context)
-  const credential = await credentialFor(context, 'gmail.modify', userId)
+  const credential = await (dependencies.credentialFor ?? credentialFor)(
+    context,
+    'gmail.modify',
+    userId,
+  )
   recordGoogleRead(context, credential.ownerUserId)
 
   const addLabelIds = [...(args.addLabelIds ?? [])]
@@ -134,14 +157,18 @@ export const runGmailOrganiseTool = async (
   if (args.markRead === false) addLabelIds.push('UNREAD')
 
   if (addLabelIds.length > 0 || removeLabelIds.length > 0) {
-    await modifyGmailThread(googleFetch, credential.credential.accessToken, {
-      threadId: args.threadId,
-      addLabelIds,
-      removeLabelIds,
-    })
+    await (dependencies.modifyGmailThread ?? modifyGmailThread)(
+      googleFetch,
+      credential.credential.accessToken,
+      {
+        threadId: args.threadId,
+        addLabelIds,
+        removeLabelIds,
+      },
+    )
   }
   if (args.trash) {
-    await trashGmailThread(
+    await (dependencies.trashGmailThread ?? trashGmailThread)(
       googleFetch,
       credential.credential.accessToken,
       args.threadId,
