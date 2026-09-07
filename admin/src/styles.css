@@ -2252,6 +2252,13 @@ html[data-desktop-platform='linux'] #root {
   font-size: 13px;
 }
 
+/* A board settings strip sits above a scrollable work editor. It opts into
+   this shared larger target rather than creating a second tab treatment. */
+.tabbar-touch .tabbar-item,
+.tabbar-trigger-touch {
+  min-height: 44px;
+}
+
 .tabbar-count {
   color: var(--tx3);
   font-variant-numeric: tabular-nums;
@@ -3211,6 +3218,18 @@ button.reaction-pill-active:focus-visible {
 
 .admin-expandable-table__viewport > table > :is(thead, tbody, tfoot) > tr > :is(th, td) {
   min-width: 10rem;
+}
+
+/* A responsive directory makes an explicit trade: its action links must stay
+   visible at phone width, so long labels wrap within a fixed table instead of
+   forcing the shared table viewport sideways. Other tables retain the normal
+   readable-column floor above. */
+.admin-expandable-table__viewport > table[data-layout='fixed'] {
+  width: 100%;
+}
+
+.admin-expandable-table__viewport > table[data-layout='fixed'] > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+  min-width: 0;
 }
 
 .admin-table-expand-button {

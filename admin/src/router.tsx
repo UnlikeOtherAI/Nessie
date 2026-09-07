@@ -110,6 +110,12 @@ const ProjectsIndexPage = lazy(() =>
 const ProjectView = lazy(() =>
   import('./pages/project/ProjectView').then((m) => ({ default: m.ProjectView })),
 )
+const ProjectBoardsPage = lazy(() =>
+  import('./pages/project/ProjectBoardsPage').then((m) => ({ default: m.ProjectBoardsPage })),
+)
+const BoardSettingsPage = lazy(() =>
+  import('./pages/project/BoardSettingsPage').then((m) => ({ default: m.BoardSettingsPage })),
+)
 const AgentAccessPage = lazy(() =>
   import('./pages/settings/AgentAccessPage').then((m) => ({ default: m.AgentAccessPage })),
 )
@@ -301,6 +307,14 @@ export const router = createBrowserRouter([
       {
         path: '/projects/:projectId/board',
         element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/boards',
+        element: lazyElement(ProjectBoardsPage, 'list'),
+      },
+      {
+        path: '/projects/:projectId/boards/:boardId/settings',
+        element: lazyElement(BoardSettingsPage, 'detail'),
       },
       {
         path: '/projects/:projectId/backlog',

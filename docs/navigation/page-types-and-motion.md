@@ -137,6 +137,16 @@ of them is selected. Every open/closed state of that tree is remembered:
 the two section headers, which projects have their sections open, and which
 projects have their boards open.
 
+**Board administration is a nested project flow.** `/projects/:id/boards` is
+the board directory, reached from the working board's Configure menu and from
+the sidebar's creation doorway; its Back parent is `/projects/:id/board`.
+`/projects/:id/boards/:boardId/settings` is one board's settings, with
+`?tab=general|columns|watchers` selected through `useTabParam`; its Back parent
+is the board directory. The settings strip's former
+`?section=boards[&board=…|&create=board]` forms remain redirects so bookmarks
+and existing doors reach the same flow without making the old all-in-one
+surface another home.
+
 **Transient radio strips are not tab hosts.** A compact form choice may render
 the shared `TabBar` in `radiogroup` mode so it gets the same sliding selection
 pill and keyboard behaviour without becoming a URL-backed page section.

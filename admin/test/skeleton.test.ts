@@ -105,6 +105,10 @@ const KEEP_PREVIOUS_EXEMPT = [
   // so it must never paint while the next identity is resolving.
   'src/facades/gmail/hooks.ts',
   'src/facades/mail/hooks.ts',
+  // Watchers are recipients of external-board events. Replaying a prior
+  // board's recipients while another board is loading would disclose who is
+  // notified, so the board boundary intentionally renders empty first.
+  'src/facades/boards/hooks.ts',
 ]
 
 test('every per-id facade query keeps its previous data', () => {

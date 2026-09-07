@@ -66,12 +66,11 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
 
 /**
  * The project tab host consumes the knowledge intents its Docs section reads,
- * plus the two doorways into its Settings section: `create` opens the new-board
- * dialog, `connect` opens the source picker. Both say what to open on arrival
- * rather than what the page durably is, which is what makes them intents.
+ * plus the source-picker doorway in its Settings section. `create` belongs to
+ * the boards directory, whose dialog is its own owning surface.
  */
 const PROJECT_INTENT: SurfaceIntent = {
-  consume: [...KNOWLEDGE_INTENT.consume ?? [], 'create', 'connect'],
+  consume: [...KNOWLEDGE_INTENT.consume ?? [], 'connect'],
   state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source'],
 }
 
@@ -238,6 +237,34 @@ export const SURFACES: Surface[] = [
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'root',
+  },
+  {
+    depth: 3,
+    identityOf: (match) => `project-board-settings:${match[1]}:${match[2]}`,
+    intent: { state: ['tab'] },
+    keyScope: () => 'project-board-settings',
+    parentOf: (match) => ({
+      label: 'Back to boards',
+      pathname: `/projects/${match[1]}/boards`,
+    }),
+    pattern: /^\/projects\/([^/]+)\/boards\/([^/]+)\/settings$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'nested',
+  },
+  {
+    depth: 2,
+    identityOf: (match) => `project-boards:${match[1]}`,
+    intent: { consume: ['create'] },
+    keyScope: () => 'project-boards',
+    parentOf: (match) => ({
+      label: 'Back to board',
+      pathname: `/projects/${match[1]}/board`,
+    }),
+    pattern: /^\/projects\/([^/]+)\/boards$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'detail',
   },
   {
     // The board owns its viewport and its own two-axis scrolling. Keep the

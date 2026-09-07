@@ -37,6 +37,7 @@ type ProjectSectionRowsProps = {
   onCreateBoard: (projectId: string) => void
   onToggleBoardsExpanded: (projectId: string) => void
   projectId: string
+  showBoardSelection: boolean
 }
 
 /**
@@ -55,6 +56,7 @@ export const ProjectSectionRows = ({
   onCreateBoard,
   onToggleBoardsExpanded,
   projectId,
+  showBoardSelection,
 }: ProjectSectionRowsProps) => {
   const prewarm = usePrewarm()
   const { data: boards = [] } = useProjectBoards(projectId)
@@ -65,9 +67,12 @@ export const ProjectSectionRows = ({
   // The board screen resolves an unknown or absent `?board=` to the project's
   // default board (`useTabParam`), so the row highlighted here has to agree.
   const defaultBoardId = boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null
-  const activeBoardId = boards.some((board) => board.id === activeBoardParam)
-    ? activeBoardParam
-    : defaultBoardId
+  const activeBoardId = showBoardSelection
+    ? boards.some((board) => board.id === activeBoardParam)
+      ? activeBoardParam
+      : defaultBoardId
+    : null
+  const workingBoardPath = `/projects/${projectId}/board`
 
   return (
     <>
@@ -172,8 +177,8 @@ export const ProjectSectionRows = ({
                     // (`useTabParam`), and it drops the param for the default
                     // board so the common URL stays clean.
                     const to = board.isDefault
-                      ? section.to
-                      : `${section.to}?board=${encodeURIComponent(board.id)}`
+                      ? workingBoardPath
+                      : `${workingBoardPath}?board=${encodeURIComponent(board.id)}`
                     return (
                       <Link
                         aria-current={sidebarAriaCurrent(isActiveBoard)}
@@ -184,7 +189,7 @@ export const ProjectSectionRows = ({
                         key={`${listId}-${projectId}-board-${board.id}`}
                         replace={isCurrentProject}
                         to={to}
-                        {...prewarmRowHandlers(prewarm, section.to)}
+                        {...prewarmRowHandlers(prewarm, to)}
                       >
                         <BoardIcon
                           className="text-[color:var(--tx3)]"

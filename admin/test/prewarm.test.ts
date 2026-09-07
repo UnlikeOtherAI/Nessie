@@ -83,6 +83,8 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
 
   await runFor('/channels/chan-1', queryClient, apiClient)
   await runFor('/projects/proj-1/board', queryClient, apiClient)
+  await runFor('/projects/proj-1/boards', queryClient, apiClient)
+  await runFor('/projects/proj-1/boards/board-1/settings?tab=watchers', queryClient, apiClient)
   await runFor('/agents/agent-1', queryClient, apiClient)
   await runFor('/dashboards/dash-1', queryClient, apiClient)
   await runFor('/knowledge-base/spaces/space-1', queryClient, apiClient)
@@ -124,8 +126,18 @@ test('a channel with no cached record warms nothing rather than guessing', async
   assert.deepEqual(calls, [])
 })
 
-test('every project section route warms the same board, and a screen with no id does not match', () => {
-  for (const section of ['', '/board', '/backlog', '/insights', '/docs', '/executors', '/settings']) {
+test('every project route warms the same board, and a screen with no id does not match', () => {
+  for (const section of [
+    '',
+    '/board',
+    '/backlog',
+    '/insights',
+    '/docs',
+    '/executors',
+    '/settings',
+    '/boards',
+    '/boards/board-7/settings?tab=columns',
+  ]) {
     const matched = matchPrewarm(`/projects/proj-7${section}`)
     assert.equal(matched?.id, 'proj-7', `/projects/proj-7${section}`)
   }
@@ -191,6 +203,7 @@ test('navigating rows prewarm before the click', () => {
     'admin/src/components/features/agents/AgentListRow.tsx',
     'admin/src/components/features/apps/AppCard.tsx',
     'admin/src/pages/DashboardsPage.tsx',
+    'admin/src/pages/project/ProjectBoardsPage.tsx',
   ]
   const tracked = new Set(
     execFileSync('git', ['ls-files', 'admin/src/*'], { cwd: repoRoot, encoding: 'utf8' })

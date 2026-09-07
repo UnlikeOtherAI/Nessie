@@ -10,6 +10,17 @@ fact. Read this before treating any section above as a description of the code.
 
 ### Deltas
 
+- **Board administration now has its own project flow.**
+  `/projects/:projectId/boards` is the table of every board, and its one
+  primary action opens the shared New board dialog. A new board lands on
+  `/projects/:projectId/boards/:boardId/settings`, where General, Columns and
+  Watchers are URL-backed tabs. The old all-in-one Boards settings section was
+  removed; legacy `/settings?section=boards` links replace to the directory or
+  selected board, preserving `board` and `create=board`. The directory returns
+  to the working board and an individual board settings page returns to the
+  directory. Boards own their tickets and their columns; deleting a board
+  moves its tickets to the project's default board.
+
 - **§5.8 email auto-matching shipped later than the rest of §5.8.** The column,
   the `matchedBy: 'email'` vocabulary and the People table all shipped with the
   first release; nothing wrote a match, so every provider user had to be mapped

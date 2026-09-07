@@ -14,6 +14,7 @@ import { createConnectedBoardSourceFixtures, ids, sourceName } from './fixtures.
 
 const adminUrl = `http://localhost:${ADMIN_PORT}`
 const sourceSettingsPath = `/projects/${ids.project}/settings?section=sources&source=${ids.source}`
+const watcherSettingsPath = `/projects/${ids.project}/boards/${ids.board}/settings?tab=watchers`
 const screenshotRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '..', '..', '..', 'e2e', 'screenshots', 'connected-board-sources',
@@ -144,7 +145,7 @@ const exercisePhone = async (browser, fixtures) => {
 const exerciseWatcherSave = async (browser, fixtures) => {
   const { close, context, errors, page } = await open(browser, 'desktop', fixtures)
   try {
-    await page.goto(`${adminUrl}/projects/${ids.project}/settings?section=boards&board=${ids.board}`)
+    await page.goto(`${adminUrl}${watcherSettingsPath}`)
     const recipient = page.getByLabel('Tell')
     await recipient.waitFor()
     await recipient.fill('watcher')

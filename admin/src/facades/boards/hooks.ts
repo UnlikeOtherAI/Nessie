@@ -182,8 +182,6 @@ export type BoardWatcherRecord = {
 export const useBoardWatchers = (projectId?: string, boardId?: string) => {
   const apiClient = useApiClient()
   return useQuery<BoardWatcherRecord[]>({
-    // Id-keyed, so switching boards must not show the previous board's list.
-    placeholderData: keepPreviousData,
     queryKey: projectKeys.boardWatchers(projectId ?? '', boardId ?? ''),
     queryFn: () =>
       apiClient.get(`/api/projects/${projectId}/boards/${boardId}/watchers`),
