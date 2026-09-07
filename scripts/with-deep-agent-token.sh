@@ -10,10 +10,11 @@ printf '%s\n' '#!/usr/bin/env sh' 'case "$1" in "Password for '\''https://x-acce
 chmod 700 "$askpass"
 
 LC_ALL=C LANG=C GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
-GIT_CONFIG_COUNT=3 \
+GIT_CONFIG_COUNT=4 \
 GIT_CONFIG_KEY_0='url.https://x-access-token@github.com/UnlikeOtherAI/deep.agent.git.insteadOf' \
 GIT_CONFIG_VALUE_0='ssh://git@github.com/UnlikeOtherAI/deep.agent.git' \
 GIT_CONFIG_KEY_1='url.https://x-access-token@github.com/UnlikeOtherAI/deep.agent.git.insteadOf' \
 GIT_CONFIG_VALUE_1='git@github.com:UnlikeOtherAI/deep.agent.git' \
 GIT_CONFIG_KEY_2='credential.helper' GIT_CONFIG_VALUE_2='' \
+GIT_CONFIG_KEY_3='http.https://github.com/.extraheader' GIT_CONFIG_VALUE_3='' \
 "$@"
