@@ -48,10 +48,12 @@ const findAccount = (accounts: ConnectedMailAccountRecord[] | undefined, doorway
 
 const GmailDraftChatPreview = ({
   canSend,
+  connectionId,
   draftId,
   onEdit,
 }: {
   canSend: boolean
+  connectionId: string
   draftId: string
   onEdit: () => void
 }) => {
@@ -59,8 +61,7 @@ const GmailDraftChatPreview = ({
   const send = useSendGmailDraft()
   const [error, setError] = useState<string | null>(null)
 
-  if (draft.isError) return null
-  if (!draft.data) return <p className="text-xs text-[color:var(--tx3)]">Loading draft...</p>
+  if (draft.isError || !draft.data || draft.data.connectionId !== connectionId) return null
   const canSendDraft = canSend && draft.data.editable && draft.data.state === 'draft'
   return (
     <div data-testid="gmail-chat-draft-preview">
@@ -225,7 +226,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   }, [doorway, refetchAccounts])
 
   useEffect(() => {
-    if (!storageKey || !targetRef.current || !doorway) return
+    if (!storageKey || !targetRef.current || !doorway || doorway.threadIds?.length) return
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry?.isIntersecting) return
       try {
@@ -258,6 +259,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const matchingAccount = accounts.data?.find((candidate) =>
     candidate.id === doorway.accountId && candidate.source === doorway.source,
   )
+  const authorizedDoorwayAccount = findAccount(accounts.data, doorway)
   const title = doorway.mode === 'compose' ? 'Email draft ready' : doorway.mode === 'thread' ? 'Email ready to review' : 'Mail ready to review'
   // A compose doorway that names a thread is a reply. The newest message in the
   // (oldest-first) conversation carries the provider thread and Message-ID the
@@ -290,12 +292,22 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
       <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">{doorway.mode === 'compose' ? 'Edit' : 'Open mail'}</button>
       {accessError ? <span aria-live="polite" className="text-xs text-[color:var(--danger)]">{accessError}</span> : null}
       {accessError && matchingAccount ? <button className="text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(matchingAccount))} type="button">Open mailbox settings</button> : null}
-      {isGmailDraftDoorway && doorway.draftId ? (
+      {isGmailDraftDoorway && doorway.draftId && authorizedDoorwayAccount ? (
         <GmailDraftChatPreview
-          canSend={matchingAccount?.canSend ?? false}
+          canSend={authorizedDoorwayAccount.canSend}
+          connectionId={authorizedDoorwayAccount.id}
           draftId={doorway.draftId}
           onEdit={() => { void checkAndOpen() }}
         />
+      ) : null}
+      {doorway.mode === 'account' && doorway.threadIds?.length && authorizedDoorwayAccount ? (
+        <div className="w-full max-w-2xl" data-testid="mail-surface-selected-threads">
+          <MailSurfaceAccountPreview
+            account={authorizedDoorwayAccount}
+            onSelect={(threadId) => navigate(`${mailPath({ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source })}/threads/${encodeURIComponent(threadId)}`)}
+            threadIds={doorway.threadIds}
+          />
+        </div>
       ) : null}
       {doorway.mode === 'compose' && account ? (
         <ConnectedMailComposeDialog

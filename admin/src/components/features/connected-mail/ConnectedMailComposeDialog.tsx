@@ -51,7 +51,6 @@ export const ConnectedMailComposeDialog = ({
 
   return (
     <Dialog
-      description="Mail access is checked when this opens."
       headerActions={layout !== 'single' ? (
         <button
           aria-label={maximized ? 'Restore email composer' : 'Maximize email composer'}
@@ -69,7 +68,7 @@ export const ConnectedMailComposeDialog = ({
       title="Compose email"
     >
       <div
-        className="min-h-0 p-4"
+        className="flex min-h-0 flex-1 flex-col p-4"
         data-fullscreen={maximized ? 'true' : 'false'}
         data-testid="connected-mail-compose-dialog"
       >

@@ -15,6 +15,7 @@ import { gmailKeys } from './keys'
  */
 
 export type GmailDraftView = {
+  connectionId: string
   id: string
   state: 'draft' | 'updating' | 'update_unknown' | 'sending' | 'dispatching' | 'delivery_unknown' | 'sent' | 'discarded'
   /** Present only while the owner can still undo a held send. */

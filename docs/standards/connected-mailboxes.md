@@ -63,8 +63,10 @@ Plan and as-built deltas:
   and human compose/reply flow for Gmail and SMTP/IMAP. The provider remains the
   source of truth and every read is private and no-store. `mail_present` may
   leave an account, thread, compose, or up-to-ten-thread selection pointer in a
-  disclosure-scoped agent message, but the pointer contains no query, sender,
-  recipient, subject, snippet, or body and the client repeats live viewer
+  disclosure-scoped agent message. A selection renders bounded live rows in
+  chat only after the current viewer passes the same account check; the pointer
+  contains no query, sender, recipient, subject, snippet, or body and the client
+  repeats live viewer
   authorization before it opens. Search/read and Gmail-draft tools return the
   same canonical review references. `mailbox_compose` uses the universal
   AgentCard form: **Send** is
