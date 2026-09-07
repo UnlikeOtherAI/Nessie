@@ -5,7 +5,7 @@ import type { NessieMode } from './index.js'
  * disk, its Docker daemon, its files.
  *
  * Outside `local` mode Nessie runs N copies of the API and the worker
- * (`docs/standards/horizontal-scaling.md`, invariant 7), and every capability
+ * (`docs/standards/horizontal-scaling/overview.md`, invariant 7), and every capability
  * listed below fails by *appearing* to work: the upload lands, the container is
  * recorded terminated, the file is written — on one instance, and nowhere the
  * next call reaches. Each is therefore refused, loudly, naming the setting and

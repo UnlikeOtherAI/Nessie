@@ -9,7 +9,7 @@ import { openSecret, sealSecret } from '@nessie/runtime'
  * cross-origin write approval is re-enqueued and claimed by *any* worker, where
  * the pool held nothing: the run could not drive the browser, could not reopen
  * it (`SESSION_ALREADY_OPEN`), and the remote session billed to its TTL —
- * audit 8.1, docs/standards/horizontal-scaling.md § 1.
+ * audit 8.1, docs/standards/horizontal-scaling/overview.md § 1.
  *
  * So the URL is persisted, and because it is a live-session bearer capability
  * it is persisted **sealed**: the same AES-256-GCM packing executor command

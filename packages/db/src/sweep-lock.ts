@@ -1,7 +1,7 @@
 /**
  * One periodic sweep, run by one instance per tick.
  *
- * Horizontal-scaling invariant 2 (docs/standards/horizontal-scaling.md): a
+ * Horizontal-scaling invariant 2 (docs/standards/horizontal-scaling/overview.md): a
  * sweep whose body is one indivisible walk cannot claim its work row by row,
  * so it takes a Postgres advisory lock instead. Four properties are
  * load-bearing and none of them is negotiable at a call site:

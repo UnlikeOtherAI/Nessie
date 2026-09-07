@@ -261,7 +261,7 @@ image as a command override and does, in order: the parked-migration repair,
 `pnpm --filter @nessie/api reconcile`.
 
 The reconcile step is not optional. Boot connects and listens and nothing else
-([standards/horizontal-scaling.md](../standards/horizontal-scaling.md)
+([standards/horizontal-scaling/overview.md](../standards/horizontal-scaling/overview.md)
 invariant 5), so default policy rules, the protected-MCP grant backfill,
 Personal Assistant default grants and the expired-credential sweep happen here
 or nowhere. An upgrade applied by hand must run it too.

@@ -13,7 +13,7 @@ import { seedDefaultPolicies } from '../services/policy-seed.js'
 /**
  * The post-migrate reconcile job. Boot connects and listens — seeding, backfills
  * and reconciliation belong here, run once per deploy rather than once per
- * replica (docs/standards/horizontal-scaling.md §5). Every step is idempotent,
+ * replica (docs/standards/horizontal-scaling/overview.md §5). Every step is idempotent,
  * so a second run reports zero rows created.
  */
 export type ReconcileSummary = {

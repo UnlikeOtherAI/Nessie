@@ -73,7 +73,7 @@ copies of each when it scales, so all three are **refused** in `hosted` and
 instead. `local` keeps all three: there the API runs the worker embedded in its
 own process. The rule and its wording live in
 `packages/config/src/local-only.ts`; the reasoning is
-[horizontal-scaling.md](../standards/horizontal-scaling.md) invariant 7.
+[horizontal-scaling/overview.md](../standards/horizontal-scaling/overview.md) invariant 7.
 
 | Capability | Refused where | What to do instead |
 |---|---|---|

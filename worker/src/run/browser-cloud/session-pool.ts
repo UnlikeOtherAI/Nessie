@@ -22,7 +22,7 @@ import {
  * loads the row, unseals the capability and reconnects, so a run re-claimed by
  * a second worker after an approval drives the same browser instead of
  * dead-ending on `SESSION_ALREADY_OPEN` while the session bills to its TTL
- * (audit 8.1, docs/standards/horizontal-scaling.md § 1).
+ * (audit 8.1, docs/standards/horizontal-scaling/overview.md § 1).
  *
  * What stays per process is exactly the thing whose lifetime *is* this
  * process: an open WebSocket. Losing it costs one reconnect, never a decision.

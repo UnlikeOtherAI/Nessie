@@ -19,7 +19,7 @@
 # code change and a rebuild.
 #
 # Step 4 is not optional. Boot connects and listens and nothing else
-# (docs/standards/horizontal-scaling.md invariant 5), so policy seeding, the
+# (docs/standards/horizontal-scaling/overview.md invariant 5), so policy seeding, the
 # protected-grant backfill, Personal Assistant default grants and the
 # credential sweep only ever happen here.
 

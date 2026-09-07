@@ -26,7 +26,7 @@ import type {
  * configuration load, because the provider is a column on
  * `execution_environment_templates` — per-organisation data, which
  * `loadConfig` cannot see. This is the one place every probe, provision and
- * terminate passes through. See docs/standards/horizontal-scaling.md,
+ * terminate passes through. See docs/standards/horizontal-scaling/overview.md,
  * invariant 7.
  *
  * The refusal is not symmetric, and `terminateProviderInstance` below says why.

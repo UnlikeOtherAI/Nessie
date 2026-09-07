@@ -163,7 +163,7 @@ export type DeepSignalSignalKind = z.infer<typeof DeepSignalSignalKindSchema>
  * one insight for a fifty-person team held the request open across fifty digest
  * transactions and an instance recycled mid-fan-out lost the rest of them after
  * the caller had already been told 2xx
- * (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+ * (docs/standards/horizontal-scaling/overview.md § 3; audit 9.2).
  *
  * `insightId` is lifted out of the payload because it is the idempotency key
  * (`deepsignal-insight:<organizationId>:<insightId>`) and the receiver refuses a
