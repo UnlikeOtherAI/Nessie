@@ -55,6 +55,19 @@ a general Chrome-reading capability.
   observations, and mobile keyboard input. A team may watch unsigned public
   browsing, but only a person's exact private agent home can claim controls;
   shared browsers never accept human input or sign-in.
+- A Browserbase disconnect is a reversible local disable: Nessie deletes the
+  encrypted key in the same transaction and marks its connection disabled,
+  while retaining durable context rows and Browserbase-side sign-ins. It
+  refuses while a session is live, unknown, allocating, releasing, or a
+  context is tombstoned/deleting, because that resource still needs the key
+  for confirmed closure. Reconnect supplies a new key and may reopen the
+  retained context only when Browserbase accepts that account; Nessie never
+  copies a context or silently clears its sign-ins. Connection replacement,
+  durable-context creation, and reset serialize on the connection then the
+  browser row, so an old key cannot create a context after disconnect/rekey.
+  A failed inline cleanup of an untracked, newly-created empty context is
+  logged for Browserbase-dashboard recovery; no human login or run session has
+  been attached at that point.
 - A fresh private session stores its own selected viewport. The launch card
   chooses the current phone, tablet, or laptop preset, and a current private
   controller may resize only that session; its canvas applies the change on
@@ -219,6 +232,13 @@ therefore unavailable until that work proves the exact scope and release path;
 it is not declared impossible.
 
 ## Verification map
+
+The deterministic mediated Browser Cloud usability runner now runs in the
+required Navigation Transitions CI job. It uses the job's managed API, admin,
+Postgres, and Chromium lifecycle, exercises the explicit browser grant and
+cross-client revocation doorways, and uploads its narrow and fullscreen
+screenshots as a CI artifact. It uses a provider-shaped fixture, so it proves
+the Nessie surface without requiring a Browserbase credential in CI.
 
 The final database-backed Turbo run passed all 37 selected tasks: Browser
 Cloud (87), Executor (169; two environment skips), Worker (1,191), Admin
