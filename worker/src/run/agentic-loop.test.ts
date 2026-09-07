@@ -383,6 +383,25 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   ...over,
 })
 
+test('answer reserve triggers compaction before the ordinary context threshold', async () => {
+  let compactions = 0
+  await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      compactions += 1
+      return [{ content: 'compacted evidence', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 100, targetTokens: 60, triggerTokens: 80 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(200), role: 'user' }],
+    maxOutputTokens: 80,
+    runInference: async () => finalAnswerInference('answer'),
+    tools: [],
+  })
+  assert.equal(compactions, 1)
+})
+
 test('a length-limited turn gets one no-tools finalisation without replaying work', async () => {
   const noTools: boolean[] = []
   let calls = 0
