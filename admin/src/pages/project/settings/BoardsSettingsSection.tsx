@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { BoardRecord, BoardStyle } from '../../../facades/boards/hooks'
 import { useDeleteBoard, useUpdateBoard } from '../../../facades/boards/hooks'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
@@ -18,6 +18,8 @@ type BoardsSettingsSectionProps = {
   onSaveError: (message: string) => void
   onSaved: () => void
   onSelectBoard: (boardId: string) => void
+  /** Changes on every `?create=board` arrival, including from this page. */
+  newBoardIntentSerial: number
   projectId: string
   selectedBoardId: string
   startWithNewBoard: boolean
@@ -36,6 +38,7 @@ export const BoardsSettingsSection = ({
   onSaveError,
   onSaved,
   onSelectBoard,
+  newBoardIntentSerial,
   projectId,
   selectedBoardId,
   startWithNewBoard,
@@ -43,11 +46,18 @@ export const BoardsSettingsSection = ({
   const { data: sources = [] } = useProjectSources(projectId)
   const updateBoard = useUpdateBoard(projectId)
   const deleteBoard = useDeleteBoard(projectId)
-  const [createOpen, setCreateOpen] = useState(startWithNewBoard)
+  const [createOpen, setCreateOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<BoardRecord | null>(null)
   const [renameDraft, setRenameDraft] = useState<Record<string, string>>({})
 
   const selected = boards.find((board) => board.id === selectedBoardId) ?? boards[0] ?? null
+
+  // Intents are captured after the route's first render, so useState's
+  // initializer misses a cached Settings page. The serial also makes a second
+  // New board doorway press work while somebody is already on this screen.
+  useEffect(() => {
+    if (startWithNewBoard && canAdminister) setCreateOpen(true)
+  }, [canAdminister, newBoardIntentSerial, startWithNewBoard])
 
   // Every mapped state of every source in this project, so a column can be
   // bound to the specific ones it should show and write back to.
@@ -268,8 +278,8 @@ export const BoardsSettingsSection = ({
       />
 
       <ConfirmDialog
-        body="Its columns and card positions go with it. The tasks stay in the project and
-          keep appearing on its other boards."
+        body="Its columns and card positions are deleted. Its tickets move to the
+          project's default board."
         confirmLabel="Delete board"
         destructive
         onCancel={() => setDeleteTarget(null)}
