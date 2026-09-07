@@ -120,3 +120,75 @@ test('an exact structural proof bypasses once and is consumed only at dispatch',
   assert.equal(replay.structuralCalls, 1)
   assert.equal(replay.decision.decision, 'deny')
 })
+
+test('preparing a private share does not consume a second model judgement at dispatch', async () => {
+  const privateContext = context()
+  privateContext.consumedSources.addPrivateConversationSource({
+    sourceAuthorUserId: 'person',
+    sourceChannelId: CHANNEL,
+  })
+  const fake = fakePrisma()
+  let utilityCalls = 0
+  const prisma = {
+    ...fake.prisma,
+    channel: {
+      findFirst: async () => ({
+        id: CHANNEL,
+        label: 'Group',
+        systemChannelType: null,
+        team: { name: 'Team', project: { name: 'Project' } },
+        type: 'standard',
+      }),
+      findUnique: async () => ({ agentBindings: [], organizationId: ORG }),
+    },
+    message: {
+      findFirst: async () => ({
+        agentId: null,
+        content: 'Could you send this to the group?',
+        metadata: null,
+        onBehalfOfUserId: null,
+        role: 'user',
+        userId: 'person',
+      }),
+    },
+    thread: {
+      findFirst: async () => ({ id: THREAD }),
+      findUnique: async () => ({ id: THREAD, title: 'General' }),
+    },
+  }
+  const args = { channelId: CHANNEL, content: 'private details' }
+  const authorization = {
+    agentKind: 'shared' as const,
+    allowedToolIds: new Set(['send_message']),
+    maySuspendForApproval: false,
+    parentAgentId: null,
+    resolvedBuiltinToolIds: new Set(['send_message']),
+    resumeState: { actorContext: actor(), interactive: true, messageId: 'trigger' },
+    runUtility: async () => {
+      utilityCalls += 1
+      return utilityCalls === 1 ? '{"share":false}' : '{"share":true}'
+    },
+    toolPolicy: { send_message: true },
+  }
+  const hooks = {
+    deepWaterHandoffGuard: { suppressBuiltin: async () => false } as never,
+    emitAudit: async () => undefined,
+  }
+
+  const prepared = await authorizeToolExecution(
+    prisma as never, actor(), privateContext, 'send_message', args, 'call-share',
+    { ...authorization, consumeApprovalProof: false }, hooks,
+  )
+  assert.equal(prepared.decision, 'allow')
+  assert.equal(utilityCalls, 0)
+
+  const dispatched = await authorizeToolExecution(
+    prisma as never, actor(), privateContext, 'send_message', args, 'call-share', authorization, hooks,
+  )
+  assert.equal(dispatched.decision, 'allow')
+  assert.equal(utilityCalls, 1)
+  assert.equal(
+    dispatched.decision === 'allow' && dispatched.disclosureShareAuthorized === true,
+    false,
+  )
+})

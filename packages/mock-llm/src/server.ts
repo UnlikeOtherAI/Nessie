@@ -220,6 +220,7 @@ export const createMockLlmServer = async (input: {
   host?: string
   port?: number
   scenario: MockScenario
+  utilityResponder?: (prompt: string) => string | undefined
 }): Promise<MockLlmServer> => {
   const engine = new MockLlmEngine(input.scenario)
   let sequence = 0
@@ -254,9 +255,17 @@ export const createMockLlmServer = async (input: {
     // Main inference always receives its offered schemas. Utility judgements
     // intentionally receive none, so this selects a scenario lane without
     // inspecting natural-language prompt content.
+    const overrideText = !Array.isArray(body.tools) || body.tools.length === 0
+      ? input.utilityResponder?.(messages.map((message) => message.content ?? '').join('\n'))
+      : undefined
     const outcome = Array.isArray(body.tools) && body.tools.length > 0
       ? await engine.next(messages)
-      : await engine.nextUtility(messages)
+      : await engine.nextUtility(
+        messages,
+        overrideText === undefined
+          ? undefined
+          : { latencyMs: 0, text: overrideText, usage: {} },
+      )
     if (outcome.kind === 'error') {
       sendProviderError(response, outcome.error)
       return
