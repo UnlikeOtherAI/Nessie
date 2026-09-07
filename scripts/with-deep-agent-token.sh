@@ -6,7 +6,7 @@ set -eu
 token_dir="$(mktemp -d)"
 trap 'rm -rf "$token_dir"' EXIT
 askpass="$token_dir/askpass"
-printf '%s\n' '#!/usr/bin/env sh' 'case "$1" in "Password for '\''https://x-access-token@github.com'\'':") printf %s "$DEEP_AGENT_READ_TOKEN" ;; *) exit 1 ;; esac' > "$askpass"
+printf '%s\n' '#!/usr/bin/env sh' 'case "$1" in "Password for '\''https://x-access-token@github.com'\'':"|"Password for '\''https://x-access-token@github.com'\'': ") printf %s "$DEEP_AGENT_READ_TOKEN" ;; *) exit 1 ;; esac' > "$askpass"
 chmod 700 "$askpass"
 
 LC_ALL=C LANG=C GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
