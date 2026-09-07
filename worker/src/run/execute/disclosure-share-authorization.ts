@@ -4,16 +4,8 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import { effectiveUserIdOfActor } from '../pa-tools/access.js'
 import { resolveMessageDestination } from '../pa-tools/message-destination.js'
 import { judgeExplicitDisclosureShare } from './disclosure-share-judge.js'
+import { originalHumanAuthorId } from './private-conversation-lineage.js'
 import type { RunContext } from './types.js'
-
-const isAgentDelegatedMessage = (metadata: unknown): boolean =>
-  typeof metadata === 'object'
-  && metadata !== null
-  && !Array.isArray(metadata)
-  && (
-    'delegatedByAgentId' in metadata
-    || 'delegatedFromRunId' in metadata
-  )
 
 /**
  * A narrowly scoped exception to ordinary disclosure withholding. The model
@@ -56,17 +48,13 @@ export const maybeAuthorizeDisclosureShare = async (input: {
   // `userId`, but its prose is still model-authored. Only a raw human turn can
   // ask to export a private conversation; the agent's attribution metadata is
   // structural evidence, not an interpretation of the sentence.
-  if (
-    !request?.userId
-    || request.role !== 'user'
-    || request.agentId !== null
-    || request.onBehalfOfUserId !== null
-    || isAgentDelegatedMessage(request.metadata)
-  ) return false
-  if (effectiveUserIdOfActor(input.actorContext) !== request.userId) return false
+  if (!request) return false
+  const requestAuthorId = originalHumanAuthorId(request)
+  if (!requestAuthorId) return false
+  if (effectiveUserIdOfActor(input.actorContext) !== requestAuthorId) return false
   const authors = new Set(sources.flatMap((source) =>
     source.sourceAuthorUserId ? [source.sourceAuthorUserId] : []))
-  if (authors.size !== 1 || !authors.has(request.userId)) return false
+  if (authors.size !== 1 || !authors.has(requestAuthorId)) return false
   const content = typeof input.args['content'] === 'string' ? input.args['content'] : ''
   let destination: Awaited<ReturnType<typeof resolveMessageDestination>>
   try {

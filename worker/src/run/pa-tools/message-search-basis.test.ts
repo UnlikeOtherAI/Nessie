@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
-import { recordMessageChannelRead } from './message-search-basis.js'
+import { recordMessageChannelRead, recordPrivateConversationMessageRead } from './message-search-basis.js'
 
 test('a private or protected source channel becomes run provenance', () => {
   const sink = createConsumedSourceSink()
@@ -60,4 +60,40 @@ test('a run with no sink is a no-op rather than a crash', () => {
       { id: 'channel-private', visibility: 'private' },
     ]),
   )
+})
+
+test('a legacy private search result remains unknown beside a known author in the same room', () => {
+  const sink = createConsumedSourceSink()
+  recordPrivateConversationMessageRead({ consumedSources: sink }, [
+    {
+      agentId: null, channelId: 'channel-private', channelVisibility: 'private', metadata: null,
+      onBehalfOfUserId: null, role: 'user', userId: 'author-b',
+    },
+    {
+      agentId: null, channelId: 'channel-private', channelVisibility: 'private', metadata: null,
+      onBehalfOfUserId: null, role: 'assistant', userId: null,
+    },
+  ])
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'channel-private' },
+    { sourceAuthorUserId: null, sourceChannelId: 'channel-private' },
+  ])
+})
+
+test('a delegated legacy user-shaped result remains unknown', () => {
+  const sink = createConsumedSourceSink()
+  recordPrivateConversationMessageRead({ consumedSources: sink }, [{
+    agentId: null,
+    channelId: 'channel-private',
+    channelVisibility: 'private',
+    metadata: { delegatedByAgentId: 'agent-1' },
+    onBehalfOfUserId: null,
+    role: 'user',
+    userId: 'author-b',
+  }])
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: null, sourceChannelId: 'channel-private' },
+  ])
 })
