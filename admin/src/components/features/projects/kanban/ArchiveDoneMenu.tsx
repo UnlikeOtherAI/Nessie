@@ -26,14 +26,13 @@ export const ArchiveDoneMenu = ({
 
   const menuId = `archive-done-${boardId}`
   const item =
-    'block w-full rounded-md px-2.5 py-2 text-left text-xs text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]'
+    'flex min-h-11 w-full items-center rounded-md px-2.5 text-left text-xs text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]'
 
   return (
     <>
       <button
         aria-controls={menuId}
         aria-expanded={open}
-        aria-haspopup="menu"
         className="admin-button admin-button-secondary h-11 gap-1.5"
         disabled={archive.isPending}
         onClick={() => setOpen((value) => !value)}
@@ -52,14 +51,13 @@ export const ArchiveDoneMenu = ({
         onClose={() => setOpen(false)}
         open={open}
         placement="bottom-end"
-        role="menu"
       >
-          <button className={item} onClick={() => run()} role="menuitem" type="button">
-            Archive all done
-          </button>
-          <button className={item} onClick={() => run(7)} role="menuitem" type="button">
-            Archive older than a week
-          </button>
+        <button className={item} onClick={() => run()} type="button">
+          Archive all done
+        </button>
+        <button className={item} onClick={() => run(7)} type="button">
+          Archive older than a week
+        </button>
       </Popover>
     </>
   )

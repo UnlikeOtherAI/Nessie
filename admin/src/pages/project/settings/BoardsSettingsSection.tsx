@@ -118,7 +118,7 @@ export const BoardsSettingsSection = ({
         <div className="grid gap-1">
           {boards.map((board) => (
             <div
-              className="flex items-center gap-2 rounded-md px-2 py-1.5
+              className="flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5
                 data-[selected=true]:bg-[color:var(--overlay)]"
               data-selected={board.id === selected?.id}
               key={board.id}
@@ -142,7 +142,7 @@ export const BoardsSettingsSection = ({
                 <BoardIcon iconEmoji={board.iconEmoji} size="md" />
               )}
               <button
-                className="min-w-0 flex-1 text-left text-sm text-[color:var(--tx)]"
+                className="min-h-11 min-w-0 flex-1 px-2 text-left text-sm text-[color:var(--tx)]"
                 onClick={() => onSelectBoard(board.id)}
                 type="button"
               >
@@ -158,7 +158,7 @@ export const BoardsSettingsSection = ({
                 <span className="text-xs text-[color:var(--tx2)]">Default</span>
               ) : canAdminister ? (
                 <button
-                  className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                  className="min-h-11 px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
                   onClick={() =>
                     updateBoard.mutate(
                       { id: board.id, isDefault: true },
@@ -176,7 +176,7 @@ export const BoardsSettingsSection = ({
               ) : null}
               {canAdminister && boards.length > 1 ? (
                 <button
-                  className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+                  className="min-h-11 px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
                   onClick={() => setDeleteTarget(board)}
                   type="button"
                 >

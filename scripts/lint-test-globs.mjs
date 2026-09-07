@@ -19,7 +19,7 @@
 // unchecked rather than failed: the check is "the declared globs cover the
 // files", and a runner that declares none cannot be checked this way.
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -32,7 +32,7 @@ function fail(message) {
 }
 
 function packageDirectories() {
-  const output = execSync("git ls-files '*/package.json' 'package.json'", { encoding: 'utf8' })
+  const output = execFileSync('git', ['ls-files', '*/package.json', 'package.json'], { encoding: 'utf8' })
   return output
     .split('\n')
     .map((line) => line.trim())
@@ -44,7 +44,7 @@ function packageDirectories() {
 }
 
 function testFiles() {
-  const output = execSync("git ls-files '*.test.ts' '*.test.tsx'", { encoding: 'utf8' })
+  const output = execFileSync('git', ['ls-files', '*.test.ts', '*.test.tsx'], { encoding: 'utf8' })
   return output
     .split('\n')
     .map((line) => line.trim())

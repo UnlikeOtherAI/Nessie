@@ -175,6 +175,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           <KanbanBoard
             boardId={board.id}
             columns={columns}
+            key={board.id}
             onMoveTask={handleMove}
             projectId={projectId}
             projectNameById={projectNameById}

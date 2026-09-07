@@ -1,10 +1,9 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useMemo, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { faGripVertical, faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
-import { useMemo } from 'react'
 import { Pill } from '../../../primitives/Pill'
 import { ExternalKeyPill } from './ExternalKeyPill'
 import { RemotePersonPill } from './RemotePersonPill'
@@ -214,9 +213,17 @@ export const ArchivedTaskCard = ({
   onOpen,
 }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName' | 'onOpen'>) => (
   <div
-    className="admin-card grid cursor-pointer select-none gap-2 p-3"
+    aria-label={`Open ${task.title ?? task.purpose ?? 'task'}`}
+    className="admin-card grid cursor-pointer select-none gap-2 p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]"
     data-kanban-card
     onClick={() => onOpen(task)}
+    onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+      event.preventDefault()
+      onOpen(task)
+    }}
+    role="button"
+    tabIndex={0}
   >
     <KanbanCardContent archived projectName={projectName} showProject={showProject} task={task} />
   </div>
