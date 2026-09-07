@@ -10,22 +10,33 @@ export const getBaseUrl = (): string => {
   return configuredBaseUrl ? configuredBaseUrl.replace(/\/$/, '') : ''
 }
 
-/** The executor connects directly, so it cannot use the browser's Vite proxy. */
+/**
+ * The executor connects directly, so it cannot use the browser's Vite proxy.
+ * The origin comes from the pairing invitation the API mints, or from
+ * `VITE_API_PUBLIC_URL` when this build declares one of its own.
+ */
 export const resolveExecutorApiOrigin = (configuredOrigin?: string): string => {
   const origin = configuredOrigin?.trim()
   if (!origin) {
-    throw new Error('VITE_API_PUBLIC_URL must name the executor API origin.')
+    throw new Error(
+      'The pairing invitation carried no API origin and this build sets no '
+        + 'VITE_API_PUBLIC_URL; set NESSIE_API_PUBLIC_URL on the API or '
+        + 'VITE_API_PUBLIC_URL on the admin build.',
+    )
   }
   try {
     const parsed = new URL(origin)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('protocol')
     return parsed.origin
   } catch {
-    throw new Error('VITE_API_PUBLIC_URL must be an absolute http(s) API origin.')
+    throw new Error(
+      'The executor API origin must be an absolute http(s) URL '
+        + '(NESSIE_API_PUBLIC_URL / VITE_API_PUBLIC_URL).',
+    )
   }
 }
 
-export const getExecutorApiOrigin = (invitationApiBaseUrl: string): string =>
+export const getExecutorApiOrigin = (invitationApiBaseUrl?: string): string =>
   resolveExecutorApiOrigin(import.meta.env?.VITE_API_PUBLIC_URL || invitationApiBaseUrl)
 
 export const createApiClient = (
