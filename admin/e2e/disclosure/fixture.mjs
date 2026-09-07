@@ -183,7 +183,7 @@ export const submitMentionedRequest = async (page, agentName, text) => {
   await composer.click()
   await form.locator('button[title="Mention person or agent"]').click()
   await composer.pressSequentially(agentName)
-  await page.locator('button').filter({ hasText: agentName }).first().click()
+  await composer.locator('..').getByRole('button', { name: agentName }).click()
   await composer.locator('[data-mention-type="agent"]').waitFor()
   await composer.press('End')
   await composer.pressSequentially(` ${text}`)
