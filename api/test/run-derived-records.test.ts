@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
+import { loadAgentActivity } from '../src/services/agent-read-model.js'
 import { listPlans, getPlan } from '../src/services/plans.js'
 import { getTask, listTasks } from '../src/services/tasks.js'
 import { seed } from './disclosure-read-fixtures.js'
@@ -53,6 +54,18 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   const restrictedPublicRun = await prisma.run.create({
     data: { agentId: s.agentId, status: 'completed', threadId: s.threadId },
   })
+  const childAgent = await prisma.agent.create({
+    data: {
+      name: `restricted-child-${suffix}`,
+      organizationId: s.organizationId,
+      parentAgentId: s.agentId,
+      projectId: s.projectId,
+      teamId: s.teamId,
+    },
+  })
+  const childRestrictedRun = await prisma.run.create({
+    data: { agentId: childAgent.id, status: 'completed', threadId: s.threadId },
+  })
   const publicRun = await prisma.run.create({
     data: { agentId: s.agentId, status: 'completed', threadId: s.threadId },
   })
@@ -86,12 +99,22 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   await prisma.runBasisScope.createMany({ data: [
     { organizationId: s.organizationId, runId: privateRun.id, scopeId: privateChannel.id, scopeType: 'channel' },
     { organizationId: s.organizationId, runId: restrictedPublicRun.id, scopeId: privateChannel.id, scopeType: 'channel' },
+    { organizationId: s.organizationId, runId: childRestrictedRun.id, scopeId: privateChannel.id, scopeType: 'channel' },
   ] })
   const privateTask = await prisma.task.create({
     data: { agentId: s.agentId, organizationId: s.organizationId, purpose: 'B-PRIVATE-TASK-CANARY', runId: privateRun.id, status: 'inbox' },
   })
   const restrictedPublicTask = await prisma.task.create({
     data: { agentId: s.agentId, organizationId: s.organizationId, purpose: 'B-RESTRICTED-PUBLIC-CANARY', runId: restrictedPublicRun.id, status: 'inbox' },
+  })
+  const childRestrictedTask = await prisma.task.create({
+    data: {
+      agentId: childAgent.id,
+      organizationId: s.organizationId,
+      purpose: 'B-CHILD-PURPOSE-CANARY',
+      runId: childRestrictedRun.id,
+      status: 'inbox',
+    },
   })
   const publicTask = await prisma.task.create({
     data: { agentId: s.agentId, organizationId: s.organizationId, purpose: 'public task', runId: publicRun.id, status: 'inbox' },
@@ -116,6 +139,10 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   )
   assert.equal(await getPlan(prisma, s.organizationId, privatePlan.id, ownerId), null)
   assert.equal((await getPlan(prisma, s.organizationId, publicPlan.id, ownerId))?.plan.goal, 'public plan')
+  const ownerActivity = await loadAgentActivity(prisma, s.agentId, {
+    visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, userId: ownerId },
+  })
+  assert.equal(ownerActivity?.subAgents.some((child) => child.taskId === childRestrictedTask.id), false)
 
   const sourceAuthorTasks = await listTasks(prisma, s.organizationId, {}, undefined, s.insiderId)
   assert.equal(sourceAuthorTasks.some((task) => task.id === privateTask.id), true)
@@ -123,6 +150,10 @@ runDatabaseTest('run-derived task and plan records require source-channel access
     (await getPlan(prisma, s.organizationId, privatePlan.id, s.insiderId))?.steps[0]?.title,
     'B-PRIVATE-STEP-CANARY',
   )
+  const sourceAuthorActivity = await loadAgentActivity(prisma, s.agentId, {
+    visibility: { organizationId: s.organizationId, userId: s.insiderId },
+  })
+  assert.equal(sourceAuthorActivity?.subAgents.some((child) => child.taskId === childRestrictedTask.id), true)
   const memberTasks = await listTasks(prisma, s.organizationId, {}, undefined, member.id)
   assert.equal(memberTasks.some((task) => task.id === privateTask.id || task.id === restrictedPublicTask.id), false)
   assert.equal(memberTasks.some((task) => task.id === activeRestrictedTask.id), false)
