@@ -1,5 +1,5 @@
 name: Install dependencies
-description: Install dependencies with the read-only Deep.Agent deploy key.
+description: Install dependencies with the scoped Deep.Agent read token.
 inputs:
   deep-agent-read-token:
     description: Fine-grained Contents:read token for UnlikeOtherAI/deep.agent.

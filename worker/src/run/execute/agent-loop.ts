@@ -97,12 +97,12 @@ export const runExecutionAgentLoop = async (
     windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
-  const mainOutputTokens = await input.inference.mainOutputTokens?.()
-    ?? loadConfig().model.maxTokens
   // Run setup may have admitted memory, checkpoint or transcript material after
   // the initial plan record was created. Make that complete basis durable before
   // this loop can write a thought, a tool record, or any model-derived state.
   await persistCurrentRunBasis(deps.prisma, context)
+  const mainOutputTokens = await input.inference.mainOutputTokens?.()
+    ?? loadConfig().model.maxTokens
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
   // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
