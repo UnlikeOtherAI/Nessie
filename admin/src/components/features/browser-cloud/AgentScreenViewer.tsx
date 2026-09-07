@@ -468,7 +468,7 @@ export const AgentScreenViewer = ({
               : session.data?.canControl === false
                 ? 'You can watch this browser, but only its private owner can take control.'
               : canDrive
-              ? 'Your input stays private and never enters chat or the agent context.'
+              ? 'Your keystrokes are not recorded in chat. After Done, the agent can read pages it has access to.'
               : 'Live preview. Take control to use the browser.'}
         </p>
       ) : null}
