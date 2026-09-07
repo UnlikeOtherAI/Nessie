@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 
 import { createMailFixtures } from './fixtures.mjs'
-import { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewRevocation, narrowComposeDoorway } from './chat-draft-review.mjs'
+import { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewDirectSend, gmailPreviewRevocation, narrowComposeDoorway } from './chat-draft-review.mjs'
 import { adminUrl, startAdmin } from './servers.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -427,6 +427,7 @@ const main = async () => {
     await responsiveMail({ browser, fixture })
     await chatDoorway({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
     await narrowComposeDoorway({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
+    await gmailPreviewDirectSend({ adminUrl, assert, browser, expectNoErrors, fixture: createMailFixtures(), newPage, shot })
     await gmailPreviewRevocation({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
     await agentCardMailDraft({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
     await agentCardMailSend({ adminUrl, assert, browser, expectNoErrors, fixture: createMailFixtures(), newPage, shot })
