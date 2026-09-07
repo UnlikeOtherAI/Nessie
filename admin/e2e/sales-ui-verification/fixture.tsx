@@ -8,8 +8,10 @@ import { AgentCreationModeTabs } from '../../src/components/features/agents/desi
 import { AgentDesignerForm } from '../../src/components/features/agents/designer/AgentDesignerForm'
 import { useAgentDesigner } from '../../src/components/features/agents/designer/useAgentDesigner'
 import { GoogleScopeRequestCard } from '../../src/components/features/channels/GoogleScopeRequestCard'
+import { TodoTemplateEditor } from '../../src/components/features/agents/todos/TodoTemplateEditor'
 import { TaskDialog } from '../../src/components/features/projects/kanban/TaskDialog'
 import { TaskChecklistTab } from '../../src/components/features/projects/kanban/TaskChecklistTab'
+import { GoogleWorkspaceConnectDialog } from '../../src/pages/settings/connections/GoogleWorkspaceConnectDialog'
 import type { TaskRecord } from '../../src/facades/tasks/hooks'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
@@ -51,6 +53,7 @@ const client = {
     } else if (path.endsWith('/google/start')) {
       lastConnectionRequest = body
       ;(window as Window & { salesConnectionRequest?: unknown }).salesConnectionRequest = body
+      window.name = JSON.stringify(body)
       return { authorizeUrl: 'about:blank' }
     }
     return checklist ?? salesTask
@@ -71,12 +74,15 @@ const DesignerFixture = () => {
   </section>
 }
 
-const showDialog = new URLSearchParams(window.location.search).get('view') === 'dialog'
+const view = new URLSearchParams(window.location.search).get('view')
 
 const Fixture = () => <QueryClientProvider client={queryClient}>
   <AuthSessionProvider><ApiClientProvider client={client}><MemoryRouter><main className="min-h-screen bg-[color:var(--main)] p-8 text-[color:var(--tx)]">
     <div className="mx-auto grid max-w-5xl gap-10"><DesignerFixture />
-      {showDialog ? <TaskDialog onClose={() => undefined} open task={salesTask} /> : <section aria-label="Checklist verification"><h2>Checklist</h2><TaskChecklistTab taskId="task-sales" /></section>}
+      {view === 'dialog' ? <TaskDialog onClose={() => undefined} open task={salesTask} /> : null}
+      {view === 'calendar' ? <GoogleWorkspaceConnectDialog onClose={() => undefined} open /> : null}
+      {view ? null : <><TodoTemplateEditor onCancel={() => undefined} onSave={async () => undefined} saving={false} />
+        <section aria-label="Checklist verification"><h2>Checklist</h2><TaskChecklistTab taskId="task-sales" /></section></>}
       <GoogleScopeRequestCard metadata={{ card: { capabilityId: 'meet.create', kind: 'google_scope_request' } }} />
       <output data-testid="connection-request">{JSON.stringify(lastConnectionRequest)}</output></div>
   </main></MemoryRouter></ApiClientProvider></AuthSessionProvider>

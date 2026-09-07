@@ -121,6 +121,8 @@ export const TaskDialog = ({
     TASK_DIALOG_TABS,
     'details',
   )
+  const resetDialogTabRef = useRef(setDialogTab)
+  resetDialogTabRef.current = setDialogTab
 
   // The task as it stands on the server (blank for a new one) — the draft's
   // baseline, so a dialog opened and closed untouched stores nothing.
@@ -196,8 +198,8 @@ export const TaskDialog = ({
   useEffect(() => {
     if (!open) return
     setError(null)
-    setDialogTab('details')
-  }, [open, setDialogTab, task?.id])
+    resetDialogTabRef.current('details')
+  }, [open, task?.id])
 
   const pending =
     createTask.isPending
