@@ -7,6 +7,7 @@ import {
   createConsumedSourceSink,
   type BasisScope,
 } from './disclosure-basis.js'
+import { persistCurrentRunBasis } from './agent-message.js'
 import {
   admitTriggerMessageLineage,
   markUnknownPrivateConversationChannels,
@@ -52,6 +53,33 @@ test('sink keeps same-id sources under different audience types apart', () => {
   assert.equal(sink.size(), 2)
 })
 
+test('a run persists its source basis before any derived metadata is written', async () => {
+  const sink = createConsumedSourceSink()
+  sink.add(scope('user', 'author-b'))
+  const writes: Array<{ data: { runId: string; scopeId: string; scopeType: string }[] }> = []
+
+  await persistCurrentRunBasis({
+    runBasisScope: {
+      createMany: async (input: { data: { runId: string; scopeId: string; scopeType: string }[] }) => {
+        writes.push(input)
+        return { count: input.data.length }
+      },
+    },
+  } as never, {
+    boundAgentIds: [],
+    channel: DESTINATION,
+    consumedSources: sink,
+    run: { id: 'run-1' },
+  } as never)
+
+  assert.deepEqual(writes[0]?.data, [{
+    organizationId: DESTINATION.organizationId,
+    runId: 'run-1',
+    scopeId: 'author-b',
+    scopeType: 'user',
+  }])
+})
+
 test('private source lineage retains an unknown-author denial marker', () => {
   const sink = createConsumedSourceSink()
   sink.addPrivateConversationSource({
@@ -87,6 +115,33 @@ test('checkpoint or memory channel provenance cannot be re-attributed by a later
     { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
     { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
   ])
+})
+
+test('a deleted private source channel remains an unknown denial marker', async () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: 'author-b',
+    sourceChannelId: 'still-present-private-room',
+  })
+
+  await markUnknownPrivateConversationScopes(
+    { channel: { findMany: async () => [] } } as never,
+    sink,
+    [scope('channel', 'deleted-private-room')],
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'still-present-private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'deleted-private-room' },
+  ])
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { agent: { agentKind: 'shared' }, consumedSources: sink } as never,
+      isExternal: true,
+      toolName: 'mcp_publish',
+    }),
+    true,
+  )
 })
 
 test('a delegated trigger keeps its original private author without adding an unknown marker', async () => {

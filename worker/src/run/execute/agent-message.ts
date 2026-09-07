@@ -1,5 +1,6 @@
 import type { MessageRole, Prisma, PrismaClient } from '@prisma/client'
 import { computeReplyBasis, type BasisScope } from './disclosure-basis.js'
+import { persistablePrivateConversationSources } from './private-conversation-source-storage.js'
 import type { RunContext } from './types.js'
 
 /**
@@ -140,9 +141,10 @@ const insertPrivateConversationSources = async (
     sources: ReturnType<RunContext['consumedSources']['privateConversationSources']>
   },
 ): Promise<void> => {
-  if (input.sources.length === 0) return
+  const sources = await persistablePrivateConversationSources(tx, input.sources)
+  if (sources.length === 0) return
   await tx.messageDisclosureSource.createMany({
-    data: input.sources.map((source) => ({
+    data: sources.map((source) => ({
       messageId: input.messageId,
       organizationId: input.organizationId,
       sourceAuthorUserId: source.sourceAuthorUserId,
@@ -172,6 +174,22 @@ export const persistRunBasis = async (
       scopeType: scope.scopeType,
     })),
     skipDuplicates: true,
+  })
+}
+
+/**
+ * Make the run's live disclosure state durable before another record stores
+ * content derived from it. The sink only grows, and `persistRunBasis` only
+ * inserts, so this is monotone across planning, tool records and checkpoints.
+ */
+export const persistCurrentRunBasis = async (
+  tx: Tx,
+  context: RunContext,
+): Promise<void> => {
+  await persistRunBasis(tx, {
+    basis: runReplyBasis(context),
+    organizationId: context.channel.organizationId,
+    runId: context.run.id,
   })
 }
 

@@ -30,6 +30,7 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
   })
   const tx = {
     $executeRaw: async () => 1,
+    channel: { findMany: async () => [{ id: CHANNEL_ID }] },
     agent: {
       create: async ({ data }: { data: Prisma.AgentCreateInput }) => {
         childData = data

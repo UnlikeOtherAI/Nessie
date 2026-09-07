@@ -43,6 +43,7 @@ test('a spawned child keeps B\'s private canary out of public task and plan meta
   }
   const tx = {
     $executeRaw: async () => 1,
+    channel: { findMany: async () => [{ id: 'private-channel' }] },
     agent: {
       create: async ({ data }: { data: { toolPolicy?: unknown } }) => {
         createdToolPolicy = data.toolPolicy
