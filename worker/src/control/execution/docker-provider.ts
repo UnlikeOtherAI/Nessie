@@ -1,4 +1,5 @@
-import { runCommand, runJsonCommand } from './command-runner.js'
+import { runCommand } from './command-runner.js'
+import type { CommandRunner } from './command-runner.js'
 import { mergeLaunchConfig } from './launch-config.js'
 import { INSTANCE_ID_LABEL, buildDockerContainerName, buildSystemLabels } from './naming.js'
 import { parseString, parseStringArray, parseStringRecord } from './stored-json.js'
@@ -129,8 +130,8 @@ export const probeDocker = async (): Promise<ProviderProbe> => {
 const adoptOwnContainer = async (input: {
   containerName: string
   instanceId: string
-}): Promise<string> => {
-  const { stdout } = await runCommand('docker', [
+}, commandRunner: CommandRunner): Promise<string> => {
+  const { stdout } = await commandRunner('docker', [
     'inspect',
     input.containerName,
     '--format',
@@ -153,6 +154,7 @@ const adoptOwnContainer = async (input: {
 
 export const provisionDocker = async (
   context: ProvisioningContext,
+  commandRunner: CommandRunner = runCommand,
 ): Promise<ProviderProvisionResult> => {
   const config = mergeLaunchConfig(
     context.instance.template.launchConfig,
@@ -163,7 +165,7 @@ export const provisionDocker = async (
 
   let containerId = ''
   try {
-    const { stdout } = await runCommand('docker', buildDockerProvisionArgs(context))
+    const { stdout } = await commandRunner('docker', buildDockerProvisionArgs(context))
     containerId = stdout.trim()
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes('already in use')) {
@@ -172,19 +174,15 @@ export const provisionDocker = async (
     containerId = await adoptOwnContainer({
       containerName,
       instanceId: context.instance.id,
-    })
+    }, commandRunner)
   }
 
   if (!containerId) {
     throw new Error('DOCKER_CONTAINER_ID_MISSING')
   }
 
-  const state = await runJsonCommand<{ Running?: boolean; Status?: string }>('docker', [
-    'inspect',
-    containerId,
-    '--format',
-    '{{json .State}}',
-  ])
+  const { stdout } = await commandRunner('docker', ['inspect', containerId, '--format', '{{json .State}}'])
+  const state = JSON.parse(stdout) as { Running?: boolean; Status?: string }
   if (!state.Running) {
     throw new Error(`DOCKER_CONTAINER_NOT_RUNNING:${state.Status ?? 'unknown'}`)
   }
@@ -211,6 +209,7 @@ export const provisionDocker = async (
 export const terminateDocker = async (
   context: TerminationContext,
   input: { soleDaemon: boolean },
+  commandRunner: CommandRunner = runCommand,
 ): Promise<ProviderTerminationResult> => {
   if (!context.instance.providerInstanceRef) {
     // This row never named a container, so nothing it records can be a claim
@@ -220,7 +219,7 @@ export const terminateDocker = async (
   }
 
   try {
-    await runCommand('docker', ['rm', '-f', context.instance.providerInstanceRef])
+    await commandRunner('docker', ['rm', '-f', context.instance.providerInstanceRef])
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes('No such container')) {
       throw error
