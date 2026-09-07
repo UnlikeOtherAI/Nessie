@@ -249,12 +249,12 @@ const main = async () => {
     await pipeline.prisma.agentBinding.create({
       data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
     })
-    const publicAgentScopes = [
-      { channelId: fixture.group.id, kind: 'channel' },
-      { agentId: fixture.scope.agentId, kind: 'agent' },
-    ]
+    const publicAgentScopes = [{ channelId: fixture.group.id, kind: 'channel' },
+      { agentId: fixture.scope.agentId, kind: 'agent' }]
     await setActivitySubscriptions(audiencePage.page, publicAgentScopes)
     await reloadWithRealtimeProbes(audiencePage.page, audienceToken, publicAgentScopes)
+    assert.ok((await api('/api/agents', audienceToken)).data.some((agent) => agent.id === fixture.scope.agentId),
+      'the public-channel reader can select the shared agent through the normal directory')
 
     await submitMentionedRequest(
       sourcePage.page,
@@ -343,6 +343,7 @@ const main = async () => {
     await audiencePage.page.getByRole('button', { name: 'Search messages' }).click()
     await audiencePage.page.getByPlaceholder('Search messages in this channel').fill('Kestrel')
     await audiencePage.page.getByText('No matches.').waitFor({ timeout: 30_000 })
+    await audiencePage.page.keyboard.press('Escape')
 
     const denied = await fetch(`${API_URL}/api/messages/${forwarded.id}/disclosure-grants`, {
       body: JSON.stringify({ kind: 'message', duration: '10m' }),
