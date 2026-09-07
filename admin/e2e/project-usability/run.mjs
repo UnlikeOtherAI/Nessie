@@ -52,15 +52,38 @@ const goto = async (page, path) => {
   await page.waitForSelector('[data-kanban-board-viewport]', { timeout: 60_000 })
 }
 
-const createBoardThroughUi = async (page, projectId, name, sourceBoardId) => {
-  await goto(page, `/projects/${projectId}/board`)
-  const configure = page.locator('[data-page-header-action="board-admin"]:visible')
-  if (await configure.count()) {
-    await configure.first().click()
-  } else {
-    await page.getByRole('button', { name: 'More page actions' }).click()
+const gotoBoardList = async (page, projectId) => {
+  await page.goto(`${ADMIN_URL}/projects/${projectId}/boards`, { waitUntil: 'domcontentloaded' })
+  await page.getByRole('heading', { name: 'Boards', exact: true }).waitFor({ timeout: 60_000 })
+  await page.getByRole('table', { name: 'Project boards' }).waitFor({ timeout: 60_000 })
+}
+
+const boardListRow = (page, name) => page.getByRole('row').filter({ hasText: name })
+
+const waitForBoard = async (token, projectId, name, expected = {}) => {
+  const deadline = Date.now() + 20_000
+  while (Date.now() < deadline) {
+    const boards = await call(`/api/projects/${projectId}/boards`, { token })
+    const board = boards.find((item) => item.name === name)
+    if (board && Object.entries(expected).every(([key, value]) => board[key] === value)) return board
+    await new Promise((resolve) => setTimeout(resolve, 250))
   }
-  await page.getByRole('menuitem', { name: 'New board…' }).click()
+  throw new Error(`board ${JSON.stringify(name)} did not reach ${JSON.stringify(expected)}`)
+}
+
+const waitForWatcher = async (token, projectId, boardId, recipientId) => {
+  const deadline = Date.now() + 20_000
+  while (Date.now() < deadline) {
+    const watchers = await api(`/api/projects/${projectId}/boards/${boardId}/watchers`, { token })
+    if (watchers.some((watcher) => watcher.recipientId === recipientId)) return
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  throw new Error(`board ${boardId} did not save watcher ${recipientId}`)
+}
+
+const createBoardThroughUi = async (page, projectId, name, sourceBoardId) => {
+  await gotoBoardList(page, projectId)
+  await page.getByRole('button', { name: 'New board', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'New board' })
   await dialog.getByRole('textbox', { name: 'Name' }).fill(name)
   await dialog.getByLabel('Starting columns').selectOption(sourceBoardId)
@@ -68,6 +91,7 @@ const createBoardThroughUi = async (page, projectId, name, sourceBoardId) => {
   assert.ok(await create.isVisible(), 'New board keeps its primary Create board action visible')
   await create.click()
   await dialog.waitFor({ state: 'hidden' })
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/[^/]+/settings\\?tab=general$`, 'u'))
 }
 
 const openNewTask = async (page) => {
@@ -124,6 +148,143 @@ const waitForBoardTask = async (token, projectId, boardId, title, expectedColumn
   throw new Error(`board ${boardId} did not expose "${title}" in column ${expectedColumnId ?? 'any'}`)
 }
 
+// Board administration is deliberately driven through its own list and detail
+// routes. Creating a board from the board screen used to hide the home for
+// management, which meant a person could not discover the rest of the work
+// after the first creation.
+const exerciseBoardManagement = async ({ page, projectId, sourceBoard, token }) => {
+  const boardName = `Managed board ${runId}`
+  const renamedBoardName = `Managed board renamed ${runId}`
+  const columnName = `Ready for review ${runId}`
+  const me = await api('/api/auth/me', { token })
+  const watcherName = me.user.displayName
+
+  await gotoBoardList(page, projectId)
+  const table = page.getByRole('table', { name: 'Project boards' })
+  const sourceRow = boardListRow(page, sourceBoard.name)
+  await sourceRow.waitFor()
+  assert.match(await sourceRow.first().innerText(), /Kanban|Iterations/u, 'board list names the board style')
+  assert.match(await sourceRow.first().innerText(), /columns/u, 'board list names the column count')
+  assert.match(await sourceRow.first().innerText(), /Default/u, 'board list names the default board')
+  assert.equal(await table.getByRole('link', { name: 'Open board' }).count() > 0, true, 'each board has an Open board doorway')
+  assert.equal(await table.getByRole('link', { name: 'Settings' }).count() > 0, true, 'each board has a Settings doorway')
+
+  await createBoardThroughUi(page, projectId, boardName, sourceBoard.id)
+  const board = await waitForBoard(token, projectId, boardName)
+  const generalPath = `/projects/${projectId}/boards/${board.id}/settings?tab=general`
+  assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, generalPath, 'creation lands on the new board’s general settings')
+  await page.getByRole('heading', { name: boardName, exact: true }).waitFor()
+  const settingsTabs = page.getByRole('tablist', { name: 'Board settings' })
+  assert.equal(await settingsTabs.getByRole('tab', { name: 'General' }).getAttribute('aria-selected'), 'true', 'general is selected after creation')
+
+  // A list row is the in-context doorway back to a working board. Its URL is
+  // inspectable as well as clickable, so it keeps the selected board shareable.
+  await gotoBoardList(page, projectId)
+  const boardRow = boardListRow(page, boardName)
+  const openBoard = boardRow.getByRole('link', { name: 'Open board' })
+  await openBoard.click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/board\\?board=${board.id}$`, 'u'))
+  await page.waitForSelector('[data-kanban-board-viewport]', { timeout: 60_000 })
+  await page.goBack()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
+
+  // General is the only tab that changes board identity and style. The API
+  // reads below verify persistence rather than merely a React Query repaint.
+  await boardListRow(page, boardName).getByRole('link', { name: 'Settings' }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  const nameField = page.getByLabel('Board name')
+  await nameField.fill(renamedBoardName)
+  await nameField.blur()
+  await waitForBoard(token, projectId, renamedBoardName)
+  const style = page.getByLabel('Board style')
+  await style.selectOption('scrum')
+  await waitForBoard(token, projectId, renamedBoardName, { style: 'scrum' })
+  await style.selectOption('kanban')
+  await waitForBoard(token, projectId, renamedBoardName, { style: 'kanban' })
+  await page.getByRole('button', { name: /make default/i }).click()
+  await waitForBoard(token, projectId, renamedBoardName, { isDefault: true })
+
+  await settingsTabs.getByRole('tab', { name: 'Columns' }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=columns$`, 'u'))
+  assert.equal(await page.getByLabel('Board name').count(), 0, 'Columns does not retain General controls')
+  const newColumn = page.getByLabel('New column name')
+  await newColumn.fill(columnName)
+  await page.getByRole('button', { name: 'Add column' }).click()
+  const boardWithColumn = await waitForBoard(token, projectId, renamedBoardName)
+  assert.ok(boardWithColumn.columns.some((column) => column.name === columnName), 'Columns creates a board-local column')
+
+  await settingsTabs.getByRole('tab', { name: 'Watchers' }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=watchers$`, 'u'))
+  assert.equal(await page.getByLabel('New column name').count(), 0, 'Watchers does not retain Columns controls')
+  const recipients = page.getByLabel('Tell')
+  await recipients.fill(watcherName)
+  await page.getByRole('button', { name: watcherName, exact: true }).click()
+  await page.getByRole('button', { name: 'Save watchers' }).click()
+  await waitForWatcher(token, projectId, board.id, me.user.id)
+
+  // A pasted link chooses its stated tab. Browser Back returns to the list a
+  // person came from, rather than leaving an unreachable settings layer.
+  await gotoBoardList(page, projectId)
+  await boardListRow(page, renamedBoardName).getByRole('link', { name: 'Settings' }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await page.goBack()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
+  await page.goto(`${ADMIN_URL}/projects/${projectId}/boards/${board.id}/settings?tab=watchers`, { waitUntil: 'domcontentloaded' })
+  await page.getByRole('heading', { name: renamedBoardName, exact: true }).waitFor()
+  assert.equal(await settingsTabs.getByRole('tab', { name: 'Watchers' }).getAttribute('aria-selected'), 'true', 'a settings deep link selects its stated tab')
+
+  await page.goto(`${ADMIN_URL}/projects/${projectId}/settings?section=boards&board=${board.id}`, { waitUntil: 'domcontentloaded' })
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await page.goto(`${ADMIN_URL}/projects/${projectId}/settings?section=boards&create=board`, { waitUntil: 'domcontentloaded' })
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
+  const legacyCreateDialog = page.getByRole('dialog', { name: 'New board' })
+  await legacyCreateDialog.waitFor()
+  await legacyCreateDialog.getByRole('button', { name: 'Cancel' }).click()
+  await legacyCreateDialog.waitFor({ state: 'hidden' })
+
+  return waitForBoard(token, projectId, renamedBoardName)
+}
+
+const exerciseBoardManagementPhone = async ({ page, projectId, board }) => {
+  await gotoBoardList(page, projectId)
+  const newBoard = page.getByRole('button', { name: 'New board', exact: true })
+  const settings = boardListRow(page, board.name).getByRole('link', { name: 'Settings' })
+  for (const [label, locator] of [['New board', newBoard], ['Settings', settings]]) {
+    const box = await locator.boundingBox()
+    assert.ok(box, `${label} is visible on a phone`)
+    assert.ok(box.height >= 44, `${label} keeps a 44px touch target (was ${box.height}px)`)
+    assert.ok(box.x >= 0 && box.x + box.width <= 390, `${label} stays within the phone viewport`)
+  }
+  const documentWidth = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))
+  assert.equal(documentWidth.scrollWidth, documentWidth.clientWidth, 'board list does not create page-wide horizontal scroll')
+
+  await settings.click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
+  await boardListRow(page, board.name).getByRole('link', { name: 'Settings' }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  const tabs = page.getByRole('tablist', { name: 'Board settings' })
+  for (const name of ['General', 'Columns', 'Watchers']) {
+    const tab = tabs.getByRole('tab', { name })
+    const box = await tab.boundingBox()
+    assert.ok(box, `${name} tab is visible on a phone`)
+    assert.ok(box.height >= 44, `${name} tab keeps a 44px touch target (was ${box.height}px)`)
+  }
+  await tabs.getByRole('tab', { name: 'Watchers' }).click()
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=watchers$`, 'u'))
+  const recipientBox = await page.getByLabel('Tell').boundingBox()
+  assert.ok(recipientBox, 'watcher recipient control is visible on a phone')
+  assert.ok(recipientBox.height >= 44, `watcher recipient control is a touch target (was ${recipientBox.height}px)`)
+  assert.ok(
+    recipientBox.x >= 0 && recipientBox.x + recipientBox.width <= 390,
+    'watcher recipient control stays within the phone viewport',
+  )
+}
+
 const touchSwipe = async (page, { fromX, fromY, toX, toY = fromY }) => {
   const client = await page.context().newCDPSession(page)
   try {
@@ -167,12 +328,18 @@ const main = async () => {
   const phone = await openViewportContext(browser, { name: 'phone', token: seed.token })
   const desktopPage = await desktop.newPage()
   const phonePage = await phone.newPage()
-  const boardAName = `Usability flow ${runId}`
   const boardBName = `Isolation proof ${runId}`
-  await createBoardThroughUi(phonePage.page, seed.project.id, boardAName, sourceBoard.id)
-  const boardA = (await call(`/api/projects/${seed.project.id}/boards`, { token: seed.token }))
-    .find((board) => board.name === boardAName)
-  assert.ok(boardA, 'the Configure → New board doorway created board A')
+  const boardA = await exerciseBoardManagement({
+    page: desktopPage.page,
+    projectId: seed.project.id,
+    sourceBoard,
+    token: seed.token,
+  })
+  await exerciseBoardManagementPhone({
+    page: phonePage.page,
+    projectId: seed.project.id,
+    board: boardA,
+  })
   const boardB = await api(`/api/projects/${seed.project.id}/boards`, {
     body: {
       copyColumnsFromBoardId: boardA.id,
