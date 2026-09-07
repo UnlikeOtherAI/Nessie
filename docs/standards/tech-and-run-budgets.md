@@ -50,6 +50,18 @@ summary and points here; **this file is the rule**.
     If retained context plus that reserve cannot fit, the existing compaction
     hook runs before dispatch; no advertised capability means the fallback is
     retained rather than guessing a model limit.
+
+## Deep.Agent compaction extraction
+
+Nessie currently owns its durable compaction path: `runContextCompaction` uses
+the run's inference lane and the caller retains disclosure lineage, checkpoint
+state, whole tool-call/result groups, untrusted-note framing, and source URLs.
+`@deep/agent` is presently a private `0.0.0` workspace library with no
+compatible compaction export or publishable version. Do not call it over HTTP
+or copy its loop into Nessie. A future extraction first publishes a versioned
+library contract with deterministic source retention and tests for those
+invariants; Nessie can then consume that library through its existing inference
+adapter while continuing to own its run checkpoints and disclosure basis.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above
