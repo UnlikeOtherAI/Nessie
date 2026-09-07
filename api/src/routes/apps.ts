@@ -14,7 +14,7 @@ import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 
-import { streamAttachmentDownload } from './uploads.js'
+import { sendAttachmentDownload } from './uploads.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -186,15 +186,15 @@ export const registerAppRoutes = (app: FastifyInstance, deps: RouteDeps): void =
       where: { id: attachmentId },
       select: { organizationId: true },
     })
-    const opened = owner
-      ? await fileService.openStream(attachmentId, owner.organizationId)
+    const download = owner
+      ? await fileService.openDownload(attachmentId, owner.organizationId)
       : null
-    if (!opened) {
+    if (!download) {
       sendApiError(reply, 404, 'APP_ICON_NOT_FOUND', 'This app has no cached icon')
       return reply
     }
 
-    return streamAttachmentDownload(request, reply, opened, {
+    return sendAttachmentDownload(request, reply, download, {
       attribution: attributionFromActorContext(actorContext),
       prisma,
       source: 'api.apps.icon',

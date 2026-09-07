@@ -31,6 +31,60 @@ export const OpsDeadLetterSchema = z.object({
   createdAt: TimestampSchema,
 })
 
+/**
+ * One rate-limit bucket's CURRENT window, summed over every replica.
+ *
+ * Read from `rate_limit_buckets`, which is where every API instance counts, so
+ * these are the deployment's numbers rather than one process's share of them
+ * (audit 1.13, plan row 5.9). `limitedIdentities` is how many identities are
+ * locked out of this bucket right now — the number an operator is actually
+ * asking about when they open this page during an incident.
+ */
+export const OpsRateLimitBucketSchema = z.object({
+  bucket: z.string(),
+  limit: z.number().int().nonnegative(),
+  windowMs: z.number().int().positive(),
+  identities: z.number().int().nonnegative(),
+  hits: z.number().int().nonnegative(),
+  maxCount: z.number().int().nonnegative(),
+  limitedIdentities: z.number().int().nonnegative(),
+  windowStartedAt: TimestampSchema,
+})
+
+/**
+ * The limiter block, split by what the numbers actually cover — the split is
+ * the point of the shape. Mixing a fleet-wide count and a per-process one under
+ * one flat object (which is what this used to be) leaves an operator reading a
+ * number that means one Nth of what they think it does.
+ */
+export const OpsRateLimitSchema = z.object({
+  /**
+   * True for the whole deployment: read from the shared counter rows, so a
+   * lockout counted on any replica appears here. `available` is false when that
+   * read failed — zeros would be a measurement this endpoint did not make.
+   */
+  deploymentWide: z.object({
+    available: z.boolean(),
+    source: z.literal('rate_limit_buckets'),
+    buckets: z.array(OpsRateLimitBucketSchema),
+  }),
+  /**
+   * This API process only, since this process booted. Reported because a couple
+   * of these have no deployment-wide equivalent — `storeErrors` counts hits that
+   * never reached Postgres, so by construction they left no row to read — and
+   * because a replica's share of `checks` is a cheap load-balance sanity check.
+   * Never read one of these as a fleet total.
+   */
+  thisInstance: z.object({
+    bootedAt: TimestampSchema,
+    checks: z.number().int().nonnegative(),
+    limited: z.number().int().nonnegative(),
+    storeErrors: z.number().int().nonnegative(),
+    limitedByBucket: z.record(z.string(), z.number().int().nonnegative()),
+  }),
+})
+export type OpsRateLimit = z.infer<typeof OpsRateLimitSchema>
+
 export const OpsHealthResponseSchema = z.object({
   worker: OpsWorkerHealthSchema,
   queue: z.object({
@@ -44,15 +98,7 @@ export const OpsHealthResponseSchema = z.object({
     count: z.number().int().nonnegative(),
     recent: z.array(OpsDeadLetterSchema),
   }),
-  // Brute-force limiter counters (api/src/services/rate-limit.ts).
-  // Deployment-global and process-local: `checks`/`limited` are per-process
-  // since boot; `limitedByBucket` breaks lockouts down by limiter.
-  rateLimit: z.object({
-    checks: z.number().int().nonnegative(),
-    limited: z.number().int().nonnegative(),
-    storeErrors: z.number().int().nonnegative(),
-    limitedByBucket: z.record(z.string(), z.number().int().nonnegative()),
-  }),
+  rateLimit: OpsRateLimitSchema,
 })
 export type OpsHealthResponse = z.infer<typeof OpsHealthResponseSchema>
 

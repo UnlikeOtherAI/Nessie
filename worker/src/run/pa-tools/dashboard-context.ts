@@ -194,6 +194,7 @@ export const resolveDashboardToolServices = async (
     prisma,
     storage: runtime.getStorage(config.storage),
     maxUploadBytes: config.storage.maxUploadBytes,
+    signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
   const resolver = mcpManage.createPgSecretResolver(prisma, config.auth.secret ?? '')
 

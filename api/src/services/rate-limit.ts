@@ -8,6 +8,8 @@ import {
   countRateLimitHit,
   pruneRateLimitWindows,
   rateLimitKeyHash,
+  type RateLimitWindowSummary,
+  summarizeRateLimitWindows,
   writeAuditEntry,
 } from '@nessie/db'
 import { emitAuditEvent } from './audit.js'
@@ -107,13 +109,28 @@ const consoleLogger: RateLimitLogger = {
 }
 
 export class RateLimiter {
-  /** Cumulative counters surfaced on /api/ops/health. */
+  /**
+   * Counters for THIS process, since THIS process booted.
+   *
+   * They are not the deployment's numbers and must never be labelled as if they
+   * were: with N replicas behind a load balancer, `checks` is one replica's
+   * share of the traffic and `limited` is the lockouts that happened to land
+   * here (audit 1.13). What they are genuinely good for is saying something
+   * about this instance — `storeErrors` in particular is a fact about this
+   * process's path to Postgres and has no deployment-wide equivalent, because a
+   * failed count writes no row to read back.
+   *
+   * The fleet-wide picture comes from `windowSummary` below, off the rows every
+   * replica shares.
+   */
   private readonly stats = {
     checks: 0,
     limited: 0,
     storeErrors: 0,
     limitedByBucket: new Map<string, number>(),
   }
+
+  private readonly bootedAt = new Date()
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -122,12 +139,35 @@ export class RateLimiter {
     private readonly cleanupProbability: number = CLEANUP_PROBABILITY,
   ) {}
 
+  /** This process's counters. See the note on `stats` for what they are not. */
   snapshot() {
     return {
+      bootedAt: this.bootedAt.toISOString(),
       checks: this.stats.checks,
       limited: this.stats.limited,
       storeErrors: this.stats.storeErrors,
       limitedByBucket: Object.fromEntries(this.stats.limitedByBucket),
+    }
+  }
+
+  /**
+   * The live window of every named bucket, read from `rate_limit_buckets` and
+   * therefore true for the whole deployment rather than for this replica.
+   *
+   * Returns `null` when the store read fails. A health endpoint answering with
+   * zeros it did not measure would be worse than the per-process numbers this
+   * replaces — the caller renders "unavailable", not "quiet".
+   */
+  async windowSummary(
+    rules: Array<{ bucket: string; rule: RateLimitRule }>,
+  ): Promise<RateLimitWindowSummary[] | null> {
+    try {
+      return await summarizeRateLimitWindows(this.prisma, { rules })
+    } catch (error) {
+      this.logger.error(
+        `[rate-limit] window summary unavailable (ops health): ${String(error)}`,
+      )
+      return null
     }
   }
 

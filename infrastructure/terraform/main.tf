@@ -59,6 +59,9 @@ module "storage" {
   labels                     = local.labels
   versioning                 = var.storage_versioning
   soft_delete_retention_days = var.storage_soft_delete_retention_days
+  # Only when signed-URL downloads are on: with no public endpoint the API
+  # proxies every byte and the bucket needs no browser origin at all.
+  cors_origins = var.storage_public_endpoint == "" ? [] : var.cors_origins
 
   depends_on = [google_project_service.required]
 }

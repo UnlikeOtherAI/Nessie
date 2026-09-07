@@ -18,5 +18,6 @@ export const fileServiceFor = (prisma: PrismaClient): FileService => {
     prisma,
     storage: getStorage(config.storage),
     maxUploadBytes: config.storage.maxUploadBytes,
+    signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
 }

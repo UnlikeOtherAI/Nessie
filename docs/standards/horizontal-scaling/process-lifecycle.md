@@ -83,6 +83,15 @@ window, and at worst `2 × max` across a sliding window. That bound does not gro
 with the replica count, which is the property being bought. State the guarantee
 the code actually delivers, not an estimate that holds for one waiter.
 
+**And a number an operator reads is labelled with what it covers.** Postgres
+counters fixed enforcement, not reporting: `/api/ops/health` answered with
+`RateLimiter`'s in-process tallies (1.13), so on a fleet of N the "limited"
+figure was whatever share of a flood reached the replica the operator was talking
+to. `summarizeRateLimitWindows` reads each bucket's current window off the shared
+rows, and the response keeps `deploymentWide` and `thisInstance` apart — a mixed
+bag with no labelling is worse than what it replaced, because a reader cannot tell
+which figures to divide by N. Keep a per-process counter only where a fleet-wide
+read cannot reach, like `storeErrors`; a failed read answers `available: false`.
 ## 5. Boot connects and listens — nothing else
 
 **Seeding, backfills and reconciliation belong to the post-migrate job.**

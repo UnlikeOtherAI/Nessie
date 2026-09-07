@@ -301,6 +301,119 @@ export const pruneRateLimitWindows = async (
   `
 }
 
+/** One bucket's live window, summed across every replica counting into it. */
+export type RateLimitWindowSummary = {
+  bucket: string
+  /** The rule the summary was read against, echoed so a reader can size it. */
+  limit: number
+  windowMs: number
+  /** Distinct identities with a row in the CURRENT window. */
+  identities: number
+  /** Attempts recorded in the current window, across all identities. */
+  hits: number
+  /** The busiest single identity's count in this window. */
+  maxCount: number
+  /** Identities whose count is already past `limit` — locked out right now. */
+  limitedIdentities: number
+  /** Epoch ms the current window opened, from the database's clock. */
+  windowStartMs: number
+}
+
+/**
+ * Read the live window of each named bucket.
+ *
+ * This is the deployment-wide answer to "is anything being rate limited?", and
+ * it is the only one there is: the per-process counters an API replica keeps are
+ * that replica's share of the traffic, which on a fleet of N means nothing on
+ * its own (audit 1.13, plan row 5.9). The rows are the shared truth because
+ * every replica increments them through `countRateLimitHit` above.
+ *
+ * One statement for every bucket rather than one per bucket, because this runs
+ * on a health endpoint an operator polls: the rules arrive as parallel arrays,
+ * `unnest` turns them back into rows, and each bucket's own `windowMs` floors
+ * its own window from the same `NOW()`. Buckets run on different window lengths,
+ * so there is no single "recent" cutoff that would be honest for all of them.
+ *
+ * A bucket with no traffic in its current window comes back with zeros rather
+ * than being absent: "quiet" and "not a limiter here" are different facts, and
+ * the caller knows which buckets it asked about.
+ */
+export const summarizeRateLimitWindows = async (
+  store: RateLimitWindowStore,
+  input: { rules: Array<{ bucket: string; rule: FixedWindowRule }>; nowMs?: number },
+): Promise<RateLimitWindowSummary[]> => {
+  if (input.rules.length === 0) return []
+  // Bound as text and cast in SQL: the driver's own array typing differs
+  // between numeric widths, and `window_ms` has to reach Postgres as the same
+  // `double precision` the counting statements floor with.
+  const buckets = input.rules.map((entry) => entry.bucket)
+  const windowsMs = input.rules.map((entry) => String(entry.rule.windowMs))
+  const limits = input.rules.map((entry) => String(entry.rule.max))
+  const rows = await store.$queryRaw<
+    Array<{
+      bucket: string
+      identities: bigint | number
+      hits: bigint | number | null
+      max_count: number | null
+      limited_identities: bigint | number
+      window_start_ms: bigint | number
+    }>
+  >`
+    WITH "clock" AS (
+      SELECT COALESCE(
+        ${input.nowMs ?? null}::double precision,
+        (EXTRACT(EPOCH FROM NOW()) * 1000)::double precision
+      ) AS "now_ms"
+    ),
+    "rules" AS (
+      SELECT
+        "bucket",
+        "window_ms"::double precision AS "window_ms",
+        "max"::int AS "max"
+      FROM unnest(
+        ${buckets}::text[],
+        ${windowsMs}::text[],
+        ${limits}::text[]
+      ) AS "t"("bucket", "window_ms", "max")
+    ),
+    "windows" AS (
+      SELECT
+        "rules".*,
+        FLOOR("clock"."now_ms" / "rules"."window_ms") * "rules"."window_ms" AS "start_ms"
+      FROM "rules" CROSS JOIN "clock"
+    )
+    SELECT
+      "windows"."bucket" AS "bucket",
+      COUNT("b"."id")::bigint AS "identities",
+      COALESCE(SUM("b"."count"), 0)::bigint AS "hits",
+      COALESCE(MAX("b"."count"), 0)::int AS "max_count",
+      COUNT(*) FILTER (WHERE "b"."count" > "windows"."max")::bigint AS "limited_identities",
+      "windows"."start_ms"::bigint AS "window_start_ms"
+    FROM "windows"
+    LEFT JOIN "rate_limit_buckets" AS "b"
+      ON "b"."bucket" = "windows"."bucket"
+     AND "b"."window_start" = TO_TIMESTAMP("windows"."start_ms" / 1000)
+    GROUP BY "windows"."bucket", "windows"."start_ms"
+  `
+  const byBucket = new Map(rows.map((row) => [row.bucket, row]))
+  return input.rules.map((entry) => {
+    const row = byBucket.get(entry.bucket)
+    return {
+      bucket: entry.bucket,
+      hits: Number(row?.hits ?? 0),
+      identities: Number(row?.identities ?? 0),
+      limit: entry.rule.max,
+      limitedIdentities: Number(row?.limited_identities ?? 0),
+      maxCount: Number(row?.max_count ?? 0),
+      windowMs: entry.rule.windowMs,
+      windowStartMs: Number(
+        row?.window_start_ms
+        ?? rateLimitWindowStart(input.nowMs ?? Date.now(), entry.rule.windowMs),
+      ),
+    }
+  })
+}
+
 /**
  * Forget every window of one bucket, live ones included. A test seam: it
  * discards allowance the running deployment is relying on, so it belongs to a

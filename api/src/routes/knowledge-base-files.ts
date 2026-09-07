@@ -27,7 +27,7 @@ import {
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
 import { enqueueKnowledgeExtract } from './knowledge-base-file-extract.js'
-import { sendFileServiceError, streamAttachmentDownload } from './uploads.js'
+import { sendAttachmentDownload, sendFileServiceError } from './uploads.js'
 
 const CreateFileNodeQuerySchema = z.object({
   parentPageId: z.string().uuid().optional(),
@@ -388,9 +388,14 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!version?.attachmentId) {
       return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
     }
-    const opened = await fileService.openStream(version.attachmentId, actorContext.tenant.organizationId)
-    if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'File bytes not found')
-    return streamAttachmentDownload(request, reply, opened, {
+    const download = await fileService.openDownload(
+      version.attachmentId,
+      actorContext.tenant.organizationId,
+    )
+    if (!download) {
+      return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'File bytes not found')
+    }
+    return sendAttachmentDownload(request, reply, download, {
       attribution: attributionFromActorContext(actorContext),
       prisma,
       source: 'api.kb.fileVersion',
@@ -549,9 +554,14 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
-    const opened = await fileService.openStream(attachmentId, actorContext.tenant.organizationId)
-    if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'Attachment bytes not found')
-    return streamAttachmentDownload(request, reply, opened, {
+    const download = await fileService.openDownload(
+      attachmentId,
+      actorContext.tenant.organizationId,
+    )
+    if (!download) {
+      return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'Attachment bytes not found')
+    }
+    return sendAttachmentDownload(request, reply, download, {
       attribution: attributionFromActorContext(actorContext),
       prisma,
       source: 'api.kb.attachment',

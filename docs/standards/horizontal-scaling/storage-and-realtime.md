@@ -186,6 +186,19 @@ own `try`/`catch`; a poisoned row costs one slot of the batch per pass and is
 reported — with its instance id, lease id and error — on every pass, because
 nothing retires it and the machine it names may still be running.
 
+**Corollary — a transfer that cannot finish inside the drain does not travel
+through the API.** Every download was proxied (6.4), pinning a multi-GiB transfer
+to a process a scale-in then killed, and Cloud Run's SIGTERM-to-SIGKILL grace is
+a fixed ten seconds. Past `storage.signedDownloadMinBytes` (8 MiB: what a
+pessimistic 1 MB/s client finishes inside the shortest drain the fleet runs with)
+the API answers `302` with a signed URL granting one GET, on one key, for sixty
+seconds, type and filename pinned in; the 302 is `private, no-store` and
+`no-referrer`. **The mint is downstream of the access check, always** — routes
+authorise first and call `fileService.openDownload` second, which refuses another
+organisation's row and takes the key off the row, not the request. **And nothing
+about signing may fail a download:** `signedDownloadUrl` is optional on `Storage`,
+defined only when `storage.publicEndpoint` declares a client-reachable address
+allowing the admin origin by CORS, so an absence or a throw proxies instead.
 ## 9. Realtime publishes under a per-scope lock, so id order is commit order
 
 **And a listener never advances a connection watermark past an id it did not

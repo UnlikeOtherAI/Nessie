@@ -23,6 +23,11 @@ import {
   thumbnailStorageKey,
   type ThumbnailOps,
 } from './attachment-thumbnails.js'
+import {
+  type AttachmentDownload,
+  resolveAttachmentDownload,
+  SIGNED_DOWNLOAD_MIN_BYTES,
+} from './download.js'
 import { isStrippableImageMime, prepareImageUpload } from './strip-image-metadata.js'
 import type { GeneratedThumbnail } from './thumbnail.js'
 
@@ -111,12 +116,39 @@ export type StoreFileInput = {
 
 export type { SetThumbnailInput }
 
+// The download decision and the header vocabulary that goes with it. Exported
+// from here rather than only from ./download.js so a route reaches for the
+// FileService's own module and cannot end up with a second disposition rule.
+export {
+  type AttachmentDownload,
+  attachmentDisposition,
+  SIGNED_DOWNLOAD_EXPIRY_SECONDS,
+  SIGNED_DOWNLOAD_MIN_BYTES,
+} from './download.js'
+
 export type FileService = ThumbnailOps & {
   store(input: StoreFileInput): Promise<{ attachment: Attachment; bytesWritten: number }>
   openStream(
     attachmentId: string,
     organizationId: string,
   ): Promise<{ stream: Readable; attachment: Attachment } | null>
+  /**
+   * What a download route serves: the same tenancy check `openStream` makes,
+   * and then either a stream or a signed URL depending on the object's size and
+   * whether the backend can mint one (./download.ts).
+   *
+   * **This is the only place a signed URL is minted, and it is downstream of
+   * every authorisation check.** The route decides whether the caller may read
+   * the attachment; this decides how the bytes travel. The key is never taken
+   * from the request — it comes off the row read here by id, which is refused
+   * outright when it belongs to another organisation — so there is no input a
+   * caller can shape into a URL for an object they were not already cleared
+   * for.
+   */
+  openDownload(
+    attachmentId: string,
+    organizationId: string,
+  ): Promise<AttachmentDownload | null>
   delete(
     attachmentId: string,
     organizationId: string,
@@ -146,8 +178,15 @@ export const createFileService = (deps: {
   prisma: PrismaClient
   storage: Storage
   maxUploadBytes: number
+  /**
+   * `storage.signedDownloadMinBytes`. Optional so a test or a small wiring site
+   * need not thread it through: the default is the same 8 MiB the config
+   * carries, and it can only matter at all on a backend that can sign.
+   */
+  signedDownloadMinBytes?: number
 }): FileService => {
   const { prisma, storage, maxUploadBytes } = deps
+  const signedDownloadMinBytes = deps.signedDownloadMinBytes ?? SIGNED_DOWNLOAD_MIN_BYTES
 
   const budgetScope = (organizationId: string, scope?: FileScope): BudgetScope => ({
     organizationId,
@@ -368,9 +407,20 @@ export const createFileService = (deps: {
     return { attachment: admission.value, bytesWritten }
   }
 
-  const openStream: FileService['openStream'] = async (attachmentId, organizationId) => {
+  // The tenancy gate both download entry points share: an attachment id that
+  // resolves to another organisation's row is indistinguishable here from one
+  // that resolves to nothing.
+  const readOwnAttachment = async (
+    attachmentId: string,
+    organizationId: string,
+  ): Promise<Attachment | null> => {
     const attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } })
-    if (!attachment || attachment.organizationId !== organizationId) {
+    return attachment && attachment.organizationId === organizationId ? attachment : null
+  }
+
+  const openStream: FileService['openStream'] = async (attachmentId, organizationId) => {
+    const attachment = await readOwnAttachment(attachmentId, organizationId)
+    if (!attachment) {
       return null
     }
     const stream = await storage.getStream(attachment.storageKey)
@@ -378,6 +428,16 @@ export const createFileService = (deps: {
       return null
     }
     return { stream, attachment }
+  }
+
+  const openDownload: FileService['openDownload'] = async (attachmentId, organizationId) => {
+    const attachment = await readOwnAttachment(attachmentId, organizationId)
+    if (!attachment) {
+      return null
+    }
+    return resolveAttachmentDownload(storage, attachment, {
+      minBytes: signedDownloadMinBytes,
+    })
   }
 
   const deleteFile: FileService['delete'] = async (
@@ -471,6 +531,7 @@ export const createFileService = (deps: {
     // prisma/storage/scope so it stays inside the chokepoint.
     ...createThumbnailOps({ prisma, storage, deriveScope: (row) => deriveScope(row) }),
     store,
+    openDownload,
     openStream,
     delete: deleteFile,
     purgeEmailMessageFiles,

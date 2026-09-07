@@ -284,6 +284,7 @@ export const buildApp = async (
     prisma,
     storage: getStorage(config.storage),
     maxUploadBytes: config.storage.maxUploadBytes,
+    signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
   const deepSignalMcpIdentity =
     createDeepSignalMcpIdentityServiceFromEnv(prisma)
