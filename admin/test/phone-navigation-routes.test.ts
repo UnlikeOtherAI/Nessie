@@ -187,6 +187,36 @@ test('projects: root depth0 and the project (all tabs) depth1', () => {
   })
 })
 
+test('board management is a project stack: board → directory → settings', () => {
+  const board = '/projects/proj_a/board'
+  const directory = '/projects/proj_a/boards'
+  const settings = '/projects/proj_a/boards/board_a/settings?tab=watchers'
+
+  assert.equal(getPhoneNavigationScreen(directory)?.section, 'projects')
+  assert.equal(getPhoneNavigationScreen(directory)?.depth, 2)
+  assert.deepEqual(getPhoneNavigationBackTarget(directory), {
+    label: 'Back to board',
+    pathname: board,
+  })
+  assert.equal(getPhoneNavigationScreen(settings)?.section, 'projects')
+  assert.equal(getPhoneNavigationScreen(settings)?.depth, 3)
+  assert.deepEqual(getPhoneNavigationBackTarget(settings), {
+    label: 'Back to boards',
+    pathname: directory,
+  })
+  assert.equal(getPhoneNavigationDirection(board, directory), 'forward')
+  assert.equal(getPhoneNavigationDirection(directory, settings), 'forward')
+  assert.equal(getPhoneNavigationDirection(settings, directory), 'back')
+  assert.deepEqual(resolvePhoneNavigationBackAction(settings, directory), {
+    mode: 'pop',
+    to: directory,
+  })
+  assert.deepEqual(resolvePhoneNavigationBackAction(settings, null), {
+    mode: 'replace',
+    to: directory,
+  })
+})
+
 test('admin: /settings depth0 and every admin page depth1 under it', () => {
   assert.equal(getPhoneNavigationScreen('/settings')?.depth, 0)
   assert.equal(isPhoneTabRoot('/settings'), true)

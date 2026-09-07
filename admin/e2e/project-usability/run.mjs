@@ -248,8 +248,14 @@ const exerciseBoardManagement = async ({ page, projectId, sourceBoard, token }) 
 const exerciseBoardManagementPhone = async ({ page, projectId, board }) => {
   await gotoBoardList(page, projectId)
   const newBoard = page.getByRole('button', { name: 'New board', exact: true })
-  const settings = boardListRow(page, board.name).getByRole('link', { name: 'Settings' })
-  for (const [label, locator] of [['New board', newBoard], ['Settings', settings]]) {
+  const row = boardListRow(page, board.name)
+  const openBoard = row.getByRole('link', { name: 'Open board' })
+  const settings = row.getByRole('link', { name: 'Settings' })
+  const rowText = await row.innerText()
+  assert.match(rowText, /Kanban/u, 'phone board row names its style')
+  assert.match(rowText, /Default/u, 'phone board row names the default board')
+  assert.match(rowText, /columns/u, 'phone board row names its column count')
+  for (const [label, locator] of [['New board', newBoard], ['Open board', openBoard], ['Settings', settings]]) {
     const box = await locator.boundingBox()
     assert.ok(box, `${label} is visible on a phone`)
     assert.ok(box.height >= 44, `${label} keeps a 44px touch target (was ${box.height}px)`)
