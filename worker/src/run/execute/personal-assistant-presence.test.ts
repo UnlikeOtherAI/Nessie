@@ -32,6 +32,7 @@ const presenceContext = (): RunContext => ({
     organizationId: id('4'),
     projectId: id('5'),
     systemChannelType: null,
+    visibility: 'public',
     teamId: id('6'),
   },
   consumedSources: createConsumedSourceSink(),

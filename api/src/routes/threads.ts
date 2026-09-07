@@ -255,6 +255,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         channelId: thread.channel.id,
         organizationId: actorContext.tenant.organizationId,
         systemChannelType: thread.channel.systemChannelType,
+        visibility: thread.channel.visibility,
       }),
       {
         data: { messageId, userId: actorContext.actor.actorId, emoji: body.emoji },
@@ -333,6 +334,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         channelId: thread.channel.id,
         organizationId: actorContext.tenant.organizationId,
         systemChannelType: thread.channel.systemChannelType,
+        visibility: thread.channel.visibility,
       }),
       {
         data: {
@@ -410,6 +412,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         channelId: thread.channel.id,
         organizationId: actorContext.tenant.organizationId,
         systemChannelType: thread.channel.systemChannelType,
+        visibility: thread.channel.visibility,
       }),
       {
         data: {

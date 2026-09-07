@@ -34,6 +34,7 @@ export const findThreadForUser = async (
       id: string
       organizationId: string
       type: 'dm' | 'standard'
+      visibility: string
       systemChannelType: ChannelSystemType | null
     }
   }) | null
@@ -55,6 +56,7 @@ export const findThreadForUser = async (
           id: true,
           organizationId: true,
           type: true,
+          visibility: true,
           systemChannelType: true,
         },
       },

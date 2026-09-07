@@ -32,6 +32,7 @@ type PersonalAssistantStateLoader = (
     id: string
     organizationId: string
     systemChannelType?: string | null
+    visibility?: string
   } | null
   thread?: { id: string } | null
 } | null>
@@ -41,6 +42,7 @@ type IntegrationHandoffDeps = {
     channelId: string
     organizationId: string
     systemChannelType?: string | null
+    visibility?: string
   }) => WsScope[]
   isPersonalAssistantChannelType: (
     value: string | null | undefined,
@@ -177,6 +179,7 @@ export const createPersonalAssistantIntegrationHandoff = async (
         id: channelState.id,
         organizationId: actorContext.tenant.organizationId,
         systemChannelType: channelState.systemChannelType,
+        visibility: channelState.visibility,
       },
       message: committed.message,
       threadId: threadState.id,

@@ -170,6 +170,7 @@ export const runTeamSearchTool = async (
         metadata: true,
         onBehalfOfUserId: true,
         role: true,
+        disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
         rootMessageId: true,
         thread: {
           select: {
@@ -225,6 +226,7 @@ export const runTeamSearchTool = async (
     agentId: message.agentId,
     channelId: message.thread.channel.id,
     channelVisibility: message.thread.channel.visibility,
+    disclosureSources: message.disclosureSources,
     metadata: message.metadata,
     onBehalfOfUserId: message.onBehalfOfUserId,
     role: message.role,

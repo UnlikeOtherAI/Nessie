@@ -1,3 +1,5 @@
+import { EMAIL_SEND_TOOL_ID } from '@nessie/runtime'
+
 import type { RunContext } from './types.js'
 
 // These durable surfaces have no disclosure basis or original-author grant
@@ -9,6 +11,7 @@ const UNSCOPED_CONTENT_SINKS = new Set([
   'kb_document_edit',
   'kb_draft_write',
   'kb_note_add',
+  EMAIL_SEND_TOOL_ID,
   'mailbox_send',
   'ticket_create',
   'ticket_update',

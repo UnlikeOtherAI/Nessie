@@ -65,6 +65,7 @@ const runContext = (): RunContext => ({
     projectId: PROJECT_ID,
     teamId: TEAM_ID,
     systemChannelType: null,
+    visibility: 'public',
   },
   consumedSources: createConsumedSourceSink(),
   run: { createdAt: new Date(), id: RUN_ID, replyPlacement: null, threadId: THREAD_ID },

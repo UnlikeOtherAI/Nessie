@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { EMAIL_SEND_TOOL_ID } from '@nessie/runtime'
 
 import {
   computeReplyBasis,
@@ -106,6 +107,10 @@ test('private conversation material cannot enter an unscoped write or MCP call',
   assert.equal(
     blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'send_message' }),
     false,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: EMAIL_SEND_TOOL_ID }),
+    true,
   )
   assert.equal(
     blocksPrivateConversationWrite({

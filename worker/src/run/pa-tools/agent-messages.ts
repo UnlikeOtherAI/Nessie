@@ -108,10 +108,21 @@ export const runMessageSearchTool = async (
     context,
     rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
   )
+  const sources = await context.prisma.messageDisclosureSource.findMany({
+    where: { messageId: { in: rows.map((row) => row.id) } },
+    select: { messageId: true, sourceAuthorUserId: true, sourceChannelId: true },
+  })
+  const sourcesByMessage = new Map<string, typeof sources>()
+  for (const source of sources) {
+    const current = sourcesByMessage.get(source.messageId) ?? []
+    current.push(source)
+    sourcesByMessage.set(source.messageId, current)
+  }
   recordPrivateConversationMessageRead(context, rows.map((row) => ({
     agentId: row.agent_id,
     channelId: row.channel_id,
     channelVisibility: row.channel_visibility,
+    disclosureSources: sourcesByMessage.get(row.id) ?? [],
     metadata: row.metadata,
     onBehalfOfUserId: row.on_behalf_of_user_id,
     role: row.role,

@@ -243,6 +243,7 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       projectId: '00000000-0000-0000-0000-0000000000f1',
       teamId: TEAM,
       systemChannelType: 'external_agent',
+      visibility: 'public',
     },
     consumedSources: createConsumedSourceSink(),
     run: { id: RUN, threadId: THREAD, createdAt: new Date(), replyPlacement: null },
