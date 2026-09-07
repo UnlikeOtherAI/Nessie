@@ -216,11 +216,13 @@ export const BoardSettingsPage = () => {
           id: 'open-board',
           kind: 'link',
           label: 'Open board',
-          priority: 80,
+          primary: true,
+          priority: 100,
         }] : []}
         backLabel="Back to boards"
         onBack={() => void navigate(`/projects/${projectId}/boards`)}
         project={project}
+        subtitle={project?.name}
         tabs={board ? (
           <TabBar
             ariaLabel="Board settings"
@@ -233,6 +235,7 @@ export const BoardSettingsPage = () => {
             onChange={selectTab}
             role="tablist"
             size="sm"
+            touchTarget
             value={tab}
           />
         ) : undefined}
@@ -324,7 +327,9 @@ export const BoardSettingsPage = () => {
               <Section
                 description="Only project administrators can view or change who receives source updates."
                 title="Watchers"
-              />
+              >
+                <p className="text-sm text-[color:var(--tx3)]">No watcher details are available.</p>
+              </Section>
             ) : null}
           </>
           )}

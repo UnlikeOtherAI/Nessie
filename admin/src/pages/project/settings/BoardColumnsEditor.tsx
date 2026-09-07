@@ -20,7 +20,7 @@ const CategorySelect = ({
 }) => (
   <Select
     aria-label={ariaLabel}
-    className="max-w-[160px]"
+    className="min-h-11 max-w-[160px]"
     disabled={disabled}
     onChange={(event) => onChange(event.target.value as ColumnCategory)}
     size="compact"
@@ -140,11 +140,11 @@ const ColumnRow = ({
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-col">
           <button
             aria-label="Move up"
-            className="text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)]
+            className="h-11 w-11 text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)]
               disabled:opacity-30"
             disabled={isFirst}
             onClick={() => swapWith(prevId, prevPosition)}
@@ -154,7 +154,7 @@ const ColumnRow = ({
           </button>
           <button
             aria-label="Move down"
-            className="text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)]
+            className="h-11 w-11 text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)]
               disabled:opacity-30"
             disabled={isLast}
             onClick={() => swapWith(nextId, nextPosition)}
@@ -165,7 +165,7 @@ const ColumnRow = ({
         </div>
         <Input
           aria-label="Column name"
-          className="min-w-0 flex-1"
+          className="min-h-11 min-w-0 flex-1"
           onBlur={commitName}
           onChange={(event) => setName(event.target.value)}
           size="compact"
@@ -177,7 +177,7 @@ const ColumnRow = ({
           value={column.category}
         />
         <button
-          className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+          className="min-h-11 px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
           onClick={() => setDeleteOpen(true)}
           type="button"
         >
@@ -296,10 +296,10 @@ export const BoardColumnsEditor = ({
         ))}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-[color:var(--sep)] pt-3">
+      <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--sep)] pt-3">
         <Input
           aria-label="New column name"
-          className="min-w-0 flex-1"
+          className="min-h-11 min-w-0 flex-1"
           onChange={(event) => setNewName(event.target.value)}
           placeholder="New column name…"
           size="compact"
@@ -311,7 +311,7 @@ export const BoardColumnsEditor = ({
           value={newCategory}
         />
         <button
-          className="admin-button admin-button-primary admin-button-compact"
+          className="admin-button admin-button-primary admin-button-compact min-h-11"
           disabled={!newName.trim() || createColumn.isPending}
           onClick={handleAdd}
           type="button"

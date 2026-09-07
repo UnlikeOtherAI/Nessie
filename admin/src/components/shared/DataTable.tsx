@@ -53,6 +53,8 @@ type DataTableProps<T> = {
   expandable: boolean
   /** Names the table for assistive tech and titles the expand dialog. */
   label: string
+  /** Fixed columns let a dense, responsive table bound long cell content. */
+  layout?: 'auto' | 'fixed'
   loading?: boolean
   /**
    * Keeps real columns readable on a narrow viewport; the viewport scrolls.
@@ -97,6 +99,7 @@ export const DataTable = <T,>({
   empty,
   expandable,
   label,
+  layout = 'auto',
   loading = false,
   minWidth,
   onRowClick,
@@ -111,7 +114,10 @@ export const DataTable = <T,>({
   const body = (
     <table
       className="admin-table w-full border-collapse"
-      style={minWidth ? { minWidth: `max(${minWidth}, 100%)` } : undefined}
+      style={{
+        ...(minWidth ? { minWidth: `max(${minWidth}, 100%)` } : {}),
+        tableLayout: layout,
+      }}
     >
       <caption className="sr-only">{label}</caption>
       <thead>

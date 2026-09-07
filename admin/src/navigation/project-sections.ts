@@ -47,6 +47,7 @@ export const projectSectionIdFromPathname = (pathname: string): ProjectSectionId
   const suffix = /\/projects\/[^/]+\/([^/?#]+)/.exec(pathname)?.[1]
   switch (suffix) {
     case 'board':
+    case 'boards':
     case 'backlog':
     case 'insights':
     case 'docs':

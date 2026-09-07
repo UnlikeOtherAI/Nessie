@@ -62,6 +62,7 @@ export const ProjectBoardsPage = () => {
         backLabel="Back to board"
         onBack={() => void navigate(`/projects/${projectId}/board`)}
         project={project}
+        subtitle={project?.name}
         title="Boards"
       />
       <PageBody>
@@ -95,9 +96,9 @@ export const ProjectBoardsPage = () => {
                 key: 'name',
                 render: (board) => (
                   <span className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
-                    <span className="flex items-center gap-2 font-medium">
+                    <span className="flex min-w-0 items-center gap-2 font-medium">
                       <BoardIcon iconEmoji={board.iconEmoji} size="md" />
-                      {board.name}
+                      <span className="break-words">{board.name}</span>
                     </span>
                     <span className="text-xs text-[color:var(--tx3)] sm:hidden">
                       {styleLabel(board)} · {board.isDefault ? 'Default' : 'Not default'} · {board.columns.length} columns
@@ -144,10 +145,12 @@ export const ProjectBoardsPage = () => {
                     </Link>
                   </span>
                 ),
+                width: '5.5rem',
               },
             ]}
             expandable
             label="Project boards"
+            layout="fixed"
             rowKey={(board) => board.id}
             rows={boards}
             />
