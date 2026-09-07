@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { parseOrganizationId, parseUserId } from '@nessie/schemas'
 
 import { runAgentPeerDelegateTool } from './peer-delegation.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
@@ -11,8 +12,8 @@ const CHANNEL = '00000000-0000-4000-8000-000000000004'
 
 const context = (overrides: Partial<BuiltinToolRuntimeContext> = {}): BuiltinToolRuntimeContext => ({
   agentId: '00000000-0000-4000-8000-000000000005', agentKind: 'shared',
-  actorContext: { actor: { actorId: ID, actorType: 'user' }, actionContext: { requestId: 'test' }, tenant: { organizationId: '00000000-0000-4000-8000-000000000006' } },
-  channel: { id: CHANNEL, organizationId: '00000000-0000-4000-8000-000000000006', projectId: PROJECT },
+  actorContext: { actor: { actorId: parseUserId(ID), actorType: 'user' }, actionContext: { requestId: 'test' }, tenant: { organizationId: parseOrganizationId('00000000-0000-4000-8000-000000000006') } },
+  channel: { id: CHANNEL, organizationId: parseOrganizationId('00000000-0000-4000-8000-000000000006'), projectId: PROJECT },
   consumedSources: { add: () => undefined, addAll: () => undefined, list: () => [], size: () => 0 },
   ledgerIdentity: null, prisma: {} as BuiltinToolRuntimeContext['prisma'], realtimeTransport: {} as BuiltinToolRuntimeContext['realtimeTransport'],
   run: { id: '00000000-0000-4000-8000-000000000007', interactive: true, messageId: ID, threadId: '00000000-0000-4000-8000-000000000008' }, toolCallId: 'call-1',
@@ -22,9 +23,9 @@ const context = (overrides: Partial<BuiltinToolRuntimeContext> = {}): BuiltinToo
 test('peer delegation rejects a forged effective user before any database access', async () => {
   const forged = context({
     actorContext: {
-      actor: { actorId: ID, actorType: 'user' },
-      actionContext: { effectiveUserId: PEER, requestId: 'test' },
-      tenant: { organizationId: '00000000-0000-4000-8000-000000000006' },
+      actor: { actorId: parseUserId(ID), actorType: 'user' },
+      actionContext: { effectiveUserId: parseUserId(PEER), requestId: 'test' },
+      tenant: { organizationId: parseOrganizationId('00000000-0000-4000-8000-000000000006') },
     },
   })
   await assert.rejects(

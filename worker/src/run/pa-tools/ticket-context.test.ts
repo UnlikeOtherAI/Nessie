@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { parseOrganizationId, parseUserId } from '@nessie/schemas'
 
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
@@ -8,14 +9,14 @@ import { projectFor } from './ticket-context.js'
 
 const member = {
   actorContext: {
-    actionContext: {},
-    actor: { actorId: '22222222-2222-4222-8222-222222222222', actorType: 'user' as const, roles: ['member'] },
-    tenant: { organizationId: '11111111-1111-4111-8111-111111111111' },
+    actionContext: { requestId: 'ticket-context-test' },
+    actor: { actorId: parseUserId('22222222-2222-4222-8222-222222222222'), actorType: 'user' as const, roles: ['member'] },
+    tenant: { organizationId: parseOrganizationId('11111111-1111-4111-8111-111111111111') },
   },
   isOwner: false,
-  organizationId: '11111111-1111-4111-8111-111111111111',
+  organizationId: parseOrganizationId('11111111-1111-4111-8111-111111111111'),
   role: 'member',
-  userId: '22222222-2222-4222-8222-222222222222',
+  userId: parseUserId('22222222-2222-4222-8222-222222222222'),
 }
 
 const contextWithBinding = (binding: number): BuiltinToolRuntimeContext => ({

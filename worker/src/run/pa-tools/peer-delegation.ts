@@ -47,7 +47,7 @@ export const runAgentPeerDelegateTool = async (
       organizationId: member.organizationId,
       systemManaged: false,
       agentKind: 'shared',
-      agentBindings: { some: { channelId: context.channel.id } },
+      bindings: { some: { channelId: context.channel.id } },
     },
     select: { id: true, name: true },
   })

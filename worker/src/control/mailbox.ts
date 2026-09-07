@@ -6,6 +6,7 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseUserId,
   parseRunId,
   parseTaskId,
   parseThreadId,
@@ -69,7 +70,7 @@ const buildMailboxActorContext = (input: {
     requestId: randomUUID(),
     ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
     ...(input.peerDelegationDepth !== null && input.peerDelegationDepth !== undefined
-      ? { effectiveUserId: input.actorId, purpose: 'agent.peer_delegation', correlationId: String(input.peerDelegationDepth) }
+      ? { effectiveUserId: parseUserId(input.actorId), purpose: 'agent.peer_delegation', correlationId: String(input.peerDelegationDepth) }
       : {}),
     threadId: parseThreadId(input.threadId),
   },

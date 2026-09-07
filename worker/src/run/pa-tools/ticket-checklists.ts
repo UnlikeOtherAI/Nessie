@@ -78,7 +78,8 @@ export const assertProjectChecklistDestination = async (
       || (scope.scopeType === 'agent' && await audienceCanSeeAgent(scope.scopeId))
     if (!implied) throw new Error('I cannot copy restricted research into this shared ticket checklist.')
   }
-  if (input.agentId && !(await audienceCanSeeAgent(input.agentId))) {
+  const sourceAgentId = input.agentId
+  if (sourceAgentId && !(await audienceCanSeeAgent(sourceAgentId))) {
     throw new Error('This template is private to an agent some project collaborators cannot access.')
   }
 }
