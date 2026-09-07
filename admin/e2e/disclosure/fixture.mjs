@@ -76,7 +76,7 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
         expiresAt: new Date(Date.now() + 86_400_000),
         familyId: user.sessionId,
         providerId: 'local',
-        providerType: 'local',
+        providerType: 'local-bootstrap',
         sessionId: user.sessionId,
         tokenHash: `disclosure-session-${user.id}`,
         userId: user.id,
