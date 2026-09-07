@@ -346,6 +346,14 @@ test('consumer bills the launch team under the named system identities', async (
       }
     }
 
+    if (sql.includes('FROM message_disclosure_sources')) {
+      return { rows: [] }
+    }
+
+    if (sql.includes('FROM channels') && sql.includes('visibility')) {
+      return { rows: [{ visibility: 'private' }] }
+    }
+
     if (sql.includes('SELECT id, metadata FROM thoughts')) {
       return { rows: [] }
     }
@@ -363,6 +371,10 @@ test('consumer bills the launch team under the named system identities', async (
     }
 
     if (sql.includes('INSERT INTO thought_audit_logs')) {
+      return { rowCount: 1, rows: [] }
+    }
+
+    if (sql.includes('INSERT INTO thought_disclosure_sources')) {
       return { rowCount: 1, rows: [] }
     }
 

@@ -1,5 +1,6 @@
 import type { CaptureConfig, CapturedThought } from './capture.js'
 import { captureThought } from './capture.js'
+import type { PrivateConversationSource } from './disclosure-sources.js'
 
 export type UserMessageMemoryOrigin =
   | 'personal_assistant_dm'
@@ -27,6 +28,7 @@ export type CaptureUserMessageMemoryInput = {
   requestId?: string
   correlationId?: string
   systemComponent?: string
+  privateConversationSources?: readonly PrivateConversationSource[]
 }
 
 export const captureUserMessageMemory = async (
@@ -63,6 +65,7 @@ export const captureUserMessageMemory = async (
       requestId: input.requestId,
       correlationId: input.correlationId,
       systemComponent: input.systemComponent,
+      privateConversationSources: input.privateConversationSources,
       visibility: 'private',
     },
     config,

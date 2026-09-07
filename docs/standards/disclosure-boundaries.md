@@ -97,9 +97,14 @@ Facts not restated there:
   Missing lineage fails closed for sharing. Transcript, attachment, checkpoint,
   memory and conversation-search reads carry known lineage forward and mark an
   older/agent-derived source with no durable author as unknown; a known turn in
-  the same channel cannot re-attribute it. A handoff brief or delegated subtask
-  assignment or peer-delegation mailbox brief is a hidden trigger message,
-  never an untracked prompt override:
+  the same channel cannot re-attribute it. `RunCheckpointDisclosureSource` and
+  `ThoughtDisclosureSource` retain only server-derived channel-and-author
+  provenance; a checkpoint writes its body, basis, and source rows atomically,
+  while a legacy checkpoint or thought without source rows remains unknown on
+  recall. Thought capture may union provenance from its actual input, but never
+  invent an author from channel membership, an actor, or metadata. A handoff
+  brief, delegated subtask assignment, or peer-delegation mailbox brief is a
+  hidden trigger message, never an untracked prompt override:
   it stamps the inherited basis and these same original authors before the child
   run receives its bytes. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
