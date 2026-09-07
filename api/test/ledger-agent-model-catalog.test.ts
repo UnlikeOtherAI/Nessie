@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   assertLedgerAgentModelSelection,
+  findLedgerModelOutputTokenCap,
   ledgerAgentModelCatalogRequestHeaders,
   LedgerAgentModelCatalogError,
   listLedgerAgentModels,
@@ -180,6 +181,28 @@ test('lists only token-authorized chat-completions models from Ledger', async ()
       providerDisplayName: 'OpenAI',
     },
   ])
+})
+
+test('returns an advertised output ceiling only for the selected direct model', async () => {
+  const cap = await findLedgerModelOutputTokenCap({
+    config: catalogConfig,
+    ledgerPublicUrl,
+    model: 'gemini-3.5-flash',
+    provider: 'gemini',
+    fetchImpl: async () => response({ data: [
+      { id: 'gemini-3.5-flash', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: 8192 },
+      { id: 'gemini-3.5-flash', kind: 'service', service: { id: 'other', name: 'Other' }, max_output_tokens: 1234 },
+    ] }),
+  })
+  assert.equal(cap, 8192)
+  const absent = await findLedgerModelOutputTokenCap({
+    config: catalogConfig,
+    ledgerPublicUrl,
+    model: 'gemini-unknown',
+    provider: 'gemini',
+    fetchImpl: async () => response({ data: [] }),
+  })
+  assert.equal(absent, undefined)
 })
 
 test('rejects a selected model that is not currently granted to the Ledger key', async () => {

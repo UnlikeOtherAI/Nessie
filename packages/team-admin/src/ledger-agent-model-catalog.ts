@@ -23,6 +23,7 @@ const LedgerModelListSchema = z.object({
       name: z.string(),
     }).optional(),
     endpoints: z.array(z.string()).optional(),
+    max_output_tokens: z.number().int().positive().nullable().optional(),
   })),
 })
 
@@ -163,9 +164,9 @@ const toAgentModelOptions = (
  * for embeddings, images, and incompatible protocols; those cannot service
  * Nessie's OpenAI chat-completions loop and are intentionally excluded.
  */
-export const listLedgerAgentModels = async (
+const loadLedgerModelCatalog = async (
   input: ListLedgerAgentModelsOptions,
-): Promise<AgentModelOption[]> => {
+): Promise<z.infer<typeof LedgerModelListSchema>> => {
   const apiKey = trimmed(input.config.apiKey)
   if (!apiKey) {
     throw new LedgerAgentModelCatalogError(
@@ -211,9 +212,32 @@ export const listLedgerAgentModels = async (
       'Ledger model catalog returned an invalid response.',
     )
   }
-
-  return toAgentModelOptions(parsed.data)
+  return parsed.data
 }
+
+/**
+ * Read Ledger's advertised completion ceiling for one direct service model.
+ * A missing field remains unknown; callers must retain their configured cap.
+ */
+export const findLedgerModelOutputTokenCap = async (
+  input: ListLedgerAgentModelsOptions & { model: string; provider: string },
+): Promise<number | undefined> => {
+  const catalog = await loadLedgerModelCatalog(input)
+  return catalog.data.find((entry) => (
+    entry.kind === 'service'
+    && entry.id === input.model
+    && entry.service?.id === input.provider
+  ))?.max_output_tokens ?? undefined
+}
+
+/**
+ * Load only models that can power the agentic loop. Ledger also lists models
+ * for embeddings, images, and incompatible protocols; those cannot service
+ * Nessie's OpenAI chat-completions loop and are intentionally excluded.
+ */
+export const listLedgerAgentModels = async (
+  input: ListLedgerAgentModelsOptions,
+): Promise<AgentModelOption[]> => toAgentModelOptions(await loadLedgerModelCatalog(input))
 
 export const assertLedgerAgentModelSelection = async (input: {
   config: LedgerAgentModelCatalogConfig

@@ -14,6 +14,7 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
+import { findLedgerModelOutputTokenCap } from '@nessie/team-admin'
 import { runInferenceGraph } from '../inference.js'
 import { resolveRuntimeProvider, resolveStageProviderConfig } from '../inference-provider.js'
 import {
@@ -32,6 +33,16 @@ const runtimeModelConfig = loadConfig().model
 
 export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
   tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
+
+export const resolveAdvertisedOutputTokens = (input: {
+  configuredMaxTokens: number
+  staticMaxOutputTokens?: number
+  ledgerMaxOutputTokens?: number
+}): number => Math.min(
+  input.configuredMaxTokens,
+  input.staticMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+  input.ledgerMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+)
 
 export const resolveMainOutputTokens = (input: {
   admittedMaxOutputTokens?: number
@@ -137,7 +148,27 @@ export const createRunInference = (
       serviceId: providerConfig.providerKey,
     })
     const capability = await service.getCapabilities(providerConfig.model)
-    return capability.effectiveSnapshot.maxOutputTokens ?? runtimeModelConfig.maxTokens
+    let ledgerMaxOutputTokens: number | undefined
+    if (isLedgerEndpoint(providerConfig.baseUrl) && providerConfig.model) {
+      try {
+        const requestHeaders = await requestHeadersForProvider(providerConfig)
+        ledgerMaxOutputTokens = await findLedgerModelOutputTokenCap({
+          config: { apiKey: providerConfig.apiKey, baseUrl: providerConfig.baseUrl },
+          ledgerPublicUrl: new URL(providerConfig.baseUrl).origin,
+          model: providerConfig.model,
+          provider: providerConfig.providerKey,
+          ...(requestHeaders ? { requestHeaders } : {}),
+        })
+      } catch {
+        // Ledger metadata is advisory. Its absence or a transient listing failure
+        // must retain the configured cap rather than invent a provider limit.
+      }
+    }
+    return resolveAdvertisedOutputTokens({
+      configuredMaxTokens: runtimeModelConfig.maxTokens,
+      staticMaxOutputTokens: capability.effectiveSnapshot.maxOutputTokens,
+      ledgerMaxOutputTokens,
+    })
   }
 
   const call = async (
