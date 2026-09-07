@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client'
 import { BoardFilterSchema, DEFAULT_BOARD_FILTER, type BoardFilter } from '@nessie/schemas'
 
 import { boardFilterWhere, boardTaskPoolWhere } from './board-placement.js'
+import { isBoardWatcherAgentEligible } from './board-watchers.js'
 import { isProjectAccessibleToUser } from './project-structure.js'
 
 const readFilter = (value: unknown): BoardFilter => {
@@ -200,10 +201,14 @@ export const resolveBoardWatchRecipients = async (
   }
 
   for (const [agentId, entry] of byAgent) {
-    // An agent reads what its own project reads; a deleted agent has already
-    // taken its watcher row with it (ON DELETE CASCADE).
-    const agent = await prisma.agent.count({ where: { id: agentId, organizationId } })
-    if (agent === 0) continue
+    // Legacy rows predate watcher-time admission. Recheck before any alert or
+    // wake so a private home, a system row, or a departed private owner cannot
+    // use delivery as a path around current authority.
+    if (!(await isBoardWatcherAgentEligible(prisma, {
+      addedByUserId: entry.addedByUserId,
+      agentId,
+      organizationId,
+    }))) continue
     // The person who reads this agent's DM must be entitled to the task, for
     // the same reason a user recipient must: the kickoff carries ticket titles
     // into a conversation a human opens, and the run's replies land there too.

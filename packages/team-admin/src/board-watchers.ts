@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { BoardWatcherRecord } from '@nessie/schemas'
 
 import { resolveAgentConversation } from './agent-conversation.js'
@@ -47,6 +47,45 @@ export const isBoardWatcherError = <T>(
   value: T | BoardWatcherError,
 ): value is BoardWatcherError =>
   typeof value === 'object' && value !== null && 'error' in value
+
+/**
+ * The only agents a board watcher can wake. Kept at the service boundary so a
+ * legacy row, a route caller, and delivery cannot disagree about who owns a
+ * private home conversation.
+ */
+export const boardWatcherAgentWhere = (input: {
+  addedByUserId: string
+  agentIds?: readonly string[]
+  organizationId: string
+}): Prisma.AgentWhereInput => ({
+  ...(input.agentIds ? { id: { in: [...input.agentIds] } } : {}),
+  organizationId: input.organizationId,
+  systemManaged: false,
+  systemSlug: null,
+  agentKind: { not: 'personal_assistant' },
+  OR: [
+    { visibility: 'team' },
+    {
+      visibility: 'private',
+      ownerUserId: input.addedByUserId,
+      // The ownership FK proves this row exists, not that the person is still
+      // active. A retained, deactivated owner cannot receive unattended work.
+      ownerMembership: { deactivatedAt: null },
+    },
+  ],
+})
+
+export const isBoardWatcherAgentEligible = async (
+  prisma: Pick<PrismaClient, 'agent'>,
+  input: { addedByUserId: string; agentId: string; organizationId: string },
+): Promise<boolean> =>
+  (await prisma.agent.count({
+    where: boardWatcherAgentWhere({
+      addedByUserId: input.addedByUserId,
+      agentIds: [input.agentId],
+      organizationId: input.organizationId,
+    }),
+  })) > 0
 
 const toRecord = (row: {
   id: string
@@ -124,24 +163,11 @@ export const setBoardWatchers = async (
 
   if (agentIds.length > 0) {
     const reachable = await prisma.agent.findMany({
-      where: {
-        id: { in: agentIds },
+      where: boardWatcherAgentWhere({
+        addedByUserId: input.addedByUserId,
+        agentIds,
         organizationId: input.organizationId,
-        systemManaged: false,
-        systemSlug: null,
-        agentKind: { not: 'personal_assistant' },
-        OR: [
-          { visibility: 'team' },
-          {
-            visibility: 'private',
-            ownerUserId: input.addedByUserId,
-            // The ownership FK proves this row exists, not that the person is
-            // still active. A retained, deactivated owner must not keep a
-            // private agent eligible for unattended wake-ups.
-            ownerMembership: { deactivatedAt: null },
-          },
-        ],
-      },
+      }),
       select: { id: true },
     })
     const found = new Set(reachable.map((row) => row.id))

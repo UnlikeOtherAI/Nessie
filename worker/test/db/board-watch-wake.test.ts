@@ -199,3 +199,48 @@ runDatabaseTest('an agent no longer bound to its channel is unreachable', async 
     'unreachable',
   )
 })
+
+runDatabaseTest('a direct wake cannot enter another person’s private agent home', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  const other = await prisma.user.create({
+    data: { displayName: 'Private owner', email: `private-${randomUUID()}@example.test` },
+  })
+  await prisma.organizationMember.create({
+    data: { organizationId: seeded.organization.id, userId: other.id, role: 'member' },
+  })
+  const privateAgent = await prisma.agent.create({
+    data: {
+      name: 'Private watcher',
+      organizationId: seeded.organization.id,
+      ownerUserId: other.id,
+      projectId: seeded.project.id,
+      role: 'assistant',
+      visibility: 'private',
+    },
+  })
+  try {
+    const messagesBefore = await prisma.message.count({ where: { threadId: seeded.thread.id } })
+    assert.equal(
+      await wakeBoardWatcherAgent(prisma, {
+        addedByUserId: seeded.user.id,
+        agentId: privateAgent.id,
+        boardId: seeded.board.id,
+        boardName: seeded.board.name,
+        channelId: seeded.channel.id,
+        launchOrigin: null,
+        organizationId: seeded.organization.id,
+        projectId: seeded.project.id,
+        taskIds: [seeded.task.id],
+        threadId: seeded.thread.id,
+      }),
+      'unreachable',
+    )
+    assert.equal(await prisma.run.count({ where: { agentId: privateAgent.id } }), 0)
+    assert.equal(await prisma.message.count({ where: { threadId: seeded.thread.id } }), messagesBefore)
+  } finally {
+    await prisma.organization.deleteMany({ where: { id: seeded.organization.id } })
+    await prisma.user.deleteMany({ where: { id: { in: [seeded.user.id, other.id] } } })
+    await prisma.$disconnect()
+  }
+})

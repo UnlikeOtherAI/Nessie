@@ -339,6 +339,9 @@ above as a description of the code.
   System-managed, slugged and personal-assistant rows, another person's private
   agent, and a retained agent whose owner left are unreachable there; otherwise
   a board administrator could wake an agent in a private home they cannot read.
+  Recipient resolution repeats that admission for legacy rows, and the worker
+  repeats it with the adder's normal project-access check immediately before a
+  run, so a revocation between resolution and delivery cannot leak a kickoff.
 - **The kickoff is `system`, never `user`.** A `user` role would sign "a ticket
   moved" with the name of whoever added the watcher and fill their DM with
   plumbing — the defect the trigger path documents at length. The run still
