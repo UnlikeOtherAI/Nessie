@@ -6,6 +6,15 @@ import { resolveMessageDestination } from '../pa-tools/message-destination.js'
 import { judgeExplicitDisclosureShare } from './disclosure-share-judge.js'
 import type { RunContext } from './types.js'
 
+const isAgentDelegatedMessage = (metadata: unknown): boolean =>
+  typeof metadata === 'object'
+  && metadata !== null
+  && !Array.isArray(metadata)
+  && (
+    'delegatedByAgentId' in metadata
+    || 'delegatedFromRunId' in metadata
+  )
+
 /**
  * A narrowly scoped exception to ordinary disclosure withholding. The model
  * judges the live human request and exact proposed tool content; the database
@@ -34,9 +43,26 @@ export const maybeAuthorizeDisclosureShare = async (input: {
   if (channelScopes.some((scope) => !sourceChannels.has(scope.scopeId))) return false
   const request = await input.prisma.message.findFirst({
     where: { id: input.triggerMessageId ?? '', threadId: input.context.run.threadId },
-    select: { content: true, userId: true },
+    select: {
+      agentId: true,
+      content: true,
+      metadata: true,
+      onBehalfOfUserId: true,
+      role: true,
+      userId: true,
+    },
   })
-  if (!request?.userId) return false
+  // A delegated `send_message` deliberately records its effective person in
+  // `userId`, but its prose is still model-authored. Only a raw human turn can
+  // ask to export a private conversation; the agent's attribution metadata is
+  // structural evidence, not an interpretation of the sentence.
+  if (
+    !request?.userId
+    || request.role !== 'user'
+    || request.agentId !== null
+    || request.onBehalfOfUserId !== null
+    || isAgentDelegatedMessage(request.metadata)
+  ) return false
   if (effectiveUserIdOfActor(input.actorContext) !== request.userId) return false
   const authors = new Set(sources.flatMap((source) =>
     source.sourceAuthorUserId ? [source.sourceAuthorUserId] : []))
