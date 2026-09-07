@@ -4,12 +4,11 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 
 ## Available local stack
 
-- API port 5454 is listening and `GET /api/health` returns 200.
-- Admin port 5455 is listening and `GET /` returns 200 with `@vite/client`.
-- Both processes run from the `rich-assignees` worktree. Do not restart them
-  from an executor verification worktree.
-- The local API environment supplies database configuration. It must be loaded
-  into a test subprocess without printing its values.
+- An earlier shared API/admin loop reached 5454/5455, but its temporary
+  environment and processes had ended before this verification completed.
+- The dedicated `nessie-project-usability-db` container at loopback port 54329
+  is reachable and its pending migrations applied successfully. It is the
+  isolated no-IdP fixture database used for this work.
 - Docker is available, and the host has the Windows Hyper-V management service.
 - Codex and Claude CLIs are installed. The current executor coding profile only
   implements the Codex guest session; Claude is not a supported executor coding
@@ -35,6 +34,21 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 - Pairing must create an executor through the authenticated surface, complete
   the signed daemon enrollment, and then be confirmed by the user. Do not create
   a local UOA identity record or grant an existing watcher agent for this test.
+
+## Fixture UI attempt
+
+- Root-level `pnpm exec vite` and `pnpm exec tsx` are available. The retained
+  `rich-assignees` directory also has the built worker and
+  `@nessie/model-subscriptions` artifacts needed for its API.
+- The fixed worktree's API cannot start directly because its
+  `@nessie/model-subscriptions/dist/index.js` artifact is absent. The retained
+  API was prepared to run against the isolated fixture database while the fixed
+  worktree supplied the admin server.
+- The required hidden background launch was rejected by the automatic command
+  execution policy as `blocked by policy` before it ran. It was not retried by
+  another shell or route. Therefore no authenticated browser UI proof exists
+  for the corrected invitation, even though focused regression coverage and CI
+  cover its rendering contract.
 
 ## Test-harness readiness
 
