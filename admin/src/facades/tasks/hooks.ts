@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
+  TaskChecklistRecord,
   TaskPriority,
   TaskRecord as SharedTaskRecord,
   TaskStatus,
@@ -29,6 +30,39 @@ export const useTasks = (projectId?: string) => {
     placeholderData: keepPreviousData,
     queryKey: taskKeys.forProject(projectId),
     queryFn: () => apiClient.get(`/api/tasks${projectId ? `?project=${projectId}` : ''}`),
+  })
+}
+
+export const useTaskChecklist = (taskId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery<TaskChecklistRecord | null>({
+    queryKey: taskKeys.checklist(taskId),
+    queryFn: () => apiClient.get(`/api/tasks/${taskId}/checklist`),
+    enabled: Boolean(taskId),
+  })
+}
+
+export const useApplyTaskChecklist = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { taskId: string; agentId: string; templateId: string }) =>
+      apiClient.post<TaskChecklistRecord>(`/api/tasks/${input.taskId}/checklist`, input),
+    onSuccess: (_result, input) =>
+      void queryClient.invalidateQueries({ queryKey: taskKeys.checklist(input.taskId) }),
+  })
+}
+
+export const useUpdateTaskChecklistStep = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { taskId: string; stepKey: string; completed: boolean; result?: string | null }) => {
+      const { taskId, stepKey, ...body } = input
+      return apiClient.patch<TaskChecklistRecord>(`/api/tasks/${taskId}/checklist/steps/${stepKey}`, body)
+    },
+    onSuccess: (_result, input) =>
+      void queryClient.invalidateQueries({ queryKey: taskKeys.checklist(input.taskId) }),
   })
 }
 

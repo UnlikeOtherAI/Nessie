@@ -29,7 +29,9 @@ import { TaskDialogActions } from './TaskDialogActions'
 import { TaskDocuments } from './TaskDocuments'
 import { TaskPlacementField } from './TaskPlacementField'
 import { TaskPriorityField } from './TaskPriorityField'
+import { TaskChecklistTab } from './TaskChecklistTab'
 import { fromDateInputValue, toDateInputValue } from './task-meta'
+import { TabBar } from '../../../primitives/TabBar'
 
 // One unsent task, kept whole: partial field state is what a person loses when
 // a dialog is dismissed, so it is what the draft has to hold.
@@ -44,6 +46,8 @@ type TaskDraft = {
   purpose: string
   title: string
 }
+
+type TaskDialogTab = 'details' | 'checklist'
 
 type TaskDialogProps = {
   open: boolean
@@ -110,6 +114,7 @@ export const TaskDialog = ({
   const titleRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [dialogTab, setDialogTab] = useState<TaskDialogTab>('details')
 
   // The task as it stands on the server (blank for a new one) — the draft's
   // baseline, so a dialog opened and closed untouched stores nothing.
@@ -185,6 +190,7 @@ export const TaskDialog = ({
   useEffect(() => {
     if (!open) return
     setError(null)
+    setDialogTab('details')
   }, [open, task])
 
   const pending =
@@ -316,8 +322,21 @@ export const TaskDialog = ({
         </Notice>
       ) : null}
 
+      {isEdit && task ? (
+        <div className="mb-5">
+          <TabBar<TaskDialogTab>
+            ariaLabel="Task details sections"
+            items={[{ label: 'Details', value: 'details' }, { label: 'Checklist', value: 'checklist' }]}
+            onChange={setDialogTab}
+            value={dialogTab}
+          />
+        </div>
+      ) : null}
+
+      {isEdit && task && dialogTab === 'checklist' ? <TaskChecklistTab taskId={task.id} /> : null}
+
       <form
-        className="grid gap-5 md:grid-cols-[1.7fr_1fr]"
+        className={dialogTab === 'checklist' ? 'hidden' : 'grid gap-5 md:grid-cols-[1.7fr_1fr]'}
         onSubmit={(event) => {
           event.preventDefault()
           if (canSubmit) void handleSubmit()
