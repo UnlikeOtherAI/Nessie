@@ -4,7 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const readSource = (relativePath: string): string =>
-  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
 
 test('opening the same task after a realtime refresh keeps its selected dialog tab', () => {
   const dialog = readSource('../src/components/features/projects/kanban/TaskDialog.tsx')
