@@ -48,6 +48,7 @@ const startProcess = ({ args, command, cwd, env, label }) => {
     detached: true,
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   })
   const log = []
   const record = (chunk) => {
@@ -74,6 +75,22 @@ const alreadyRunning = async (url) => {
   }
 }
 
+// Suites that validate source-sensitive data must run their own checkout's
+// servers. Checking both fixed ports before a fixture writes prevents a local
+// dev loop from turning the evaluation into a false proof.
+export const assertFreshServersAvailable = async () => {
+  const [apiInUse, adminInUse] = await Promise.all([
+    alreadyRunning(`${API_URL}/api/health`),
+    alreadyRunning(ADMIN_URL),
+  ])
+  if (apiInUse || adminInUse) {
+    const occupied = [apiInUse && `API ${API_PORT}`, adminInUse && `admin ${ADMIN_PORT}`]
+      .filter(Boolean)
+      .join(', ')
+    throw new Error(`Disclosure evaluation refuses to adopt an existing server (${occupied})`)
+  }
+}
+
 const adopted = (label) => ({
   child: { exitCode: null, pid: null },
   exited: Promise.resolve(0),
@@ -82,8 +99,25 @@ const adopted = (label) => ({
   output: () => '',
 })
 
+const stopWindowsProcessTree = async (pid) => new Promise((done) => {
+  const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  killer.once('error', done)
+  killer.once('exit', done)
+})
+
 export const stopProcess = async (server) => {
   if (!server?.child.pid || server.child.exitCode !== null) return
+  if (process.platform === 'win32') {
+    await stopWindowsProcessTree(server.child.pid)
+    await Promise.race([
+      server.exited,
+      new Promise((done) => { setTimeout(done, 5_000) }),
+    ])
+    return
+  }
   try {
     process.kill(-server.child.pid, 'SIGTERM')
   } catch {
@@ -100,8 +134,13 @@ export const stopProcess = async (server) => {
 // script: nodemon's `--env-file=../.env` requires a .env that CI does not
 // have. Local mode keeps the embedded worker and the localhost dev-login
 // route, which is one of the suite's two ways in.
-export const startApi = async () => {
+export const startApi = async ({ reuseExisting = true } = {}) => {
   if (await alreadyRunning(`${API_URL}/api/health`)) {
+    if (!reuseExisting) {
+      throw new Error(
+        `API port ${API_PORT} is already in use; this evaluation requires a fresh API from its own worktree`,
+      )
+    }
     console.log(`navigation e2e: using the API already listening on ${API_URL}`)
     return adopted('api')
   }
@@ -137,8 +176,13 @@ export const startApi = async () => {
   return server
 }
 
-export const startAdmin = async () => {
+export const startAdmin = async ({ reuseExisting = true } = {}) => {
   if (await alreadyRunning(ADMIN_URL)) {
+    if (!reuseExisting) {
+      throw new Error(
+        `Admin port ${ADMIN_PORT} is already in use; this evaluation requires a fresh admin from its own worktree`,
+      )
+    }
     console.log(`navigation e2e: using the admin already listening on ${ADMIN_URL}`)
     return adopted('admin')
   }
