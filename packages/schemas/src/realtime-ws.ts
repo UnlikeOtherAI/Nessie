@@ -118,6 +118,11 @@ export type WsEventMap = {
     restricted?: true
     editedAt: string
   }
+  /** A one-reply disclosure grant changed; readers refetch through the ACL. */
+  'message.disclosure.changed': {
+    messageId: string
+    threadId: ThreadId
+  }
   'message.deleted': {
     messageId: string
     threadId: ThreadId
@@ -289,6 +294,11 @@ export const MessageUpdatedEventSchema = z.object({
   editedAt: TimestampSchema,
 })
 export type MessageUpdatedEvent = z.infer<typeof MessageUpdatedEventSchema>
+export const MessageDisclosureChangedEventSchema = z.object({
+  messageId: NonEmptyStringSchema,
+  threadId: ThreadIdSchema,
+})
+export type MessageDisclosureChangedEvent = z.infer<typeof MessageDisclosureChangedEventSchema>
 export const MessageDeletedEventSchema = z.object({
   messageId: NonEmptyStringSchema,
   threadId: ThreadIdSchema,
@@ -429,6 +439,7 @@ export const WsEventNameSchema = z.enum([
   'card.updated',
   'message.new',
   'message.updated',
+  'message.disclosure.changed',
   'message.deleted',
   'message.reaction',
   'message.reply',
@@ -596,6 +607,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('message.updated'),
     data: MessageUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.disclosure.changed'),
+    data: MessageDisclosureChangedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({
