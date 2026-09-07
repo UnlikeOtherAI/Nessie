@@ -241,11 +241,10 @@ export const useAgentRealtime = (input: {
       return
     }
 
-    // A message changed in place — today the rolling watch status line.
-    // Deliberately refreshes only the open thread and NOT channelKeys.all: an
-    // edit is not new activity, so channel badges and unread counts must
-    // stay exactly where they were.
-    if (message.event === 'message.updated') {
+    // A message changed in place, or its disclosure grant changed. Both are
+    // content-free events: refetching the open thread applies the current
+    // reader entitlement without making a grant look like new activity.
+    if (message.event === 'message.updated' || message.event === 'message.disclosure.changed') {
       if (message.data.threadId === threadIdRef.current) {
         void queryClient.invalidateQueries({
           queryKey: threadKeys.messages(message.data.threadId),

@@ -51,6 +51,10 @@ const makeApp = (input: {
   viewerScopes?: Array<{ scopeType: string; scopeId: string }>
 }) => {
   const prisma = {
+    // These route fixtures model a private conversation. The public audience
+    // lookup must explicitly decline it instead of a missing Prisma delegate
+    // masking the disclosure decision.
+    channel: { findFirst: async () => null },
     thread: {
       findFirst: async () =>
         input.threadVisible === false
@@ -62,6 +66,7 @@ const makeApp = (input: {
                 organizationId,
                 systemChannelType: null,
                 type: 'standard',
+                visibility: 'private',
               },
             },
     },
