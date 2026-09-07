@@ -7,7 +7,9 @@ import type {
   ThoughtMemoryType,
 } from './capture.js'
 import { captureThought } from './capture.js'
+import { attachConsolidationDisclosureSources } from './consolidation-disclosure-sources.js'
 import { parseAndVerifyMemoryConsolidationJobPayload } from './consolidation-origin.js'
+import type { PrivateConversationSource } from './disclosure-sources.js'
 
 const DEFAULT_THREAD_TAIL_LIMIT = 12
 const MAX_SEMANTIC_MEMORIES = 4
@@ -16,6 +18,7 @@ const MAX_SOURCE_PREVIEW_CHARS = 320
 export type ConsolidationRunContext = {
   agent_id: string
   channel_id: string
+  channel_visibility?: string | null
   finished_at: Date | string | null
   organization_id: string
   project_id: string | null
@@ -33,6 +36,9 @@ export type ConsolidationThreadMessage = {
   content: string
   created_at: Date | string
   id: string
+  metadata?: unknown
+  on_behalf_of_user_id?: string | null
+  privateConversationSources?: PrivateConversationSource[]
   role: string
   user_id: string | null
 }
@@ -42,6 +48,7 @@ export type ConsolidationMemoryCandidate = {
   importance: number
   memoryCategory: ThoughtMemoryCategory
   memoryType: ThoughtMemoryType
+  privateConversationSources: PrivateConversationSource[]
   sourceMessageIds: string[]
 }
 
@@ -155,6 +162,9 @@ const buildEpisodicCandidate = (
     importance: 0.64,
     memoryCategory: 'intent',
     memoryType: 'episodic',
+    privateConversationSources: [userMessage, assistantMessage].flatMap(
+      (message) => message?.privateConversationSources ?? [],
+    ),
     sourceMessageIds: [userMessage?.id, assistantMessage?.id].filter(
       (id): id is string => Boolean(id),
     ),
@@ -182,6 +192,7 @@ const buildSemanticCandidates = (
         importance: classification.importance,
         memoryCategory: classification.memoryCategory,
         memoryType: 'semantic',
+        privateConversationSources: message.privateConversationSources ?? [],
         sourceMessageIds: [message.id],
       })
     }
@@ -233,6 +244,7 @@ const loadRunContext = async (
        task.purpose AS task_purpose,
        task.project_id AS task_project_id,
        channel.id AS channel_id,
+       channel.visibility::text AS channel_visibility,
        channel.organization_id,
        channel.team_id,
        team.project_id
@@ -267,7 +279,7 @@ const loadThreadTail = async (
   // conservative choice is not to create it. See
   // docs/plans/2026-08-11-disclosure-boundaries-build.md.
   const result = await config.pool.query(
-    `SELECT id, role::text, content, user_id, agent_id, created_at
+    `SELECT id, role::text, content, user_id, agent_id, on_behalf_of_user_id, metadata, created_at
      FROM messages m
      WHERE thread_id = $1::uuid
        AND created_at <= COALESCE($2::timestamptz, now())
@@ -279,7 +291,14 @@ const loadThreadTail = async (
     [run.thread_id, run.finished_at, limit],
   )
 
-  return (result.rows as ConsolidationThreadMessage[]).reverse()
+  return attachConsolidationDisclosureSources(
+    config.pool,
+    {
+      channelId: run.channel_id,
+      channelVisibility: run.channel_visibility ?? null,
+      messages: (result.rows as ConsolidationThreadMessage[]).reverse(),
+    },
+  )
 }
 
 export const consolidateRunMemories = async (
@@ -381,6 +400,9 @@ export const consolidateRunMemories = async (
         projectId: run.project_id ?? undefined,
         teamId: run.team_id,
         threadId: run.thread_id,
+        ...(candidate.privateConversationSources.length > 0 || run.channel_visibility !== 'public'
+          ? { privateConversationSources: candidate.privateConversationSources }
+          : {}),
         visibility: 'channel',
       },
       config,

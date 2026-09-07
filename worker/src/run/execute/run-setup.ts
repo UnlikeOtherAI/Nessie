@@ -29,7 +29,7 @@ import { buildModelPrompt, loadConversation } from './prompt.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
-import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
+import { admitPrivateConversationLineage } from './private-conversation-lineage.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -360,12 +360,7 @@ export const prepareRunExecution = async (
     ? null
     : loadedCheckpoint
   if (checkpoint) {
-    context.consumedSources.addAll(checkpoint.basisScopes)
-    await markUnknownPrivateConversationScopes(
-      deps.prisma,
-      context.consumedSources,
-      checkpoint.basisScopes,
-    )
+    await admitPrivateConversationLineage(deps.prisma, context.consumedSources, checkpoint)
   }
 
   // Tool names are structural registry ids, not model-provided prose. The

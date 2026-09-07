@@ -1,7 +1,11 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 
 import { captureUserMessageMemory, type CaptureConfig } from '@nessie/memory'
-import { publishMessageEnvelope, type AnnouncedMessage } from '@nessie/runtime'
+import {
+  originalHumanAuthorId,
+  publishMessageEnvelope,
+  type AnnouncedMessage,
+} from '@nessie/runtime'
 import {
   parseChannelId,
   parseThreadId,
@@ -175,6 +179,9 @@ export const deliverCreatedMessage = async (
 ): Promise<void> => {
   const { actorContext, content, log, result, thread } = input
   const { buildChannelRealtimeScopes, messageMemoryCaptureConfig, prisma, realtimeHub } = deps
+  const sourceAuthorUserId = thread.channel.visibility && thread.channel.visibility !== 'public'
+    ? originalHumanAuthorId(result.message)
+    : null
 
   if (messageMemoryCaptureConfig) {
     // Fire-and-forget: memory capture must never delay message posting.
@@ -203,6 +210,9 @@ export const deliverCreatedMessage = async (
         requestId: actorContext.actionContext.requestId,
         correlationId: actorContext.actionContext.correlationId,
         systemComponent: 'memory-capture',
+        privateConversationSources: sourceAuthorUserId
+          ? [{ sourceAuthorUserId, sourceChannelId: thread.channel.id }]
+          : [],
       },
       messageMemoryCaptureConfig,
     ).catch((error) =>

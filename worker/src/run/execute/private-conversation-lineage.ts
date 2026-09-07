@@ -1,16 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
+import { originalHumanAuthorId } from '@nessie/runtime'
 
 import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
 
-type MessageAuthorship = {
-  agentId: string | null
-  metadata: unknown
-  onBehalfOfUserId: string | null
-  role: string
-  userId: string | null
-}
-
-type TriggerMessageLineage = {
+export type PrivateConversationLineage = {
   basisScopes: readonly BasisScope[]
   disclosureSources: readonly {
     sourceAuthorUserId: string | null
@@ -18,29 +11,7 @@ type TriggerMessageLineage = {
   }[]
 }
 
-const hasDelegatedAgentMetadata = (metadata: unknown): boolean =>
-  typeof metadata === 'object'
-  && metadata !== null
-  && !Array.isArray(metadata)
-  && (
-    'delegatedByAgentId' in metadata
-    || 'delegatedFromRunId' in metadata
-  )
-
-/**
- * `userId` can record the effective person for an agent-delivered action.
- * Original-author disclosure needs the narrower structural proof of a raw
- * human turn, which legacy delegated rows do not have.
- */
-export const originalHumanAuthorId = (message: MessageAuthorship): string | null => {
-  if (
-    message.role !== 'user'
-    || message.agentId !== null
-    || message.onBehalfOfUserId !== null
-    || hasDelegatedAgentMetadata(message.metadata)
-  ) return null
-  return message.userId
-}
+export { originalHumanAuthorId }
 
 /**
  * Older carry-forward records retain channel scopes but not original human
@@ -83,26 +54,33 @@ export const markUnknownPrivateConversationScopes = async (
  * represented, so a complete modern source stays eligible for its author's
  * deliberate one-message consent.
  */
-export const admitTriggerMessageLineage = async (
+export const admitPrivateConversationLineage = async (
   prisma: PrismaClient,
   sink: ConsumedSourceSink,
-  message: TriggerMessageLineage,
+  lineage: PrivateConversationLineage,
 ): Promise<void> => {
-  sink.addAll(message.basisScopes)
-  for (const source of message.disclosureSources) {
+  sink.addAll(lineage.basisScopes)
+  for (const source of lineage.disclosureSources) {
     sink.addPrivateConversationSource(source)
   }
-  const representedChannels = new Set(message.disclosureSources.map(
+  const representedChannels = new Set(lineage.disclosureSources.map(
     (source) => source.sourceChannelId,
   ))
   await markUnknownPrivateConversationScopes(
     prisma,
     sink,
-    message.basisScopes.filter(
+    lineage.basisScopes.filter(
       (scope) => scope.scopeType !== 'channel' || !representedChannels.has(scope.scopeId),
     ),
   )
 }
+
+/** Admit server-authored hidden trigger content before it becomes a run prompt. */
+export const admitTriggerMessageLineage = async (
+  prisma: PrismaClient,
+  sink: ConsumedSourceSink,
+  message: PrivateConversationLineage,
+): Promise<void> => admitPrivateConversationLineage(prisma, sink, message)
 
 /** Mark known non-public channels when their source author is unavailable. */
 export const markUnknownPrivateConversationChannels = (

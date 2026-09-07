@@ -1,10 +1,11 @@
 import {
   constrainScopesToDestination,
-  loadThoughtAudiences,
+  loadThoughtDisclosureLineage,
   resolveAccessibleScopes,
   searchAndLogThoughtsInScopes,
   type ScopeResolutionMode,
   type SearchResult,
+  type ThoughtDisclosureLineage,
 } from '@nessie/memory'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import {
@@ -14,6 +15,8 @@ import {
 } from '../delegated-identity.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
+import type { ConsumedSourceSink } from './disclosure-basis.js'
+import type { PrismaClient } from '@prisma/client'
 
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
@@ -142,6 +145,46 @@ const isSuppressedMemory = (metadata: unknown): boolean => {
   return record['suppressed'] === true || record['suppressionState'] === 'suppressed'
 }
 
+/** Add each recalled Thought's stored authors without letting another Thought mask a legacy gap. */
+export const admitRememberedThoughtLineage = async (
+  prisma: PrismaClient,
+  sink: ConsumedSourceSink,
+  lineages: readonly ThoughtDisclosureLineage[],
+): Promise<void> => {
+  const unrepresentedAudiences = []
+  for (const lineage of lineages) {
+    if (lineage.audienceId && lineage.audienceType) {
+      sink.add({ scopeId: lineage.audienceId, scopeType: lineage.audienceType })
+    }
+    for (const source of lineage.sources) sink.addPrivateConversationSource(source)
+    if (
+      lineage.audienceType === 'channel'
+      && lineage.audienceId
+      && !lineage.sources.some((source) => source.sourceChannelId === lineage.audienceId)
+    ) {
+      unrepresentedAudiences.push({ scopeId: lineage.audienceId, scopeType: lineage.audienceType })
+    }
+  }
+  await markUnknownPrivateConversationScopes(prisma, sink, unrepresentedAudiences)
+}
+
+/**
+ * A thought that vanished after search has no durable provenance to admit.
+ * Exclude it before it reaches model context rather than treating the missing
+ * row as an unrestricted memory.
+ */
+export const retainThoughtsWithLineage = <T extends { id: string }>(
+  results: readonly T[],
+  lineages: readonly ThoughtDisclosureLineage[],
+): T[] => {
+  const lineageIds = new Set(
+    lineages
+      .filter((lineage) => lineage.audienceId !== null && lineage.audienceType !== null)
+      .map((lineage) => lineage.thoughtId),
+  )
+  return results.filter((result) => lineageIds.has(result.id))
+}
+
 export const retrieveRelevantMemories = async (
   deps: ExecutionDependencies,
   context: RunContext,
@@ -251,12 +294,18 @@ export const retrieveRelevantMemories = async (
     // later materialises is computed from this sink, so a memory that reached
     // the model is provenance even if the model never quotes it.
     if (retained.length > 0) {
-      const audiences = await loadThoughtAudiences(
+      const lineages = await loadThoughtDisclosureLineage(
         deps.searchConfig.pool,
         retained.map((result) => result.id),
       )
-      context.consumedSources.addAll(audiences)
-      await markUnknownPrivateConversationScopes(deps.prisma, context.consumedSources, audiences)
+      const retainedWithLineage = retainThoughtsWithLineage(retained, lineages)
+      const returnedThoughtIds = new Set(retainedWithLineage.map((result) => result.id))
+      await admitRememberedThoughtLineage(
+        deps.prisma,
+        context.consumedSources,
+        lineages.filter((lineage) => returnedThoughtIds.has(lineage.thoughtId)),
+      )
+      return retainedWithLineage
     }
 
     return retained

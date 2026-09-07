@@ -189,6 +189,7 @@ export const runSendMessageTool = async (
         actorType: context.actorContext.actor.actorType,
         requestId: context.actorContext.actionContext.requestId,
         correlationId: context.actorContext.actionContext.correlationId,
+        privateConversationSources: context.consumedSources?.privateConversationSources() ?? [],
       },
       context.memoryCaptureConfig,
     )

@@ -1,5 +1,10 @@
 import { useMemo } from 'react'
-import { TOOL_CATEGORIES, findToolCategory } from '@nessie/schemas'
+import {
+  TOOL_CATEGORIES,
+  findToolCategory,
+  isSharedAgentToolEligible,
+} from '@nessie/schemas'
+import type { ToolDescriptor } from '../../lib/api-client'
 import { useMcpToolRegistry } from '../tool-grants/hooks'
 import { useTools } from '../tools/hooks'
 
@@ -40,6 +45,10 @@ export type DesignerToolOption = {
   allowMode: boolean
   /** Display name of the section this tool renders under. */
   group: string
+  /** Owner-granted builtins use the protected policy writer, never generic PUT. */
+  protectedExplicit?: boolean
+  /** Registry row required by that protected writer. */
+  registryEntryId?: string
 }
 
 export type DesignerToolGroup = {
@@ -84,18 +93,46 @@ const GROUP_ORDER: ReadonlyArray<{ description?: string; name: string }> = [
 const groupForBuiltin = (category: string | undefined): string =>
   (category ? findToolCategory(category)?.label : undefined) ?? UNCATEGORISED_GROUP
 
-export const useDesignerToolCatalog = (includeConnectors: boolean) => {
+// Explicit grants decide a tool's default state; they do not make a tool
+// ineligible for an ordinary shared agent. The Tools tab is where an owner
+// makes that decision. The shared structural predicate is also used by the
+// server-projected Designer catalogue.
+export const isAgentToolAccessBuiltin = (
+  tool: Pick<
+    ToolDescriptor,
+    'builtin' | 'enabled' | 'personalAssistantOnly' | 'projectDelegatedOnly'
+  >,
+): boolean => tool.builtin !== false
+  && tool.enabled !== false
+  && isSharedAgentToolEligible(tool)
+
+export const isDesignerCatalogBuiltin = (
+  tool: Pick<ToolDescriptor, 'builtin' | 'enabled' | 'personalAssistantOnly'
+    | 'projectDelegatedOnly' | 'requiresExplicitGrant'>,
+  includeProtectedExplicit: boolean,
+  registryEntryId?: string,
+): boolean => isAgentToolAccessBuiltin(tool)
+  && (!tool.requiresExplicitGrant || (includeProtectedExplicit && registryEntryId !== undefined))
+
+export const useDesignerToolCatalog = (
+  includeConnectors: boolean,
+  includeProtectedExplicit = false,
+) => {
   const builtinQuery = useTools()
   const registryQuery = useMcpToolRegistry({}, includeConnectors)
 
   const options = useMemo<DesignerToolOption[]>(() => {
+    const explicitBuiltinRegistryIds = new Map(
+      (registryQuery.data ?? [])
+        .filter((entry) => entry.builtin && entry.requiresExplicitGrant && entry.source !== 'executor')
+        .map((entry) => [entry.toolId, entry.id]),
+    )
     const builtin: DesignerToolOption[] = (builtinQuery.data ?? [])
-      .filter(
-        (tool) => tool.builtin !== false
-          && tool.enabled !== false
-          && tool.requiresExplicitGrant !== true
-          && tool.personalAssistantOnly !== true,
-      )
+      .filter((tool) => isDesignerCatalogBuiltin(
+        tool,
+        includeProtectedExplicit,
+        explicitBuiltinRegistryIds.get(tool.id),
+      ))
       .map((tool) => ({
         key: tool.id,
         label: tool.label,
@@ -108,6 +145,10 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
         defaultEnabled: !tool.requiresExplicitGrant && !tool.projectDelegatedOnly,
         allowMode: tool.requiresExplicitGrant === true || tool.projectDelegatedOnly === true,
         group: groupForBuiltin(tool.category),
+        ...(tool.requiresExplicitGrant ? {
+          protectedExplicit: true,
+          registryEntryId: explicitBuiltinRegistryIds.get(tool.id),
+        } : {}),
       }))
 
     const connectors: DesignerToolOption[] = (
@@ -131,7 +172,7 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
       }))
 
     return [...builtin, ...connectors]
-  }, [builtinQuery.data, includeConnectors, registryQuery.data])
+  }, [builtinQuery.data, includeConnectors, includeProtectedExplicit, registryQuery.data])
 
   const groups = useMemo<DesignerToolGroup[]>(() => {
     const byName = new Map<string, DesignerToolOption[]>()

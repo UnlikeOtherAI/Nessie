@@ -62,6 +62,7 @@ export const persistSuspensionCheckpoint = async (
   const checkpointId = await persistRunCheckpoint(deps.prisma, {
     agentId: context.agent.id,
     basis: runReplyBasis(context),
+    disclosureSources: context.consumedSources.privateConversationSources(),
     generation: input.priorGeneration + 1,
     note,
     organizationId: context.channel.organizationId,
