@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiClientError } from '@nessie/client-core'
 import {
+  ConnectedMailComposeInputSchema,
   type ConnectedMailAccountRecord,
   type ConnectedMailMessage,
 } from '@nessie/schemas'
