@@ -9,6 +9,7 @@ import {
 } from '@nessie/team-admin'
 import { judgeSendBoundary } from './send-boundary-judge.js'
 import { maybeAuthorizeDisclosureShare } from './disclosure-share-authorization.js'
+import { blocksPrivateConversationWrite } from './private-conversation-write-gate.js'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -200,6 +201,20 @@ export const authorizeToolExecution = async (
   const emitAudit: ToolAuthorizationAuditEmitter =
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
 
+  const isExternalName = auth.externalToolNames?.has(toolName) ?? false
+  if (blocksPrivateConversationWrite({ context, isExternal: isExternalName, toolName })) {
+    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+      source: 'private_conversation_write_gate',
+    }, 'private_conversation_disclosure_required')
+    return {
+      decision: 'deny',
+      result: toolDeniedResult(toolName, args, {
+        message: 'This run used a private conversation, so it cannot write to that destination.',
+        reason: 'private_conversation_disclosure_required',
+      }),
+    }
+  }
+
   const disclosureShareAuthorized = await maybeAuthorizeDisclosureShare({
     args,
     actorContext: toolActorContext,
@@ -221,7 +236,6 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const isExternalName = auth.externalToolNames?.has(toolName) ?? false
   const resolvedBuiltinToolIds = auth.resolvedBuiltinToolIds ?? auth.allowedToolIds
   const registryDecision = isExternalName
     ? ({ allowed: true } as const)
