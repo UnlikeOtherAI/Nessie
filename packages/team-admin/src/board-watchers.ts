@@ -8,10 +8,10 @@ import { resolveAgentConversation } from './agent-conversation.js'
  *
  * A watcher costs somebody else's attention, so adding one is board
  * administration and every recipient is checked against what the *board's*
- * organisation can actually reach: a user must be an active member, and an
- * agent must exist in the same organisation. A row naming a recipient the
- * server would not accept is refused here rather than discovered later by a
- * fan-out with nowhere to deliver.
+ * organisation can actually reach: a user must be an active member; an agent
+ * must be an ordinary team agent, or the adder's own live private agent. A row
+ * naming a recipient the server would not accept is refused here rather than
+ * discovered later by a fan-out with nowhere to deliver.
  *
  * Removal is deliberately not symmetrical with addition — see
  * `removeSelfAsWatcher`.
@@ -124,7 +124,24 @@ export const setBoardWatchers = async (
 
   if (agentIds.length > 0) {
     const reachable = await prisma.agent.findMany({
-      where: { id: { in: agentIds }, organizationId: input.organizationId },
+      where: {
+        id: { in: agentIds },
+        organizationId: input.organizationId,
+        systemManaged: false,
+        systemSlug: null,
+        agentKind: { not: 'personal_assistant' },
+        OR: [
+          { visibility: 'team' },
+          {
+            visibility: 'private',
+            ownerUserId: input.addedByUserId,
+            // The ownership FK proves this row exists, not that the person is
+            // still active. A retained, deactivated owner must not keep a
+            // private agent eligible for unattended wake-ups.
+            ownerMembership: { deactivatedAt: null },
+          },
+        ],
+      },
       select: { id: true },
     })
     const found = new Set(reachable.map((row) => row.id))

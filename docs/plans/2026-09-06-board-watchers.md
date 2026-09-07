@@ -333,6 +333,12 @@ above as a description of the code.
   `createAgentTrigger` refuses them. `setBoardWatchers` refuses such a watcher
   with `AGENT_HAS_NO_CONVERSATION` at the point somebody adds it, rather than
   accepting one that could never fire.
+- **The watcher boundary also owns private-agent authority.** Before resolving
+  any conversation or replacing rows, `setBoardWatchers` accepts only ordinary
+  team-visible agents or the adder's own private agent with a live membership.
+  System-managed, slugged and personal-assistant rows, another person's private
+  agent, and a retained agent whose owner left are unreachable there; otherwise
+  a board administrator could wake an agent in a private home they cannot read.
 - **The kickoff is `system`, never `user`.** A `user` role would sign "a ticket
   moved" with the name of whoever added the watcher and fill their DM with
   plumbing — the defect the trigger path documents at length. The run still
