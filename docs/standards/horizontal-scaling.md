@@ -648,6 +648,27 @@ orchestrator's `SIGTERM` drain otherwise ran a second drain and a second
 turned into an unhandled rejection that killed the process mid-shutdown. The
 second signal joins the first.
 
+**A drain is only half done when the replica exits — the clients have to come
+back.** `admin/src/facades/threads/stream-retry.ts` owns the delay for all three
+transports — both SSE lanes and the activity WebSocket — and the phone and
+desktop shells are WebViews over the same bundle, so there is no second client
+to keep in step. In `runStreamConnectionLoop` a connection that lived under
+`STREAM_HEALTHY_CONNECTION_MS` (5 s) is a **failure** and does not reset the
+backoff: resetting on any established connection turned a drain into a lockstep
+hammer — open, shed, back on the bottom rung a second later, forever. (The WS
+lane still resets on its server-acknowledged handshake; sharing that rule is
+open work.) The wait is **drawn, never fixed**: equal jitter, uniform on
+`[window/2, window]` of a doubling window, so no instant is one every waiter
+agrees on, the spread widens with the ladder, and the floor still rises
+monotonically — which is what makes the escalation bite. A ceiling every waiter
+shares is a synchronised discharge (§1), and the WS lane's fixed
+`[1s, 2s, 4s …]` schedule was one. And because re-hydration is when
+per-event work costs most, every entitlement a delivery re-asks goes through
+`createEntitlementGate` on a `WeakMap` keyed by the connection, bounded by
+`REALTIME_ENTITLEMENT_TTL_MS` and never by the connection's life; which scopes a
+connection *declared* is matched live and never cached, so an `unsubscribe`
+still bites on the next event.
+
 ## 7. No local disk beyond per-request scratch the same request deletes
 
 **A file one instance wrote is not there for the next call.** `filesystem` is
