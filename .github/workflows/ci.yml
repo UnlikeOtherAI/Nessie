@@ -691,6 +691,13 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:connected-mail
 
+      # The disclosure boundary needs a browser recipient, while its source
+      # travels through the real queue and worker. This reuses the job's
+      # migrated database, built API/worker/admin and installed Chromium.
+      - name: Run private conversation disclosure browser evaluation
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:disclosure
+
       - name: Upload transition frames
         if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
@@ -713,6 +720,14 @@ jobs:
         with:
           name: connected-mail-screenshots
           path: e2e/screenshots/connected-mail
+          if-no-files-found: warn
+
+      - name: Upload disclosure browser screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-conversation-disclosure-screenshots
+          path: e2e/screenshots/disclosure
           if-no-files-found: warn
 
       - name: Report skip

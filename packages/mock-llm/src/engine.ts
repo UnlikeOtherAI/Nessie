@@ -76,6 +76,7 @@ export type MockEngineStats = {
 export class MockLlmEngine {
   private requests = 0
   private readonly turnCounts = new Map<number, number>()
+  private utilityTurnIndex = 0
 
   constructor(private readonly scenario: MockScenario) {}
 
@@ -130,9 +131,13 @@ export class MockLlmEngine {
    * Scenarios that do not opt in retain the regular transcript-derived turns.
    */
   async nextUtility(messages: ProviderMessage[]): Promise<MockTurnOutcome> {
-    const utility = this.scenario.utility
+    const scriptedUtilities = this.scenario.utilityTurns
+    const utility = scriptedUtilities
+      ? scriptedUtilities[Math.min(this.utilityTurnIndex, scriptedUtilities.length - 1)]
+      : this.scenario.utility
     if (!utility) return this.next(messages)
 
+    this.utilityTurnIndex += 1
     const latencyMs = utility.latencyMs + this.scenario.defaults.latencyMs
     await sleep(latencyMs)
     this.requests += 1

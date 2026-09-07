@@ -98,6 +98,7 @@ export const MockScenarioSchema = z.object({
   name: z.string().min(1),
   turns: z.array(MockTurnSchema).min(1),
   utility: MockUtilityTurnSchema.optional(),
+  utilityTurns: z.array(MockUtilityTurnSchema).min(1).optional(),
 })
 export type MockScenario = z.infer<typeof MockScenarioSchema>
 
