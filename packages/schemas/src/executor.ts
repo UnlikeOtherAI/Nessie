@@ -812,6 +812,12 @@ export const ExecutorPairingInvitationResponseSchema = z.object({
   enrollmentId: ExecutorEnrollmentIdSchema,
   challenge: z.string().min(32),
   expiresAt: TimestampSchema,
+  // The origin the paired daemon must call. It is a deployment fact, not a
+  // browser one: the executor runs outside the browser and so cannot reach the
+  // admin's `/api` dev proxy. Optional because only the operator-declared
+  // public origin may fill it, and a local deployment that has declared none
+  // leaves the client to fall back to its own build-time configuration.
+  apiBaseUrl: z.string().url().optional(),
 })
 export type ExecutorPairingInvitationResponse = z.infer<
   typeof ExecutorPairingInvitationResponseSchema

@@ -99,7 +99,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
             commands::show_status(app);
             let _ = app.emit_to("status", "tray://pair", ());
         }
-        MenuAction::OpenNessie => report(app, "Open Nessie", commands::open_nessie(app)),
+        MenuAction::OpenNessie => report(app, "Open Nessie", commands::open_nessie(app, "https://api.nessie.works")),
         MenuAction::OpenLogs => report(app, "Open logs folder", commands::open_logs(app)),
         // Only this process exits. The service, and every daemon it supervises,
         // keeps running — which is what the menu entry says it will do.
@@ -170,6 +170,7 @@ fn main() {
             commands::executor_hide_status,
             commands::executor_open_logs,
             commands::executor_open_nessie,
+            commands::executor_pairing_backends,
             commands::executor_pair,
             commands::executor_start,
             commands::executor_stop,

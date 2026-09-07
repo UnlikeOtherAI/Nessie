@@ -21,6 +21,13 @@ fact. Read this before treating any section above as a description of the code.
   directory. Boards own their tickets and their columns; deleting a board
   moves its tickets to the project's default board.
 
+- **The board assignee filter is a rich, linkable listbox.** Mapped people use
+  their `UserAvatar` through the authenticated UOA relay in both the trigger
+  and the `People` options. Provider people with no identity link remain
+  enabled `remote:` filters, retain their provider display name, and show a
+  crossed-out user tile with the explicit state *Not mapped* rather than being
+  mistaken for *Unassigned*.
+
 - **§5.8 email auto-matching shipped later than the rest of §5.8.** The column,
   the `matchedBy: 'email'` vocabulary and the People table all shipped with the
   first release; nothing wrote a match, so every provider user had to be mapped

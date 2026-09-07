@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { EMAIL_SEND_TOOL_ID } from '@nessie/runtime'
+import {
+  BROWSER_ACT_TOOL_ID,
+  BROWSER_OPEN_TOOL_ID,
+  EMAIL_SEND_TOOL_ID,
+} from '@nessie/runtime'
 
 import {
   computeReplyBasis,
@@ -207,6 +211,28 @@ test('private conversation material cannot enter an unscoped write or MCP call',
   assert.equal(
     blocksPrivateConversationWrite({ context, isExternal: false, toolName: EMAIL_SEND_TOOL_ID }),
     true,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: BROWSER_OPEN_TOOL_ID }),
+    true,
+    'a shared agent cannot put private text into a browser URL',
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: BROWSER_ACT_TOOL_ID }),
+    true,
+    'a shared agent cannot type private text into a browser page',
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: {
+        ...context,
+        consumedSources: createConsumedSourceSink(),
+      },
+      isExternal: false,
+      toolName: BROWSER_ACT_TOOL_ID,
+    }),
+    false,
+    'a public-context shared run remains allowed to use browser actions',
   )
   assert.equal(
     blocksPrivateConversationWrite({

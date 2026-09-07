@@ -93,6 +93,7 @@
         height: 56px;
       }
       .hint { color: var(--tx2); font-size: 12px; }
+      select { font: inherit; color: var(--tx); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
     </style>
   </head>
   <body>
@@ -103,8 +104,11 @@
     </header>
     <main id="list"></main>
     <form id="pair-form">
+      <label class="hint" for="backend">Nessie backend</label>
+      <select id="backend">
+      </select>
       <label class="hint" for="invitation">
-        Paste the pairing command or link from Agents → Executors in Nessie.
+        Paste the pairing command or link from the selected backend's Agents → Executors page.
       </label>
       <textarea id="invitation" spellcheck="false"></textarea>
       <div style="display: flex; gap: 6px">
@@ -191,14 +195,18 @@
       const act = async (command, args) => {
         if (busy) return
         busy = true
+        let refused = false
         try {
           render(await invoke(command, args))
         } catch (reason) {
+          refused = true
           headline.textContent = String(reason)
           dot.dataset.state = 'attention'
         } finally {
           busy = false
-          await refresh()
+          // Keep the service's refusal visible. Refreshing immediately would
+          // replace its recovery instruction with a generic idle headline.
+          if (!refused) await refresh()
         }
       }
 
@@ -214,11 +222,13 @@
       form.onsubmit = async (event) => {
         event.preventDefault()
         const invitation = document.getElementById('invitation').value
-        await act('executor_pair', { invitation })
+        const selectedApiBaseUrl = document.getElementById('backend').value
+        await act('executor_pair', { invitation, selectedApiBaseUrl })
         document.getElementById('invitation').value = ''
         form.dataset.open = 'false'
       }
-      document.getElementById('open-nessie').onclick = () => invoke('executor_open_nessie')
+      document.getElementById('open-nessie').onclick = () =>
+        invoke('executor_open_nessie', { apiBaseUrl: document.getElementById('backend').value })
       document.getElementById('open-logs').onclick = () =>
         invoke('executor_open_logs').catch((reason) => {
           headline.textContent = String(reason)
@@ -226,7 +236,16 @@
       document.getElementById('hide').onclick = () => invoke('executor_hide_status')
 
       window.__TAURI__.event.listen('tray://pair', openPairForm)
-      refresh()
+      const loadBackends = async () => {
+        const backend = document.getElementById('backend')
+        for (const [value, label] of await invoke('executor_pairing_backends')) {
+          const option = document.createElement('option')
+          option.value = value
+          option.textContent = label
+          backend.append(option)
+        }
+      }
+      loadBackends().then(refresh)
       setInterval(refresh, 3000)
     </script>
   </body>

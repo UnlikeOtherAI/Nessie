@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useRedirect } from '../navigation/redirect'
 import { useChannelPlaceableAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
@@ -53,6 +53,7 @@ import { useChannelParticipants } from './channels/useChannelParticipants'
 
 export const ChannelsPage = () => {
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
@@ -136,6 +137,7 @@ export const ChannelsPage = () => {
       && !(isPersonalAssistantConversation && personalAssistantPending),
     personalAssistantAgent,
   })
+  const browserAgent = conversationAgent?.browserEnabled === true ? conversationAgent : null
   // The tools this conversation puts within reach, and which one is open.
   // Keyed by the agent rather than the room: its browser is its browser
   // wherever you reached it from.
@@ -145,7 +147,7 @@ export const ChannelsPage = () => {
   // doorway is the conversation info screen, which pushes a real screen, so
   // the tool is a route there and Back, deep links and the phone stack all
   // resolve without this page having to hold state across a pop.
-  const toolRail = useChatToolRail(conversationAgent?.id ?? null, { remember: !phoneLayout })
+  const toolRail = useChatToolRail(browserAgent?.id ?? null, { remember: !phoneLayout })
   const routeTool = parseOpenChatTool(toolId ?? null)
   const openTool = routeTool ?? toolRail.openTool
   const conversationPath = `/channels/${activeChannel?.id ?? ''}`
@@ -227,6 +229,15 @@ export const ChannelsPage = () => {
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
   // and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
+  // A temporary browser card may originate in a reply thread. Its routed
+  // browser surface retires that incompatible pane, while this structural
+  // thread id keeps polling the exact session rather than the channel default.
+  const routedBrowserThreadId = routeTool === 'browser'
+    ? searchParams.get('threadId')
+    : null
+  const browserThreadId = routedBrowserThreadId
+    ?? replyThread.activeThreadId
+    ?? activeChannel?.defaultThreadId
   const visibleConversationMessages = useMemo(() => {
     if (!replyThread.openRootMessageId) return threadMessages
     const root = replyThread.rootQuery.data?.message
@@ -627,15 +638,15 @@ export const ChannelsPage = () => {
         onSelectAgent={onSelectAgent}
         onSendAsFile={sendAsFile}
       />
-      {conversationAgent ? (
+      {browserAgent ? (
         <ChatToolDock
-          agent={conversationAgent}
+          agent={browserAgent}
           onClose={closeTool}
           onToggle={toggleTool}
           openTool={openTool}
           otherPanelOpen={Boolean(replyThread.openRootMessageId) || Boolean(dashboardId)}
           routed={routeTool !== null}
-          threadId={activeChannel?.defaultThreadId ?? null}
+          threadId={browserThreadId ?? null}
         />
       ) : null}
       {activeChannel ? (
@@ -645,7 +656,7 @@ export const ChannelsPage = () => {
           allUsers={allUsers}
           canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
-          hasAgentTools={conversationAgent !== null}
+          hasAgentTools={browserAgent !== null}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
           onOpenTool={openToolScreen}

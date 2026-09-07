@@ -9,6 +9,8 @@ import { registerAppConnectionRequestRoutes } from './routes/app-connection-requ
 import { registerAppsConnectRoutes } from './routes/apps-connect.js'
 import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
 import { registerBrowserCloudRoutes } from './routes/browser-cloud.js'
+import { registerBrowserCookieImportRoutes } from './routes/browser-cookie-imports.js'
+import { registerBrowserPersonalAccessRoutes } from './routes/browser-personal-access.js'
 import { registerScopedSettingsRoutes } from './routes/scoped-settings.js'
 import { registerAgentCardRoutes } from './routes/agent-cards.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
@@ -120,6 +122,8 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerExecutionEnvironmentRoutes(app, deps)
   registerDisclosureGrantRoutes(app, deps)
   registerExecutorRoutes(app, deps)
+  registerBrowserCookieImportRoutes(app, deps)
+  registerBrowserPersonalAccessRoutes(app, deps)
   registerMailboxRoutes(app, deps)
   registerMeetingLinkRoutes(app, deps)
   registerResourceLockRoutes(app, deps)
@@ -190,7 +194,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
   registerAgentCardRoutes(app, { ...deps, dashboardCredentials })
-  registerBrowserCloudRoutes(app, deps)
+  registerBrowserCloudRoutes(app, { ...deps, dashboardCredentials })
   registerScopedSettingsRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)
   registerKnowledgeBaseFileRoutes(app, deps)

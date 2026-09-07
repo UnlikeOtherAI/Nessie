@@ -1,7 +1,8 @@
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
+import { BLOCKING_SESSION_STATUSES } from './session-lifecycle.js'
 
 /**
  * Connecting and disconnecting a Browserbase account.
@@ -51,8 +52,41 @@ export type ConnectCloudBrowserInput = {
 export type ConnectionDeps = {
   prisma: PrismaClient
   /** Writes the key into the encrypted store and returns a server-minted ref. */
-  storeSecret: (apiKey: string) => Promise<string>
+  storeSecret: (prisma: PrismaClient | Prisma.TransactionClient, apiKey: string) => Promise<string>
   clientFactory?: (credentials: { apiKey: string; projectId?: string | null }) => BrowserbaseClient
+}
+
+export type CloudBrowserConnectionProbeDeps = Pick<ConnectionDeps, 'clientFactory'>
+
+export type CloudBrowserConnectionPersistenceDeps = {
+  prisma: Prisma.TransactionClient
+  storeSecret: (apiKey: string) => Promise<string>
+}
+
+const browserbaseSecretRef = (ref: string): boolean => ref.startsWith('secret_browserbase_')
+
+/**
+ * Browserbase credentials are stored in the encrypted MCP secret table, but
+ * are not MCP OAuth grants. Keeping this narrow delete here makes the
+ * connection row and its opaque key reference one transactional lifecycle.
+ */
+const removeBrowserbaseSecret = async (
+  prisma: PrismaClient | Prisma.TransactionClient,
+  ref: string,
+): Promise<void> => {
+  if (!browserbaseSecretRef(ref)) return
+  await prisma.mcpOAuthSecret.deleteMany({ where: { ref } })
+}
+
+const lockConnectionScope = async (
+  prisma: Prisma.TransactionClient,
+  input: Pick<ConnectCloudBrowserInput, 'organizationId' | 'scope' | 'teamId' | 'userId'>,
+): Promise<void> => {
+  const teamId = input.scope === 'team' ? input.teamId ?? '' : ''
+  const userId = input.scope === 'user' ? input.userId ?? '' : ''
+  await prisma.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`cloud-browser-connection:${input.organizationId}:${input.scope}:${teamId}:${userId}`}, 0))`,
+  )
 }
 
 /**
@@ -61,8 +95,8 @@ export type ConnectionDeps = {
  * precedent is to refuse loudly rather than store one and fail later at the
  * moment somebody actually needs it.
  */
-const probe = async (
-  deps: ConnectionDeps,
+export const probeCloudBrowserConnection = async (
+  deps: CloudBrowserConnectionProbeDeps,
   credentials: { apiKey: string; projectId?: string | null },
 ): Promise<void> => {
   const client = deps.clientFactory
@@ -74,10 +108,9 @@ const probe = async (
   await client.endSession(session.id).catch(() => undefined)
 }
 
-export const connectCloudBrowser = async (
-  deps: ConnectionDeps,
+export const validateCloudBrowserConnectionInput = (
   input: ConnectCloudBrowserInput,
-): Promise<{ id: string }> => {
+): void => {
   if (input.scope === 'team' && !input.teamId) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
@@ -96,25 +129,71 @@ export const connectCloudBrowser = async (
       'A shared connection has no individual owner.',
     )
   }
+}
 
-  await probe(deps, { apiKey: input.apiKey, projectId: input.projectId ?? null })
+/**
+ * Store a key and create or repair its connection in the caller's transaction.
+ * Callers probe first, then call this only after their own one-shot decision
+ * has won; a card press therefore cannot rekey an account it failed to claim.
+ */
+export const persistCloudBrowserConnection = async (
+  deps: CloudBrowserConnectionPersistenceDeps,
+  input: ConnectCloudBrowserInput,
+): Promise<{ id: string }> => {
+  validateCloudBrowserConnectionInput(input)
 
-  // Only now does the plaintext reach the store, and only a `secret_*` ref is
-  // persisted on the row — the key itself never returns to any caller.
-  const apiKeyRef = await deps.storeSecret(input.apiKey)
   const userId = input.scope === 'user' ? input.userId : null
   const teamId = input.scope === 'team' ? input.teamId ?? null : null
 
+  await lockConnectionScope(deps.prisma, input)
+
   const existing = await deps.prisma.cloudBrowserConnection.findFirst({
     where: { organizationId: input.organizationId, scope: input.scope, teamId, userId },
-    select: { id: true },
+    select: { apiKeyRef: true, id: true, status: true },
   })
 
   if (existing) {
-    // Replacing a key is also the repair path for `needs_attention`, so the
-    // status resets and the health reason clears in the same write.
+    const locked = await deps.prisma.$queryRaw<Array<{
+      apiKeyRef: string
+      id: string
+      status: 'active' | 'disabled' | 'needs_attention'
+    }>>(Prisma.sql`SELECT id, api_key_ref AS "apiKeyRef", status
+      FROM cloud_browser_connections
+      WHERE id = ${existing.id}::uuid
+      FOR UPDATE`)
+    const lockedConnection = locked[0]
+    if (!lockedConnection) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+        'This Browserbase connection changed while it was being updated. Retry the connection.',
+      )
+    }
+    const [liveSessions, durableBrowsers, retiringBrowsers] = await Promise.all([
+      deps.prisma.cloudBrowserSession.count({
+        where: { connectionId: lockedConnection.id, status: { in: [...BLOCKING_SESSION_STATUSES] } },
+      }),
+      deps.prisma.agentBrowser.count({ where: { connectionId: lockedConnection.id, status: 'active' } }),
+      deps.prisma.agentBrowser.count({
+        where: { connectionId: lockedConnection.id, status: { in: ['tombstoned', 'deleting'] } },
+      }),
+    ])
+    if (liveSessions > 0 || retiringBrowsers > 0) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.CAPACITY,
+        liveSessions > 0
+          ? 'Close every open browser before replacing this Browserbase connection.'
+          : 'A saved browser is still being cleared. Wait for its reset to finish before reconnecting.',
+      )
+    }
+    if (lockedConnection.status === 'active' && durableBrowsers > 0) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.CAPACITY,
+        'Disconnect first, then reconnect the Browserbase account that owns these saved sign-ins.',
+      )
+    }
+    const apiKeyRef = await deps.storeSecret(input.apiKey)
     await deps.prisma.cloudBrowserConnection.update({
-      where: { id: existing.id },
+      where: { id: lockedConnection.id },
       data: {
         apiKeyRef,
         projectId: input.projectId ?? null,
@@ -125,9 +204,11 @@ export const connectCloudBrowser = async (
         healthRevision: { increment: 1 },
       },
     })
-    return { id: existing.id }
+    await removeBrowserbaseSecret(deps.prisma, lockedConnection.apiKeyRef)
+    return { id: lockedConnection.id }
   }
 
+  const apiKeyRef = await deps.storeSecret(input.apiKey)
   const created = await deps.prisma.cloudBrowserConnection.create({
     data: {
       organizationId: input.organizationId,
@@ -143,6 +224,21 @@ export const connectCloudBrowser = async (
     select: { id: true },
   })
   return { id: created.id }
+}
+
+export const connectCloudBrowser = async (
+  deps: ConnectionDeps,
+  input: ConnectCloudBrowserInput,
+): Promise<{ id: string }> => {
+  validateCloudBrowserConnectionInput(input)
+  await probeCloudBrowserConnection(deps, {
+    apiKey: input.apiKey,
+    projectId: input.projectId ?? null,
+  })
+  return deps.prisma.$transaction((tx) => persistCloudBrowserConnection({
+    prisma: tx,
+    storeSecret: (apiKey) => deps.storeSecret(tx, apiKey),
+  }, input))
 }
 
 /**
@@ -182,7 +278,7 @@ export const listCloudBrowserConnections = async (
     by: ['connectionId'],
     where: {
       connectionId: { in: rows.map((row) => row.id) },
-      status: { in: ['allocating', 'active', 'releasing'] },
+      status: { in: [...BLOCKING_SESSION_STATUSES] },
     },
     _count: { _all: true },
   })
@@ -230,30 +326,54 @@ export const disconnectCloudBrowser = async (
   prisma: PrismaClient,
   input: { organizationId: string; connectionId: string },
 ): Promise<void> => {
-  const row = await prisma.cloudBrowserConnection.findFirst({
-    where: { id: input.connectionId, organizationId: input.organizationId },
-    select: { id: true },
-  })
-  if (!row) {
-    throw new CloudBrowserError(
-      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
-      'That browser connection does not exist.',
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ apiKeyRef: string; id: string }>>(
+      Prisma.sql`SELECT id, api_key_ref AS "apiKeyRef"
+        FROM cloud_browser_connections
+        WHERE id = ${input.connectionId}::uuid
+          AND organization_id = ${input.organizationId}::uuid
+        FOR UPDATE`,
     )
-  }
-  const live = await prisma.cloudBrowserSession.count({
-    where: {
-      connectionId: input.connectionId,
-      status: { in: ['allocating', 'active', 'releasing'] },
-    },
+    const row = rows[0]
+    if (!row) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+        'That browser connection does not exist.',
+      )
+    }
+    const [live, retiringBrowsers] = await Promise.all([
+      tx.cloudBrowserSession.count({
+        where: { connectionId: row.id, status: { in: [...BLOCKING_SESSION_STATUSES] } },
+      }),
+      tx.agentBrowser.count({
+        where: { connectionId: row.id, status: { in: ['tombstoned', 'deleting'] } },
+      }),
+    ])
+    if (live > 0) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.CAPACITY,
+        `${live} browser${live === 1 ? ' is' : 's are'} still open on this connection. `
+        + 'Close them, or wait for their runs to finish, before disconnecting.',
+      )
+    }
+    if (retiringBrowsers > 0) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.CAPACITY,
+        'A saved browser is still being cleared. Wait for its reset to finish before disconnecting.',
+      )
+    }
+    await tx.cloudBrowserConnection.update({
+      where: { id: row.id },
+      data: {
+        status: 'disabled',
+        healthReason: 'disabled_by_owner',
+        healthDetail: 'Disconnected by its owner.',
+        healthCheckedAt: new Date(),
+        healthRevision: { increment: 1 },
+      },
+    })
+    await removeBrowserbaseSecret(tx, row.apiKeyRef)
   })
-  if (live > 0) {
-    throw new CloudBrowserError(
-      CLOUD_BROWSER_ERROR_CODES.CAPACITY,
-      `${live} browser${live === 1 ? ' is' : 's are'} still open on this connection. `
-      + 'Close them, or wait for their runs to finish, before disconnecting.',
-    )
-  }
-  await prisma.cloudBrowserConnection.delete({ where: { id: input.connectionId } })
 }
 
 export const describeConnectError = (error: unknown): { code: string; message: string } => {

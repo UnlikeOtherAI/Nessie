@@ -339,6 +339,9 @@ dbTest('personal-assistant-only and explicit-grant builtins are named, not offer
     // An operational verb the PA keeps still reads as PA-only.
     assert.equal(restricted.get('agent_bind_channel'), 'personal_assistant_only')
     assert.equal(restricted.get('deep_water_run_update'), 'explicit_grant')
+    // The filter is narrow: ordinary tools remain designable while specialist
+    // tools are absent from the toggles.
+    assert.ok(catalogue.togglable.some((entry) => entry.key === 'web_search'))
     // …and none of them can be switched on from a design conversation.
     for (const key of restricted.keys()) {
       assert.equal(

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { open, readFile, rename, unlink } from 'node:fs/promises'
+import { open, readFile, readdir, rename, unlink } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
 import {
@@ -139,6 +139,26 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
     throw new Error('Executor state is malformed.')
   }
   return parsed as ExecutorLocalState
+}
+
+const STATE_DIRECTORY_NAME = /^[A-Za-z0-9-]{1,128}$/
+
+/**
+ * A native host is registered once per Chrome profile, while a desktop can
+ * hold several pairings. Scan only a proved owner-only root and admit a child
+ * only when its protected state both loads and names that child. Broken or old
+ * entries cannot block another pairing's consent flow.
+ */
+export const loadExecutorStatesFromRoot = async (stateRoot: string): Promise<ExecutorLocalState[]> => {
+  await assertOwnerOnlyStatePath(stateRoot, 'directory')
+  const entries = await readdir(stateRoot, { withFileTypes: true })
+  const states: ExecutorLocalState[] = []
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory() || entry.isSymbolicLink() || !STATE_DIRECTORY_NAME.test(entry.name)) continue
+    const state = await loadExecutorState(resolve(stateRoot, entry.name)).catch(() => null)
+    if (state?.executorId === entry.name) states.push(state)
+  }
+  return states
 }
 
 export const saveExecutorState = async (

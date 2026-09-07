@@ -17,6 +17,8 @@ import type {
 import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { agentKeys } from '../agents/keys'
+import { browserCloudKeys } from '../browser-cloud/keys'
 import {
   deepWaterAgentAccessKeyPrefix,
   mcpKeys,
@@ -152,13 +154,22 @@ export const useSetAgentToolPolicyEntry = () => {
         `/api/mcp/tools/${input.toolRegistryEntryId}/policy-targets/${input.agentId}`,
         { enabled: input.enabled },
       ),
-    onSuccess: () => {
+    onSuccess: (_target, input) => {
       void queryClient.invalidateQueries({
         queryKey: toolPolicyTargetsKeyPrefix,
       })
       void queryClient.invalidateQueries({
         queryKey: deepWaterAgentAccessKeyPrefix,
       })
+      // browserEnabled is projected on every agent record. Refresh the
+      // conversation's source of truth so an owner sees a grant or revoke
+      // take effect without navigating away, then clear the affected browser
+      // session projection that the unmounted dock may have left behind.
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({
+        queryKey: browserCloudKeys.agentBrowser(input.agentId),
+      })
+      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
     },
   })
 }

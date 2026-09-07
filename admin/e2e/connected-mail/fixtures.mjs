@@ -5,6 +5,7 @@
 const now = '2026-09-04T09:30:00.000Z'
 const gmailDraftId = '99999999-9999-4999-8999-999999999999'
 const gmailApprovalId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const mailboxComposeCardId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const ids = {
   channel: '11111111-1111-4111-8111-111111111111',
   organization: '22222222-2222-4222-8222-222222222222',
@@ -27,6 +28,8 @@ export const createMailFixtures = () => {
   let gmailCapabilities = { canCompose: true, canRead: true, canSend: true }
   let gmailApprovalVisible = false
   let releaseGmailApprovalPreview
+  let mailboxComposeCardVisible = false
+  let mailboxComposeCardResolution = null
 
   const accounts = () => [
     {
@@ -37,6 +40,11 @@ export const createMailFixtures = () => {
     {
       address: 'inbox@team.example', canCompose: true, canRead: true,
       canSend: true, id: 'mailbox-1', label: 'Operations inbox', scope: 'shared',
+      source: 'mailbox', status: 'active',
+    },
+    {
+      address: 'finance@team.example', canCompose: true, canRead: true,
+      canSend: true, id: 'mailbox-2', label: 'Finance inbox', scope: 'shared',
       source: 'mailbox', status: 'active',
     },
   ].filter((account) => doorwayAllowed || account.id !== 'gmail-1')
@@ -53,6 +61,15 @@ export const createMailFixtures = () => {
         threadId: 'thread-1', to: ['alex@example.com'],
       },
     ],
+  }
+
+  const conversationTwo = {
+    ...conversation,
+    id: 'thread-2',
+    messages: [{
+      ...conversation.messages[0], body: '<p>Budget confirmed.</p>', from: 'Morgan <morgan@example.com>',
+      id: 'message-2', subject: 'Budget', threadId: 'thread-2',
+    }],
   }
 
   const threads = {
@@ -96,6 +113,35 @@ export const createMailFixtures = () => {
     content: 'I found an email that needs your review.', createdAt: now,
     id: '88888888-8888-4888-8888-888888888888', role: 'assistant', threadId: ids.thread,
   }
+  const mailboxComposeCard = {
+    action: 'respond',
+    actions: [
+      { key: 'send', label: 'Send', style: 'primary', submits: true },
+      {
+        collectsValues: true,
+        href: '/mail/mailbox/mailbox-1/compose',
+        key: 'edit', label: 'Edit', style: 'secondary', submits: false,
+      },
+    ],
+    agentId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    agentName: 'Mail assistant',
+    blocks: [
+      { default: 'casey@acme.example', input: 'text', key: 'to', label: 'To', required: true, type: 'input' },
+      { default: 'team@acme.example', input: 'text', key: 'cc', label: 'Cc', type: 'input' },
+      { default: 'audit@acme.example', input: 'text', key: 'bcc', label: 'Bcc', type: 'input' },
+      { default: 'Launch plan', input: 'text', key: 'subject', label: 'Subject', required: true, type: 'input' },
+      { default: 'Please review the attached launch plan.', input: 'textarea', key: 'body', label: 'Message', required: true, type: 'input' },
+    ],
+    cardId: mailboxComposeCardId,
+    expiresAt: null,
+    messageId: doorwayMessage.id,
+    resolution: null,
+    service: null,
+    status: 'open',
+    threadId: ids.thread,
+    title: 'Draft email ready',
+    waitingFor: [],
+  }
 
   const shellResponse = (pathname) => {
     if (pathname === '/api/agents' || pathname === '/api/agents/all') return []
@@ -128,7 +174,7 @@ export const createMailFixtures = () => {
     const url = new URL(request.url())
     const method = request.method()
     const { pathname } = url
-    calls.push({ method, pathname, search: url.search })
+    calls.push({ method, pathname, postData: request.postData(), search: url.search })
     const json = (data, status = 200) => route.fulfill({
       contentType: 'application/json', body: JSON.stringify(envelope(data)), status,
     })
@@ -164,16 +210,39 @@ export const createMailFixtures = () => {
     if (pathname === '/api/mail/accounts') return json(accounts())
     if (pathname.endsWith('/threads') && pathname.startsWith('/api/mail/accounts/')) return json(threads)
     if (pathname.endsWith('/threads/thread-1') && pathname.startsWith('/api/mail/accounts/')) return json(conversation)
-    if (pathname.endsWith('/threads/thread-2') && pathname.startsWith('/api/mail/accounts/')) return json({ ...conversation, id: 'thread-2' })
+    if (pathname.endsWith('/threads/thread-2') && pathname.startsWith('/api/mail/accounts/')) return json(conversationTwo)
     if (pathname === `/api/gmail/drafts/${gmailDraftId}/status` && method === 'GET') return json({
       id: gmailDraftId, sendAfter: gmailSendAfter, state: gmailDraftState,
     })
+    if (pathname === `/api/agent-cards/${mailboxComposeCardId}` && method === 'GET') return json({
+      ...mailboxComposeCard,
+      action: mailboxComposeCardResolution ? 'none' : 'respond',
+      resolution: mailboxComposeCardResolution,
+      status: mailboxComposeCardResolution ? 'resolved' : 'open',
+    })
+    if (pathname === `/api/agent-cards/${mailboxComposeCardId}/respond` && method === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}')
+      mailboxComposeCardResolution = {
+        actionKey: body.actionKey,
+        actionLabel: body.actionKey === 'edit' ? 'Edit' : 'Send',
+        at: now,
+        byName: 'Alex Example',
+        byUserId: ids.user,
+        values: body.values ?? {},
+      }
+      return json({ cardId: mailboxComposeCardId, responseMessageId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', status: 'resolved' })
+    }
     if (pathname === `/api/gmail/drafts/${gmailDraftId}` && method === 'GET') return json({
       attachments: [], bcc: [], body: 'Thanks — I will take this from here.', cc: [],
-      contentFingerprint: 'fingerprint-1', id: gmailDraftId, revision: 1, state: gmailDraftState,
+      connectionId: 'gmail-1', contentFingerprint: 'fingerprint-1', editable: gmailDraftState === 'draft', id: gmailDraftId, revision: 1, state: gmailDraftState,
       sendAfter: gmailSendAfter,
       subject: 'Re: Launch checklist', to: ['casey@acme.example'],
     })
+    if (pathname === `/api/gmail/drafts/${gmailDraftId}/send` && method === 'POST') {
+      gmailDraftState = 'sending'
+      gmailSendAfter = new Date(Date.now() + 15_000).toISOString()
+      return json({ sendAfter: gmailSendAfter, status: 'sending' })
+    }
     if (pathname.startsWith('/api/gmail/drafts/') && pathname.endsWith('/undo') && method === 'POST') {
       gmailDraftState = 'draft'
       gmailSendAfter = null
@@ -205,7 +274,9 @@ export const createMailFixtures = () => {
       })
     }
     if (pathname === `/api/threads/${ids.thread}/messages`) return json(doorwayVisible
-      ? [{ ...doorwayMessage, metadata: { mailSurfaceDoorway: doorway } }]
+      ? [{ ...doorwayMessage, metadata: mailboxComposeCardVisible
+        ? { agentCard: { cardId: mailboxComposeCardId, schemaVersion: 1 } }
+        : { mailSurfaceDoorway: doorway } }]
       : [])
     if (pathname === `/api/threads/${ids.thread}/thinking`) return json({ runs: [] })
     if (pathname === `/api/threads/${ids.thread}/document-streams`) return json([])
@@ -224,16 +295,31 @@ export const createMailFixtures = () => {
 
   return {
     calls,
-    ids,
+    ids: { ...ids, gmailDraft: gmailDraftId, mailboxComposeCard: mailboxComposeCardId },
     unhandled,
     respond,
-    showDoorway: () => { doorway = threadDoorway; doorwayVisible = true },
+    showDoorway: () => { doorway = threadDoorway; doorwayVisible = true; mailboxComposeCardVisible = false },
     showComposeDoorway: () => {
       gmailDraftState = 'draft'
       gmailSendAfter = null
+      mailboxComposeCardVisible = false
       doorway = { accountId: 'gmail-1', draftId: gmailDraftId, mode: 'compose', source: 'gmail' }
     },
-    showAccountDoorway: () => { doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }; doorwayVisible = true },
+    showMailboxComposeCard: () => {
+      mailboxComposeCardResolution = null
+      mailboxComposeCardVisible = true
+      doorwayVisible = true
+    },
+    showAccountDoorway: () => {
+      doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }
+      doorwayVisible = true
+      mailboxComposeCardVisible = false
+    },
+    showSelectedAccountDoorway: () => {
+      doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail', threadIds: ['thread-1', 'thread-2'] }
+      doorwayVisible = true
+      mailboxComposeCardVisible = false
+    },
     denyDoorway: () => { doorwayAllowed = false },
     loseNextGmailSendResponse: () => { loseNextGmailSendResponse = true },
     showPendingGmailApproval: () => { gmailApprovalVisible = true },

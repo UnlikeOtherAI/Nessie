@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
+import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
 import {
   configureExecutorBrowserSandbox,
   configureExecutorCodexSandbox,
@@ -12,7 +13,7 @@ import {
   enableExecutorService,
   executorServiceStatus,
 } from './service-linux.js'
-import { loadExecutorState } from './state-store.js'
+import { loadExecutorState, loadExecutorStatesFromRoot } from './state-store.js'
 
 type ParsedCommand =
   | {
@@ -53,6 +54,13 @@ type ParsedCommand =
   }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
+  | {
+    callerOrigin: string
+    expectedExtensionOrigin: string
+    kind: 'native-browser-cookie-import'
+    requireDevelopmentLocalApi: boolean
+    stateRoot: string
+  }
   | { kind: 'serve'; parentLivenessFromStandardInput?: true; stateDir: string }
   | { assumeYes: boolean; executorId: string; kind: 'enable'; stateDir?: string }
   | { executorId: string; kind: 'disable' }
@@ -81,6 +89,8 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor native-browser-cookie-import --state-root <owner-only-path> '
+    + '--extension-origin <chrome-extension://release-id/> --caller-origin <chrome-extension://release-id/>\n'
     + '       nessie-executor enable <executorId> [--state-dir <owner-only-path>] [--yes]\n'
     + '       nessie-executor disable <executorId>\n'
     + '       nessie-executor status [<executorId>] [--state-root <owner-only-path>]',
@@ -260,6 +270,15 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
+  if (command === 'native-browser-cookie-import') {
+    return {
+      callerOrigin: option(args, '--caller-origin'),
+      expectedExtensionOrigin: option(args, '--extension-origin'),
+      kind: command,
+      requireDevelopmentLocalApi: args.includes('--development-local-api'),
+      stateRoot: option(args, '--state-root'),
+    }
+  }
   if (command === 'enable') {
     return {
       assumeYes: args.includes('--yes'),
@@ -317,6 +336,15 @@ export const run = async (args: string[]): Promise<void> => {
   }
   if (command.kind === 'status') {
     await executorServiceStatus(command)
+    return
+  }
+  if (command.kind === 'native-browser-cookie-import') {
+    await serveBrowserCookieImportNativeHost({
+      callerOrigin: command.callerOrigin,
+      expectedExtensionOrigin: command.expectedExtensionOrigin,
+      requireDevelopmentLocalApi: command.requireDevelopmentLocalApi,
+      states: await loadExecutorStatesFromRoot(command.stateRoot),
+    })
     return
   }
   const state = await loadExecutorState(command.stateDir)

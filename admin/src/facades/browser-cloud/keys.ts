@@ -8,10 +8,14 @@ export const browserCloudKeys = {
   /** The family root, for the rare change that touches whichever session is on screen. */
   sessions: ['browser-cloud', 'sessions'] as const,
   session: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId] as const,
+  screenshot: (sessionId?: string) => ['browser-cloud', 'sessions', sessionId, 'screenshot'] as const,
   threadSessions: (threadId?: string) =>
     ['browser-cloud', 'threads', threadId, 'sessions'] as const,
+  threadSessionsRoot: ['browser-cloud', 'threads'] as const,
   agentBrowser: (agentId?: string) => ['browser-cloud', 'agents', agentId] as const,
   agentBrowserTabs: (threadId?: string, agentId?: string) =>
     ['browser-cloud', 'threads', threadId, 'agents', agentId, 'tabs'] as const,
   myLogins: ['browser-cloud', 'my-logins'] as const,
+  cookieImport: (importId?: string) =>
+    ['browser-cloud', 'cookie-import', importId ?? 'none'] as const,
 }

@@ -13,6 +13,10 @@ import {
   exerciseBoardManagementPhone,
   exerciseBoardManagementTablet,
 } from './board-management.mjs'
+import {
+  exerciseRichBoardAssignees,
+  exerciseRichBoardAssigneesPhone,
+} from './rich-assignees.mjs'
 
 const ADMIN_URL = `http://localhost:${ADMIN_PORT}`
 const SCREENSHOTS = fileURLToPath(new URL('../../../e2e/screenshots/project-usability/', import.meta.url))
@@ -158,6 +162,13 @@ const main = async () => {
     })
     await exerciseBoardManagementTablet({
       adminUrl: ADMIN_URL, board: boardA, page: tabletPage.page, projectId: project.id, shot,
+    })
+    const viewer = (await api('/api/auth/me', { token: seed.token })).user
+    await exerciseRichBoardAssignees({
+      adminUrl: ADMIN_URL, board: boardA, page: desktopPage.page, projectId: project.id, shot, viewer,
+    })
+    await exerciseRichBoardAssigneesPhone({
+      adminUrl: ADMIN_URL, board: boardA, page: phonePage.page, projectId: project.id, shot, viewer,
     })
     const boardB = await api(`/api/projects/${project.id}/boards`, { body: { copyColumnsFromBoardId: boardA.id, name: `Isolation proof ${runId}` }, method: 'POST', token: seed.token })
     boardBId = boardB.id

@@ -15,6 +15,7 @@ import type { GmailDraftView } from '../src/facades/gmail/hooks.js'
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
 const draft = (overrides: Partial<GmailDraftView> = {}): GmailDraftView => ({
+  connectionId: 'connection-1',
   id: 'action-1',
   state: 'draft',
   revision: 1,

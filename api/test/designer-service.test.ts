@@ -56,6 +56,25 @@ const fakeDoneResponse = (): Response => {
   return { body: { getReader: () => reader } } as unknown as Response
 }
 
+const fakeToolResponse = (name: string, args: Record<string, unknown>, id: string): Response => {
+  const chunk = JSON.stringify({
+    choices: [{ delta: { tool_calls: [{
+      function: { arguments: JSON.stringify(args), name }, id, index: 0,
+    }] } }],
+  })
+  const encoder = new TextEncoder()
+  let sent = false
+  const reader = {
+    read: async () => {
+      if (sent) return { done: true, value: undefined }
+      sent = true
+      return { done: false, value: encoder.encode(`data: ${chunk}\n\ndata: [DONE]\n\n`) }
+    },
+    releaseLock: () => {},
+  }
+  return { body: { getReader: () => reader } } as unknown as Response
+}
+
 /**
  * The registry reads `loadAgentToolCatalog` performs. A cast fake is unityped,
  * so a delegate it does not model is a runtime TypeError — this pair is exactly
@@ -96,13 +115,16 @@ const createFakeReply = (): { chunks: string[]; reply: FastifyReply } => {
 
 const runDesignerChat = async (
   input: DesignerChatInput,
-): Promise<{ systemPromptSent: string }> => {
+  responses: Response[] = [fakeDoneResponse()],
+): Promise<{ calls: number; systemPromptSent: string }> => {
   let capturedMessages: Array<{ content: string | null; role: string }> = []
+  let calls = 0
   const modelClient = {
     chatModel: 'test-chat-model',
     fetchCompletion: async (body: Record<string, unknown>) => {
+      calls += 1
       capturedMessages = body['messages'] as typeof capturedMessages
-      return fakeDoneResponse()
+      return responses.shift() ?? fakeDoneResponse()
     },
     usage: { record: () => {} },
   } as unknown as ModelClient
@@ -125,7 +147,7 @@ const runDesignerChat = async (
 
   const systemMessage = capturedMessages.find((m) => m.role === 'system')
   assert.ok(systemMessage, 'a system message was sent to the model')
-  return { systemPromptSent: systemMessage!.content ?? '' }
+  return { calls, systemPromptSent: systemMessage!.content ?? '' }
 }
 
 test('streamDesignerChat forwards the supplied page context into the system prompt', async () => {
@@ -188,5 +210,58 @@ test('streamDesignerChat falls back to the default page description when none is
   })
 
   assert.match(systemPromptSent, /- Agent configuration: Edit this agent’s configuration\./)
+  assert.match(
+    systemPromptSent,
+    /Controls available on this page: set name, role, instructions, model, and tool access/,
+  )
+})
+
+test('an explicit page context with no actions stays read-only', async () => {
+  const { systemPromptSent } = await runDesignerChat({
+    messages: [], formState: baseFormState,
+    pageContext: { actions: [], description: 'Review only.', title: 'Overview' },
+  })
   assert.match(systemPromptSent, /Controls available on this page: none/)
+})
+
+test('sequential draft updates continue through the bounded Designer loop', async () => {
+  const { calls } = await runDesignerChat({ messages: [], formState: baseFormState }, [
+    fakeToolResponse('set_name', { name: 'Scout' }, 'name'),
+    fakeToolResponse('set_role', { role: 'researcher' }, 'role'),
+    fakeToolResponse('batch_toggle_tools', { tools: [{ enabled: false, toolId: 'web_search' }] }, 'tools'),
+    fakeDoneResponse(),
+  ])
+  assert.equal(calls, 4)
+})
+
+test('a complete ordinary tool selection continues as one draft update', async () => {
+  const { calls } = await runDesignerChat({ messages: [], formState: baseFormState }, [
+    fakeToolResponse('set_tool_selection', {
+      toolIds: ['5e1b3c8a-0000-4000-8000-00000000abcd'],
+    }, 'selection'),
+    fakeDoneResponse(),
+  ])
+  assert.equal(calls, 2)
+})
+
+test('an invalid complete selection stops before the form can partially apply it', async () => {
+  const { calls } = await runDesignerChat({ messages: [], formState: baseFormState }, [
+    fakeToolResponse('set_tool_selection', { toolIds: ['not-in-the-catalogue'] }, 'selection'),
+    fakeDoneResponse(),
+  ])
+  assert.equal(calls, 1)
+})
+
+test('an unknown tool stops the Designer loop instead of being acknowledged as a draft update', async () => {
+  const { calls } = await runDesignerChat({ messages: [], formState: baseFormState }, [
+    fakeToolResponse('invent_access', {}, 'unknown'), fakeDoneResponse(),
+  ])
+  assert.equal(calls, 1)
+})
+
+test('a full bounded Designer loop reports that its explanation is unfinished', async () => {
+  const responses = Array.from({ length: 6 }, (_, index) =>
+    fakeToolResponse('set_name', { name: `Scout ${index}` }, `name-${index}`))
+  const { calls } = await runDesignerChat({ messages: [], formState: baseFormState }, responses)
+  assert.equal(calls, 6)
 })
