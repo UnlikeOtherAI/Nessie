@@ -164,8 +164,12 @@ export const runTeamSearchTool = async (
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
+        agentId: true,
         content: true,
         createdAt: true,
+        metadata: true,
+        onBehalfOfUserId: true,
+        role: true,
         rootMessageId: true,
         thread: {
           select: {
@@ -218,9 +222,13 @@ export const runTeamSearchTool = async (
     })),
   ])
   recordPrivateConversationMessageRead(context, messages.map((message) => ({
-    authorUserId: message.user?.id ?? null,
+    agentId: message.agentId,
     channelId: message.thread.channel.id,
     channelVisibility: message.thread.channel.visibility,
+    metadata: message.metadata,
+    onBehalfOfUserId: message.onBehalfOfUserId,
+    role: message.role,
+    userId: message.user?.id ?? null,
   })))
 
   const lines: string[] = []

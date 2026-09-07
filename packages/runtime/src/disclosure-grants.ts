@@ -300,6 +300,9 @@ export const grantMessageDisclosure = async (
     },
     update: {
       ...(expiresAt ? { expiresAt } : { expiresAt: null }),
+      // Re-approval replaces a legacy reader-approved grant with the current
+      // original author's authority, which the read predicate verifies.
+      grantedByUserId: input.userId,
       revokedAt: null,
     },
     select: { id: true },

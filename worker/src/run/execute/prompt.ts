@@ -36,6 +36,7 @@ import {
 } from './agent-documents.js'
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
+import { originalHumanAuthorId } from './private-conversation-lineage.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
 export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
@@ -330,6 +331,7 @@ export const loadConversation = async (
       content: true,
       role: true,
       agentId: true,
+      metadata: true,
       onBehalfOfUserId: true,
       userId: true,
       // Live agent name — resolved via the FK join at run time, so an agent
@@ -365,10 +367,7 @@ export const loadConversation = async (
     // source, rather than a derived reply. Record its channel and author here
     // so a later post into another audience cannot erase that provenance.
     if (message.thread.channel.visibility !== 'public') {
-      // `onBehalfOfUserId` attributes an agent action to its effective actor;
-      // it does not prove the human authored these words. Only a persisted
-      // human `userId` may establish original-author consent.
-      const authorUserId = message.userId
+      const authorUserId = originalHumanAuthorId(message)
       if (authorUserId) {
         input.consumedSources.addPrivateConversationSource({
           sourceAuthorUserId: authorUserId,

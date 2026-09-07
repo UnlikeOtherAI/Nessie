@@ -33,6 +33,10 @@ type MessageSearchRow = {
   project_name: string
   team_name: string
   root_message_id: string | null
+  role: string
+  agent_id: string | null
+  metadata: unknown
+  on_behalf_of_user_id: string | null
   user_id: string | null
 }
 
@@ -71,6 +75,10 @@ export const runMessageSearchTool = async (
       p."name" AS project_name,
       tm."name" AS team_name,
       m."content",
+      m."role",
+      m."agent_id",
+      m."metadata",
+      m."on_behalf_of_user_id",
       m."user_id",
       m."created_at",
       COALESCE(u."display_name", a."name") AS author_name
@@ -102,9 +110,13 @@ export const runMessageSearchTool = async (
     rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
   )
   recordPrivateConversationMessageRead(context, rows.map((row) => ({
-    authorUserId: row.user_id,
+    agentId: row.agent_id,
     channelId: row.channel_id,
     channelVisibility: row.channel_visibility,
+    metadata: row.metadata,
+    onBehalfOfUserId: row.on_behalf_of_user_id,
+    role: row.role,
+    userId: row.user_id,
   })))
 
   const lines = rows.map((row, index) =>
