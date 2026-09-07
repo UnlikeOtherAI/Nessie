@@ -25,6 +25,11 @@ export type PrivateConversationSource = {
   sourceChannelId: string
 }
 
+/** Durable private-conversation lineage for a delegated trigger or mailbox. */
+export const PrivateConversationSourceSchema = z.object({
+  sourceAuthorUserId: z.string().min(1).nullable(),
+  sourceChannelId: z.string().min(1),
+})
 /**
  * Per-run accumulator of scoped sources the run actually consumed.
  *

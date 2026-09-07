@@ -3754,6 +3754,9 @@ model AgentMailboxMessage {
   /// Provenance carried by a durable peer brief. Existing mailbox producers
   /// leave this empty; peer delivery stamps it on the prompt and target run.
   basis             Json                 @default("[]")
+  /// Original private-conversation authors carried independently from scope.
+  /// A null author is an intentional unknown marker and must never be dropped.
+  disclosureSources Json                 @default("[]") @map("disclosure_sources")
   status            MailboxMessageStatus @default(queued)
   attempts          Int                  @default(0)
   visibleAt         DateTime             @default(now()) @map("visible_at")

@@ -88,7 +88,8 @@ Facts not restated there:
   memory and conversation-search reads carry known lineage forward and mark an
   older/agent-derived source with no durable author as unknown; a known turn in
   the same channel cannot re-attribute it. A handoff brief or delegated subtask
-  assignment is a hidden trigger message, never an untracked prompt override:
+  assignment or peer-delegation mailbox brief is a hidden trigger message,
+  never an untracked prompt override:
   it stamps the inherited basis and these same original authors before the child
   run receives its bytes. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
