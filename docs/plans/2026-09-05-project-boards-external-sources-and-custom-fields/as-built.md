@@ -161,15 +161,22 @@ fact. Read this before treating any section above as a description of the code.
   are unchanged and still OAuth-only; the design for their key paths is
   [2026-09-05-api-key-board-source-connectors](../2026-09-05-api-key-board-source-connectors/overview.md).
 
-### Not yet verified against a live vendor
+### Live verification and remaining vendor checks
 
 Every adapter is unit-tested on its normalisation, its state mapping and its
 signature verification, and the whole inbound and write-back path is tested
-against a real database with a stand-in adapter. **None of the four has been
-run against the real provider**, because that needs an app registered with each
-vendor — see
-[configuration](../../deployment/configuration.md) → "Project board sources".
-The specific assumptions to check on first connect:
+against a real database with a stand-in adapter. On 7 September 2026, a local
+Nessie instance connected to the UnlikeOtherAI Linear workspace with a personal
+API key. The disposable UNL-10 ticket imported, a manual person mapping persisted,
+and remote assignment plus Backlog → In Progress → Done changes arrived through
+successive polls. Human watchers received alerts; the Done change also created
+and dispatched an agent run. Its inference failed at the deliberately disabled
+local model endpoint, so this verifies wake delivery, not completed agent work.
+
+The test exercised read-only API-key polling, including manual Sync. It did not
+verify Linear write-back, OAuth, webhooks, local executors, or another vendor.
+See [configuration](../../deployment/configuration.md) → "Project board sources".
+The remaining provider checks are:
 
 - **Linear, webhooks** — that `webhookCreate` takes `{url, teamId,
   resourceTypes: ['Issue'], enabled, label}` and returns the signing secret on
@@ -179,13 +186,10 @@ The specific assumptions to check on first connect:
   HMAC-SHA256 of the raw body. Every wrong assumption here costs freshness
   only — a refusal is caught by name and the adapter's five-minute poll runs.
   The board's source strip says which of the two is happening.
-- **Linear, API key** — that `Authorization: <key>` without a `Bearer` prefix is
-  accepted (the shared `linearGraphQl` helper has always sent the token bare,
-  so the OAuth path has the same assumption), and that `VIEWER_QUERY` returns
-  `organization { id }` under a personal key as it does under a grant. Both are
-  what `verify()` depends on to identify the workspace. A personal key's own
-  scopes are **not** readable, so a key created without Write connects, syncs,
-  and refuses the first drag with `LINEAR_UPDATE_REFUSED`.
+- **Linear, API key** — authentication and workspace identification passed the
+  live test. The key's own scopes are **not** readable; a key without Write is
+  expected to connect and sync but refuse a write with `LINEAR_UPDATE_REFUSED`.
+  That refusal and the OAuth authorization path still need a live check.
 - **Jira** — that `/rest/api/3/search/jql` paginates by `nextPageToken` as
   documented, and that the developer console permits this deployment's callback
   domain for webhook registration.
