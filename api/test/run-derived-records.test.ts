@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { loadAgentActivity } from '../src/services/agent-read-model.js'
+import { loadAgentActivity, loadAgentStatus } from '../src/services/agent-read-model.js'
 import { listPlans, getPlan } from '../src/services/plans.js'
 import { getTask, listTasks } from '../src/services/tasks.js'
 import { seed } from './disclosure-read-fixtures.js'
@@ -66,6 +66,18 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   const childRestrictedRun = await prisma.run.create({
     data: { agentId: childAgent.id, status: 'completed', threadId: s.threadId },
   })
+  const publicChildAgent = await prisma.agent.create({
+    data: {
+      name: `public-child-${suffix}`,
+      organizationId: s.organizationId,
+      parentAgentId: s.agentId,
+      projectId: s.projectId,
+      teamId: s.teamId,
+    },
+  })
+  const publicChildRun = await prisma.run.create({
+    data: { agentId: publicChildAgent.id, status: 'completed', threadId: s.threadId },
+  })
   const publicRun = await prisma.run.create({
     data: { agentId: s.agentId, status: 'completed', threadId: s.threadId },
   })
@@ -116,6 +128,15 @@ runDatabaseTest('run-derived task and plan records require source-channel access
       status: 'inbox',
     },
   })
+  const publicChildTask = await prisma.task.create({
+    data: {
+      agentId: publicChildAgent.id,
+      organizationId: s.organizationId,
+      purpose: 'public child task',
+      runId: publicChildRun.id,
+      status: 'inbox',
+    },
+  })
   const publicTask = await prisma.task.create({
     data: { agentId: s.agentId, organizationId: s.organizationId, purpose: 'public task', runId: publicRun.id, status: 'inbox' },
   })
@@ -143,6 +164,11 @@ runDatabaseTest('run-derived task and plan records require source-channel access
     visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, userId: ownerId },
   })
   assert.equal(ownerActivity?.subAgents.some((child) => child.taskId === childRestrictedTask.id), false)
+  const ownerStatus = await loadAgentStatus(prisma, s.agentId, {
+    visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, userId: ownerId },
+  })
+  assert.equal(ownerStatus?.activeSubAgents.some((child) => child.taskId === childRestrictedTask.id), false)
+  assert.equal(ownerStatus?.activeSubAgents.some((child) => child.taskId === publicChildTask.id), true)
 
   const sourceAuthorTasks = await listTasks(prisma, s.organizationId, {}, undefined, s.insiderId)
   assert.equal(sourceAuthorTasks.some((task) => task.id === privateTask.id), true)
