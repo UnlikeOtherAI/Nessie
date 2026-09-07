@@ -189,14 +189,14 @@ export const persistRunCheckpoint = async (
     /** The sink's structurally admitted private original authors. */
     disclosureSources: readonly PrivateConversationSource[]
   },
-): Promise<string> => {
+): Promise<string> => prisma.$transaction(async (tx) => {
   const sources = input.sources as unknown as Prisma.InputJsonValue
-  await persistRunBasis(prisma, {
+  await persistRunBasis(tx, {
     basis: input.basis,
     organizationId: input.organizationId,
     runId: input.runId,
   })
-  const checkpoint = await prisma.runCheckpoint.upsert({
+  const checkpoint = await tx.runCheckpoint.upsert({
     where: { runId: input.runId },
     create: {
       agentId: input.agentId,
@@ -219,15 +219,16 @@ export const persistRunCheckpoint = async (
     select: { id: true },
   })
 
-  // Older checkpoints have no rows and restore as unknown. New rows preserve
-  // the exact authors that entered this run; source-channel deletion omits only
-  // the FK row while the surviving basis still restores as unknown.
+  // The note, basis and author rows are one observation: an updated note must
+  // never commit before the source union that governs its next resume. Older
+  // checkpoints have no rows and restore as unknown; deleted channels omit only
+  // the FK row while their surviving basis still restores as unknown.
   const disclosureSources = await persistablePrivateConversationSources(
-    prisma,
+    tx,
     input.disclosureSources,
   )
   if (disclosureSources.length > 0) {
-    await prisma.runCheckpointDisclosureSource.createMany({
+    await tx.runCheckpointDisclosureSource.createMany({
       data: disclosureSources.map((source) => ({
         checkpointId: checkpoint.id,
         organizationId: input.organizationId,
@@ -238,7 +239,7 @@ export const persistRunCheckpoint = async (
     })
   }
 
-  await prisma.taskEvent.create({
+  await tx.taskEvent.create({
     data: {
       eventType: 'run.checkpointed',
       payload: {
@@ -252,4 +253,4 @@ export const persistRunCheckpoint = async (
   })
 
   return checkpoint.id
-}
+})

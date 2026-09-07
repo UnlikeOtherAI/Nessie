@@ -27,6 +27,8 @@ const checkpointRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
+const transaction = <T>(work: (tx: unknown) => Promise<T>, tx: unknown): Promise<T> => work(tx)
+
 const prismaWith = (input: {
   row: ReturnType<typeof checkpointRow> | null
   updateCount: number
@@ -37,6 +39,7 @@ const prismaWith = (input: {
   runBasis?: Array<{ scopeType: string; scopeId: string }>
   disclosureSources?: Array<{ sourceAuthorUserId: string | null; sourceChannelId: string }>
 }): PrismaClient => ({
+  $transaction: async <T>(work: (tx: unknown) => Promise<T>) => transaction(work, {}),
   runCheckpoint: {
     findFirst: async (arg: unknown) => {
       input.queries?.push(arg)
@@ -115,19 +118,25 @@ test('the injected block is explicitly untrusted and lists sources verbatim', ()
 test('persisting a checkpoint upserts on runId and emits run.checkpointed', async () => {
   const events: Array<{ data: Record<string, unknown> }> = []
   const upserts: Array<Record<string, unknown>> = []
-  const prisma = {
+  const tx = {
+    channel: { findMany: async () => [] },
+    runBasisScope: { createMany: async () => ({ count: 0 }) },
     runCheckpoint: {
       upsert: async (arg: Record<string, unknown>) => {
         upserts.push(arg)
         return { id: 'checkpoint-9' }
       },
     },
+    runCheckpointDisclosureSource: { createMany: async () => ({ count: 0 }) },
     taskEvent: {
       create: async (arg: { data: Record<string, unknown> }) => {
         events.push(arg)
         return arg
       },
     },
+  }
+  const prisma = {
+    $transaction: async <T>(work: (inner: typeof tx) => Promise<T>) => work(tx),
   } as unknown as PrismaClient
 
   const id = await persistRunCheckpoint(prisma, {
@@ -230,9 +239,10 @@ test('a modern checkpoint restores its recorded private original author', async 
   ])
 })
 
-test('persisting a modern checkpoint stores the consumed private authors', async () => {
+test('persisting a modern checkpoint stores its body and source union in one transaction', async () => {
   const writes: unknown[] = []
-  const prisma = {
+  let transactions = 0
+  const tx = {
     channel: { findMany: async () => [{ id: 'private-room' }] },
     runBasisScope: { createMany: async () => ({ count: 1 }) },
     runCheckpoint: { upsert: async () => ({ id: 'checkpoint-9' }) },
@@ -240,6 +250,12 @@ test('persisting a modern checkpoint stores the consumed private authors', async
       createMany: async (input: unknown) => { writes.push(input); return { count: 1 } },
     },
     taskEvent: { create: async () => ({}) },
+  }
+  const prisma = {
+    $transaction: async <T>(work: (inner: typeof tx) => Promise<T>) => {
+      transactions += 1
+      return work(tx)
+    },
   } as unknown as PrismaClient
 
   await persistRunCheckpoint(prisma, {
@@ -257,6 +273,7 @@ test('persisting a modern checkpoint stores the consumed private authors', async
     threadId: 'thread-1',
   })
 
+  assert.equal(transactions, 1)
   assert.deepEqual(writes, [{
     data: [{
       checkpointId: 'checkpoint-9',

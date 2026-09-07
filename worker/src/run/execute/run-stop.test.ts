@@ -56,15 +56,18 @@ const depsWith = (input: {
   events?: unknown[]
 }): ExecutionDependencies => ({
   prisma: {
-    runCheckpoint: {
-      upsert: input.upsert ?? (async () => ({ id: 'checkpoint-1' })),
-    },
-    taskEvent: {
-      create: async (arg: unknown) => {
-        input.events?.push(arg)
-        return {}
+    $transaction: async (work: (tx: unknown) => Promise<unknown>) => work({
+      channel: { findMany: async () => [] },
+      runBasisScope: { createMany: async () => ({ count: 0 }) },
+      runCheckpoint: { upsert: input.upsert ?? (async () => ({ id: 'checkpoint-1' })) },
+      runCheckpointDisclosureSource: { createMany: async () => ({ count: 0 }) },
+      taskEvent: {
+        create: async (arg: unknown) => {
+          input.events?.push(arg)
+          return {}
+        },
       },
-    },
+    }),
   },
 } as unknown as ExecutionDependencies)
 
