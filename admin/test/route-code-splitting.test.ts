@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url'
  */
 
 const ROUTER_PATH = fileURLToPath(new URL('../src/router.tsx', import.meta.url))
-const source = readFileSync(ROUTER_PATH, 'utf8')
+const source = readFileSync(ROUTER_PATH, 'utf8').replaceAll('\r\n', '\n')
 
 const EAGER_PAGES = ['BootstrapPage', 'ChannelsPage', 'ExternalAuthCompletionPage', 'LoginRoute', 'NotFoundPage']
 

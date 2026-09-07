@@ -679,6 +679,12 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
+      - name: Run project usability browser suite
+        if: steps.scope.outputs.code == '1'
+        env:
+          PROJECT_USABILITY_SCREENSHOTS: 1
+        run: node admin/e2e/project-usability/ci.mjs
+
       # Connected mail uses a deterministic provider boundary, but renders the
       # production admin shell, mailbox and chat doorway in Chromium.
       - name: Run connected mail browser suite
@@ -691,6 +697,14 @@ jobs:
         with:
           name: navigation-transition-frames
           path: e2e/screenshots/navigation
+          if-no-files-found: warn
+
+      - name: Upload project usability screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-usability-screenshots
+          path: e2e/screenshots/project-usability
           if-no-files-found: warn
 
       - name: Upload connected mail screenshots
