@@ -8,8 +8,9 @@ The default test brief is three Czech hospitality prospects for KiloMayo.
 
 KiloTalk is the primary research source. Its admin is
 <https://kilosupport.kilomayo.dev/admin>; its Streamable HTTP MCP endpoint is
-<https://kilosupport.kilomayo.dev/mcp>. MCP uses `KILOTALK_MCP_BEARER_TOKEN`,
-which is separate from the portal password. Keep credentials in the configured
+<https://kilosupport.kilomayo.dev/mcp>. Settings → API keys issues a revocable,
+read-only research key; the legacy `KILOTALK_MCP_BEARER_TOKEN` has broader access.
+Both are separate from the portal password. Keep credentials in the configured
 secret store, never in agent instructions, task details, or this document.
 
 Start with `sharpgrid.facets` and one bounded `sharpgrid.outlets.browse` page.
@@ -63,3 +64,31 @@ They do not establish real research quality, agent consensus, a working MCP
 credential, or a real Google Meet invitation. Record these outcomes separately.
 Completion requires browser evidence for the configured agents and project,
 passing required CI, a merged PR, and removal of the merged task branches.
+
+## Observed results, 7 September 2026
+
+The live browser walkthrough created **Sales Researcher — Test** and
+**Sales Coordinator — Test**, with bounded runs, an eight-step research template
+and a six-step planning template. Both were bound to `sales-planning-test`.
+KiloTalk's Settings API-key page was deployed through
+[KiloTalk PR 20](https://github.com/UnlikeOtherAI/KiloTalk/pull/20). A new research
+key was generated in that UI and entered into Nessie's encrypted credential
+dialog. The channel-scoped **KiloTalk Sales Research** app connected, discovered
+exactly ten read-only tools, and was approved and granted to both agents.
+
+The walkthrough also reproduced an existing project-creation defect:
+**Sales Agent Verification — KiloMayo** was created, but the form's subsequent
+attempt to create a local team failed. Adding a channel from that project's
+menu then placed it in **General**. The test project therefore has no usable
+project-channel relationship. Do not treat this as a successful new-project
+walkthrough or fabricate a local UOA team to make it pass. The authoritative
+remedy is the project/team API and data migration described in
+[the team-model standard](../standards/team-model.md).
+
+Local combined API/worker builds passed. The full admin Turbo suite passed
+1,439 tests. Postgres checks verified concurrent checklist application and
+restricted-source propagation through peer mailbox delivery. Google Calendar
+tests verified the Meet request contract with a provider mock. Some broader
+Windows tests failed because their Docker executable and `chmod` fixtures
+assume POSIX; Linux CI remains the merge gate. These checks do not yet prove
+live agent consensus, generated prospect tasks, or an actual Meet link.
