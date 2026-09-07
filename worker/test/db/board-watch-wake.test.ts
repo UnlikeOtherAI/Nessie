@@ -64,7 +64,7 @@ const seed = async (prisma: PrismaClient) => {
       status: 'in_progress',
     },
   })
-  return { organization, project, board, agent, task, user, channel, thread }
+  return { organization, project, team, board, agent, task, user, channel, thread }
 }
 
 runDatabaseTest('waking a watcher agent starts a run from a hidden kickoff', async (t) => {
@@ -204,23 +204,25 @@ runDatabaseTest('an agent no longer bound to its channel is unreachable', async 
 runDatabaseTest('a direct wake cannot enter another person’s private agent home', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
-  const other = await prisma.user.create({
-    data: { displayName: 'Private owner', email: `private-${randomUUID()}@example.test` },
-  })
-  await prisma.organizationMember.create({
-    data: { organizationId: seeded.organization.id, userId: other.id, role: 'member' },
-  })
-  const privateAgent = await prisma.agent.create({
-    data: {
-      name: 'Private watcher',
-      organizationId: seeded.organization.id,
-      ownerUserId: other.id,
-      projectId: seeded.project.id,
-      role: 'assistant',
-      visibility: 'private',
-    },
-  })
+  let otherId: string | undefined
   try {
+    const other = await prisma.user.create({
+      data: { displayName: 'Private owner', email: `private-${randomUUID()}@example.test` },
+    })
+    otherId = other.id
+    await prisma.organizationMember.create({
+      data: { organizationId: seeded.organization.id, userId: other.id, role: 'member' },
+    })
+    const privateAgent = await prisma.agent.create({
+      data: {
+        name: 'Private watcher',
+        organizationId: seeded.organization.id,
+        ownerUserId: other.id,
+        projectId: seeded.project.id,
+        role: 'assistant',
+        visibility: 'private',
+      },
+    })
     const privateChannelId = await ensurePrivateAgentHome(prisma, {
       agentId: privateAgent.id,
       label: privateAgent.name,
@@ -253,7 +255,9 @@ runDatabaseTest('a direct wake cannot enter another person’s private agent hom
     assert.equal(await prisma.message.count({ where: { threadId: privateThread.id } }), messagesBefore)
   } finally {
     await prisma.organization.deleteMany({ where: { id: seeded.organization.id } })
-    await prisma.user.deleteMany({ where: { id: { in: [seeded.user.id, other.id] } } })
+    await prisma.user.deleteMany({
+      where: { id: { in: [seeded.user.id, ...(otherId ? [otherId] : [])] } },
+    })
     await prisma.$disconnect()
   }
 })
