@@ -10,7 +10,7 @@ services:
         -Dgreenmail.hostname=0.0.0.0
         -Dgreenmail.users=agent:mail-e2e-only@nessie.test,recipient:mail-e2e-only@nessie.test
     ports:
-      - "127.0.0.1:3025:3025" # SMTP / STARTTLS
-      - "127.0.0.1:3143:3143" # IMAP / STARTTLS
+      - "127.0.0.1:3025:3025" # SMTP
+      - "127.0.0.1:3143:3143" # IMAP
       - "127.0.0.1:3465:3465" # SMTPS
       - "127.0.0.1:3993:3993" # IMAPS
