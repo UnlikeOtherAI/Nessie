@@ -104,17 +104,7 @@ export type ToolAuthorizationContext = {
     interactive: boolean
     messageId: string
   }
-  /**
-   * A structurally gated tool family whose escalation decision is its own.
-   *
-   * Standing consent below is the *send-as-you* answer: a person granting an
-   * agent leave to mail from their account. A hosted agent mailbox is not that
-   * — nobody's account is being borrowed — and its reasons to stop are
-   * different (an unattended run opening new correspondence, the hourly cap, or
-   * a privileged source the run read that its recipient cannot reach). A family
-   * that returns a decision here is authoritative for its own tools; everything
-   * else falls through to standing consent unchanged.
-   */
+  /** A tool family may supply its own structurally gated escalation decision. */
   structuralGate?: (input: {
     toolName: string
     args: Record<string, unknown>
@@ -123,10 +113,7 @@ export type ToolAuthorizationContext = {
     /** Shown on the approval card: why the person was asked. */
     reason?: string
     requiredApproverUserId?: string | null
-    /**
-     * Address-free server-authored facts for the approval row, which an org
-     * owner can read through the approvals surface.
-     */
+    /** Address-free server-authored facts for the approval row. */
     contextExtra?: Record<string, unknown>
   } | null>
   toolPolicy: Record<string, boolean> | null
