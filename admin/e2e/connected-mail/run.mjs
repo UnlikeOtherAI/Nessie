@@ -427,7 +427,15 @@ const main = async () => {
     await responsiveMail({ browser, fixture })
     await chatDoorway({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
     await narrowComposeDoorway({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
-    await gmailPreviewDirectSend({ adminUrl, assert, browser, expectNoErrors, fixture: createMailFixtures(), newPage, shot })
+    await gmailPreviewDirectSend({
+      adminUrl,
+      assert,
+      browser,
+      expectNoErrors,
+      fixture: createMailFixtures(),
+      newPage,
+      shot,
+    })
     await gmailPreviewRevocation({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
     await agentCardMailDraft({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
     await agentCardMailSend({ adminUrl, assert, browser, expectNoErrors, fixture: createMailFixtures(), newPage, shot })

@@ -326,4 +326,11 @@ const agentCardMailSend = async ({ adminUrl, assert, browser, expectNoErrors, fi
   }
 }
 
-export { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewDirectSend, gmailPreviewRevocation, narrowComposeDoorway }
+export {
+  agentCardMailDraft,
+  agentCardMailSend,
+  chatDoorway,
+  gmailPreviewDirectSend,
+  gmailPreviewRevocation,
+  narrowComposeDoorway,
+}
