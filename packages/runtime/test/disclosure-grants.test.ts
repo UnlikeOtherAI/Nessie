@@ -19,6 +19,7 @@ test('renewing a one-message grant records the current approving author', async 
       findFirst: async () => ({
         agentId: 'agent-1',
         basisScopes: [{ scopeId: 'org-1', scopeType: 'organization' }],
+        content: 'restricted',
         disclosureSources: [],
         id: 'message-1',
         thread: { channelId: 'source-channel' },
@@ -27,10 +28,13 @@ test('renewing a one-message grant records the current approving author', async 
     organizationMember: { findFirst: async () => ({ id: 'membership-1' }) },
     projectMember: { findMany: async () => [] },
     teamMember: { findMany: async () => [] },
+    $executeRaw: async () => 0,
+    $transaction: async (work: (tx: unknown) => Promise<unknown>) => work(prisma),
   }
 
   await grantMessageDisclosure(prisma as never, {
     audienceId: 'audience-channel',
+    expectedContent: 'restricted',
     messageId: 'message-1',
     organizationId: 'org-1',
     userId: 'author-b',
