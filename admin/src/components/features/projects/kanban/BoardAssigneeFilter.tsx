@@ -169,8 +169,9 @@ export const BoardAssigneeFilter = ({
   ) : selectedRemote ? (
     <>
       <RemoteAssigneeAvatar label={selectedRemote.label} size={24} />
-      <span className="min-w-0 flex-1 truncate">{selectedRemote.label}</span>
-      <span className="shrink-0 text-xs text-[color:var(--tx3)]">Not mapped</span>
+      <span className="min-w-0 flex-1 truncate" title={selectedRemote.label}>
+        {selectedRemote.label}
+      </span>
     </>
   ) : (
     <>
@@ -182,7 +183,7 @@ export const BoardAssigneeFilter = ({
   const selectedTextId = `${listboxId}-selected`
 
   return (
-    <div className="max-w-[220px]" data-board-assignee-filter>
+    <div className="w-fit max-w-[min(20rem,100%)]" data-board-assignee-filter>
       <button
         aria-controls={open ? listboxId : undefined}
         aria-describedby={selectedTextId}
