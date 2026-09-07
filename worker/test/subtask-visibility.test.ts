@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { runSpawnSubtaskTool } from '../src/run/subtask-tools.js'
+import { createConsumedSourceSink } from '../src/run/execute/disclosure-basis.js'
 import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../src/run/tool-policy.js'
 import type { BuiltinToolRuntimeContext } from '../src/run/tool-types.js'
 
@@ -17,10 +18,16 @@ const CHILD_RUN_ID = '30000000-0000-4000-8000-000000000007'
 const MESSAGE_ID = '30000000-0000-4000-8000-000000000008'
 const TASK_ID = '30000000-0000-4000-8000-000000000009'
 const OWNER_USER_ID = '30000000-0000-4000-8000-00000000000a'
+const TASK_PROMPT_ID = '30000000-0000-4000-8000-00000000000b'
 
 test('spawn_subtask inherits private visibility from its parent', async () => {
   let childData: Prisma.AgentCreateInput | null = null
-  let childRunData: { principalUserId?: string | null } | null = null
+  let childRunData: { principalUserId?: string | null; triggerMessageId?: string } | null = null
+  const consumedSources = createConsumedSourceSink()
+  consumedSources.addPrivateConversationSource({
+    sourceAuthorUserId: OWNER_USER_ID,
+    sourceChannelId: CHANNEL_ID,
+  })
   const tx = {
     $executeRaw: async () => 1,
     agent: {
@@ -29,8 +36,13 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
         return { id: CHILD_AGENT_ID, name: 'Private parent researcher' }
       },
     },
+    message: {
+      create: async () => ({ id: TASK_PROMPT_ID }),
+    },
+    messageBasisScope: { createMany: async () => ({ count: 1 }) },
+    messageDisclosureSource: { createMany: async () => ({ count: 1 }) },
     run: {
-      create: async ({ data }: { data: { principalUserId?: string | null } }) => {
+      create: async ({ data }: { data: { principalUserId?: string | null; triggerMessageId?: string } }) => {
         childRunData = data
         return { id: CHILD_RUN_ID, threadId: THREAD_ID }
       },
@@ -65,6 +77,7 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
       tenant: { organizationId: ORGANIZATION_ID },
     },
     channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID },
+    consumedSources,
     ledgerIdentity: null,
     prisma,
     realtimeTransport: { publishWs: async () => undefined },
@@ -88,6 +101,7 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
     principalUserId: OWNER_USER_ID,
     status: 'pending',
     threadId: THREAD_ID,
+    triggerMessageId: TASK_PROMPT_ID,
   })
 })
 

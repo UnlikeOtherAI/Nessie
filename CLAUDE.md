@@ -42,6 +42,11 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
   CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
   between the navigation and independent connected-mail suites.
+- **Private-conversation disclosure browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:disclosure` after
+  building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
+  the same fixed ports; details and limits are in
+  [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is

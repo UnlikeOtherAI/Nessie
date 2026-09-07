@@ -59,6 +59,7 @@ export const loadReadableCard = async (
       message: {
         select: {
           basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
           id: true,
           rootMessageId: true,
         },
@@ -95,6 +96,7 @@ export const loadReadableCard = async (
       agentId: card.agentId,
       basis: card.message.basisScopes,
       channelId: card.channelId,
+      disclosureSources: card.message.disclosureSources,
       messageId: card.messageId,
       organizationId: card.organizationId,
       userId: input.userId,

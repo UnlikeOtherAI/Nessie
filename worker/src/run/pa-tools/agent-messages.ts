@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client'
+import { canUserReadDisclosureBasis } from '@nessie/runtime'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveAccessibleChannelIds } from './access.js'
+import { resolveAccessibleChannelIds, resolveEffectiveUserId } from './access.js'
 import {
   recordMessageChannelRead,
   recordPrivateConversationMessageRead,
@@ -254,8 +255,8 @@ export const runMessageDeleteTool = async (
  * 👍 is still a paragraph.
  *
  * Scoped to messages the run can already reach — the same accessible-channel
- * set that governs conversation search — so an agent cannot annotate a
- * conversation it could not read.
+ * set that governs conversation search — and to the message's disclosure
+ * basis, so an agent cannot annotate a conversation it could not read.
  */
 export const runReactTool = async (
   context: BuiltinToolRuntimeContext,
@@ -275,7 +276,14 @@ export const runReactTool = async (
   const channelIds = await resolveAccessibleChannelIds(context)
   const message = channelIds.length
     ? await context.prisma.message.findFirst({
-        select: { id: true, threadId: true },
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+          id: true,
+          thread: { select: { channelId: true } },
+          threadId: true,
+        },
         where: {
           deletedAt: null,
           id: input.messageId,
@@ -284,6 +292,26 @@ export const runReactTool = async (
       })
     : null
   if (!message) {
+    throw new Error('Message not found in a conversation this agent can see.')
+  }
+
+  // Channel reach is necessary but not sufficient: a reply in a shared channel
+  // may be derived from a private source. Resolve the acting human's *current*
+  // disclosure reach (including grants) through the same predicate used by the
+  // API feed. An autonomous agent has no human entitlement and therefore may
+  // only react to unrestricted messages.
+  const effectiveUserId = resolveEffectiveUserId(context)
+  const readable = message.basisScopes.length === 0
+    || (effectiveUserId !== null && await canUserReadDisclosureBasis(context.prisma, {
+      agentId: message.agentId,
+      basis: message.basisScopes,
+      channelId: message.thread.channelId,
+      disclosureSources: message.disclosureSources,
+      messageId: message.id,
+      organizationId: context.channel.organizationId,
+      userId: effectiveUserId,
+    }))
+  if (!readable) {
     throw new Error('Message not found in a conversation this agent can see.')
   }
 

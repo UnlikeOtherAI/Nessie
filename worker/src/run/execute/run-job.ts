@@ -70,6 +70,7 @@ import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
 import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
+import { admitTriggerMessageLineage } from './private-conversation-lineage.js'
 import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
@@ -160,6 +161,9 @@ const runJobUnderFence = async (
     select: {
       basisScopes: { select: { scopeType: true, scopeId: true } },
       content: true,
+      disclosureSources: {
+        select: { sourceAuthorUserId: true, sourceChannelId: true },
+      },
       metadata: true,
       rootMessageId: true,
     },
@@ -175,7 +179,7 @@ const runJobUnderFence = async (
   // window by design, so a hidden server-authored brief (the `agent_handoff`
   // one, a trigger kickoff) would otherwise carry its restriction into the run
   // and out again through a reply computed from an empty basis.
-  context.consumedSources.addAll(message.basisScopes)
+  await admitTriggerMessageLineage(deps.prisma, context.consumedSources, message)
 
   let prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)

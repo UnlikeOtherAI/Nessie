@@ -5,6 +5,16 @@ import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
+/** Delegation turns model-authored content into another run's prompt. */
+export const requireConsumedSources = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+): NonNullable<BuiltinToolRuntimeContext['consumedSources']> => {
+  if (!context.consumedSources) {
+    throw new Error('Cannot delegate content without a disclosure provenance sink.')
+  }
+  return context.consumedSources
+}
+
 /**
  * Disclosure stamping for messages a *tool* writes.
  *

@@ -1,5 +1,11 @@
 import type { ProviderMessage } from '@nessie/runtime'
-import type { MockError, MockScenario, MockStream, MockToolCall, MockUsage } from './scenario.js'
+import type {
+  MockError,
+  MockScenario,
+  MockStream,
+  MockToolCall,
+  MockUsage,
+} from './scenario.js'
 
 // Deterministic scripted-inference engine. It is shared by the in-process
 // provider adapter (unit/integration tests) and the HTTP server (full-pipeline
@@ -70,6 +76,7 @@ export type MockEngineStats = {
 export class MockLlmEngine {
   private requests = 0
   private readonly turnCounts = new Map<number, number>()
+  private utilityTurnIndex = 0
 
   constructor(private readonly scenario: MockScenario) {}
 
@@ -115,6 +122,33 @@ export class MockLlmEngine {
       text: turn.text,
       toolCalls: turn.toolCalls,
       usage: turn.usage,
+    }
+  }
+
+  /**
+   * The silent utility lane is identified by the caller's empty tool list,
+   * which is a transport fact rather than an interpretation of prompt text.
+   * Scenarios that do not opt in retain the regular transcript-derived turns.
+   */
+  async nextUtility(messages: ProviderMessage[]): Promise<MockTurnOutcome> {
+    const scriptedUtilities = this.scenario.utilityTurns
+    const utility = scriptedUtilities
+      ? scriptedUtilities[Math.min(this.utilityTurnIndex, scriptedUtilities.length - 1)]
+      : this.scenario.utility
+    if (!utility) return this.next(messages)
+
+    this.utilityTurnIndex += 1
+    const latencyMs = utility.latencyMs + this.scenario.defaults.latencyMs
+    await sleep(latencyMs)
+    this.requests += 1
+    this.turnCounts.set(-1, (this.turnCounts.get(-1) ?? 0) + 1)
+    return {
+      kind: 'completion',
+      latencyMs,
+      text: utility.text,
+      toolCalls: [],
+      turnIndex: -1,
+      usage: utility.usage,
     }
   }
 }

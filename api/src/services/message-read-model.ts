@@ -193,6 +193,7 @@ export const mapMessageRecordWithAttachments = async (
     agentId: message.agentId,
     basis: message.basisScopes,
     channelId: viewer.channelId,
+    disclosureSources: message.disclosureSources,
     messageId: message.id,
     organizationId: viewer.organizationId,
     userId: viewer.userId,
@@ -326,6 +327,7 @@ export const listThreadMessages = async (
       messages: provisional.withheld.map((row) => ({
         agentId: row.agentId,
         basis: row.basisScopes,
+        disclosureSources: row.disclosureSources,
         messageId: row.id,
       })),
       organizationId: options.organizationId,
