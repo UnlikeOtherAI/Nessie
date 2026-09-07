@@ -18,10 +18,12 @@ import type { ExecutionProvider } from './types.js'
 // VM or Cloud Run job. A `docker` ref is a container on ONE host's daemon
 // (horizontal-scaling audit 8.2; `docs/standards/horizontal-scaling/overview.md`
 // invariant 7), and queue jobs are not host-routed: a terminate claimed by
-// another replica would run `docker rm -f` against the wrong daemon, get
-// `No such container`, have `terminateDocker` swallow it as already-gone, and
-// let `persistTermination` write `terminated` — a lie about a container that is
-// still running and still consuming the dead host's CPU.
+// another replica would run `docker rm -f` against a daemon that never held the
+// container and get `No such container`. That no longer becomes a `terminated`
+// row — `terminateDocker` reports it `unverified` and the instance ends at
+// `EXECUTION_TERMINATE_UNVERIFIED` — but an enqueue whose only possible outcome
+// is "this replica could not do it" is still not a reclaim, and it would replace
+// the expiry reason with one that says less.
 //
 // So docker gets no terminate, and nothing automatic reclaims an abandoned
 // container: the instance keeps its honest terminal state and the container is
