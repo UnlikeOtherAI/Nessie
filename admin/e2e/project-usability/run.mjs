@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { PrismaClient } from '@prisma/client'
 import { ADMIN_PORT, API_URL, databaseUrl } from '../navigation/lib/config.mjs'
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
 import { seedTeam, call } from '../navigation/lib/seed.mjs'
@@ -98,6 +99,34 @@ const captureFailure = async (target, name) => {
   await page.screenshot({ path: `${SCREENSHOTS}/failure-${name}.png`, fullPage: false }).catch((error) => {
     console.error(`project-usability e2e: could not capture ${name}: ${error.message}`)
   })
+}
+const clearFixtureKnowledge = async (projectId, taskIds) => {
+  const prisma = new PrismaClient()
+  try {
+    const [pages, spaces] = await Promise.all([
+      prisma.knowledgePage.findMany({
+        where: { projectId },
+        select: { id: true, taskId: true },
+      }),
+      prisma.knowledgeSpace.findMany({
+        where: { projectId },
+        select: { id: true, name: true },
+      }),
+    ])
+    const unexpectedPage = pages.find((page) => !page.taskId || !taskIds.has(page.taskId))
+    const unexpectedSpace = spaces.find((space) => space.name !== 'Project Documents')
+    if (unexpectedPage || unexpectedSpace) {
+      throw new Error(`unexpected knowledge fixture: ${JSON.stringify({ unexpectedPage, unexpectedSpace })}`)
+    }
+    if (pages.length > 0) {
+      await prisma.knowledgePage.deleteMany({ where: { id: { in: pages.map((page) => page.id) } } })
+    }
+    if (spaces.length > 0) {
+      await prisma.knowledgeSpace.deleteMany({ where: { id: { in: spaces.map((space) => space.id) } } })
+    }
+  } finally {
+    await prisma.$disconnect()
+  }
 }
 
 const main = async () => {
@@ -207,8 +236,9 @@ const main = async () => {
     await tablet?.close().catch(() => {})
     await browser?.close().catch(() => {})
     for (const taskId of createdTaskIds) await api(`/api/tasks/${taskId}/transition`, { body: { status: 'cancelled' }, method: 'POST', token: seed.token }).catch((error) => cleanupFailures.push(`cancel task ${taskId}: ${error.message}`))
-    if (sourceBoard && boardAId) await api(`/api/projects/${project.id}/boards/${sourceBoard.id}`, { body: { isDefault: true }, method: 'PUT', token: seed.token }).catch((error) => cleanupFailures.push(`restore default board: ${error.message}`))
-    for (const boardId of [boardBId, boardAId]) if (boardId) await api(`/api/projects/${project.id}/boards/${boardId}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete board ${boardId}: ${error.message}`))
+    if (sourceBoard && boardAId) await api(`/api/projects/${project.id}/boards/${sourceBoard.id}`, { body: { isDefault: true }, method: 'PATCH', token: seed.token }).catch((error) => cleanupFailures.push(`restore default board: ${error.message}`))
+    for (const boardId of [boardBId, boardAId]) if (boardId) await api(`/api/projects/${project.id}/boards/${boardId}?newDefaultBoardId=${sourceBoard.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete board ${boardId}: ${error.message}`))
+    if (project) await clearFixtureKnowledge(project.id, createdTaskIds).catch((error) => cleanupFailures.push(`delete fixture knowledge: ${error.message}`))
     if (project) await api(`/api/projects/${project.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete disposable project: ${error.message}`))
   }
   if (cleanupFailures.length > 0) throw new Error(`project-usability cleanup failed:\n  ${cleanupFailures.join('\n  ')}`)
