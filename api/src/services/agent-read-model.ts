@@ -26,6 +26,7 @@ import {
   buildDisclosureReadableThreadWhere,
   toTimestamp,
 } from './agent-read-primitives.js'
+import { canUserReadRunDerivedRecord } from './run-derived-read.js'
 
 const mapToolCall = (toolCall: {
   durationMs: number | null
@@ -211,6 +212,15 @@ export const loadAgentActivity = async (
   const currentRun = readableRuns.find(
     (run) => run.status === 'running' || run.status === 'pending',
   )
+  const readableChildTasks = await Promise.all(agent.childAgents.map(async (childAgent) => {
+    const childTask = childAgent.tasks[0]
+    if (!childTask || !options?.visibility || !(await canUserReadRunDerivedRecord(prisma, {
+      organizationId: options.visibility.organizationId,
+      runId: childTask.runId,
+      userId: options.visibility.userId,
+    }))) return null
+    return { childAgent, childTask }
+  }))
 
   return {
     agentId: parseAgentId(agent.id),
@@ -233,10 +243,10 @@ export const loadAgentActivity = async (
       )
       .slice(0, 20)
       .map(mapToolCall),
-    subAgents: agent.childAgents
-      .map((childAgent) => {
-        const childTask = childAgent.tasks[0]
-        if (!childTask) return null
+    subAgents: readableChildTasks
+      .map((entry) => {
+        if (!entry) return null
+        const { childAgent, childTask } = entry
         return {
           agentId: parseAgentId(childAgent.id),
           name: childAgent.name,

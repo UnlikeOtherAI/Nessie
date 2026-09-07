@@ -17,13 +17,16 @@ const childTaskId = '00000000-0000-4000-8000-000000000009'
 const projectedId = '00000000-0000-4000-8000-000000000010'
 const teamId = '00000000-0000-4000-8000-000000000011'
 const taskPromptId = '00000000-0000-4000-8000-000000000012'
+const planId = '00000000-0000-4000-8000-000000000013'
 
-test('spawned child strips every explicit grant while preserving ordinary policy', async () => {
+test('a spawned child keeps B\'s private canary out of public task and plan metadata', async () => {
   let createdToolPolicy: unknown
   let taskPrompt: { content: string; role: string; threadId: string } | undefined
   let runTriggerMessageId: string | undefined
   let stampedBasis: unknown
   let stampedSources: unknown
+  let taskPurpose: string | undefined
+  let delegation: { payload: unknown; title: string } | undefined
   const consumedSources = createConsumedSourceSink()
   consumedSources.add({ scopeId: 'private-channel', scopeType: 'channel' })
   consumedSources.addPrivateConversationSource({
@@ -70,7 +73,20 @@ test('spawned child strips every explicit grant while preserving ordinary policy
       },
     },
     task: {
-      create: async () => ({ id: childTaskId }),
+      create: async ({ data }: { data: { purpose: string } }) => {
+        taskPurpose = data.purpose
+        return { id: childTaskId }
+      },
+    },
+    planStep: {
+      aggregate: async () => ({ _max: { sequence: 0 } }),
+      create: async ({ data }: { data: { payload: unknown; title: string } }) => {
+        delegation = data
+        return { id: '00000000-0000-4000-8000-000000000014' }
+      },
+    },
+    plan: {
+      update: async () => undefined,
     },
   }
   const prisma = {
@@ -86,9 +102,7 @@ test('spawned child strips every explicit grant while preserving ordinary policy
         toolPolicy: parentToolPolicy,
       }),
     },
-    plan: {
-      findFirst: async () => null,
-    },
+    plan: { findFirst: async () => ({ id: planId }) },
     toolRegistryEntry: {
       findMany: async () => [{
         id: projectedId,
@@ -139,6 +153,12 @@ test('spawned child strips every explicit grant while preserving ordinary policy
     sourceAuthorUserId: 'author-b',
     sourceChannelId: 'private-channel',
   }])
+  assert.equal(taskPurpose, 'Delegated researcher subtask')
+  assert.equal(delegation?.title, 'Delegated researcher subtask')
+  assert.deepEqual(delegation?.payload, {
+    role: 'researcher',
+    triggerMessageId: taskPromptId,
+  })
 })
 
 test('spawn_subtask refuses to create an untracked child prompt without provenance', async () => {

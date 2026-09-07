@@ -72,6 +72,9 @@ Facts not restated there:
 - A manual share publishes the content-free `message.disclosure.changed` event
   to the destination channel scopes. Open readers refetch the reply through
   the current predicate; granting it never puts its text on the realtime wire.
+- A task, plan, or child-agent activity row linked to a run is a retained run
+  output: its reader must satisfy both the run channel entitlement and that
+  run's disclosure basis. A task without a run keeps ordinary task visibility.
 - **A private conversation's author, rather than its agent's owner or another
   reader, decides export.** `MessageDisclosureSource` carries the source
   channel and each human author whose private turn entered a derived message.

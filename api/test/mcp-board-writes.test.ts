@@ -75,7 +75,7 @@ const contextFor = (prisma: PrismaClient, s: Seed): McpToolContext => ({
   // The real reader, so the test cannot pass against a shape production never
   // produces.
   getTask: async (taskId) =>
-    getTask(prisma, taskId, s.organizationId, undefined) as never,
+    getTask(prisma, taskId, s.organizationId, undefined, s.userId) as never,
   isProjectAccessibleToActor: async () => true,
   knowledge: null,
   prisma,

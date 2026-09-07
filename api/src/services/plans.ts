@@ -12,6 +12,7 @@ import {
   toInputJsonObjectWithDefault,
   toJsonRecord,
 } from './contract-helpers.js'
+import { canUserReadRunDerivedRecord } from './run-derived-read.js'
 
 export const PLAN_ERROR_CODES = {
   STEP_SEQUENCE_CONFLICT: 'PLAN_STEP_SEQUENCE_CONFLICT',
@@ -86,6 +87,7 @@ const mapPlanStepRecord = (step: {
 export const listPlans = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
   input: {
     agentId?: string
     status?: PlanRecord['status']
@@ -100,13 +102,22 @@ export const listPlans = async (
     orderBy: [{ createdAt: 'desc' }],
   })
 
-  return plans.map(mapPlanRecord)
+  const readable = await Promise.all(plans.map(async (plan) => ({
+    plan,
+    readable: await canUserReadRunDerivedRecord(prisma, {
+      organizationId,
+      runId: plan.runId,
+      userId,
+    }),
+  })))
+  return readable.filter(({ readable }) => readable).map(({ plan }) => mapPlanRecord(plan))
 }
 
 export const getPlan = async (
   prisma: PrismaClient,
   organizationId: string,
   planId: string,
+  userId: string,
 ): Promise<{ plan: PlanRecord; steps: PlanStepRecord[] } | null> => {
   const plan = await prisma.plan.findFirst({
     where: {
@@ -114,9 +125,12 @@ export const getPlan = async (
       organizationId,
     },
   })
-  if (!plan) {
-    return null
-  }
+  if (!plan) return null
+  if (!(await canUserReadRunDerivedRecord(prisma, {
+    organizationId,
+    runId: plan.runId,
+    userId,
+  }))) return null
 
   const steps = await prisma.planStep.findMany({
     where: { planId },

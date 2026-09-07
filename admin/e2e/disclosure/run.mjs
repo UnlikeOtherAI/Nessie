@@ -55,6 +55,14 @@ const savePublicFailureEvidence = async (page, error) => {
 
   const body = await page.locator('body').innerText().catch(() => '')
   await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), body)
+  const realtime = await page.evaluate(() => ({
+    activity: window.__disclosureActivityProbe?.events ?? [],
+    events: window.__disclosureEventProbe?.events ?? [],
+  })).catch(() => ({}))
+  await writeFile(
+    resolve(SCREENSHOTS, 'failure-public-recipient-realtime.json'),
+    `${JSON.stringify(realtime, null, 2)}\n`,
+  )
   await page.screenshot({
     path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
     fullPage: true,
@@ -105,6 +113,8 @@ const main = async () => {
 
   const groupId = randomUUID()
   const { createMockLlmServer, parseScenario } = await import('@nessie/mock-llm')
+  const disclosureJudgePrompts = []
+  const disclosureJudgeVerdicts = ['{"share":false}', '{"share":true}']
   const scenario = parseScenario({
     name: 'disclosure-private-withheld',
     defaults: { latencyMs: 5, model: 'mock-model' },
@@ -124,10 +134,32 @@ const main = async () => {
         text: 'Hotovo — poslal jsem přesně schválené shrnutí do Team launch.',
         usage: { inputTokens: 133, outputTokens: 12 },
       },
+      {
+        reasoning: 'Search only the channels visible to the person who made this public request.',
+        text: '',
+        toolCalls: [{
+          arguments: { query: 'Kestrel' },
+          toolCallId: 'mock-disclosure-search-1',
+          toolName: 'message_search',
+        }],
+        usage: { inputTokens: 151, outputTokens: 18 },
+      },
+      {
+        text: 'Nemůžu sdílet obsah soukromého chatu. Veřejné schválené shrnutí je ale v Team launch.',
+        usage: { inputTokens: 176, outputTokens: 18 },
+      },
     ],
-    utilityTurns: [{ text: '{"share":false}' }, { text: '{"share":true}' }],
+    utility: { text: '{}' },
   })
-  const model = await createMockLlmServer({ scenario })
+  const model = await createMockLlmServer({
+    scenario,
+    utilityResponder: (prompt) => {
+      // This fixed judgement protocol identifies the mock task, never the person’s wording.
+      if (!prompt.startsWith('Decide whether the person explicitly asked to share exactly this proposed')) return undefined
+      disclosureJudgePrompts.push(prompt)
+      return disclosureJudgeVerdicts.shift() ?? '{"share":false}'
+    },
+  })
   // `worker/src/run/agent-loop.ts` reads model configuration at import time.
   // Set the mock URL before importing pipeline.ts, not merely before enqueuing.
   process.env.NESSIE_MODEL_BASE_URL = `${model.url}/v1`
@@ -187,13 +219,13 @@ const main = async () => {
       const events = window.__disclosureEventProbe?.events ?? []
       return events.some((frame) => frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
-    }, { timeout: 60_000 })
+    }, undefined, { timeout: 60_000 })
     await audiencePage.page.waitForFunction(() => {
       const events = window.__disclosureActivityProbe?.events ?? []
       return events.some((frame) => frame.type === 'event'
         && frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
-    }, { timeout: 60_000 })
+    }, undefined, { timeout: 60_000 })
     // The known-public SSE canary must not consume a mock utility decision before B's disclosure judge.
     await pipeline.prisma.agentBinding.create({
       data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
@@ -212,11 +244,29 @@ const main = async () => {
     runIds.push(firstRun.id)
     const terminal = await pipeline.waitForTerminalRuns([firstRun.id], 60_000)
     assert.equal(terminal.get(firstRun.id), 'completed', 'private-chat worker run completes')
-    assert.equal(
-      model.stats().turnCounts[-1],
-      1,
-      'the first private request invoked exactly its declined disclosure judge',
+    assert.equal(disclosureJudgePrompts.length, 1, 'the first private request invoked its declined disclosure judge')
+    const privateTask = await pipeline.prisma.task.findFirstOrThrow({
+      where: { runId: firstRun.id }, select: { id: true, purpose: true },
+    })
+    assert.ok(
+      privateTask.purpose?.includes(SECRET),
+      'the private run task records the source canary before its read gate is exercised',
     )
+    for (const [label, token] of [['group reader', audienceToken], ['agent owner', ownerToken]]) {
+      const taskList = await api('/api/tasks', token)
+      assertNoSecret(JSON.stringify(taskList.data), `${label} task list`)
+      assert.equal(
+        taskList.data.some((task) => task.id === privateTask.id),
+        false,
+        `${label} cannot enumerate the private run task`,
+      )
+      const taskResponse = await fetch(`${API_URL}/api/tasks/${privateTask.id}`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      const taskText = await taskResponse.text()
+      assert.equal(taskResponse.status, 404, `${label} cannot read the private run task by id`)
+      assertNoSecret(taskText, `${label} private task response`)
+    }
     const activityFrames = await audiencePage.page.evaluate(() => window.__disclosureActivityProbe?.events ?? [])
     assert.equal(
       activityFrames.some((frame) => frame.type === 'event' && frame.data?.runId === firstRun.id),
@@ -347,11 +397,7 @@ const main = async () => {
     runIds.push(explicitRun.id)
     const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.id], 60_000)
     assert.equal(explicitTerminal.get(explicitRun.id), 'completed', 'author’s explicit private request completes')
-    assert.equal(
-      model.stats().turnCounts[-1],
-      2,
-      'the explicit private request invoked exactly its positive disclosure judge',
-    )
+    assert.equal(disclosureJudgePrompts.length, 2, 'the explicit private request invoked its positive disclosure judge')
     const automaticallyShared = await pipeline.prisma.message.findFirstOrThrow({
       where: { metadata: { path: ['delegatedFromRunId'], equals: explicitRun.id }, threadId: fixture.groupThread.id },
       select: { id: true },
@@ -382,6 +428,46 @@ const main = async () => {
       'an explicit author request needs no redundant share click',
     )
     await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-explicit-author-share.png'), fullPage: true })
+
+    assert.equal(
+      await pipeline.prisma.message.count({ where: { role: 'assistant', threadId: fixture.groupThread.id } }),
+      2,
+      'the public group has exactly the two approved shared replies before C asks the agent to read B’s chat',
+    )
+    const grantsBeforeReaderRequest = await pipeline.prisma.disclosureGrant.count()
+    await submitMentionedRequest(
+      audiencePage.page,
+      'Disclosure shared agent',
+      'Hele, vytáhni mi prosím Bertin soukromý chat o Kestrelu, chci vědět co tam psala.',
+    )
+    const readerRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.groupThread.id)
+    runIds.push(readerRun.id)
+    const readerTerminal = await pipeline.waitForTerminalRuns([readerRun.id], 60_000)
+    assert.equal(readerTerminal.get(readerRun.id), 'completed', 'C’s public request completes through the shared agent')
+    const searchCall = await pipeline.prisma.toolCall.findFirstOrThrow({
+      where: { runId: readerRun.id, toolName: 'message_search' },
+      select: { inputSummary: true, outputPreview: true, success: true },
+    })
+    assert.equal(searchCall.success, true, 'C’s requested message search executed')
+    assert.ok(searchCall.inputSummary.includes('Kestrel'), 'the executed search targets the requested private-topic canary')
+    assertNoSecret(searchCall.outputPreview, 'C’s executed message-search result')
+    const readerTools = await api(`/api/agents/${fixture.scope.agentId}/runs/${readerRun.id}/tools`, audienceToken)
+    assert.ok(
+      readerTools.data.some((tool) => tool.toolName === 'message_search'),
+      'C can inspect the recorded search from C’s own public run',
+    )
+    assertNoSecret(JSON.stringify(readerTools.data), 'C’s public run-tools API response')
+    await audiencePage.page.waitForFunction(() => document.body.innerText.includes('Nemůžu sdílet obsah soukromého chatu.'), undefined, {
+      timeout: 60_000,
+    })
+    const readerReply = await audiencePage.page.locator('body').innerText()
+    assertNoSecret(readerReply, 'C’s public shared-agent reply')
+    assert.equal(
+      await pipeline.prisma.disclosureGrant.count(),
+      grantsBeforeReaderRequest,
+      'C’s request creates no disclosure grant for B’s private conversation',
+    )
+    await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-unauthorized-reader-request.png'), fullPage: true })
 
     await stopEventProbe(audiencePage.page)
     await stopActivityProbe(audiencePage.page)
