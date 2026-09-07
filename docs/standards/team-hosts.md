@@ -169,13 +169,37 @@ and treats UOA being unreachable as no. Confirmed against production: real
 tenants `204`; `totally-made-up.nessie-works.nessie.works` `404` and no
 certificate minted for it.
 
+#### The product's own hostnames are never tenants
+
+`app`, `api`, `www` and this deployment's other labels are refused by
+`parseTenantHost` before UOA is asked. UOA reserves them as organisation slugs
+too, and that is the primary defence — but the hostnames being protected are
+**ours**, and a security property of this product should not depend on a list in
+another repository.
+
+What it prevents: if such a label ever resolved to an organisation, the host
+gate would render that tenant's portal **in place of the product on its own
+canonical origin**, and this gate would tell the edge the name deserved a
+certificate. A label added to the deployment later — a status page, a docs host
+— belongs in that set, and in the edge config, before it is used.
+
 #### And it is authenticated, by `NESSIE_TLS_CHECK_KEY`
 
 The question it answers is *does this team exist* — which this product
 deliberately keeps behind authentication. `/api/hosts/team` is authenticated
 and the branded team page never names its team, precisely so a guessable
 address cannot be confirmed. An open gate would hand that back through the side
-door, so the edge presents a shared secret in the ask URL.
+door, so the edge presents a shared secret.
+
+**In a header, `X-Nessie-TLS-Check-Key`, never in the query string.** It rode in
+the URL when this shipped, and request logging records URLs: the secret was
+written in clear text into this API's logs on every ask. Found by a security
+review, confirmed on the running system, and the reason the rule is absolute — a
+secret in a URL is a secret in a log.
+
+Every failure refuses, not only the one error class the handler used to name. An
+unhandled throw becomes a 500, and a 500 is a refusal a caller can tell apart
+from the others, which defeats the point of making them identical.
 
 **Unset means the gate refuses everything.** An install that has not configured
 it cannot be turned into an existence oracle, and on-demand issuance simply
@@ -198,6 +222,33 @@ before the switch, and answered identically every time.
 
 The key is forwarded on the Nessie branch only; the other product neither needs
 nor should see it.
+
+Two things the dispatcher must keep doing, both found by review after the first
+version shipped without them:
+
+- **Match case-insensitively and tolerate a trailing dot.** SNI is not
+  guaranteed lowercase and an FQDN may carry the root dot. The first regex
+  (`~\.nessie\.works$`) missed both, which sent a *nessie.works* name to the
+  other product's gate to be decided — an availability bug in that direction,
+  and not a trade to leave to luck. The apex is now classified explicitly and
+  refused here rather than falling through.
+- **Bound the upstream.** `dial_timeout` and `response_header_timeout` on the
+  Nessie branch: without them a slow-but-up API holds the TLS handshake open
+  inside the single Caddy process that fronts every other product here. A
+  timeout is a refusal, which is the safe direction. Measured, the gate answers
+  in 40–70 ms, so the limits sit nowhere near the healthy path.
+
+#### Known, and not closed: issuance rate
+
+`tls-check` stops *fake* names, but nothing bounds issuance for **real** ones.
+Someone able to create teams cheaply could mint enough certificates to exhaust
+Let's Encrypt's weekly allowance for the whole of `nessie.works` — a denial of
+service against every tenant, not only their own.
+
+It is unpatched because neither obvious fix is right alone: Caddy's
+`on_demand_tls` limiter is global and would throttle the other product sharing
+this proxy, and a per-organisation budget needs issuance state this product does
+not keep. Design it before building it.
 
 ## The tenant's address is the tenant's brand
 
