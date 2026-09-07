@@ -2,8 +2,8 @@
 //   DATABASE_URL=postgresql://… pnpm --filter @nessie/admin test:e2e:disclosure
 //
 // Scripted inference proves Nessie's routing, provenance, authorization and UI
-// behavior. It deliberately does not claim that a live model would infer the
-// Czech request correctly; that needs a separately approved live-model eval.
+// behavior. It deliberately does not claim that a live model inferred the
+// Czech request correctly; that requires a live-provider evaluation.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -300,7 +300,18 @@ const main = async () => {
     const basis = await pipeline.prisma.messageBasisScope.findMany({
       where: { messageId: forwarded.id }, select: { scopeId: true, scopeType: true },
     })
-    assert.deepEqual(basis, [{ scopeId: fixture.sourceAuthor.id, scopeType: 'user' }], 'private source stamps exact author basis on forwarded content')
+    assert.deepEqual(basis, [{
+      scopeId: fixture.privateChannel.id,
+      scopeType: 'channel',
+    }], 'private source stamps its exact channel basis on forwarded content')
+    const sources = await pipeline.prisma.messageDisclosureSource.findMany({
+      where: { messageId: forwarded.id },
+      select: { sourceAuthorUserId: true, sourceChannelId: true },
+    })
+    assert.deepEqual(sources, [{
+      sourceAuthorUserId: fixture.sourceAuthor.id,
+      sourceChannelId: fixture.privateChannel.id,
+    }], 'private source preserves B as the only author allowed to grant this reply')
     assert.equal(
       await pipeline.prisma.disclosureGrant.count({ where: { messageId: forwarded.id } }),
       0,
