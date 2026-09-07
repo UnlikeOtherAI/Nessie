@@ -53,6 +53,12 @@ const personalBrowserViewport = (viewport: ViewportSnapshot): { height: number; 
   return BROWSER_VIEWPORT_PRESETS.find((option) => option.id === preset)!.viewport
 }
 
+const destinationWithCard = (href: string, cardId: string): string => {
+  const destination = new URL(href, 'https://nessie.invalid')
+  destination.searchParams.set('agentCard', cardId)
+  return `${destination.pathname}${destination.search}${destination.hash}`
+}
+
 /**
  * An agent chat card. Its message metadata holds only a card id; every fact
  * rendered here — including whether this viewer may press anything — comes
@@ -93,14 +99,16 @@ export const AgentCardMessage = ({
     card.status === 'open' ? values ?? seedValues(card) : card.resolution?.values ?? {}
   const canRespond = card.action === 'respond'
 
-  const press = (actionKey: string, submits: boolean) => {
+  const press = (actionKey: string, submits: boolean, collectsValues?: boolean, href?: string) => {
     setSubmissionError(null)
     respond.mutate(
       {
         actionKey,
         cardId: card.cardId,
         threadId: card.threadId,
-        ...(submits ? { secrets, values: effectiveValues } : {}),
+        ...(submits || collectsValues
+          ? { secrets: collectsValues ? {} : secrets, values: effectiveValues }
+          : {}),
         ...(card.browserLogin && actionKey === 'done' && temporarySessionId
           ? { handoverSessionId: temporarySessionId }
           : {}),
@@ -114,6 +122,11 @@ export const AgentCardMessage = ({
         onSuccess: () => {
           setSecrets({})
           setSubmissionError(null)
+          if (href) {
+            navigate(destinationWithCard(href, card.cardId), {
+              state: { agentCardFormValues: effectiveValues, agentCardId: card.cardId },
+            })
+          }
         },
       },
     )
@@ -243,7 +256,7 @@ export const AgentCardMessage = ({
                 key={action.key}
                 onClick={(event) => {
                   event.stopPropagation()
-                  press(action.key, action.submits)
+                  press(action.key, action.submits, action.collectsValues, action.href)
                 }}
                 type="button"
               >

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ConnectedMailAccountRecord, ConnectedMailMessage, ConnectedMailSource, ConnectedMailThreadSummary } from '@nessie/schemas'
 
-import { ConnectedMailCompose } from '../components/features/connected-mail/ConnectedMailCompose'
+import {
+  ConnectedMailCompose,
+  reviveMailComposeDraft,
+  type MailComposeDraft,
+} from '../components/features/connected-mail/ConnectedMailCompose'
+import { ConnectedMailComposeDialog } from '../components/features/connected-mail/ConnectedMailComposeDialog'
+import { useAgentCard } from '../facades/agent-cards/hooks'
 import { ConnectedMailConversationView } from '../components/features/connected-mail/ConnectedMailConversation'
 import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../components/features/mailbox/MailboxWorkspace'
 import { TabBar } from '../components/primitives/TabBar'
@@ -36,6 +42,35 @@ const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSumma
 const accountAddress = (source: ConnectedMailSource | null, accountId: string | undefined): MailAddress | null =>
   source && accountId ? { accountId, source } : null
 
+const isUuid = (value: string | null): value is string => Boolean(
+  value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value),
+)
+
+type AgentCardComposeState = {
+  agentCardFormValues?: unknown
+  agentCardId?: unknown
+}
+
+const readAgentCardComposeState = (state: unknown): { composeId?: string; initialDraft?: MailComposeDraft } => {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return {}
+  const candidate = state as AgentCardComposeState
+  const values = candidate.agentCardFormValues
+  const draftFields = values && typeof values === 'object' && !Array.isArray(values)
+    ? Object.fromEntries(['bcc', 'body', 'cc', 'subject', 'to'].map((key) => [
+      key,
+      typeof (values as Record<string, unknown>)[key] === 'string'
+        ? (values as Record<string, unknown>)[key]
+        : '',
+    ]))
+    : null
+  const initialDraft = reviveMailComposeDraft(draftFields)
+  const composeId = typeof candidate.agentCardId === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(candidate.agentCardId)
+    ? candidate.agentCardId
+    : undefined
+  return initialDraft ? { composeId, initialDraft } : {}
+}
+
 const errorCopy = (status: string | undefined): string => {
   if (status === 'needs_reauthorization') return 'This account needs reconnecting before mail can be read.'
   if (status === 'disabled') return 'Mail access is switched off for this account.'
@@ -58,7 +93,24 @@ export const ConnectedMailPage = () => {
   const [filter, setFilter] = useTabParam('filter', MAIL_FILTERS, 'all')
   const replyThreadId = searchParams.get('threadId') ?? undefined
   const replyMessageId = searchParams.get('reply') ?? undefined
-  const composeId = searchParams.get('compose') ?? undefined
+  const agentCardParam = searchParams.get('agentCard')
+  const agentCardId = isUuid(agentCardParam) ? agentCardParam : undefined
+  const agentCard = useAgentCard(agentCardId)
+  const cardCompose = readAgentCardComposeState(routeLocation.state)
+  const editDestination = address ? `${mailPath(address)}/compose` : undefined
+  const cardEditAction = agentCard.data?.actions.find((action) => action.key === 'edit')
+  // The opaque card is an authorization-scoped recovery pointer. Both its
+  // server-authored destination and current account must agree before either
+  // restored values or transient router state can prefill this composer.
+  const hasMatchingCardDestination = cardEditAction?.href === editDestination
+  const resolvedCardDraft = agentCard.data?.resolution?.actionKey === 'edit'
+    && hasMatchingCardDestination
+    ? reviveMailComposeDraft(agentCard.data.resolution.values)
+    : undefined
+  const routedCardDraft = hasMatchingCardDestination && cardCompose.composeId === agentCardId
+    ? cardCompose.initialDraft
+    : undefined
+  const composeId = searchParams.get('compose') ?? agentCardId ?? cardCompose.composeId
   const newCompose = searchParams.get('new') === '1'
   const gmailDraftId = searchParams.get('draftId') ?? undefined
   const requestedPageSize = Number(searchParams.get('pageSize') ?? '25')
@@ -114,11 +166,33 @@ export const ConnectedMailPage = () => {
   })
 
   if (!address) return <ConnectedMailAccounts />
+  if (isCompose && agentCardId && agentCard.isFetching && !resolvedCardDraft) return (
+    <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">Loading email draft…</p></section>
+  )
+  if (isCompose && agentCardId && (!resolvedCardDraft || agentCard.isError)) return (
+    <section className="px-[var(--page-gutter)] py-6"><p aria-live="polite" className="text-sm text-[color:var(--danger)]">This email draft is no longer available to you.</p></section>
+  )
   if (isCompose && account && !account.canCompose) return (
     <div className="flex h-full flex-col">
       <ScreenHeader backLabel="Back to mail" flowOwnsBack onBack={() => navigate(mailPath(address))} title="Compose email" />
       <MailUnavailable account={account} message="Drafting email is not available for this account." />
     </div>
+  )
+  if (isCompose && account && agentCardId) return (
+    <ConnectedMailComposeDialog
+      account={account}
+      address={address}
+      composeId={composeId}
+      gmailDraftId={gmailDraftId}
+      initialDraft={resolvedCardDraft ?? routedCardDraft}
+      onClose={() => navigate(mailPath(address))}
+      onNewComposeReady={completeNewCompose}
+      onOpenSettings={() => navigate(connectedMailSettingsPath(account))}
+      onSent={() => navigate(mailPath(address))}
+      onStartNewEmail={(id) => navigate(`${mailPath(address)}/compose?compose=${id}&new=1`)}
+      open
+      replyTo={replyTo}
+    />
   )
   if (isCompose && account) return (
     <div className="flex h-full flex-col">
@@ -128,6 +202,7 @@ export const ConnectedMailPage = () => {
         address={address}
         composeId={composeId}
         gmailDraftId={gmailDraftId}
+        initialDraft={resolvedCardDraft ?? routedCardDraft}
         newCompose={newCompose}
         onNewComposeReady={completeNewCompose}
         key={`${composeId ?? 'default'}:${gmailDraftId ?? replyMessageId ?? 'new'}`}

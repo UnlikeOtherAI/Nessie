@@ -71,8 +71,21 @@ afterwards. Spec:
   message's own metadata rather than borrowing the press machinery — which
   would have meant relaxing "a card with inputs needs an action" for a card
   nobody acts on. The reasoning is in
-  [`web-search.md`](web-search.md) → "The search card"; it is the boundary of
-  this standard, not an exception to it.
+[`web-search.md`](web-search.md) → "The search card"; it is the boundary of
+this standard, not an exception to it.
+- **An action may be a same-app doorway.** An action with `href` is an internal
+  router path. It claims the card before navigation, so a draft cannot remain
+  open for a stale second choice. A normal `submits: true` action validates the
+  complete form. An `href` may instead set `collectsValues: true` with
+  `submits: false`: it stores the present non-secret values without requiring a
+  partial form to be complete, and leaves the destination's normal validation
+  and action authority unchanged. The destination owns its normal authorization
+  check and receives ordinary form values only through in-memory
+  router state. An opaque card id in the route lets the destination re-fetch
+  the resolved, viewer-scoped values after a reload; no copy enters a URL or
+  card metadata. This keeps a mail draft's `Send` response beside `Edit`, which
+  opens the canonical Mail composer with the same copy instead of an
+  email-shaped second editor.
 - **A closed block vocabulary, never a kind per integration.** `AgentCardSpec`
   = `blocks` (`text`, `fields`, `image`, `link`, `input`, `secret`) + up to four
   `actions`. A ticket, an email overview and a form are arrangements of the
