@@ -91,8 +91,9 @@ open, observe, act, and close grants, verified through the tool-access UI.
 
 The researcher called KiloTalk's catalogue and customer-list tools, then stopped
 at a run token limit before returning research. A checkpoint continuation also
-stopped without a useful answer. Increasing the agent's saved run budget did
-not establish that an existing checkpoint uses the new allowance. These are
+stopped without a useful answer. Code inspection shows continuation reloads
+the current agent run limits, but the UI evidence does not establish the
+provider finish reason or the precise cause of either stop. These are
 failed research attempts, not evidence of consensus. Further live retries wait
 for the separate output-admission and recovery work.
 
